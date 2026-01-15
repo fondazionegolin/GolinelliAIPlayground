@@ -258,6 +258,22 @@ async def submit_task(
         room=f"session:{student.session_id}",
     )
     
+    # Send teacher notification for task submission
+    await sio.emit(
+        "teacher_notification",
+        {
+            "type": "task_submitted",
+            "session_id": str(student.session_id),
+            "student_id": str(student.id),
+            "nickname": student.nickname,
+            "task_id": str(task_id),
+            "task_title": task.title,
+            "message": f"{student.nickname} ha completato il compito \"{task.title}\"",
+            "timestamp": datetime.utcnow().isoformat(),
+        },
+        room=f"session:{student.session_id}",
+    )
+    
     return {
         "id": str(submission.id),
         "content": submission.content,

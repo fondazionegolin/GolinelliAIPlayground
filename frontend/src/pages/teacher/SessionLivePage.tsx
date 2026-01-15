@@ -16,6 +16,7 @@ import {
 import { llmApi } from '@/lib/api'
 import ChatSidebar from '@/components/ChatSidebar'
 import TaskBuilder from '@/components/TaskBuilder'
+import TeacherNotifications from '@/components/TeacherNotifications'
 import { useAuthStore } from '@/stores/auth'
 import { useSocket } from '@/hooks/useSocket'
 
@@ -78,8 +79,54 @@ export default function SessionLivePage() {
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null)
   const [selectedConversationId, setSelectedConversationId] = useState<string | null>(null)
   
-  // Get online users from socket
-  const { onlineUsers } = useSocket(sessionId || '')
+  // Get online users and notifications from socket
+  const { onlineUsers, notifications: socketNotifications } = useSocket(sessionId || '')
+  const [teacherNotifications, setTeacherNotifications] = useState<Array<{
+    id: string
+    type: 'student_joined' | 'student_left' | 'private_message' | 'task_submitted'
+    session_id: string
+    student_id: string
+    nickname: string
+    message: string
+    preview?: string
+    task_title?: string
+    timestamp: string
+    read: boolean
+  }>>([])
+
+  // Convert socket notifications to teacher notifications format
+  useEffect(() => {
+    const newNotifs = socketNotifications
+      .filter(n => n.notification_data && (n.notification_data as Record<string, unknown>).type)
+      .map(n => {
+        const data = n.notification_data as Record<string, unknown>
+        return {
+          id: n.id,
+          type: (data.type as string) as 'student_joined' | 'student_left' | 'private_message' | 'task_submitted',
+          session_id: (data.session_id as string) || sessionId || '',
+          student_id: (data.student_id as string) || '',
+          nickname: (data.nickname as string) || n.sender_name || '',
+          message: n.text,
+          preview: data.preview as string | undefined,
+          task_title: data.task_title as string | undefined,
+          timestamp: n.created_at,
+          read: false,
+        }
+      })
+    
+    if (newNotifs.length > 0) {
+      setTeacherNotifications(prev => {
+        const existingIds = new Set(prev.map(p => p.id))
+        const toAdd = newNotifs.filter(n => !existingIds.has(n.id))
+        return [...prev, ...toAdd]
+      })
+    }
+  }, [socketNotifications, sessionId])
+
+  const handleClearNotifications = () => setTeacherNotifications([])
+  const handleMarkAsRead = (id: string) => {
+    setTeacherNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n))
+  }
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -243,73 +290,67 @@ export default function SessionLivePage() {
         {getStatusBadge(session.status)}
       </div>
 
-      <div className="grid gap-4 md:gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 mb-6">
-        <Card>
-          <CardContent className="pt-4 md:pt-6">
-            <div className="flex items-center justify-between gap-2">
-              <div className="min-w-0">
-                <p className="text-xs md:text-sm text-muted-foreground">Codice Accesso</p>
-                <code className="text-xl md:text-2xl font-mono font-bold">{session.join_code}</code>
-              </div>
-              <Button variant="outline" size="sm" onClick={() => copyCode(session.join_code)}>
-                <Copy className="h-4 w-4" />
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+      {/* Compact Header Bar */}
+      <div className="flex flex-wrap items-center gap-3 mb-4 p-3 bg-white rounded-lg border">
+        {/* Access Code + Actions */}
+        <div className="flex items-center gap-2">
+          <div className="text-center">
+            <p className="text-xs text-muted-foreground">Codice</p>
+            <code className="text-lg font-mono font-bold text-primary">{session.join_code}</code>
+          </div>
+          <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => copyCode(session.join_code)}>
+            <Copy className="h-3.5 w-3.5" />
+          </Button>
+        </div>
 
-        <Card>
-          <CardContent className="pt-4 md:pt-6">
-            <div className="flex items-center gap-3">
-              <Users className="h-6 w-6 md:h-8 md:w-8 text-primary shrink-0" />
-              <div>
-                <p className="text-xs md:text-sm text-muted-foreground">Studenti Connessi</p>
-                <p className="text-xl md:text-2xl font-bold">{students.length}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+        <div className="h-8 w-px bg-gray-200" />
 
-        <Card className="sm:col-span-2 lg:col-span-1">
-          <CardContent className="pt-4 md:pt-6 flex flex-wrap gap-2">
-            {session.status === 'draft' && (
-              <Button 
-                className="flex-1"
-                onClick={() => updateStatusMutation.mutate('active')}
-              >
-                <Play className="h-4 w-4 mr-2" />
-                Avvia
+        {/* Students Count */}
+        <div className="flex items-center gap-2">
+          <Users className="h-4 w-4 text-primary" />
+          <div>
+            <p className="text-xs text-muted-foreground">Studenti</p>
+            <p className="text-lg font-bold leading-none">{students.length}</p>
+          </div>
+        </div>
+
+        <div className="h-8 w-px bg-gray-200" />
+
+        {/* Session Controls */}
+        <div className="flex items-center gap-2">
+          {session.status === 'draft' && (
+            <Button size="sm" onClick={() => updateStatusMutation.mutate('active')}>
+              <Play className="h-3.5 w-3.5 mr-1" />
+              Avvia
+            </Button>
+          )}
+          {session.status === 'active' && (
+            <>
+              <Button variant="outline" size="sm" onClick={() => updateStatusMutation.mutate('paused')}>
+                <Square className="h-3.5 w-3.5 mr-1" />
+                Pausa
               </Button>
-            )}
-            {session.status === 'active' && (
-              <>
-                <Button 
-                  variant="outline" 
-                  className="flex-1"
-                  onClick={() => updateStatusMutation.mutate('paused')}
-                >
-                  <Square className="h-4 w-4 mr-2" />
-                  Pausa
-                </Button>
-                <Button 
-                  variant="destructive"
-                  onClick={() => updateStatusMutation.mutate('ended')}
-                >
-                  Termina
-                </Button>
-              </>
-            )}
-            {session.status === 'paused' && (
-              <Button 
-                className="flex-1"
-                onClick={() => updateStatusMutation.mutate('active')}
-              >
-                <Play className="h-4 w-4 mr-2" />
-                Riprendi
+              <Button variant="destructive" size="sm" onClick={() => updateStatusMutation.mutate('ended')}>
+                Termina
               </Button>
-            )}
-          </CardContent>
-        </Card>
+            </>
+          )}
+          {session.status === 'paused' && (
+            <Button size="sm" onClick={() => updateStatusMutation.mutate('active')}>
+              <Play className="h-3.5 w-3.5 mr-1" />
+              Riprendi
+            </Button>
+          )}
+        </div>
+
+        {/* Notifications Toggle */}
+        <div className="ml-auto">
+          <TeacherNotifications
+            notifications={teacherNotifications}
+            onClearAll={handleClearNotifications}
+            onMarkAsRead={handleMarkAsRead}
+          />
+        </div>
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">

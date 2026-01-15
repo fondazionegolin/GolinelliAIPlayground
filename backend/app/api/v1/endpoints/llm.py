@@ -341,31 +341,65 @@ async def send_message(
         system_prompt = profile["system_prompt"]
         temperature = profile.get("temperature", 0.7)
         
-        # Call LLM service with conversation's preferred provider/model
-        try:
-            llm_response = await llm_service.generate(
-                messages=messages,
-                system_prompt=system_prompt,
-                provider=conversation.llm_provider,
-                model=conversation.llm_model,
-                temperature=temperature,
-                max_tokens=2048,
-            )
-            
-            assistant_content = llm_response.content
-            provider = llm_response.provider
-            model = llm_response.model
-            token_usage = {
-                "prompt_tokens": llm_response.prompt_tokens,
-                "completion_tokens": llm_response.completion_tokens,
-            }
-        except Exception as e:
-            logger.error(f"LLM service error: {e}")
-            # Fallback response if LLM fails
-            assistant_content = "Mi dispiace, si è verificato un errore nel generare la risposta. Per favore riprova tra qualche istante."
-            provider = "fallback"
-            model = "none"
-            token_usage = {"prompt_tokens": 0, "completion_tokens": 0}
+        # Check if this is the math_coach profile - use agentic system with tools
+        if conversation.profile_key == "math_coach":
+            try:
+                from app.services.math_agent import run_math_agent
+                
+                # Use math agent with tool calling for accurate calculations
+                assistant_content = await run_math_agent(
+                    messages=messages,
+                    provider=conversation.llm_provider or "openai",
+                    model=conversation.llm_model or "gpt-4o-mini",
+                    max_iterations=5,
+                )
+                provider = conversation.llm_provider or "openai"
+                model = conversation.llm_model or "gpt-4o-mini"
+                token_usage = {"prompt_tokens": 0, "completion_tokens": 0}
+            except Exception as e:
+                logger.error(f"Math agent error: {e}")
+                # Fallback to regular LLM
+                llm_response = await llm_service.generate(
+                    messages=messages,
+                    system_prompt=system_prompt,
+                    provider=conversation.llm_provider,
+                    model=conversation.llm_model,
+                    temperature=temperature,
+                    max_tokens=2048,
+                )
+                assistant_content = llm_response.content
+                provider = llm_response.provider
+                model = llm_response.model
+                token_usage = {
+                    "prompt_tokens": llm_response.prompt_tokens,
+                    "completion_tokens": llm_response.completion_tokens,
+                }
+        else:
+            # Call LLM service with conversation's preferred provider/model
+            try:
+                llm_response = await llm_service.generate(
+                    messages=messages,
+                    system_prompt=system_prompt,
+                    provider=conversation.llm_provider,
+                    model=conversation.llm_model,
+                    temperature=temperature,
+                    max_tokens=2048,
+                )
+                
+                assistant_content = llm_response.content
+                provider = llm_response.provider
+                model = llm_response.model
+                token_usage = {
+                    "prompt_tokens": llm_response.prompt_tokens,
+                    "completion_tokens": llm_response.completion_tokens,
+                }
+            except Exception as e:
+                logger.error(f"LLM service error: {e}")
+                # Fallback response if LLM fails
+                assistant_content = "Mi dispiace, si è verificato un errore nel generare la risposta. Per favore riprova tra qualche istante."
+                provider = "fallback"
+                model = "none"
+                token_usage = {"prompt_tokens": 0, "completion_tokens": 0}
     
     # Save assistant message
     assistant_message = ConversationMessage(

@@ -186,6 +186,22 @@ export function useSocket(sessionId?: string): UseSocketReturn {
       setNotifications(prev => [...prev, notification])
     })
 
+    // Teacher notifications for student activity
+    socket.on('teacher_notification', (data: { type: string; nickname: string; message: string; preview?: string; timestamp: string }) => {
+      const notification: ChatMessage = {
+        id: `teacher-notif-${Date.now()}-${Math.random()}`,
+        sender_type: 'STUDENT',
+        sender_id: 'system',
+        sender_name: data.nickname,
+        text: data.message,
+        created_at: data.timestamp,
+        is_notification: true,
+        notification_type: 'system',
+        notification_data: data,
+      }
+      setNotifications(prev => [...prev, notification])
+    })
+
     return () => {
       socket.disconnect()
       socketRef.current = null

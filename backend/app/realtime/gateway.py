@@ -84,6 +84,20 @@ async def connect(sid, environ, auth):
             room=f"session:{session_id}",
             skip_sid=sid,
         )
+        
+        # Send teacher notification for student join
+        await sio.emit(
+            "teacher_notification",
+            {
+                "type": "student_joined",
+                "session_id": session_id,
+                "student_id": student_id,
+                "nickname": nickname,
+                "message": f"{nickname} è entrato nella sessione",
+                "timestamp": datetime.utcnow().isoformat(),
+            },
+            room=f"session:{session_id}",
+        )
     
     return True
 
@@ -100,6 +114,7 @@ async def disconnect(sid):
             session_presence[session_id].discard(sid)
         
         user_activities.pop(user["id"], None)
+        nickname = student_nicknames.get(user["id"], "Studente")
         
         await sio.emit(
             "presence_update",
@@ -107,6 +122,20 @@ async def disconnect(sid):
                 "student_id": user["id"],
                 "status": "offline",
                 "last_seen_at": datetime.utcnow().isoformat(),
+            },
+            room=f"session:{session_id}",
+        )
+        
+        # Send teacher notification for student leave
+        await sio.emit(
+            "teacher_notification",
+            {
+                "type": "student_left",
+                "session_id": session_id,
+                "student_id": user["id"],
+                "nickname": nickname,
+                "message": f"{nickname} ha lasciato la sessione",
+                "timestamp": datetime.utcnow().isoformat(),
             },
             room=f"session:{session_id}",
         )
@@ -338,6 +367,22 @@ async def chat_private_message(sid, data):
             },
             room=sid,
         )
+        
+        # Send teacher notification for private message from student
+        if user["type"] == "student":
+            await sio.emit(
+                "teacher_notification",
+                {
+                    "type": "private_message",
+                    "session_id": session_id,
+                    "student_id": user["id"],
+                    "nickname": sender_name,
+                    "message": f"{sender_name} ti ha inviato un messaggio privato",
+                    "preview": text[:50] + ("..." if len(text) > 50 else ""),
+                    "timestamp": datetime.utcnow().isoformat(),
+                },
+                room=f"session:{session_id}",
+            )
     else:
         # Teacher or student messaging a student
         await sio.emit(
