@@ -107,21 +107,26 @@ export default function StudentDashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-gray-100 pr-80">
-      <header className="bg-white border-b px-6 py-4">
-        <div className="max-w-6xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <img src="/golinelli-logo.svg" alt="Golinelli" style={{ height: '32px', width: 'auto' }} />
-            <div>
-              <h1 className="text-xl font-bold text-slate-800">{sessionInfo.session.title}</h1>
-              <p className="text-sm text-muted-foreground">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-gray-100 lg:pr-80">
+      <header className="bg-white border-b px-4 md:px-6 py-3 md:py-4">
+        <div className="max-w-6xl mx-auto flex items-center justify-between gap-2">
+          <div className="flex items-center gap-3 md:gap-4 min-w-0">
+            <img 
+              src="/golinelli-logo.svg" 
+              alt="Golinelli" 
+              className="h-8 w-auto object-contain shrink-0"
+              style={{ maxWidth: '40px' }}
+            />
+            <div className="min-w-0">
+              <h1 className="text-lg md:text-xl font-bold text-slate-800 truncate">{sessionInfo.session.title}</h1>
+              <p className="text-xs md:text-sm text-muted-foreground truncate">
                 Ciao, <span className="font-medium">{sessionInfo.student.nickname}</span>!
               </p>
             </div>
           </div>
-          <Button variant="ghost" size="sm" onClick={logout}>
-            <LogOut className="h-4 w-4 mr-2" />
-            Esci
+          <Button variant="ghost" size="sm" onClick={logout} className="shrink-0">
+            <LogOut className="h-4 w-4 md:mr-2" />
+            <span className="hidden md:inline">Esci</span>
           </Button>
         </div>
       </header>

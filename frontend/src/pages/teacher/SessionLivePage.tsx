@@ -228,30 +228,30 @@ export default function SessionLivePage() {
   const { session, students, modules } = data
 
   return (
-    <div className="pr-80">
-      <div className="flex items-center gap-4 mb-6">
+    <div className="lg:pr-80">
+      <div className="flex flex-wrap items-center gap-2 md:gap-4 mb-6">
         <Link to="/teacher/sessions">
           <Button variant="ghost" size="sm">
-            <ArrowLeft className="h-4 w-4 mr-2" />
-            Indietro
+            <ArrowLeft className="h-4 w-4 mr-1 md:mr-2" />
+            <span className="hidden sm:inline">Indietro</span>
           </Button>
         </Link>
-        <div className="flex-1">
-          <h2 className="text-2xl font-bold">{session.title}</h2>
-          <p className="text-muted-foreground">{session.class_name}</p>
+        <div className="flex-1 min-w-0">
+          <h2 className="text-lg md:text-2xl font-bold truncate">{session.title}</h2>
+          <p className="text-sm text-muted-foreground truncate">{session.class_name}</p>
         </div>
         {getStatusBadge(session.status)}
       </div>
 
-      <div className="grid gap-6 md:grid-cols-3 mb-6">
+      <div className="grid gap-4 md:gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 mb-6">
         <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground">Codice Accesso</p>
-                <code className="text-2xl font-mono font-bold">{session.join_code}</code>
+          <CardContent className="pt-4 md:pt-6">
+            <div className="flex items-center justify-between gap-2">
+              <div className="min-w-0">
+                <p className="text-xs md:text-sm text-muted-foreground">Codice Accesso</p>
+                <code className="text-xl md:text-2xl font-mono font-bold">{session.join_code}</code>
               </div>
-              <Button variant="outline" onClick={() => copyCode(session.join_code)}>
+              <Button variant="outline" size="sm" onClick={() => copyCode(session.join_code)}>
                 <Copy className="h-4 w-4" />
               </Button>
             </div>
@@ -259,19 +259,19 @@ export default function SessionLivePage() {
         </Card>
 
         <Card>
-          <CardContent className="pt-6">
+          <CardContent className="pt-4 md:pt-6">
             <div className="flex items-center gap-3">
-              <Users className="h-8 w-8 text-primary" />
+              <Users className="h-6 w-6 md:h-8 md:w-8 text-primary shrink-0" />
               <div>
-                <p className="text-sm text-muted-foreground">Studenti Connessi</p>
-                <p className="text-2xl font-bold">{students.length}</p>
+                <p className="text-xs md:text-sm text-muted-foreground">Studenti Connessi</p>
+                <p className="text-xl md:text-2xl font-bold">{students.length}</p>
               </div>
             </div>
           </CardContent>
         </Card>
 
-        <Card>
-          <CardContent className="pt-6 flex gap-2">
+        <Card className="sm:col-span-2 lg:col-span-1">
+          <CardContent className="pt-4 md:pt-6 flex flex-wrap gap-2">
             {session.status === 'draft' && (
               <Button 
                 className="flex-1"
@@ -313,22 +313,26 @@ export default function SessionLivePage() {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-4 mb-4">
-          <TabsTrigger value="students">
-            <Users className="h-4 w-4 mr-2" />
-            Studenti
+        <TabsList className="grid w-full grid-cols-5 mb-4 h-auto">
+          <TabsTrigger value="students" className="text-xs md:text-sm px-1 md:px-3 py-2">
+            <Users className="h-4 w-4 md:mr-2 shrink-0" />
+            <span className="hidden md:inline">Studenti</span>
           </TabsTrigger>
-          <TabsTrigger value="modules">
-            <Brain className="h-4 w-4 mr-2" />
-            Moduli
+          <TabsTrigger value="modules" className="text-xs md:text-sm px-1 md:px-3 py-2">
+            <Brain className="h-4 w-4 md:mr-2 shrink-0" />
+            <span className="hidden md:inline">Moduli</span>
           </TabsTrigger>
-          <TabsTrigger value="tasks">
-            <ClipboardList className="h-4 w-4 mr-2" />
-            Compiti
+          <TabsTrigger value="tasks" className="text-xs md:text-sm px-1 md:px-3 py-2">
+            <ClipboardList className="h-4 w-4 md:mr-2 shrink-0" />
+            <span className="hidden md:inline">Compiti</span>
           </TabsTrigger>
-          <TabsTrigger value="history">
-            <History className="h-4 w-4 mr-2" />
-            Storico
+          <TabsTrigger value="history" className="text-xs md:text-sm px-1 md:px-3 py-2">
+            <History className="h-4 w-4 md:mr-2 shrink-0" />
+            <span className="hidden md:inline">Storico</span>
+          </TabsTrigger>
+          <TabsTrigger value="chat" className="text-xs md:text-sm px-1 md:px-3 py-2">
+            <MessageSquare className="h-4 w-4 md:mr-2 shrink-0" />
+            <span className="hidden md:inline">Chat</span>
           </TabsTrigger>
         </TabsList>
 
