@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200">
+  <path d="M20 140 Q20 40 80 40 L80 160 Q20 160 20 140" fill="#E91E63" rx="20"/>
+  <path d="M60 160 Q60 100 100 100 L100 180 Q60 180 60 160" fill="#F8BBD9" rx="15" opacity="0.8"/>
+  <path d="M90 180 Q90 140 120 140 L120 200 Q90 200 90 180" fill="#CE93D8" rx="12" opacity="0.7"/>
+  <path d="M115 195 Q115 165 140 165 L140 210 Q115 210 115 195" fill="#90CAF9" rx="10" opacity="0.8"/>
+</svg>
