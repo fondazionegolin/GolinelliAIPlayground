@@ -32,6 +32,8 @@ class SessionUpdate(BaseModel):
     is_persistent: Optional[bool] = None
     starts_at: Optional[datetime] = None
     ends_at: Optional[datetime] = None
+    default_llm_provider: Optional[str] = None
+    default_llm_model: Optional[str] = None
 
 
 class SessionResponse(BaseModel):
@@ -44,6 +46,8 @@ class SessionResponse(BaseModel):
     is_persistent: bool
     starts_at: Optional[datetime]
     ends_at: Optional[datetime]
+    default_llm_provider: Optional[str]
+    default_llm_model: Optional[str]
     created_at: datetime
 
     class Config:
@@ -90,3 +94,12 @@ class SessionLiveSnapshot(BaseModel):
     online_students: list[SessionStudentResponse]
     enabled_modules: list[SessionModuleResponse]
     total_students: int
+
+
+class TaskCreate(BaseModel):
+    title: str
+    description: Optional[str] = None
+    task_type: Optional[str] = "exercise"
+    due_at: Optional[datetime] = None
+    points: Optional[str] = None
+    content_json: Optional[str] = None

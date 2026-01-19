@@ -212,14 +212,11 @@ export function useSocket(sessionId?: string): UseSocketReturn {
     if (!sessionId || !text.trim()) return
     
     try {
-      // Save to database via API
-      const res = await chatApi.sendSessionMessage(sessionId, text.trim())
-      const savedMessage = res.data
+      // Save to database via API - the socket will broadcast to everyone including sender
+      // So we don't add locally, we wait for the socket event
+      await chatApi.sendSessionMessage(sessionId, text.trim())
       
-      // Add to local state
-      setMessages(prev => [...prev, savedMessage])
-      
-      // Also emit via Socket.IO for real-time delivery to others
+      // Emit via Socket.IO for real-time delivery (backend will broadcast to all including sender)
       if (socketRef.current) {
         socketRef.current.emit('chat_public_message', {
           session_id: sessionId,

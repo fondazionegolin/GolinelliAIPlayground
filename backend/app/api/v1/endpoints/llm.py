@@ -36,29 +36,43 @@ async def list_chatbot_profiles():
 async def list_available_models():
     """Get list of available LLM models"""
     from app.core.config import settings
+    import httpx
     
     models = []
     
+    # OpenAI models
     if settings.OPENAI_API_KEY:
         models.extend([
-            {"provider": "openai", "model": "gpt-4o", "name": "GPT-4o", "description": "Modello più avanzato di OpenAI"},
-            {"provider": "openai", "model": "gpt-4o-mini", "name": "GPT-4o Mini", "description": "Veloce ed economico"},
-            {"provider": "openai", "model": "gpt-4-turbo", "name": "GPT-4 Turbo", "description": "Potente con contesto lungo"},
+            {"provider": "openai", "model": "gpt-5-mini", "name": "GPT-5 Mini", "description": "Veloce e intelligente", "icon": "openai"},
+            {"provider": "openai", "model": "gpt-5-nano", "name": "GPT-5 Nano", "description": "Ultra veloce ed economico", "icon": "openai"},
         ])
     
+    # Anthropic models
     if settings.ANTHROPIC_API_KEY:
         models.extend([
-            {"provider": "anthropic", "model": "claude-3-5-sonnet-20241022", "name": "Claude 3.5 Sonnet", "description": "Il migliore di Anthropic"},
-            {"provider": "anthropic", "model": "claude-3-haiku-20240307", "name": "Claude 3 Haiku", "description": "Veloce e leggero"},
+            {"provider": "anthropic", "model": "claude-haiku-4-5-20251001", "name": "Claude Haiku 4.5", "description": "Veloce e leggero", "icon": "anthropic"},
         ])
     
+    # Ollama models - fetch dynamically from Ollama API
     if settings.OLLAMA_BASE_URL:
-        models.extend([
-            {"provider": "ollama", "model": "llama3.2", "name": "Llama 3.2", "description": "Modello locale open source"},
-            {"provider": "ollama", "model": "mistral", "name": "Mistral", "description": "Modello locale efficiente"},
-        ])
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.get(f"{settings.OLLAMA_BASE_URL}/api/tags", timeout=5.0)
+                if response.status_code == 200:
+                    ollama_data = response.json()
+                    available_ollama = {m["name"].split(":")[0]: m["name"] for m in ollama_data.get("models", [])}
+                    
+                    # Add configured Ollama models if available
+                    if "mistral-nemo" in available_ollama or "mistral-nemo:latest" in [m["name"] for m in ollama_data.get("models", [])]:
+                        models.append({"provider": "ollama", "model": "mistral-nemo", "name": "Mistral Nemo", "description": "12B locale, veloce", "icon": "mistral"})
+                    if "deepseek-r1" in available_ollama:
+                        models.append({"provider": "ollama", "model": "deepseek-r1:8b", "name": "DeepSeek R1 8B", "description": "Ragionamento avanzato", "icon": "deepseek"})
+                    if "mistral" in available_ollama:
+                        models.append({"provider": "ollama", "model": "mistral", "name": "Mistral 7B", "description": "Modello locale efficiente", "icon": "mistral"})
+        except Exception:
+            pass  # Ollama not available, skip
     
-    return {"models": models, "default_provider": settings.DEFAULT_LLM_PROVIDER, "default_model": settings.DEFAULT_LLM_MODEL}
+    return {"models": models, "default_provider": "openai", "default_model": "gpt-5-mini"}
 
 
 @router.get("/profiles", response_model=list[LLMProfileResponse])
@@ -147,6 +161,71 @@ async def list_conversations(
     query = query.order_by(Conversation.updated_at.desc())
     result = await db.execute(query)
     return result.scalars().all()
+
+
+@router.delete("/conversations/{conversation_id}")
+async def delete_conversation(
+    conversation_id: UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    auth: Annotated[StudentOrTeacher, Depends(get_student_or_teacher)],
+):
+    """Delete a single conversation and all its messages"""
+    # Find conversation
+    result = await db.execute(
+        select(Conversation).where(Conversation.id == conversation_id)
+    )
+    conversation = result.scalar_one_or_none()
+    if not conversation:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    
+    # Verify ownership
+    if auth.role == "student" and conversation.student_id != auth.user.id:
+        raise HTTPException(status_code=403, detail="Not authorized")
+    
+    # Delete messages first
+    await db.execute(
+        ConversationMessage.__table__.delete().where(
+            ConversationMessage.conversation_id == conversation_id
+        )
+    )
+    
+    # Delete conversation
+    await db.delete(conversation)
+    await db.commit()
+    
+    return {"status": "deleted", "conversation_id": str(conversation_id)}
+
+
+@router.delete("/sessions/{session_id}/conversations")
+async def delete_all_session_conversations(
+    session_id: UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    auth: Annotated[StudentOrTeacher, Depends(get_student_or_teacher)],
+):
+    """Delete all conversations for a session (for current user)"""
+    # Build query based on user role
+    query = select(Conversation).where(Conversation.session_id == session_id)
+    
+    if auth.role == "student":
+        query = query.where(Conversation.student_id == auth.user.id)
+    
+    result = await db.execute(query)
+    conversations = result.scalars().all()
+    
+    deleted_count = 0
+    for conv in conversations:
+        # Delete messages
+        await db.execute(
+            ConversationMessage.__table__.delete().where(
+                ConversationMessage.conversation_id == conv.id
+            )
+        )
+        await db.delete(conv)
+        deleted_count += 1
+    
+    await db.commit()
+    
+    return {"status": "deleted", "count": deleted_count}
 
 
 @router.get("/sessions/{session_id}/conversations")
@@ -323,11 +402,14 @@ async def send_message(
             )
             image_prompt = prompt_extraction.content.strip()
             
-            # Generate the image
-            image_url = await llm_service.generate_image(image_prompt)
-            assistant_content = f"🎨 Ecco l'immagine che hai richiesto:\n\n![Immagine generata]({image_url})\n\n*Prompt utilizzato: {image_prompt}*"
-            provider = "openai"
-            model = "dall-e-3"
+            # Generate the image using selected provider and size
+            image_provider = request.image_provider or "flux-schnell"
+            image_size = request.image_size or "1024x1024"
+            image_url = await llm_service.generate_image(image_prompt, size=image_size, provider=image_provider)
+            provider_label = "DALL-E 3" if image_provider == "dall-e" else "Flux Schnell"
+            assistant_content = f"🎨 Ecco l'immagine che hai richiesto:\n\n![Immagine generata]({image_url})\n\n*Generata con {provider_label} - Prompt: {image_prompt}*"
+            provider = "openai" if image_provider == "dall-e" else "flux"
+            model = "dall-e-3" if image_provider == "dall-e" else "flux-schnell"
             token_usage = {"prompt_tokens": 0, "completion_tokens": 0}
         except Exception as e:
             logger.error(f"Image generation error: {e}")
@@ -339,6 +421,13 @@ async def send_message(
         # Get chatbot profile for system prompt
         profile = get_profile(conversation.profile_key)
         system_prompt = profile["system_prompt"]
+        
+        # Add verbose mode instruction
+        if request.verbose_mode:
+            system_prompt += "\n\nIMPORTANTE: L'utente ha richiesto risposte ESAUSTIVE e DETTAGLIATE. Fornisci spiegazioni approfondite, esempi, e tutti i dettagli rilevanti."
+        else:
+            system_prompt += "\n\nIMPORTANTE: L'utente preferisce risposte SINTETICHE e CONCISE. Sii breve e vai dritto al punto, evitando spiegazioni superflue."
+        
         temperature = profile.get("temperature", 0.7)
         
         # Check if this is the math_coach profile - use agentic system with tools
@@ -427,14 +516,15 @@ async def generate_image(
     db: Annotated[AsyncSession, Depends(get_db)],
     student: Annotated[SessionStudent, Depends(get_current_student)],
 ):
-    """Generate an image using DALL-E 3"""
+    """Generate an image using DALL-E 3 or Flux"""
     prompt = request.get("prompt", "")
+    provider = request.get("provider", "dall-e")  # "dall-e" or "flux-schnell"
     if not prompt:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Prompt required")
     
     try:
-        image_url = await llm_service.generate_image(prompt)
-        return {"image_url": image_url, "prompt": prompt}
+        image_url = await llm_service.generate_image(prompt, provider=provider)
+        return {"image_url": image_url, "prompt": prompt, "provider": provider}
     except Exception as e:
         logger.error(f"Image generation error: {e}")
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
@@ -600,25 +690,14 @@ async def send_message_with_files(
     return assistant_message
 
 
-@router.post("/teacher/chat")
-async def teacher_chat(
-    request: dict,
-    db: Annotated[AsyncSession, Depends(get_db)],
-    teacher: Annotated[User, Depends(get_current_teacher)],
-):
-    """Direct chat endpoint for teachers - includes real data from database"""
+async def load_teacher_context(db: AsyncSession, teacher: User) -> str:
+    """
+    Load teacher's database context for analytics mode.
+    Returns formatted context string with all teacher's classes, sessions, students, tasks, etc.
+    """
     from app.models.task import Task, TaskSubmission
     from app.models.chat import ChatMessage
-    
-    content = request.get("content", "")
-    history = request.get("history", [])
-    profile_key = request.get("profile_key", "teacher_support")
-    provider = request.get("provider")
-    model = request.get("model")
-    
-    if not content:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Content required")
-    
+
     # Load all teacher's data from database for context
     context_parts = []
     
@@ -700,20 +779,74 @@ async def teacher_chat(
                 except Exception as e:
                     logger.debug(f"Could not load chat messages: {e}")
     
-    # Build the full context
+    # Build and return the full context
     teacher_context = "\n".join(context_parts) if context_parts else "Nessun dato disponibile. Crea prima delle classi e sessioni."
-    
+    return teacher_context
+
+
+@router.post("/teacher/chat")
+async def teacher_chat(
+    request: dict,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    teacher: Annotated[User, Depends(get_current_teacher)],
+):
+    """Direct chat endpoint for teachers - includes real data from database"""
+    content = request.get("content", "")
+    history = request.get("history", [])
+    profile_key = request.get("profile_key", "teacher_support")
+    provider = request.get("provider")
+    model = request.get("model")
+
+    if not content:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Content required")
+
     # Get chatbot profile
     profile = get_profile(profile_key)
-    base_system_prompt = profile["system_prompt"]
-    
-    # Enhance system prompt with real data
-    system_prompt = f"""{base_system_prompt}
+    uses_agent = profile.get("uses_agent", False)
+
+    # Build messages from history
+    messages = []
+    for msg in history:
+        messages.append({
+            "role": msg.get("role", "user"),
+            "content": msg.get("content", ""),
+        })
+    messages.append({"role": "user", "content": content})
+
+    try:
+        if uses_agent:
+            # NEW: Route to teacher agent for intelligent content generation
+            from app.services.teacher_agent import run_teacher_agent
+
+            # Load database context (used by analytics mode)
+            context = await load_teacher_context(db, teacher)
+
+            llm_response_content = await run_teacher_agent(
+                messages=messages,
+                context=context,
+                provider=provider or "openai",
+                model=model or "gpt-5-mini",
+            )
+
+            return {
+                "response": llm_response_content,
+                "provider": provider or "openai",
+                "model": model or "gpt-5-mini",
+                "prompt_tokens": 0,  # TODO: track token usage accurately
+                "completion_tokens": 0,
+            }
+        else:
+            # EXISTING: Use context-rich analytics approach for backward compatibility
+            context = await load_teacher_context(db, teacher)
+            base_system_prompt = profile["system_prompt"]
+
+            # Enhance system prompt with real data
+            system_prompt = f"""{base_system_prompt}
 
 ---
 ## DATI REALI DEL DOCENTE (dal database):
 
-{teacher_context}
+{context}
 
 ---
 ## ISTRUZIONI PER LA FORMATTAZIONE:
@@ -728,22 +861,108 @@ async def teacher_chat(
 6. Rispondi SEMPRE con dati specifici presi dal contesto sopra, MAI in modo generico
 
 IMPORTANTE: Usa questi dati reali per rispondere alle domande del docente. Quando ti chiede informazioni su classi, studenti, compiti o valutazioni, fai riferimento ai dati sopra. Se non hai dati sufficienti, spiega cosa manca."""
+
+            temperature = profile.get("temperature", 0.7)
+
+            llm_response = await llm_service.generate(
+                messages=messages,
+                system_prompt=system_prompt,
+                provider=provider,
+                model=model,
+                temperature=temperature,
+                max_tokens=4096,
+            )
+
+            return {
+                "response": llm_response.content,
+                "provider": llm_response.provider,
+                "model": llm_response.model,
+                "prompt_tokens": llm_response.prompt_tokens,
+                "completion_tokens": llm_response.completion_tokens,
+            }
+    except Exception as e:
+        logger.error(f"Teacher chat error: {e}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+
+
+@router.post("/teacher/chat-with-files")
+async def teacher_chat_with_files(
+    content: str = Form(...),
+    history: str = Form("[]"),
+    profile_key: str = Form("teacher_support"),
+    provider: Optional[str] = Form(None),
+    model: Optional[str] = Form(None),
+    files: list[UploadFile] = File([]),
+    db: AsyncSession = Depends(get_db),
+    teacher: User = Depends(get_current_teacher),
+):
+    """Teacher chat endpoint with file upload support"""
+    import json
+    import base64
     
-    temperature = profile.get("temperature", 0.7)
+    # Parse history from JSON string
+    try:
+        parsed_history = json.loads(history)
+    except:
+        parsed_history = []
     
-    # Build messages from history
+    # Process uploaded files
+    file_contents = []
+    for file in files:
+        file_data = await file.read()
+        file_name = file.filename or "document"
+        file_type = file.content_type or "application/octet-stream"
+        
+        # For text files, extract content directly
+        if file_type.startswith("text/") or file_name.endswith((".txt", ".md", ".csv", ".json")):
+            try:
+                text_content = file_data.decode("utf-8")
+                file_contents.append(f"\n--- Contenuto di {file_name} ---\n{text_content}\n--- Fine {file_name} ---\n")
+            except:
+                file_contents.append(f"\n[File {file_name} non leggibile come testo]\n")
+        elif file_type == "application/pdf" or file_name.endswith(".pdf"):
+            # Try to extract PDF text
+            try:
+                from PyPDF2 import PdfReader
+                from io import BytesIO
+                reader = PdfReader(BytesIO(file_data))
+                pdf_text = ""
+                for page in reader.pages:
+                    pdf_text += page.extract_text() or ""
+                file_contents.append(f"\n--- Contenuto di {file_name} (PDF) ---\n{pdf_text}\n--- Fine {file_name} ---\n")
+            except Exception as e:
+                file_contents.append(f"\n[Errore lettura PDF {file_name}: {str(e)}]\n")
+        elif file_type.startswith("image/"):
+            # For images, encode as base64 for vision models
+            b64_image = base64.b64encode(file_data).decode("utf-8")
+            file_contents.append(f"\n[Immagine allegata: {file_name}]\n")
+        else:
+            file_contents.append(f"\n[File allegato: {file_name} ({file_type})]\n")
+    
+    # Combine content with file contents
+    full_content = content
+    if file_contents:
+        full_content += "\n\nDocumenti allegati:" + "".join(file_contents)
+    
+    # Get chatbot profile
+    profile = get_profile(profile_key)
+    base_system_prompt = profile["system_prompt"]
+    
+    # Build messages
     messages = []
-    for msg in history:
+    for msg in parsed_history:
         messages.append({
             "role": msg.get("role", "user"),
             "content": msg.get("content", ""),
         })
-    messages.append({"role": "user", "content": content})
+    messages.append({"role": "user", "content": full_content})
+    
+    temperature = profile.get("temperature", 0.7)
     
     try:
         llm_response = await llm_service.generate(
             messages=messages,
-            system_prompt=system_prompt,
+            system_prompt=base_system_prompt,
             provider=provider,
             model=model,
             temperature=temperature,
@@ -758,7 +977,7 @@ IMPORTANTE: Usa questi dati reali per rispondere alle domande del docente. Quand
             "completion_tokens": llm_response.completion_tokens,
         }
     except Exception as e:
-        logger.error(f"Teacher chat error: {e}")
+        logger.error(f"Teacher chat with files error: {e}")
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
 

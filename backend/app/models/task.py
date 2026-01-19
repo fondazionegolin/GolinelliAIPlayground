@@ -21,6 +21,8 @@ class TaskType(str, enum.Enum):
     READING = "reading"
     DISCUSSION = "discussion"
     PROJECT = "project"
+    LESSON = "lesson"
+    PRESENTATION = "presentation"
 
 
 class Task(Base):

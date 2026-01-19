@@ -1,0 +1,22 @@
+# Cloudflare Tunnel Configuration for EduAI Playground
+# Add this section to your existing cloudflared config.yml
+#
+# Location: ~/.cloudflared/config.yml (or /etc/cloudflared/config.yml)
+#
+# To add this to your existing tunnel, append the following ingress rule
+# BEFORE the fallback rule (- service: http_status:404)
+
+ingress:
+  # EduAI Playground (existing services from your config should be above this)
+  # ...
+
+  # EduAI Playground - Main Application
+  - hostname: playground.golinelli.ai
+    service: http://127.0.0.1:80
+    originRequest:
+      noTLSVerify: true
+      connectTimeout: 30s
+      http2Origin: true
+
+  # Fallback (keep this at the end)
+  - service: http_status:404

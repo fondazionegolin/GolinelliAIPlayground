@@ -12,7 +12,7 @@ from app.models.user import User
 from app.models.session import Session, SessionStudent, Class
 from app.models.chat import ChatRoom, ChatMessage
 from app.models.enums import ChatRoomType, SenderType
-from app.schemas.chat import ChatRoomResponse, ChatMessageCreate, ChatMessageResponse, DMRoomCreate
+from app.schemas.chat import ChatRoomResponse, ChatMessageCreate, ChatMessageResponse, DMRoomCreate, SessionMessageCreate
 
 router = APIRouter()
 
@@ -107,12 +107,9 @@ async def get_session_messages(
 @router.post("/session/{session_id}/messages")
 async def send_session_message(
     session_id: UUID,
+    request: SessionMessageCreate,
     db: Annotated[AsyncSession, Depends(get_db)],
     auth: Annotated[StudentOrTeacher, Depends(get_student_or_teacher)],
-    text: str,
-    is_notification: bool = False,
-    notification_type: Optional[str] = None,
-    notification_data: Optional[dict] = None,
 ):
     """Send a message to the public chat"""
     # Verify access
@@ -145,11 +142,11 @@ async def send_session_message(
     
     # Build attachments with notification info
     attachments = {}
-    if is_notification:
+    if request.is_notification:
         attachments = {
             "is_notification": True,
-            "notification_type": notification_type,
-            "notification_data": notification_data,
+            "notification_type": request.notification_type,
+            "notification_data": request.notification_data,
         }
     
     message = ChatMessage(
@@ -159,7 +156,7 @@ async def send_session_message(
         sender_type=sender_type,
         sender_teacher_id=sender_teacher_id,
         sender_student_id=sender_student_id,
-        message_text=text,
+        message_text=request.text,
         attachments=attachments,
     )
     db.add(message)
@@ -171,11 +168,11 @@ async def send_session_message(
         "sender_type": sender_type.value,
         "sender_id": str(sender_student_id or sender_teacher_id),
         "sender_name": sender_name,
-        "text": text,
+        "text": request.text,
         "created_at": message.created_at.isoformat(),
-        "is_notification": is_notification,
-        "notification_type": notification_type,
-        "notification_data": notification_data,
+        "is_notification": request.is_notification,
+        "notification_type": request.notification_type,
+        "notification_data": request.notification_data,
     }
 
 

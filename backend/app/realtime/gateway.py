@@ -13,7 +13,7 @@ sio = socketio.AsyncServer(
     engineio_logger=True,
 )
 
-socket_app = socketio.ASGIApp(sio, socketio_path="/socket.io")
+socket_app = socketio.ASGIApp(sio, socketio_path="")
 
 # In-memory state (use Redis in production for multi-instance)
 connected_users: dict[str, dict] = {}  # sid -> user info

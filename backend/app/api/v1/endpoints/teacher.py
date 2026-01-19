@@ -5,6 +5,7 @@ from sqlalchemy.orm import selectinload
 from typing import Annotated, Optional
 from datetime import datetime, timedelta
 from uuid import UUID
+from pydantic import BaseModel
 
 from app.core.database import get_db
 from app.core.security import generate_join_code
@@ -21,9 +22,69 @@ from app.schemas.session import (
     SessionCreate, SessionUpdate, SessionResponse,
     SessionModulesRequest, SessionModuleResponse,
     SessionStudentResponse, SessionLiveSnapshot,
+    TaskCreate,
 )
 
 router = APIRouter()
+
+
+# Profile schemas
+class ProfileResponse(BaseModel):
+    first_name: str | None = None
+    last_name: str | None = None
+    email: str | None = None
+    institution: str | None = None
+    avatar_url: str | None = None
+
+
+class ProfileUpdate(BaseModel):
+    first_name: str | None = None
+    last_name: str | None = None
+    institution: str | None = None
+    avatar_url: str | None = None
+
+
+# Profile endpoints
+@router.get("/profile", response_model=ProfileResponse)
+async def get_profile(
+    teacher: Annotated[User, Depends(get_current_teacher)],
+):
+    """Get current teacher's profile"""
+    return ProfileResponse(
+        first_name=teacher.first_name,
+        last_name=teacher.last_name,
+        email=teacher.email,
+        institution=teacher.institution,
+        avatar_url=teacher.avatar_url,
+    )
+
+
+@router.put("/profile", response_model=ProfileResponse)
+async def update_profile(
+    request: ProfileUpdate,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    teacher: Annotated[User, Depends(get_current_teacher)],
+):
+    """Update current teacher's profile"""
+    if request.first_name is not None:
+        teacher.first_name = request.first_name
+    if request.last_name is not None:
+        teacher.last_name = request.last_name
+    if request.institution is not None:
+        teacher.institution = request.institution
+    if request.avatar_url is not None:
+        teacher.avatar_url = request.avatar_url
+
+    await db.commit()
+    await db.refresh(teacher)
+
+    return ProfileResponse(
+        first_name=teacher.first_name,
+        last_name=teacher.last_name,
+        email=teacher.email,
+        institution=teacher.institution,
+        avatar_url=teacher.avatar_url,
+    )
 
 DEFAULT_MODULES = ["chatbot", "classification", "self_assessment", "chat"]
 
@@ -183,6 +244,10 @@ async def update_session(
         session.starts_at = request.starts_at
     if request.ends_at is not None:
         session.ends_at = request.ends_at
+    if request.default_llm_provider is not None:
+        session.default_llm_provider = request.default_llm_provider
+    if request.default_llm_model is not None:
+        session.default_llm_model = request.default_llm_model
     
     await db.commit()
     await db.refresh(session)
@@ -280,6 +345,8 @@ async def get_session_live(
             "join_code": session.join_code,
             "status": session.status.value,
             "class_name": class_.name,
+            "default_llm_provider": session.default_llm_provider,
+            "default_llm_model": session.default_llm_model,
         },
         "students": [
             {
@@ -568,14 +635,9 @@ async def list_tasks(
 @router.post("/sessions/{session_id}/tasks")
 async def create_task(
     session_id: UUID,
+    request: TaskCreate,
     db: Annotated[AsyncSession, Depends(get_db)],
     teacher: Annotated[User, Depends(get_current_teacher)],
-    title: str,
-    description: str = None,
-    task_type: str = "exercise",
-    due_at: datetime = None,
-    points: str = None,
-    content_json: str = None,
 ):
     """Create a new task for a session"""
     # Verify session ownership
@@ -588,22 +650,22 @@ async def create_task(
     session = result.scalar_one_or_none()
     if not session:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
-    
+
     task = Task(
         tenant_id=session.tenant_id,
         session_id=session_id,
-        title=title,
-        description=description,
-        task_type=TaskType(task_type) if task_type in [t.value for t in TaskType] else TaskType.EXERCISE,
+        title=request.title,
+        description=request.description,
+        task_type=TaskType(request.task_type) if request.task_type in [t.value for t in TaskType] else TaskType.EXERCISE,
         status=TaskStatus.DRAFT,
-        due_at=due_at,
-        points=points,
-        content_json=content_json,
+        due_at=request.due_at,
+        points=request.points,
+        content_json=request.content_json,
     )
     db.add(task)
     await db.commit()
     await db.refresh(task)
-    
+
     return {
         "id": str(task.id),
         "title": task.title,

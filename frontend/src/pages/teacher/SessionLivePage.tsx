@@ -14,11 +14,10 @@ import {
   ClipboardList, Plus, Trash2, Check, Eye, ChevronDown, ChevronUp, History, User
 } from 'lucide-react'
 import { llmApi } from '@/lib/api'
-import ChatSidebar from '@/components/ChatSidebar'
 import TaskBuilder from '@/components/TaskBuilder'
 import TeacherNotifications from '@/components/TeacherNotifications'
-import { useAuthStore } from '@/stores/auth'
 import { useSocket } from '@/hooks/useSocket'
+import { TeacherNavbar } from '@/components/TeacherNavbar'
 
 interface StudentData {
   id: string
@@ -68,7 +67,6 @@ export default function SessionLivePage() {
   const { sessionId } = useParams<{ sessionId: string }>()
   const queryClient = useQueryClient()
   const { toast } = useToast()
-  const { user } = useAuthStore()
   const [autoRefresh] = useState(true)
   const [activeTab, setActiveTab] = useState('students')
   const [chatInput, setChatInput] = useState('')
@@ -79,6 +77,16 @@ export default function SessionLivePage() {
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null)
   const [selectedConversationId, setSelectedConversationId] = useState<string | null>(null)
   
+  // Fetch available LLM models
+  const { data: modelsData } = useQuery({
+    queryKey: ['available-models'],
+    queryFn: async () => {
+      const res = await llmApi.getAvailableModels()
+      return res.data as { models: { provider: string; model: string; name: string; description: string }[]; default_provider: string; default_model: string }
+    },
+    staleTime: 1000 * 60 * 10,
+  })
+
   // Get online users and notifications from socket
   const { onlineUsers, notifications: socketNotifications } = useSocket(sessionId || '')
   const [teacherNotifications, setTeacherNotifications] = useState<Array<{
@@ -184,6 +192,15 @@ export default function SessionLivePage() {
     },
   })
 
+  const updateDefaultModelMutation = useMutation({
+    mutationFn: ({ provider, model }: { provider: string; model: string }) => 
+      teacherApi.updateSession(sessionId!, { default_llm_provider: provider, default_llm_model: model }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['session-live', sessionId] })
+      toast({ title: 'Modello di default aggiornato!' })
+    },
+  })
+
   const handleSendMessage = () => {
     if (!chatInput.trim()) return
     
@@ -275,20 +292,23 @@ export default function SessionLivePage() {
   const { session, students, modules } = data
 
   return (
-    <div className="lg:pr-80">
-      <div className="flex flex-wrap items-center gap-2 md:gap-4 mb-6">
-        <Link to="/teacher/sessions">
-          <Button variant="ghost" size="sm">
-            <ArrowLeft className="h-4 w-4 mr-1 md:mr-2" />
-            <span className="hidden sm:inline">Indietro</span>
-          </Button>
-        </Link>
-        <div className="flex-1 min-w-0">
-          <h2 className="text-lg md:text-2xl font-bold truncate">{session.title}</h2>
-          <p className="text-sm text-muted-foreground truncate">{session.class_name}</p>
-        </div>
-        {getStatusBadge(session.status)}
-      </div>
+    <>
+      <TeacherNavbar />
+      <div className="pt-16 min-h-screen bg-slate-50">
+        <div className="max-w-7xl mx-auto p-6">
+          <div className="flex flex-wrap items-center gap-2 md:gap-4 mb-6">
+            <Link to="/teacher/sessions">
+              <Button variant="ghost" size="sm">
+                <ArrowLeft className="h-4 w-4 mr-1 md:mr-2" />
+                <span className="hidden sm:inline">Indietro</span>
+              </Button>
+            </Link>
+            <div className="flex-1 min-w-0">
+              <h2 className="text-lg md:text-2xl font-bold truncate">{session.title}</h2>
+              <p className="text-sm text-muted-foreground truncate">{session.class_name}</p>
+            </div>
+            {getStatusBadge(session.status)}
+          </div>
 
       {/* Compact Header Bar */}
       <div className="flex flex-wrap items-center gap-3 mb-4 p-3 bg-white rounded-lg border">
@@ -489,6 +509,44 @@ export default function SessionLivePage() {
                   </div>
                 ))}
               </div>
+
+              {/* Default LLM Model Selector */}
+              <div className="mt-6 pt-6 border-t">
+                <h4 className="font-medium mb-2 flex items-center gap-2">
+                  <Bot className="h-4 w-4" />
+                  Modello AI di Default
+                </h4>
+                <p className="text-sm text-muted-foreground mb-3">
+                  Seleziona il modello AI che verrà usato di default dagli studenti in questa sessione.
+                </p>
+                <div className="space-y-2">
+                  {modelsData?.models?.map((m: { provider: string; model: string; name: string; description: string }) => {
+                    const isSelected = (data as SessionLiveData & { session: { default_llm_provider?: string; default_llm_model?: string } })?.session?.default_llm_provider === m.provider && 
+                                       (data as SessionLiveData & { session: { default_llm_provider?: string; default_llm_model?: string } })?.session?.default_llm_model === m.model
+                    return (
+                      <label 
+                        key={`${m.provider}:${m.model}`}
+                        className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
+                          isSelected ? 'bg-violet-50 border-violet-300' : 'bg-white border-slate-200 hover:bg-slate-50'
+                        }`}
+                      >
+                        <input
+                          type="radio"
+                          name="default_model"
+                          checked={isSelected}
+                          onChange={() => updateDefaultModelMutation.mutate({ provider: m.provider, model: m.model })}
+                          className="w-4 h-4 text-violet-600 focus:ring-violet-500"
+                        />
+                        <div className="flex-1">
+                          <span className="font-medium text-sm">{m.name}</span>
+                          <span className="text-xs text-muted-foreground ml-2">({m.provider})</span>
+                        </div>
+                        {isSelected && <Check className="h-4 w-4 text-violet-600" />}
+                      </label>
+                    )
+                  })}
+                </div>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>
@@ -618,13 +676,9 @@ export default function SessionLivePage() {
           </Card>
         </TabsContent>
       </Tabs>
-
-      <ChatSidebar
-        sessionId={session.id}
-        userType="teacher"
-        currentUserId={user?.id || ''}
-      />
-    </div>
+        </div>
+      </div>
+    </>
   )
 }
 

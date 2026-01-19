@@ -18,7 +18,8 @@ interface TeacherRequest {
 
 interface ApprovalResult {
   email: string
-  temporary_password: string
+  message: string
+  email_sent: boolean
 }
 
 export default function TeacherRequestsPage() {
@@ -40,7 +41,15 @@ export default function TeacherRequestsPage() {
       queryClient.invalidateQueries({ queryKey: ['teacher-requests'] })
       setApprovalResult({
         email: response.data.email,
-        temporary_password: response.data.temporary_password,
+        message: response.data.message,
+        email_sent: response.data.email_sent,
+      })
+    },
+    onError: (error: Error) => {
+      toast({ 
+        title: 'Errore', 
+        description: error.message || 'Impossibile approvare la richiesta',
+        variant: 'destructive'
       })
     },
   })
@@ -66,14 +75,19 @@ export default function TeacherRequestsPage() {
       <h2 className="text-2xl font-bold mb-6">Richieste Docenti</h2>
 
       {approvalResult && (
-        <Card className="mb-6 border-green-200 bg-green-50">
+        <Card className={`mb-6 ${approvalResult.email_sent ? 'border-green-200 bg-green-50' : 'border-yellow-200 bg-yellow-50'}`}>
           <CardContent className="p-4">
             <div className="flex items-start gap-3">
-              <Key className="h-6 w-6 text-green-600 mt-1" />
+              <Key className={`h-6 w-6 mt-1 ${approvalResult.email_sent ? 'text-green-600' : 'text-yellow-600'}`} />
               <div className="flex-1">
-                <h4 className="font-semibold text-green-800">Docente Approvato!</h4>
-                <p className="text-sm text-green-700 mb-3">
-                  Comunica queste credenziali al docente:
+                <h4 className={`font-semibold ${approvalResult.email_sent ? 'text-green-800' : 'text-yellow-800'}`}>
+                  Docente Approvato!
+                </h4>
+                <p className={`text-sm mb-3 ${approvalResult.email_sent ? 'text-green-700' : 'text-yellow-700'}`}>
+                  {approvalResult.email_sent 
+                    ? `Email di attivazione inviata a ${approvalResult.email}`
+                    : `Attenzione: email non inviata. Verifica la configurazione SMTP.`
+                  }
                 </p>
                 <div className="bg-white rounded p-3 space-y-2">
                   <div className="flex items-center justify-between">
@@ -85,18 +99,12 @@ export default function TeacherRequestsPage() {
                       </Button>
                     </div>
                   </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-gray-600">Password temporanea:</span>
-                    <div className="flex items-center gap-2">
-                      <code className="bg-gray-100 px-2 py-1 rounded text-sm font-mono">{approvalResult.temporary_password}</code>
-                      <Button size="sm" variant="ghost" onClick={() => copyToClipboard(approvalResult.temporary_password)}>
-                        <Copy className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </div>
                 </div>
-                <p className="text-xs text-green-600 mt-2">
-                  Il docente dovrà cambiare la password al primo accesso.
+                <p className={`text-xs mt-2 ${approvalResult.email_sent ? 'text-green-600' : 'text-yellow-600'}`}>
+                  {approvalResult.email_sent 
+                    ? 'Il docente riceverà un link per attivare il proprio account e impostare la password.'
+                    : 'Configura SMTP_PASSWORD nel file .env per abilitare l\'invio email.'
+                  }
                 </p>
               </div>
               <Button size="sm" variant="ghost" onClick={() => setApprovalResult(null)}>

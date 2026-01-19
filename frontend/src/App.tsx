@@ -5,6 +5,7 @@ import { Toaster } from '@/components/ui/toaster'
 import LoginPage from '@/pages/LoginPage'
 import StudentJoinPage from '@/pages/StudentJoinPage'
 import TeacherRequestPage from '@/pages/TeacherRequestPage'
+import ActivatePage from '@/pages/ActivatePage'
 import AdminDashboard from '@/pages/admin/AdminDashboard'
 import TeacherDashboard from '@/pages/teacher/TeacherDashboard'
 import StudentDashboard from '@/pages/student/StudentDashboard'
@@ -40,6 +41,7 @@ function App() {
         <Route path="/login" element={<LoginPage />} />
         <Route path="/join" element={<StudentJoinPage />} />
         <Route path="/teacher-request" element={<TeacherRequestPage />} />
+        <Route path="/activate/:token" element={<ActivatePage />} />
         
         <Route
           path="/admin/*"

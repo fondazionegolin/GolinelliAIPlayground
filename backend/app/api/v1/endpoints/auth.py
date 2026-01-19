@@ -2,14 +2,27 @@ from fastapi import APIRouter, Depends, HTTPException, status, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from typing import Annotated
-from datetime import datetime
+from datetime import datetime, timezone
+from pydantic import BaseModel
 
 from app.core.database import get_db
 from app.core.security import verify_password, create_access_token, get_password_hash
-from app.models.user import User, TeacherRequest
+from app.models.user import User, TeacherRequest, ActivationToken
 from app.models.tenant import Tenant
 from app.models.enums import UserRole, TeacherRequestStatus
 from app.schemas.auth import LoginRequest, LoginResponse, TeacherRequestCreate, TeacherRequestResponse
+
+
+class ActivationInfoResponse(BaseModel):
+    first_name: str
+    last_name: str
+    email: str
+    temporary_password: str
+    is_used: bool
+
+
+class ChangePasswordRequest(BaseModel):
+    new_password: str
 
 router = APIRouter()
 
@@ -140,3 +153,104 @@ async def request_teacher_account(
         tenant_id=teacher_request.tenant_id,
         created_at=teacher_request.created_at.isoformat(),
     )
+
+
+@router.get("/activate/{token}", response_model=ActivationInfoResponse)
+async def get_activation_info(
+    token: str,
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Get activation info for a teacher account (shows temporary password)"""
+    result = await db.execute(
+        select(ActivationToken).where(ActivationToken.token == token)
+    )
+    token_record = result.scalar_one_or_none()
+    
+    if not token_record:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Token non valido o scaduto",
+        )
+    
+    if token_record.expires_at < datetime.now(timezone.utc):
+        raise HTTPException(
+            status_code=status.HTTP_410_GONE,
+            detail="Il link di attivazione è scaduto",
+        )
+    
+    # Get user info
+    result = await db.execute(
+        select(User).where(User.id == token_record.user_id)
+    )
+    user = result.scalar_one_or_none()
+    
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Utente non trovato",
+        )
+    
+    return ActivationInfoResponse(
+        first_name=user.first_name or "",
+        last_name=user.last_name or "",
+        email=user.email or "",
+        temporary_password=token_record.temporary_password,
+        is_used=token_record.is_used,
+    )
+
+
+@router.post("/activate/{token}/change-password")
+async def change_password_with_token(
+    token: str,
+    request: ChangePasswordRequest,
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Change password using activation token"""
+    result = await db.execute(
+        select(ActivationToken).where(ActivationToken.token == token)
+    )
+    token_record = result.scalar_one_or_none()
+    
+    if not token_record:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Token non valido",
+        )
+    
+    if token_record.expires_at < datetime.now(timezone.utc):
+        raise HTTPException(
+            status_code=status.HTTP_410_GONE,
+            detail="Il link di attivazione è scaduto",
+        )
+    
+    # Validate password
+    if len(request.new_password) < 8:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="La password deve essere di almeno 8 caratteri",
+        )
+    
+    # Get user and update password
+    result = await db.execute(
+        select(User).where(User.id == token_record.user_id)
+    )
+    user = result.scalar_one_or_none()
+    
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Utente non trovato",
+        )
+    
+    user.password_hash = get_password_hash(request.new_password)
+    
+    # Mark token as used
+    token_record.is_used = True
+    token_record.used_at = datetime.now(timezone.utc)
+    
+    await db.commit()
+    
+    return {
+        "message": "Password aggiornata con successo",
+        "email": user.email,
+    }

@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { 
-  Plus, Trash2, Check, X, ClipboardList, FileText, MessageSquare
+  Plus, Trash2, Check, X, ClipboardList, FileText, MessageSquare, BookOpen
 } from 'lucide-react'
 
 interface QuizQuestion {
@@ -25,7 +25,7 @@ interface TaskBuilderProps {
 }
 
 export default function TaskBuilder({ onSubmit, onCancel, isLoading }: TaskBuilderProps) {
-  const [taskType, setTaskType] = useState<'quiz' | 'exercise' | 'discussion'>('quiz')
+  const [taskType, setTaskType] = useState<'quiz' | 'exercise' | 'discussion' | 'lesson'>('quiz')
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   
@@ -37,6 +37,9 @@ export default function TaskBuilder({ onSubmit, onCancel, isLoading }: TaskBuild
   // Exercise state
   const [exerciseText, setExerciseText] = useState('')
   const [exerciseHint, setExerciseHint] = useState('')
+  
+  // Lesson state
+  const [lessonContent, setLessonContent] = useState('')
 
   const addQuestion = () => {
     setQuestions([
@@ -104,6 +107,11 @@ export default function TaskBuilder({ onSubmit, onCancel, isLoading }: TaskBuild
         type: 'discussion',
         topic: description,
       })
+    } else if (taskType === 'lesson') {
+      content_json = JSON.stringify({
+        type: 'lesson',
+        content: lessonContent,
+      })
     }
 
     onSubmit({
@@ -148,6 +156,15 @@ export default function TaskBuilder({ onSubmit, onCancel, isLoading }: TaskBuild
           >
             <MessageSquare className="h-4 w-4 mr-1" />
             Discussione
+          </Button>
+          <Button
+            type="button"
+            variant={taskType === 'lesson' ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => setTaskType('lesson')}
+          >
+            <BookOpen className="h-4 w-4 mr-1" />
+            Lezione
           </Button>
         </div>
 
@@ -271,6 +288,26 @@ export default function TaskBuilder({ onSubmit, onCancel, isLoading }: TaskBuild
             <p className="text-sm text-gray-600">
               Gli studenti potranno rispondere liberamente alla discussione.
               Usa il campo "Descrizione" sopra per specificare l'argomento.
+            </p>
+          </div>
+        )}
+
+        {/* Lesson Builder */}
+        {taskType === 'lesson' && (
+          <div className="space-y-3 border-t pt-4">
+            <div>
+              <label className="text-sm font-medium mb-1 block">
+                Contenuto della lezione (supporta Markdown e immagini)
+              </label>
+              <textarea
+                value={lessonContent}
+                onChange={(e) => setLessonContent(e.target.value)}
+                placeholder="Scrivi il contenuto della lezione...&#10;&#10;Puoi usare Markdown per formattare il testo:&#10;- **grassetto** per evidenziare&#10;- *corsivo* per enfasi&#10;- # Titoli&#10;- Elenchi puntati&#10;- ![descrizione](url) per immagini"
+                className="w-full p-2 border rounded-md text-sm min-h-[200px] font-mono"
+              />
+            </div>
+            <p className="text-xs text-gray-500">
+              💡 Suggerimento: Puoi generare lezioni complete usando il chatbot Supporto Docente e poi pubblicarle qui.
             </p>
           </div>
         )}

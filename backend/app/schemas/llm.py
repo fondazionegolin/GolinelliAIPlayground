@@ -40,6 +40,9 @@ class ConversationResponse(BaseModel):
 class MessageCreate(BaseModel):
     content: str
     content_json: Optional[dict[str, Any]] = None
+    image_provider: Optional[str] = "flux-schnell"  # "dall-e" or "flux-schnell"
+    image_size: Optional[str] = "1024x1024"  # "1024x1024", "1024x768", "768x1024", "1920x1080", "1080x1920"
+    verbose_mode: Optional[bool] = False  # If True, generate detailed responses
 
 
 class ConversationMessageResponse(BaseModel):

@@ -33,6 +33,8 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
       - DATABASE_URL=postgresql+asyncpg://eduai:${DB_PASSWORD}@postgres:5432/eduai
       - REDIS_URL=redis://redis:6379/0
@@ -44,7 +46,15 @@ services:
       - SECRET_KEY=${SECRET_KEY}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - GOLINELLI_IMAGE_API_KEY=${GOLINELLI_IMAGE_API_KEY}
       - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      - SMTP_HOST=${SMTP_HOST:-smtp.gmail.com}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_USER=${SMTP_USER}
+      - SMTP_PASSWORD=${SMTP_PASSWORD}
+      - SMTP_FROM_EMAIL=${SMTP_FROM_EMAIL}
+      - SMTP_FROM_NAME=${SMTP_FROM_NAME:-EduAI Platform}
+      - FRONTEND_URL=${FRONTEND_URL:-https://playground.golinelli.ai}
     depends_on:
       postgres:
         condition: service_healthy
@@ -167,7 +177,7 @@ services:
       - grafana_data:/var/lib/grafana
       - ./infrastructure/grafana/provisioning:/etc/grafana/provisioning:ro
     ports:
-      - "3001:3000"
+      - "3002:3000"
     depends_on:
       - prometheus
     networks:

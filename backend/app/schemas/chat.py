@@ -38,3 +38,10 @@ class ChatMessageResponse(BaseModel):
 class DMRoomCreate(BaseModel):
     session_id: UUID
     student_id: UUID
+
+
+class SessionMessageCreate(BaseModel):
+    text: str
+    is_notification: bool = False
+    notification_type: Optional[str] = None
+    notification_data: Optional[dict[str, Any]] = None

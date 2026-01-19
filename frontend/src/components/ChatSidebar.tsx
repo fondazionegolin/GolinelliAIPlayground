@@ -34,9 +34,14 @@ export default function ChatSidebar({
   const [privateTarget, setPrivateTarget] = useState<OnlineUser | null>(null)
   const [privateMessages, setPrivateMessages] = useState<ChatMessage[]>([])
   const [pendingFile, setPendingFile] = useState<FileAttachment | null>(null)
+  const [readPrivateIds, setReadPrivateIds] = useState<Set<string>>(new Set())
+  const [sidebarWidth, setSidebarWidth] = useState(320) // 320px = w-80 default
+  const [isResizing, setIsResizing] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const privateMessagesEndRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const MIN_WIDTH = 320 // Minimum width (current default)
+  const MAX_WIDTH = 600 // Maximum width
 
   const { 
     connected, 
@@ -47,6 +52,33 @@ export default function ChatSidebar({
     notifications,
     clearNotification 
   } = useSocket(sessionId)
+
+  // Handle resize
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isResizing) return
+      const newWidth = window.innerWidth - e.clientX
+      setSidebarWidth(Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, newWidth)))
+    }
+
+    const handleMouseUp = () => {
+      setIsResizing(false)
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+    }
+
+    if (isResizing) {
+      document.body.style.cursor = 'ew-resize'
+      document.body.style.userSelect = 'none'
+      document.addEventListener('mousemove', handleMouseMove)
+      document.addEventListener('mouseup', handleMouseUp)
+    }
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove)
+      document.removeEventListener('mouseup', handleMouseUp)
+    }
+  }, [isResizing, MIN_WIDTH, MAX_WIDTH])
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -90,6 +122,22 @@ export default function ChatSidebar({
   useEffect(() => {
     privateMessagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [privateMessages])
+
+  // Mark private messages as read when viewing them
+  useEffect(() => {
+    if (activeTab === 'private' && privateTarget) {
+      const newReadIds = new Set(readPrivateIds)
+      privateMessages.forEach(m => newReadIds.add(m.id))
+      setReadPrivateIds(newReadIds)
+    }
+  }, [activeTab, privateTarget, privateMessages])
+
+  // Count unread private messages
+  const unreadPrivateCount = messages.filter(m => 
+    (m.is_private || m.room_type === 'DM') && 
+    m.sender_id !== currentUserId && 
+    !readPrivateIds.has(m.id)
+  ).length
 
   const handleSend = () => {
     if (!inputText.trim()) return
@@ -147,7 +195,7 @@ export default function ChatSidebar({
   }
 
   const parseFileFromMessage = (text: string): { file: FileAttachment | null; cleanText: string } => {
-    const fileMatch = text.match(/\[FILE:(image|csv|file):([^\]]+)\](data:[^[]+)\[\/FILE\](.*)/)
+    const fileMatch = text.match(/\[FILE:(image|csv|file):([^\]]+)\](data:[^\[]+)\[\/FILE\](.*)/s)
     if (fileMatch) {
       return {
         file: {
@@ -177,10 +225,10 @@ export default function ChatSidebar({
       return 'bg-amber-50 border-l-4 border-amber-400'
     }
     if (msg.sender_id === currentUserId) {
-      return 'bg-emerald-100 ml-4'
+      return 'bg-violet-100 ml-4'
     }
     if (msg.sender_type === 'TEACHER') {
-      return 'bg-blue-50 border-l-4 border-blue-400'
+      return 'bg-purple-50 border-l-4 border-purple-400'
     }
     return 'bg-gray-50 mr-4'
   }
@@ -190,7 +238,7 @@ export default function ChatSidebar({
       <div className="fixed right-0 top-1/2 -translate-y-1/2 z-50">
         <Button
           onClick={() => setIsOpen(true)}
-          className="rounded-l-lg rounded-r-none h-24 px-2 bg-emerald-600 hover:bg-emerald-700"
+          className="rounded-l-lg rounded-r-none h-24 px-2 bg-violet-500 hover:bg-violet-600"
         >
           <div className="flex flex-col items-center gap-1">
             <ChevronLeft className="h-4 w-4" />
@@ -207,9 +255,17 @@ export default function ChatSidebar({
   }
 
   return (
-    <div className="fixed right-0 top-0 h-full w-80 bg-white border-l shadow-lg z-50 flex flex-col">
+    <div 
+      className="fixed right-0 top-0 h-full bg-white border-l shadow-lg z-50 flex flex-col"
+      style={{ width: `${sidebarWidth}px` }}
+    >
+      {/* Resize handle */}
+      <div
+        className="absolute left-0 top-0 bottom-0 w-1 cursor-ew-resize hover:bg-violet-300 transition-colors"
+        onMouseDown={() => setIsResizing(true)}
+      />
       {/* Header */}
-      <div className="bg-emerald-600 text-white p-3 flex items-center justify-between">
+      <div className="bg-gradient-to-r from-violet-500 to-purple-600 text-white p-3 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <MessageSquare className="h-5 w-5" />
           <span className="font-semibold">Chat di Classe</span>
@@ -219,7 +275,7 @@ export default function ChatSidebar({
             <Circle className="h-2 w-2 fill-red-400 text-red-400" />
           )}
         </div>
-        <Button variant="ghost" size="sm" onClick={() => setIsOpen(false)} className="text-white hover:bg-emerald-700">
+        <Button variant="ghost" size="sm" onClick={() => setIsOpen(false)} className="text-white hover:bg-violet-600">
           <ChevronRight className="h-4 w-4" />
         </Button>
       </div>
@@ -228,22 +284,27 @@ export default function ChatSidebar({
       <div className="flex border-b">
         <button
           onClick={() => setActiveTab('public')}
-          className={`flex-1 py-2 text-sm font-medium ${activeTab === 'public' ? 'border-b-2 border-emerald-600 text-emerald-600' : 'text-gray-500'}`}
+          className={`flex-1 py-2 text-sm font-medium ${activeTab === 'public' ? 'border-b-2 border-violet-500 text-violet-600' : 'text-gray-500'}`}
         >
           <MessageSquare className="h-4 w-4 inline mr-1" />
           Classe
         </button>
         <button
           onClick={() => { setActiveTab('private'); }}
-          className={`flex-1 py-2 text-sm font-medium relative ${activeTab === 'private' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-500'}`}
+          className={`flex-1 py-2 text-sm font-medium relative ${activeTab === 'private' ? 'border-b-2 border-purple-600 text-purple-600' : 'text-gray-500'}`}
         >
           <Lock className="h-4 w-4 inline mr-1" />
           Privata
-          {privateTarget && <span className="absolute top-1 right-1 w-2 h-2 bg-blue-500 rounded-full"></span>}
+          {unreadPrivateCount > 0 && (
+            <span className="absolute -top-1 right-1 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center animate-pulse">
+              {unreadPrivateCount > 9 ? '9+' : unreadPrivateCount}
+            </span>
+          )}
+          {privateTarget && unreadPrivateCount === 0 && <span className="absolute top-1 right-1 w-2 h-2 bg-purple-500 rounded-full"></span>}
         </button>
         <button
           onClick={() => setActiveTab('users')}
-          className={`flex-1 py-2 text-sm font-medium ${activeTab === 'users' ? 'border-b-2 border-emerald-600 text-emerald-600' : 'text-gray-500'}`}
+          className={`flex-1 py-2 text-sm font-medium ${activeTab === 'users' ? 'border-b-2 border-violet-500 text-violet-600' : 'text-gray-500'}`}
         >
           <Users className="h-4 w-4 inline mr-1" />
           ({onlineUsers.length})
@@ -303,17 +364,36 @@ export default function ChatSidebar({
                       {file && (
                         <div className="mb-2">
                           {file.type === 'image' ? (
-                            <img src={file.url} alt={file.name} className="max-w-full max-h-32 rounded" />
+                            <img 
+                              src={file.url} 
+                              alt={file.name} 
+                              className="max-w-full max-h-32 rounded cursor-grab"
+                              draggable
+                              onDragStart={(e) => {
+                                e.dataTransfer.setData('application/x-chatbot-image', file.url)
+                                e.dataTransfer.effectAllowed = 'copy'
+                              }}
+                            />
                           ) : (
-                            <a 
-                              href={file.url} 
-                              download={file.name}
-                              className="flex items-center gap-2 p-2 bg-white rounded border hover:bg-gray-50"
+                            <div
+                              className="flex items-center gap-2 p-2 bg-white rounded border hover:bg-gray-50 cursor-grab"
+                              draggable
+                              onDragStart={(e) => {
+                                if (file.type === 'csv' && file.data) {
+                                  // Decode base64 CSV data
+                                  const base64Data = file.data.split(',')[1]
+                                  const csvContent = decodeURIComponent(escape(atob(base64Data)))
+                                  e.dataTransfer.setData('application/x-chatbot-csv', csvContent)
+                                }
+                                e.dataTransfer.effectAllowed = 'copy'
+                              }}
                             >
                               {file.type === 'csv' ? <FileSpreadsheet className="h-4 w-4 text-green-600" /> : <FileText className="h-4 w-4 text-blue-600" />}
-                              <span className="text-xs truncate">{file.name}</span>
-                              <Download className="h-3 w-3 ml-auto" />
-                            </a>
+                              <span className="text-xs truncate flex-1">{file.name}</span>
+                              <a href={file.url} download={file.name} onClick={(e) => e.stopPropagation()}>
+                                <Download className="h-3 w-3" />
+                              </a>
+                            </div>
                           )}
                         </div>
                       )}
@@ -327,7 +407,64 @@ export default function ChatSidebar({
               )}
               <div ref={messagesEndRef} />
             </div>
-            <div className="p-3 border-t bg-gray-50">
+            <div 
+              className="p-3 border-t bg-gray-50"
+              onDragOver={(e) => {
+                e.preventDefault()
+                e.currentTarget.classList.add('bg-violet-100')
+              }}
+              onDragLeave={(e) => {
+                e.currentTarget.classList.remove('bg-violet-100')
+              }}
+              onDrop={(e) => {
+                e.preventDefault()
+                e.currentTarget.classList.remove('bg-violet-100')
+                
+                // Handle image from chatbot
+                const imageData = e.dataTransfer.getData('application/x-chatbot-image')
+                if (imageData) {
+                  setPendingFile({
+                    type: 'image',
+                    name: `immagine_${Date.now()}.png`,
+                    url: imageData,
+                    data: imageData
+                  })
+                  return
+                }
+                
+                // Handle CSV from chatbot dataset generator
+                const csvData = e.dataTransfer.getData('application/x-chatbot-csv')
+                if (csvData) {
+                  const base64Csv = btoa(unescape(encodeURIComponent(csvData)))
+                  setPendingFile({
+                    type: 'csv',
+                    name: `dataset_${Date.now()}.csv`,
+                    url: `data:text/csv;base64,${base64Csv}`,
+                    data: `data:text/csv;base64,${base64Csv}`
+                  })
+                  return
+                }
+                
+                // Handle external file drops
+                const files = Array.from(e.dataTransfer.files)
+                if (files.length > 0) {
+                  const file = files[0]
+                  const reader = new FileReader()
+                  reader.onload = (event) => {
+                    const data = event.target?.result as string
+                    const isImage = file.type.startsWith('image/')
+                    const isCsv = file.name.endsWith('.csv') || file.type === 'text/csv'
+                    setPendingFile({
+                      type: isImage ? 'image' : isCsv ? 'csv' : 'file',
+                      name: file.name,
+                      url: data,
+                      data: data
+                    })
+                  }
+                  reader.readAsDataURL(file)
+                }
+              }}
+            >
               <input
                 ref={fileInputRef}
                 type="file"
@@ -374,12 +511,12 @@ export default function ChatSidebar({
               </div>
             ) : (
               <>
-                <div className="bg-blue-50 px-3 py-2 flex items-center justify-between border-b">
+                <div className="bg-purple-50 px-3 py-2 flex items-center justify-between border-b">
                   <div className="flex items-center gap-2">
-                    <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center text-white text-sm">
+                    <div className="w-8 h-8 bg-purple-500 rounded-full flex items-center justify-center text-white text-sm">
                       {privateTarget.student_id === 'teacher' ? '👨‍🏫' : (privateTarget.nickname || 'S')[0].toUpperCase()}
                     </div>
-                    <span className="text-blue-700 font-medium text-sm">{privateTarget.nickname || 'Utente'}</span>
+                    <span className="text-purple-700 font-medium text-sm">{privateTarget.nickname || 'Utente'}</span>
                   </div>
                   <Button variant="ghost" size="sm" onClick={() => setPrivateTarget(null)}>
                     <X className="h-4 w-4" />
@@ -396,10 +533,10 @@ export default function ChatSidebar({
                       return (
                         <div
                           key={msg.id}
-                          className={`p-2 rounded-lg text-sm ${msg.sender_id === currentUserId ? 'bg-blue-100 ml-4' : 'bg-gray-50 mr-4'}`}
+                          className={`p-2 rounded-lg text-sm ${msg.sender_id === currentUserId ? 'bg-violet-100 ml-4' : 'bg-gray-50 mr-4'}`}
                         >
                           <div className="flex items-center gap-2 mb-1">
-                            <span className="font-semibold text-xs text-blue-600">
+                            <span className="font-semibold text-xs text-purple-600">
                               {msg.sender_id === currentUserId ? 'Tu' : (msg.sender_name || 'Utente')}
                             </span>
                             <span className="text-xs text-gray-400">{formatTime(msg.created_at)}</span>
@@ -407,17 +544,35 @@ export default function ChatSidebar({
                           {file && (
                             <div className="mb-2">
                               {file.type === 'image' ? (
-                                <img src={file.url} alt={file.name} className="max-w-full max-h-32 rounded" />
+                                <img 
+                                  src={file.url} 
+                                  alt={file.name} 
+                                  className="max-w-full max-h-32 rounded cursor-grab"
+                                  draggable
+                                  onDragStart={(e: React.DragEvent) => {
+                                    e.dataTransfer.setData('application/x-chatbot-image', file.url)
+                                    e.dataTransfer.effectAllowed = 'copy'
+                                  }}
+                                />
                               ) : (
-                                <a 
-                                  href={file.url} 
-                                  download={file.name}
-                                  className="flex items-center gap-2 p-2 bg-white rounded border hover:bg-gray-50"
+                                <div
+                                  className="flex items-center gap-2 p-2 bg-white rounded border hover:bg-gray-50 cursor-grab"
+                                  draggable
+                                  onDragStart={(e: React.DragEvent) => {
+                                    if (file.type === 'csv' && file.data) {
+                                      const base64Data = file.data.split(',')[1]
+                                      const csvContent = decodeURIComponent(escape(atob(base64Data)))
+                                      e.dataTransfer.setData('application/x-chatbot-csv', csvContent)
+                                    }
+                                    e.dataTransfer.effectAllowed = 'copy'
+                                  }}
                                 >
                                   {file.type === 'csv' ? <FileSpreadsheet className="h-4 w-4 text-green-600" /> : <FileText className="h-4 w-4 text-blue-600" />}
-                                  <span className="text-xs truncate">{file.name}</span>
-                                  <Download className="h-3 w-3 ml-auto" />
-                                </a>
+                                  <span className="text-xs truncate flex-1">{file.name}</span>
+                                  <a href={file.url} download={file.name} onClick={(e: React.MouseEvent) => e.stopPropagation()}>
+                                    <Download className="h-3 w-3" />
+                                  </a>
+                                </div>
                               )}
                             </div>
                           )}
@@ -428,7 +583,7 @@ export default function ChatSidebar({
                   )}
                   <div ref={privateMessagesEndRef} />
                 </div>
-                <div className="p-3 border-t bg-blue-50">
+                <div className="p-3 border-t bg-purple-50">
                   <div className="flex gap-2">
                     <Button variant="outline" size="sm" onClick={() => fileInputRef.current?.click()} className="px-2 bg-white">
                       <Paperclip className="h-4 w-4" />
@@ -444,7 +599,7 @@ export default function ChatSidebar({
                       onClick={handleSendWithFile} 
                       size="sm" 
                       disabled={!inputText.trim() && !pendingFile}
-                      className="bg-blue-600 hover:bg-blue-700"
+                      className="bg-violet-600 hover:bg-violet-700"
                     >
                       <Send className="h-4 w-4" />
                     </Button>
@@ -494,7 +649,7 @@ export default function ChatSidebar({
                   }}
                 >
                   <div className="relative">
-                    <div className="w-8 h-8 bg-emerald-500 rounded-full flex items-center justify-center text-white text-sm">
+                    <div className="w-8 h-8 bg-sky-500 rounded-full flex items-center justify-center text-white text-sm">
                       {(user.nickname || 'S')[0].toUpperCase()}
                     </div>
                     <Circle className="absolute -bottom-0.5 -right-0.5 h-3 w-3 fill-green-400 text-green-400" />

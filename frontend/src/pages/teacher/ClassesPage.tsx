@@ -1,12 +1,13 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { teacherApi } from '@/lib/api'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { useToast } from '@/components/ui/use-toast'
-import { Plus, BookOpen, Users, Play, Edit2, Check, X } from 'lucide-react'
+import { Plus, BookOpen, Users, Play, Edit2, Check, X, Loader2 } from 'lucide-react'
+import { TeacherNavbar } from '@/components/TeacherNavbar'
 
 interface ClassData {
   id: string
@@ -17,11 +18,13 @@ interface ClassData {
 
 export default function ClassesPage() {
   const queryClient = useQueryClient()
+  const navigate = useNavigate()
   const { toast } = useToast()
   const [newClassName, setNewClassName] = useState('')
   const [showNewForm, setShowNewForm] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editName, setEditName] = useState('')
+  const [creatingSessionForClass, setCreatingSessionForClass] = useState<string | null>(null)
 
   const { data: classes, isLoading } = useQuery<ClassData[]>({
     queryKey: ['classes'],
@@ -54,6 +57,29 @@ export default function ClassesPage() {
     },
   })
 
+  const createSessionMutation = useMutation({
+    mutationFn: ({ classId, title }: { classId: string; title: string }) =>
+      teacherApi.createSession(classId, { title }),
+    onSuccess: (response) => {
+      queryClient.invalidateQueries({ queryKey: ['classes'] })
+      queryClient.invalidateQueries({ queryKey: ['sessions'] })
+      toast({ title: 'Sessione creata!' })
+      setCreatingSessionForClass(null)
+      // Navigate to the new session
+      navigate(`/teacher/sessions/${response.data.id}`)
+    },
+    onError: () => {
+      toast({ variant: 'destructive', title: 'Errore nella creazione della sessione' })
+      setCreatingSessionForClass(null)
+    },
+  })
+
+  const handleCreateSession = (classId: string, className: string) => {
+    setCreatingSessionForClass(classId)
+    const sessionTitle = `Sessione ${new Date().toLocaleDateString('it-IT')} - ${className}`
+    createSessionMutation.mutate({ classId, title: sessionTitle })
+  }
+
   const handleCreate = (e: React.FormEvent) => {
     e.preventDefault()
     if (newClassName.trim()) {
@@ -73,14 +99,17 @@ export default function ClassesPage() {
   }
 
   return (
-    <div>
-      <div className="flex items-center justify-between mb-6">
-        <h2 className="text-2xl font-bold">Le mie Classi</h2>
-        <Button onClick={() => setShowNewForm(true)} disabled={showNewForm}>
-          <Plus className="h-4 w-4 mr-2" />
-          Nuova Classe
-        </Button>
-      </div>
+    <>
+      <TeacherNavbar />
+      <div className="pt-16 min-h-screen bg-slate-50">
+        <div className="max-w-7xl mx-auto p-6">
+          <div className="flex items-center justify-between mb-6">
+            <h2 className="text-2xl font-bold">Le mie Classi</h2>
+            <Button onClick={() => setShowNewForm(true)} disabled={showNewForm}>
+              <Plus className="h-4 w-4 mr-2" />
+              Nuova Classe
+            </Button>
+          </div>
 
       {showNewForm && (
         <Card className="mb-6">
@@ -164,18 +193,25 @@ export default function ClassesPage() {
                       Sessioni
                     </Button>
                   </Link>
-                  <Link to={`/teacher/sessions/new?class=${cls.id}`}>
-                    <Button>
+                  <Button
+                    onClick={() => handleCreateSession(cls.id, cls.name)}
+                    disabled={creatingSessionForClass === cls.id}
+                  >
+                    {creatingSessionForClass === cls.id ? (
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    ) : (
                       <Play className="h-4 w-4 mr-2" />
-                      Nuova
-                    </Button>
-                  </Link>
+                    )}
+                    Nuova
+                  </Button>
                 </div>
               </CardContent>
             </Card>
           ))}
         </div>
       )}
-    </div>
+        </div>
+      </div>
+    </>
   )
 }

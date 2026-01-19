@@ -701,7 +701,73 @@ function TextClassification() {
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="border-2 border-dashed rounded-lg p-6 text-center">
+          <div 
+            className="border-2 border-dashed rounded-lg p-6 text-center transition-colors"
+            onDragOver={(e) => {
+              e.preventDefault()
+              e.currentTarget.classList.add('border-blue-500', 'bg-blue-50')
+            }}
+            onDragLeave={(e) => {
+              e.currentTarget.classList.remove('border-blue-500', 'bg-blue-50')
+            }}
+            onDrop={(e) => {
+              e.preventDefault()
+              e.currentTarget.classList.remove('border-blue-500', 'bg-blue-50')
+              // Handle dropped CSV from chatbot
+              const csvData = e.dataTransfer.getData('application/x-chatbot-csv')
+              if (csvData) {
+                const lines = csvData.split('\n').filter((l: string) => l.trim())
+                const newSamples: TextSample[] = []
+                const uniqueLabels = new Set<string>()
+                for (const line of lines) {
+                  const parts = line.includes(';') ? line.split(';') : line.split(',')
+                  if (parts.length >= 2) {
+                    const label = parts[parts.length - 1].trim().replace(/"/g, '')
+                    const text = parts.slice(0, -1).join(',').trim().replace(/"/g, '')
+                    if (text && label) {
+                      newSamples.push({ text, label })
+                      uniqueLabels.add(label)
+                    }
+                  }
+                }
+                if (newSamples.length > 0) {
+                  setSamples(newSamples)
+                  setLabels(Array.from(uniqueLabels))
+                }
+              } else {
+                // Handle dropped files from file manager
+                const files = e.dataTransfer.files
+                if (files.length > 0) {
+                  const file = files[0]
+                  if (file.name.endsWith('.csv') || file.name.endsWith('.txt')) {
+                    const reader = new FileReader()
+                    reader.onload = (event) => {
+                      const text = event.target?.result as string
+                      const lines = text.split('\n').filter((l: string) => l.trim())
+                      const newSamples: TextSample[] = []
+                      const uniqueLabels = new Set<string>()
+                      for (const line of lines) {
+                        const parts = line.includes(';') ? line.split(';') : line.split(',')
+                        if (parts.length >= 2) {
+                          const label = parts[parts.length - 1].trim().replace(/"/g, '')
+                          const text = parts.slice(0, -1).join(',').trim().replace(/"/g, '')
+                          if (text && label) {
+                            newSamples.push({ text, label })
+                            uniqueLabels.add(label)
+                          }
+                        }
+                      }
+                      if (newSamples.length > 0) {
+                        setSamples(newSamples)
+                        setLabels(Array.from(uniqueLabels))
+                      }
+                    }
+                    reader.readAsText(file)
+                  }
+                }
+              }
+            }}
+          >
             <input
               ref={fileInputRef}
               type="file"
@@ -715,6 +781,9 @@ function TextClassification() {
             </Button>
             <p className="text-xs text-muted-foreground mt-2">
               Formato: testo,etichetta (una riga per sample)
+            </p>
+            <p className="text-xs text-blue-500 mt-1">
+              💡 Puoi anche trascinare un CSV qui
             </p>
           </div>
 
@@ -1159,17 +1228,96 @@ function DataClassification() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".csv"
-            onChange={handleFileUpload}
-            className="hidden"
-          />
-          <Button onClick={() => fileInputRef.current?.click()} className="w-full">
-            <Upload className="h-4 w-4 mr-2" />
-            Seleziona file CSV
-          </Button>
+          <div 
+            className="border-2 border-dashed rounded-lg p-6 text-center transition-colors"
+            onDragOver={(e) => {
+              e.preventDefault()
+              e.currentTarget.classList.add('border-emerald-500', 'bg-emerald-50')
+            }}
+            onDragLeave={(e) => {
+              e.currentTarget.classList.remove('border-emerald-500', 'bg-emerald-50')
+            }}
+            onDrop={(e) => {
+              e.preventDefault()
+              e.currentTarget.classList.remove('border-emerald-500', 'bg-emerald-50')
+              // Handle dropped CSV from chatbot
+              const csvData = e.dataTransfer.getData('application/x-chatbot-csv')
+              if (csvData) {
+                const lines = csvData.split('\n').filter((l: string) => l.trim())
+                if (lines.length > 1) {
+                  const headers = lines[0].split(',').map((h: string) => h.trim().replace(/"/g, ''))
+                  const rows = lines.slice(1).map((line: string) => {
+                    const values = line.split(',').map((v: string) => v.trim().replace(/"/g, ''))
+                    const row: DataRow = {}
+                    headers.forEach((h: string, i: number) => { row[h] = values[i] || '' })
+                    return row
+                  })
+                  setData(rows)
+                  const cols: ColumnInfo[] = headers.map((h: string) => {
+                    const isNumeric = rows.every((r: DataRow) => !isNaN(parseFloat(r[h] as string)))
+                    const uniqueVals = new Set(rows.map((r: DataRow) => r[h]))
+                    return { 
+                      name: h, 
+                      type: isNumeric ? 'numeric' : 'categorical',
+                      uniqueValues: uniqueVals.size,
+                      sampleValues: Array.from(uniqueVals).slice(0, 5) as (string | number)[]
+                    }
+                  })
+                  setColumns(cols)
+                }
+              } else {
+                // Handle dropped files from file manager
+                const files = e.dataTransfer.files
+                if (files.length > 0) {
+                  const file = files[0]
+                  if (file.name.endsWith('.csv')) {
+                    const reader = new FileReader()
+                    reader.onload = (event) => {
+                      const text = event.target?.result as string
+                      const lines = text.split('\n').filter((l: string) => l.trim())
+                      if (lines.length > 1) {
+                        const headers = lines[0].split(',').map((h: string) => h.trim().replace(/"/g, ''))
+                        const rows = lines.slice(1).map((line: string) => {
+                          const values = line.split(',').map((v: string) => v.trim().replace(/"/g, ''))
+                          const row: DataRow = {}
+                          headers.forEach((h: string, i: number) => { row[h] = values[i] || '' })
+                          return row
+                        })
+                        setData(rows)
+                        const cols: ColumnInfo[] = headers.map((h: string) => {
+                          const isNumeric = rows.every((r: DataRow) => !isNaN(parseFloat(r[h] as string)))
+                          const uniqueVals = new Set(rows.map((r: DataRow) => r[h]))
+                          return { 
+                            name: h, 
+                            type: isNumeric ? 'numeric' : 'categorical',
+                            uniqueValues: uniqueVals.size,
+                            sampleValues: Array.from(uniqueVals).slice(0, 5) as (string | number)[]
+                          }
+                        })
+                        setColumns(cols)
+                      }
+                    }
+                    reader.readAsText(file)
+                  }
+                }
+              }
+            }}
+          >
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".csv"
+              onChange={handleFileUpload}
+              className="hidden"
+            />
+            <Button onClick={() => fileInputRef.current?.click()} className="w-full">
+              <Upload className="h-4 w-4 mr-2" />
+              Seleziona file CSV
+            </Button>
+            <p className="text-xs text-emerald-500 mt-2">
+              💡 Puoi anche trascinare un CSV qui
+            </p>
+          </div>
           
           {data.length > 0 && (
             <div className="mt-4 p-3 bg-emerald-50 rounded-lg">

@@ -1,12 +1,13 @@
 import { useState, useRef, useEffect } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
-import { llmApi } from '@/lib/api'
+import { llmApi, studentApi } from '@/lib/api'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { 
   Send, Bot, User, GraduationCap, 
   Lightbulb, ClipboardCheck, ArrowLeft, Sparkles,
-  Settings2, RefreshCw, Paperclip, X, File, Database, Download
+  Settings2, RefreshCw, Paperclip, X, File, Database, Download, Loader2,
+  Trash2, ChevronLeft, ChevronRight
 } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -104,7 +105,11 @@ export default function ChatbotModule({ sessionId }: ChatbotModuleProps) {
   const [selectedModel, setSelectedModel] = useState<LLMModel | null>(null)
   const [showModelSelector, setShowModelSelector] = useState(false)
   const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([])
+  const [imageProvider, setImageProvider] = useState<'dall-e' | 'flux-schnell'>('flux-schnell')
+  const [imageSize, setImageSize] = useState<string>('1024x1024')
+  const [verboseMode, setVerboseMode] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const isGeneratingRef = useRef(false)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -128,6 +133,16 @@ export default function ChatbotModule({ sessionId }: ChatbotModuleProps) {
     staleTime: 1000 * 60 * 10,
   })
 
+  // Fetch session data to get teacher's default model
+  const { data: sessionData } = useQuery({
+    queryKey: ['student-session'],
+    queryFn: async () => {
+      const res = await studentApi.getSession()
+      return res.data as { session: { default_llm_provider?: string; default_llm_model?: string } }
+    },
+    staleTime: 1000 * 60 * 5,
+  })
+
   // Fetch conversation history
   const { data: conversationsData, refetch: refetchConversations } = useQuery({
     queryKey: ['conversations', sessionId],
@@ -146,11 +161,13 @@ export default function ChatbotModule({ sessionId }: ChatbotModuleProps) {
   const typewriterEffect = (fullContent: string, messageId: string) => {
     let currentIndex = 0
     const chunkSize = 3 // Characters per tick
+    isGeneratingRef.current = true
     const interval = setInterval(() => {
       currentIndex += chunkSize
       if (currentIndex >= fullContent.length) {
         currentIndex = fullContent.length
         clearInterval(interval)
+        isGeneratingRef.current = false
         // Update the message with full content
         setMessages(prev => prev.map(m => 
           m.id === messageId ? { ...m, content: fullContent } : m
@@ -161,34 +178,53 @@ export default function ChatbotModule({ sessionId }: ChatbotModuleProps) {
           m.id === messageId ? { ...m, content: fullContent.substring(0, currentIndex) } : m
         ))
       }
-      scrollToBottom()
+      // Don't scroll during typewriter - it causes jumping
     }, 15)
   }
 
   const currentProfile = profiles.find(p => p.key === selectedProfile)
 
   const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    // Only scroll if not generating (to prevent jumping during typewriter)
+    if (!isGeneratingRef.current) {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    }
   }
 
   useEffect(() => {
-    scrollToBottom()
-  }, [messages])
+    // Only auto-scroll when a new message is added, not during updates
+    if (messages.length > 0) {
+      const lastMessage = messages[messages.length - 1]
+      // Scroll only for user messages or when generation is complete
+      if (lastMessage.role === 'user' || !isGeneratingRef.current) {
+        scrollToBottom()
+      }
+    }
+  }, [messages.length])
 
   const sendMessageMutation = useMutation({
-    mutationFn: async ({ content, files }: { content: string; files: globalThis.File[] }) => {
+    mutationFn: async ({ content, files, existingHistory }: { content: string; files: globalThis.File[]; existingHistory?: Message[] }) => {
       let convId = conversationId
       if (!convId) {
-        // Create conversation first
+        // Create conversation first - use teacher's default model if no model selected
+        const modelProvider = selectedModel?.provider || sessionData?.session?.default_llm_provider
+        const modelName = selectedModel?.model || sessionData?.session?.default_llm_model
         const convRes = await llmApi.createConversation(
           sessionId, 
           selectedProfile || 'tutor',
           undefined,
-          selectedModel?.provider,
-          selectedModel?.model
+          modelProvider,
+          modelName
         )
         convId = convRes.data.id
         setConversationId(convId)
+        
+        // If there's existing history (from model change), send it to backend
+        if (existingHistory && existingHistory.length > 0 && convId) {
+          for (const msg of existingHistory) {
+            await llmApi.sendMessage(convId, msg.content, undefined, undefined, undefined)
+          }
+        }
       }
       
       // Use file upload endpoint if there are files
@@ -197,25 +233,30 @@ export default function ChatbotModule({ sessionId }: ChatbotModuleProps) {
         return res.data
       }
       
-      const res = await llmApi.sendMessage(convId!, content)
+      const res = await llmApi.sendMessage(convId!, content, imageProvider, imageSize, verboseMode)
       return res.data
     },
     onSuccess: (data) => {
       const fullContent = data.content || data.assistant_message || 'Risposta ricevuta'
       const messageId = data.id || Date.now().toString()
       
-      // Add empty message first for typewriter effect
+      // Check if content contains base64 image - skip typewriter for these
+      const hasBase64Image = fullContent.includes('data:image') && fullContent.includes('base64')
+      
+      // Add message
       const assistantMessage: Message = {
         id: messageId,
         role: 'assistant',
-        content: '',
+        content: hasBase64Image ? fullContent : '', // Show full content immediately for images
         timestamp: new Date(),
       }
       setMessages((prev) => [...prev, assistantMessage])
       setAttachedFiles([])
       
-      // Start typewriter effect
-      typewriterEffect(fullContent, messageId)
+      // Start typewriter effect only for non-image messages
+      if (!hasBase64Image) {
+        typewriterEffect(fullContent, messageId)
+      }
       
       // Refetch conversations to update history
       refetchConversations()
@@ -247,7 +288,8 @@ export default function ChatbotModule({ sessionId }: ChatbotModuleProps) {
     setMessages((prev) => [...prev, userMessage])
     sendMessageMutation.mutate({ 
       content: input.trim(), 
-      files: attachedFiles.map(af => af.file) 
+      files: attachedFiles.map(af => af.file),
+      existingHistory: !conversationId && messages.length > 0 ? messages : undefined
     })
     setInput('')
   }
@@ -379,63 +421,174 @@ export default function ChatbotModule({ sessionId }: ChatbotModuleProps) {
   return (
     <div className="flex h-[650px] bg-gradient-to-b from-slate-50 to-white rounded-xl overflow-hidden shadow-sm border">
       {/* History Panel */}
-      {showHistory && selectedProfile && (
-        <div className="w-64 border-r bg-slate-50 flex flex-col">
-          <div className="p-3 border-b bg-white">
-            <div className="flex items-center justify-between">
-              <h4 className="font-semibold text-sm text-slate-700">Cronologia</h4>
+      {selectedProfile && (
+        <div className={`${showHistory ? 'w-64' : 'w-8'} border-r bg-slate-50 flex flex-col transition-all duration-200`}>
+          {showHistory ? (
+            <>
+              <div className="p-3 border-b bg-white">
+                <div className="flex items-center justify-between">
+                  <h4 className="font-semibold text-sm text-slate-700">Cronologia</h4>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setShowHistory(false)}
+                    className="h-6 w-6 p-0"
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            </>
+          ) : (
+            <div className="flex-1 flex items-center justify-center">
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => setShowHistory(false)}
-                className="h-6 w-6 p-0"
+                onClick={() => setShowHistory(true)}
+                className="h-full w-full p-0 rounded-none hover:bg-slate-100"
               >
-                <X className="h-3 w-3" />
+                <ChevronRight className="h-4 w-4" />
               </Button>
             </div>
-          </div>
-          <div className="flex-1 overflow-y-auto p-2 space-y-1">
-            <button
-              onClick={handleNewChat}
-              className="w-full text-left px-3 py-2 rounded-lg text-sm bg-violet-100 text-violet-700 hover:bg-violet-200 transition-colors flex items-center gap-2"
-            >
-              <Sparkles className="h-4 w-4" />
-              Nuova chat
-            </button>
-            {conversations
-              .filter(c => c.profile_key === selectedProfile)
-              .map((conv) => (
-                <button
-                  key={conv.id}
-                  onClick={() => loadConversation(conv.id)}
-                  className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors ${
-                    conversationId === conv.id 
-                      ? 'bg-slate-200 text-slate-800' 
-                      : 'hover:bg-slate-100 text-slate-600'
-                  }`}
-                >
-                  <div className="truncate font-medium">{conv.title || 'Conversazione'}</div>
-                  <div className="text-xs text-slate-400">
-                    {new Date(conv.updated_at).toLocaleDateString('it-IT', { 
-                      day: 'numeric', 
-                      month: 'short',
-                      hour: '2-digit',
-                      minute: '2-digit'
-                    })}
+          )}
+          {showHistory && (
+            <div className="flex-1 overflow-y-auto p-2 space-y-1">
+              <button
+                onClick={handleNewChat}
+                className="w-full text-left px-3 py-2 rounded-lg text-sm bg-violet-100 text-violet-700 hover:bg-violet-200 transition-colors flex items-center gap-2"
+              >
+                <Sparkles className="h-4 w-4" />
+                Nuova chat
+              </button>
+              {conversations
+                .filter(c => c.profile_key === selectedProfile)
+                .map((conv) => (
+                  <div
+                    key={conv.id}
+                    className={`group relative w-full text-left px-3 py-2 rounded-lg text-sm transition-colors cursor-pointer ${
+                      conversationId === conv.id 
+                        ? 'bg-slate-200 text-slate-800' 
+                        : 'hover:bg-slate-100 text-slate-600'
+                    }`}
+                    onClick={() => loadConversation(conv.id)}
+                  >
+                    <div className="truncate font-medium pr-6">{conv.title || 'Conversazione'}</div>
+                    <div className="text-xs text-slate-400">
+                      {new Date(conv.updated_at).toLocaleDateString('it-IT', { 
+                        day: 'numeric', 
+                        month: 'short',
+                        hour: '2-digit',
+                        minute: '2-digit'
+                      })}
+                    </div>
+                    <button
+                      onClick={async (e) => {
+                        e.stopPropagation()
+                        if (confirm('Eliminare questa conversazione?')) {
+                          await llmApi.deleteConversation(conv.id)
+                          refetchConversations()
+                          if (conversationId === conv.id) {
+                            handleNewChat()
+                          }
+                        }
+                      }}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded hover:bg-red-100 opacity-0 group-hover:opacity-100 transition-opacity"
+                      title="Elimina conversazione"
+                    >
+                      <Trash2 className="h-3 w-3 text-red-500" />
+                    </button>
                   </div>
-                </button>
-              ))}
-            {conversations.filter(c => c.profile_key === selectedProfile).length === 0 && (
-              <p className="text-xs text-slate-400 text-center py-4">
-                Nessuna conversazione precedente
-              </p>
-            )}
-          </div>
+                ))}
+              {conversations.filter(c => c.profile_key === selectedProfile).length === 0 && (
+                <p className="text-xs text-slate-400 text-center py-4">
+                  Nessuna conversazione precedente
+                </p>
+              )}
+            </div>
+          )}
+          {/* Delete all conversations button */}
+          {showHistory && conversations.filter(c => c.profile_key === selectedProfile).length > 0 && (
+            <div className="p-2 border-t bg-white">
+              <button
+                onClick={async () => {
+                  if (confirm('Eliminare tutta la cronologia?')) {
+                    await llmApi.deleteAllConversations(sessionId)
+                    refetchConversations()
+                    handleNewChat()
+                  }
+                }}
+                className="w-full text-left px-3 py-2 rounded-lg text-xs text-red-600 hover:bg-red-50 transition-colors flex items-center gap-2"
+              >
+                <Trash2 className="h-3 w-3" />
+                Elimina tutta la cronologia
+              </button>
+            </div>
+          )}
         </div>
       )}
       
       {/* Main Chat Area */}
-      <div className="flex-1 flex flex-col">
+      <div 
+        className="flex-1 flex flex-col"
+        onDragOver={(e) => {
+          e.preventDefault()
+          e.currentTarget.classList.add('ring-2', 'ring-violet-500', 'ring-inset')
+        }}
+        onDragLeave={(e) => {
+          e.currentTarget.classList.remove('ring-2', 'ring-violet-500', 'ring-inset')
+        }}
+        onDrop={(e) => {
+          e.preventDefault()
+          e.currentTarget.classList.remove('ring-2', 'ring-violet-500', 'ring-inset')
+          
+          // Handle image from chatbot
+          const imageData = e.dataTransfer.getData('application/x-chatbot-image')
+          if (imageData) {
+            fetch(imageData)
+              .then(res => res.blob())
+              .then(blob => {
+                const fileObj = Object.assign(blob, { 
+                  name: `immagine_${Date.now()}.png`,
+                  lastModified: Date.now()
+                }) as File
+                setAttachedFiles(prev => [...prev, { file: fileObj, type: 'image' as const, preview: imageData }])
+              })
+            return
+          }
+          
+          // Handle CSV from chatbot dataset generator
+          const csvData = e.dataTransfer.getData('application/x-chatbot-csv')
+          if (csvData) {
+            const blob = new Blob([csvData], { type: 'text/csv' })
+            const fileObj = Object.assign(blob, {
+              name: `dataset_${Date.now()}.csv`,
+              lastModified: Date.now()
+            }) as File
+            setAttachedFiles(prev => [...prev, { file: fileObj, type: 'document' as const }])
+            return
+          }
+          
+          // Handle external file drops
+          const files = Array.from(e.dataTransfer.files)
+          files.forEach(file => {
+            const isImage = (file as File).type.startsWith('image/')
+            const attached: AttachedFile = {
+              file: file as File,
+              type: isImage ? 'image' : 'document',
+            }
+            if (isImage) {
+              const reader = new FileReader()
+              reader.onload = (ev) => {
+                attached.preview = ev.target?.result as string
+                setAttachedFiles(prev => [...prev, attached])
+              }
+              reader.readAsDataURL(file as File)
+            } else {
+              setAttachedFiles(prev => [...prev, attached])
+            }
+          })
+        }}
+      >
       {/* Modern Header */}
       <div className="flex items-center gap-3 px-4 py-3 bg-white border-b">
         <Button 
@@ -456,7 +609,11 @@ export default function ChatbotModule({ sessionId }: ChatbotModuleProps) {
         <div className="flex-1 min-w-0">
           <h3 className="font-semibold text-sm text-slate-800 truncate">{currentProfile?.name}</h3>
           <p className="text-xs text-slate-500 truncate">
-            {selectedModel ? selectedModel.name : 'Modello predefinito'}
+            {selectedModel 
+              ? selectedModel.name 
+              : (sessionData?.session?.default_llm_provider && sessionData?.session?.default_llm_model
+                  ? modelsData?.models?.find(m => m.provider === sessionData.session.default_llm_provider && m.model === sessionData.session.default_llm_model)?.name
+                  : modelsData?.models?.find(m => m.provider === modelsData?.default_provider && m.model === modelsData?.default_model)?.name) || 'Modello AI'}
           </p>
         </div>
         <Button
@@ -499,6 +656,25 @@ export default function ChatbotModule({ sessionId }: ChatbotModuleProps) {
               La cronologia verrà mantenuta come contesto
             </p>
           )}
+          {/* Verbose mode toggle */}
+          <div className="flex items-center justify-between mt-3 pt-3 border-t border-slate-200">
+            <span className="text-xs text-slate-600">Risposte esaustive</span>
+            <button
+              onClick={() => setVerboseMode(!verboseMode)}
+              className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
+                verboseMode ? 'bg-violet-500' : 'bg-slate-300'
+              }`}
+            >
+              <span
+                className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${
+                  verboseMode ? 'translate-x-5' : 'translate-x-1'
+                }`}
+              />
+            </button>
+          </div>
+          <p className="text-xs text-slate-400 mt-1">
+            {verboseMode ? 'Risposte dettagliate e approfondite' : 'Risposte brevi e concise'}
+          </p>
         </div>
       )}
 
@@ -546,8 +722,8 @@ export default function ChatbotModule({ sessionId }: ChatbotModuleProps) {
               )}
               <div className={`max-w-[80%] rounded-2xl px-4 py-3 ${
                 message.role === 'user' 
-                  ? 'bg-gradient-to-br from-slate-800 to-slate-900 text-white rounded-br-md' 
-                  : 'bg-white border border-slate-100 shadow-sm rounded-bl-md'
+                  ? 'bg-gradient-to-br from-violet-500 to-purple-600 text-white rounded-br-md shadow-md' 
+                  : 'bg-gradient-to-br from-violet-50 to-purple-50 border border-violet-100 shadow-sm rounded-bl-md'
               }`}>
                 {message.role === 'assistant' ? (
                   <MessageContent 
@@ -557,7 +733,7 @@ export default function ChatbotModule({ sessionId }: ChatbotModuleProps) {
                     }}
                   />
                 ) : (
-                  <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+                  <p className="text-sm whitespace-pre-wrap">{convertEmoticons(message.content)}</p>
                 )}
               </div>
               {message.role === 'user' && (
@@ -657,7 +833,67 @@ export default function ChatbotModule({ sessionId }: ChatbotModuleProps) {
             <Paperclip className="h-5 w-5" />
           </Button>
           
-          <div className="flex-1 relative">
+          <div 
+            className="flex-1 relative"
+            onDragOver={(e) => {
+              e.preventDefault()
+              e.currentTarget.classList.add('ring-2', 'ring-violet-500', 'bg-violet-50')
+            }}
+            onDragLeave={(e) => {
+              e.currentTarget.classList.remove('ring-2', 'ring-violet-500', 'bg-violet-50')
+            }}
+            onDrop={(e) => {
+              e.preventDefault()
+              e.currentTarget.classList.remove('ring-2', 'ring-violet-500', 'bg-violet-50')
+              
+              // Handle image from chatbot
+              const imageData = e.dataTransfer.getData('application/x-chatbot-image')
+              if (imageData) {
+                fetch(imageData)
+                  .then(res => res.blob())
+                  .then(blob => {
+                    const fileObj = Object.assign(blob, { 
+                      name: `immagine_${Date.now()}.png`,
+                      lastModified: Date.now()
+                    }) as File
+                    setAttachedFiles(prev => [...prev, { file: fileObj, type: 'image' as const, preview: imageData }])
+                  })
+                return
+              }
+              
+              // Handle CSV from chatbot dataset generator
+              const csvData = e.dataTransfer.getData('application/x-chatbot-csv')
+              if (csvData) {
+                const blob = new Blob([csvData], { type: 'text/csv' })
+                const fileObj = Object.assign(blob, {
+                  name: `dataset_${Date.now()}.csv`,
+                  lastModified: Date.now()
+                }) as File
+                setAttachedFiles(prev => [...prev, { file: fileObj, type: 'document' as const }])
+                return
+              }
+              
+              // Handle external file drops
+              const files = Array.from(e.dataTransfer.files)
+              files.forEach(file => {
+                const isImage = file.type.startsWith('image/')
+                const attached: AttachedFile = {
+                  file,
+                  type: isImage ? 'image' : 'document',
+                }
+                if (isImage) {
+                  const reader = new FileReader()
+                  reader.onload = (ev) => {
+                    attached.preview = ev.target?.result as string
+                    setAttachedFiles(prev => [...prev, attached])
+                  }
+                  reader.readAsDataURL(file)
+                } else {
+                  setAttachedFiles(prev => [...prev, attached])
+                }
+              })
+            }}
+          >
             <textarea
               ref={inputRef}
               value={input}
@@ -688,15 +924,152 @@ export default function ChatbotModule({ sessionId }: ChatbotModuleProps) {
             <Send className="h-5 w-5" />
           </Button>
         </div>
+        
+        {/* Image provider and format selectors */}
+        <div className="flex items-center justify-center gap-4 mt-2 flex-wrap">
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-slate-400">Generatore:</span>
+            <div className="flex items-center bg-slate-100 rounded-lg p-0.5">
+              <button
+                onClick={() => setImageProvider('flux-schnell')}
+                className={`px-2 py-1 text-xs rounded-md transition-all ${
+                  imageProvider === 'flux-schnell' 
+                    ? 'bg-white shadow text-violet-600 font-medium' 
+                    : 'text-slate-500 hover:text-slate-700'
+                }`}
+              >
+                ⚡ Flux
+              </button>
+              <button
+                onClick={() => setImageProvider('dall-e')}
+                className={`px-2 py-1 text-xs rounded-md transition-all ${
+                  imageProvider === 'dall-e' 
+                    ? 'bg-white shadow text-violet-600 font-medium' 
+                    : 'text-slate-500 hover:text-slate-700'
+                }`}
+              >
+                🎨 DALL-E
+              </button>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-slate-400">Formato:</span>
+            <select
+              value={imageSize}
+              onChange={(e) => setImageSize(e.target.value)}
+              className="text-xs bg-slate-100 border-0 rounded-lg px-2 py-1 text-slate-600 focus:ring-1 focus:ring-violet-300"
+            >
+              <option value="1024x1024">1:1 Quadrato</option>
+              <option value="1024x768">4:3 Orizzontale</option>
+              <option value="768x1024">3:4 Verticale</option>
+              <option value="1280x720">16:9 Panorama</option>
+              <option value="720x1280">9:16 Portrait</option>
+            </select>
+          </div>
+        </div>
       </div>
       </div>
     </div>
   )
 }
 
+// Convert text emoticons to emoji
+function convertEmoticons(text: string): string {
+  const emoticons: Record<string, string> = {
+    ':)': '😊', ':-)': '😊', '(:': '😊',
+    ':D': '😄', ':-D': '😄', 'XD': '😆', 'xD': '😆',
+    ':(': '😢', ':-(': '😢', '):': '😢',
+    ';)': '😉', ';-)': '😉',
+    ':P': '😛', ':-P': '😛', ':p': '😛', ':-p': '😛',
+    ':O': '😮', ':-O': '😮', ':o': '😮', ':-o': '😮',
+    '<3': '❤️', '</3': '💔',
+    ':*': '😘', ':-*': '😘',
+    ":'(": '😢', ":'-(": '😢',
+    ':S': '😕', ':-S': '😕',
+    'B)': '😎', 'B-)': '😎',
+    ':/': '😕', ':-/': '😕',
+    ':3': '😺',
+    'O:)': '😇', 'O:-)': '😇',
+    '>:(': '😠', '>:-(': '😠',
+    ':@': '😡',
+    '^^': '😊', '^_^': '😊',
+    '-_-': '😑', '-.-': '😑',
+    'T_T': '😭', 'T.T': '😭',
+    ':thumbsup:': '👍', ':thumbsdown:': '👎',
+    ':fire:': '🔥', ':heart:': '❤️', ':star:': '⭐',
+    ':ok:': '👌', ':wave:': '👋', ':clap:': '👏',
+    ':100:': '💯', ':rocket:': '🚀', ':sparkles:': '✨',
+  }
+  
+  let result = text
+  // Sort by length descending to match longer emoticons first
+  const sortedEmoticons = Object.entries(emoticons).sort((a, b) => b[0].length - a[0].length)
+  for (const [emoticon, emoji] of sortedEmoticons) {
+    result = result.split(emoticon).join(emoji)
+  }
+  return result
+}
+
+// Extract base64 images from markdown content
+function extractBase64Images(content: string): { cleanContent: string; images: string[] } {
+  const images: string[] = []
+  let cleanContent = content
+  
+  // Find all markdown image patterns with data URLs
+  // Use a simpler approach: find ![...](...) where the URL starts with data:image
+  const startPattern = /!\[[^\]]*\]\(data:image/g
+  let match
+  const matches: {start: number, end: number, url: string}[] = []
+  
+  while ((match = startPattern.exec(content)) !== null) {
+    const urlStart = match.index + match[0].length - 'data:image'.length
+    // Find the closing parenthesis - it should be at the end of the base64 string
+    let depth = 1
+    let i = match.index + match[0].length
+    while (i < content.length && depth > 0) {
+      if (content[i] === '(') depth++
+      else if (content[i] === ')') depth--
+      i++
+    }
+    if (depth === 0) {
+      const url = content.substring(urlStart, i - 1)
+      matches.push({start: match.index, end: i, url})
+    }
+  }
+  
+  // Extract images and remove from content (reverse order to preserve indices)
+  for (let i = matches.length - 1; i >= 0; i--) {
+    images.unshift(matches[i].url)
+    cleanContent = cleanContent.substring(0, matches[i].start) + cleanContent.substring(matches[i].end)
+  }
+  
+  return { cleanContent: cleanContent.trim(), images }
+}
+
 // MessageContent component that handles quiz and CSV rendering
 function MessageContent({ content, onQuizSubmit }: { content: string; onQuizSubmit: (answers: string) => void }) {
-  const { quiz, csv, textContent } = parseContentBlocks(content)
+  const { quiz, csv, textContent, isGenerating, generationType } = parseContentBlocks(content)
+  const { cleanContent, images } = extractBase64Images(textContent)
+  
+  // Show progress bar while generating quiz/image/csv
+  if (isGenerating) {
+    return (
+      <div className="flex flex-col items-center gap-3 py-4">
+        <div className="flex items-center gap-2 text-violet-600">
+          <Loader2 className="h-5 w-5 animate-spin" />
+          <span className="font-medium">
+            {generationType === 'quiz' && 'Generazione quiz in corso...'}
+            {generationType === 'image' && 'Generazione immagine in corso...'}
+            {generationType === 'csv' && 'Generazione dataset in corso...'}
+            {!generationType && 'Elaborazione in corso...'}
+          </span>
+        </div>
+        <div className="w-full max-w-xs bg-gray-200 rounded-full h-2 overflow-hidden">
+          <div className="bg-violet-500 h-2 rounded-full animate-pulse" style={{ width: '60%' }}></div>
+        </div>
+      </div>
+    )
+  }
   
   const downloadCsv = (csvContent: string) => {
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
@@ -712,7 +1085,7 @@ function MessageContent({ content, onQuizSubmit }: { content: string; onQuizSubm
   
   return (
     <div className="prose prose-sm prose-slate max-w-none">
-      {textContent && (
+      {cleanContent && (
         <ReactMarkdown 
           remarkPlugins={[remarkGfm, remarkMath]}
           rehypePlugins={[rehypeKatex]}
@@ -741,15 +1114,64 @@ function MessageContent({ content, onQuizSubmit }: { content: string; onQuizSubm
             blockquote: ({children}) => <blockquote className="border-l-4 border-violet-300 pl-3 italic text-slate-600 my-2">{children}</blockquote>,
           }}
         >
-          {textContent}
+          {cleanContent}
         </ReactMarkdown>
       )}
+      {images.length > 0 && (
+        <div className="my-3 space-y-3">
+          {images.map((imgSrc, idx) => (
+            <div 
+              key={idx} 
+              className="relative group cursor-grab active:cursor-grabbing"
+              draggable
+              onDragStart={(e) => {
+                e.dataTransfer.setData('text/plain', `[IMAGE]${imgSrc}`)
+                e.dataTransfer.setData('application/x-chatbot-image', imgSrc)
+                e.dataTransfer.effectAllowed = 'copy'
+              }}
+            >
+              <img 
+                src={imgSrc} 
+                alt="Immagine generata" 
+                className="max-w-full h-auto rounded-lg shadow-md"
+                style={{ maxHeight: '400px' }}
+                loading="lazy"
+              />
+              <div className="absolute bottom-2 left-2 bg-violet-500/90 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+                Trascina nella chat di classe
+              </div>
+              <button
+                onClick={() => {
+                  const link = document.createElement('a')
+                  link.href = imgSrc
+                  link.download = `immagine_${Date.now()}.png`
+                  document.body.appendChild(link)
+                  link.click()
+                  document.body.removeChild(link)
+                }}
+                className="absolute top-2 right-2 bg-white/90 hover:bg-white p-2 rounded-lg shadow-md opacity-0 group-hover:opacity-100 transition-opacity"
+                title="Scarica immagine"
+              >
+                <Download className="h-4 w-4 text-slate-700" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
       {csv && (
-        <div className="mt-3 border border-purple-200 rounded-lg overflow-hidden">
+        <div 
+          className="mt-3 border border-purple-200 rounded-lg overflow-hidden cursor-grab"
+          draggable
+          onDragStart={(e) => {
+            e.dataTransfer.setData('application/x-chatbot-csv', csv)
+            e.dataTransfer.effectAllowed = 'copy'
+          }}
+        >
           <div className="bg-purple-50 px-3 py-2 flex items-center justify-between">
             <span className="text-sm font-medium text-purple-700 flex items-center gap-2">
               <Database className="h-4 w-4" />
               Dataset CSV ({csv.split('\n').length - 1} righe)
+              <span className="text-xs text-purple-400">• Trascinabile</span>
             </span>
             <Button 
               size="sm" 
@@ -777,19 +1199,65 @@ function MessageContent({ content, onQuizSubmit }: { content: string; onQuizSubm
 }
 
 // Parse quiz JSON and CSV from message content
-function parseContentBlocks(content: string): { quiz: QuizData | null; csv: string | null; textContent: string } {
+function parseContentBlocks(content: string): { quiz: QuizData | null; csv: string | null; textContent: string; isGenerating: boolean; generationType: string | null } {
   let textContent = content
   let quiz: QuizData | null = null
   let csv: string | null = null
+  let isGenerating = false
+  let generationType: string | null = null
   
-  // Extract quiz block
+  // Detect if content contains incomplete JSON (generation in progress)
+  // Look for patterns like ```quiz without closing ``` or partial JSON
+  const hasIncompleteQuiz = content.includes('```quiz') && !content.includes('```quiz') 
+    ? false 
+    : (content.match(/```quiz/g)?.length || 0) > (content.match(/```quiz[\s\S]*?```/g)?.length || 0)
+  const hasIncompleteCsv = (content.match(/```csv/g)?.length || 0) > (content.match(/```csv[\s\S]*?```/g)?.length || 0)
+  const hasIncompleteJson = content.includes('{"') && !content.includes('"}') && content.length < 500
+  
+  // Check for generation indicators in text
+  const generatingQuizPattern = /genero|creo|preparo.*quiz|sto.*generando.*quiz/i
+  const generatingImagePattern = /genero|creo.*immagine|sto.*generando.*immagine|genera.*immagine/i
+  const generatingCsvPattern = /genero|creo.*dataset|sto.*generando.*csv|genera.*csv/i
+  
+  // For messages with base64 images, never show "generating" state
+  // The backend sends the complete message with the image, so we just render it
+  const hasBase64Image = content.includes('data:image') && content.includes('base64')
+  if (hasBase64Image) {
+    // Don't detect as generating - just render the content as-is
+    return { quiz, csv, textContent, isGenerating: false, generationType: null }
+  }
+  
+  if (hasIncompleteQuiz || (generatingQuizPattern.test(content) && content.length < 200)) {
+    isGenerating = true
+    generationType = 'quiz'
+    // Hide raw JSON during generation
+    textContent = textContent.replace(/```quiz[\s\S]*$/, '').replace(/\{[\s\S]*$/, '').trim()
+  } else if (hasIncompleteCsv || (generatingCsvPattern.test(content) && content.length < 200)) {
+    isGenerating = true
+    generationType = 'csv'
+    textContent = textContent.replace(/```csv[\s\S]*$/, '').replace(/\{[\s\S]*$/, '').trim()
+  } else if (generatingImagePattern.test(content) && content.length < 200) {
+    isGenerating = true
+    generationType = 'image'
+  } else if (hasIncompleteJson) {
+    isGenerating = true
+    textContent = textContent.replace(/\{[\s\S]*$/, '').trim()
+  }
+  
+  // Extract completed quiz block
   const quizMatch = content.match(/```quiz\s*([\s\S]*?)```/)
   if (quizMatch) {
     try {
       quiz = JSON.parse(quizMatch[1].trim())
       textContent = textContent.replace(/```quiz[\s\S]*?```/, '').trim()
+      isGenerating = false // Generation complete
     } catch {
-      // Invalid quiz JSON, ignore
+      // Invalid quiz JSON, might still be generating
+      if (quizMatch[1].includes('{')) {
+        isGenerating = true
+        generationType = 'quiz'
+        textContent = textContent.replace(/```quiz[\s\S]*?```/, '').trim()
+      }
     }
   }
   
@@ -798,9 +1266,13 @@ function parseContentBlocks(content: string): { quiz: QuizData | null; csv: stri
   if (csvMatch) {
     csv = csvMatch[1].trim()
     textContent = textContent.replace(/```csv[\s\S]*?```/, '').trim()
+    isGenerating = false // Generation complete
   }
   
-  return { quiz, csv, textContent }
+  // Clean up any remaining raw JSON from display
+  textContent = textContent.replace(/```json[\s\S]*?```/g, '').trim()
+  
+  return { quiz, csv, textContent, isGenerating, generationType }
 }
 
 // Interactive Quiz Component

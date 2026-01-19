@@ -2,19 +2,22 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from typing import Annotated, Optional
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from uuid import UUID
+import secrets
 
 from app.core.database import get_db
 from app.core.security import get_password_hash
+from app.core.config import settings
 from app.api.deps import get_current_admin
-from app.models.user import User, TeacherRequest
+from app.models.user import User, TeacherRequest, ActivationToken
 from app.models.tenant import Tenant
 from app.models.session import Session, SessionStudent
 from app.models.llm import ConversationMessage
 from app.models.enums import UserRole, TeacherRequestStatus, TenantStatus
 from app.schemas.tenant import TenantCreate, TenantUpdate, TenantResponse
 from app.schemas.auth import TeacherRequestResponse
+from app.services.email_service import email_service
 
 router = APIRouter()
 
@@ -105,8 +108,6 @@ async def approve_teacher_request(
     db: Annotated[AsyncSession, Depends(get_db)],
     admin: Annotated[User, Depends(get_current_admin)],
 ):
-    import secrets
-    
     result = await db.execute(
         select(TeacherRequest).where(TeacherRequest.id == request_id)
     )
@@ -131,19 +132,39 @@ async def approve_teacher_request(
         is_verified=True,
     )
     db.add(user)
+    await db.flush()  # Get user.id before commit
+    
+    # Create activation token
+    activation_token = secrets.token_urlsafe(48)
+    token_record = ActivationToken(
+        user_id=user.id,
+        token=activation_token,
+        temporary_password=temp_password,
+        expires_at=datetime.now(timezone.utc) + timedelta(hours=settings.ACTIVATION_TOKEN_EXPIRE_HOURS),
+    )
+    db.add(token_record)
     
     # Update request
     teacher_request.status = TeacherRequestStatus.APPROVED
     teacher_request.reviewed_by_admin_id = admin.id
-    teacher_request.reviewed_at = datetime.utcnow()
+    teacher_request.reviewed_at = datetime.now(timezone.utc)
     
     await db.commit()
     
+    # Send activation email
+    activation_link = f"{settings.FRONTEND_URL}/activate/{activation_token}"
+    email_sent = await email_service.send_teacher_activation_email(
+        to_email=teacher_request.email,
+        first_name=teacher_request.first_name,
+        last_name=teacher_request.last_name,
+        activation_link=activation_link,
+    )
+    
     return {
-        "message": "Teacher approved",
+        "message": "Teacher approved" + (" and email sent" if email_sent else " (email not sent - check SMTP config)"),
         "user_id": str(user.id),
         "email": teacher_request.email,
-        "temporary_password": temp_password,
+        "email_sent": email_sent,
     }
 
 
@@ -165,7 +186,7 @@ async def reject_teacher_request(
     
     teacher_request.status = TeacherRequestStatus.REJECTED
     teacher_request.reviewed_by_admin_id = admin.id
-    teacher_request.reviewed_at = datetime.utcnow()
+    teacher_request.reviewed_at = datetime.now(timezone.utc)
     
     await db.commit()
     
@@ -195,6 +216,36 @@ async def reset_user_password(
         "message": "Password reset successful",
         "email": user.email,
         "temporary_password": temp_password,
+    }
+
+
+@router.delete("/users/{user_id}")
+async def delete_user(
+    user_id: UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    admin: Annotated[User, Depends(get_current_admin)],
+):
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    
+    # Prevent admin from deleting themselves
+    if user.id == admin.id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot delete yourself")
+    
+    # Prevent deleting other admins
+    if user.role == UserRole.ADMIN:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot delete admin users")
+    
+    user_email = user.email
+    user_name = f"{user.first_name} {user.last_name}"
+    
+    await db.delete(user)
+    await db.commit()
+    
+    return {
+        "message": f"User {user_name} ({user_email}) deleted successfully",
     }
 
 

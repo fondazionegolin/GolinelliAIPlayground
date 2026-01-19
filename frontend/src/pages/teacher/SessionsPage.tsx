@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { useToast } from '@/components/ui/use-toast'
 import { Plus, Play, Square, Users, Clock, Copy, Eye } from 'lucide-react'
+import { TeacherNavbar } from '@/components/TeacherNavbar'
 
 interface ClassData {
   id: string
@@ -105,16 +106,19 @@ export default function SessionsPage() {
   }
 
   return (
-    <div>
-      <div className="flex items-center justify-between mb-6">
-        <h2 className="text-2xl font-bold">Sessioni</h2>
-        {selectedClass && (
-          <Button onClick={() => setShowNewForm(true)} disabled={showNewForm}>
-            <Plus className="h-4 w-4 mr-2" />
-            Nuova Sessione
-          </Button>
-        )}
-      </div>
+    <>
+      <TeacherNavbar />
+      <div className="pt-16 min-h-screen bg-slate-50">
+        <div className="max-w-7xl mx-auto p-6">
+          <div className="flex items-center justify-between mb-6">
+            <h2 className="text-2xl font-bold">Sessioni</h2>
+            {selectedClass && (
+              <Button onClick={() => setShowNewForm(true)} disabled={showNewForm}>
+                <Plus className="h-4 w-4 mr-2" />
+                Nuova Sessione
+              </Button>
+            )}
+          </div>
 
       <div className="mb-6">
         <label className="text-sm font-medium mb-2 block">Seleziona Classe</label>
@@ -258,6 +262,8 @@ export default function SessionsPage() {
           )}
         </>
       )}
-    </div>
+        </div>
+      </div>
+    </>
   )
 }

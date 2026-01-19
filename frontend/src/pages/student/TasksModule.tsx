@@ -4,9 +4,15 @@ import { studentApi } from '@/lib/api'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { useToast } from '@/components/ui/use-toast'
-import { 
-  ClipboardList, Check, Clock, Send, ChevronDown, ChevronUp, Lightbulb
+import {
+  ClipboardList, Check, Clock, Send, ChevronDown, ChevronUp, Lightbulb,
+  ChevronLeft, ChevronRight
 } from 'lucide-react'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
+import remarkMath from 'remark-math'
+import rehypeKatex from 'rehype-katex'
+import 'katex/dist/katex.min.css'
 
 interface QuizQuestion {
   question: string
@@ -14,12 +20,23 @@ interface QuizQuestion {
   correctIndex: number
 }
 
+interface PresentationSlide {
+  order: number
+  title: string
+  content: string
+  speaker_notes?: string
+}
+
 interface TaskContent {
-  type: 'quiz' | 'exercise' | 'discussion'
+  type: 'quiz' | 'exercise' | 'discussion' | 'presentation'
   questions?: QuizQuestion[]
   text?: string
   hint?: string
   topic?: string
+  // Presentation fields
+  title?: string
+  description?: string
+  slides?: PresentationSlide[]
 }
 
 interface TaskData {
@@ -127,6 +144,7 @@ export default function TasksModule({ openTaskId }: TasksModuleProps) {
       reading: 'Lettura',
       discussion: 'Discussione',
       project: 'Progetto',
+      presentation: 'Presentazione',
     }
     return labels[type] || type
   }
@@ -138,6 +156,7 @@ export default function TasksModule({ openTaskId }: TasksModuleProps) {
       reading: 'bg-green-100 text-green-700',
       discussion: 'bg-orange-100 text-orange-700',
       project: 'bg-pink-100 text-pink-700',
+      presentation: 'bg-indigo-100 text-indigo-700',
     }
     return colors[type] || 'bg-gray-100 text-gray-700'
   }
@@ -372,6 +391,11 @@ function TaskInputView({
     )
   }
 
+  // Presentation view
+  if (task.task_type === 'presentation' && content?.slides && content.slides.length > 0) {
+    return <PresentationViewer slides={content.slides} title={content.title || task.title} />
+  }
+
   // Default text response (discussion, etc.)
   return (
     <div className="space-y-3">
@@ -389,6 +413,94 @@ function TaskInputView({
         <Send className="h-4 w-4 mr-2" />
         Invia Risposta
       </Button>
+    </div>
+  )
+}
+
+// Presentation Viewer Component
+function PresentationViewer({ slides, title: _title }: { slides: PresentationSlide[]; title: string }) {
+  const [currentSlide, setCurrentSlide] = useState(0)
+
+  // Sort slides by order
+  const sortedSlides = [...slides].sort((a, b) => a.order - b.order)
+  const slide = sortedSlides[currentSlide]
+
+  const goToPrevious = () => {
+    setCurrentSlide((prev) => Math.max(0, prev - 1))
+  }
+
+  const goToNext = () => {
+    setCurrentSlide((prev) => Math.min(sortedSlides.length - 1, prev + 1))
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Slide Display */}
+      <div className="border rounded-xl p-6 bg-gradient-to-br from-indigo-50 to-purple-50 min-h-[300px] relative">
+        {/* Slide number badge */}
+        <div className="absolute top-3 right-3 px-2 py-1 bg-indigo-100 text-indigo-700 text-xs font-medium rounded-full">
+          {currentSlide + 1} / {sortedSlides.length}
+        </div>
+
+        {/* Slide title */}
+        <h3 className="text-xl font-bold text-indigo-800 mb-4 pr-16">
+          {slide?.title}
+        </h3>
+
+        {/* Slide content with markdown */}
+        <div className="prose prose-sm max-w-none prose-headings:text-indigo-800 prose-p:text-gray-700 prose-li:text-gray-700 prose-strong:text-indigo-900">
+          <ReactMarkdown
+            remarkPlugins={[remarkGfm, remarkMath]}
+            rehypePlugins={[rehypeKatex]}
+          >
+            {slide?.content || ''}
+          </ReactMarkdown>
+        </div>
+      </div>
+
+      {/* Navigation Controls */}
+      <div className="flex items-center justify-between">
+        <Button
+          variant="outline"
+          onClick={goToPrevious}
+          disabled={currentSlide === 0}
+          className="flex items-center gap-1"
+        >
+          <ChevronLeft className="h-4 w-4" />
+          Precedente
+        </Button>
+
+        {/* Slide dots */}
+        <div className="flex gap-1.5">
+          {sortedSlides.map((_, idx) => (
+            <button
+              key={idx}
+              onClick={() => setCurrentSlide(idx)}
+              className={`w-2.5 h-2.5 rounded-full transition-colors ${
+                idx === currentSlide
+                  ? 'bg-indigo-600'
+                  : 'bg-indigo-200 hover:bg-indigo-300'
+              }`}
+              aria-label={`Vai alla slide ${idx + 1}`}
+            />
+          ))}
+        </div>
+
+        <Button
+          variant="outline"
+          onClick={goToNext}
+          disabled={currentSlide === sortedSlides.length - 1}
+          className="flex items-center gap-1"
+        >
+          Successiva
+          <ChevronRight className="h-4 w-4" />
+        </Button>
+      </div>
+
+      {/* Keyboard hint */}
+      <p className="text-xs text-center text-gray-400">
+        Usa ← → per navigare tra le slide
+      </p>
     </div>
   )
 }

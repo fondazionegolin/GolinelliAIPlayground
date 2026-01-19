@@ -4,7 +4,7 @@ import { adminApi } from '@/lib/api'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { useToast } from '@/components/ui/use-toast'
-import { User, Key, Copy, X, Shield, GraduationCap } from 'lucide-react'
+import { User, Key, Copy, X, Shield, GraduationCap, Trash2 } from 'lucide-react'
 
 interface UserData {
   id: string
@@ -49,6 +49,27 @@ export default function UsersPage() {
       toast({ variant: 'destructive', title: 'Errore nel reset password' })
     },
   })
+
+  const deleteMutation = useMutation({
+    mutationFn: (userId: string) => adminApi.deleteUser(userId),
+    onSuccess: (response) => {
+      queryClient.invalidateQueries({ queryKey: ['users'] })
+      toast({ title: 'Utente eliminato', description: response.data.message })
+    },
+    onError: (error: Error & { response?: { data?: { detail?: string } } }) => {
+      toast({ 
+        variant: 'destructive', 
+        title: 'Errore', 
+        description: error.response?.data?.detail || 'Impossibile eliminare l\'utente' 
+      })
+    },
+  })
+
+  const handleDelete = (user: UserData) => {
+    if (confirm(`Sei sicuro di voler eliminare l'utente ${user.first_name} ${user.last_name} (${user.email})?`)) {
+      deleteMutation.mutate(user.id)
+    }
+  }
 
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text)
@@ -184,6 +205,17 @@ export default function UsersPage() {
                     <Key className="h-4 w-4 mr-1" />
                     Reset Password
                   </Button>
+                  {user.role !== 'ADMIN' && (
+                    <Button
+                      size="sm"
+                      variant="destructive"
+                      onClick={() => handleDelete(user)}
+                      disabled={deleteMutation.isPending}
+                    >
+                      <Trash2 className="h-4 w-4 mr-1" />
+                      Elimina
+                    </Button>
+                  )}
                 </div>
               </CardContent>
             </Card>

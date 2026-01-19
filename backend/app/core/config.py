@@ -32,6 +32,7 @@ class Settings(BaseSettings):
     OPENAI_API_KEY: Optional[str] = None
     ANTHROPIC_API_KEY: Optional[str] = None
     OLLAMA_BASE_URL: str = "http://localhost:11434"
+    GOLINELLI_IMAGE_API_KEY: Optional[str] = None
     
     # Default LLM settings
     DEFAULT_LLM_PROVIDER: str = "openai"
@@ -46,7 +47,28 @@ class Settings(BaseSettings):
     CELERY_RESULT_BACKEND: str = "redis://localhost:6379/2"
     
     # CORS
-    CORS_ORIGINS: list[str] = ["http://localhost:3000", "http://localhost:5173", "http://localhost", "http://localhost:80"]
+    CORS_ORIGINS: list[str] = [
+        "http://localhost:3000",
+        "http://localhost:5173", 
+        "http://localhost",
+        "http://localhost:80",
+        "https://playground.golinelli.ai",
+        "http://playground.golinelli.ai",
+    ]
+    
+    # Email SMTP (Google Workspace)
+    SMTP_HOST: str = "smtp.gmail.com"
+    SMTP_PORT: int = 587
+    SMTP_USER: str = "a.saracino@fondazionegolinelli.it"
+    SMTP_PASSWORD: str = ""  # App password from Google
+    SMTP_FROM_EMAIL: str = "a.saracino@fondazionegolinelli.it"
+    SMTP_FROM_NAME: str = "EduAI Platform"
+    
+    # Frontend URL for email links
+    FRONTEND_URL: str = "https://playground.golinelli.ai"
+    
+    # Activation token expiry
+    ACTIVATION_TOKEN_EXPIRE_HOURS: int = 72
     
     # File upload limits
     MAX_UPLOAD_SIZE_MB: int = 50
