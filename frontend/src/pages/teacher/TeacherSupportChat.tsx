@@ -8,7 +8,7 @@ import {
   Presentation, Globe, Star, Image, MessageSquare, Settings,
   History, PlusCircle, ChevronLeft, ChevronRight, Trash2
 } from 'lucide-react'
-import { ContentEditorModal } from '@/components/ContentEditorModal'
+import { ArtifactPreviewModal } from '@/components/ArtifactPreviewModal'
 import { TeacherNavbar } from '@/components/TeacherNavbar'
 import { teacherApi } from '@/lib/api'
 import { useQuery } from '@tanstack/react-query'
@@ -48,10 +48,19 @@ function EnhancedMessage({
 }) {
   // Extract quiz_data, lesson_data, exercise_data, or presentation_data blocks
   const extractPublishableContent = (text: string) => {
-    const quizMatch = text.match(/```quiz_data\s*([\s\S]*?)```/)
-    const lessonMatch = text.match(/```lesson_data\s*([\s\S]*?)```/)
-    const exerciseMatch = text.match(/```exercise_data\s*([\s\S]*?)```/)
-    const presentationMatch = text.match(/```presentation_data\s*([\s\S]*?)```/)
+    // More robust regex patterns
+    // Matches ```quiz_data ... ``` OR ```json ...quiz_data ... ``` variations
+    const patterns = {
+      quiz: /```(?:quiz_data|json\s+quiz_data)[\s\S]*?({[\s\S]*?})[\s\S]*?```/i,
+      lesson: /```(?:lesson_data|json\s+lesson_data)[\s\S]*?({[\s\S]*?})[\s\S]*?```/i,
+      exercise: /```(?:exercise_data|json\s+exercise_data)[\s\S]*?({[\s\S]*?})[\s\S]*?```/i,
+      presentation: /```(?:presentation_data|json\s+presentation_data)[\s\S]*?({[\s\S]*?})[\s\S]*?```/i
+    }
+
+    const quizMatch = text.match(patterns.quiz)
+    const lessonMatch = text.match(patterns.lesson)
+    const exerciseMatch = text.match(patterns.exercise)
+    const presentationMatch = text.match(patterns.presentation)
 
     let quizData = null
     let lessonData = null
@@ -60,9 +69,15 @@ function EnhancedMessage({
 
     if (quizMatch) {
       try {
+        // Try to parse the captured group (the JSON part)
         quizData = JSON.parse(quizMatch[1].trim())
       } catch (e) {
         console.error('Failed to parse quiz_data:', e)
+        // Fallback: try to find any JSON object in the match
+        const jsonCandidate = quizMatch[0].match(/{[\s\S]*}/)
+        if (jsonCandidate) {
+             try { quizData = JSON.parse(jsonCandidate[0]) } catch (e2) {}
+        }
       }
     }
 
@@ -71,6 +86,10 @@ function EnhancedMessage({
         lessonData = JSON.parse(lessonMatch[1].trim())
       } catch (e) {
         console.error('Failed to parse lesson_data:', e)
+         const jsonCandidate = lessonMatch[0].match(/{[\s\S]*}/)
+        if (jsonCandidate) {
+             try { lessonData = JSON.parse(jsonCandidate[0]) } catch (e2) {}
+        }
       }
     }
 
@@ -79,6 +98,10 @@ function EnhancedMessage({
         exerciseData = JSON.parse(exerciseMatch[1].trim())
       } catch (e) {
         console.error('Failed to parse exercise_data:', e)
+        const jsonCandidate = exerciseMatch[0].match(/{[\s\S]*}/)
+        if (jsonCandidate) {
+             try { exerciseData = JSON.parse(jsonCandidate[0]) } catch (e2) {}
+        }
       }
     }
 
@@ -87,6 +110,10 @@ function EnhancedMessage({
         presentationData = JSON.parse(presentationMatch[1].trim())
       } catch (e) {
         console.error('Failed to parse presentation_data:', e)
+        const jsonCandidate = presentationMatch[0].match(/{[\s\S]*}/)
+        if (jsonCandidate) {
+             try { presentationData = JSON.parse(jsonCandidate[0]) } catch (e2) {}
+        }
       }
     }
 
@@ -96,11 +123,18 @@ function EnhancedMessage({
   const { quizData, lessonData, exerciseData, presentationData } = extractPublishableContent(content)
 
   // Remove the JSON blocks from display content for cleaner rendering
-  const displayContent = content
-    .replace(/```quiz_data[\s\S]*?```/g, '')
-    .replace(/```lesson_data[\s\S]*?```/g, '')
-    .replace(/```exercise_data[\s\S]*?```/g, '')
-    .replace(/```presentation_data[\s\S]*?```/g, '')
+  // Also updated regex for removal to match the extraction patterns broadly
+  let displayContent = content
+    .replace(/```(?:quiz_data|json\s+quiz_data)[\s\S]*?```/gi, '')
+    .replace(/```(?:lesson_data|json\s+lesson_data)[\s\S]*?```/gi, '')
+    .replace(/```(?:exercise_data|json\s+exercise_data)[\s\S]*?```/gi, '')
+    .replace(/```(?:presentation_data|json\s+presentation_data)[\s\S]*?```/gi, '')
+    .trim()
+  
+  // If display content is empty but we have data, show a default message
+  if (!displayContent && (quizData || lessonData || exerciseData || presentationData)) {
+    displayContent = "_Contenuto generato con successo. Vedi sotto per le opzioni._"
+  }
   // Parse markdown tables and convert to chart data
   const parseTableData = (text: string) => {
     const tableRegex = /\|(.+)\|[\r\n]+\|[-:\s|]+\|[\r\n]+((?:\|.+\|[\r\n]*)+)/g
@@ -326,8 +360,8 @@ function EnhancedMessage({
                   variant="outline"
                   onClick={() => onEditQuiz(quizData)}
                 >
-                  <Edit className="h-4 w-4 mr-1" />
-                  Modifica Quiz
+                  <ClipboardList className="h-4 w-4 mr-1" />
+                  Visualizza/Modifica
                 </Button>
               )}
               {onPublishQuiz && (
@@ -352,8 +386,8 @@ function EnhancedMessage({
                   variant="outline"
                   onClick={() => onEditLesson(lessonData)}
                 >
-                  <Edit className="h-4 w-4 mr-1" />
-                  Modifica Lezione
+                  <BookOpen className="h-4 w-4 mr-1" />
+                  Visualizza/Modifica
                 </Button>
               )}
               {onPublishLesson && (
@@ -404,8 +438,8 @@ function EnhancedMessage({
                   variant="outline"
                   onClick={() => onEditPresentation(presentationData)}
                 >
-                  <Edit className="h-4 w-4 mr-1" />
-                  Modifica Presentazione
+                  <Presentation className="h-4 w-4 mr-1" />
+                  Visualizza/Modifica
                 </Button>
               )}
               {onPublishPresentation && (
@@ -498,9 +532,6 @@ type AgentMode = 'default' | 'web_search' | 'presentation' | 'quiz' | 'lesson' |
 const AGENT_MODES = [
   { id: 'default' as const, icon: MessageSquare, label: 'Chat', color: 'text-slate-600', activeColor: 'text-violet-600 bg-violet-100' },
   { id: 'web_search' as const, icon: Globe, label: 'Web Search', color: 'text-slate-600', activeColor: 'text-emerald-600 bg-emerald-100' },
-  { id: 'presentation' as const, icon: Presentation, label: 'Presentazione', color: 'text-slate-600', activeColor: 'text-indigo-600 bg-indigo-100' },
-  { id: 'quiz' as const, icon: ClipboardList, label: 'Quiz', color: 'text-slate-600', activeColor: 'text-blue-600 bg-blue-100' },
-  { id: 'lesson' as const, icon: BookOpen, label: 'Lezione', color: 'text-slate-600', activeColor: 'text-purple-600 bg-purple-100' },
   { id: 'report' as const, icon: BarChart3, label: 'Report', color: 'text-slate-600', activeColor: 'text-orange-600 bg-orange-100' },
   { id: 'image' as const, icon: Image, label: 'Immagine', color: 'text-slate-600', activeColor: 'text-pink-600 bg-pink-100' },
 ]
@@ -526,6 +557,10 @@ export default function TeacherSupportChat() {
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   
+  const handleModeChange = (modeId: AgentMode) => {
+    setAgentMode(modeId)
+  }
+
   // Fetch teacher's classes and sessions for publishing
   const { data: classesData } = useQuery({
     queryKey: ['teacher-classes'],
@@ -1091,7 +1126,7 @@ export default function TeacherSupportChat() {
                 return (
                   <button
                     key={mode.id}
-                    onClick={() => setAgentMode(mode.id)}
+                    onClick={() => handleModeChange(mode.id)}
                     disabled={isLoading}
                     className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all ${
                       isActive
@@ -1180,13 +1215,14 @@ export default function TeacherSupportChat() {
         </div>
       </div>
 
-      {/* Content Editor Modal */}
+      {/* Artifact Preview/Edit Modal */}
       {editingContent && (
-        <ContentEditorModal
-          content={editingContent.data}
-          type={editingContent.type}
+        <ArtifactPreviewModal
+          isOpen={!!editingContent}
+          initialData={editingContent.data}
+          artifactType={editingContent.type}
           onSave={handleSaveEdited}
-          onCancel={() => setEditingContent(null)}
+          onClose={() => setEditingContent(null)}
         />
       )}
 

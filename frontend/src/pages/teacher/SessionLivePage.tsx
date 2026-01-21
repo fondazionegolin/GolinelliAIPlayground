@@ -1,23 +1,24 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useEffect } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { teacherApi } from '@/lib/api'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useToast } from '@/components/ui/use-toast'
 import { 
   ArrowLeft, Users, Copy, Play, Square, 
-  Snowflake, Sun, Bot, Brain, MessageSquare, Send,
+  Snowflake, Sun, Bot, Brain, MessageSquare,
   ClipboardList, Plus, Trash2, Check, Eye, ChevronDown, ChevronUp, History, User
 } from 'lucide-react'
 import { llmApi } from '@/lib/api'
 import TaskBuilder from '@/components/TaskBuilder'
 import TeacherNotifications from '@/components/TeacherNotifications'
+import ChatSidebar from '@/components/ChatSidebar'
 import { useSocket } from '@/hooks/useSocket'
 import { TeacherNavbar } from '@/components/TeacherNavbar'
+import { useAuthStore } from '@/stores/auth'
 
 interface StudentData {
   id: string
@@ -25,16 +26,6 @@ interface StudentData {
   is_frozen: boolean
   joined_at: string
   last_activity_at: string | null
-}
-
-interface ChatMessage {
-  id: string
-  sender: 'teacher' | 'student'
-  senderName: string
-  content: string
-  timestamp: Date
-  isPrivate: boolean
-  targetStudentId?: string
 }
 
 interface TaskData {
@@ -67,12 +58,11 @@ export default function SessionLivePage() {
   const { sessionId } = useParams<{ sessionId: string }>()
   const queryClient = useQueryClient()
   const { toast } = useToast()
+  const { user } = useAuthStore()
   const [autoRefresh] = useState(true)
   const [activeTab, setActiveTab] = useState('students')
-  const [chatInput, setChatInput] = useState('')
-  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([])
   const [selectedStudent, setSelectedStudent] = useState<string | null>(null)
-  const chatEndRef = useRef<HTMLDivElement>(null)
+  const [sidebarOpen, setSidebarOpen] = useState(true)
   const [showTaskBuilder, setShowTaskBuilder] = useState(false)
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null)
   const [selectedConversationId, setSelectedConversationId] = useState<string | null>(null)
@@ -136,10 +126,6 @@ export default function SessionLivePage() {
     setTeacherNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n))
   }
 
-  useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [chatMessages])
-
   const { data: tasksData } = useQuery<TaskData[]>({
     queryKey: ['session-tasks', sessionId],
     queryFn: async () => {
@@ -200,25 +186,6 @@ export default function SessionLivePage() {
       toast({ title: 'Modello di default aggiornato!' })
     },
   })
-
-  const handleSendMessage = () => {
-    if (!chatInput.trim()) return
-    
-    const newMessage: ChatMessage = {
-      id: Date.now().toString(),
-      sender: 'teacher',
-      senderName: 'Docente',
-      content: chatInput,
-      timestamp: new Date(),
-      isPrivate: !!selectedStudent,
-      targetStudentId: selectedStudent || undefined,
-    }
-    setChatMessages(prev => [...prev, newMessage])
-    setChatInput('')
-    
-    // TODO: Send via Socket.IO when implemented
-    toast({ title: selectedStudent ? 'Messaggio privato inviato' : 'Messaggio inviato alla classe' })
-  }
 
   const createTaskMutation = useMutation({
     mutationFn: (data: { title: string; description: string; task_type: string; content_json?: string }) => 
@@ -294,8 +261,9 @@ export default function SessionLivePage() {
   return (
     <>
       <TeacherNavbar />
-      <div className="pt-16 min-h-screen bg-slate-50">
+      <div className={`pt-16 min-h-screen bg-slate-50 transition-all duration-300 ${sidebarOpen ? 'pr-80' : 'pr-0'}`}>
         <div className="max-w-7xl mx-auto p-6">
+
           <div className="flex flex-wrap items-center gap-2 md:gap-4 mb-6">
             <Link to="/teacher/sessions">
               <Button variant="ghost" size="sm">
@@ -374,7 +342,7 @@ export default function SessionLivePage() {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-5 mb-4 h-auto">
+        <TabsList className="grid w-full grid-cols-4 mb-4 h-auto">
           <TabsTrigger value="students" className="text-xs md:text-sm px-1 md:px-3 py-2">
             <Users className="h-4 w-4 md:mr-2 shrink-0" />
             <span className="hidden md:inline">Studenti</span>
@@ -390,10 +358,6 @@ export default function SessionLivePage() {
           <TabsTrigger value="history" className="text-xs md:text-sm px-1 md:px-3 py-2">
             <History className="h-4 w-4 md:mr-2 shrink-0" />
             <span className="hidden md:inline">Storico</span>
-          </TabsTrigger>
-          <TabsTrigger value="chat" className="text-xs md:text-sm px-1 md:px-3 py-2">
-            <MessageSquare className="h-4 w-4 md:mr-2 shrink-0" />
-            <span className="hidden md:inline">Chat</span>
           </TabsTrigger>
         </TabsList>
 
@@ -608,76 +572,20 @@ export default function SessionLivePage() {
             onSelectConversation={setSelectedConversationId}
           />
         </TabsContent>
-
-        <TabsContent value="chat">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center justify-between">
-                <span className="flex items-center gap-2">
-                  <MessageSquare className="h-5 w-5" />
-                  {selectedStudent 
-                    ? `Chat con ${students.find(s => s.id === selectedStudent)?.nickname || 'Studente'}`
-                    : 'Chat di Classe'
-                  }
-                </span>
-                {selectedStudent && (
-                  <Button variant="ghost" size="sm" onClick={() => setSelectedStudent(null)}>
-                    Torna alla classe
-                  </Button>
-                )}
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="h-[300px] overflow-y-auto bg-gray-50 rounded-lg p-4 mb-4 space-y-3">
-                {chatMessages.length === 0 ? (
-                  <p className="text-center text-muted-foreground py-8">
-                    {selectedStudent 
-                      ? 'Inizia una conversazione privata con lo studente.'
-                      : 'Invia un messaggio a tutta la classe.'
-                    }
-                  </p>
-                ) : (
-                  chatMessages
-                    .filter(m => !selectedStudent || !m.isPrivate || m.targetStudentId === selectedStudent)
-                    .map((msg) => (
-                      <div
-                        key={msg.id}
-                        className={`flex ${msg.sender === 'teacher' ? 'justify-end' : 'justify-start'}`}
-                      >
-                        <div className={`max-w-[70%] rounded-lg p-3 ${
-                          msg.sender === 'teacher' 
-                            ? 'bg-emerald-600 text-white' 
-                            : 'bg-white border'
-                        }`}>
-                          <p className="text-sm">{msg.content}</p>
-                          <p className={`text-xs mt-1 ${msg.sender === 'teacher' ? 'text-emerald-200' : 'text-gray-400'}`}>
-                            {msg.timestamp.toLocaleTimeString()}
-                            {msg.isPrivate && ' (privato)'}
-                          </p>
-                        </div>
-                      </div>
-                    ))
-                )}
-                <div ref={chatEndRef} />
-              </div>
-              <div className="flex gap-2">
-                <Input
-                  value={chatInput}
-                  onChange={(e) => setChatInput(e.target.value)}
-                  onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
-                  placeholder={selectedStudent ? 'Messaggio privato...' : 'Messaggio alla classe...'}
-                  className="flex-1"
-                />
-                <Button onClick={handleSendMessage} disabled={!chatInput.trim()}>
-                  <Send className="h-4 w-4" />
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
       </Tabs>
         </div>
       </div>
+
+      {/* Chat Sidebar fissa a destra */}
+      {sessionId && (
+        <ChatSidebar
+          sessionId={sessionId}
+          userType="teacher"
+          currentUserId={user?.id || 'teacher'}
+          currentUserName="Docente"
+          onToggle={setSidebarOpen}
+        />
+      )}
     </>
   )
 }

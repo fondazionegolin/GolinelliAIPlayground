@@ -7,7 +7,7 @@ import {
   Send, Bot, User, GraduationCap, 
   Lightbulb, ClipboardCheck, ArrowLeft, Sparkles,
   Settings2, RefreshCw, Paperclip, X, File, Database, Download, Loader2,
-  Trash2, ChevronLeft, ChevronRight
+  Trash2, ChevronLeft, ChevronRight, Menu
 } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -101,6 +101,7 @@ export default function ChatbotModule({ sessionId }: ChatbotModuleProps) {
   const [input, setInput] = useState('')
   const [conversationId, setConversationId] = useState<string | null>(null)
   const [showHistory, setShowHistory] = useState(true)
+  const [mobileHistoryOpen, setMobileHistoryOpen] = useState(false)
   const [selectedProfile, setSelectedProfile] = useState<string | null>(null)
   const [selectedModel, setSelectedModel] = useState<LLMModel | null>(null)
   const [showModelSelector, setShowModelSelector] = useState(false)
@@ -299,6 +300,7 @@ export default function ChatbotModule({ sessionId }: ChatbotModuleProps) {
     setConversationId(null)
     setSelectedProfile(null)
     setSelectedModel(null)
+    setMobileHistoryOpen(false)
   }
 
   const handleSelectProfile = (profileKey: string) => {
@@ -419,10 +421,51 @@ export default function ChatbotModule({ sessionId }: ChatbotModuleProps) {
   }
 
   return (
-    <div className="flex h-[650px] bg-gradient-to-b from-slate-50 to-white rounded-xl overflow-hidden shadow-sm border">
-      {/* History Panel */}
+    <div className="flex h-full md:h-[650px] flex-col md:flex-row bg-slate-50 md:bg-gradient-to-b md:from-slate-50 md:to-white md:rounded-xl overflow-hidden md:shadow-sm md:border relative">
+      {/* Mobile History Overlay */}
+      {selectedProfile && mobileHistoryOpen && (
+        <div className="fixed inset-0 z-50 flex md:hidden">
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setMobileHistoryOpen(false)} />
+          <div className="relative w-[85%] max-w-xs bg-white h-full shadow-2xl animate-in slide-in-from-left duration-200 flex flex-col">
+            <div className="p-3 border-b bg-white flex justify-between items-center">
+              <h4 className="font-semibold text-sm text-slate-700">Cronologia</h4>
+              <Button variant="ghost" size="sm" onClick={() => setMobileHistoryOpen(false)}><X className="h-5 w-5" /></Button>
+            </div>
+            {/* Reusing logic via duplicate rendering for simplicity in this constraints */}
+            <div className="flex-1 overflow-y-auto p-2 space-y-1">
+              <button
+                onClick={handleNewChat}
+                className="w-full text-left px-3 py-2 rounded-lg text-sm bg-violet-100 text-violet-700 hover:bg-violet-200 transition-colors flex items-center gap-2"
+              >
+                <Sparkles className="h-4 w-4" />
+                Nuova chat
+              </button>
+              {conversations
+                .filter(c => c.profile_key === selectedProfile)
+                .map((conv) => (
+                  <div
+                    key={conv.id}
+                    className={`group relative w-full text-left px-3 py-2 rounded-lg text-sm transition-colors cursor-pointer ${
+                      conversationId === conv.id 
+                        ? 'bg-slate-200 text-slate-800' 
+                        : 'hover:bg-slate-100 text-slate-600'
+                    }`}
+                    onClick={() => { loadConversation(conv.id); setMobileHistoryOpen(false); }}
+                  >
+                    <div className="truncate font-medium pr-6">{conv.title || 'Conversazione'}</div>
+                    <div className="text-xs text-slate-400">
+                      {new Date(conv.updated_at).toLocaleDateString('it-IT', { day: 'numeric', month: 'short' })}
+                    </div>
+                  </div>
+                ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Desktop History Panel */}
       {selectedProfile && (
-        <div className={`${showHistory ? 'w-64' : 'w-8'} border-r bg-slate-50 flex flex-col transition-all duration-200`}>
+        <div className={`hidden md:flex ${showHistory ? 'w-64' : 'w-8'} border-r bg-slate-50 flex-col transition-all duration-200`}>
           {showHistory ? (
             <>
               <div className="p-3 border-b bg-white">
@@ -590,12 +633,20 @@ export default function ChatbotModule({ sessionId }: ChatbotModuleProps) {
         }}
       >
       {/* Modern Header */}
-      <div className="flex items-center gap-3 px-4 py-3 bg-white border-b">
+      <div className="flex items-center gap-2 md:gap-3 px-3 py-2 md:px-4 md:py-3 bg-white border-b sticky top-0 z-20">
+        <Button 
+          variant="ghost" 
+          size="sm" 
+          onClick={() => setMobileHistoryOpen(true)}
+          className="md:hidden text-slate-500 -ml-2 h-9 w-9 p-0"
+        >
+          <Menu className="h-5 w-5" />
+        </Button>
         <Button 
           variant="ghost" 
           size="sm" 
           onClick={handleNewChat}
-          className="text-slate-500 hover:text-slate-700"
+          className="text-slate-500 hover:text-slate-700 hidden md:flex"
         >
           <ArrowLeft className="h-4 w-4" />
         </Button>
@@ -679,7 +730,7 @@ export default function ChatbotModule({ sessionId }: ChatbotModuleProps) {
       )}
 
       {/* Messages area */}
-      <div className="flex-1 overflow-y-auto px-4 py-6 space-y-6">
+      <div className="flex-1 overflow-y-auto px-3 py-4 md:px-4 md:py-6 space-y-4 md:space-y-6 scroll-smooth pb-24 md:pb-6">
         {messages.length === 0 ? (
           <div className="text-center py-12">
             <div className="inline-flex items-center justify-center w-20 h-20 rounded-2xl bg-gradient-to-br from-violet-500 to-purple-600 mb-6 shadow-lg">
@@ -769,7 +820,7 @@ export default function ChatbotModule({ sessionId }: ChatbotModuleProps) {
       </div>
 
       {/* Modern Input area */}
-      <div className="p-4 bg-white border-t">
+      <div className="fixed bottom-[76px] left-4 right-4 z-40 rounded-2xl shadow-xl bg-white/95 backdrop-blur-sm border border-slate-200/60 p-2 md:p-4 md:static md:bottom-auto md:left-auto md:right-auto md:border-t md:z-auto md:rounded-none md:shadow-none md:bg-white md:border-x-0 md:border-b-0">
         {/* Attached files preview */}
         {attachedFiles.length > 0 && (
           <div className="flex gap-2 mb-3 flex-wrap">

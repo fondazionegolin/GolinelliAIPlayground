@@ -1,18 +1,19 @@
 import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuthStore } from '@/stores/auth'
 import { studentApi } from '@/lib/api'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import { 
   Bot, Brain, Award, MessageSquare, LogOut,
-  Loader2
+  Loader2, User
 } from 'lucide-react'
 import ChatbotModule from './ChatbotModule'
 import TasksModule from './TasksModule'
 import ClassificationModule from './ClassificationModule'
 import ChatSidebar from '@/components/ChatSidebar'
 import { ChatMessage } from '@/hooks/useSocket'
+import { MobileNav } from '@/components/student/MobileNav'
 
 interface SessionInfo {
   session: {
@@ -40,7 +41,7 @@ const moduleIcons: Record<string, typeof Bot> = {
 
 const moduleLabels: Record<string, string> = {
   chatbot: 'Chatbot AI',
-  classification: 'Classificazione ML',
+  classification: 'ML Lab',
   self_assessment: 'Quiz & Badge',
   chat: 'Chat Classe',
 }
@@ -48,6 +49,7 @@ const moduleLabels: Record<string, string> = {
 export default function StudentDashboard() {
   const { studentSession, logout } = useAuthStore()
   const navigate = useNavigate()
+  const location = useLocation()
   const [sessionInfo, setSessionInfo] = useState<SessionInfo | null>(null)
   const [loading, setLoading] = useState(true)
   const [activeModule, setActiveModule] = useState<string | null>(null)
@@ -63,6 +65,14 @@ export default function StudentDashboard() {
       try {
         const response = await studentApi.getSession()
         setSessionInfo(response.data)
+        
+        // Check for direct task link via query param
+        const searchParams = new URLSearchParams(location.search)
+        const taskId = searchParams.get('taskId')
+        if (taskId) {
+          setActiveModule('self_assessment')
+          setOpenTaskId(taskId)
+        }
       } catch {
         logout()
         navigate('/join')
@@ -78,7 +88,7 @@ export default function StudentDashboard() {
     }, 30000)
 
     return () => clearInterval(interval)
-  }, [studentSession, navigate, logout])
+  }, [studentSession, navigate, logout, location.search])
 
   if (loading) {
     return (
@@ -92,7 +102,7 @@ export default function StudentDashboard() {
     return null
   }
 
-  // Filter out 'chat' module since it's always available in sidebar
+  // Filter out 'chat' module since it's handled separately in navigation
   const enabledModules = sessionInfo.enabled_modules.map(m => m.key).filter(k => k !== 'chat')
 
   const handleNotificationClick = (notification: ChatMessage) => {
@@ -106,9 +116,12 @@ export default function StudentDashboard() {
     }
   }
 
+  const isChatActive = activeModule === 'chat'
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-gray-100 lg:pr-80">
-      <header className="bg-white border-b px-4 md:px-6 py-3 md:py-4">
+    <div className="min-h-[100dvh] bg-slate-50 lg:bg-gradient-to-br lg:from-slate-50 lg:to-gray-100 lg:pr-80 pb-20 lg:pb-0">
+      {/* Header - Simplified on Mobile */}
+      <header className="bg-white border-b sticky top-0 z-40 px-4 md:px-6 py-3 shadow-sm lg:shadow-none">
         <div className="max-w-6xl mx-auto flex items-center justify-between gap-2">
           <div className="flex items-center gap-3 md:gap-4 min-w-0">
             <img 
@@ -118,90 +131,137 @@ export default function StudentDashboard() {
               style={{ maxWidth: '40px' }}
             />
             <div className="min-w-0">
-              <h1 className="text-lg md:text-xl font-bold text-slate-800 truncate">{sessionInfo.session.title}</h1>
-              <p className="text-xs md:text-sm text-muted-foreground truncate">
-                Ciao, <span className="font-medium">{sessionInfo.student.nickname}</span>!
-              </p>
+              <h1 className="text-base md:text-xl font-bold text-slate-800 truncate leading-tight">
+                {activeModule && activeModule !== 'chat' ? moduleLabels[activeModule] : sessionInfo.session.title}
+              </h1>
+              {!activeModule && (
+                <p className="text-xs md:text-sm text-muted-foreground truncate hidden md:block">
+                  Ciao, <span className="font-medium">{sessionInfo.student.nickname}</span>!
+                </p>
+              )}
             </div>
           </div>
-          <Button variant="ghost" size="sm" onClick={logout} className="shrink-0">
-            <LogOut className="h-4 w-4 md:mr-2" />
-            <span className="hidden md:inline">Esci</span>
-          </Button>
+          <div className="flex items-center gap-2">
+            {!activeModule && (
+              <div className="flex items-center gap-2 md:hidden bg-slate-100 px-3 py-1.5 rounded-full">
+                <User className="h-4 w-4 text-slate-500" />
+                <span className="text-xs font-medium text-slate-700 max-w-[80px] truncate">
+                  {sessionInfo.student.nickname}
+                </span>
+              </div>
+            )}
+            <Button variant="ghost" size="sm" onClick={logout} className="shrink-0 h-8 w-8 p-0 md:h-9 md:w-auto md:px-4">
+              <LogOut className="h-4 w-4 md:mr-2" />
+              <span className="hidden md:inline">Esci</span>
+            </Button>
+          </div>
         </div>
       </header>
 
-      <main className="max-w-6xl mx-auto p-6">
+      {/* Main Content Area */}
+      <main className={`max-w-6xl mx-auto ${activeModule ? 'p-0 md:p-6' : 'p-4 md:p-6'} h-full`}>
         {!activeModule ? (
-          <>
-            <h2 className="text-lg font-semibold mb-4">Strumenti disponibili</h2>
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+          <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+            {/* Welcome Banner Mobile */}
+            <div className="md:hidden bg-gradient-to-br from-violet-600 to-indigo-600 rounded-2xl p-6 text-white shadow-lg mb-6">
+              <h2 className="text-2xl font-bold mb-2">Ciao, {sessionInfo.student.nickname}! 👋</h2>
+              <p className="text-violet-100 opacity-90 text-sm">
+                Benvenuto nella tua area di apprendimento AI. Seleziona un modulo per iniziare.
+              </p>
+            </div>
+
+            <div className="flex items-center justify-between mb-4 px-1">
+              <h2 className="text-lg font-semibold text-slate-800">Strumenti disponibili</h2>
+            </div>
+            
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-4">
               {enabledModules.map((moduleKey) => {
                 const Icon = moduleIcons[moduleKey] || Bot
                 const label = moduleLabels[moduleKey] || moduleKey
                 return (
                   <Card 
                     key={moduleKey} 
-                    className="cursor-pointer hover:shadow-md transition-shadow"
+                    className="cursor-pointer hover:shadow-lg hover:scale-[1.02] transition-all border-0 shadow-sm md:border active:scale-95 duration-200"
                     onClick={() => setActiveModule(moduleKey)}
                   >
-                    <CardContent className="p-6 text-center">
-                      <Icon className="h-10 w-10 mx-auto mb-3 text-emerald-600" />
-                      <h3 className="font-medium">{label}</h3>
+                    <CardContent className="p-4 md:p-6 flex flex-col items-center justify-center text-center aspect-[4/3] md:aspect-square">
+                      <div className="w-12 h-12 md:w-16 md:h-16 rounded-2xl bg-slate-50 flex items-center justify-center mb-3 md:mb-4 group-hover:bg-violet-50 transition-colors">
+                        <Icon className="h-6 w-6 md:h-8 md:w-8 text-violet-600" />
+                      </div>
+                      <h3 className="font-semibold text-sm md:text-base text-slate-700">{label}</h3>
                     </CardContent>
                   </Card>
                 )
               })}
             </div>
-          </>
+          </div>
         ) : (
-          <div>
-            <Button 
-              variant="ghost" 
-              className="mb-4"
-              onClick={() => setActiveModule(null)}
-            >
-              ← Torna alla home
-            </Button>
-            <ModuleView moduleKey={activeModule} sessionId={sessionInfo.session.id} openTaskId={openTaskId} />
+          <div className="h-full">
+            <div className="md:mb-4 hidden md:block">
+              <Button 
+                variant="ghost" 
+                className="gap-2 pl-0 hover:bg-transparent"
+                onClick={() => setActiveModule(null)}
+              >
+                ← Torna alla home
+              </Button>
+            </div>
+            
+            {/* Mobile-optimized container */}
+            <div className={`${isChatActive ? 'h-[calc(100dvh-130px)] md:h-auto' : ''}`}>
+              {activeModule === 'chat' ? (
+                // Mobile Chat View (replaces Sidebar)
+                <div className="h-full bg-white md:rounded-xl md:border md:shadow-sm overflow-hidden">
+                  <ChatSidebar
+                    sessionId={sessionInfo.session.id}
+                    userType="student"
+                    currentUserId={sessionInfo.student.id}
+                    currentUserName={sessionInfo.student.nickname}
+                    onNotificationClick={handleNotificationClick}
+                    isMobileView={true} // We'll need to support this prop or adapt styling
+                  />
+                </div>
+              ) : (
+                <ModuleView moduleKey={activeModule} sessionId={sessionInfo.session.id} openTaskId={openTaskId} />
+              )}
+            </div>
           </div>
         )}
       </main>
       
-      <ChatSidebar
-        sessionId={sessionInfo.session.id}
-        userType="student"
-        currentUserId={sessionInfo.student.id}
-        currentUserName={sessionInfo.student.nickname}
-        onNotificationClick={handleNotificationClick}
+      {/* Desktop Sidebar - Always visible on desktop */}
+      <div className="hidden lg:block">
+        <ChatSidebar
+          sessionId={sessionInfo.session.id}
+          userType="student"
+          currentUserId={sessionInfo.student.id}
+          currentUserName={sessionInfo.student.nickname}
+          onNotificationClick={handleNotificationClick}
+        />
+      </div>
+
+      {/* Mobile Bottom Navigation */}
+      <MobileNav 
+        activeModule={activeModule} 
+        onNavigate={setActiveModule}
       />
     </div>
   )
 }
 
 function ModuleView({ moduleKey, sessionId, openTaskId }: { moduleKey: string; sessionId: string; openTaskId?: string | null }) {
-  const label = moduleLabels[moduleKey] || moduleKey
-
   if (moduleKey === 'chatbot') {
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle>{label}</CardTitle>
-        </CardHeader>
-        <CardContent className="p-0">
-          <ChatbotModule sessionId={sessionId} />
-        </CardContent>
-      </Card>
+      <div className="h-[calc(100dvh-120px)] md:h-auto">
+        <ChatbotModule sessionId={sessionId} />
+      </div>
     )
   }
 
   if (moduleKey === 'self_assessment') {
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle>{label}</CardTitle>
-        </CardHeader>
-        <CardContent className="p-0">
+      <Card className="border-0 md:border shadow-none md:shadow-sm h-full">
+        <CardContent className="p-0 h-full">
           <TasksModule openTaskId={openTaskId} />
         </CardContent>
       </Card>
@@ -210,34 +270,11 @@ function ModuleView({ moduleKey, sessionId, openTaskId }: { moduleKey: string; s
 
   if (moduleKey === 'classification') {
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle>{label}</CardTitle>
-        </CardHeader>
-        <CardContent className="p-0">
-          <ClassificationModule />
-        </CardContent>
-      </Card>
+      <div className="pb-4">
+        <ClassificationModule />
+      </div>
     )
   }
 
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>{label}</CardTitle>
-      </CardHeader>
-      <CardContent>
-        <p className="text-muted-foreground">
-          Modulo {label} - Interfaccia in sviluppo
-        </p>
-        {moduleKey === 'chat' && (
-          <div className="mt-4 p-4 bg-gray-50 rounded-lg">
-            <p className="text-sm">
-              Chat di classe per comunicare con il docente e i compagni.
-            </p>
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  )
+  return null
 }

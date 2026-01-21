@@ -333,7 +333,7 @@ function ImageClassification() {
   const totalSamples = classes.reduce((sum, c) => sum + c.samples.length, 0)
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+    <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 pb-20 lg:pb-0">
       {/* Webcam Panel */}
       <Card className="lg:col-span-1">
         <CardHeader className="pb-2">
@@ -449,6 +449,7 @@ function ImageClassification() {
                 <Button
                   size="sm"
                   variant={isCapturing === cls.id ? "destructive" : "secondary"}
+                  className="h-12 w-full touch-manipulation"
                   onMouseDown={() => startCapturing(cls.id)}
                   onMouseUp={stopCapturing}
                   onMouseLeave={stopCapturing}
@@ -456,8 +457,8 @@ function ImageClassification() {
                   onTouchEnd={stopCapturing}
                   disabled={cls.samples.length >= 100 || (isCapturing !== null && isCapturing !== cls.id)}
                 >
-                  <Camera className="h-4 w-4 mr-1" />
-                  {isCapturing === cls.id ? 'Rilascia...' : 'Tieni premuto per scattare'}
+                  <Camera className="h-5 w-5 mr-2" />
+                  {isCapturing === cls.id ? 'Rilascia...' : 'Tieni premuto'}
                 </Button>
               </div>
               

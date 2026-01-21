@@ -143,6 +143,18 @@ export function TeacherNavbar() {
                     Sessioni
                   </Button>
                 </Link>
+                <Link to="/teacher/documents">
+                  <Button
+                    variant="ghost"
+                    className={`${
+                      isActive('/teacher/documents')
+                        ? 'bg-violet-50 text-violet-700 font-medium'
+                        : 'text-slate-600 hover:bg-slate-50'
+                    }`}
+                  >
+                    Documenti
+                  </Button>
+                </Link>
               </div>
             </div>
 
@@ -236,6 +248,19 @@ export function TeacherNavbar() {
                 }`}
               >
                 Sessioni
+              </Button>
+            </Link>
+            <Link to="/teacher/documents">
+              <Button
+                size="sm"
+                variant="ghost"
+                className={`${
+                  isActive('/teacher/documents')
+                    ? 'bg-violet-50 text-violet-700 font-medium'
+                    : 'text-slate-600 hover:bg-slate-50'
+                }`}
+              >
+                Documenti
               </Button>
             </Link>
           </div>

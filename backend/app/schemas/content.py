@@ -17,6 +17,7 @@ class TeacherIntent(str, Enum):
     WEB_SEARCH = "web_search"
     ANALYTICS = "analytics"
     DOCUMENT_HELP = "document_help"
+    TEXT_EDITOR = "text_editor"
 
 
 class IntentResult(BaseModel):
@@ -77,7 +78,9 @@ class LessonData(BaseModel):
     """Complete lesson data structure"""
     title: str = Field(..., min_length=3, max_length=255, description="Lesson title")
     description: str = Field(..., min_length=5, description="Lesson overview")
-    objectives: List[str] = Field(..., min_items=1, description="Learning objectives")
+    learning_objectives: List[str] = Field(..., min_items=1, description="Learning objectives")
+    key_concepts: Optional[List[str]] = Field(default_factory=list, description="Key concepts covered")
+    summary: Optional[str] = Field(None, description="Lesson summary")
     sections: List[LessonSection] = Field(..., min_items=1, description="Lesson sections")
     activities: Optional[List[str]] = Field(default_factory=list, description="Practical activities")
     resources: Optional[List[str]] = Field(default_factory=list, description="Additional resources")
