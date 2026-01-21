@@ -7,50 +7,78 @@
 
 @layer base {
   :root {
-    /* Dyslexia-friendly typography */
+    /* Dyslexia-friendly typography & Pastel Theme */
     --font-family: 'Atkinson Hyperlegible', system-ui, sans-serif;
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
+    
+    /* Warm, high-readability background */
+    --background: 40 20% 99%; 
+    /* Soft dark gray text for reduced eye strain but high contrast */
+    --foreground: 222 20% 20%;
+
+    /* Pure white cards for clarity on warm bg */
     --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
+    --card-foreground: 222 20% 20%;
+    
     --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
-    --primary: 221.2 83.2% 53.3%;
-    --primary-foreground: 210 40% 98%;
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 221.2 83.2% 53.3%;
-    --radius: 0.5rem;
+    --popover-foreground: 222 20% 20%;
+
+    /* Pastel Lavender Primary */
+    --primary: 260 60% 70%;
+    --primary-foreground: 0 0% 100%;
+
+    /* Pastel Mint Secondary */
+    --secondary: 160 50% 90%;
+    --secondary-foreground: 160 40% 30%;
+
+    /* Pastel Peach Muted/Accent */
+    --muted: 20 60% 94%;
+    --muted-foreground: 215 16% 40%;
+    
+    --accent: 20 60% 90%;
+    --accent-foreground: 222 47% 11%;
+
+    /* Soft Red Destructive */
+    --destructive: 0 70% 85%;
+    --destructive-foreground: 0 60% 30%;
+
+    --border: 214 32% 91%;
+    --input: 214 32% 91%;
+    --ring: 260 60% 70%;
+    
+    /* More rounded corners for friendly UI */
+    --radius: 1.5rem;
   }
 
   .dark {
-    --background: 222.2 84% 4.9%;
+    /* Soft Dark Mode (Deep Slate/Purple) */
+    --background: 260 20% 10%;
     --foreground: 210 40% 98%;
-    --card: 222.2 84% 4.9%;
+
+    --card: 260 20% 15%;
     --card-foreground: 210 40% 98%;
-    --popover: 222.2 84% 4.9%;
+
+    --popover: 260 20% 15%;
     --popover-foreground: 210 40% 98%;
-    --primary: 217.2 91.2% 59.8%;
-    --primary-foreground: 222.2 47.4% 11.2%;
-    --secondary: 217.2 32.6% 17.5%;
+
+    /* Lighter Lavender for Dark Mode visibility */
+    --primary: 260 60% 80%;
+    --primary-foreground: 260 40% 20%;
+
+    --secondary: 260 20% 25%;
     --secondary-foreground: 210 40% 98%;
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
-    --accent: 217.2 32.6% 17.5%;
+
+    --muted: 260 20% 25%;
+    --muted-foreground: 215 20% 70%;
+
+    --accent: 260 20% 25%;
     --accent-foreground: 210 40% 98%;
-    --destructive: 0 62.8% 30.6%;
+
+    --destructive: 0 62% 30%;
     --destructive-foreground: 210 40% 98%;
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 224.3 76.3% 48%;
+
+    --border: 260 20% 25%;
+    --input: 260 20% 25%;
+    --ring: 260 60% 80%;
   }
 }
 
@@ -59,17 +87,17 @@
     @apply border-border;
   }
   html {
-    font-size: 17px; /* Medium size for better readability */
+    font-size: 18px; /* Increased base size for better readability */
   }
   body {
     @apply bg-background text-foreground;
     font-family: var(--font-family);
-    line-height: 1.6; /* Increased line height for dyslexia */
-    letter-spacing: 0.02em; /* Slight letter spacing */
+    line-height: 1.7; /* Further increased line height */
+    letter-spacing: 0.03em; /* Enhanced letter spacing */
   }
 }
 
-/* Animated gradient for branding */
+/* Animated gradient for branding - adjusted to pastel */
 @keyframes gradient-shift {
   0% {
     background-position: 0% 50%;
