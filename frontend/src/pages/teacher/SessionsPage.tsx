@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { useToast } from '@/components/ui/use-toast'
-import { Plus, Play, Square, Users, Clock, Copy, Eye } from 'lucide-react'
+import { Plus, Play, Square, Users, Clock, Copy, Eye, Trash2 } from 'lucide-react'
 import { TeacherNavbar } from '@/components/TeacherNavbar'
 
 interface ClassData {
@@ -70,6 +70,14 @@ export default function SessionsPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['sessions'] })
       toast({ title: 'Stato sessione aggiornato!' })
+    },
+  })
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => teacherApi.deleteSession(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['sessions'] })
+      toast({ title: 'Sessione eliminata!', variant: "destructive" })
     },
   })
 
@@ -246,6 +254,20 @@ export default function SessionsPage() {
                         >
                           <Play className="h-4 w-4 mr-2" />
                           Riprendi
+                        </Button>
+                      )}
+                      {session.status === 'ended' && (
+                        <Button
+                          variant="destructive"
+                          onClick={() => {
+                            if (confirm('Sei sicuro di voler eliminare questa sessione?')) {
+                              deleteMutation.mutate(session.id)
+                            }
+                          }}
+                          disabled={deleteMutation.isPending}
+                        >
+                          <Trash2 className="h-4 w-4 mr-2" />
+                          Elimina
                         </Button>
                       )}
                       <Link to={`/teacher/sessions/${session.id}`}>

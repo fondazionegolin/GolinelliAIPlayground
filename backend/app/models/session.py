@@ -70,6 +70,7 @@ class SessionStudent(Base):
     session_id = Column(UUID(as_uuid=True), ForeignKey("sessions.id"), nullable=False, index=True)
     nickname = Column(String, nullable=False)
     join_token = Column(Text, unique=True, nullable=False)
+    avatar_url = Column(Text, nullable=True)
     is_frozen = Column(Boolean, default=False, nullable=False)
     frozen_reason = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)

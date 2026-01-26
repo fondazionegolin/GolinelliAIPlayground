@@ -8,6 +8,7 @@ export interface ChatMessage {
   sender_type: 'TEACHER' | 'STUDENT'
   sender_id: string
   sender_name?: string
+  sender_avatar_url?: string
   text: string
   attachments?: unknown[]
   created_at: string
@@ -33,7 +34,7 @@ interface UseSocketReturn {
   connected: boolean
   messages: ChatMessage[]
   onlineUsers: OnlineUser[]
-  sendPublicMessage: (text: string) => void
+  sendPublicMessage: (text: string, attachmentUrls?: string[]) => Promise<void>
   sendPrivateMessage: (targetId: string, text: string) => void
   notifications: ChatMessage[]
   clearNotification: (id: string) => void
@@ -208,19 +209,27 @@ export function useSocket(sessionId?: string): UseSocketReturn {
     }
   }, [authToken, sessionId])
 
-  const sendPublicMessage = useCallback(async (text: string) => {
-    if (!sessionId || !text.trim()) return
+  const sendPublicMessage = useCallback(async (text: string, attachmentUrls: string[] = []) => {
+    if (!sessionId || (!text.trim() && attachmentUrls.length === 0)) return
     
     try {
+      // Build attachments array
+      const attachments = attachmentUrls.map(url => ({
+        type: 'image',
+        url,
+        filename: url.split('/').pop() || 'image'
+      }))
+
       // Save to database via API - the socket will broadcast to everyone including sender
       // So we don't add locally, we wait for the socket event
-      await chatApi.sendSessionMessage(sessionId, text.trim())
+      await chatApi.sendSessionMessage(sessionId, text.trim(), attachments)
       
       // Emit via Socket.IO for real-time delivery (backend will broadcast to all including sender)
       if (socketRef.current) {
         socketRef.current.emit('chat_public_message', {
           session_id: sessionId,
           text: text.trim(),
+          attachments,
         })
       }
     } catch (err) {

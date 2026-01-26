@@ -514,7 +514,7 @@ async def send_message(
 async def generate_image(
     request: dict,
     db: Annotated[AsyncSession, Depends(get_db)],
-    student: Annotated[SessionStudent, Depends(get_current_student)],
+    auth: Annotated[StudentOrTeacher, Depends(get_student_or_teacher)],
 ):
     """Generate an image using DALL-E 3 or Flux"""
     prompt = request.get("prompt", "")

@@ -42,6 +42,9 @@ export const studentApi = {
   getTasks: () => api.get('/student/tasks'),
   submitTask: (taskId: string, content?: string, content_json?: string) =>
     api.post(`/student/tasks/${taskId}/submit`, null, { params: { content, content_json } }),
+  getProfile: () => api.get('/student/profile'),
+  updateProfile: (data: { avatar_url?: string }) =>
+    api.patch('/student/profile', data),
 }
 
 export const adminApi = {
@@ -125,8 +128,18 @@ export const chatApi = {
     api.post(`/chat/rooms/${roomId}/messages`, { message_text, attachments }),
   getSessionMessages: (sessionId: string) =>
     api.get(`/chat/session/${sessionId}/messages`),
-  sendSessionMessage: (sessionId: string, text: string) =>
-    api.post(`/chat/session/${sessionId}/messages`, { text }),
+  sendSessionMessage: (sessionId: string, text: string, attachments: unknown[] = []) =>
+    api.post(`/chat/session/${sessionId}/messages`, { text, attachments }),
+  clearSessionMessages: (sessionId: string) =>
+    api.delete(`/chat/session/${sessionId}/messages`),
+  uploadFiles: (sessionId: string, files: File[]) => {
+    const formData = new FormData()
+    files.forEach(file => formData.append('files', file))
+    formData.append('session_id', sessionId)
+    return api.post('/chat/upload', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    })
+  },
 }
 
 export const llmApi = {
@@ -147,15 +160,17 @@ export const llmApi = {
     api.delete(`/llm/conversations/${conversationId}`),
   deleteAllConversations: (sessionId: string) =>
     api.delete(`/llm/sessions/${sessionId}/conversations`),
-  teacherChat: (content: string, history: { role: string; content: string }[], profileKey?: string, provider?: string, model?: string) =>
-    api.post('/llm/teacher/chat', { content, history, profile_key: profileKey, provider, model }),
-  teacherChatWithFiles: (content: string, history: { role: string; content: string }[], profileKey: string, provider: string, model: string, files: File[]) => {
+  teacherChat: (content: string, history: { role: string; content: string }[], profileKey?: string, provider?: string, model?: string, imageProvider?: string, imageSize?: string) =>
+    api.post('/llm/teacher/chat', { content, history, profile_key: profileKey, provider, model, image_provider: imageProvider, image_size: imageSize }),
+  teacherChatWithFiles: (content: string, history: { role: string; content: string }[], profileKey: string, provider: string, model: string, files: File[], imageProvider?: string, imageSize?: string) => {
     const formData = new FormData()
     formData.append('content', content)
     formData.append('history', JSON.stringify(history))
     formData.append('profile_key', profileKey)
     formData.append('provider', provider)
     formData.append('model', model)
+    if (imageProvider) formData.append('image_provider', imageProvider)
+    if (imageSize) formData.append('image_size', imageSize)
     files.forEach(file => formData.append('files', file))
     return api.post('/llm/teacher/chat-with-files', formData, {
       headers: { 'Content-Type': 'multipart/form-data' }

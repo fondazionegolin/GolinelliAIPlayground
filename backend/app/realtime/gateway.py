@@ -5,6 +5,9 @@ import json
 
 from app.core.security import decode_token
 from app.core.config import settings
+from app.core.database import AsyncSessionLocal
+from app.models.session import SessionStudent
+from sqlalchemy import select
 
 sio = socketio.AsyncServer(
     async_mode="asgi",
@@ -20,6 +23,7 @@ connected_users: dict[str, dict] = {}  # sid -> user info
 session_presence: dict[str, set] = {}  # session_id -> set of sids
 user_activities: dict[str, dict] = {}  # student_id -> activity info
 student_nicknames: dict[str, str] = {}  # student_id -> nickname
+student_avatars: dict[str, str] = {}  # student_id -> avatar_url
 
 
 def get_user_from_token(token: str) -> Optional[dict]:
@@ -63,6 +67,18 @@ async def connect(sid, environ, auth):
         
         # Store nickname for later use
         student_nicknames[student_id] = nickname
+        
+        # Fetch and store avatar URL from database
+        try:
+            async with AsyncSessionLocal() as db:
+                result = await db.execute(
+                    select(SessionStudent).where(SessionStudent.id == student_id)
+                )
+                student_obj = result.scalar_one_or_none()
+                if student_obj and student_obj.avatar_url:
+                    student_avatars[student_id] = student_obj.avatar_url
+        except Exception as e:
+            print(f"Error fetching student avatar: {e}")
         
         if session_id not in session_presence:
             session_presence[session_id] = set()
@@ -285,22 +301,27 @@ async def chat_public_message(sid, data):
     text = data.get("text", "")
     attachments = data.get("attachments", [])
     
-    # Get sender name
+    # Get sender name and avatar
     if user["type"] == "student":
         sender_name = student_nicknames.get(user["id"], "Studente")
+        sender_avatar_url = student_avatars.get(user["id"])
     else:
         sender_name = "Docente"
+        sender_avatar_url = None  # TODO: Add teacher avatar support
+    
+    # Note: Message persistence is handled by the API endpoint (sendSessionMessage)
+    # which is called before this socket event. This socket event only broadcasts
+    # the message in real-time. The API has already saved to database.
     
     message = {
         "sender_type": user["type"].upper(),
         "sender_id": user["id"],
         "sender_name": sender_name,
+        "sender_avatar_url": sender_avatar_url,
         "text": text,
         "attachments": attachments,
         "created_at": datetime.utcnow().isoformat(),
     }
-    
-    # TODO: Persist to database
     
     await sio.emit(
         "chat_message",
@@ -325,17 +346,20 @@ async def chat_private_message(sid, data):
     text = data.get("text", "")
     attachments = data.get("attachments", [])
     
-    # Get sender name
+    # Get sender name and avatar
     if user["type"] == "student":
         sender_name = student_nicknames.get(user["id"], "Studente")
+        sender_avatar_url = student_avatars.get(user["id"])
     else:
         sender_name = "Docente"
+        sender_avatar_url = None  # TODO: Add teacher avatar support
     
     message = {
         "id": f"dm-{datetime.utcnow().timestamp()}",
         "sender_type": user["type"].upper(),
         "sender_id": user["id"],
         "sender_name": sender_name,
+        "sender_avatar_url": sender_avatar_url,
         "text": text,
         "attachments": attachments,
         "created_at": datetime.utcnow().isoformat(),

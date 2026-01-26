@@ -4,6 +4,7 @@ from sqlalchemy import select
 from typing import Annotated
 from datetime import datetime
 from uuid import UUID
+from pydantic import BaseModel
 
 from app.core.database import get_db
 from app.core.security import create_student_join_token
@@ -16,6 +17,10 @@ from app.schemas.session import SessionResponse, SessionModuleResponse
 from app.realtime.gateway import sio
 
 router = APIRouter()
+
+
+class UpdateProfileRequest(BaseModel):
+    avatar_url: str | None = None
 
 
 @router.post("/join", response_model=StudentJoinResponse)
@@ -134,6 +139,39 @@ async def get_session_info(
     }
 
 
+@router.get("/profile")
+async def get_profile(
+    student: Annotated[SessionStudent, Depends(get_current_student)],
+):
+    """Get student profile"""
+    return {
+        "id": str(student.id),
+        "nickname": student.nickname,
+        "avatar_url": student.avatar_url,
+        "created_at": student.created_at.isoformat() if student.created_at else None,
+    }
+
+
+@router.patch("/profile")
+async def update_profile(
+    request: UpdateProfileRequest,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    student: Annotated[SessionStudent, Depends(get_current_student)],
+):
+    """Update student profile (avatar, etc)"""
+    if request.avatar_url is not None:
+        student.avatar_url = request.avatar_url
+    
+    await db.commit()
+    await db.refresh(student)
+    
+    return {
+        "id": str(student.id),
+        "nickname": student.nickname,
+        "avatar_url": student.avatar_url,
+    }
+
+
 @router.post("/heartbeat")
 async def heartbeat(
     db: Annotated[AsyncSession, Depends(get_db)],
@@ -197,8 +235,8 @@ async def submit_task(
     task_id: UUID,
     db: Annotated[AsyncSession, Depends(get_db)],
     student: Annotated[SessionStudent, Depends(get_current_student)],
-    content: str = None,
-    content_json: str = None,
+    content: str | None = None,
+    content_json: str | None = None,
 ):
     """Submit a task response"""
     # Verify task exists and is published

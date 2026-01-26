@@ -571,8 +571,11 @@ function ExerciseFormEditor({ content, onChange }: { content: ExerciseData; onCh
   )
 }
 
+import { SlideEditor, SlideBlock } from '@/components/SlideEditor'
+
 // Presentation Form Editor
 function PresentationFormEditor({ content, onChange }: { content: PresentationData; onChange: (c: any) => void }) {
+  const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null)
   const updateField = (field: keyof PresentationData, value: any) => {
     onChange({ ...content, [field]: value })
   }
@@ -580,7 +583,7 @@ function PresentationFormEditor({ content, onChange }: { content: PresentationDa
   const addSlide = () => {
     onChange({
       ...content,
-      slides: [...content.slides, { order: content.slides.length, title: '', content: '' }]
+      slides: [...content.slides, { order: content.slides.length, title: '', content: '[]' }]
     })
   }
 
@@ -611,6 +614,27 @@ function PresentationFormEditor({ content, onChange }: { content: PresentationDa
     // Update order numbers
     const reorderedSlides = newSlides.map((slide, idx) => ({ ...slide, order: idx }))
     onChange({ ...content, slides: reorderedSlides })
+  }
+
+  const getBlocks = (content: string): SlideBlock[] => {
+    try {
+      if (content.trim().startsWith('[')) {
+        return JSON.parse(content)
+      }
+      // Legacy text content conversion
+      return content ? [{
+        id: 'legacy-text',
+        type: 'text',
+        content: content,
+        x: 50,
+        y: 50,
+        width: 600,
+        height: 400,
+        style: { fontSize: 16, color: '#000000', fontFamily: 'Arial' }
+      }] : []
+    } catch {
+      return []
+    }
   }
 
   return (
@@ -650,16 +674,25 @@ function PresentationFormEditor({ content, onChange }: { content: PresentationDa
           </Button>
         </div>
 
-        <div className="space-y-4">
+        <div className="space-y-8">
           {content.slides.map((slide, index) => (
-            <div key={index} className="border rounded-lg p-4 bg-gradient-to-br from-indigo-50 to-purple-50">
-              <div className="flex items-start justify-between mb-3">
-                <h4 className="font-medium text-gray-900">Slide {index + 1}</h4>
-                <div className="flex items-center gap-2">
+            <div key={index} className="border rounded-lg overflow-hidden bg-white shadow-sm">
+              <div className="flex items-center justify-between p-3 bg-gray-50 border-b">
+                <div className="flex items-center gap-3 flex-1">
+                  <span className="font-bold text-gray-500 text-lg w-6">{index + 1}</span>
+                  <input
+                    type="text"
+                    value={slide.title}
+                    onChange={(e) => updateSlide(index, 'title', e.target.value)}
+                    className="flex-1 px-3 py-1.5 border rounded-md bg-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-sm font-medium"
+                    placeholder="Titolo della slide..."
+                  />
+                </div>
+                <div className="flex items-center gap-1 ml-4">
                   <button
                     onClick={() => moveSlide(index, 'up')}
                     disabled={index === 0}
-                    className="text-gray-600 hover:text-gray-900 disabled:opacity-30 disabled:cursor-not-allowed"
+                    className="p-1.5 text-gray-500 hover:text-gray-900 hover:bg-gray-200 rounded disabled:opacity-30"
                     title="Sposta su"
                   >
                     ↑
@@ -667,45 +700,27 @@ function PresentationFormEditor({ content, onChange }: { content: PresentationDa
                   <button
                     onClick={() => moveSlide(index, 'down')}
                     disabled={index === content.slides.length - 1}
-                    className="text-gray-600 hover:text-gray-900 disabled:opacity-30 disabled:cursor-not-allowed"
+                    className="p-1.5 text-gray-500 hover:text-gray-900 hover:bg-gray-200 rounded disabled:opacity-30"
                     title="Sposta giù"
                   >
                     ↓
                   </button>
                   <button
                     onClick={() => removeSlide(index)}
-                    className="text-red-600 hover:text-red-700"
+                    className="p-1.5 text-red-500 hover:text-red-700 hover:bg-red-50 rounded ml-2"
                   >
                     <Trash2 className="h-4 w-4" />
                   </button>
                 </div>
               </div>
 
-              <div className="space-y-3">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Titolo slide *</label>
-                  <input
-                    type="text"
-                    value={slide.title}
-                    onChange={(e) => updateSlide(index, 'title', e.target.value)}
-                    className="w-full px-3 py-2 border rounded-lg bg-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-                    placeholder="Titolo della slide..."
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Contenuto *
-                    <span className="text-xs text-gray-500 ml-2">(supporta Markdown)</span>
-                  </label>
-                  <textarea
-                    value={slide.content}
-                    onChange={(e) => updateSlide(index, 'content', e.target.value)}
-                    className="w-full px-3 py-2 border rounded-lg bg-white font-mono text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-                    rows={6}
-                    placeholder="Contenuto della slide (puoi usare Markdown per formattazione)..."
-                  />
-                </div>
+              <div className="h-[500px] border-b bg-gray-100">
+                <SlideEditor 
+                  blocks={getBlocks(slide.content)}
+                  onChange={(blocks) => updateSlide(index, 'content', JSON.stringify(blocks))}
+                  selectedBlockId={selectedBlockId}
+                  onSelectBlock={setSelectedBlockId}
+                />
               </div>
             </div>
           ))}

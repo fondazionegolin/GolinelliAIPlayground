@@ -2,83 +2,73 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Dyslexia-friendly font - Atkinson Hyperlegible (free, accessible) */
-@import url('https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400;1,700&display=swap');
+/* Modern SaaS Font - Plus Jakarta Sans */
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap');
 
 @layer base {
   :root {
-    /* Dyslexia-friendly typography & Pastel Theme */
-    --font-family: 'Atkinson Hyperlegible', system-ui, sans-serif;
+    --font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
     
-    /* Warm, high-readability background */
-    --background: 40 20% 99%; 
-    /* Soft dark gray text for reduced eye strain but high contrast */
-    --foreground: 222 20% 20%;
+    /* Cool Light Gray Background (SaaS standard) */
+    --background: 210 40% 98%;
+    /* Deep Navy Text */
+    --foreground: 222 47% 11%;
 
-    /* Pure white cards for clarity on warm bg */
+    /* Pure White Surface */
     --card: 0 0% 100%;
-    --card-foreground: 222 20% 20%;
+    --card-foreground: 222 47% 11%;
     
     --popover: 0 0% 100%;
-    --popover-foreground: 222 20% 20%;
+    --popover-foreground: 222 47% 11%;
 
-    /* Pastel Lavender Primary */
-    --primary: 260 60% 70%;
-    --primary-foreground: 0 0% 100%;
+    /* Vibrant Indigo Primary (Professional & Action-oriented) */
+    --primary: 243 75% 59%;
+    --primary-foreground: 210 40% 98%;
 
-    /* Pastel Mint Secondary */
-    --secondary: 160 50% 90%;
-    --secondary-foreground: 160 40% 30%;
+    /* Soft Slate Secondary */
+    --secondary: 210 40% 96%;
+    --secondary-foreground: 222 47% 11%;
 
-    /* Pastel Peach Muted/Accent */
-    --muted: 20 60% 94%;
-    --muted-foreground: 215 16% 40%;
+    --muted: 210 40% 96%;
+    --muted-foreground: 215 16% 47%;
     
-    --accent: 20 60% 90%;
-    --accent-foreground: 222 47% 11%;
+    --accent: 243 75% 96%; /* Very light indigo */
+    --accent-foreground: 243 75% 59%;
 
-    /* Soft Red Destructive */
-    --destructive: 0 70% 85%;
-    --destructive-foreground: 0 60% 30%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 210 40% 98%;
 
+    /* Subtle Borders */
     --border: 214 32% 91%;
     --input: 214 32% 91%;
-    --ring: 260 60% 70%;
     
-    /* More rounded corners for friendly UI */
-    --radius: 1.5rem;
+    /* Modern Focus Ring */
+    --ring: 243 75% 59%;
+    
+    /* Modern standard radius */
+    --radius: 0.75rem;
   }
 
   .dark {
-    /* Soft Dark Mode (Deep Slate/Purple) */
-    --background: 260 20% 10%;
+    --background: 222 47% 11%;
     --foreground: 210 40% 98%;
-
-    --card: 260 20% 15%;
+    --card: 217 33% 17%;
     --card-foreground: 210 40% 98%;
-
-    --popover: 260 20% 15%;
+    --popover: 217 33% 17%;
     --popover-foreground: 210 40% 98%;
-
-    /* Lighter Lavender for Dark Mode visibility */
-    --primary: 260 60% 80%;
-    --primary-foreground: 260 40% 20%;
-
-    --secondary: 260 20% 25%;
+    --primary: 243 100% 70%;
+    --primary-foreground: 222 47.4% 11.2%;
+    --secondary: 217.2 32.6% 17.5%;
     --secondary-foreground: 210 40% 98%;
-
-    --muted: 260 20% 25%;
-    --muted-foreground: 215 20% 70%;
-
-    --accent: 260 20% 25%;
+    --muted: 217.2 32.6% 17.5%;
+    --muted-foreground: 215 20.2% 65.1%;
+    --accent: 217.2 32.6% 17.5%;
     --accent-foreground: 210 40% 98%;
-
-    --destructive: 0 62% 30%;
+    --destructive: 0 62.8% 30.6%;
     --destructive-foreground: 210 40% 98%;
-
-    --border: 260 20% 25%;
-    --input: 260 20% 25%;
-    --ring: 260 60% 80%;
+    --border: 217.2 32.6% 17.5%;
+    --input: 217.2 32.6% 17.5%;
+    --ring: 212.7 26.8% 83.9%;
   }
 }
 
@@ -87,29 +77,36 @@
     @apply border-border;
   }
   html {
-    font-size: 18px; /* Increased base size for better readability */
+    font-size: 16px; /* Standard readable size */
   }
   body {
     @apply bg-background text-foreground;
     font-family: var(--font-family);
-    line-height: 1.7; /* Further increased line height */
-    letter-spacing: 0.03em; /* Enhanced letter spacing */
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
 }
 
-/* Animated gradient for branding - adjusted to pastel */
-@keyframes gradient-shift {
-  0% {
-    background-position: 0% 50%;
+/* UI Overrides for "Clean SaaS" look */
+@layer components {
+  /* Clean Cards with soft shadow instead of border */
+  .card-modern {
+    @apply bg-white rounded-xl border-none shadow-[0_2px_10px_-2px_rgba(0,0,0,0.05)];
   }
-  50% {
-    background-position: 100% 50%;
-  }
-  100% {
-    background-position: 0% 50%;
+  
+  /* Update default border radius classes globally if needed */
+  .rounded-lg {
+    border-radius: var(--radius) !important;
   }
 }
 
 .animate-gradient {
-  animation: gradient-shift 3s ease infinite;
+  background-size: 300%;
+  animation: gradient-shift 5s ease infinite;
+}
+
+@keyframes gradient-shift {
+  0% { background-position: 0% 50% }
+  50% { background-position: 100% 50% }
+  100% { background-position: 0% 50% }
 }

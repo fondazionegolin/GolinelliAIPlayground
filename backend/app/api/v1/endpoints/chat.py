@@ -1,10 +1,10 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, or_
 from sqlalchemy.orm import selectinload
 from typing import Annotated, Optional
 from datetime import datetime
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from app.core.database import get_db
 from app.api.deps import get_current_teacher, get_current_student, get_student_or_teacher, StudentOrTeacher
@@ -74,15 +74,18 @@ async def get_session_messages(
     )
     messages = result.scalars().all()
     
-    # Get student nicknames
+    # Get student nicknames and avatars
     student_ids = [m.sender_student_id for m in messages if m.sender_student_id]
     nicknames = {}
+    avatars = {}
     if student_ids:
         result = await db.execute(
             select(SessionStudent).where(SessionStudent.id.in_(student_ids))
         )
         for student in result.scalars().all():
             nicknames[str(student.id)] = student.nickname
+            if student.avatar_url:
+                avatars[str(student.id)] = student.avatar_url
     
     return {
         "room_id": str(room.id),
@@ -92,6 +95,7 @@ async def get_session_messages(
                 "sender_type": m.sender_type.value,
                 "sender_id": str(m.sender_student_id or m.sender_teacher_id or "system"),
                 "sender_name": nicknames.get(str(m.sender_student_id), "Docente") if m.sender_student_id else "Docente",
+                "sender_avatar_url": avatars.get(str(m.sender_student_id)) if m.sender_student_id else None,
                 "text": m.message_text,
                 "attachments": m.attachments,
                 "created_at": m.created_at.isoformat(),
@@ -140,14 +144,22 @@ async def send_session_message(
     # Get or create public room
     room = await get_or_create_public_room(db, session_id, tenant_id)
     
-    # Build attachments with notification info
-    attachments = {}
+    # Build attachments with notification info and user attachments
+    attachments = request.attachments if request.attachments else []
+    
+    # If it's a notification, also include notification metadata
     if request.is_notification:
-        attachments = {
+        # Store notification info in the first attachment or create one
+        notification_meta = {
             "is_notification": True,
             "notification_type": request.notification_type,
             "notification_data": request.notification_data,
         }
+        if not attachments:
+            attachments = [notification_meta]
+        else:
+            # Merge with first attachment
+            attachments[0].update(notification_meta)
     
     message = ChatMessage(
         tenant_id=tenant_id,
@@ -169,6 +181,7 @@ async def send_session_message(
         "sender_id": str(sender_student_id or sender_teacher_id),
         "sender_name": sender_name,
         "text": request.text,
+        "attachments": attachments,
         "created_at": message.created_at.isoformat(),
         "is_notification": request.is_notification,
         "notification_type": request.notification_type,
@@ -176,12 +189,39 @@ async def send_session_message(
     }
 
 
-@router.get("/rooms", response_model=list[ChatRoomResponse])
-async def list_rooms(
+@router.delete("/session/{session_id}/messages")
+async def clear_session_messages(
     session_id: UUID,
     db: Annotated[AsyncSession, Depends(get_db)],
-    auth: Annotated[StudentOrTeacher, Depends(get_student_or_teacher)],
+    teacher: Annotated[User, Depends(get_current_teacher)],
 ):
+    """Clear all messages in the public chat room for a session (Teacher only)"""
+    # Verify session ownership
+    result = await db.execute(
+        select(Session)
+        .join(Class)
+        .where(Session.id == session_id)
+        .where(Class.teacher_id == teacher.id)
+    )
+    if not result.scalar_one_or_none():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
+    
+    # Get public room
+    result = await db.execute(
+        select(ChatRoom)
+        .where(ChatRoom.session_id == session_id)
+        .where(ChatRoom.room_type == ChatRoomType.PUBLIC)
+    )
+    room = result.scalar_one_or_none()
+    
+    if room:
+        # Delete messages
+        await db.execute(
+            ChatMessage.__table__.delete().where(ChatMessage.room_id == room.id)
+        )
+        await db.commit()
+    
+    return {"status": "cleared"}
     if auth.is_teacher:
         # Teacher can see all rooms in session
         result = await db.execute(
@@ -371,3 +411,46 @@ async def send_message(
     await db.refresh(message)
     
     return message
+
+
+@router.post("/upload")
+async def upload_chat_files(
+    session_id: str = Query(...),
+    files: list[UploadFile] = [],
+    auth: Annotated[StudentOrTeacher, Depends(get_student_or_teacher)] = None,
+):
+    """Upload files for chat messages (simple direct upload to local storage)"""
+    import aiofiles
+    from pathlib import Path
+    
+    # Parse session_id
+    try:
+        session_uuid = UUID(session_id)
+    except:
+        raise HTTPException(status_code=400, detail="Invalid session_id")
+    
+    # Create upload directory if not exists
+    upload_dir = Path("uploads/chat") / str(session_uuid)
+    upload_dir.mkdir(parents=True, exist_ok=True)
+    
+    uploaded_urls = []
+    for file in files:
+        try:
+            # Generate unique filename
+            file_ext = file.filename.split('.')[-1] if '.' in file.filename and file.filename else 'bin'
+            unique_filename = f"{uuid4()}.{file_ext}"
+            file_path = upload_dir / unique_filename
+            
+            # Save file
+            async with aiofiles.open(file_path, 'wb') as f:
+                content = await file.read()
+                await f.write(content)
+            
+            # Generate URL (relative to backend)
+            file_url = f"/uploads/chat/{session_uuid}/{unique_filename}"
+            uploaded_urls.append(file_url)
+        except Exception as e:
+            print(f"Failed to upload file {file.filename if file.filename else 'unknown'}: {e}")
+            continue
+    
+    return {"urls": uploaded_urls}

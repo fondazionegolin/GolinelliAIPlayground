@@ -435,7 +435,7 @@ export default function ChatbotModule({ sessionId }: ChatbotModuleProps) {
             <div className="flex-1 overflow-y-auto p-2 space-y-1">
               <button
                 onClick={handleNewChat}
-                className="w-full text-left px-3 py-2 rounded-lg text-sm bg-violet-100 text-violet-700 hover:bg-violet-200 transition-colors flex items-center gap-2"
+                className="w-full text-left px-3 py-2 rounded-lg text-sm bg-sky-100 text-sky-700 hover:bg-sky-200 transition-colors flex items-center gap-2"
               >
                 <Sparkles className="h-4 w-4" />
                 Nuova chat
@@ -498,7 +498,7 @@ export default function ChatbotModule({ sessionId }: ChatbotModuleProps) {
             <div className="flex-1 overflow-y-auto p-2 space-y-1">
               <button
                 onClick={handleNewChat}
-                className="w-full text-left px-3 py-2 rounded-lg text-sm bg-violet-100 text-violet-700 hover:bg-violet-200 transition-colors flex items-center gap-2"
+                className="w-full text-left px-3 py-2 rounded-lg text-sm bg-sky-100 text-sky-700 hover:bg-sky-200 transition-colors flex items-center gap-2"
               >
                 <Sparkles className="h-4 w-4" />
                 Nuova chat
@@ -575,14 +575,14 @@ export default function ChatbotModule({ sessionId }: ChatbotModuleProps) {
         className="flex-1 flex flex-col"
         onDragOver={(e) => {
           e.preventDefault()
-          e.currentTarget.classList.add('ring-2', 'ring-violet-500', 'ring-inset')
+          e.currentTarget.classList.add('ring-2', 'ring-sky-500', 'ring-inset')
         }}
         onDragLeave={(e) => {
-          e.currentTarget.classList.remove('ring-2', 'ring-violet-500', 'ring-inset')
+          e.currentTarget.classList.remove('ring-2', 'ring-sky-500', 'ring-inset')
         }}
         onDrop={(e) => {
           e.preventDefault()
-          e.currentTarget.classList.remove('ring-2', 'ring-violet-500', 'ring-inset')
+          e.currentTarget.classList.remove('ring-2', 'ring-sky-500', 'ring-inset')
           
           // Handle image from chatbot
           const imageData = e.dataTransfer.getData('application/x-chatbot-image')
@@ -650,7 +650,7 @@ export default function ChatbotModule({ sessionId }: ChatbotModuleProps) {
         >
           <ArrowLeft className="h-4 w-4" />
         </Button>
-        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center shadow-md">
+        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-sky-500 to-blue-600 flex items-center justify-center shadow-md">
           {PROFILE_ICONS[selectedProfile] ? (
             <div className="text-white scale-90">{PROFILE_ICONS[selectedProfile]}</div>
           ) : (
@@ -692,7 +692,7 @@ export default function ChatbotModule({ sessionId }: ChatbotModuleProps) {
                 handleChangeModel(found || null)
               }
             }}
-            className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-violet-500 focus:border-transparent"
+            className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-transparent"
           >
             <option value="">Modello predefinito</option>
             {availableModels.map((m) => (
@@ -713,7 +713,7 @@ export default function ChatbotModule({ sessionId }: ChatbotModuleProps) {
             <button
               onClick={() => setVerboseMode(!verboseMode)}
               className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
-                verboseMode ? 'bg-violet-500' : 'bg-slate-300'
+                verboseMode ? 'bg-sky-500' : 'bg-slate-300'
               }`}
             >
               <span
@@ -730,10 +730,10 @@ export default function ChatbotModule({ sessionId }: ChatbotModuleProps) {
       )}
 
       {/* Messages area */}
-      <div className="flex-1 overflow-y-auto px-3 py-4 md:px-4 md:py-6 space-y-4 md:space-y-6 scroll-smooth pb-24 md:pb-6">
+      <div className="flex-1 overflow-y-auto px-3 py-4 md:px-4 md:py-6 space-y-4 md:space-y-6 scroll-smooth overscroll-contain pb-[calc(10rem+env(safe-area-inset-bottom))] md:pb-6">
         {messages.length === 0 ? (
           <div className="text-center py-12">
-            <div className="inline-flex items-center justify-center w-20 h-20 rounded-2xl bg-gradient-to-br from-violet-500 to-purple-600 mb-6 shadow-lg">
+            <div className="inline-flex items-center justify-center w-20 h-20 rounded-2xl bg-gradient-to-br from-sky-500 to-blue-600 mb-6 shadow-lg">
               {PROFILE_ICONS[selectedProfile] ? (
                 <div className="text-white scale-125">{PROFILE_ICONS[selectedProfile]}</div>
               ) : (
@@ -763,7 +763,7 @@ export default function ChatbotModule({ sessionId }: ChatbotModuleProps) {
               className={`flex gap-3 ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
             >
               {message.role === 'assistant' && (
-                <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center flex-shrink-0 shadow-md">
+                <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-sky-500 to-blue-600 flex items-center justify-center flex-shrink-0 shadow-md">
                   {PROFILE_ICONS[selectedProfile] ? (
                     <div className="text-white scale-75">{PROFILE_ICONS[selectedProfile]}</div>
                   ) : (
@@ -773,8 +773,8 @@ export default function ChatbotModule({ sessionId }: ChatbotModuleProps) {
               )}
               <div className={`max-w-[80%] rounded-2xl px-4 py-3 ${
                 message.role === 'user' 
-                  ? 'bg-gradient-to-br from-violet-500 to-purple-600 text-white rounded-br-md shadow-md' 
-                  : 'bg-gradient-to-br from-violet-50 to-purple-50 border border-violet-100 shadow-sm rounded-bl-md'
+                  ? 'bg-gradient-to-br from-sky-500 to-blue-600 text-white rounded-br-md shadow-md' 
+                  : 'bg-gradient-to-br from-sky-50 to-blue-50 border border-sky-100 shadow-sm rounded-bl-md'
               }`}>
                 {message.role === 'assistant' ? (
                   <MessageContent 
@@ -797,7 +797,7 @@ export default function ChatbotModule({ sessionId }: ChatbotModuleProps) {
         )}
         {sendMessageMutation.isPending && (
           <div className="flex gap-3">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center shadow-md">
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-sky-500 to-blue-600 flex items-center justify-center shadow-md">
               {PROFILE_ICONS[selectedProfile] ? (
                 <div className="text-white scale-75">{PROFILE_ICONS[selectedProfile]}</div>
               ) : (
@@ -807,9 +807,9 @@ export default function ChatbotModule({ sessionId }: ChatbotModuleProps) {
             <div className="bg-white border border-slate-100 shadow-sm rounded-2xl rounded-bl-md px-4 py-3">
               <div className="flex items-center gap-2">
                 <div className="flex gap-1">
-                  <span className="w-2 h-2 bg-violet-400 rounded-full animate-bounce" style={{animationDelay: '0ms'}}></span>
-                  <span className="w-2 h-2 bg-violet-400 rounded-full animate-bounce" style={{animationDelay: '150ms'}}></span>
-                  <span className="w-2 h-2 bg-violet-400 rounded-full animate-bounce" style={{animationDelay: '300ms'}}></span>
+                  <span className="w-2 h-2 bg-sky-400 rounded-full animate-bounce" style={{animationDelay: '0ms'}}></span>
+                  <span className="w-2 h-2 bg-sky-400 rounded-full animate-bounce" style={{animationDelay: '150ms'}}></span>
+                  <span className="w-2 h-2 bg-sky-400 rounded-full animate-bounce" style={{animationDelay: '300ms'}}></span>
                 </div>
                 <span className="text-sm text-slate-400">Sto pensando...</span>
               </div>
@@ -820,7 +820,7 @@ export default function ChatbotModule({ sessionId }: ChatbotModuleProps) {
       </div>
 
       {/* Modern Input area */}
-      <div className="fixed bottom-[76px] left-4 right-4 z-40 rounded-2xl shadow-xl bg-white/95 backdrop-blur-sm border border-slate-200/60 p-2 md:p-4 md:static md:bottom-auto md:left-auto md:right-auto md:border-t md:z-auto md:rounded-none md:shadow-none md:bg-white md:border-x-0 md:border-b-0">
+      <div className="fixed bottom-[calc(4rem+env(safe-area-inset-bottom))] left-4 right-4 z-40 rounded-2xl shadow-xl bg-white/95 backdrop-blur-sm border border-slate-200/60 p-2 md:p-4 md:static md:bottom-auto md:left-auto md:right-auto md:border-t md:z-auto md:rounded-none md:shadow-none md:bg-white md:border-x-0 md:border-b-0">
         {/* Attached files preview */}
         {attachedFiles.length > 0 && (
           <div className="flex gap-2 mb-3 flex-wrap">
@@ -879,7 +879,7 @@ export default function ChatbotModule({ sessionId }: ChatbotModuleProps) {
             variant="ghost"
             size="sm"
             onClick={() => fileInputRef.current?.click()}
-            className="h-12 w-12 rounded-xl text-slate-500 hover:text-violet-600 hover:bg-violet-50"
+            className="h-12 w-12 rounded-xl text-slate-500 hover:text-sky-600 hover:bg-sky-50"
           >
             <Paperclip className="h-5 w-5" />
           </Button>
@@ -888,14 +888,14 @@ export default function ChatbotModule({ sessionId }: ChatbotModuleProps) {
             className="flex-1 relative"
             onDragOver={(e) => {
               e.preventDefault()
-              e.currentTarget.classList.add('ring-2', 'ring-violet-500', 'bg-violet-50')
+              e.currentTarget.classList.add('ring-2', 'ring-sky-500', 'bg-sky-50')
             }}
             onDragLeave={(e) => {
-              e.currentTarget.classList.remove('ring-2', 'ring-violet-500', 'bg-violet-50')
+              e.currentTarget.classList.remove('ring-2', 'ring-sky-500', 'bg-sky-50')
             }}
             onDrop={(e) => {
               e.preventDefault()
-              e.currentTarget.classList.remove('ring-2', 'ring-violet-500', 'bg-violet-50')
+              e.currentTarget.classList.remove('ring-2', 'ring-sky-500', 'bg-sky-50')
               
               // Handle image from chatbot
               const imageData = e.dataTransfer.getData('application/x-chatbot-image')
@@ -963,14 +963,14 @@ export default function ChatbotModule({ sessionId }: ChatbotModuleProps) {
               placeholder={attachedFiles.length > 0 ? "Descrivi gli allegati o fai una domanda..." : "Scrivi un messaggio..."}
               disabled={sendMessageMutation.isPending}
               rows={1}
-              className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm resize-none focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent transition-all"
+              className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm resize-none focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-transparent transition-all"
               style={{ minHeight: '48px', maxHeight: '150px' }}
             />
           </div>
           <Button 
             onClick={handleSend} 
             disabled={(!input.trim() && attachedFiles.length === 0) || sendMessageMutation.isPending}
-            className="h-12 w-12 rounded-xl bg-gradient-to-br from-violet-500 to-purple-600 hover:from-violet-600 hover:to-purple-700 shadow-md transition-all"
+            className="h-12 w-12 rounded-xl bg-gradient-to-br from-sky-500 to-blue-600 hover:from-sky-600 hover:to-blue-700 shadow-md transition-all"
           >
             <Send className="h-5 w-5" />
           </Button>
@@ -985,7 +985,7 @@ export default function ChatbotModule({ sessionId }: ChatbotModuleProps) {
                 onClick={() => setImageProvider('flux-schnell')}
                 className={`px-2 py-1 text-xs rounded-md transition-all ${
                   imageProvider === 'flux-schnell' 
-                    ? 'bg-white shadow text-violet-600 font-medium' 
+                    ? 'bg-white shadow text-sky-600 font-medium' 
                     : 'text-slate-500 hover:text-slate-700'
                 }`}
               >
@@ -995,7 +995,7 @@ export default function ChatbotModule({ sessionId }: ChatbotModuleProps) {
                 onClick={() => setImageProvider('dall-e')}
                 className={`px-2 py-1 text-xs rounded-md transition-all ${
                   imageProvider === 'dall-e' 
-                    ? 'bg-white shadow text-violet-600 font-medium' 
+                    ? 'bg-white shadow text-sky-600 font-medium' 
                     : 'text-slate-500 hover:text-slate-700'
                 }`}
               >
@@ -1008,7 +1008,7 @@ export default function ChatbotModule({ sessionId }: ChatbotModuleProps) {
             <select
               value={imageSize}
               onChange={(e) => setImageSize(e.target.value)}
-              className="text-xs bg-slate-100 border-0 rounded-lg px-2 py-1 text-slate-600 focus:ring-1 focus:ring-violet-300"
+              className="text-xs bg-slate-100 border-0 rounded-lg px-2 py-1 text-slate-600 focus:ring-1 focus:ring-sky-300"
             >
               <option value="1024x1024">1:1 Quadrato</option>
               <option value="1024x768">4:3 Orizzontale</option>
@@ -1106,7 +1106,7 @@ function MessageContent({ content, onQuizSubmit }: { content: string; onQuizSubm
   if (isGenerating) {
     return (
       <div className="flex flex-col items-center gap-3 py-4">
-        <div className="flex items-center gap-2 text-violet-600">
+        <div className="flex items-center gap-2 text-sky-600">
           <Loader2 className="h-5 w-5 animate-spin" />
           <span className="font-medium">
             {generationType === 'quiz' && 'Generazione quiz in corso...'}
@@ -1116,7 +1116,7 @@ function MessageContent({ content, onQuizSubmit }: { content: string; onQuizSubm
           </span>
         </div>
         <div className="w-full max-w-xs bg-gray-200 rounded-full h-2 overflow-hidden">
-          <div className="bg-violet-500 h-2 rounded-full animate-pulse" style={{ width: '60%' }}></div>
+          <div className="bg-sky-500 h-2 rounded-full animate-pulse" style={{ width: '60%' }}></div>
         </div>
       </div>
     )
@@ -1145,7 +1145,7 @@ function MessageContent({ content, onQuizSubmit }: { content: string; onQuizSubm
             code: ({className, children, ...props}) => {
               const isInline = !className
               return isInline ? (
-                <code className="bg-slate-100 px-1.5 py-0.5 rounded text-violet-600 text-xs font-mono" {...props}>
+                <code className="bg-slate-100 px-1.5 py-0.5 rounded text-sky-600 text-xs font-mono" {...props}>
                   {children}
                 </code>
               ) : (
@@ -1162,7 +1162,7 @@ function MessageContent({ content, onQuizSubmit }: { content: string; onQuizSubm
             h1: ({children}) => <h1 className="text-lg font-bold mb-2 text-slate-800">{children}</h1>,
             h2: ({children}) => <h2 className="text-base font-bold mb-2 text-slate-800">{children}</h2>,
             h3: ({children}) => <h3 className="text-sm font-bold mb-1 text-slate-800">{children}</h3>,
-            blockquote: ({children}) => <blockquote className="border-l-4 border-violet-300 pl-3 italic text-slate-600 my-2">{children}</blockquote>,
+            blockquote: ({children}) => <blockquote className="border-l-4 border-sky-300 pl-3 italic text-slate-600 my-2">{children}</blockquote>,
           }}
         >
           {cleanContent}
@@ -1176,8 +1176,13 @@ function MessageContent({ content, onQuizSubmit }: { content: string; onQuizSubm
               className="relative group cursor-grab active:cursor-grabbing"
               draggable
               onDragStart={(e) => {
-                e.dataTransfer.setData('text/plain', `[IMAGE]${imgSrc}`)
-                e.dataTransfer.setData('application/x-chatbot-image', imgSrc)
+                const imageData = JSON.stringify({
+                  url: imgSrc,
+                  filename: `chatbot-image-${Date.now()}.png`,
+                  type: 'image/png'
+                })
+                e.dataTransfer.setData('text/plain', imgSrc)
+                e.dataTransfer.setData('application/x-chatbot-image', imageData)
                 e.dataTransfer.effectAllowed = 'copy'
               }}
             >
@@ -1188,7 +1193,7 @@ function MessageContent({ content, onQuizSubmit }: { content: string; onQuizSubm
                 style={{ maxHeight: '400px' }}
                 loading="lazy"
               />
-              <div className="absolute bottom-2 left-2 bg-violet-500/90 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+              <div className="absolute bottom-2 left-2 bg-sky-500/90 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
                 Trascina nella chat di classe
               </div>
               <button
@@ -1358,8 +1363,8 @@ function InteractiveQuiz({ quiz, onSubmitAnswers }: { quiz: QuizData; onSubmitAn
   const allAnswered = quiz.questions.every(q => answers[q.id] !== undefined)
 
   return (
-    <div className="bg-gradient-to-br from-violet-50 to-purple-50 rounded-xl p-4 border border-violet-200">
-      <h3 className="font-bold text-lg text-violet-800 mb-4 flex items-center gap-2">
+    <div className="bg-gradient-to-br from-sky-50 to-blue-50 rounded-xl p-4 border border-sky-200">
+      <h3 className="font-bold text-lg text-sky-800 mb-4 flex items-center gap-2">
         📝 {quiz.title}
       </h3>
       
@@ -1371,7 +1376,7 @@ function InteractiveQuiz({ quiz, onSubmitAnswers }: { quiz: QuizData; onSubmitAn
           return (
             <div key={q.id} className="bg-white rounded-lg p-4 shadow-sm">
               <p className="font-medium text-slate-800 mb-3">
-                <span className="text-violet-600">{qIndex + 1}.</span> {q.question}
+                <span className="text-sky-600">{qIndex + 1}.</span> {q.question}
               </p>
               
               <div className="space-y-2">
@@ -1390,9 +1395,9 @@ function InteractiveQuiz({ quiz, onSubmitAnswers }: { quiz: QuizData; onSubmitAn
                       buttonClass += "bg-slate-50 border-slate-200 text-slate-500"
                     }
                   } else if (isSelected) {
-                    buttonClass += "bg-violet-100 border-violet-400 text-violet-800"
+                    buttonClass += "bg-sky-100 border-sky-400 text-sky-800"
                   } else {
-                    buttonClass += "bg-white border-slate-200 hover:border-violet-300 hover:bg-violet-50"
+                    buttonClass += "bg-white border-slate-200 hover:border-sky-300 hover:bg-sky-50"
                   }
                   
                   return (
@@ -1427,7 +1432,7 @@ function InteractiveQuiz({ quiz, onSubmitAnswers }: { quiz: QuizData; onSubmitAn
           disabled={!allAnswered}
           className={`mt-4 w-full py-3 rounded-xl font-medium transition-all ${
             allAnswered 
-              ? 'bg-gradient-to-r from-violet-500 to-purple-600 text-white hover:from-violet-600 hover:to-purple-700 shadow-md' 
+              ? 'bg-gradient-to-r from-sky-500 to-blue-600 text-white hover:from-sky-600 hover:to-blue-700 shadow-md' 
               : 'bg-slate-200 text-slate-400 cursor-not-allowed'
           }`}
         >
@@ -1435,7 +1440,7 @@ function InteractiveQuiz({ quiz, onSubmitAnswers }: { quiz: QuizData; onSubmitAn
         </button>
       ) : (
         <div className="mt-4 p-4 bg-white rounded-xl shadow-sm text-center">
-          <p className="text-2xl font-bold text-violet-800">
+          <p className="text-2xl font-bold text-sky-800">
             {score}/{quiz.questions.length}
           </p>
           <p className="text-slate-600">

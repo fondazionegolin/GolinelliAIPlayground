@@ -35,6 +35,8 @@ services:
       dockerfile: Dockerfile
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    volumes:
+      - chat_uploads:/app/uploads
     environment:
       - DATABASE_URL=postgresql+asyncpg://eduai:${DB_PASSWORD}@postgres:5432/eduai
       - REDIS_URL=redis://redis:6379/0
@@ -195,3 +197,4 @@ volumes:
   ollama_data:
   prometheus_data:
   grafana_data:
+  chat_uploads:

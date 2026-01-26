@@ -16,7 +16,7 @@ export function MobileNav({ activeModule, onNavigate, unreadMessages = 0 }: Mobi
   ]
 
   return (
-    <div className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 px-4 py-2 z-50 safe-area-bottom shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
+    <div className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 px-4 py-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] z-50 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
       <div className="flex justify-around items-center">
         {navItems.map((item) => {
           const isActive = activeModule === item.key

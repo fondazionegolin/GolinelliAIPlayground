@@ -45,3 +45,4 @@ class SessionMessageCreate(BaseModel):
     is_notification: bool = False
     notification_type: Optional[str] = None
     notification_data: Optional[dict[str, Any]] = None
+    attachments: list[dict[str, Any]] = []

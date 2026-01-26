@@ -1,831 +1,435 @@
-import { useState, useRef, useEffect } from 'react'
-import { useSocket, ChatMessage, OnlineUser } from '@/hooks/useSocket'
+import { useState, useEffect, useRef, Dispatch, SetStateAction } from 'react'
+import { chatApi } from '@/lib/api'
+import { useSocket, ChatMessage } from '@/hooks/useSocket'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { useToast } from '@/components/ui/use-toast'
 import { 
-  MessageSquare, Send, Users, X, ChevronLeft, ChevronRight,
-  Circle, FileText, ClipboardList, Bell, Lock, Paperclip, Image, FileSpreadsheet, Download,
-  Sparkles
+  Send, MessageSquare, Bell, Paperclip, X, Image as ImageIcon
 } from 'lucide-react'
-import { ArtifactPreviewModal } from '@/components/ArtifactPreviewModal'
-import { teacherApi } from '@/lib/api'
+import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+
+export type { ChatMessage }
 
 interface ChatSidebarProps {
   sessionId: string
-  userType: 'student' | 'teacher'
+  userType: 'teacher' | 'student'
   currentUserId: string
-  currentUserName?: string
+  currentUserName: string
   onNotificationClick?: (notification: ChatMessage) => void
   isMobileView?: boolean
-  onToggle?: (isOpen: boolean) => void
-}
-
-interface FileAttachment {
-  type: 'image' | 'csv' | 'file'
-  name: string
-  url: string
-  data?: string // base64 for images
-}
-
-interface ArtifactData {
-  type: 'lesson' | 'presentation' | 'quiz' | 'exercise'
-  data: any
+  onToggle?: Dispatch<SetStateAction<boolean>>
 }
 
 export default function ChatSidebar({ 
   sessionId, 
-  userType, 
   currentUserId,
   onNotificationClick,
-  isMobileView = false,
-  onToggle
+  isMobileView = false
 }: ChatSidebarProps) {
-  const { toast } = useToast()
-  const [isOpen, setIsOpen] = useState(true)
-  const [activeTab, setActiveTab] = useState<'public' | 'private' | 'users'>('public')
+  const [messages, setMessages] = useState<ChatMessage[]>([])
   const [inputText, setInputText] = useState('')
-  const [privateTarget, setPrivateTarget] = useState<OnlineUser | null>(null)
-  const [privateMessages, setPrivateMessages] = useState<ChatMessage[]>([])
-  const [pendingFile, setPendingFile] = useState<FileAttachment | null>(null)
-  const [readPrivateIds, setReadPrivateIds] = useState<Set<string>>(new Set())
-  const [sidebarWidth, setSidebarWidth] = useState(320) // 320px = w-80 default
+  const [isLoading, setIsLoading] = useState(false)
+  const [dragActive, setDragActive] = useState(false)
+  const [attachedFiles, setAttachedFiles] = useState<File[]>([])
+  const [chatWidth, setChatWidth] = useState(320) // Default 320px (80 in rem)
   const [isResizing, setIsResizing] = useState(false)
-  
-  // Artifact Preview State
-  const [previewData, setPreviewData] = useState<ArtifactData | null>(null)
-  const [isSavingArtifact, setIsSavingArtifact] = useState(false)
-
-  const messagesEndRef = useRef<HTMLDivElement>(null)
-  const privateMessagesEndRef = useRef<HTMLDivElement>(null)
+  const scrollRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const MIN_WIDTH = 320 // Minimum width (current default)
-  const MAX_WIDTH = 600 // Maximum width
+  const dragCounter = useRef(0)
+  
+  const { connected, messages: socketMessages, sendPublicMessage } = useSocket(sessionId)
 
-  const { 
-    connected, 
-    messages, 
-    onlineUsers, 
-    sendPublicMessage, 
-    sendPrivateMessage,
-    notifications,
-    clearNotification 
-  } = useSocket(sessionId)
-
-  // Handle resize
   useEffect(() => {
+    setMessages(socketMessages)
+  }, [socketMessages])
+
+  useEffect(() => {
+    if (messages.length === 0 && !isLoading) {
+      const loadMessages = async () => {
+        setIsLoading(true)
+        try {
+          const res = await chatApi.getSessionMessages(sessionId)
+          const messageData = res.data?.messages || res.data
+          if (messageData && Array.isArray(messageData)) {
+             setMessages(messageData)
+          }
+        } catch (e) {
+          console.error("Failed to load messages", e)
+        } finally {
+          setIsLoading(false)
+        }
+      }
+      loadMessages()
+    }
+  }, [sessionId, messages.length, isLoading])
+
+  useEffect(() => {
+    if (scrollRef.current) {
+      // Use smooth scrolling with a slight delay to ensure DOM is updated
+      const scrollToBottom = () => {
+        if (scrollRef.current) {
+          scrollRef.current.scrollTo({
+            top: scrollRef.current.scrollHeight,
+            behavior: 'smooth'
+          })
+        }
+      }
+      
+      // Immediate scroll for initial load
+      scrollToBottom()
+      
+      // Delayed scroll to catch any late-rendering content (images, etc)
+      const timer = setTimeout(scrollToBottom, 100)
+      return () => clearTimeout(timer)
+    }
+  }, [messages])
+
+  const handleSend = async () => {
+    if (!inputText.trim() && attachedFiles.length === 0) return
+
+    const messageText = inputText.trim()
+    setInputText('')
+    
+    // Upload files first if any
+    let uploadedUrls: string[] = []
+    if (attachedFiles.length > 0) {
+      try {
+        const formData = new FormData()
+        attachedFiles.forEach(file => formData.append('files', file))
+        
+        const token = localStorage.getItem('student_token') || localStorage.getItem('token') || localStorage.getItem('access_token')
+        const res = await fetch(`/api/v1/chat/upload?session_id=${sessionId}`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+          },
+          body: formData
+        })
+        
+        if (!res.ok) {
+          throw new Error('Upload failed')
+        }
+        
+        const data = await res.json()
+        uploadedUrls = data.urls || []
+      } catch (e) {
+        console.error("Failed to upload files", e)
+      }
+      setAttachedFiles([])
+    }
+
+    try {
+      // Send via useSocket hook which handles both API and WebSocket
+      if (messageText || uploadedUrls.length > 0) {
+        await sendPublicMessage(messageText || '📎 Allegato', uploadedUrls)
+      }
+    } catch (e) {
+      console.error("Failed to send", e)
+    }
+  }
+
+  const handleDragEnter = (e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    dragCounter.current++
+    if (e.dataTransfer.items && e.dataTransfer.items.length > 0) {
+      setDragActive(true)
+    }
+  }
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    dragCounter.current--
+    if (dragCounter.current === 0) {
+      setDragActive(false)
+    }
+  }
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+  }
+
+  const handleDrop = async (e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setDragActive(false)
+    dragCounter.current = 0
+
+    // Check for custom data (e.g., chatbot generated images) FIRST
+    const customImageData = e.dataTransfer.getData('application/x-chatbot-image')
+    if (customImageData) {
+      try {
+        const data = JSON.parse(customImageData)
+        // Convert base64/URL to File
+        const res = await fetch(data.url)
+        const blob = await res.blob()
+        const file = new File([blob], data.filename || 'chatbot-image.png', { type: blob.type || 'image/png' })
+        setAttachedFiles(prev => [...prev, file])
+        return // Don't process files if we handled custom data
+      } catch (err) {
+        console.error('Failed to parse custom drag data', err)
+      }
+    }
+
+    // Check for regular files
+    const files = Array.from(e.dataTransfer.files)
+    if (files.length > 0) {
+      setAttachedFiles(prev => [...prev, ...files])
+    }
+  }
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || [])
+    if (files.length > 0) {
+      setAttachedFiles(prev => [...prev, ...files])
+    }
+  }
+
+  const removeFile = (index: number) => {
+    setAttachedFiles(prev => prev.filter((_, i) => i !== index))
+  }
+
+  const handleMouseDown = (e: React.MouseEvent) => {
+    if (!isMobileView) {
+      e.preventDefault()
+      setIsResizing(true)
+    }
+  }
+
+  useEffect(() => {
+    if (!isResizing || isMobileView) return
+
     const handleMouseMove = (e: MouseEvent) => {
-      if (!isResizing) return
       const newWidth = window.innerWidth - e.clientX
-      setSidebarWidth(Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, newWidth)))
+      if (newWidth >= 280 && newWidth <= 800) {
+        setChatWidth(newWidth)
+      }
     }
 
     const handleMouseUp = () => {
       setIsResizing(false)
-      document.body.style.cursor = ''
-      document.body.style.userSelect = ''
     }
 
-    if (isResizing) {
-      document.body.style.cursor = 'ew-resize'
-      document.body.style.userSelect = 'none'
-      document.addEventListener('mousemove', handleMouseMove)
-      document.addEventListener('mouseup', handleMouseUp)
-    }
+    document.addEventListener('mousemove', handleMouseMove)
+    document.addEventListener('mouseup', handleMouseUp)
 
     return () => {
       document.removeEventListener('mousemove', handleMouseMove)
       document.removeEventListener('mouseup', handleMouseUp)
     }
-  }, [isResizing, MIN_WIDTH, MAX_WIDTH])
+  }, [isResizing, isMobileView])
 
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages])
-
-  // Filter private messages for current target
-  useEffect(() => {
-    if (privateTarget) {
-      const targetId = privateTarget.student_id
-      const filtered = messages.filter(m => {
-        if (!m.is_private && m.room_type !== 'DM') return false
-        
-        // For teacher viewing student messages
-        if (userType === 'teacher') {
-          // Messages sent by this student to teacher OR messages sent by teacher to this student
-          const fromStudent = m.sender_id === targetId && (m.target_id === 'teacher' || !m.target_id)
-          const toStudent = m.sender_id === currentUserId && m.target_id === targetId
-          return fromStudent || toStudent
-        }
-        
-        // For student viewing messages
-        const isSentByMe = m.sender_id === currentUserId
-        const isSentByTarget = m.sender_id === targetId
-        const isSentToTarget = m.target_id === targetId
-        const isSentToTeacher = m.target_id === 'teacher'
-        
-        // Student to teacher conversation
-        if (targetId === 'teacher') {
-          return (isSentByMe && isSentToTeacher) || (m.sender_type === 'TEACHER' && m.target_id === currentUserId)
-        }
-        
-        // Student to student
-        return (isSentByMe && isSentToTarget) || (isSentByTarget && m.target_id === currentUserId)
-      })
-      setPrivateMessages(filtered)
-    } else {
-      setPrivateMessages([])
-    }
-  }, [messages, privateTarget, currentUserId, userType])
-
-  useEffect(() => {
-    privateMessagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [privateMessages])
-
-  // Mark private messages as read when viewing them
-  useEffect(() => {
-    if (activeTab === 'private' && privateTarget) {
-      const newReadIds = new Set(readPrivateIds)
-      privateMessages.forEach(m => newReadIds.add(m.id))
-      setReadPrivateIds(newReadIds)
-    }
-  }, [activeTab, privateTarget, privateMessages])
-
-  // Count unread private messages
-  const unreadPrivateCount = messages.filter(m => 
-    (m.is_private || m.room_type === 'DM') && 
-    m.sender_id !== currentUserId && 
-    !readPrivateIds.has(m.id)
-  ).length
-
-  const handleSend = () => {
-    if (!inputText.trim()) return
-    
-    if (privateTarget) {
-      sendPrivateMessage(privateTarget.student_id, inputText)
-    } else {
-      sendPublicMessage(inputText)
-    }
-    setInputText('')
-  }
-
-  const handleKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault()
-      handleSend()
-    }
-  }
-
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-
-    const reader = new FileReader()
-    reader.onload = (event) => {
-      const data = event.target?.result as string
-      const isImage = file.type.startsWith('image/')
-      const isCsv = file.name.endsWith('.csv') || file.type === 'text/csv'
-      
-      setPendingFile({
-        type: isImage ? 'image' : isCsv ? 'csv' : 'file',
-        name: file.name,
-        url: data,
-        data: data
-      })
-    }
-    reader.readAsDataURL(file)
-  }
-
-  const handleSendWithFile = () => {
-    if (!pendingFile && !inputText.trim()) return
-    
-    const messageText = pendingFile 
-      ? `[FILE:${pendingFile.type}:${pendingFile.name}]${pendingFile.data}[/FILE]${inputText ? ' ' + inputText : ''}`
-      : inputText
-    
-    if (privateTarget) {
-      sendPrivateMessage(privateTarget.student_id, messageText)
-    } else {
-      sendPublicMessage(messageText)
-    }
-    setInputText('')
-    setPendingFile(null)
-    if (fileInputRef.current) fileInputRef.current.value = ''
-  }
-
-  const parseFileFromMessage = (text: string): { file: FileAttachment | null; cleanText: string } => {
-    const fileMatch = text.match(/\[FILE:(image|csv|file):([^\]]+)\](data:[^\[]+)\[\/FILE\](.*)/s)
-    if (fileMatch) {
-      return {
-        file: {
-          type: fileMatch[1] as 'image' | 'csv' | 'file',
-          name: fileMatch[2],
-          url: fileMatch[3],
-          data: fileMatch[3]
-        },
-        cleanText: fileMatch[4]?.trim() || ''
-      }
-    }
-    return { file: null, cleanText: text }
-  }
-
-  // Detect special artifact JSON blocks in messages
-  const parseArtifactFromMessage = (text: string): { artifact: ArtifactData | null; cleanText: string } => {
-    // Check for Lesson Data
-    const lessonMatch = text.match(/```lesson_data\s*([\s\S]*?)\s*```/)
-    if (lessonMatch) {
-      try {
-        const data = JSON.parse(lessonMatch[1])
-        return {
-          artifact: { type: 'lesson', data },
-          cleanText: text.replace(lessonMatch[0], '').trim()
-        }
-      } catch (e) {
-        console.error("Failed to parse lesson JSON", e)
-      }
-    }
-
-    // Check for Presentation Data
-    const presentationMatch = text.match(/```presentation_data\s*([\s\S]*?)\s*```/)
-    if (presentationMatch) {
-      try {
-        const data = JSON.parse(presentationMatch[1])
-        return {
-          artifact: { type: 'presentation', data },
-          cleanText: text.replace(presentationMatch[0], '').trim()
-        }
-      } catch (e) {
-         console.error("Failed to parse presentation JSON", e)
-      }
-    }
-
-    // Check for Quiz Data (reusing existing logic from teacher agent)
-    const quizMatch = text.match(/```quiz_data\s*([\s\S]*?)\s*```/)
-    if (quizMatch) {
-      try {
-        const data = JSON.parse(quizMatch[1])
-        return {
-          artifact: { type: 'quiz', data },
-          cleanText: text.replace(quizMatch[0], '').trim()
-        }
-      } catch (e) {
-         console.error("Failed to parse quiz JSON", e)
-      }
-    }
-    
-    // Check for Exercise Data
-    const exerciseMatch = text.match(/```exercise_data\s*([\s\S]*?)\s*```/)
-    if (exerciseMatch) {
-      try {
-        const data = JSON.parse(exerciseMatch[1])
-        return {
-          artifact: { type: 'exercise', data },
-          cleanText: text.replace(exerciseMatch[0], '').trim()
-        }
-      } catch (e) {
-         console.error("Failed to parse exercise JSON", e)
-      }
-    }
-
-    return { artifact: null, cleanText: text }
-  }
-
-  const handleNotificationClick = (notif: ChatMessage) => {
-    clearNotification(notif.id)
-    onNotificationClick?.(notif)
-  }
-
-  const formatTime = (dateStr: string) => {
-    const date = new Date(dateStr)
-    return date.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })
-  }
-
-  const getMessageStyle = (msg: ChatMessage) => {
-    if (msg.is_notification) {
-      return 'bg-amber-50 border-l-4 border-amber-400'
-    }
-    if (msg.sender_id === currentUserId) {
-      return 'bg-violet-100 ml-4'
-    }
-    if (msg.sender_type === 'TEACHER') {
-      return 'bg-purple-50 border-l-4 border-purple-400'
-    }
-    return 'bg-gray-50 mr-4'
-  }
-
-  const handleToggle = (open: boolean) => {
-    setIsOpen(open)
-    onToggle?.(open)
-  }
-
-  // Save artifact as draft task
-  const handleSaveArtifact = async (data: any) => {
-    if (userType !== 'teacher' || !previewData) return
-
-    setIsSavingArtifact(true)
-    try {
-      await teacherApi.createTask(sessionId, {
-        title: data.title,
-        description: data.description,
-        task_type: previewData.type,
-        content_json: JSON.stringify(data)
-      })
-      toast({ title: "Contenuto salvato come bozza!", description: "Puoi trovarlo e pubblicarlo nella sezione Compiti." })
-      setPreviewData(null)
-    } catch (error) {
-      console.error("Error saving artifact:", error)
-      toast({ variant: "destructive", title: "Errore nel salvataggio", description: "Riprova più tardi." })
-    } finally {
-      setIsSavingArtifact(false)
-    }
-  }
-
-  if (!isOpen && !isMobileView) {
-    return (
-      <div className="fixed right-0 top-1/2 -translate-y-1/2 z-50">
-        <Button
-          onClick={() => handleToggle(true)}
-          className="rounded-l-lg rounded-r-none h-24 px-2 bg-violet-500 hover:bg-violet-600"
-        >
-          <div className="flex flex-col items-center gap-1">
-            <ChevronLeft className="h-4 w-4" />
-            <MessageSquare className="h-5 w-5" />
-            {notifications.length > 0 && (
-              <span className="bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
-                {notifications.length}
-              </span>
-            )}
-          </div>
-        </Button>
-      </div>
-    )
-  }
-
-  const containerClass = isMobileView
-    ? "w-full h-full bg-white flex flex-col"
-    : "fixed right-0 top-0 h-full bg-white border-l shadow-lg z-50 flex flex-col"
-
-  const containerStyle = isMobileView ? {} : { width: `${sidebarWidth}px` }
+  const containerClasses = isMobileView
+    ? "flex flex-col h-full w-full bg-white"
+    : "fixed top-16 right-0 h-[calc(100vh-4rem)] flex flex-col bg-white border-l border-slate-200 shadow-xl z-30"
+  
+  const containerStyle = isMobileView ? {} : { width: `${chatWidth}px` }
 
   return (
-    <>
-      <div 
-        className={containerClass}
-        style={containerStyle}
-      >
-        {/* Resize handle - Desktop only */}
-        {!isMobileView && (
-          <div
-            className="absolute left-0 top-0 bottom-0 w-1 cursor-ew-resize hover:bg-violet-300 transition-colors"
-            onMouseDown={() => setIsResizing(true)}
-          />
-        )}
-        
-        {/* Header */}
-        <div className="bg-gradient-to-r from-violet-500 to-purple-600 text-white p-3 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <MessageSquare className="h-5 w-5" />
-            <span className="font-semibold">Chat di Classe</span>
-            {connected ? (
-              <Circle className="h-2 w-2 fill-green-300 text-green-300" />
-            ) : (
-              <Circle className="h-2 w-2 fill-red-400 text-red-400" />
-            )}
-          </div>
-          {!isMobileView && (
-            <Button variant="ghost" size="sm" onClick={() => handleToggle(false)} className="text-white hover:bg-violet-600">
-              <ChevronRight className="h-4 w-4" />
-            </Button>
-          )}
-        </div>
-
-        {/* Tabs */}
-        <div className="flex border-b">
-          <button
-            onClick={() => setActiveTab('public')}
-            className={`flex-1 py-2 text-sm font-medium ${activeTab === 'public' ? 'border-b-2 border-violet-500 text-violet-600' : 'text-gray-500'}`}
-          >
-            <MessageSquare className="h-4 w-4 inline mr-1" />
-            Classe
-          </button>
-          <button
-            onClick={() => { setActiveTab('private'); }}
-            className={`flex-1 py-2 text-sm font-medium relative ${activeTab === 'private' ? 'border-b-2 border-purple-600 text-purple-600' : 'text-gray-500'}`}
-          >
-            <Lock className="h-4 w-4 inline mr-1" />
-            Privata
-            {unreadPrivateCount > 0 && (
-              <span className="absolute -top-1 right-1 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center animate-pulse">
-                {unreadPrivateCount > 9 ? '9+' : unreadPrivateCount}
-              </span>
-            )}
-            {privateTarget && unreadPrivateCount === 0 && <span className="absolute top-1 right-1 w-2 h-2 bg-purple-500 rounded-full"></span>}
-          </button>
-          <button
-            onClick={() => setActiveTab('users')}
-            className={`flex-1 py-2 text-sm font-medium ${activeTab === 'users' ? 'border-b-2 border-violet-500 text-violet-600' : 'text-gray-500'}`}
-          >
-            <Users className="h-4 w-4 inline mr-1" />
-            ({onlineUsers.length})
-          </button>
-        </div>
-
-        {/* Notifications Banner */}
-        {notifications.length > 0 && (
-          <div className="bg-amber-50 border-b border-amber-200 p-2">
-            <div className="flex items-center gap-2 text-amber-800 text-sm font-medium mb-1">
-              <Bell className="h-4 w-4" />
-              Notifiche ({notifications.length})
-            </div>
-            <div className="space-y-1 max-h-24 overflow-y-auto">
-              {notifications.slice(0, 3).map(notif => (
-                <div 
-                  key={notif.id}
-                  onClick={() => handleNotificationClick(notif)}
-                  className="text-xs bg-white p-2 rounded cursor-pointer hover:bg-amber-100 flex items-center gap-2"
-                >
-                  {notif.notification_type === 'task' && <ClipboardList className="h-3 w-3 text-blue-500" />}
-                  {notif.notification_type === 'quiz' && <ClipboardList className="h-3 w-3 text-purple-500" />}
-                  {notif.notification_type === 'document' && <FileText className="h-3 w-3 text-green-500" />}
-                  <span className="truncate">{notif.text}</span>
-                  <X className="h-3 w-3 ml-auto text-gray-400 hover:text-gray-600" />
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Content */}
-        <div className="flex-1 overflow-hidden pb-24 md:pb-0">
-          {/* PUBLIC CHAT TAB */}
-          {activeTab === 'public' && (
-            <div className="h-full flex flex-col">
-              <div className="flex-1 overflow-y-auto p-3 space-y-2">
-                {messages.filter(m => !m.is_private).length === 0 ? (
-                  <p className="text-center text-gray-400 text-sm py-8">
-                    Nessun messaggio. Inizia la conversazione!
-                  </p>
-                ) : (
-                  messages.filter(m => !m.is_private).map((msg) => {
-                    const { file, cleanText } = parseFileFromMessage(msg.text)
-                    const { artifact, cleanText: artifactText } = parseArtifactFromMessage(cleanText)
-                    
-                    return (
-                      <div
-                        key={msg.id}
-                        className={`p-2 rounded-lg text-sm ${getMessageStyle(msg)} ${msg.is_notification ? 'cursor-pointer' : ''}`}
-                        onClick={() => msg.is_notification && handleNotificationClick(msg)}
-                      >
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className={`font-semibold text-xs ${msg.sender_type === 'TEACHER' ? 'text-blue-600' : 'text-gray-600'}`}>
-                            {msg.sender_id === currentUserId ? 'Tu' : (msg.sender_name || (msg.sender_type === 'TEACHER' ? '👨‍🏫 Docente' : 'Studente'))}
-                          </span>
-                          <span className="text-xs text-gray-400">{formatTime(msg.created_at)}</span>
-                        </div>
-                        {file && (
-                          <div className="mb-2">
-                            {file.type === 'image' ? (
-                              <img 
-                                src={file.url} 
-                                alt={file.name} 
-                                className="max-w-full max-h-32 rounded cursor-grab"
-                                draggable
-                                onDragStart={(e) => {
-                                  e.dataTransfer.setData('application/x-chatbot-image', file.url)
-                                  e.dataTransfer.effectAllowed = 'copy'
-                                }}
-                              />
-                            ) : (
-                              <div
-                                className="flex items-center gap-2 p-2 bg-white rounded border hover:bg-gray-50 cursor-grab"
-                                draggable
-                                onDragStart={(e) => {
-                                  if (file.type === 'csv' && file.data) {
-                                    // Decode base64 CSV data
-                                    const base64Data = file.data.split(',')[1]
-                                    const csvContent = decodeURIComponent(escape(atob(base64Data)))
-                                    e.dataTransfer.setData('application/x-chatbot-csv', csvContent)
-                                  }
-                                  e.dataTransfer.effectAllowed = 'copy'
-                                }}
-                              >
-                                {file.type === 'csv' ? <FileSpreadsheet className="h-4 w-4 text-green-600" /> : <FileText className="h-4 w-4 text-blue-600" />}
-                                <span className="text-xs truncate flex-1">{file.name}</span>
-                                <a href={file.url} download={file.name} onClick={(e) => e.stopPropagation()}>
-                                  <Download className="h-3 w-3" />
-                                </a>
-                              </div>
-                            )}
-                          </div>
-                        )}
-                        
-                        {/* Render Text Content */}
-                        {(artifactText || !file) && <p className="text-gray-800 whitespace-pre-wrap">{artifactText || cleanText}</p>}
-                        
-                        {/* Render Artifact Button */}
-                        {artifact && (
-                          <div className="mt-3">
-                            <Button 
-                              size="sm" 
-                              className="w-full bg-violet-100 text-violet-700 hover:bg-violet-200 border border-violet-200"
-                              onClick={() => setPreviewData(artifact)}
-                            >
-                              <Sparkles className="h-4 w-4 mr-2" />
-                              Anteprima {artifact.type === 'lesson' ? 'Lezione' : artifact.type === 'presentation' ? 'Presentazione' : 'Contenuto'}
-                            </Button>
-                          </div>
-                        )}
-
-                        {msg.is_notification && (
-                          <span className="text-xs text-blue-500 mt-1 block">Clicca per aprire →</span>
-                        )}
-                      </div>
-                    )
-                  })
-                )}
-                <div ref={messagesEndRef} />
-              </div>
-              <div 
-                className={isMobileView 
-                  ? "fixed bottom-[76px] left-4 right-4 z-40 rounded-2xl shadow-xl bg-white/95 backdrop-blur-sm border border-slate-200/60 p-2"
-                  : "p-3 border-t bg-gray-50"
-                }
-                onDragOver={(e) => {
-                  e.preventDefault()
-                  e.currentTarget.classList.add('bg-violet-100')
-                }}
-                onDragLeave={(e) => {
-                  e.currentTarget.classList.remove('bg-violet-100')
-                }}
-                onDrop={(e) => {
-                  e.preventDefault()
-                  e.currentTarget.classList.remove('bg-violet-100')
-                  
-                  // Handle image from chatbot
-                  const imageData = e.dataTransfer.getData('application/x-chatbot-image')
-                  if (imageData) {
-                    setPendingFile({
-                      type: 'image',
-                      name: `immagine_${Date.now()}.png`,
-                      url: imageData,
-                      data: imageData
-                    })
-                    return
-                  }
-                  
-                  // Handle CSV from chatbot dataset generator
-                  const csvData = e.dataTransfer.getData('application/x-chatbot-csv')
-                  if (csvData) {
-                    const base64Csv = btoa(unescape(encodeURIComponent(csvData)))
-                    setPendingFile({
-                      type: 'csv',
-                      name: `dataset_${Date.now()}.csv`,
-                      url: `data:text/csv;base64,${base64Csv}`,
-                      data: `data:text/csv;base64,${base64Csv}`
-                    })
-                    return
-                  }
-                  
-                  // Handle external file drops
-                  const files = Array.from(e.dataTransfer.files)
-                  if (files.length > 0) {
-                    const file = files[0]
-                    const reader = new FileReader()
-                    reader.onload = (event) => {
-                      const data = event.target?.result as string
-                      const isImage = file.type.startsWith('image/')
-                      const isCsv = file.name.endsWith('.csv') || file.type === 'text/csv'
-                      setPendingFile({
-                        type: isImage ? 'image' : isCsv ? 'csv' : 'file',
-                        name: file.name,
-                        url: data,
-                        data: data
-                      })
-                    }
-                    reader.readAsDataURL(file)
-                  }
-                }}
-              >
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/*,.csv"
-                  onChange={handleFileSelect}
-                  className="hidden"
-                />
-                {pendingFile && (
-                  <div className="mb-2 p-2 bg-white rounded border flex items-center gap-2">
-                    {pendingFile.type === 'image' ? <Image className="h-4 w-4 text-purple-600" /> : <FileSpreadsheet className="h-4 w-4 text-green-600" />}
-                    <span className="text-xs truncate flex-1">{pendingFile.name}</span>
-                    <Button variant="ghost" size="sm" onClick={() => setPendingFile(null)} className="h-6 w-6 p-0">
-                      <X className="h-3 w-3" />
-                    </Button>
-                  </div>
-                )}
-                <div className="flex gap-2">
-                  <Button variant="outline" size="sm" onClick={() => fileInputRef.current?.click()} className="px-2">
-                    <Paperclip className="h-4 w-4" />
-                  </Button>
-                  <Input
-                    value={inputText}
-                    onChange={(e) => setInputText(e.target.value)}
-                    onKeyPress={handleKeyPress}
-                    placeholder="Scrivi alla classe..."
-                    className="flex-1"
-                  />
-                  <Button onClick={handleSendWithFile} size="sm" disabled={!inputText.trim() && !pendingFile} className="bg-violet-600 hover:bg-violet-700">
-                    <Send className="h-4 w-4" />
-                  </Button>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* PRIVATE CHAT TAB */}
-          {activeTab === 'private' && (
-            <div className="h-full flex flex-col">
-              {!privateTarget ? (
-                <div className="flex-1 flex flex-col items-center justify-center p-4 text-center">
-                  <Lock className="h-12 w-12 text-gray-300 mb-4" />
-                  <p className="text-gray-500 text-sm mb-2">Nessuna chat privata attiva</p>
-                  <p className="text-gray-400 text-xs">Seleziona un utente dal tab "Online" per iniziare</p>
-                </div>
-              ) : (
-                <>
-                  <div className="bg-purple-50 px-3 py-2 flex items-center justify-between border-b">
-                    <div className="flex items-center gap-2">
-                      <div className="w-8 h-8 bg-purple-500 rounded-full flex items-center justify-center text-white text-sm">
-                        {privateTarget.student_id === 'teacher' ? '👨‍🏫' : (privateTarget.nickname || 'S')[0].toUpperCase()}
-                      </div>
-                      <span className="text-purple-700 font-medium text-sm">{privateTarget.nickname || 'Utente'}</span>
-                    </div>
-                    <Button variant="ghost" size="sm" onClick={() => setPrivateTarget(null)}>
-                      <X className="h-4 w-4" />
-                    </Button>
-                  </div>
-                  <div className="flex-1 overflow-y-auto p-3 space-y-2">
-                    {privateMessages.length === 0 ? (
-                      <p className="text-center text-gray-400 text-sm py-8">
-                        Inizia una conversazione privata
-                      </p>
-                    ) : (
-                      privateMessages.map((msg) => {
-                        const { file, cleanText } = parseFileFromMessage(msg.text)
-                        return (
-                          <div
-                            key={msg.id}
-                            className={`p-2 rounded-lg text-sm ${msg.sender_id === currentUserId ? 'bg-violet-100 ml-4' : 'bg-gray-50 mr-4'}`}
-                          >
-                            <div className="flex items-center gap-2 mb-1">
-                              <span className="font-semibold text-xs text-purple-600">
-                                {msg.sender_id === currentUserId ? 'Tu' : (msg.sender_name || 'Utente')}
-                              </span>
-                              <span className="text-xs text-gray-400">{formatTime(msg.created_at)}</span>
-                            </div>
-                            {file && (
-                              <div className="mb-2">
-                                {file.type === 'image' ? (
-                                  <img 
-                                    src={file.url} 
-                                    alt={file.name} 
-                                    className="max-w-full max-h-32 rounded cursor-grab"
-                                    draggable
-                                    onDragStart={(e: React.DragEvent) => {
-                                      e.dataTransfer.setData('application/x-chatbot-image', file.url)
-                                      e.dataTransfer.effectAllowed = 'copy'
-                                    }}
-                                  />
-                                ) : (
-                                  <div
-                                    className="flex items-center gap-2 p-2 bg-white rounded border hover:bg-gray-50 cursor-grab"
-                                    draggable
-                                    onDragStart={(e: React.DragEvent) => {
-                                      if (file.type === 'csv' && file.data) {
-                                        const base64Data = file.data.split(',')[1]
-                                        const csvContent = decodeURIComponent(escape(atob(base64Data)))
-                                        e.dataTransfer.setData('application/x-chatbot-csv', csvContent)
-                                      }
-                                      e.dataTransfer.effectAllowed = 'copy'
-                                    }}
-                                  >
-                                    {file.type === 'csv' ? <FileSpreadsheet className="h-4 w-4 text-green-600" /> : <FileText className="h-4 w-4 text-blue-600" />}
-                                    <span className="text-xs truncate flex-1">{file.name}</span>
-                                    <a href={file.url} download={file.name} onClick={(e: React.MouseEvent) => e.stopPropagation()}>
-                                      <Download className="h-3 w-3" />
-                                    </a>
-                                  </div>
-                                )}
-                              </div>
-                            )}
-                            {(cleanText || !file) && <p className="text-gray-800">{cleanText || msg.text}</p>}
-                          </div>
-                        )
-                      })
-                    )}
-                    <div ref={privateMessagesEndRef} />
-                  </div>
-                  <div className={isMobileView 
-                    ? "fixed bottom-[76px] left-4 right-4 z-40 rounded-2xl shadow-xl bg-white/95 backdrop-blur-sm border border-slate-200/60 p-2"
-                    : "p-3 border-t bg-purple-50"
-                  }>
-                    <div className="flex gap-2">
-                      <Button variant="outline" size="sm" onClick={() => fileInputRef.current?.click()} className="px-2 bg-white">
-                        <Paperclip className="h-4 w-4" />
-                      </Button>
-                      <Input
-                        value={inputText}
-                        onChange={(e) => setInputText(e.target.value)}
-                        onKeyPress={handleKeyPress}
-                        placeholder={`Messaggio a ${privateTarget.nickname}...`}
-                        className="flex-1 bg-white"
-                      />
-                      <Button 
-                        onClick={handleSendWithFile} 
-                        size="sm" 
-                        disabled={!inputText.trim() && !pendingFile}
-                        className="bg-violet-600 hover:bg-violet-700"
-                      >
-                        <Send className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </div>
-                </>
-              )}
-            </div>
-          )}
-
-          {/* USERS TAB */}
-          {activeTab === 'users' && (
-            <div className="p-3 space-y-2">
-              {/* ... same as before ... */}
-              {userType === 'student' && (
-                <div 
-                  className="flex items-center gap-3 p-2 rounded-lg bg-blue-50 cursor-pointer hover:bg-blue-100"
-                  onClick={() => {
-                    setPrivateTarget({ student_id: 'teacher', nickname: 'Docente' })
-                    setActiveTab('private')
-                  }}
-                >
-                  <div className="relative">
-                    <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center text-white text-sm">
-                      👨‍🏫
-                    </div>
-                    <Circle className="absolute -bottom-0.5 -right-0.5 h-3 w-3 fill-green-400 text-green-400" />
-                  </div>
-                  <div className="flex-1">
-                    <p className="font-medium text-sm">Docente</p>
-                    <p className="text-xs text-gray-500">Clicca per chat privata</p>
-                  </div>
-                </div>
-              )}
-
-              {onlineUsers.length === 0 ? (
-                <p className="text-center text-gray-400 text-sm py-4">
-                  Nessun altro studente online
-                </p>
-              ) : (
-                onlineUsers.map((user) => (
-                  <div 
-                    key={user.student_id}
-                    className="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-100 cursor-pointer"
-                    onClick={() => {
-                      setPrivateTarget(user)
-                      setActiveTab('private')
-                    }}
-                  >
-                    <div className="relative">
-                      <div className="w-8 h-8 bg-sky-500 rounded-full flex items-center justify-center text-white text-sm">
-                        {(user.nickname || 'S')[0].toUpperCase()}
-                      </div>
-                      <Circle className="absolute -bottom-0.5 -right-0.5 h-3 w-3 fill-green-400 text-green-400" />
-                    </div>
-                    <div className="flex-1">
-                      <p className="font-medium text-sm">{user.nickname || `Studente ${user.student_id.slice(0, 4)}`}</p>
-                      {user.activity?.module_key && (
-                        <p className="text-xs text-gray-500">
-                          📍 {user.activity.module_key}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          )}
+    <div 
+      className={containerClasses}
+      style={containerStyle}
+      onDragEnter={handleDragEnter}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+    >
+      {!isMobileView && (
+        <div
+          className={`absolute left-0 top-0 w-1 h-full cursor-ew-resize hover:bg-indigo-500 transition-colors ${isResizing ? 'bg-indigo-500' : 'bg-transparent'}`}
+          onMouseDown={handleMouseDown}
+        />
+      )}
+      <div className="flex items-center justify-between px-4 py-4 border-b border-slate-100 bg-white">
+        <div className="flex items-center gap-2">
+          <div className={`w-2 h-2 rounded-full ${connected ? 'bg-emerald-500 animate-pulse' : 'bg-slate-300'}`} />
+          <h3 className="font-bold text-xs uppercase tracking-widest text-slate-500">Live Chat</h3>
         </div>
       </div>
 
-      {/* Artifact Preview Modal */}
-      {previewData && (
-        <ArtifactPreviewModal 
-          isOpen={true}
-          onClose={() => setPreviewData(null)}
-          onSave={handleSaveArtifact}
-          artifactType={previewData.type}
-          initialData={previewData.data}
-          isSaving={isSavingArtifact}
-        />
+      <div className="flex-1 overflow-y-auto p-4 space-y-6 bg-slate-50/30 scroll-smooth overscroll-contain" ref={scrollRef}>
+        {messages.length === 0 && !isLoading && (
+          <div className="h-full flex flex-col items-center justify-center text-slate-300 opacity-50">
+            <MessageSquare className="h-8 w-8 mb-2" />
+            <p className="text-[10px] font-medium uppercase">Nessun messaggio</p>
+          </div>
+        )}
+        
+        {messages.map((msg, idx) => {
+          const isMe = msg.sender_id === currentUserId
+          const isNotification = !!msg.notification_type
+          const isSystem = msg.sender_id === 'system' && !isNotification
+          const showAvatar = idx === 0 || messages[idx - 1].sender_id !== msg.sender_id
+          
+          const content = msg.text || (msg as any).content || ''
+
+          if (isSystem) {
+            return (
+              <div key={msg.id} className="flex justify-center">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter bg-slate-100 px-2 py-0.5 rounded">
+                  {content}
+                </span>
+              </div>
+            )
+          }
+
+          if (isNotification) {
+            return (
+              <div 
+                key={msg.id} 
+                onClick={() => onNotificationClick?.(msg)}
+                className="mx-2 p-3 bg-indigo-50 border border-indigo-100 rounded-xl cursor-pointer hover:bg-indigo-100 transition-colors shadow-sm group"
+              >
+                <div className="flex items-center gap-2 mb-1">
+                  <Bell className="h-3 w-3 text-indigo-600" />
+                  <span className="text-[10px] font-bold text-indigo-600 uppercase">Notifica</span>
+                </div>
+                <p className="text-xs font-semibold text-slate-800 group-hover:text-indigo-700">{content}</p>
+              </div>
+            )
+          }
+
+          const imageAttachments = Array.isArray(msg.attachments) 
+            ? msg.attachments.filter((att: any) => att.type === 'image' && att.url)
+            : []
+
+          return (
+            <div key={msg.id} className={`flex gap-3 ${isMe ? 'flex-row-reverse' : ''}`}>
+              <div className="flex-shrink-0 w-7 flex flex-col items-center">
+                {showAvatar ? (
+                  <Avatar className="h-7 w-7 border-none shadow-sm">
+                    {msg.sender_avatar_url ? (
+                      <img 
+                        src={msg.sender_avatar_url} 
+                        alt={msg.sender_name || 'Avatar'} 
+                        className="w-full h-full object-cover rounded-full"
+                      />
+                    ) : (
+                      <AvatarFallback className={`text-[9px] font-black ${isMe ? 'bg-indigo-600 text-white' : 'bg-slate-200 text-slate-600'}`}>
+                        {(msg.sender_name || '?').substring(0, 2).toUpperCase()}
+                      </AvatarFallback>
+                    )}
+                  </Avatar>
+                ) : <div className="w-7" />}
+              </div>
+
+              <div className={`flex flex-col max-w-[85%] ${isMe ? 'items-end' : 'items-start'}`}>
+                {showAvatar && (
+                  <span className="text-[10px] font-bold text-slate-400 mb-1 mx-1 uppercase tracking-tighter">
+                    {msg.sender_name || 'User'}
+                  </span>
+                )}
+                <div className={`
+                  px-3.5 py-2.5 text-sm leading-snug shadow-sm
+                  ${isMe 
+                    ? 'bg-indigo-600 text-white rounded-2xl rounded-tr-none' 
+                    : 'bg-white text-slate-700 border border-slate-100 rounded-2xl rounded-tl-none'}
+                `}>
+                  {content}
+                  {imageAttachments.length > 0 && (
+                    <div className="mt-2 space-y-2">
+                      {imageAttachments.map((att: any, idx: number) => (
+                        <img 
+                          key={idx}
+                          src={att.url} 
+                          alt={att.filename || 'Allegato'}
+                          className="rounded-lg max-w-full max-h-64 object-contain cursor-pointer hover:opacity-90 transition-opacity"
+                          onClick={() => window.open(att.url, '_blank')}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <span className="text-[9px] text-slate-300 mt-1 font-medium">
+                  {new Date(msg.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                </span>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+
+      <div className="p-4 bg-white border-t border-slate-100">
+        {attachedFiles.length > 0 && (
+          <div className="mb-3 flex flex-wrap gap-2">
+            {attachedFiles.map((file, idx) => (
+              <div key={idx} className="relative group">
+                {file.type.startsWith('image/') ? (
+                  <div className="relative w-16 h-16 rounded-lg overflow-hidden border border-slate-200">
+                    <img 
+                      src={URL.createObjectURL(file)} 
+                      alt={file.name}
+                      className="w-full h-full object-cover"
+                    />
+                    <button
+                      onClick={() => removeFile(idx)}
+                      className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2 bg-slate-100 rounded-lg px-3 py-2 pr-8 relative">
+                    <Paperclip className="h-4 w-4 text-slate-500" />
+                    <span className="text-xs text-slate-600 truncate max-w-[100px]">{file.name}</span>
+                    <button
+                      onClick={() => removeFile(idx)}
+                      className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+        
+        <div className="relative flex items-center bg-slate-50 rounded-full border border-slate-200 focus-within:border-indigo-400 focus-within:ring-2 focus-within:ring-indigo-100 transition-all px-1">
+          <input 
+            ref={fileInputRef}
+            type="file"
+            multiple
+            accept="image/*,.pdf,.doc,.docx"
+            onChange={handleFileSelect}
+            className="hidden"
+          />
+          <Button
+            size="icon"
+            variant="ghost"
+            onClick={() => fileInputRef.current?.click()}
+            className="w-8 h-8 rounded-full text-slate-500 hover:text-indigo-600 hover:bg-indigo-50"
+          >
+            <Paperclip className="h-4 w-4" />
+          </Button>
+          <Input 
+            value={inputText}
+            onChange={(e) => setInputText(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }}}
+            placeholder="Scrivi un messaggio..."
+            className="border-none bg-transparent focus-visible:ring-0 rounded-full h-10 text-sm px-2 flex-1"
+          />
+          <Button 
+            size="icon" 
+            onClick={handleSend}
+            disabled={!inputText.trim() && attachedFiles.length === 0}
+            className={`w-8 h-8 rounded-full ${(!inputText.trim() && attachedFiles.length === 0) ? 'bg-slate-200 text-slate-400' : 'bg-indigo-600 text-white shadow-md'}`}
+          >
+            <Send className="h-4 w-4" />
+          </Button>
+        </div>
+      </div>
+      
+      {dragActive && (
+        <div className="absolute inset-0 bg-indigo-500/10 backdrop-blur-sm flex items-center justify-center z-50 border-4 border-dashed border-indigo-400 rounded-lg">
+          <div className="text-center">
+            <ImageIcon className="h-12 w-12 text-indigo-600 mx-auto mb-2" />
+            <p className="text-sm font-semibold text-indigo-700">Trascina qui i file</p>
+          </div>
+        </div>
       )}
-    </>
+    </div>
   )
 }

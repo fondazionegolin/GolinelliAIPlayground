@@ -1,7 +1,9 @@
 from fastapi import FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from contextlib import asynccontextmanager
 from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_LATEST
+from pathlib import Path
 
 from app.core.config import settings
 from app.api.v1.router import api_router
@@ -46,6 +48,11 @@ app.include_router(api_router, prefix=settings.API_V1_PREFIX)
 
 # Mount Socket.IO
 app.mount("/socket.io", socket_app)
+
+# Mount static files for chat uploads
+uploads_dir = Path("uploads")
+uploads_dir.mkdir(exist_ok=True)
+app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
 
 @app.get("/health")
