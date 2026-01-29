@@ -73,12 +73,12 @@ const PROFILE_ICONS: Record<string, React.ReactNode> = {
 }
 
 const PROFILE_COLORS: Record<string, string> = {
-  'tutor': 'bg-emerald-100 text-emerald-600 border-emerald-200',
-  'quiz': 'bg-rose-100 text-rose-600 border-rose-200',
-  'interview': 'bg-indigo-100 text-indigo-600 border-indigo-200',
-  'oral_exam': 'bg-orange-100 text-orange-600 border-orange-200',
-  'dataset_generator': 'bg-purple-100 text-purple-600 border-purple-200',
-  'math_coach': 'bg-blue-100 text-blue-600 border-blue-200',
+  'tutor': 'bg-emerald-50 text-emerald-600 border-emerald-200',
+  'quiz': 'bg-rose-50 text-rose-600 border-rose-200',
+  'interview': 'bg-violet-50 text-violet-600 border-violet-200',
+  'oral_exam': 'bg-amber-50 text-amber-600 border-amber-200',
+  'dataset_generator': 'bg-fuchsia-50 text-fuchsia-600 border-fuchsia-200',
+  'math_coach': 'bg-sky-50 text-fuchsia-600 border-fuchsia-200',
 }
 
 const FALLBACK_PROFILES: ChatbotProfile[] = [
@@ -311,7 +311,7 @@ export default function ChatbotModule({ sessionId, onInputFocusChange }: Chatbot
     if ((!messageContent.trim() && messageFiles.length === 0) || sendMessageMutation.isPending) return
 
     const filesInfo = messageFiles.length > 0
-      ? ` [📎 ${messageFiles.map(f => f.name).join(', ')}]`
+      ? ` [Allegati: ${messageFiles.map(f => f.name).join(', ')}]`
       : ''
 
     const userMessage: Message = {
@@ -501,7 +501,7 @@ export default function ChatbotModule({ sessionId, onInputFocusChange }: Chatbot
 
   // Desktop Chat interface
   return (
-    <div className="flex h-full md:h-[650px] flex-col md:flex-row bg-slate-50 md:bg-gradient-to-b md:from-slate-50 md:to-white md:rounded-xl overflow-hidden md:shadow-sm md:border relative">
+    <div className="flex h-full md:h-[calc(100vh-8rem)] md:max-h-[900px] md:min-h-[500px] flex-col md:flex-row bg-slate-50 md:bg-gradient-to-b md:from-fuchsia-50/30 md:to-white md:rounded-2xl overflow-hidden md:shadow-lg md:shadow-fuchsia-100/50 md:border md:border-fuchsia-100 relative md:my-2 md:mb-6">
       {/* Mobile Header - Fixed height */}
       <div className="flex md:hidden items-center gap-2 px-3 py-1.5 bg-white border-b flex-shrink-0">
         <Button
@@ -512,7 +512,7 @@ export default function ChatbotModule({ sessionId, onInputFocusChange }: Chatbot
         >
           <Menu className="h-4 w-4" />
         </Button>
-        <div className="w-7 h-7 rounded-xl bg-gradient-to-br from-sky-500 to-blue-600 flex items-center justify-center shadow-md">
+        <div className="w-7 h-7 rounded-xl bg-gradient-to-br from-fuchsia-500 to-violet-600 flex items-center justify-center shadow-md">
           {PROFILE_ICONS[selectedProfile] ? (
             <div className="text-white scale-90">{PROFILE_ICONS[selectedProfile]}</div>
           ) : (
@@ -544,7 +544,7 @@ export default function ChatbotModule({ sessionId, onInputFocusChange }: Chatbot
             <div className="flex-1 overflow-y-auto p-2 space-y-1">
               <button
                 onClick={handleNewChat}
-                className="w-full text-left px-3 py-2 rounded-lg text-sm bg-sky-100 text-sky-700 hover:bg-sky-200 transition-colors flex items-center gap-2"
+                className="w-full text-left px-3 py-2 rounded-lg text-sm bg-fuchsia-100 text-fuchsia-700 hover:bg-fuchsia-200 transition-colors flex items-center gap-2"
               >
                 <Sparkles className="h-4 w-4" />
                 Nuova chat
@@ -606,7 +606,7 @@ export default function ChatbotModule({ sessionId, onInputFocusChange }: Chatbot
             <div className="flex-1 overflow-y-auto p-2 space-y-1">
               <button
                 onClick={handleNewChat}
-                className="w-full text-left px-3 py-2 rounded-lg text-sm bg-sky-100 text-sky-700 hover:bg-sky-200 transition-colors flex items-center gap-2"
+                className="w-full text-left px-3 py-2 rounded-lg text-sm bg-fuchsia-100 text-fuchsia-700 hover:bg-fuchsia-200 transition-colors flex items-center gap-2"
               >
                 <Sparkles className="h-4 w-4" />
                 Nuova chat
@@ -677,14 +677,14 @@ export default function ChatbotModule({ sessionId, onInputFocusChange }: Chatbot
         className="flex-1 flex flex-col"
         onDragOver={(e) => {
           e.preventDefault()
-          e.currentTarget.classList.add('ring-2', 'ring-sky-500', 'ring-inset')
+          e.currentTarget.classList.add('ring-2', 'ring-fuchsia-500', 'ring-inset')
         }}
         onDragLeave={(e) => {
-          e.currentTarget.classList.remove('ring-2', 'ring-sky-500', 'ring-inset')
+          e.currentTarget.classList.remove('ring-2', 'ring-fuchsia-500', 'ring-inset')
         }}
         onDrop={(e) => {
           e.preventDefault()
-          e.currentTarget.classList.remove('ring-2', 'ring-sky-500', 'ring-inset')
+          e.currentTarget.classList.remove('ring-2', 'ring-fuchsia-500', 'ring-inset')
 
           const imageData = e.dataTransfer.getData('application/x-chatbot-image')
           if (imageData) {
@@ -741,7 +741,7 @@ export default function ChatbotModule({ sessionId, onInputFocusChange }: Chatbot
           >
             <ArrowLeft className="h-4 w-4" />
           </Button>
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-sky-500 to-blue-600 flex items-center justify-center shadow-md">
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-fuchsia-500 to-violet-600 flex items-center justify-center shadow-md">
             {PROFILE_ICONS[selectedProfile] ? (
               <div className="text-white scale-90">{PROFILE_ICONS[selectedProfile]}</div>
             ) : (
@@ -783,7 +783,7 @@ export default function ChatbotModule({ sessionId, onInputFocusChange }: Chatbot
                   handleChangeModel(found || null)
                 }
               }}
-              className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-transparent"
+              className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-fuchsia-500 focus:border-transparent"
             >
               <option value="">Modello predefinito</option>
               {availableModels.map((m) => (
@@ -802,7 +802,7 @@ export default function ChatbotModule({ sessionId, onInputFocusChange }: Chatbot
               <span className="text-xs text-slate-600">Risposte esaustive</span>
               <button
                 onClick={() => setVerboseMode(!verboseMode)}
-                className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${verboseMode ? 'bg-sky-500' : 'bg-slate-300'}`}
+                className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${verboseMode ? 'bg-fuchsia-500' : 'bg-slate-300'}`}
               >
                 <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${verboseMode ? 'translate-x-5' : 'translate-x-1'}`} />
               </button>
@@ -817,7 +817,7 @@ export default function ChatbotModule({ sessionId, onInputFocusChange }: Chatbot
         <div className="flex-1 overflow-y-auto overflow-x-hidden px-3 py-3 md:px-4 md:py-6 space-y-3 md:space-y-6" style={{ WebkitOverflowScrolling: 'touch', scrollBehavior: 'smooth' }}>
           {messages.length === 0 ? (
             <div className="text-center py-12">
-              <div className="inline-flex items-center justify-center w-20 h-20 rounded-2xl bg-gradient-to-br from-sky-500 to-blue-600 mb-6 shadow-lg">
+              <div className="inline-flex items-center justify-center w-20 h-20 rounded-2xl bg-gradient-to-br from-fuchsia-500 to-violet-600 mb-6 shadow-lg">
                 {PROFILE_ICONS[selectedProfile] ? (
                   <div className="text-white scale-125">{PROFILE_ICONS[selectedProfile]}</div>
                 ) : (
@@ -842,7 +842,7 @@ export default function ChatbotModule({ sessionId, onInputFocusChange }: Chatbot
             messages.map((message) => (
               <div key={message.id} className={`flex gap-3 ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                 {message.role === 'assistant' && (
-                  <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-sky-500 to-blue-600 flex items-center justify-center flex-shrink-0 shadow-md">
+                  <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-fuchsia-500 to-violet-600 flex items-center justify-center flex-shrink-0 shadow-md">
                     {PROFILE_ICONS[selectedProfile] ? (
                       <div className="text-white scale-75">{PROFILE_ICONS[selectedProfile]}</div>
                     ) : (
@@ -851,13 +851,13 @@ export default function ChatbotModule({ sessionId, onInputFocusChange }: Chatbot
                   </div>
                 )}
                 <div className={`max-w-[80%] rounded-2xl px-4 py-3 ${message.role === 'user'
-                  ? 'bg-gradient-to-br from-sky-500 to-blue-600 text-white rounded-br-md shadow-md'
-                  : 'bg-gradient-to-br from-sky-50 to-blue-50 border border-sky-100 shadow-sm rounded-bl-md'
+                  ? 'bg-gradient-to-br from-fuchsia-500 to-violet-600 text-white rounded-br-md shadow-md'
+                  : 'bg-gradient-to-br from-fuchsia-50 to-violet-50 border border-fuchsia-100 shadow-sm rounded-bl-md'
                   }`}>
                   {message.role === 'assistant' ? (
                     <MessageContent content={message.content} onQuizSubmit={(answers) => setInput(answers)} />
                   ) : (
-                    <p className="text-sm whitespace-pre-wrap">{convertEmoticons(message.content)}</p>
+                    <p className="text-sm whitespace-pre-wrap">{message.content}</p>
                   )}
                 </div>
                 {message.role === 'user' && (
@@ -870,7 +870,7 @@ export default function ChatbotModule({ sessionId, onInputFocusChange }: Chatbot
           )}
           {sendMessageMutation.isPending && (
             <div className="flex gap-3">
-              <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-sky-500 to-blue-600 flex items-center justify-center shadow-md">
+              <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-fuchsia-500 to-violet-600 flex items-center justify-center shadow-md">
                 {PROFILE_ICONS[selectedProfile] ? (
                   <div className="text-white scale-75">{PROFILE_ICONS[selectedProfile]}</div>
                 ) : (
@@ -880,9 +880,9 @@ export default function ChatbotModule({ sessionId, onInputFocusChange }: Chatbot
               <div className="bg-white border border-slate-100 shadow-sm rounded-2xl rounded-bl-md px-4 py-3">
                 <div className="flex items-center gap-2">
                   <div className="flex gap-1">
-                    <span className="w-2 h-2 bg-sky-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></span>
-                    <span className="w-2 h-2 bg-sky-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></span>
-                    <span className="w-2 h-2 bg-sky-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></span>
+                    <span className="w-2 h-2 bg-fuchsia-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></span>
+                    <span className="w-2 h-2 bg-fuchsia-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></span>
+                    <span className="w-2 h-2 bg-fuchsia-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></span>
                   </div>
                   <span className="text-sm text-slate-400">Sto pensando...</span>
                 </div>
@@ -947,7 +947,7 @@ export default function ChatbotModule({ sessionId, onInputFocusChange }: Chatbot
               variant="ghost"
               size="sm"
               onClick={() => fileInputRef.current?.click()}
-              className="h-12 w-12 rounded-xl text-slate-500 hover:text-sky-600 hover:bg-sky-50"
+              className="h-12 w-12 rounded-xl text-slate-500 hover:text-fuchsia-600 hover:bg-fuchsia-50"
             >
               <Paperclip className="h-5 w-5" />
             </Button>
@@ -975,34 +975,34 @@ export default function ChatbotModule({ sessionId, onInputFocusChange }: Chatbot
                 }}
                 placeholder={attachedFiles.length > 0 ? "Descrivi..." : "Scrivi..."}
                 disabled={sendMessageMutation.isPending}
-                className="w-full px-3 py-2 md:px-4 md:py-3 bg-slate-50 md:bg-slate-50 border-0 md:border md:border-slate-200 rounded-full md:rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-sky-500 transition-all"
+                className="w-full px-3 py-2 md:px-4 md:py-3 bg-slate-50 md:bg-slate-50 border-0 md:border md:border-slate-200 rounded-full md:rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-fuchsia-500 transition-all"
               />
             </div>
             <Button
               onClick={() => handleSend()}
               disabled={(!input.trim() && attachedFiles.length === 0) || sendMessageMutation.isPending}
               size="sm"
-              className="h-9 w-9 md:h-10 md:w-10 rounded-full bg-gradient-to-br from-sky-500 to-blue-600 hover:from-sky-600 hover:to-blue-700 shadow-md transition-all flex-shrink-0 p-0"
+              className="h-9 w-9 md:h-10 md:w-10 rounded-full bg-gradient-to-br from-fuchsia-500 to-violet-600 hover:from-fuchsia-600 hover:to-violet-700 shadow-md transition-all flex-shrink-0 p-0"
             >
               <Send className="h-4 w-4" />
             </Button>
           </div>
 
-          <div className="hidden lg:flex items-center justify-center gap-4 mt-2 flex-wrap">
+          <div className="hidden lg:flex items-center justify-center gap-4 mt-2 pb-4 flex-wrap">
             <div className="flex items-center gap-2">
               <span className="text-xs text-slate-400">Generatore:</span>
               <div className="flex items-center bg-slate-100 rounded-lg p-0.5">
                 <button
                   onClick={() => setImageProvider('flux-schnell')}
-                  className={`px-2 py-1 text-xs rounded-md transition-all ${imageProvider === 'flux-schnell' ? 'bg-white shadow text-sky-600 font-medium' : 'text-slate-500 hover:text-slate-700'}`}
+                  className={`px-2 py-1 text-xs rounded-md transition-all ${imageProvider === 'flux-schnell' ? 'bg-white shadow text-fuchsia-600 font-medium' : 'text-slate-500 hover:text-slate-700'}`}
                 >
-                  ⚡ Flux
+                  Flux
                 </button>
                 <button
                   onClick={() => setImageProvider('dall-e')}
-                  className={`px-2 py-1 text-xs rounded-md transition-all ${imageProvider === 'dall-e' ? 'bg-white shadow text-sky-600 font-medium' : 'text-slate-500 hover:text-slate-700'}`}
+                  className={`px-2 py-1 text-xs rounded-md transition-all ${imageProvider === 'dall-e' ? 'bg-white shadow text-fuchsia-600 font-medium' : 'text-slate-500 hover:text-slate-700'}`}
                 >
-                  🎨 DALL-E
+                  DALL-E
                 </button>
               </div>
             </div>
@@ -1011,7 +1011,7 @@ export default function ChatbotModule({ sessionId, onInputFocusChange }: Chatbot
               <select
                 value={imageSize}
                 onChange={(e) => setImageSize(e.target.value)}
-                className="text-xs bg-slate-100 border-0 rounded-lg px-2 py-1 text-slate-600 focus:ring-1 focus:ring-sky-300"
+                className="text-xs bg-slate-100 border-0 rounded-lg px-2 py-1 text-slate-600 focus:ring-1 focus:ring-fuchsia-300"
               >
                 <option value="1024x1024">1:1 Quadrato</option>
                 <option value="1024x768">4:3 Orizzontale</option>
@@ -1025,41 +1025,6 @@ export default function ChatbotModule({ sessionId, onInputFocusChange }: Chatbot
       </div>
     </div>
   )
-}
-
-function convertEmoticons(text: string): string {
-  const emoticons: Record<string, string> = {
-    ':)': '😊', ':-)': '😊', '(:': '😊',
-    ':D': '😄', ':-D': '😄', 'XD': '😆', 'xD': '😆',
-    ':(': '😢', ':-(': '😢', '):': '😢',
-    ';)': '😉', ';-)': '😉',
-    ':P': '😛', ':-P': '😛', ':p': '😛', ':-p': '😛',
-    ':O': '😮', ':-O': '😮', ':o': '😮', ':-o': '😮',
-    '<3': '❤️', '</3': '💔',
-    ':*': '😘', ':-*': '😘',
-    ":'(": '😢', ":'-(": '😢',
-    ':S': '😕', ':-S': '😕',
-    'B)': '😎', 'B-)': '😎',
-    ':/': '😕', ':-/': '😕',
-    ':3': '😺',
-    'O:)': '😇', 'O:-)': '😇',
-    '>:(': '😠', '>:-(': '😠',
-    ':@': '😡',
-    '^^': '😊', '^_^': '😊',
-    '-_-': '😑', '-.-': '😑',
-    'T_T': '😭', 'T.T': '😭',
-    ':thumbsup:': '👍', ':thumbsdown:': '👎',
-    ':fire:': '🔥', ':heart:': '❤️', ':star:': '⭐',
-    ':ok:': '👌', ':wave:': '👋', ':clap:': '👏',
-    ':100:': '💯', ':rocket:': '🚀', ':sparkles:': '✨',
-  }
-
-  let result = text
-  const sortedEmoticons = Object.entries(emoticons).sort((a, b) => b[0].length - a[0].length)
-  for (const [emoticon, emoji] of sortedEmoticons) {
-    result = result.split(emoticon).join(emoji)
-  }
-  return result
 }
 
 function extractBase64Images(content: string): { cleanContent: string; images: string[] } {
@@ -1100,7 +1065,7 @@ function MessageContent({ content, onQuizSubmit }: { content: string; onQuizSubm
   if (isGenerating) {
     return (
       <div className="flex flex-col items-center gap-3 py-4">
-        <div className="flex items-center gap-2 text-sky-600">
+        <div className="flex items-center gap-2 text-fuchsia-600">
           <Loader2 className="h-5 w-5 animate-spin" />
           <span className="font-medium">
             {generationType === 'quiz' && 'Generazione quiz in corso...'}
@@ -1110,7 +1075,7 @@ function MessageContent({ content, onQuizSubmit }: { content: string; onQuizSubm
           </span>
         </div>
         <div className="w-full max-w-xs bg-gray-200 rounded-full h-2 overflow-hidden">
-          <div className="bg-sky-500 h-2 rounded-full animate-pulse" style={{ width: '60%' }}></div>
+          <div className="bg-fuchsia-500 h-2 rounded-full animate-pulse" style={{ width: '60%' }}></div>
         </div>
       </div>
     )
@@ -1139,7 +1104,7 @@ function MessageContent({ content, onQuizSubmit }: { content: string; onQuizSubm
             code: ({ className, children, ...props }) => {
               const isInline = !className
               return isInline ? (
-                <code className="bg-slate-100 px-1.5 py-0.5 rounded text-sky-600 text-xs font-mono" {...props}>
+                <code className="bg-slate-100 px-1.5 py-0.5 rounded text-fuchsia-600 text-xs font-mono" {...props}>
                   {children}
                 </code>
               ) : (
@@ -1156,7 +1121,7 @@ function MessageContent({ content, onQuizSubmit }: { content: string; onQuizSubm
             h1: ({ children }) => <h1 className="text-lg font-bold mb-2 text-slate-800">{children}</h1>,
             h2: ({ children }) => <h2 className="text-base font-bold mb-2 text-slate-800">{children}</h2>,
             h3: ({ children }) => <h3 className="text-sm font-bold mb-1 text-slate-800">{children}</h3>,
-            blockquote: ({ children }) => <blockquote className="border-l-4 border-sky-300 pl-3 italic text-slate-600 my-2">{children}</blockquote>,
+            blockquote: ({ children }) => <blockquote className="border-l-4 border-fuchsia-300 pl-3 italic text-slate-600 my-2">{children}</blockquote>,
           }}
         >
           {cleanContent}
@@ -1172,7 +1137,7 @@ function MessageContent({ content, onQuizSubmit }: { content: string; onQuizSubm
               e.dataTransfer.effectAllowed = 'copy'
             }}>
               <img src={imgSrc} alt="Immagine generata" className="max-w-full h-auto rounded-lg shadow-md" style={{ maxHeight: '400px' }} loading="lazy" />
-              <div className="absolute bottom-2 left-2 bg-sky-500/90 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+              <div className="absolute bottom-2 left-2 bg-fuchsia-500/90 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
                 Trascina nella chat di classe
               </div>
               <button onClick={() => {
@@ -1327,9 +1292,9 @@ function InteractiveQuiz({ quiz, onSubmitAnswers }: { quiz: QuizData; onSubmitAn
   const allAnswered = quiz.questions.every((_, idx) => answers[idx] !== undefined)
 
   return (
-    <div className="bg-gradient-to-br from-sky-50 to-blue-50 rounded-xl p-4 border border-sky-200">
-      <h3 className="font-bold text-lg text-sky-800 mb-4 flex items-center gap-2">
-        📝 {quiz.title}
+    <div className="bg-gradient-to-br from-fuchsia-50 to-violet-50 rounded-xl p-4 border border-fuchsia-200">
+      <h3 className="font-bold text-lg text-fuchsia-800 mb-4 flex items-center gap-2">
+        {quiz.title}
       </h3>
 
       <div className="space-y-4">
@@ -1340,7 +1305,7 @@ function InteractiveQuiz({ quiz, onSubmitAnswers }: { quiz: QuizData; onSubmitAn
           return (
             <div key={qIndex} className="bg-white rounded-lg p-4 shadow-sm">
               <p className="font-medium text-slate-800 mb-3">
-                <span className="text-sky-600">{qIndex + 1}.</span> {q.question}
+                <span className="text-fuchsia-600">{qIndex + 1}.</span> {q.question}
               </p>
 
               <div className="space-y-2">
@@ -1359,17 +1324,17 @@ function InteractiveQuiz({ quiz, onSubmitAnswers }: { quiz: QuizData; onSubmitAn
                       buttonClass += "bg-slate-50 border-slate-200 text-slate-500"
                     }
                   } else if (isSelected) {
-                    buttonClass += "bg-sky-100 border-sky-400 text-sky-800"
+                    buttonClass += "bg-fuchsia-100 border-fuchsia-400 text-fuchsia-800"
                   } else {
-                    buttonClass += "bg-white border-slate-200 hover:border-sky-300 hover:bg-sky-50"
+                    buttonClass += "bg-white border-slate-200 hover:border-fuchsia-300 hover:bg-fuchsia-50"
                   }
 
                   return (
                     <button key={optIndex} onClick={() => handleSelect(qIndex, optIndex)} disabled={submitted} className={buttonClass}>
                       <span className="font-medium mr-2">{String.fromCharCode(65 + optIndex)})</span>
                       {option}
-                      {submitted && isCorrectOption && <span className="ml-2">✅</span>}
-                      {submitted && isSelected && !isCorrectOption && <span className="ml-2">❌</span>}
+                      {submitted && isCorrectOption && <span className="ml-2 text-green-600 font-bold">[Corretto]</span>}
+                      {submitted && isSelected && !isCorrectOption && <span className="ml-2 text-red-600 font-bold">[Errato]</span>}
                     </button>
                   )
                 })}
@@ -1377,7 +1342,7 @@ function InteractiveQuiz({ quiz, onSubmitAnswers }: { quiz: QuizData; onSubmitAn
 
               {showExplanations && hasAnswered && (
                 <div className={`mt-3 p-3 rounded-lg text-sm ${isCorrect ? 'bg-green-50 text-green-800' : 'bg-amber-50 text-amber-800'}`}>
-                  <strong>{isCorrect ? '✅ Corretto!' : '💡 Spiegazione:'}</strong> {q.explanation}
+                  <strong>{isCorrect ? 'Corretto!' : 'Spiegazione:'}</strong> {q.explanation}
                 </div>
               )}
             </div>
@@ -1390,7 +1355,7 @@ function InteractiveQuiz({ quiz, onSubmitAnswers }: { quiz: QuizData; onSubmitAn
           onClick={handleSubmit}
           disabled={!allAnswered}
           className={`mt-4 w-full py-3 rounded-xl font-medium transition-all ${allAnswered
-            ? 'bg-gradient-to-r from-sky-500 to-blue-600 text-white hover:from-sky-600 hover:to-blue-700 shadow-md'
+            ? 'bg-gradient-to-r from-fuchsia-500 to-violet-600 text-white hover:from-fuchsia-600 hover:to-violet-700 shadow-md'
             : 'bg-slate-200 text-slate-400 cursor-not-allowed'
             }`}
         >
@@ -1398,11 +1363,11 @@ function InteractiveQuiz({ quiz, onSubmitAnswers }: { quiz: QuizData; onSubmitAn
         </button>
       ) : (
         <div className="mt-4 p-4 bg-white rounded-xl shadow-sm text-center">
-          <p className="text-2xl font-bold text-sky-800">
+          <p className="text-2xl font-bold text-fuchsia-800">
             {score}/{quiz.questions.length}
           </p>
           <p className="text-slate-600">
-            {score === quiz.questions.length ? '🎉 Perfetto!' : score >= quiz.questions.length / 2 ? '👍 Buon lavoro!' : '📚 Continua a studiare!'}
+            {score === quiz.questions.length ? 'Perfetto!' : score >= quiz.questions.length / 2 ? 'Buon lavoro!' : 'Continua a studiare!'}
           </p>
         </div>
       )}
