@@ -1,5 +1,6 @@
-import { 
-  Bold, Italic, Underline, Strikethrough, 
+import { useState } from 'react'
+import {
+  Bold, Italic, Underline, Strikethrough,
   AlignLeft, AlignCenter, AlignRight, AlignJustify,
   List, ListOrdered, Undo, Redo, Image as ImageIcon, Link as LinkIcon,
   Heading1, Heading2, Pilcrow, Type, Plus, Minus, ZoomIn, ZoomOut
@@ -7,6 +8,7 @@ import {
 import { Button } from './ui/button'
 import { Editor } from '@tiptap/react'
 import { SlideBlock } from './SlideEditor'
+import { AIImageGeneratorModal } from './AIImageGeneratorModal'
 
 interface UnifiedToolbarProps {
   mode: 'document' | 'slides'
@@ -16,6 +18,7 @@ interface UnifiedToolbarProps {
   scale?: number
   setScale?: (s: number) => void
   onAddSlideBlock?: (type: 'text' | 'image') => void
+  onAddSlideImage?: (imageUrl: string) => void
   selectedBlock?: SlideBlock
   onUpdateBlockStyle?: (key: string, value: any) => void
 }
@@ -24,24 +27,25 @@ const FONTS = [
   'Arial', 'Helvetica', 'Times New Roman', 'Courier New', 'Georgia', 'Verdana', 'Impact', 'Comic Sans MS', 'Trebuchet MS', 'Arial Black'
 ]
 
-export function UnifiedToolbar({ 
-  mode, 
-  editor, 
-  scale = 1, 
-  setScale, 
-  onAddSlideBlock, 
-  selectedBlock, 
-  onUpdateBlockStyle 
+export function UnifiedToolbar({
+  mode,
+  editor,
+  scale = 1,
+  setScale,
+  onAddSlideBlock,
+  onAddSlideImage,
+  selectedBlock,
+  onUpdateBlockStyle
 }: UnifiedToolbarProps) {
+  const [showImageModal, setShowImageModal] = useState(false)
 
-  const addImage = () => {
-    const url = window.prompt('URL Immagine:')
-    if (url) {
-      if (mode === 'document' && editor) {
-        editor.chain().focus().setImage({ src: url }).run()
-      }
-      // For slides, we typically handle image add differently (block creation), handled by parent
+  const handleImageGenerated = (imageUrl: string) => {
+    if (mode === 'document' && editor) {
+      editor.chain().focus().setImage({ src: imageUrl }).run()
+    } else if (mode === 'slides' && onAddSlideImage) {
+      onAddSlideImage(imageUrl)
     }
+    setShowImageModal(false)
   }
 
   const setLink = () => {
@@ -79,6 +83,16 @@ export function UnifiedToolbar({
       {/* DOCUMENT MODE TOOLBAR */}
       {mode === 'document' && editor && (
         <>
+          {/* Font Selector */}
+          <div className="flex items-center gap-0.5 border-r pr-2 mr-1 border-slate-300">
+            <select
+              className="h-8 text-xs border rounded px-2 w-28"
+              onChange={(e) => editor.chain().focus().setFontFamily(e.target.value).run()}
+            >
+              {FONTS.map(f => <option key={f} value={f}>{f}</option>)}
+            </select>
+          </div>
+
           {/* Text Style Group */}
           <div className="flex items-center gap-0.5 border-r pr-2 mr-1 border-slate-300">
             <Button size="icon" variant="ghost" className={`h-8 w-8 ${editor.isActive('bold') ? 'bg-slate-200 text-black' : ''}`} onClick={() => editor.chain().focus().toggleBold().run()}>
@@ -142,7 +156,7 @@ export function UnifiedToolbar({
             <Button size="icon" variant="ghost" className="h-8 w-8" onClick={setLink}>
               <LinkIcon className="h-4 w-4" />
             </Button>
-            <Button size="icon" variant="ghost" className="h-8 w-8" onClick={addImage}>
+            <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => setShowImageModal(true)} title="Inserisci immagine">
               <ImageIcon className="h-4 w-4" />
             </Button>
           </div>
@@ -169,7 +183,7 @@ export function UnifiedToolbar({
               <Type className="h-4 w-4 mr-1" />
               <span className="text-xs">Testo</span>
             </Button>
-            <Button variant="ghost" size="sm" onClick={() => onAddSlideBlock?.('image')} className="h-8 px-2">
+            <Button variant="ghost" size="sm" onClick={() => setShowImageModal(true)} className="h-8 px-2">
               <ImageIcon className="h-4 w-4 mr-1" />
               <span className="text-xs">Immagine</span>
             </Button>
@@ -254,6 +268,13 @@ export function UnifiedToolbar({
           )}
         </>
       )}
+
+      {/* AI Image Generator Modal */}
+      <AIImageGeneratorModal
+        isOpen={showImageModal}
+        onClose={() => setShowImageModal(false)}
+        onImageGenerated={handleImageGenerated}
+      />
     </div>
   )
 }

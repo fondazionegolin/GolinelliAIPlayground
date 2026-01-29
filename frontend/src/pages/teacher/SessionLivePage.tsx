@@ -17,7 +17,6 @@ import TaskBuilder from '@/components/TaskBuilder'
 import TeacherNotifications from '@/components/TeacherNotifications'
 import ChatSidebar from '@/components/ChatSidebar'
 import { useSocket } from '@/hooks/useSocket'
-import { TeacherNavbar } from '@/components/TeacherNavbar'
 import { useAuthStore } from '@/stores/auth'
 
 interface StudentData {
@@ -62,7 +61,9 @@ export default function SessionLivePage() {
   const [autoRefresh] = useState(true)
   const [activeTab, setActiveTab] = useState('students')
   const [selectedStudent, setSelectedStudent] = useState<string | null>(null)
-  const [sidebarOpen, setSidebarOpen] = useState(true)
+  const [isPinned, setIsPinned] = useState(true)
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true)
+  const [sidebarWidth, setSidebarWidth] = useState(320)
   const [showTaskBuilder, setShowTaskBuilder] = useState(false)
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null)
   const [selectedConversationId, setSelectedConversationId] = useState<string | null>(null)
@@ -260,8 +261,10 @@ export default function SessionLivePage() {
 
   return (
     <>
-      <TeacherNavbar />
-      <div className={`pt-16 min-h-screen bg-slate-50 transition-all duration-300 ${sidebarOpen ? 'pr-80' : 'pr-0'}`}>
+      <div
+        className="pt-16 min-h-screen bg-slate-50 transition-all duration-300"
+        style={{ paddingRight: isPinned && isSidebarOpen ? `${sidebarWidth}px` : 0 }}
+      >
         <div className="max-w-7xl mx-auto p-6">
 
           <div className="flex flex-wrap items-center gap-2 md:gap-4 mb-6">
@@ -578,13 +581,23 @@ export default function SessionLivePage() {
 
       {/* Chat Sidebar fissa a destra */}
       {sessionId && (
-        <ChatSidebar
-          sessionId={sessionId}
-          userType="teacher"
-          currentUserId={user?.id || 'teacher'}
-          currentUserName="Docente"
-          onToggle={setSidebarOpen}
-        />
+        <div
+          className={`fixed top-16 right-0 h-[calc(100vh-4rem)] bg-white border-l shadow-xl z-30 transition-transform duration-300 ${isSidebarOpen ? 'translate-x-0' : 'translate-x-full'}`}
+          style={{ width: `${sidebarWidth}px` }}
+        >
+          <ChatSidebar
+            sessionId={sessionId}
+            userType="teacher"
+            currentUserId={user?.id || 'teacher'}
+            currentUserName="Docente"
+            onToggle={setIsSidebarOpen}
+            isPinned={isPinned}
+            onPinToggle={() => setIsPinned(!isPinned)}
+            onWidthChange={setSidebarWidth}
+            initialWidth={sidebarWidth}
+            className="h-full w-full"
+          />
+        </div>
       )}
     </>
   )

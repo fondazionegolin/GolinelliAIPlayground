@@ -1,4 +1,13 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
+import { AITextAssistPanel } from './AITextAssistPanel'
+
+interface TextSelectionState {
+  blockId: string
+  text: string
+  position: { x: number; y: number }
+  selectionStart: number
+  selectionEnd: number
+}
 
 export interface SlideBlock {
   id: string
@@ -31,13 +40,13 @@ interface SlideEditorProps {
   readOnly?: boolean
 }
 
-export function SlideEditor({ 
-  blocks, 
-  onChange, 
-  selectedBlockId, 
-  onSelectBlock, 
-  scale = 1, 
-  readOnly = false 
+export function SlideEditor({
+  blocks,
+  onChange,
+  selectedBlockId,
+  onSelectBlock,
+  scale = 1,
+  readOnly = false
 }: SlideEditorProps) {
   const [dragState, setDragState] = useState<{
     isDragging: boolean
@@ -47,7 +56,10 @@ export function SlideEditor({
     startY: number
     initialBlock: SlideBlock | null
   } | null>(null)
-  
+
+  const [textSelection, setTextSelection] = useState<TextSelectionState | null>(null)
+  const textareaRefs = useRef<Map<string, HTMLTextAreaElement>>(new Map())
+
   const canvasRef = useRef<HTMLDivElement>(null)
 
   // Handle Canvas Click (Deselect)
@@ -118,6 +130,60 @@ export function SlideEditor({
       window.removeEventListener('mouseup', handleMouseUp)
     }
   }, [dragState, blocks, onChange, scale])
+
+  // Handle text selection in textarea for AI assist
+  const handleTextSelection = useCallback((blockId: string, textarea: HTMLTextAreaElement) => {
+    if (readOnly) return
+
+    const selectedText = textarea.value.substring(textarea.selectionStart, textarea.selectionEnd)
+
+    if (selectedText && selectedText.trim().length > 3) {
+      const rect = textarea.getBoundingClientRect()
+      const viewportHeight = window.innerHeight
+      const panelHeight = 320 // Approximate panel height
+
+      // Position panel above the textarea if there's not enough space below
+      let yPos = rect.top - panelHeight - 10
+      if (yPos < 80) {
+        // If not enough space above, try below but with safe margin
+        yPos = Math.min(rect.bottom + 10, viewportHeight - panelHeight - 20)
+      }
+
+      setTextSelection({
+        blockId,
+        text: selectedText.trim(),
+        position: {
+          x: rect.left + rect.width / 2 - 140,
+          y: yPos
+        },
+        selectionStart: textarea.selectionStart,
+        selectionEnd: textarea.selectionEnd
+      })
+    } else {
+      setTextSelection(null)
+    }
+  }, [readOnly])
+
+  // Apply AI-generated text to textarea
+  const handleApplyAIText = useCallback((newText: string) => {
+    if (!textSelection) return
+
+    const textarea = textareaRefs.current.get(textSelection.blockId)
+    if (!textarea) return
+
+    const block = blocks.find(b => b.id === textSelection.blockId)
+    if (!block) return
+
+    const beforeSelection = block.content.substring(0, textSelection.selectionStart)
+    const afterSelection = block.content.substring(textSelection.selectionEnd)
+    const newContent = beforeSelection + newText + afterSelection
+
+    const newBlocks = blocks.map(b =>
+      b.id === textSelection.blockId ? { ...b, content: newContent } : b
+    )
+    onChange(newBlocks)
+    setTextSelection(null)
+  }, [textSelection, blocks, onChange])
 
   // Handle file drop for images
   const handleDrop = (e: React.DragEvent) => {
@@ -196,6 +262,10 @@ export function SlideEditor({
           {/* Content */}
           {block.type === 'text' ? (
             <textarea
+              ref={(el) => {
+                if (el) textareaRefs.current.set(block.id, el)
+                else textareaRefs.current.delete(block.id)
+              }}
               value={block.content}
               onChange={(e) => {
                 const newBlocks = blocks.map(b => b.id === block.id ? { ...b, content: e.target.value } : b)
@@ -212,12 +282,17 @@ export function SlideEditor({
                 textAlign: block.style.textAlign,
               }}
               onMouseDown={(e) => e.stopPropagation()} // Allow selecting text
+              onMouseUp={(e) => {
+                e.stopPropagation()
+                handleTextSelection(block.id, e.currentTarget)
+              }}
+              onKeyUp={(e) => handleTextSelection(block.id, e.currentTarget)}
             />
           ) : (
-            <img 
-              src={block.content} 
-              alt="Block" 
-              className="w-full h-full object-cover pointer-events-none select-none" 
+            <img
+              src={block.content}
+              alt="Block"
+              className="w-full h-full object-cover pointer-events-none select-none"
             />
           )}
 
@@ -252,6 +327,17 @@ export function SlideEditor({
           )}
         </div>
       ))}
+
+      {/* AI Text Assist Panel */}
+      {textSelection && !readOnly && (
+        <AITextAssistPanel
+          selectedText={textSelection.text}
+          position={textSelection.position}
+          onClose={() => setTextSelection(null)}
+          onApply={handleApplyAIText}
+          context="Slide di presentazione"
+        />
+      )}
     </div>
   )
 }

@@ -1,12 +1,11 @@
 import { useState, useRef, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { 
-  Plus, Trash2, Upload, Monitor, FileText, ChevronLeft, ChevronRight
+import {
+  Plus, Trash2, Upload, Monitor, FileText, ChevronLeft, ChevronRight, Send, CheckCircle
 } from 'lucide-react'
-import { teacherApi } from '@/lib/api'
+import { studentApi } from '@/lib/api'
 import { useToast } from '@/components/ui/use-toast'
-import { useQuery } from '@tanstack/react-query'
 import { SlideEditor, SlideBlock } from '@/components/SlideEditor'
 import { RichTextEditor } from '@/components/RichTextEditor'
 import { UnifiedToolbar } from '@/components/UnifiedToolbar'
@@ -15,8 +14,6 @@ import { Editor } from '@tiptap/react'
 // Types
 type Format = 'a4' | '16:9' | '4:3'
 type EditorMode = 'slides' | 'document'
-
-// Reuse SlideBlock type
 type Block = SlideBlock
 
 interface Slide {
@@ -41,17 +38,6 @@ interface Document {
   header?: DocumentHeader
 }
 
-// Stored Document Metadata for Sidebar
-interface StoredDocument {
-  id: string
-  title: string
-  type: 'presentation' | 'document'
-  updatedAt: string
-  sessionId: string
-  sessionName: string
-  contentJson: string
-}
-
 // Format dimensions
 const FORMAT_DIMENSIONS = {
   '16:9': { width: 960, height: 540, label: '16:9 (Presentazione)' },
@@ -59,151 +45,49 @@ const FORMAT_DIMENSIONS = {
   'a4': { width: 794, height: 1123, label: 'A4 (Documento)' }
 }
 
-export default function TeacherDocumentsPage() {
+interface StudentDocumentsModuleProps {
+  sessionId: string
+}
+
+export default function StudentDocumentsModule({ sessionId: _sessionId }: StudentDocumentsModuleProps) {
+  // sessionId is available for future use (e.g., if we need session-specific features)
+  void _sessionId
   const { toast } = useToast()
-  
+
   // State
-  const [mode, setMode] = useState<EditorMode>('document') 
+  const [mode, setMode] = useState<EditorMode>('document')
   const [document, setDocument] = useState<Document>({
     id: crypto.randomUUID(),
-    title: 'Nuovo Documento',
+    title: 'Il mio documento',
     format: 'a4',
     slides: [
       { id: crypto.randomUUID(), title: 'Slide 1', blocks: [] }
     ],
-    textContent: '<h1>Titolo del documento</h1><p>Inizia a scrivere qui...</p>',
+    textContent: '<h1>Il mio documento</h1><p>Inizia a scrivere qui...</p>',
     header: { title: '', subtitle: '', logoUrl: '' }
   })
-  
+
   // Sidebar State
   const [showSidebar, setShowSidebar] = useState(true)
-  const [storedDocuments, setStoredDocuments] = useState<StoredDocument[]>([])
-  const [isLoadingDocs, setIsLoadingDocs] = useState(false)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [submitted, setSubmitted] = useState(false)
 
   // Editor State
   const [editor, setEditor] = useState<Editor | null>(null)
-  
+
   // Slide Editor State
   const [currentSlideIndex, setCurrentSlideIndex] = useState(0)
   const [scale, setScale] = useState(1)
   const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null)
-  
+
   // Refs
   const canvasRef = useRef<HTMLDivElement>(null)
-  
+
   // UI State
-  const [showPublishModal, setShowPublishModal] = useState(false)
-  const [selectedSessionId, setSelectedSessionId] = useState('')
+  const [showSubmitModal, setShowSubmitModal] = useState(false)
 
   const currentSlide = document.slides?.[currentSlideIndex] || { id: 'fallback', title: 'Slide', blocks: [] }
   const selectedBlock = currentSlide.blocks.find(b => b.id === selectedBlockId)
-
-  // Fetch classes and sessions
-  const { data: classesData } = useQuery({
-    queryKey: ['teacher-classes-docs'],
-    queryFn: async () => {
-      const classesRes = await teacherApi.getClasses()
-      const classes = classesRes.data || []
-      const allSessions: any[] = []
-      for (const cls of classes) {
-        try {
-          const sessionsRes = await teacherApi.getSessions(cls.id)
-          const sessions = sessionsRes.data || []
-          sessions.forEach((s: any) => {
-            allSessions.push({ id: s.id, name: s.title || s.name, class_name: cls.name })
-          })
-        } catch (e) { console.error(e) }
-      }
-      return allSessions
-    },
-  })
-
-  // Load existing documents
-  useEffect(() => {
-    const fetchDocuments = async () => {
-      if (!classesData || classesData.length === 0) return
-      
-      setIsLoadingDocs(true)
-      const docs: StoredDocument[] = []
-      
-      for (const session of classesData) {
-        try {
-          const tasksRes = await teacherApi.getTasks(session.id)
-          const tasks = tasksRes.data || []
-          
-          tasks.forEach((t: any) => {
-            if (t.content_json) {
-              try {
-                const content = JSON.parse(t.content_json)
-                if (content.type === 'document_v1' || content.type === 'presentation_v2' || 
-                    t.task_type === 'presentation' || (t.task_type === 'lesson' && content.sections)) {
-                  
-                  docs.push({
-                    id: t.id,
-                    title: t.title,
-                    type: (content.type === 'presentation_v2' || t.task_type === 'presentation') ? 'presentation' : 'document',
-                    updatedAt: t.created_at,
-                    sessionId: session.id,
-                    sessionName: session.name,
-                    contentJson: t.content_json
-                  })
-                }
-              } catch (e) { }
-            }
-          })
-        } catch (e) { console.error(e) }
-      }
-      
-      docs.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
-      setStoredDocuments(docs)
-      setIsLoadingDocs(false)
-    }
-
-    fetchDocuments()
-  }, [classesData])
-
-  // Load document
-  const loadDocument = (doc: StoredDocument) => {
-    try {
-      const content = JSON.parse(doc.contentJson)
-      
-      if (doc.type === 'presentation' || content.type === 'presentation_v2' || content.slides) {
-        setMode('slides')
-        const safeSlides = (content.slides && Array.isArray(content.slides) && content.slides.length > 0) 
-          ? content.slides.map((s: any) => ({
-              id: s.id || crypto.randomUUID(),
-              title: s.title || 'Slide',
-              blocks: s.blocks || []
-            }))
-          : [{ id: crypto.randomUUID(), title: 'Slide 1', blocks: [] }]
-
-        setDocument({
-          id: doc.id,
-          title: doc.title,
-          format: content.format || '16:9',
-          slides: safeSlides,
-          textContent: ''
-        })
-        setCurrentSlideIndex(0)
-        setSelectedBlockId(null)
-      } else {
-        setMode('document')
-        setDocument({
-          id: doc.id,
-          title: doc.title,
-          format: 'a4',
-          slides: [],
-          textContent: content.htmlContent || content.content || '',
-          header: content.header || { title: '', subtitle: '', logoUrl: '' }
-        })
-      }
-      
-      toast({ title: "Documento caricato", description: `Hai aperto "${doc.title}"` })
-    } catch (e) {
-      console.error(e)
-      toast({ title: "Errore caricamento", description: "Impossibile aprire questo documento.", variant: "destructive" })
-    }
-  }
 
   // Fit canvas
   useEffect(() => {
@@ -296,25 +180,25 @@ export default function TeacherDocumentsPage() {
     setSelectedBlockId(newBlock.id)
   }
 
-  const updateBlockStyle = (key: string, value: any) => {
+  const updateBlockStyle = (key: string, value: unknown) => {
     if (!selectedBlockId) return
-    const newBlocks = currentSlide.blocks.map(b => 
-      b.id === selectedBlockId 
+    const newBlocks = currentSlide.blocks.map(b =>
+      b.id === selectedBlockId
         ? { ...b, style: { ...b.style, [key]: value } }
         : b
     )
     updateSlideBlocks(newBlocks)
   }
 
-  const handlePublish = async () => {
-    if (!selectedSessionId) return
+  // Submit document to teacher
+  const handleSubmit = async () => {
+    setIsSubmitting(true)
     try {
       let contentJson = ""
-      let taskType = ""
 
       if (mode === 'slides') {
         contentJson = JSON.stringify({
-          type: 'presentation_v2',
+          type: 'student_presentation',
           format: document.format,
           title: document.title,
           slides: document.slides.map(s => ({
@@ -323,40 +207,34 @@ export default function TeacherDocumentsPage() {
             blocks: s.blocks
           }))
         })
-        taskType = 'presentation'
       } else {
         contentJson = JSON.stringify({
-          type: 'document_v1',
+          type: 'student_document',
           title: document.title,
           htmlContent: document.textContent,
           header: document.header
         })
-        taskType = 'lesson'
       }
 
-      const response = await teacherApi.createTask(selectedSessionId, {
+      // Submit as a student work/task submission
+      await studentApi.submitDocument({
         title: document.title,
-        description: `Documento creato con Golinelli AI Editor (${mode === 'slides' ? 'Presentazione' : 'Testo'})`,
-        task_type: taskType,
+        content_type: mode === 'slides' ? 'presentation' : 'document',
         content_json: contentJson
       })
 
-      // Emit socket event to notify students
-      const taskId = response.data?.id
-      if (taskId && window.socket) {
-        window.socket.emit('teacher_publish_task', {
-          session_id: selectedSessionId,
-          task_id: taskId,
-          title: document.title,
-          task_type: taskType
-        })
-      }
-
-      setShowPublishModal(false)
-      toast({ title: "Documento pubblicato!", className: "bg-green-500 text-white" })
+      setShowSubmitModal(false)
+      setSubmitted(true)
+      toast({
+        title: "Documento inviato!",
+        description: "Il docente riceverà il tuo lavoro nella sezione compiti.",
+        className: "bg-green-500 text-white"
+      })
     } catch (e) {
-      console.error('Publish error:', e)
-      toast({ title: "Errore pubblicazione", variant: "destructive" })
+      console.error('Submit error:', e)
+      toast({ title: "Errore invio", description: "Impossibile inviare il documento. Riprova.", variant: "destructive" })
+    } finally {
+      setIsSubmitting(false)
     }
   }
 
@@ -371,15 +249,28 @@ export default function TeacherDocumentsPage() {
     }
   }
 
+  const resetDocument = () => {
+    setDocument({
+      id: crypto.randomUUID(),
+      title: 'Il mio documento',
+      format: 'a4',
+      slides: [{ id: crypto.randomUUID(), title: 'Slide 1', blocks: [] }],
+      textContent: '<h1>Il mio documento</h1><p>Inizia a scrivere qui...</p>',
+      header: { title: '', subtitle: '', logoUrl: '' }
+    })
+    setMode('document')
+    setSubmitted(false)
+  }
+
   return (
     <>
-      <div className="h-full flex flex-col bg-slate-100 overflow-hidden"> 
-        
+      <div className="h-[calc(100vh-120px)] flex flex-col bg-slate-100 overflow-hidden rounded-xl border shadow-sm">
+
         {/* Header / Meta-Toolbar */}
         <div className="h-14 bg-white border-b flex items-center justify-between px-4 z-20 shadow-sm shrink-0">
           <div className="flex items-center gap-4">
-             <Button 
-               variant="ghost" 
+             <Button
+               variant="ghost"
                size="sm"
                onClick={() => setShowSidebar(!showSidebar)}
                className="mr-2 text-slate-500"
@@ -388,8 +279,8 @@ export default function TeacherDocumentsPage() {
              </Button>
 
              <div className="flex items-center gap-2 bg-slate-100 p-1 rounded-md mr-2">
-                <Button 
-                  size="sm" 
+                <Button
+                  size="sm"
                   variant={mode === 'document' ? 'secondary' : 'ghost'}
                   className={mode === 'document' ? 'shadow-sm bg-white' : ''}
                   onClick={() => switchMode('document')}
@@ -397,8 +288,8 @@ export default function TeacherDocumentsPage() {
                   <FileText className="h-4 w-4 mr-2" />
                   Doc
                 </Button>
-                <Button 
-                  size="sm" 
+                <Button
+                  size="sm"
                   variant={mode === 'slides' ? 'secondary' : 'ghost'}
                   className={mode === 'slides' ? 'shadow-sm bg-white' : ''}
                   onClick={() => switchMode('slides')}
@@ -410,19 +301,29 @@ export default function TeacherDocumentsPage() {
 
              <div className="h-6 w-px bg-slate-200" />
 
-             <Input 
+             <Input
                value={document.title}
                onChange={(e) => setDocument(d => ({ ...d, title: e.target.value }))}
-               className="font-bold border-transparent hover:border-slate-200 focus:border-violet-500 w-64 text-lg"
+               className="font-bold border-transparent hover:border-slate-200 focus:border-indigo-500 w-64 text-lg"
                placeholder="Nome file..."
              />
           </div>
-          
+
           <div className="flex gap-2">
-             <Button variant="outline" onClick={() => setShowPublishModal(true)}>
-               <Upload className="h-4 w-4 mr-2" />
-               Pubblica
-             </Button>
+             {submitted ? (
+               <Button variant="outline" onClick={resetDocument}>
+                 <Plus className="h-4 w-4 mr-2" />
+                 Nuovo documento
+               </Button>
+             ) : (
+               <Button
+                 onClick={() => setShowSubmitModal(true)}
+                 className="bg-indigo-600 hover:bg-indigo-700 text-white"
+               >
+                 <Send className="h-4 w-4 mr-2" />
+                 Invia al docente
+               </Button>
+             )}
           </div>
         </div>
 
@@ -438,14 +339,14 @@ export default function TeacherDocumentsPage() {
           onUpdateBlockStyle={updateBlockStyle}
         />
 
-        <div className="flex-1 flex overflow-hidden"> 
-          
-          {/* LEFT SIDEBAR: Documents & Slides */}
-          <div className={`${showSidebar ? 'w-64' : 'w-0'} bg-white border-r flex flex-col transition-all duration-300 overflow-hidden shrink-0`}>
-            
+        <div className="flex-1 flex overflow-hidden">
+
+          {/* LEFT SIDEBAR: Slides */}
+          <div className={`${showSidebar ? 'w-56' : 'w-0'} bg-white border-r flex flex-col transition-all duration-300 overflow-hidden shrink-0`}>
+
             {/* Slide Navigation (Only in Slide Mode) */}
             {mode === 'slides' && (
-              <div className="flex-1 flex flex-col overflow-hidden border-b">
+              <div className="flex-1 flex flex-col overflow-hidden">
                  <div className="p-3 border-b flex justify-between items-center bg-slate-50">
                    <span className="font-semibold text-xs uppercase text-slate-500">Slide</span>
                    <Button size="icon" variant="ghost" className="h-6 w-6" onClick={addSlide}>
@@ -454,14 +355,14 @@ export default function TeacherDocumentsPage() {
                  </div>
                  <div className="flex-1 overflow-y-auto p-2 space-y-2">
                    {document.slides.map((slide, idx) => (
-                     <div 
+                     <div
                        key={slide.id}
                        onClick={() => { setCurrentSlideIndex(idx); setSelectedBlockId(null); }}
-                       className={`p-3 rounded-lg border cursor-pointer transition-all group relative ${currentSlideIndex === idx ? 'ring-2 ring-violet-500 bg-violet-50' : 'hover:bg-slate-50'}`}
+                       className={`p-3 rounded-lg border cursor-pointer transition-all group relative ${currentSlideIndex === idx ? 'ring-2 ring-indigo-500 bg-indigo-50' : 'hover:bg-slate-50'}`}
                      >
                        <div className="text-xs font-bold text-slate-500 mb-1">#{idx + 1}</div>
                        <div className="text-sm truncate font-medium">{slide.title}</div>
-                       <button 
+                       <button
                          onClick={(e) => { e.stopPropagation(); deleteSlide(idx); }}
                          className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-500"
                        >
@@ -473,65 +374,30 @@ export default function TeacherDocumentsPage() {
               </div>
             )}
 
-            {/* Document List */}
-            <div className={`flex flex-col ${mode === 'slides' ? 'h-1/3 border-t' : 'h-full'}`}>
-              <div className="p-3 border-b bg-slate-50">
-                <h3 className="font-semibold text-xs uppercase text-slate-500">Salvati</h3>
+            {/* Status indicator */}
+            {submitted && (
+              <div className="p-4 bg-green-50 border-t">
+                <div className="flex items-center gap-2 text-green-700">
+                  <CheckCircle className="h-5 w-5" />
+                  <span className="text-sm font-medium">Inviato!</span>
+                </div>
               </div>
-              <div className="flex-1 overflow-y-auto p-2">
-                {isLoadingDocs && <p className="text-xs text-center text-slate-400 py-4">Caricamento...</p>}
-                {storedDocuments.map((doc) => (
-                  <div 
-                    key={doc.id}
-                    onClick={() => loadDocument(doc)}
-                    className="group flex items-start gap-3 p-2 rounded-lg hover:bg-slate-100 cursor-pointer transition-colors border border-transparent hover:border-slate-200 mb-1"
-                  >
-                    <div className={`p-1.5 rounded-md ${doc.type === 'presentation' ? 'bg-indigo-100 text-indigo-600' : 'bg-emerald-100 text-emerald-600'}`}>
-                      {doc.type === 'presentation' ? <Monitor className="h-3 w-3" /> : <FileText className="h-3 w-3" />}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-medium text-slate-700 truncate">{doc.title}</p>
-                      <p className="text-[10px] text-slate-400 truncate">{new Date(doc.updatedAt).toLocaleDateString()}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-              <div className="p-3 border-t bg-slate-50">
-                 <Button 
-                   variant="outline" 
-                   className="w-full text-xs"
-                   onClick={() => {
-                     setDocument({
-                       id: crypto.randomUUID(),
-                       title: 'Nuovo Documento',
-                       format: 'a4',
-                       slides: [{ id: crypto.randomUUID(), title: 'Slide 1', blocks: [] }],
-                       textContent: '<h1>Titolo del documento</h1><p>Inizia a scrivere qui...</p>',
-                       header: { title: '', subtitle: '', logoUrl: '' }
-                     })
-                     setMode('document')
-                   }}
-                 >
-                   <Plus className="h-3 w-3 mr-2" />
-                   Nuovo
-                 </Button>
-              </div>
-            </div>
+            )}
           </div>
 
           {/* Main Area */}
-          <div className="flex-1 bg-slate-100 flex items-start justify-center p-8 relative overflow-y-auto" 
-               onClick={() => setSelectedBlockId(null)} // Deselect block when clicking background
-          > 
-             
+          <div className="flex-1 bg-slate-100 flex items-start justify-center p-8 relative overflow-y-auto"
+               onClick={() => setSelectedBlockId(null)}
+          >
+
              {/* MODE: DOCUMENT */}
              {mode === 'document' && (
                <div className="w-full max-w-[800px] min-h-[1100px] mb-20 print:shadow-none bg-white shadow-lg flex flex-col relative transition-all">
-                  
+
                   {/* Visual Header Section */}
                   <div className="px-10 pt-10 pb-4 flex items-center gap-6 border-b border-transparent hover:border-slate-100 transition-colors group/header">
                     {/* Logo Area */}
-                    <div className="w-20 h-20 bg-slate-50 rounded-lg flex items-center justify-center cursor-pointer hover:bg-slate-100 relative overflow-hidden group/logo border border-dashed border-slate-300 hover:border-violet-400 transition-colors">
+                    <div className="w-20 h-20 bg-slate-50 rounded-lg flex items-center justify-center cursor-pointer hover:bg-slate-100 relative overflow-hidden group/logo border border-dashed border-slate-300 hover:border-indigo-400 transition-colors">
                       {document.header?.logoUrl ? (
                         <img src={document.header.logoUrl} className="w-full h-full object-contain" alt="Logo" />
                       ) : (
@@ -540,30 +406,25 @@ export default function TeacherDocumentsPage() {
                           <span className="text-[9px] text-slate-400 block uppercase">Logo</span>
                         </div>
                       )}
-                      <input 
-                        type="file" 
+                      <input
+                        type="file"
                         accept="image/*"
-                        className="absolute inset-0 opacity-0 cursor-pointer" 
-                        onChange={handleLogoUpload} 
+                        className="absolute inset-0 opacity-0 cursor-pointer"
+                        onChange={handleLogoUpload}
                       />
-                      {document.header?.logoUrl && (
-                        <div className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 group-hover/logo:opacity-100 transition-opacity">
-                          <span className="text-white text-xs font-medium">Cambia</span>
-                        </div>
-                      )}
                     </div>
-                    
+
                     {/* Title Area */}
                     <div className="flex-1">
-                      <input 
-                        className="text-3xl font-bold w-full border-none focus:ring-0 placeholder:text-slate-300 px-0 text-slate-900" 
-                        placeholder="Titolo Intestazione" 
+                      <input
+                        className="text-3xl font-bold w-full border-none focus:ring-0 placeholder:text-slate-300 px-0 text-slate-900"
+                        placeholder="Titolo Intestazione"
                         value={document.header?.title || ''}
                         onChange={(e) => setDocument(d => ({ ...d, header: { ...d.header!, title: e.target.value } }))}
                       />
-                      <input 
-                        className="text-base text-slate-500 w-full border-none focus:ring-0 placeholder:text-slate-300 px-0 mt-1" 
-                        placeholder="Sottotitolo o Dettagli..." 
+                      <input
+                        className="text-base text-slate-500 w-full border-none focus:ring-0 placeholder:text-slate-300 px-0 mt-1"
+                        placeholder="Sottotitolo o Dettagli..."
                         value={document.header?.subtitle || ''}
                         onChange={(e) => setDocument(d => ({ ...d, header: { ...d.header!, subtitle: e.target.value } }))}
                       />
@@ -571,7 +432,7 @@ export default function TeacherDocumentsPage() {
                   </div>
 
                   <div className="flex-1 flex flex-col">
-                    <RichTextEditor 
+                    <RichTextEditor
                       content={document.textContent || ''}
                       onChange={(html) => setDocument(d => ({ ...d, textContent: html }))}
                       onEditorReady={setEditor}
@@ -582,7 +443,7 @@ export default function TeacherDocumentsPage() {
 
              {/* MODE: SLIDES */}
              {mode === 'slides' && (
-               <div 
+               <div
                  ref={canvasRef}
                  className="bg-white shadow-xl relative transition-transform origin-center flex flex-col"
                  style={{
@@ -591,7 +452,7 @@ export default function TeacherDocumentsPage() {
                    transform: `scale(${scale})`,
                    marginTop: '20px'
                  }}
-                 onClick={(e) => e.stopPropagation()} // Prevent deselection when clicking slide background
+                 onClick={(e) => e.stopPropagation()}
                >
                   <div className="absolute top-0 left-0 right-0 p-8 z-10 pointer-events-none">
                      <input
@@ -607,8 +468,8 @@ export default function TeacherDocumentsPage() {
                   </div>
 
                   <div className="flex-1 relative">
-                    <SlideEditor 
-                      blocks={currentSlide.blocks} 
+                    <SlideEditor
+                      blocks={currentSlide.blocks}
                       onChange={updateSlideBlocks}
                       selectedBlockId={selectedBlockId}
                       onSelectBlock={setSelectedBlockId}
@@ -621,33 +482,29 @@ export default function TeacherDocumentsPage() {
           </div>
         </div>
 
-        {/* Publish Modal */}
-        {showPublishModal && (
+        {/* Submit Modal */}
+        {showSubmitModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 w-full max-w-md mx-4 shadow-xl">
-            <h3 className="text-lg font-semibold mb-4">Pubblica {mode === 'slides' ? 'Presentazione' : 'Documento'}</h3>
+          <div className="bg-white rounded-xl p-6 w-full max-w-md mx-4 shadow-xl">
+            <h3 className="text-lg font-bold mb-2">Invia al Docente</h3>
             <p className="text-sm text-gray-600 mb-4">
-              Salva questo contenuto come compito/materiale per una classe.
+              Il tuo {mode === 'slides' ? 'presentazione' : 'documento'} "<strong>{document.title}</strong>" verrà inviato al docente per la revisione.
             </p>
-            <div className="mb-4">
-              <label className="block text-sm font-medium mb-2">Seleziona Sessione:</label>
-              <select
-                value={selectedSessionId}
-                onChange={(e) => setSelectedSessionId(e.target.value)}
-                className="w-full p-2 border rounded-md text-sm"
-              >
-                <option value="">-- Seleziona --</option>
-                {classesData?.map((session: any) => (
-                  <option key={session.id} value={session.id}>
-                    {session.name} - {session.class_name}
-                  </option>
-                ))}
-              </select>
+            <div className="bg-indigo-50 border border-indigo-100 rounded-lg p-4 mb-4">
+              <p className="text-sm text-indigo-700">
+                Il docente potrà visualizzare il tuo lavoro nella sezione Compiti della sessione.
+              </p>
             </div>
             <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setShowPublishModal(false)}>Annulla</Button>
-              <Button onClick={handlePublish} disabled={!selectedSessionId} className="bg-violet-600 text-white">
-                Pubblica Ora
+              <Button variant="outline" onClick={() => setShowSubmitModal(false)} disabled={isSubmitting}>
+                Annulla
+              </Button>
+              <Button
+                onClick={handleSubmit}
+                disabled={isSubmitting}
+                className="bg-indigo-600 hover:bg-indigo-700 text-white"
+              >
+                {isSubmitting ? 'Invio...' : 'Conferma Invio'}
               </Button>
             </div>
           </div>

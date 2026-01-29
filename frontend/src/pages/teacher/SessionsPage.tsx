@@ -7,7 +7,6 @@ import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { useToast } from '@/components/ui/use-toast'
 import { Plus, Play, Square, Users, Clock, Copy, Eye, Trash2 } from 'lucide-react'
-import { TeacherNavbar } from '@/components/TeacherNavbar'
 
 interface ClassData {
   id: string
@@ -114,10 +113,8 @@ export default function SessionsPage() {
   }
 
   return (
-    <>
-      <TeacherNavbar />
-      <div className="pt-16 min-h-screen bg-slate-50">
-        <div className="max-w-7xl mx-auto p-6">
+    <div className="p-6">
+      <div className="max-w-7xl mx-auto space-y-6">
           <div className="flex items-center justify-between mb-6">
             <h2 className="text-2xl font-bold">Sessioni</h2>
             {selectedClass && (
@@ -286,6 +283,5 @@ export default function SessionsPage() {
       )}
         </div>
       </div>
-    </>
   )
 }

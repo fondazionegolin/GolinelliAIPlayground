@@ -52,14 +52,21 @@ def get_user_from_token(token: str) -> Optional[dict]:
 async def connect(sid, environ, auth):
     token = auth.get("token") if auth else None
     if not token:
+        print(f"[Gateway] Connection rejected: no token provided for sid {sid}")
         return False
-    
+
     user = get_user_from_token(token)
     if not user:
+        print(f"[Gateway] Connection rejected: invalid token for sid {sid}")
         return False
-    
+
+    print(f"[Gateway] User connected: {user.get('id')} ({user.get('type')}) sid={sid}")
     connected_users[sid] = user
     
+    # All users join their personal room for DMs
+    user_id = user["id"]
+    await sio.enter_room(sid, f"user:{user_id}")
+
     if user["type"] == "student":
         session_id = user["session_id"]
         student_id = user["id"]
@@ -83,7 +90,8 @@ async def connect(sid, environ, auth):
         if session_id not in session_presence:
             session_presence[session_id] = set()
         session_presence[session_id].add(sid)
-        
+        print(f"[Gateway] Student {student_id} added to session {session_id}, total: {len(session_presence[session_id])}")
+
         await sio.enter_room(sid, f"session:{session_id}")
         # Also join personal room for private messages
         await sio.enter_room(sid, f"student:{student_id}")
@@ -94,6 +102,7 @@ async def connect(sid, environ, auth):
             {
                 "student_id": student_id,
                 "nickname": nickname,
+                "avatar_url": student_avatars.get(student_id),
                 "status": "online",
                 "last_seen_at": datetime.utcnow().isoformat(),
             },
@@ -122,12 +131,16 @@ async def connect(sid, environ, auth):
 async def disconnect(sid):
     user = connected_users.pop(sid, None)
     if not user:
+        print(f"[Gateway] Disconnect: unknown sid {sid}")
         return
-    
+
+    print(f"[Gateway] User disconnected: {user.get('id')} ({user.get('type')}) sid={sid}")
+
     if user["type"] == "student":
         session_id = user["session_id"]
         if session_id in session_presence:
             session_presence[session_id].discard(sid)
+            print(f"[Gateway] Student {user['id']} removed from session {session_id}, remaining: {len(session_presence[session_id])}")
         
         user_activities.pop(user["id"], None)
         nickname = student_nicknames.get(user["id"], "Studente")
@@ -161,41 +174,66 @@ async def disconnect(sid):
 async def join_session(sid, data):
     user = connected_users.get(sid)
     if not user:
+        print(f"[Gateway] join_session failed: sid {sid} not authenticated")
         return {"error": "Not authenticated"}
-    
+
     session_id = data.get("session_id") or user.get("session_id")
     if not session_id:
+        print(f"[Gateway] join_session failed: no session_id for user {user.get('id')}")
         return {"error": "Session ID required"}
-    
+
+    print(f"[Gateway] User {user.get('id')} ({user.get('type')}) joining session {session_id}")
     await sio.enter_room(sid, f"session:{session_id}")
     
+    # Add to presence set
+    if session_id not in session_presence:
+        session_presence[session_id] = set()
+    session_presence[session_id].add(sid)
+
+    # Broadcast presence update for this user (Teacher or Student)
+    user_role = user.get("type", "student")
+    nickname = student_nicknames.get(user["id"], user.get("nickname", "Studente")) if user_role == "student" else "Docente"
+    avatar = student_avatars.get(user["id"]) if user_role == "student" else None
+    
+    await sio.emit(
+        "presence_update",
+        {
+            "student_id": user["id"],
+            "nickname": nickname,
+            "avatar_url": avatar,
+            "status": "online",
+            "role": user_role
+        },
+        room=f"session:{session_id}",
+        skip_sid=sid,
+    )
+
     # Get current online users
-    online_students = []
+    online_users = []
     if session_id in session_presence:
+        print(f"[Gateway] Session {session_id} has {len(session_presence[session_id])} connected sids")
         for s in session_presence[session_id]:
             u = connected_users.get(s)
-            if u and u["type"] == "student":
-                online_students.append({
+            if u:
+                role = u.get("type", "student")
+                user_info = {
                     "student_id": u["id"],
-                    "nickname": student_nicknames.get(u["id"], u.get("nickname", "Studente")),
-                    "activity": user_activities.get(u["id"], {}),
-                })
-    
-    # Also emit presence updates for all online students to the joining user
-    for student in online_students:
-        await sio.emit(
-            "presence_update",
-            {
-                "student_id": student["student_id"],
-                "nickname": student["nickname"],
-                "status": "online",
-            },
-            to=sid,
-        )
-    
+                    "nickname": student_nicknames.get(u["id"], u.get("nickname", "Studente")) if role == "student" else "Docente",
+                    "avatar_url": student_avatars.get(u["id"]) if role == "student" else None,
+                    "activity": user_activities.get(u["id"], {}) if role == "student" else None,
+                    "role": role
+                }
+                # Avoid duplicates if multiple sids for same user (simple check)
+                if not any(x['student_id'] == u['id'] for x in online_users):
+                    online_users.append(user_info)
+    else:
+        print(f"[Gateway] Session {session_id} has no presence entries yet")
+
+    print(f"[Gateway] Returning {len(online_users)} online users to {user.get('id')}")
+
     return {
         "session_id": session_id,
-        "online_students": online_students,
+        "online_students": online_users, # Keep key for frontend compat, but contains all users
     }
 
 
@@ -313,7 +351,9 @@ async def chat_public_message(sid, data):
     # which is called before this socket event. This socket event only broadcasts
     # the message in real-time. The API has already saved to database.
     
+    import uuid
     message = {
+        "id": str(uuid.uuid4()),
         "sender_type": user["type"].upper(),
         "sender_id": user["id"],
         "sender_name": sender_name,
@@ -367,66 +407,49 @@ async def chat_private_message(sid, data):
     }
     
     # Send to target user's personal room
-    if target_id == "teacher":
-        # Student messaging teacher - send to all teacher sids in session
+    await sio.emit(
+        "chat_message",
+        {
+            "room_type": "DM",
+            "target_id": target_id,
+            "message": message,
+        },
+        room=f"user:{target_id}",
+    )
+    
+    # Also send back to sender's other sessions/tabs
+    await sio.emit(
+        "chat_message",
+        {
+            "room_type": "DM",
+            "target_id": target_id,
+            "message": message,
+        },
+        room=f"user:{user['id']}",
+    )
+    
+    # If target is a teacher (or student is messaging anyone), send notification if applicable
+    # We can detect if target_id belongs to a teacher by checking connected_users
+    is_target_teacher = False
+    for u in connected_users.values():
+        if u["id"] == target_id and u["type"] == "teacher":
+            is_target_teacher = True
+            break
+            
+    if is_target_teacher and user["type"] == "student":
         session_id = user.get("session_id")
-        for s, u in connected_users.items():
-            if u["type"] == "teacher":
-                await sio.emit(
-                    "chat_message",
-                    {
-                        "room_type": "DM",
-                        "target_id": target_id,
-                        "message": message,
-                    },
-                    room=s,
-                )
-        # Also send back to sender
         await sio.emit(
-            "chat_message",
+            "teacher_notification",
             {
-                "room_type": "DM",
-                "target_id": target_id,
-                "message": message,
+                "type": "private_message",
+                "session_id": session_id,
+                "student_id": user["id"],
+                "nickname": sender_name,
+                "message": f"{sender_name} ti ha inviato un messaggio privato",
+                "preview": text[:50] + ("..." if len(text) > 50 else ""),
+                "timestamp": datetime.utcnow().isoformat(),
             },
-            room=sid,
-        )
-        
-        # Send teacher notification for private message from student
-        if user["type"] == "student":
-            await sio.emit(
-                "teacher_notification",
-                {
-                    "type": "private_message",
-                    "session_id": session_id,
-                    "student_id": user["id"],
-                    "nickname": sender_name,
-                    "message": f"{sender_name} ti ha inviato un messaggio privato",
-                    "preview": text[:50] + ("..." if len(text) > 50 else ""),
-                    "timestamp": datetime.utcnow().isoformat(),
-                },
-                room=f"session:{session_id}",
-            )
-    else:
-        # Teacher or student messaging a student
-        await sio.emit(
-            "chat_message",
-            {
-                "room_type": "DM",
-                "target_id": target_id,
-                "message": message,
-            },
-            room=f"student:{target_id}",
-        )
-        # Also send back to sender if different
-        await sio.emit(
-            "chat_message",
-            {
-                "room_type": "DM",
-                "target_id": target_id,
-                "message": message,
-            },
-            room=sid,
+            room=f"session:{session_id}",
         )
     
     return {"success": True}

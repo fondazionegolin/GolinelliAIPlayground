@@ -511,6 +511,24 @@ async def delete_session(
     if not session:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
     
+    # Delete related records first (those without cascade)
+    from app.models.task import Task, TaskSubmission
+    from app.models.chat import ChatMessage
+    
+    # Delete task submissions first, then tasks
+    await db.execute(
+        TaskSubmission.__table__.delete().where(
+            TaskSubmission.task_id.in_(
+                select(Task.id).where(Task.session_id == session_id)
+            )
+        )
+    )
+    await db.execute(Task.__table__.delete().where(Task.session_id == session_id))
+    
+    # Delete chat messages
+    await db.execute(ChatMessage.__table__.delete().where(ChatMessage.session_id == session_id))
+    
+    # Now delete the session (cascade will handle modules, students, chat_rooms, conversations)
     await db.delete(session)
     await db.commit()
     
@@ -651,13 +669,17 @@ async def create_task(
     if not session:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
 
+    # Determine if this should be auto-published (lessons and presentations)
+    task_type = TaskType(request.task_type) if request.task_type in [t.value for t in TaskType] else TaskType.EXERCISE
+    auto_publish = task_type in [TaskType.LESSON, TaskType.PRESENTATION]
+
     task = Task(
         tenant_id=session.tenant_id,
         session_id=session_id,
         title=request.title,
         description=request.description,
-        task_type=TaskType(request.task_type) if request.task_type in [t.value for t in TaskType] else TaskType.EXERCISE,
-        status=TaskStatus.DRAFT,
+        task_type=task_type,
+        status=TaskStatus.PUBLISHED if auto_publish else TaskStatus.DRAFT,
         due_at=request.due_at,
         points=request.points,
         content_json=request.content_json,
@@ -665,6 +687,78 @@ async def create_task(
     db.add(task)
     await db.commit()
     await db.refresh(task)
+
+    # If auto-published (lesson/presentation), create chat message and emit socket event
+    if auto_publish:
+        # Get or create public chat room
+        result = await db.execute(
+            select(ChatRoom)
+            .where(ChatRoom.session_id == session_id)
+            .where(ChatRoom.room_type == ChatRoomType.PUBLIC)
+        )
+        room = result.scalar_one_or_none()
+        if not room:
+            room = ChatRoom(
+                tenant_id=session.tenant_id,
+                session_id=session_id,
+                room_type=ChatRoomType.PUBLIC,
+            )
+            db.add(room)
+            await db.commit()
+            await db.refresh(room)
+
+        # Determine message text and icon based on type
+        if task_type == TaskType.PRESENTATION:
+            msg_text = f"📊 Nuova presentazione disponibile: {task.title}"
+            type_label = "presentation"
+        else:
+            msg_text = f"📄 Nuovo documento disponibile: {task.title}"
+            type_label = "lesson"
+
+        # Create chat message
+        import json
+        chat_message = ChatMessage(
+            tenant_id=session.tenant_id,
+            session_id=session_id,
+            room_id=room.id,
+            sender_type=SenderType.TEACHER,
+            sender_teacher_id=teacher.id,
+            message_text=msg_text,
+            attachments=json.dumps([{
+                "type": "task_link",
+                "task_id": str(task.id),
+                "task_type": type_label,
+                "title": task.title
+            }])
+        )
+        db.add(chat_message)
+        await db.commit()
+        await db.refresh(chat_message)
+
+        # Emit socket event to notify students
+        await sio.emit(
+            "chat_message",
+            {
+                "room_type": "PUBLIC",
+                "session_id": str(session_id),
+                "message": {
+                    "id": str(chat_message.id),
+                    "sender_type": "TEACHER",
+                    "sender_id": str(teacher.id),
+                    "sender_name": "Docente",
+                    "text": msg_text,
+                    "created_at": chat_message.created_at.isoformat(),
+                    "is_notification": True,
+                    "notification_type": type_label,
+                    "notification_data": {
+                        "task_id": str(task.id),
+                        "title": task.title,
+                        "task_type": type_label
+                    },
+                },
+            },
+            room=f"session:{session_id}",
+        )
 
     return {
         "id": str(task.id),

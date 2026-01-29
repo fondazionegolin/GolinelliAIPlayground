@@ -28,6 +28,7 @@
     "@tanstack/react-query": "^5.17.0",
     "@tensorflow/tfjs": "^4.22.0",
     "@tiptap/extension-color": "^3.17.0",
+    "@tiptap/extension-font-family": "^3.17.1",
     "@tiptap/extension-image": "^3.17.0",
     "@tiptap/extension-link": "^3.17.0",
     "@tiptap/extension-text-align": "^3.17.0",
@@ -35,10 +36,12 @@
     "@tiptap/extension-underline": "^3.17.0",
     "@tiptap/react": "^3.17.0",
     "@tiptap/starter-kit": "^3.17.0",
+    "@use-gesture/react": "^10.3.1",
     "axios": "^1.6.5",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.0",
     "date-fns": "^3.2.0",
+    "framer-motion": "^12.29.2",
     "katex": "^0.16.27",
     "lucide-react": "^0.309.0",
     "plotly.js-dist-min": "^3.3.1",
@@ -59,6 +62,7 @@
     "zustand": "^4.4.7"
   },
   "devDependencies": {
+    "@tailwindcss/typography": "^0.5.19",
     "@types/node": "^20.11.0",
     "@types/react": "^18.2.47",
     "@types/react-dom": "^18.2.18",

@@ -1,20 +1,24 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
+import { motion, AnimatePresence } from 'framer-motion'
 import { useAuthStore } from '@/stores/auth'
 import { studentApi } from '@/lib/api'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
-import { 
-  Bot, Brain, Award, MessageSquare,
-  Loader2
+import {
+  Bot, Brain, Award, MessageSquare, FileEdit,
+  Loader2, ChevronRight, Sparkles, ClipboardList, FileText
 } from 'lucide-react'
 import ChatbotModule from './ChatbotModule'
 import TasksModule from './TasksModule'
 import ClassificationModule from './ClassificationModule'
+import StudentDocumentsModule from './StudentDocumentsModule'
 import ChatSidebar from '@/components/ChatSidebar'
-import { ChatMessage } from '@/hooks/useSocket'
 import { MobileNav } from '@/components/student/MobileNav'
+import { MobileHeader } from '@/components/student/MobileHeader'
 import { StudentNavbar } from '@/components/StudentNavbar'
+import { useMobile, useKeyboard } from '@/hooks/useMobile'
+import { useSwipeBack } from '@/hooks/useSwipeBack'
 
 interface SessionInfo {
   session: {
@@ -61,6 +65,15 @@ const moduleConfig: Record<string, {
     borderClass: 'border-emerald-100 hover:border-emerald-200',
     shadowClass: 'shadow-emerald-100/50',
   },
+  documents: {
+    label: 'Editor Documenti',
+    description: 'Crea documenti e presentazioni. Invia i tuoi lavori al docente per la revisione.',
+    icon: FileEdit,
+    colorClass: 'text-violet-600',
+    bgClass: 'bg-violet-50/50 hover:bg-violet-50',
+    borderClass: 'border-violet-100 hover:border-violet-200',
+    shadowClass: 'shadow-violet-100/50',
+  },
   self_assessment: {
     label: 'Quiz & Badge',
     description: 'Mettiti alla prova! Completa quiz, ottieni badge e traccia i tuoi progressi nell\'apprendimento.',
@@ -78,7 +91,23 @@ const moduleConfig: Record<string, {
     bgClass: 'bg-sky-50',
     borderClass: 'border-sky-200',
     shadowClass: 'shadow-sky-100',
+  },
+  classe: {
+    label: 'Chat Classe',
+    description: 'Comunica con la tua classe.',
+    icon: MessageSquare,
+    colorClass: 'text-sky-600',
+    bgClass: 'bg-sky-50',
+    borderClass: 'border-sky-200',
+    shadowClass: 'shadow-sky-100',
   }
+}
+
+// Animation variants for page transitions
+const pageVariants = {
+  initial: { opacity: 0, x: 20 },
+  animate: { opacity: 1, x: 0 },
+  exit: { opacity: 0, x: -20 },
 }
 
 export default function StudentDashboard() {
@@ -89,6 +118,24 @@ export default function StudentDashboard() {
   const [loading, setLoading] = useState(true)
   const [activeModule, setActiveModule] = useState<string | null>(null)
   const [openTaskId, setOpenTaskId] = useState<string | null>(null)
+  const [pendingTasksCount, setPendingTasksCount] = useState(0)
+  const [lastDocument] = useState<string | null>(null)
+  const [sidebarWidth, setSidebarWidth] = useState(320)
+
+  const { isMobile } = useMobile()
+  const { isOpen: isKeyboardOpen } = useKeyboard()
+
+  // Handle swipe back on mobile
+  const handleSwipeBack = useCallback(() => {
+    if (activeModule) {
+      setActiveModule(null)
+    }
+  }, [activeModule])
+
+  const swipeState = useSwipeBack({
+    onSwipeBack: handleSwipeBack,
+    enabled: isMobile && activeModule !== null,
+  })
 
   useEffect(() => {
     if (!studentSession) {
@@ -100,13 +147,22 @@ export default function StudentDashboard() {
       try {
         const response = await studentApi.getSession()
         setSessionInfo(response.data)
-        
+
         // Check for direct task link via query param
         const searchParams = new URLSearchParams(location.search)
         const taskId = searchParams.get('taskId')
         if (taskId) {
           setActiveModule('self_assessment')
           setOpenTaskId(taskId)
+        }
+
+        // Fetch pending tasks count for the home card
+        try {
+          const tasksResponse = await studentApi.getTasks()
+          const pending = tasksResponse.data.filter((t: { status: string }) => t.status === 'pending').length
+          setPendingTasksCount(pending)
+        } catch {
+          // Ignore if tasks API fails
         }
       } catch {
         logout()
@@ -119,11 +175,23 @@ export default function StudentDashboard() {
     fetchSession()
 
     const interval = setInterval(() => {
-      studentApi.heartbeat().catch(() => {})
+      studentApi.heartbeat().catch(() => { })
     }, 30000)
 
     return () => clearInterval(interval)
   }, [studentSession, navigate, logout, location.search])
+
+  // Get header config based on active module
+  const getHeaderConfig = () => {
+    if (!activeModule) {
+      return { title: 'GolinelliAI', showBack: false }
+    }
+    const config = moduleConfig[activeModule]
+    return {
+      title: config?.label || activeModule,
+      showBack: true,
+    }
+  }
 
   if (loading) {
     return (
@@ -137,151 +205,347 @@ export default function StudentDashboard() {
     return null
   }
 
-  // Filter out 'chat' module since it's handled separately in navigation
-  const enabledModules = sessionInfo.enabled_modules.map(m => m.key).filter(k => k !== 'chat')
+  // Filter out 'chat' module since it's handled separately
+  // Always include 'documents' module for students
+  const sessionModules = sessionInfo.enabled_modules.map(m => m.key).filter(k => k !== 'chat')
+  const enabledModules = [...new Set([...sessionModules, 'documents'])]
 
-  const handleNotificationClick = (notification: ChatMessage) => {
-    const notifType = notification.notification_type
-    // Handle all task types: quiz, exercise, presentation, lesson, document_task
-    const taskTypes = ['quiz', 'task', 'exercise', 'presentation', 'lesson', 'document_task']
-    if (notifType && taskTypes.includes(notifType)) {
-      const taskId = notification.notification_data?.task_id as string | undefined
-      if (taskId) {
-        setOpenTaskId(taskId)
-        // Switch to tasks module (will close chat on mobile automatically)
-        setActiveModule('self_assessment')
-      }
-    } else if (notifType === 'document') {
-      // Switch to RAG/documents module
-      setActiveModule('rag')
-    }
-  }
-
-  const isChatActive = activeModule === 'chat'
+  const headerConfig = getHeaderConfig()
 
   return (
-    <div className="min-h-[100dvh] bg-slate-50 lg:bg-gradient-to-br lg:from-slate-50 lg:to-gray-100 lg:pr-80 pb-[calc(5rem+env(safe-area-inset-bottom))] lg:pb-0">
-      {/* Student Navbar */}
-      <StudentNavbar 
-        activeModule={activeModule} 
-        onNavigate={setActiveModule}
-        sessionTitle={sessionInfo.session.title}
-        joinCode={sessionInfo.session.join_code}
-        sessionId={sessionInfo.session.id}
-        onNotificationClick={handleNotificationClick}
-      />
+    <div className="h-[100dvh] bg-slate-50 flex flex-col">
+      {/* Desktop Navbar - hidden on mobile */}
+      <div className="hidden md:block h-16 flex-shrink-0">
+        <StudentNavbar
+          activeModule={activeModule}
+          onNavigate={setActiveModule}
+          sessionTitle={sessionInfo.session.title}
+          joinCode={sessionInfo.session.join_code}
+          sessionId={sessionInfo.session.id}
+        />
+      </div>
 
-      {/* Main Content Area - with top padding for fixed navbar */}
-      <main className={`max-w-6xl mx-auto ${activeModule ? 'p-0 md:p-6 pt-24' : 'p-4 md:p-6 min-h-screen flex flex-col justify-center pt-28'} transition-all duration-300`}>
-        {!activeModule ? (
-          <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500 max-w-5xl mx-auto w-full">
-            {/* Welcome Banner Mobile */}
-            <div className="md:hidden bg-gradient-to-br from-indigo-600 to-violet-600 rounded-2xl p-6 text-white shadow-lg shadow-indigo-200 mb-8">
-              <h2 className="text-2xl font-bold mb-2">Ciao, {sessionInfo.student.nickname}! 👋</h2>
-              <p className="text-indigo-100 opacity-90 text-sm">
-                Benvenuto nella tua area di apprendimento AI. Seleziona un modulo per iniziare.
-              </p>
-            </div>
+      {/* Mobile Header - only on mobile */}
+      {isMobile && (
+        <MobileHeader
+          title={headerConfig.title}
+          showBack={headerConfig.showBack}
+          onBack={() => setActiveModule(null)}
+          avatar={!headerConfig.showBack ? sessionInfo.student.nickname : undefined}
+        />
+      )}
 
-            <div className="px-1">
-              <h2 className="text-2xl font-bold text-slate-800 mb-2">Strumenti disponibili</h2>
-              <p className="text-slate-500 mb-6">Seleziona un'attività per iniziare il tuo percorso.</p>
-            </div>
-            
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {enabledModules.map((moduleKey) => {
-                const config = moduleConfig[moduleKey] || {
-                  label: moduleKey,
-                  description: 'Modulo attivo',
-                  icon: Bot,
-                  colorClass: 'text-slate-600',
-                  bgClass: 'bg-white',
-                  borderClass: 'border-slate-200',
-                  shadowClass: 'shadow-slate-100'
-                }
-                const Icon = config.icon
+      {/* Swipe back overlay */}
+      {swipeState.isActive && (
+        <motion.div
+          className="fixed inset-0 bg-black/10 z-40 pointer-events-none"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: swipeState.progress }}
+        />
+      )}
 
-                return (
-                  <Card 
-                    key={moduleKey} 
-                    className={`cursor-pointer transition-all duration-300 group relative overflow-hidden border-2 ${config.borderClass} ${config.bgClass} hover:shadow-xl ${config.shadowClass}`}
-                    onClick={() => setActiveModule(moduleKey)}
-                  >
-                    <div className={`absolute top-0 right-0 p-3 opacity-10 group-hover:opacity-20 transition-opacity ${config.colorClass}`}>
-                      <Icon className="w-32 h-32 -mr-10 -mt-10 transform group-hover:rotate-12 transition-transform duration-500" />
-                    </div>
+      {/* Main Layout with Chat Sidebar */}
+      <div className={`flex flex-1 overflow-hidden ${isMobile ? 'pt-14' : ''}`}>
+        {/* Main Content Area */}
+        <main className={`flex-1 ${activeModule === 'chatbot' || activeModule === 'classe' ? 'overflow-hidden' : 'overflow-y-auto'}`}>
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={activeModule || 'home'}
+              variants={pageVariants}
+              initial="initial"
+              animate="animate"
+              exit="exit"
+              transition={{ duration: 0.2, ease: 'easeInOut' }}
+              className={`${activeModule === 'chatbot' || activeModule === 'classe' ? 'p-0 md:p-6 h-full' : 'p-4 md:p-6'}`}
+              style={swipeState.isActive ? { transform: `translateX(${swipeState.x}px)` } : undefined}
+            >
+              {!activeModule ? (
+                <HomeView
+                  sessionInfo={sessionInfo}
+                  enabledModules={enabledModules}
+                  onNavigate={setActiveModule}
+                  pendingTasksCount={pendingTasksCount}
+                  lastDocument={lastDocument}
+                  isMobile={isMobile}
+                />
+              ) : (
+                <div className="h-full flex flex-col">
+                  <div className={`mb-4 ${activeModule === 'chatbot' || activeModule === 'classe' ? 'hidden md:block' : ''}`}>
+                    <Button
+                      variant="ghost"
+                      className="gap-2 pl-0 hover:bg-transparent text-slate-600 hover:text-fuchsia-600"
+                      onClick={() => setActiveModule(null)}
+                    >
+                      ← Torna alla home
+                    </Button>
+                  </div>
 
-                    <CardContent className="p-6 sm:p-8 flex flex-col items-start gap-4 relative z-10 h-full">
-                      <div className={`w-14 h-14 rounded-2xl bg-white shadow-sm flex items-center justify-center ${config.colorClass} ring-4 ring-white/50`}>
-                        <Icon className="h-7 w-7" />
-                      </div>
-                      
-                      <div className="space-y-2">
-                        <h3 className={`font-bold text-xl ${config.colorClass}`}>{config.label}</h3>
-                        <p className="text-slate-600 font-medium leading-relaxed">
-                          {config.description}
-                        </p>
-                      </div>
-
-                      <div className="mt-auto pt-4 flex items-center text-sm font-semibold opacity-0 group-hover:opacity-100 transition-all transform translate-y-2 group-hover:translate-y-0">
-                        <span className={config.colorClass}>Inizia ora</span>
-                        <svg className={`w-4 h-4 ml-2 ${config.colorClass}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8l4 4m0 0l-4 4m4-4H3" />
-                        </svg>
-                      </div>
-                    </CardContent>
-                  </Card>
-                )
-              })}
-            </div>
-          </div>
-        ) : (
-          <div className="h-full">
-            <div className="md:mb-4 hidden md:block">
-              <Button 
-                variant="ghost" 
-                className="gap-2 pl-0 hover:bg-transparent"
-                onClick={() => setActiveModule(null)}
-              >
-                ← Torna alla home
-              </Button>
-            </div>
-            
-            {/* Mobile-optimized container */}
-            <div className={`${isChatActive ? 'h-[calc(100dvh-130px)] md:h-auto' : ''}`}>
-              {activeModule === 'chat' ? (
-                // Mobile Chat View (replaces Sidebar)
-                <div className="h-full bg-white md:rounded-xl md:border md:shadow-sm overflow-hidden">
-                  <ChatSidebar
+                  <ModuleView
+                    moduleKey={activeModule}
                     sessionId={sessionInfo.session.id}
-                    userType="student"
-                    currentUserId={sessionInfo.student.id}
-                    currentUserName={sessionInfo.student.nickname}
-                    onNotificationClick={handleNotificationClick}
-                    isMobileView={true} // We'll need to support this prop or adapt styling
+                    openTaskId={openTaskId}
+                    studentId={sessionInfo.student.id}
+                    studentName={sessionInfo.student.nickname}
                   />
                 </div>
-              ) : (
-                <ModuleView moduleKey={activeModule} sessionId={sessionInfo.session.id} openTaskId={openTaskId} />
               )}
-            </div>
-          </div>
-        )}
-      </main>
-      
+            </motion.div>
+          </AnimatePresence>
+        </main>
+
+        {/* Chat Sidebar - Always visible on desktop */}
+        <div
+          className="hidden lg:block border-l border-slate-200 bg-white flex-shrink-0"
+          style={{ width: `${sidebarWidth}px`, height: '100%' }}
+        >
+          <ChatSidebar
+            sessionId={sessionInfo.session.id}
+            userType="student"
+            currentUserId={sessionInfo.student.id}
+            currentUserName={sessionInfo.student.nickname}
+            isPinned={true}
+            onPinToggle={() => { }}
+            onToggle={() => { }}
+            onWidthChange={setSidebarWidth}
+            initialWidth={sidebarWidth}
+            className="h-full w-full"
+          />
+        </div>
+      </div>
+
       {/* Mobile Bottom Navigation */}
-      <MobileNav 
-        activeModule={activeModule} 
+      <MobileNav
+        activeModule={activeModule}
         onNavigate={setActiveModule}
+        hidden={isKeyboardOpen}
       />
     </div>
   )
 }
 
-function ModuleView({ moduleKey, sessionId, openTaskId }: { moduleKey: string; sessionId: string; openTaskId?: string | null }) {
+// Home View Component
+function HomeView({
+  sessionInfo,
+  enabledModules,
+  onNavigate,
+  pendingTasksCount,
+  lastDocument,
+  isMobile,
+}: {
+  sessionInfo: SessionInfo
+  enabledModules: string[]
+  onNavigate: (module: string | null) => void
+  pendingTasksCount: number
+  lastDocument: string | null
+  isMobile: boolean
+}) {
+  // Quick start AI profiles
+  const quickStartProfiles = [
+    { key: 'tutor', label: 'Tutor', icon: '📚' },
+    { key: 'quiz', label: 'Quiz', icon: '📝' },
+    { key: 'math_coach', label: 'Math', icon: '🔢' },
+  ]
+
+  if (isMobile) {
+    return (
+      <div className="space-y-4 pb-20 animate-in fade-in slide-in-from-bottom-4 duration-300">
+        {/* Welcome Banner */}
+        <div className="bg-gradient-to-br from-fuchsia-500 via-purple-500 to-violet-600 rounded-2xl p-5 text-white shadow-lg shadow-fuchsia-200/50">
+          <h2 className="text-xl font-bold mb-1">Ciao, {sessionInfo.student.nickname}! 👋</h2>
+          <p className="text-fuchsia-100 text-sm opacity-90">
+            Pronto per una nuova sessione di apprendimento?
+          </p>
+        </div>
+
+        {/* Tasks & Documents Cards */}
+        <div className="grid grid-cols-2 gap-3">
+          {/* Tasks Card */}
+          <motion.button
+            whileTap={{ scale: 0.97 }}
+            onClick={() => onNavigate('self_assessment')}
+            className="bg-white rounded-xl p-4 border border-orange-100 shadow-sm text-left group active:bg-orange-50 transition-colors"
+          >
+            <div className="w-10 h-10 rounded-xl bg-orange-100 flex items-center justify-center mb-3 group-active:bg-orange-200 transition-colors">
+              <ClipboardList className="h-5 w-5 text-orange-600" />
+            </div>
+            <h3 className="font-semibold text-slate-800 text-sm">Compiti</h3>
+            <p className="text-xs text-slate-500 mt-0.5">
+              {pendingTasksCount > 0 ? (
+                <span className="text-orange-600 font-medium">{pendingTasksCount} da fare</span>
+              ) : (
+                'Tutto fatto!'
+              )}
+            </p>
+            <ChevronRight className="h-4 w-4 text-slate-300 absolute top-4 right-3" />
+          </motion.button>
+
+          {/* Documents Card */}
+          <motion.button
+            whileTap={{ scale: 0.97 }}
+            onClick={() => onNavigate('documents')}
+            className="bg-white rounded-xl p-4 border border-violet-100 shadow-sm text-left group active:bg-violet-50 transition-colors relative"
+          >
+            <div className="w-10 h-10 rounded-xl bg-violet-100 flex items-center justify-center mb-3 group-active:bg-violet-200 transition-colors">
+              <FileText className="h-5 w-5 text-violet-600" />
+            </div>
+            <h3 className="font-semibold text-slate-800 text-sm">Documenti</h3>
+            <p className="text-xs text-slate-500 mt-0.5 truncate">
+              {lastDocument || 'I tuoi lavori'}
+            </p>
+            <ChevronRight className="h-4 w-4 text-slate-300 absolute top-4 right-3" />
+          </motion.button>
+        </div>
+
+        {/* Quick Start AI */}
+        <div className="bg-white rounded-xl p-4 border border-slate-100 shadow-sm">
+          <div className="flex items-center gap-2 mb-3">
+            <Sparkles className="h-4 w-4 text-indigo-500" />
+            <h3 className="font-semibold text-slate-800 text-sm">Quick Start AI</h3>
+          </div>
+          <div className="flex gap-2">
+            {quickStartProfiles.map((profile) => (
+              <motion.button
+                key={profile.key}
+                whileTap={{ scale: 0.95 }}
+                onClick={() => onNavigate('chatbot')}
+                className="flex-1 py-2.5 px-3 bg-gradient-to-br from-indigo-50 to-blue-50 rounded-xl border border-indigo-100 text-center active:from-indigo-100 active:to-blue-100 transition-colors"
+              >
+                <span className="text-lg">{profile.icon}</span>
+                <p className="text-xs font-medium text-indigo-700 mt-0.5">{profile.label}</p>
+              </motion.button>
+            ))}
+          </div>
+        </div>
+
+        {/* Module Grid for remaining modules */}
+        <div className="space-y-3">
+          <h3 className="font-semibold text-slate-700 text-sm px-1">Esplora</h3>
+          {enabledModules.filter(k => !['self_assessment', 'documents'].includes(k)).map((moduleKey) => {
+            const config = moduleConfig[moduleKey] || {
+              label: moduleKey,
+              description: 'Modulo attivo',
+              icon: Bot,
+              colorClass: 'text-slate-600',
+              bgClass: 'bg-white',
+              borderClass: 'border-slate-200',
+            }
+            const Icon = config.icon
+
+            return (
+              <motion.button
+                key={moduleKey}
+                whileTap={{ scale: 0.98 }}
+                onClick={() => onNavigate(moduleKey)}
+                className={`w-full flex items-center gap-4 p-4 rounded-xl border-2 ${config.borderClass} ${config.bgClass} text-left active:opacity-80 transition-all`}
+              >
+                <div className={`w-12 h-12 rounded-xl bg-white shadow-sm flex items-center justify-center ${config.colorClass}`}>
+                  <Icon className="h-6 w-6" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <h4 className={`font-semibold ${config.colorClass}`}>{config.label}</h4>
+                  <p className="text-xs text-slate-500 line-clamp-1">{config.description}</p>
+                </div>
+                <ChevronRight className="h-5 w-5 text-slate-300" />
+              </motion.button>
+            )
+          })}
+        </div>
+      </div>
+    )
+  }
+
+  // Desktop view - original layout
+  return (
+    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500 max-w-5xl mx-auto w-full pt-4">
+      {/* Welcome Banner Mobile */}
+      <div className="md:hidden bg-gradient-to-br from-fuchsia-600 to-purple-600 rounded-2xl p-6 text-white shadow-lg shadow-fuchsia-200 mb-8">
+        <h2 className="text-2xl font-bold mb-2">Ciao, {sessionInfo.student.nickname}!</h2>
+        <p className="text-fuchsia-100 opacity-90 text-sm">
+          Benvenuto nella tua area di apprendimento AI. Seleziona un modulo per iniziare.
+        </p>
+      </div>
+
+      <div className="px-1">
+        <h2 className="text-2xl font-bold text-slate-800 mb-2">Strumenti disponibili</h2>
+        <p className="text-slate-500 mb-6">Seleziona un'attività per iniziare il tuo percorso.</p>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {enabledModules.map((moduleKey) => {
+          const config = moduleConfig[moduleKey] || {
+            label: moduleKey,
+            description: 'Modulo attivo',
+            icon: Bot,
+            colorClass: 'text-slate-600',
+            bgClass: 'bg-white',
+            borderClass: 'border-slate-200',
+            shadowClass: 'shadow-slate-100'
+          }
+          const Icon = config.icon
+
+          return (
+            <Card
+              key={moduleKey}
+              className={`cursor-pointer transition-all duration-300 group relative overflow-hidden border-2 ${config.borderClass} ${config.bgClass} hover:shadow-xl ${config.shadowClass}`}
+              onClick={() => onNavigate(moduleKey)}
+            >
+              <div className={`absolute top-0 right-0 p-3 opacity-10 group-hover:opacity-20 transition-opacity ${config.colorClass}`}>
+                <Icon className="w-32 h-32 -mr-10 -mt-10 transform group-hover:rotate-12 transition-transform duration-500" />
+              </div>
+
+              <CardContent className="p-6 sm:p-8 flex flex-col items-start gap-4 relative z-10 h-full">
+                <div className={`w-14 h-14 rounded-2xl bg-white shadow-sm flex items-center justify-center ${config.colorClass} ring-4 ring-white/50`}>
+                  <Icon className="h-7 w-7" />
+                </div>
+
+                <div className="space-y-2">
+                  <h3 className={`font-bold text-xl ${config.colorClass}`}>{config.label}</h3>
+                  <p className="text-slate-600 font-medium leading-relaxed">
+                    {config.description}
+                  </p>
+                </div>
+
+                <div className="mt-auto pt-4 flex items-center text-sm font-semibold opacity-0 group-hover:opacity-100 transition-all transform translate-y-2 group-hover:translate-y-0">
+                  <span className={config.colorClass}>Inizia ora</span>
+                  <svg className={`w-4 h-4 ml-2 ${config.colorClass}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8l4 4m0 0l-4 4m4-4H3" />
+                  </svg>
+                </div>
+              </CardContent>
+            </Card>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+function ModuleView({ moduleKey, sessionId, openTaskId, studentId, studentName }: {
+  moduleKey: string;
+  sessionId: string;
+  openTaskId?: string | null;
+  studentId?: string;
+  studentName?: string;
+}) {
+  // Class chat module - full screen ChatSidebar
+  if (moduleKey === 'classe' || moduleKey === 'chat') {
+    return (
+      <div className="h-[calc(100dvh-7rem)] md:h-[calc(100vh-6rem)] -mx-4 md:mx-0">
+        <ChatSidebar
+          sessionId={sessionId}
+          userType="student"
+          currentUserId={studentId || ''}
+          currentUserName={studentName || 'Studente'}
+          isMobileView={true}
+          className="h-full"
+        />
+      </div>
+    )
+  }
+
   if (moduleKey === 'chatbot') {
     return (
-      <div className="h-[calc(100dvh-120px)] md:h-auto">
+      <div className="h-[calc(100dvh-7rem)] md:h-auto flex flex-col">
         <ChatbotModule sessionId={sessionId} />
       </div>
     )
@@ -299,8 +563,16 @@ function ModuleView({ moduleKey, sessionId, openTaskId }: { moduleKey: string; s
 
   if (moduleKey === 'classification') {
     return (
-      <div className="pb-4">
+      <div className="pb-20 md:pb-4">
         <ClassificationModule />
+      </div>
+    )
+  }
+
+  if (moduleKey === 'documents') {
+    return (
+      <div className="pb-20 md:pb-4">
+        <StudentDocumentsModule sessionId={sessionId} />
       </div>
     )
   }

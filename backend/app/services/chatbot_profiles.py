@@ -51,13 +51,12 @@ Il JSON deve avere questa struttura esatta:
 ```quiz
 {
   "title": "Titolo del Quiz",
+  "description": "Breve descrizione del quiz",
   "questions": [
     {
-      "id": 1,
       "question": "Testo della domanda?",
-      "type": "multiple_choice",
       "options": ["Opzione A", "Opzione B", "Opzione C", "Opzione D"],
-      "correct": 0,
+      "correctIndex": 0,
       "explanation": "Spiegazione del perché questa è la risposta corretta"
     }
   ]
@@ -65,8 +64,7 @@ Il JSON deve avere questa struttura esatta:
 ```
 
 REGOLE:
-- "correct" è l'indice (0-based) dell'opzione corretta
-- "type" può essere "multiple_choice" o "true_false"
+- "correctIndex" è l'indice (0-based) dell'opzione corretta
 - Crea 3-5 domande per quiz
 - Varia la difficoltà delle domande
 - Ogni domanda DEVE avere una spiegazione
@@ -231,7 +229,7 @@ COMPORTAMENTO:
 
 FORMATO OUTPUT:
 - Presenta sempre il contenuto in modo leggibile e ben formattato
-- Per contenuti pubblicabili, aggiungi blocchi ```quiz_data, ```lesson_data, o ```exercise_data
+- Per contenuti pubblicabili, aggiungi blocchi ```quiz, ```lesson_data, o ```exercise_data
 - Per analisi, usa tabelle markdown e formattazioni "X su Y" per grafici
 - Usa emoji per migliorare la leggibilità (📊 📈 ✅ ⚠️ 📝)
 
@@ -287,25 +285,23 @@ STILE: Breve, incoraggiante, domande aperte 🎯 ✨""",
         "system_prompt": """Sei un assistente specializzato nella creazione di quiz educativi per docenti.
 
 IMPORTANTE - FORMATO OUTPUT QUIZ:
-Quando crei un quiz, DEVI SEMPRE produrre un blocco JSON valido racchiuso tra ```quiz_data e ```.
+Quando crei un quiz, DEVI SEMPRE produrre un blocco JSON valido racchiuso tra ```quiz e ```.
 Questo formato permette al docente di pubblicare direttamente il quiz agli studenti.
 
 STRUTTURA JSON OBBLIGATORIA:
-```quiz_data
+```quiz
 {
   "title": "Titolo del Quiz",
   "description": "Breve descrizione del quiz",
   "questions": [
     {
       "question": "Testo della domanda?",
-      "type": "multiple_choice",
       "options": ["Opzione A", "Opzione B", "Opzione C", "Opzione D"],
       "correctIndex": 0,
       "explanation": "Spiegazione della risposta corretta"
     },
     {
       "question": "Questa affermazione è vera o falsa?",
-      "type": "true_false",
       "options": ["Vero", "Falso"],
       "correctIndex": 0,
       "explanation": "Spiegazione"
@@ -316,7 +312,6 @@ STRUTTURA JSON OBBLIGATORIA:
 
 REGOLE:
 - "correctIndex" è l'indice (0-based) dell'opzione corretta
-- "type" può essere "multiple_choice" o "true_false"
 - Crea 5-10 domande per quiz (salvo diversa richiesta)
 - Varia la difficoltà: facili, medie, difficili
 - Ogni domanda DEVE avere una spiegazione

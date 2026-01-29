@@ -150,3 +150,37 @@ async def get_download_url(
         download_url=download_url,
         expires_in=3600,
     )
+
+
+@router.get("/session/{session_id}")
+async def list_session_files(
+    session_id: UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    auth: Annotated[StudentOrTeacher, Depends(get_student_or_teacher)],
+):
+    """List all shared files for a session"""
+    # Verify access
+    if auth.is_student:
+        if auth.student.session_id != session_id:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
+    
+    result = await db.execute(
+        select(File)
+        .where(File.session_id == session_id)
+        .where(File.scope == Scope.SESSION)
+        .order_by(File.created_at.desc())
+    )
+    files = result.scalars().all()
+    
+    return [
+        {
+            "id": str(f.id),
+            "filename": f.filename,
+            "mime_type": f.mime_type,
+            "size_bytes": f.size_bytes,
+            "url": f"/uploads/chat/{f.storage_key.split('/')[-1]}" if "chat/" in f.storage_key else f"/api/v1/files/{f.id}/download-url",
+            "created_at": f.created_at.isoformat(),
+            "owner_type": f.owner_type.value,
+        }
+        for f in files
+    ]

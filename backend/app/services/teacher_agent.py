@@ -68,10 +68,99 @@ Confidence deve essere:
 - <0.5: Molto incerto, usa analytics"""
 
 
+def classify_intent_by_keywords(message: str) -> IntentResult:
+    """
+    Simple keyword-based intent classification fallback.
+    Works without any LLM API calls.
+    """
+    message_lower = message.lower()
+
+    # Web search keywords
+    web_keywords = [
+        "cerca", "ricerca", "trova", "cerca online", "cerca sul web",
+        "informazioni recenti", "ultime notizie", "aggiornamenti",
+        "cerca in internet", "informazioni su", "dimmi di", "cosa sai di",
+        "novità su", "news", "attualità"
+    ]
+
+    # Quiz keywords
+    quiz_keywords = [
+        "quiz", "verifica", "test", "domande", "quesiti",
+        "crea un quiz", "genera un quiz", "prepara un quiz"
+    ]
+
+    # Exercise keywords
+    exercise_keywords = [
+        "esercizio", "esercizi", "problema", "problemi",
+        "attività pratica", "crea esercizi", "genera esercizi"
+    ]
+
+    # Document keywords
+    document_keywords = [
+        "pei", "ptof", "relazione", "verbale", "documento", "modulo"
+    ]
+
+    # Check for web search (highest priority for search-related queries)
+    for keyword in web_keywords:
+        if keyword in message_lower:
+            # Extract topic (text after the keyword)
+            topic = message
+            for kw in web_keywords:
+                if kw in message_lower:
+                    idx = message_lower.find(kw)
+                    topic = message[idx + len(kw):].strip()
+                    break
+            logger.info(f"Intent classified by keywords: web_search")
+            return IntentResult(
+                intent=TeacherIntent.WEB_SEARCH,
+                confidence=0.85,
+                extracted_params=topic or message
+            )
+
+    # Check for quiz
+    for keyword in quiz_keywords:
+        if keyword in message_lower:
+            logger.info(f"Intent classified by keywords: quiz_generation")
+            return IntentResult(
+                intent=TeacherIntent.QUIZ_GENERATION,
+                confidence=0.85,
+                extracted_params=message
+            )
+
+    # Check for exercise
+    for keyword in exercise_keywords:
+        if keyword in message_lower:
+            logger.info(f"Intent classified by keywords: exercise_generation")
+            return IntentResult(
+                intent=TeacherIntent.EXERCISE_GENERATION,
+                confidence=0.85,
+                extracted_params=message
+            )
+
+    # Check for document
+    for keyword in document_keywords:
+        if keyword in message_lower:
+            logger.info(f"Intent classified by keywords: document_help")
+            return IntentResult(
+                intent=TeacherIntent.DOCUMENT_HELP,
+                confidence=0.75,
+                extracted_params=message
+            )
+
+    # Default to analytics
+    logger.info(f"Intent classified by keywords: analytics (default)")
+    return IntentResult(
+        intent=TeacherIntent.ANALYTICS,
+        confidence=0.6,
+        extracted_params=None
+    )
+
+
 async def classify_intent(message: str, history: list[dict]) -> IntentResult:
     """
     Classify teacher's intent using fast lightweight model.
     Returns intent category, confidence, and extracted parameters.
+    Falls back to keyword-based classification if LLM is unavailable.
     """
     try:
         # Check for forced mode prefixes
@@ -95,6 +184,12 @@ async def classify_intent(message: str, history: list[dict]) -> IntentResult:
                     confidence=1.0,
                     topic=clean_message.strip()
                 )
+
+        # Try LLM-based classification if OpenAI is available
+        from app.core.config import settings
+        if not settings.OPENAI_API_KEY:
+            logger.info("OpenAI not configured, using keyword-based classification")
+            return classify_intent_by_keywords(message)
 
         # Build context from recent history (last 3 messages)
         context_messages = []
@@ -141,7 +236,7 @@ Classifica l'intento e rispondi con JSON."""
         except ValueError:
             # If model invents an intent, fallback to analytics
             intent = TeacherIntent.ANALYTICS
-            
+
         confidence = float(result_dict.get("confidence", 0.8))
         topic = result_dict.get("topic")
 
@@ -154,13 +249,9 @@ Classifica l'intento e rispondi con JSON."""
         )
 
     except Exception as e:
-        logger.warning(f"Intent classification failed: {e}, falling back to analytics")
-        # Fallback to analytics on error
-        return IntentResult(
-            intent=TeacherIntent.ANALYTICS,
-            confidence=0.5,
-            extracted_params=None
-        )
+        logger.warning(f"LLM intent classification failed: {e}, using keyword-based fallback")
+        # Fallback to keyword-based classification on error
+        return classify_intent_by_keywords(message)
 
 
 # ============================================================================
@@ -298,13 +389,13 @@ FORMATO OUTPUT OBBLIGATORIO:
 Devi SEMPRE rispondere in questo modo:
 
 1. Prima, breve introduzione (1-2 frasi)
-2. POI, il blocco JSON quiz_data (OBBLIGATORIO!)
+2. POI, il blocco JSON quiz (OBBLIGATORIO!)
 
 ESEMPIO RISPOSTA:
 
 Ho creato un quiz di 8 domande sulle equazioni di secondo grado, con difficoltà progressiva.
 
-```quiz_data
+```quiz
 {
   "title": "Quiz: Equazioni di Secondo Grado",
   "description": "Verifica la tua comprensione delle equazioni di secondo grado e della formula risolutiva",
@@ -340,7 +431,7 @@ Ho creato un quiz di 8 domande sulle equazioni di secondo grado, con difficoltà
 ```
 
 REGOLE RIGIDE:
-- Il blocco ```quiz_data è OBBLIGATORIO
+- Il blocco ```quiz è OBBLIGATORIO
 - Genera ALMENO 5 domande
 - Il JSON deve essere valido
 - correctIndex deve essere 0, 1, 2 o 3
@@ -460,13 +551,22 @@ async def generate_quiz_with_tools(
     for iteration in range(max_iterations):
         try:
             # Call model with tools
-            response = await client.chat.completions.create(
-                model=model,
-                messages=full_messages,
-                tools=QUIZ_TOOLS,
-                tool_choice="auto",
-                temperature=0.7,
-            )
+            # GPT-5 and o-series models don't support custom temperature
+            if model.startswith("gpt-5") or model.startswith("o1") or model.startswith("o3"):
+                response = await client.chat.completions.create(
+                    model=model,
+                    messages=full_messages,
+                    tools=QUIZ_TOOLS,
+                    tool_choice="auto",
+                )
+            else:
+                response = await client.chat.completions.create(
+                    model=model,
+                    messages=full_messages,
+                    tools=QUIZ_TOOLS,
+                    tool_choice="auto",
+                    temperature=0.7,
+                )
 
             message = response.choices[0].message
 
@@ -514,9 +614,9 @@ async def generate_quiz_with_tools(
                 # No more tool calls, return final response
                 response_text = message.content or ""
 
-                # Ensure response has quiz_data block
-                if quiz_json and "```quiz_data" not in response_text:
-                    response_text += f"\n\n```quiz_data\n{json.dumps(quiz_json, indent=2, ensure_ascii=False)}\n```"
+                # Ensure response has quiz block
+                if quiz_json and "```quiz" not in response_text:
+                    response_text += f"\n\n```quiz\n{json.dumps(quiz_json, indent=2, ensure_ascii=False)}\n```"
 
                 return response_text
 
@@ -527,7 +627,7 @@ async def generate_quiz_with_tools(
 
     # Max iterations reached, return with quiz if we have one
     if quiz_json:
-        return f"Quiz generato:\n\n```quiz_data\n{json.dumps(quiz_json, indent=2, ensure_ascii=False)}\n```"
+        return f"Quiz generato:\n\n```quiz\n{json.dumps(quiz_json, indent=2, ensure_ascii=False)}\n```"
 
     return "Mi dispiace, non sono riuscito a completare la generazione del quiz."
 
@@ -662,13 +762,15 @@ async def generate_with_web_search(
     """
     Generate response with web search capability.
     Searches the web for fresh information and uses it to answer the teacher's question.
+    Works with all supported LLM providers (OpenAI, Anthropic, Ollama).
     """
     from app.services.web_search_service import web_search_service
 
     # Extract the last user message as search query
     last_message = messages[-1]["content"] if messages else ""
 
-    logger.info(f"Performing web search for: {last_message[:100]}...")
+    logger.info(f"[WebSearch] Provider: {provider}, Model: {model}")
+    logger.info(f"[WebSearch] Performing web search for: {last_message[:100]}...")
 
     # Perform web search
     results = await web_search_service.search(
@@ -680,7 +782,7 @@ async def generate_with_web_search(
     if not results:
         # Fallback to analytics if search fails
         logger.warning("Web search returned no results, falling back to analytics")
-        return await generate_with_analytics(messages, context, provider, model)
+        return "⚠️ **Ricerca web non riuscita**\n\nNon sono riuscito a trovare risultati per la tua query. Prova a riformulare la domanda o verifica la connessione internet."
 
     # Format search results for LLM context
     search_context_parts = []
@@ -700,39 +802,194 @@ async def generate_with_web_search(
 
     search_context = "\n---\n".join(search_context_parts)
 
-    # Build enhanced prompt with search results
-    web_search_prompt = f"""Sei un assistente AI per docenti con accesso a informazioni aggiornate dal web.
+    # Build numbered source reference
+    source_refs = "\n".join([f"[{i}] {r.title} - {r.url}" for i, r in enumerate(results, 1)])
 
-Ho cercato informazioni aggiornate per rispondere alla tua domanda. Ecco i risultati della ricerca:
+    web_search_prompt = f"""Genera un report di ricerca professionale basato ESCLUSIVAMENTE sulle fonti fornite.
 
+FONTI DISPONIBILI:
 {search_context}
 
-ISTRUZIONI:
-1. Usa le informazioni trovate per rispondere in modo accurato e aggiornato
-2. Cita le fonti quando usi informazioni specifiche
-3. Se le informazioni sono contrastanti, segnalalo
-4. Se la ricerca non ha trovato informazioni rilevanti, dillo chiaramente
-5. Formatta la risposta in modo chiaro e leggibile
+---
 
-Alla fine della risposta, aggiungi una sezione "📚 Fonti:" con i link alle fonti utilizzate."""
+STRUTTURA DEL REPORT (segui questo formato esatto):
 
-    # Generate response with web context
+**SOMMARIO**
+
+Scrivi 2-3 frasi che sintetizzano i risultati principali. Cita le fonti con [1], [2], etc.
+
+---
+
+**RISULTATI PRINCIPALI**
+
+| Aspetto | Dettaglio | Rif. |
+|---------|-----------|------|
+| [Tema 1] | [Informazione chiave estratta] | [1] |
+| [Tema 2] | [Informazione chiave estratta] | [2] |
+| [Tema 3] | [Informazione chiave estratta] | [1,3] |
+
+---
+
+**APPROFONDIMENTO**
+
+**[Sottotitolo 1]**
+Paragrafo breve con dettagli. Fonte: [1]
+
+**[Sottotitolo 2]**
+Paragrafo breve con dettagli. Fonte: [2]
+
+---
+
+**NOTE**
+- Eventuali limitazioni o informazioni non trovate
+- Aspetti che richiedono ulteriore verifica
+
+---
+
+REGOLE:
+- Usa SOLO informazioni presenti nelle fonti
+- Cita sempre con [numero] corrispondente alla fonte
+- Nessuna emoji
+- Formattazione pulita e professionale
+- Se un'informazione non è disponibile, indicalo esplicitamente"""
+
     response = await llm_service.generate(
         messages=messages,
         system_prompt=web_search_prompt,
         provider=provider,
         model=model,
-        temperature=0.7,
+        temperature=0.3,
         max_tokens=4096,
     )
 
     response_text = response.content
 
-    # Ensure sources are included
-    if "Fonti:" not in response_text and sources_list:
-        response_text += f"\n\n📚 **Fonti:**\n" + "\n".join(sources_list)
+    # Append source bibliography
+    response_text += f"\n\n---\n\n**FONTI**\n\n{source_refs}"
 
     return response_text
+
+
+async def generate_with_web_search_streaming(
+    messages: list[dict],
+    context: str,
+    provider: str,
+    model: str
+):
+    """
+    Generator that yields progress updates during web search.
+    Used for streaming real-time feedback to the frontend.
+    """
+    from app.services.web_search_service import web_search_service
+
+    last_message = messages[-1]["content"] if messages else ""
+
+    # Step 1: Start search
+    yield {"type": "status", "message": "🔍 Avvio ricerca web..."}
+    yield {"type": "status", "message": f"📝 Query: {last_message[:100]}..."}
+
+    # Step 2: Perform search
+    yield {"type": "status", "message": "🌐 Interrogazione DuckDuckGo..."}
+
+    results = await web_search_service.search(
+        query=last_message,
+        num_results=5,
+        fetch_content=False  # First get basic results
+    )
+
+    if not results:
+        yield {"type": "error", "message": "❌ Nessun risultato trovato"}
+        yield {"type": "done", "content": "⚠️ **Ricerca web non riuscita**\n\nNon sono riuscito a trovare risultati."}
+        return
+
+    yield {"type": "status", "message": f"✅ Trovati {len(results)} risultati"}
+
+    # Step 3: Fetch content from each result
+    search_context_parts = []
+    sources_list = []
+
+    for i, result in enumerate(results, 1):
+        yield {"type": "source", "index": i, "title": result.title, "url": result.url, "status": "fetching"}
+
+        # Fetch full content
+        try:
+            content = await web_search_service._fetch_page_content(result.url)
+            result.content = content
+            yield {"type": "source", "index": i, "title": result.title, "url": result.url, "status": "done", "content_length": len(content) if content else 0}
+        except Exception as e:
+            yield {"type": "source", "index": i, "title": result.title, "url": result.url, "status": "error", "error": str(e)}
+
+        source_text = f"**Fonte {i}: {result.title}**\nURL: {result.url}\n"
+        if result.snippet:
+            source_text += f"Anteprima: {result.snippet}\n"
+        if result.content:
+            content_preview = result.content[:2000]
+            source_text += f"Contenuto:\n{content_preview}\n"
+
+        search_context_parts.append(source_text)
+        sources_list.append(f"- [{result.title}]({result.url})")
+
+    search_context = "\n---\n".join(search_context_parts)
+
+    # Step 4: Generate response
+    yield {"type": "status", "message": f"🤖 Generazione risposta con {model}..."}
+
+    # Build source links for easy reference
+    source_links = "\n".join([f"- **[{i}]** [{r.title}]({r.url})" for i, r in enumerate(results, 1)])
+
+    web_search_prompt = f"""Sei un assistente AI per docenti. Genera una REVIEW SINTETICA basata ESCLUSIVAMENTE sulle fonti web fornite.
+
+---
+📰 FONTI DISPONIBILI:
+
+{search_context}
+
+---
+
+📋 **FORMATO OBBLIGATORIO** - Usa ESATTAMENTE questa struttura:
+
+## 🎯 Sintesi
+[2-3 frasi che riassumono il tema. Ogni affermazione deve linkare la fonte: [testo](url)]
+
+## 📌 Punti Chiave
+
+| # | Punto | Fonte |
+|---|-------|-------|
+| 1 | [Descrizione punto 1] | [Nome]({results[0].url if results else '#'}) |
+| 2 | [Descrizione punto 2] | [Nome](url) |
+| 3 | [Descrizione punto 3] | [Nome](url) |
+
+## 💡 Dettagli Rilevanti
+- **[Aspetto 1]**: [Spiegazione breve] → leggi di più su [fonte](url)
+- **[Aspetto 2]**: [Spiegazione breve] → leggi di più su [fonte](url)
+
+## ⚠️ Limitazioni
+[Cosa NON è stato trovato nelle fonti o richiede verifica]
+
+---
+
+⚡ REGOLE CRITICHE:
+1. OGNI informazione DEVE avere un link Markdown cliccabile: [testo](url)
+2. USA gli URL ESATTI dalle fonti sopra - NON inventare URL
+3. Sii SINTETICO: bullet points > paragrafi lunghi
+4. Se un dato non è nelle fonti, scrivi "Non trovato nelle fonti consultate"
+5. La tabella dei Punti Chiave è OBBLIGATORIA"""
+
+    response = await llm_service.generate(
+        messages=messages,
+        system_prompt=web_search_prompt,
+        provider=provider,
+        model=model,
+        temperature=0.4,
+        max_tokens=4096,
+    )
+
+    response_text = response.content
+
+    # Always append verified source list at the end
+    response_text += f"\n\n---\n## 📚 Fonti Consultate\n{source_links}"
+
+    yield {"type": "done", "content": response_text}
 
 
 # ============================================================================
@@ -851,11 +1108,29 @@ HAI ACCESSO AI SEGUENTI DATI REALI DEL DOCENTE:
 
 {context}
 
-IMPORTANTE:
+LINEE GUIDA PER RISPOSTE CHIARE E TRASPARENTI:
+
+📊 **DATI E STATISTICHE**:
 - Usa questi dati reali per fornire risposte personalizzate
 - Quando mostri dati, usa tabelle markdown ben formattate
-- Aggiungi emoji per rendere le risposte più leggibili (📊 📈 ✅ ⚠️ etc.)
-- Se devi mostrare statistiche, formattale come "X su Y" per attivare la visualizzazione grafica
+- Formatta statistiche come "X su Y" per visualizzazione grafica
+- Usa emoji per rendere le risposte leggibili (📊 📈 ✅ ⚠️)
+
+🔍 **EXPLAINABILITY** (MOLTO IMPORTANTE):
+- Spiega sempre il TUO RAGIONAMENTO: come sei arrivato a una conclusione
+- Non limitarti a dare risposte: spiega il "perché" e il "come"
+- Se fai inferenze dai dati, dichiaralo: "Dai dati emerge che..." oppure "Osservando X, posso dedurre Y perché..."
+- Se ci sono limitazioni nei dati o incertezze, comunicale chiaramente
+
+💡 **SUGGERIMENTI PRATICI**:
+- Fornisci sempre suggerimenti azionabili
+- Spiega il razionale dietro ogni suggerimento
+- Indica priorità e impatto atteso delle azioni consigliate
+
+⚠️ **TRASPARENZA**:
+- Distingui tra fatti (dai dati) e interpretazioni/suggerimenti
+- Se non hai abbastanza dati per rispondere, dillo chiaramente
+- Evita affermazioni generiche: sii specifico e basato sui dati
 """
 
     response = await llm_service.generate(

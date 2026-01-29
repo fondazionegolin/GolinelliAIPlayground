@@ -1,9 +1,8 @@
 import { useState, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { User, Settings, LogOut, ChevronDown, Bot, Brain, Award, Home, MessageSquare, X } from 'lucide-react'
+import { User, Settings, LogOut, ChevronDown, Bot, Brain, Award, Home, FileEdit, Menu, X } from 'lucide-react'
 import { Button } from './ui/button'
 import { studentApi } from '@/lib/api'
-import ChatSidebar, { ChatMessage } from '@/components/ChatSidebar'
 
 interface StudentProfile {
   id?: string
@@ -17,15 +16,20 @@ interface StudentNavbarProps {
   sessionTitle?: string
   joinCode?: string
   sessionId?: string
-  onNotificationClick?: (notification: ChatMessage) => void
 }
 
-export function StudentNavbar({ activeModule, onNavigate, sessionTitle, joinCode, sessionId, onNotificationClick }: StudentNavbarProps) {
+export function StudentNavbar({
+  activeModule,
+  onNavigate,
+  sessionTitle,
+  joinCode
+}: StudentNavbarProps) {
   const navigate = useNavigate()
   const [showDropdown, setShowDropdown] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
-  const [isChatOpen, setIsChatOpen] = useState(false)
+  const [showMobileMenu, setShowMobileMenu] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
+  const mobileMenuRef = useRef<HTMLDivElement>(null)
 
   const [profile, setProfile] = useState<StudentProfile>({
     nickname: 'Studente'
@@ -55,6 +59,9 @@ export function StudentNavbar({ activeModule, onNavigate, sessionTitle, joinCode
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
         setShowDropdown(false)
       }
+      if (mobileMenuRef.current && !mobileMenuRef.current.contains(event.target as Node)) {
+        setShowMobileMenu(false)
+      }
     }
     document.addEventListener('mousedown', handleClickOutside)
     return () => document.removeEventListener('mousedown', handleClickOutside)
@@ -72,12 +79,12 @@ export function StudentNavbar({ activeModule, onNavigate, sessionTitle, joinCode
   // Generate random color based on nickname (consistent)
   const getAvatarColor = () => {
     const colors = [
-      'bg-indigo-500',
-      'bg-blue-500',
       'bg-violet-500',
       'bg-fuchsia-500',
+      'bg-purple-500',
+      'bg-pink-500',
       'bg-rose-500',
-      'bg-cyan-500'
+      'bg-indigo-500'
     ]
     const hash = profile.nickname.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0)
     return colors[hash % colors.length]
@@ -93,45 +100,48 @@ export function StudentNavbar({ activeModule, onNavigate, sessionTitle, joinCode
     { key: null, label: 'Home', icon: Home },
     { key: 'chatbot', label: 'Chatbot', icon: Bot },
     { key: 'classification', label: 'ML Lab', icon: Brain },
+    { key: 'documents', label: 'Documenti', icon: FileEdit },
     { key: 'self_assessment', label: 'Compiti', icon: Award },
   ]
 
   return (
     <>
-      <nav className="fixed top-0 left-0 right-0 z-50 bg-[#E0F2FE] border-b border-sky-200 shadow-md shadow-sky-100/50">
+      <nav className="fixed top-0 left-0 right-0 z-50 bg-fuchsia-50/80 backdrop-blur-md border-b border-fuchsia-200 shadow-md shadow-fuchsia-100/50">
         <div className="max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-14">
-            {/* Logo/Brand & Session Info */}
-            <div className="flex items-center gap-4">
-              <div className="flex items-center gap-2 cursor-pointer" onClick={() => onNavigate?.(null)}>
-                <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-sky-400 to-blue-500 flex items-center justify-center shadow-lg shadow-sky-400/30">
-                  <span className="text-white font-bold text-xs">G</span>
-                </div>
-                <span className="font-bold text-slate-900 text-sm tracking-tight hidden sm:inline">Golinelli<span className="text-sky-600">AI</span></span>
+          <div className="flex items-center justify-between h-16">
+            {/* Logo/Brand */}
+            <div className="flex items-center gap-2 cursor-pointer" onClick={() => onNavigate?.(null)}>
+              <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-fuchsia-400 to-purple-500 flex items-center justify-center shadow-lg shadow-fuchsia-400/30">
+                <span className="text-white font-bold text-sm">G</span>
               </div>
-              
-              {sessionTitle && (
-                <div className="hidden sm:flex flex-col border-l border-sky-200 pl-4 h-8 justify-center">
-                  <span className="text-xs font-bold text-slate-700 leading-none">{sessionTitle}</span>
-                  <span className="text-[10px] font-bold text-sky-600 leading-none mt-0.5">Codice: {joinCode}</span>
-                </div>
-              )}
+              <span className="font-bold text-slate-900 text-lg tracking-tight hidden sm:inline">Golinelli<span className="text-fuchsia-600">AI</span></span>
             </div>
+
+            {/* Mobile Menu Button - Hidden since MobileNav handles navigation */}
+            {onNavigate && (
+              <div className="hidden">
+                <button
+                  onClick={() => setShowMobileMenu(!showMobileMenu)}
+                  className="p-2 rounded-lg hover:bg-fuchsia-100 transition-colors"
+                >
+                  {showMobileMenu ? <X className="h-5 w-5 text-fuchsia-600" /> : <Menu className="h-5 w-5 text-fuchsia-600" />}
+                </button>
+              </div>
+            )}
 
             {/* Desktop Navigation */}
             {onNavigate && (
-              <div className="hidden md:flex items-center gap-1 bg-white/50 p-1 rounded-lg border border-sky-100 shadow-sm">
+              <div className="hidden md:flex items-center gap-1 bg-white/50 p-1 rounded-xl border border-fuchsia-100 shadow-sm">
                 {navItems.map((item) => (
                   <button
                     key={item.label}
                     onClick={() => onNavigate(item.key)}
-                    className={`flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-bold transition-all duration-200 ${
-                      activeModule === item.key
-                        ? 'bg-sky-500 text-white shadow-md shadow-sky-200'
-                        : 'text-slate-600 hover:bg-sky-200/50 hover:text-sky-700'
-                    }`}
+                    className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-200 ${activeModule === item.key
+                        ? 'bg-fuchsia-500 text-white shadow-md shadow-fuchsia-200'
+                        : 'text-slate-600 hover:bg-fuchsia-200/50 hover:text-fuchsia-700'
+                      }`}
                   >
-                    <item.icon className="h-3.5 w-3.5" />
+                    <item.icon className="h-4 w-4" />
                     {item.label}
                   </button>
                 ))}
@@ -139,47 +149,44 @@ export function StudentNavbar({ activeModule, onNavigate, sessionTitle, joinCode
             )}
 
             <div className="flex items-center gap-2">
-              {/* Chat Trigger */}
-              {sessionId && (
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => setIsChatOpen(true)}
-                  className={`rounded-full h-9 w-9 transition-colors ${
-                    isChatOpen 
-                      ? 'bg-sky-100 text-sky-600' 
-                      : 'text-slate-500 hover:bg-sky-50 hover:text-sky-600'
-                  }`}
-                  title="Chat di classe"
-                >
-                  <MessageSquare className="h-5 w-5" />
-                </Button>
+              {/* Session Info - Always visible */}
+              {sessionTitle && (
+                <div className="hidden lg:flex items-center gap-3 px-4 py-2.5 rounded-xl border-2 bg-gradient-to-r from-fuchsia-50 to-purple-50 border-fuchsia-200">
+                  <div className="w-2.5 h-2.5 rounded-full bg-green-500 animate-pulse shadow-sm shadow-green-300" />
+                  <div className="text-left min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-bold text-fuchsia-700 truncate max-w-[140px]">{sessionTitle}</span>
+                      <span className="text-slate-300">|</span>
+                      <span className="text-xs font-semibold text-slate-500 bg-white/60 px-2 py-0.5 rounded">{joinCode}</span>
+                    </div>
+                  </div>
+                </div>
               )}
 
               {/* Avatar Dropdown */}
               <div className="relative" ref={dropdownRef}>
                 <button
                   onClick={() => setShowDropdown(!showDropdown)}
-                  className="flex items-center gap-2 hover:bg-sky-600/10 rounded-full pl-1 pr-2 py-1 transition-colors border border-transparent hover:border-sky-700/20"
+                  className="flex items-center gap-3 hover:bg-fuchsia-600/10 rounded-full pl-1 pr-3 py-1 transition-colors border border-transparent hover:border-fuchsia-700/20"
                 >
                   {profile.avatarUrl ? (
                     <img
                       src={profile.avatarUrl}
                       alt="Avatar"
-                      className="w-7 h-7 rounded-full object-cover ring-2 ring-sky-600"
+                      className="w-8 h-8 rounded-full object-cover ring-2 ring-fuchsia-600"
                     />
                   ) : (
-                    <div className={`w-7 h-7 rounded-full ${getAvatarColor()} flex items-center justify-center text-white text-[10px] font-bold ring-2 ring-sky-600`}>
+                    <div className={`w-8 h-8 rounded-full ${getAvatarColor()} flex items-center justify-center text-white text-xs font-bold ring-2 ring-fuchsia-600`}>
                       {getInitials()}
                     </div>
                   )}
                   <div className="hidden md:block text-left">
-                    <p className="text-xs font-bold text-slate-900 leading-none">{profile.nickname}</p>
+                    <p className="text-xs font-medium text-slate-900 leading-none">{profile.nickname}</p>
                   </div>
                   <ChevronDown className={`h-3 w-3 text-slate-700 transition-transform ${showDropdown ? 'rotate-180' : ''}`} />
                 </button>
 
-                {/* Dropdown Menu */}
+                {/* Dropdown Menu - Modern Floating Style */}
                 {showDropdown && (
                   <div className="absolute right-0 mt-2 w-64 bg-white rounded-xl shadow-xl border border-slate-100 py-2 animate-in fade-in zoom-in-95 duration-100 origin-top-right">
                     <div className="px-4 py-3 border-b border-slate-50 mb-1">
@@ -191,7 +198,7 @@ export function StudentNavbar({ activeModule, onNavigate, sessionTitle, joinCode
                         setShowSettings(true)
                         setShowDropdown(false)
                       }}
-                      className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-600 hover:bg-slate-50 hover:text-indigo-600 transition-colors"
+                      className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-600 hover:bg-slate-50 hover:text-fuchsia-600 transition-colors"
                     >
                       <Settings className="h-4 w-4" />
                       Impostazioni
@@ -209,6 +216,30 @@ export function StudentNavbar({ activeModule, onNavigate, sessionTitle, joinCode
               </div>
             </div>
           </div>
+
+          {/* Mobile Menu Dropdown */}
+          {showMobileMenu && (
+            <div ref={mobileMenuRef} className="md:hidden absolute top-full left-0 right-0 bg-white border-b border-fuchsia-200 shadow-lg animate-in slide-in-from-top-2 duration-200">
+              <div className="px-4 py-3 space-y-1">
+                {navItems.map((item) => (
+                  <button
+                    key={item.label}
+                    onClick={() => {
+                      onNavigate?.(item.key)
+                      setShowMobileMenu(false)
+                    }}
+                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${activeModule === item.key
+                        ? 'bg-fuchsia-100 text-fuchsia-700'
+                        : 'text-slate-600 hover:bg-fuchsia-50 hover:text-fuchsia-700'
+                      }`}
+                  >
+                    <item.icon className="h-4 w-4" />
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </nav>
 
@@ -230,39 +261,6 @@ export function StudentNavbar({ activeModule, onNavigate, sessionTitle, joinCode
           }}
           onClose={() => setShowSettings(false)}
         />
-      )}
-
-      {/* Chat Overlay */}
-      {isChatOpen && sessionId && profile.id && (
-        <div className="fixed inset-0 z-[60] flex justify-end">
-          <div className="absolute inset-0 bg-black/20 backdrop-blur-sm" onClick={() => setIsChatOpen(false)} />
-          <div className="relative w-full max-w-md h-full bg-white shadow-2xl animate-in slide-in-from-right duration-300 flex flex-col border-l border-slate-200">
-            <div className="p-4 border-b border-sky-100 bg-sky-50 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="bg-sky-100 p-2 rounded-lg">
-                  <MessageSquare className="h-5 w-5 text-sky-600" />
-                </div>
-                <div>
-                  <h3 className="font-bold text-slate-800">Chat di Classe</h3>
-                  <p className="text-xs text-sky-600 font-medium">Sessione: {sessionTitle || joinCode}</p>
-                </div>
-              </div>
-              <Button variant="ghost" size="icon" className="h-8 w-8 hover:bg-red-50 hover:text-red-500" onClick={() => setIsChatOpen(false)}>
-                <X className="h-5 w-5" />
-              </Button>
-            </div>
-            <div className="flex-1 overflow-hidden relative">
-              <ChatSidebar
-                sessionId={sessionId}
-                userType="student"
-                currentUserId={profile.id}
-                currentUserName={profile.nickname}
-                isMobileView={true}
-                onNotificationClick={onNotificationClick}
-              />
-            </div>
-          </div>
-        </div>
       )}
     </>
   )
@@ -357,42 +355,27 @@ function SettingsModal({ profile, onSave, onClose }: SettingsModalProps) {
             >
               Cambia Avatar
             </Button>
-            <p className="text-xs text-slate-500 text-center">
-              JPG, PNG o GIF (max 5MB)
-            </p>
           </div>
 
           {/* Nickname (read-only) */}
           <div>
-            <label className="block text-sm font-semibold text-slate-900 mb-2">
-              Nickname
-            </label>
+            <label className="block text-xs font-semibold text-slate-500 uppercase mb-1.5">Nickname</label>
             <input
               type="text"
               value={formData.nickname}
               disabled
-              className="w-full px-4 py-2.5 border border-slate-200 rounded-lg bg-slate-50 text-slate-500 cursor-not-allowed"
+              className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-500 cursor-not-allowed"
             />
-            <p className="text-xs text-slate-500 mt-1">
-              Il nickname non può essere modificato
-            </p>
+            <p className="text-xs text-slate-400 mt-1">Il nickname non può essere modificato</p>
           </div>
 
-          {/* Buttons */}
+          {/* Actions */}
           <div className="flex gap-3 pt-2">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={onClose}
-              className="flex-1"
-            >
+            <Button type="button" variant="ghost" onClick={onClose} className="flex-1 text-slate-500 hover:text-slate-700 hover:bg-slate-100">
               Annulla
             </Button>
-            <Button
-              type="submit"
-              className="flex-1 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 text-white shadow-lg shadow-indigo-500/20"
-            >
-              Salva
+            <Button type="submit" className="flex-1 bg-fuchsia-600 hover:bg-fuchsia-700 text-white shadow-lg shadow-fuchsia-500/30">
+              Salva Modifiche
             </Button>
           </div>
         </form>

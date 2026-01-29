@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile
+from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, or_
 from sqlalchemy.orm import selectinload
@@ -13,6 +13,7 @@ from app.models.session import Session, SessionStudent, Class
 from app.models.chat import ChatRoom, ChatMessage
 from app.models.enums import ChatRoomType, SenderType
 from app.schemas.chat import ChatRoomResponse, ChatMessageCreate, ChatMessageResponse, DMRoomCreate, SessionMessageCreate
+from app.realtime.gateway import sio
 
 router = APIRouter()
 
@@ -87,24 +88,45 @@ async def get_session_messages(
             if student.avatar_url:
                 avatars[str(student.id)] = student.avatar_url
     
+    def extract_notification_info(attachments):
+        """Extract notification info from attachments"""
+        if isinstance(attachments, dict):
+            return (
+                attachments.get("is_notification", False),
+                attachments.get("notification_type"),
+                attachments.get("notification_data")
+            )
+        elif isinstance(attachments, list):
+            # Check if any attachment is a task_link (document notification)
+            for att in attachments:
+                if isinstance(att, dict) and att.get("type") == "task_link":
+                    return (
+                        True,
+                        att.get("task_type", "lesson"),
+                        {"task_id": att.get("task_id"), "title": att.get("title"), "task_type": att.get("task_type")}
+                    )
+        return (False, None, None)
+
+    formatted_messages = []
+    for m in reversed(messages):
+        is_notif, notif_type, notif_data = extract_notification_info(m.attachments)
+        formatted_messages.append({
+            "id": str(m.id),
+            "sender_type": m.sender_type.value,
+            "sender_id": str(m.sender_student_id or m.sender_teacher_id or "system"),
+            "sender_name": nicknames.get(str(m.sender_student_id), "Docente") if m.sender_student_id else "Docente",
+            "sender_avatar_url": avatars.get(str(m.sender_student_id)) if m.sender_student_id else None,
+            "text": m.message_text,
+            "attachments": m.attachments,
+            "created_at": m.created_at.isoformat(),
+            "is_notification": is_notif,
+            "notification_type": notif_type,
+            "notification_data": notif_data,
+        })
+
     return {
         "room_id": str(room.id),
-        "messages": [
-            {
-                "id": str(m.id),
-                "sender_type": m.sender_type.value,
-                "sender_id": str(m.sender_student_id or m.sender_teacher_id or "system"),
-                "sender_name": nicknames.get(str(m.sender_student_id), "Docente") if m.sender_student_id else "Docente",
-                "sender_avatar_url": avatars.get(str(m.sender_student_id)) if m.sender_student_id else None,
-                "text": m.message_text,
-                "attachments": m.attachments,
-                "created_at": m.created_at.isoformat(),
-                "is_notification": m.attachments.get("is_notification", False) if isinstance(m.attachments, dict) else False,
-                "notification_type": m.attachments.get("notification_type") if isinstance(m.attachments, dict) else None,
-                "notification_data": m.attachments.get("notification_data") if isinstance(m.attachments, dict) else None,
-            }
-            for m in reversed(messages)
-        ]
+        "messages": formatted_messages
     }
 
 
@@ -416,41 +438,93 @@ async def send_message(
 @router.post("/upload")
 async def upload_chat_files(
     session_id: str = Query(...),
-    files: list[UploadFile] = [],
+    files: list[UploadFile] = File(default=[]),
+    db: Annotated[AsyncSession, Depends(get_db)] = None,
     auth: Annotated[StudentOrTeacher, Depends(get_student_or_teacher)] = None,
 ):
     """Upload files for chat messages (simple direct upload to local storage)"""
     import aiofiles
     from pathlib import Path
-    
+    import hashlib
+    from app.models.file import File as FileModel
+    from app.models.enums import OwnerType, Scope
+
+    print(f"[UPLOAD] Received upload request for session {session_id}")
+    print(f"[UPLOAD] Number of files: {len(files)}")
+
     # Parse session_id
     try:
         session_uuid = UUID(session_id)
     except:
+        print(f"[UPLOAD] Invalid session_id: {session_id}")
         raise HTTPException(status_code=400, detail="Invalid session_id")
-    
+
     # Create upload directory if not exists
     upload_dir = Path("uploads/chat") / str(session_uuid)
     upload_dir.mkdir(parents=True, exist_ok=True)
-    
+    print(f"[UPLOAD] Upload directory: {upload_dir}")
+
+    # Get tenant_id and owner info
+    if auth.is_student:
+        tenant_id = auth.student.tenant_id
+        owner_type = OwnerType.STUDENT
+        owner_student_id = auth.student.id
+        owner_teacher_id = None
+    else:
+        tenant_id = auth.teacher.tenant_id
+        owner_type = OwnerType.TEACHER
+        owner_teacher_id = auth.teacher.id
+        owner_student_id = None
+
     uploaded_urls = []
     for file in files:
         try:
+            print(f"[UPLOAD] Processing file: {file.filename}, content_type: {file.content_type}")
             # Generate unique filename
             file_ext = file.filename.split('.')[-1] if '.' in file.filename and file.filename else 'bin'
             unique_filename = f"{uuid4()}.{file_ext}"
             file_path = upload_dir / unique_filename
-            
+
             # Save file
+            content = await file.read()
+            print(f"[UPLOAD] Read {len(content)} bytes from file")
+
             async with aiofiles.open(file_path, 'wb') as f:
-                content = await file.read()
                 await f.write(content)
-            
+
+            print(f"[UPLOAD] Saved file to {file_path}")
+
             # Generate URL (relative to backend)
             file_url = f"/uploads/chat/{session_uuid}/{unique_filename}"
             uploaded_urls.append(file_url)
+            print(f"[UPLOAD] Generated URL: {file_url}")
+
+            # Save to database for session files listing
+            checksum = hashlib.sha256(content).hexdigest()
+            file_record = FileModel(
+                tenant_id=tenant_id,
+                owner_type=owner_type,
+                owner_teacher_id=owner_teacher_id,
+                owner_student_id=owner_student_id,
+                scope=Scope.SESSION,
+                session_id=session_uuid,
+                storage_key=f"chat/{session_uuid}/{unique_filename}",
+                filename=file.filename or unique_filename,
+                mime_type=file.content_type or "application/octet-stream",
+                size_bytes=len(content),
+                checksum_sha256=checksum,
+            )
+            db.add(file_record)
+            
         except Exception as e:
-            print(f"Failed to upload file {file.filename if file.filename else 'unknown'}: {e}")
+            print(f"[UPLOAD] Failed to upload file {file.filename if file.filename else 'unknown'}: {e}")
+            import traceback
+            traceback.print_exc()
             continue
-    
+
+    # Commit all file records
+    if uploaded_urls:
+        await db.commit()
+
+    print(f"[UPLOAD] Returning {len(uploaded_urls)} URLs")
     return {"urls": uploaded_urls}

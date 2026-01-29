@@ -1,9 +1,8 @@
 import { useState, useRef, useEffect } from 'react'
 import { Link, useNavigate, useLocation } from 'react-router-dom'
-import { User, Settings, LogOut, ChevronDown, Users, MessageSquare, FileText } from 'lucide-react'
+import { User, Settings, LogOut, ChevronDown, Users, MessageSquare, FileText, Check, Brain } from 'lucide-react'
 import { Button } from './ui/button'
 import { teacherApi } from '@/lib/api'
-import { TeacherChatWidget } from './TeacherChatWidget'
 
 interface TeacherProfile {
   firstName: string
@@ -13,13 +12,34 @@ interface TeacherProfile {
   avatarUrl?: string
 }
 
-export function TeacherNavbar() {
+interface SessionInfo {
+  id: string
+  name: string
+  className: string
+}
+
+interface ActiveSession {
+  id: string
+  name: string
+  className: string
+  classId: string
+  studentCount?: number
+}
+
+interface TeacherNavbarProps {
+  currentSession?: SessionInfo | null
+  onSessionChange?: (session: SessionInfo) => void
+}
+
+export function TeacherNavbar({ currentSession, onSessionChange }: TeacherNavbarProps) {
   const navigate = useNavigate()
   const location = useLocation()
   const [showDropdown, setShowDropdown] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
-  const [isChatOpen, setIsChatOpen] = useState(false)
+  const [showSessionsMenu, setShowSessionsMenu] = useState(false)
+  const [activeSessions, setActiveSessions] = useState<ActiveSession[]>([])
   const dropdownRef = useRef<HTMLDivElement>(null)
+  const sessionsMenuRef = useRef<HTMLDivElement>(null)
 
   const [profile, setProfile] = useState<TeacherProfile>({
     firstName: 'Docente',
@@ -54,9 +74,45 @@ export function TeacherNavbar() {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
         setShowDropdown(false)
       }
+      if (sessionsMenuRef.current && !sessionsMenuRef.current.contains(event.target as Node)) {
+        setShowSessionsMenu(false)
+      }
     }
     document.addEventListener('mousedown', handleClickOutside)
     return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
+  // Load active sessions from all classes
+  useEffect(() => {
+    const loadActiveSessions = async () => {
+      try {
+        const classesRes = await teacherApi.getClasses()
+        const classes = classesRes.data || []
+        const allSessions: ActiveSession[] = []
+        
+        for (const cls of classes) {
+          try {
+            const sessionsRes = await teacherApi.getSessions(cls.id)
+            const sessions = sessionsRes.data || []
+            for (const session of sessions) {
+              allSessions.push({
+                id: session.id,
+                name: session.name || session.title,
+                className: cls.name,
+                classId: cls.id,
+                studentCount: session.student_count || 0
+              })
+            }
+          } catch (e) {
+            console.error(`Failed to load sessions for class ${cls.id}:`, e)
+          }
+        }
+        setActiveSessions(allSessions)
+      } catch (err) {
+        console.error('Failed to load classes:', err)
+      }
+    }
+    loadActiveSessions()
   }, [])
 
   // Generate avatar with initials
@@ -94,30 +150,31 @@ export function TeacherNavbar() {
     { path: '/teacher', label: 'Supporto', icon: MessageSquare },
     { path: '/teacher/classes', label: 'Classi', icon: Users },
     { path: '/teacher/documents', label: 'Documenti', icon: FileText },
+    { path: '/teacher/ml-lab', label: 'ML Lab', icon: Brain },
   ]
 
   return (
     <>
-      <nav className="fixed top-0 left-0 right-0 z-50 bg-orange-50/80 backdrop-blur-md border-b border-orange-200 shadow-md shadow-orange-100/50">
+      <nav className="fixed top-0 left-0 right-0 z-50 bg-cyan-50/80 backdrop-blur-md border-b border-cyan-200 shadow-md shadow-cyan-100/50">
         <div className="max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             {/* Logo/Brand */}
             <div className="flex items-center gap-2 cursor-pointer" onClick={() => navigate('/teacher')}>
-              <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-orange-400 to-red-500 flex items-center justify-center shadow-lg shadow-orange-400/30">
+              <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-cyan-400 to-blue-500 flex items-center justify-center shadow-lg shadow-cyan-400/30">
                 <span className="text-white font-bold text-sm">G</span>
               </div>
-              <span className="font-bold text-slate-900 text-lg tracking-tight hidden sm:inline">Golinelli<span className="text-orange-600">AI</span></span>
+              <span className="font-bold text-slate-900 text-lg tracking-tight hidden sm:inline">Golinelli<span className="text-cyan-600">AI</span></span>
             </div>
 
             {/* Desktop Navigation */}
-            <div className="hidden md:flex items-center gap-1 bg-white/50 p-1 rounded-xl border border-orange-100 shadow-sm">
+            <div className="hidden md:flex items-center gap-1 bg-white/50 p-1 rounded-xl border border-cyan-100 shadow-sm">
               {navItems.map((item) => (
                 <Link key={item.path} to={item.path}>
                   <button
                     className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-200 ${
                       isActive(item.path)
-                        ? 'bg-orange-500 text-white shadow-md shadow-orange-200'
-                        : 'text-slate-600 hover:bg-orange-200/50 hover:text-orange-700'
+                        ? 'bg-cyan-500 text-white shadow-md shadow-cyan-200'
+                        : 'text-slate-600 hover:bg-cyan-200/50 hover:text-cyan-700'
                     }`}
                   >
                     <item.icon className="h-4 w-4" />
@@ -127,36 +184,121 @@ export function TeacherNavbar() {
               ))}
             </div>
 
-            <div className="flex items-center gap-2">
-              {/* Chat Trigger */}
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => setIsChatOpen(true)}
-                className={`rounded-full h-10 w-10 transition-colors ${
-                  isChatOpen 
-                    ? 'bg-orange-100 text-orange-600' 
-                    : 'text-slate-500 hover:bg-orange-50 hover:text-orange-600'
-                }`}
-                title="Chat di classe"
-              >
-                <MessageSquare className="h-5 w-5" />
-              </Button>
+            <div className="flex items-center gap-3">
+              {/* Session Selector */}
+              <div className="relative" ref={sessionsMenuRef}>
+                <button
+                  onClick={() => setShowSessionsMenu(!showSessionsMenu)}
+                  className={`hidden lg:flex items-center gap-3 px-4 py-2.5 rounded-xl border-2 transition-all duration-200 cursor-pointer ${
+                    currentSession
+                      ? 'bg-gradient-to-r from-cyan-50 to-sky-50 border-cyan-200 hover:border-cyan-300 hover:shadow-md hover:shadow-cyan-100'
+                      : 'bg-white/80 border-slate-200 hover:border-cyan-200 hover:bg-cyan-50/50'
+                  }`}
+                >
+                  <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${currentSession ? 'bg-green-500 animate-pulse shadow-sm shadow-green-300' : 'bg-slate-300'}`} />
+                  <div className="text-left min-w-0">
+                    {currentSession ? (
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-bold text-cyan-700 truncate max-w-[120px]">{currentSession.className}</span>
+                        <span className="text-slate-300">|</span>
+                        <span className="text-sm font-medium text-slate-700 truncate max-w-[140px]">{currentSession.name}</span>
+                      </div>
+                    ) : (
+                      <span className="text-sm text-slate-500">Seleziona sessione</span>
+                    )}
+                  </div>
+                  <ChevronDown className={`h-4 w-4 text-slate-400 transition-transform duration-200 ${showSessionsMenu ? 'rotate-180' : ''}`} />
+                </button>
+
+                {/* Sessions Dropdown Menu */}
+                {showSessionsMenu && (
+                  <div className="absolute right-0 mt-2 w-80 bg-white rounded-2xl shadow-2xl border border-slate-100 overflow-hidden animate-in fade-in zoom-in-95 duration-150 origin-top-right z-50">
+                    {/* Header */}
+                    <div className="px-5 py-4 border-b border-slate-100 bg-gradient-to-r from-cyan-50 to-sky-50">
+                      <h3 className="font-bold text-slate-800">Sessioni Disponibili</h3>
+                      <p className="text-xs text-slate-500 mt-0.5">Seleziona la sessione di lavoro</p>
+                    </div>
+
+                    {/* Sessions List */}
+                    <div className="max-h-72 overflow-y-auto p-2">
+                      {activeSessions.length === 0 ? (
+                        <div className="text-center py-8">
+                          <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-3">
+                            <Users className="h-6 w-6 text-slate-400" />
+                          </div>
+                          <p className="text-sm text-slate-500">Nessuna sessione disponibile</p>
+                          <p className="text-xs text-slate-400 mt-1">Crea una nuova sessione dalla pagina Classi</p>
+                        </div>
+                      ) : (
+                        <div className="space-y-1">
+                          {activeSessions.map((session) => {
+                            const isSelected = currentSession?.id === session.id
+                            return (
+                              <button
+                                key={session.id}
+                                onClick={() => {
+                                  const sessionInfo = { id: session.id, name: session.name, className: session.className }
+                                  onSessionChange?.(sessionInfo)
+                                  // Persist complete session info
+                                  localStorage.setItem('teacher_selected_session', JSON.stringify(sessionInfo))
+                                  setShowSessionsMenu(false)
+                                  navigate(`/teacher/sessions/${session.id}`)
+                                }}
+                                className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-150 text-left group ${
+                                  isSelected
+                                    ? 'bg-cyan-100 border-2 border-cyan-300'
+                                    : 'hover:bg-slate-50 border-2 border-transparent'
+                                }`}
+                              >
+                                <div className={`w-3 h-3 rounded-full flex-shrink-0 transition-colors ${
+                                  isSelected ? 'bg-green-500 shadow-sm shadow-green-300' : 'bg-slate-300 group-hover:bg-cyan-300'
+                                }`} />
+                                <div className="flex-1 min-w-0">
+                                  <p className={`text-sm font-medium truncate ${isSelected ? 'text-cyan-800' : 'text-slate-700'}`}>
+                                    {session.name}
+                                  </p>
+                                  <p className={`text-xs truncate ${isSelected ? 'text-cyan-600' : 'text-slate-400'}`}>
+                                    {session.className}
+                                  </p>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  {session.studentCount !== undefined && session.studentCount > 0 && (
+                                    <span className={`text-xs px-2 py-1 rounded-full font-medium ${
+                                      isSelected
+                                        ? 'bg-cyan-200 text-cyan-700'
+                                        : 'bg-slate-100 text-slate-500 group-hover:bg-cyan-100 group-hover:text-cyan-600'
+                                    }`}>
+                                      {session.studentCount} studenti
+                                    </span>
+                                  )}
+                                  {isSelected && (
+                                    <Check className="h-5 w-5 text-cyan-600" />
+                                  )}
+                                </div>
+                              </button>
+                            )
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
 
               {/* Avatar Dropdown */}
               <div className="relative" ref={dropdownRef}>
                 <button
                   onClick={() => setShowDropdown(!showDropdown)}
-                  className="flex items-center gap-3 hover:bg-orange-600/10 rounded-full pl-1 pr-3 py-1 transition-colors border border-transparent hover:border-orange-700/20"
+                  className="flex items-center gap-3 hover:bg-cyan-600/10 rounded-full pl-1 pr-3 py-1 transition-colors border border-transparent hover:border-cyan-700/20"
                 >
                   {profile.avatarUrl ? (
                     <img
                       src={profile.avatarUrl}
                       alt="Avatar"
-                      className="w-8 h-8 rounded-full object-cover ring-2 ring-orange-600"
+                      className="w-8 h-8 rounded-full object-cover ring-2 ring-cyan-600"
                     />
                   ) : (
-                    <div className={`w-8 h-8 rounded-full ${getAvatarColor()} flex items-center justify-center text-white text-xs font-bold ring-2 ring-orange-600`}>
+                    <div className={`w-8 h-8 rounded-full ${getAvatarColor()} flex items-center justify-center text-white text-xs font-bold ring-2 ring-cyan-600`}>
                       {getInitials()}
                     </div>
                   )}
@@ -180,7 +322,7 @@ export function TeacherNavbar() {
                         setShowSettings(true)
                         setShowDropdown(false)
                       }}
-                      className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-600 hover:bg-slate-50 hover:text-orange-600 transition-colors"
+                      className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-600 hover:bg-slate-50 hover:text-cyan-600 transition-colors"
                     >
                       <Settings className="h-4 w-4" />
                       Impostazioni account
@@ -208,8 +350,8 @@ export function TeacherNavbar() {
                   variant="ghost"
                   className={`${
                     isActive(item.path)
-                      ? 'bg-orange-100 text-orange-700 font-semibold'
-                      : 'text-slate-500 hover:text-orange-600'
+                      ? 'bg-cyan-100 text-cyan-700 font-semibold'
+                      : 'text-slate-500 hover:text-cyan-600'
                   }`}
                 >
                   {item.label}
@@ -242,8 +384,6 @@ export function TeacherNavbar() {
           onClose={() => setShowSettings(false)}
         />
       )}
-      
-      <TeacherChatWidget isOpen={isChatOpen} onClose={() => setIsChatOpen(false)} />
     </>
   )
 }

@@ -1,6 +1,10 @@
 from typing import Optional, AsyncGenerator
 from dataclasses import dataclass
 import httpx
+import base64
+import uuid
+import aiofiles
+from pathlib import Path
 from openai import AsyncOpenAI
 from anthropic import AsyncAnthropic
 
@@ -272,7 +276,7 @@ class LLMService:
         quality: str = "standard",
         style: str = "vivid",
     ) -> str:
-        """Generate an image using DALL-E 3"""
+        """Generate an image using DALL-E 3 and save locally for persistence"""
         if not self.openai_client:
             raise RuntimeError("OpenAI client not configured for image generation")
         
@@ -285,7 +289,30 @@ class LLMService:
             n=1,
         )
         
-        return response.data[0].url
+        temp_url = response.data[0].url
+        
+        # Download and save the image locally for persistence
+        try:
+            async with httpx.AsyncClient(timeout=60.0) as client:
+                img_response = await client.get(temp_url)
+                if img_response.status_code == 200:
+                    # Save to uploads/generated directory
+                    upload_dir = Path("/app/uploads/generated")
+                    upload_dir.mkdir(parents=True, exist_ok=True)
+                    
+                    filename = f"{uuid.uuid4()}.png"
+                    file_path = upload_dir / filename
+                    
+                    async with aiofiles.open(file_path, 'wb') as f:
+                        await f.write(img_response.content)
+                    
+                    # Return persistent URL
+                    return f"/uploads/generated/{filename}"
+        except Exception as e:
+            print(f"Failed to save DALL-E image locally: {e}")
+        
+        # Fallback to temporary URL if saving fails
+        return temp_url
     
     async def _generate_image_flux(
         self,
@@ -293,7 +320,7 @@ class LLMService:
         size: str = "1024x1024",
         model: str = "sdxl",
     ) -> str:
-        """Generate an image using Golinelli image API (SDXL, SD-Turbo, or FLUX models)"""
+        """Generate an image using Golinelli image API (SDXL, SD-Turbo, or FLUX models) and save locally"""
         # Parse size
         try:
             width, height = map(int, size.split("x"))
@@ -333,11 +360,34 @@ class LLMService:
             if not data.get("success"):
                 raise RuntimeError(f"Flux image generation failed: {data.get('error', 'Unknown error')}")
             
-            # Return base64 data URL with proper prefix
+            # Get base64 image data
             base64_image = data.get("image", "")
-            if base64_image and not base64_image.startswith("data:"):
-                base64_image = f"data:image/png;base64,{base64_image}"
-            return base64_image
+            
+            # Save to file for persistence
+            try:
+                # Remove data URL prefix if present
+                if base64_image.startswith("data:"):
+                    base64_image = base64_image.split(",", 1)[1]
+                
+                image_bytes = base64.b64decode(base64_image)
+                
+                upload_dir = Path("/app/uploads/generated")
+                upload_dir.mkdir(parents=True, exist_ok=True)
+                
+                filename = f"{uuid.uuid4()}.png"
+                file_path = upload_dir / filename
+                
+                async with aiofiles.open(file_path, 'wb') as f:
+                    await f.write(image_bytes)
+                
+                # Return persistent URL
+                return f"/uploads/generated/{filename}"
+            except Exception as e:
+                print(f"Failed to save Flux image locally: {e}")
+                # Fallback to base64 data URL
+                if not base64_image.startswith("data:"):
+                    base64_image = f"data:image/png;base64,{base64_image}"
+                return base64_image
 
 
 llm_service = LLMService()

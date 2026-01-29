@@ -11,9 +11,9 @@ import {
   Pause, Square, Clock,
   MonitorPlay,
   ArrowRight,
-  School
+  School,
+  Trash2
 } from 'lucide-react'
-import { TeacherNavbar } from '@/components/TeacherNavbar'
 
 
 interface ClassData {
@@ -66,10 +66,8 @@ export default function ClassesPage() {
   }
 
   return (
-    <>
-      <TeacherNavbar />
-      <div className="pt-20 min-h-screen bg-slate-50/50 pb-20">
-        <div className="max-w-5xl mx-auto p-4 md:p-6 space-y-8">
+    <div className="p-6">
+      <div className="max-w-7xl mx-auto space-y-6">
           
           {/* Header Principale */}
           <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
@@ -145,7 +143,6 @@ export default function ClassesPage() {
           )}
         </div>
       </div>
-    </>
   )
 }
 
@@ -204,6 +201,17 @@ function ClassContainer({ classData }: { classData: ClassData }) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['sessions', classData.id] })
       toast({ title: 'Stato sessione aggiornato' })
+    }
+  })
+
+  const deleteSessionMutation = useMutation({
+    mutationFn: (sessionId: string) => teacherApi.deleteSession(sessionId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['sessions', classData.id] })
+      toast({ title: 'Sessione eliminata' })
+    },
+    onError: () => {
+      toast({ variant: 'destructive', title: 'Errore nell\'eliminazione della sessione' })
     }
   })
 
@@ -364,6 +372,21 @@ function ClassContainer({ classData }: { classData: ClassData }) {
                     title="Termina Sessione"
                   >
                     <Square className="h-4 w-4 fill-current scale-90" />
+                  </Button>
+
+                  <Button 
+                    size="sm" 
+                    variant="ghost"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if(confirm('Eliminare definitivamente questa sessione? Questa azione non può essere annullata.')) {
+                        deleteSessionMutation.mutate(session.id);
+                      }
+                    }}
+                    className="text-red-600 hover:text-red-700 hover:bg-red-50 h-9 px-3"
+                    title="Elimina Sessione"
+                  >
+                    <Trash2 className="h-4 w-4" />
                   </Button>
                 </div>
 

@@ -23,6 +23,7 @@ class TaskType(str, enum.Enum):
     PROJECT = "project"
     LESSON = "lesson"
     PRESENTATION = "presentation"
+    STUDENT_SUBMISSION = "student_submission"  # Document submitted by student
 
 
 class Task(Base):

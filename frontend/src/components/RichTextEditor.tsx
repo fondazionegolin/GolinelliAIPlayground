@@ -1,4 +1,4 @@
-import { useEditor, EditorContent, Editor } from '@tiptap/react'
+import { useEditor, EditorContent, Editor, Extension } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import Underline from '@tiptap/extension-underline'
 import TextAlign from '@tiptap/extension-text-align'
@@ -6,7 +6,9 @@ import Image from '@tiptap/extension-image'
 import Link from '@tiptap/extension-link'
 import { TextStyle } from '@tiptap/extension-text-style'
 import { Color } from '@tiptap/extension-color'
-import { useEffect } from 'react'
+import FontFamily from '@tiptap/extension-font-family'
+import { useEffect, useState, useCallback } from 'react'
+import { AITextAssistPanel } from './AITextAssistPanel'
 
 interface RichTextEditorProps {
   content: string
@@ -15,13 +17,40 @@ interface RichTextEditorProps {
   readOnly?: boolean
 }
 
+interface SelectionState {
+  text: string
+  position: { x: number; y: number }
+}
+
+const LinkShortcut = Extension.create({
+  name: 'linkShortcut',
+  addKeyboardShortcuts() {
+    return {
+      'Mod-k': () => {
+        const previousUrl = this.editor.getAttributes('link').href
+        const url = window.prompt('URL Link:', previousUrl)
+        if (url === null) return false
+        if (url === '') {
+          this.editor.chain().focus().extendMarkRange('link').unsetLink().run()
+          return true
+        }
+        this.editor.chain().focus().extendMarkRange('link').setLink({ href: url }).run()
+        return true
+      },
+    }
+  },
+})
+
 export function RichTextEditor({ content, onChange, onEditorReady, readOnly = false }: RichTextEditorProps) {
+  const [selection, setSelection] = useState<SelectionState | null>(null)
+
   const editor = useEditor({
     extensions: [
       StarterKit,
       Underline,
       TextStyle,
       Color,
+      FontFamily,
       TextAlign.configure({
         types: ['heading', 'paragraph'],
       }),
@@ -29,6 +58,7 @@ export function RichTextEditor({ content, onChange, onEditorReady, readOnly = fa
       Link.configure({
         openOnClick: false,
       }),
+      LinkShortcut,
     ],
     content: content,
     editable: !readOnly,
@@ -40,6 +70,47 @@ export function RichTextEditor({ content, onChange, onEditorReady, readOnly = fa
     },
   })
 
+  // Handle text selection for AI assist
+  const handleMouseUp = useCallback(() => {
+    if (!editor || readOnly) return
+
+    // Small delay to ensure selection is complete
+    setTimeout(() => {
+      const { from, to } = editor.state.selection
+      const selectedText = editor.state.doc.textBetween(from, to, ' ')
+
+      if (selectedText && selectedText.trim().length > 3) {
+        // Get selection coordinates
+        const domSelection = window.getSelection()
+        if (domSelection && domSelection.rangeCount > 0) {
+          const range = domSelection.getRangeAt(0)
+          const rect = range.getBoundingClientRect()
+
+          setSelection({
+            text: selectedText.trim(),
+            position: {
+              x: rect.left + rect.width / 2 - 140, // Center the panel
+              y: rect.bottom + 8
+            }
+          })
+        }
+      } else {
+        setSelection(null)
+      }
+    }, 10)
+  }, [editor, readOnly])
+
+  // Close panel when clicking elsewhere or when selection changes
+  const handleMouseDown = useCallback(() => {
+    // Only close if clicking outside the panel (panel handles its own clicks)
+    if (selection) {
+      const domSelection = window.getSelection()
+      if (!domSelection || domSelection.toString().trim().length === 0) {
+        setSelection(null)
+      }
+    }
+  }, [selection])
+
   // Sync content updates from parent
   useEffect(() => {
     if (editor && content !== editor.getHTML()) {
@@ -49,13 +120,38 @@ export function RichTextEditor({ content, onChange, onEditorReady, readOnly = fa
     }
   }, [content, editor])
 
+  // Apply AI-generated text
+  const handleApplyAIText = useCallback((newText: string) => {
+    if (!editor) return
+
+    const { from, to } = editor.state.selection
+    editor.chain().focus().deleteRange({ from, to }).insertContent(newText).run()
+    setSelection(null)
+  }, [editor])
+
   if (!editor) {
     return null
   }
 
   return (
-    <div className="flex flex-col h-full bg-white rounded-sm shadow-sm border border-slate-200">
-      <EditorContent editor={editor} className="flex-1 overflow-y-auto p-8 prose max-w-none focus:outline-none" />
+    <div className="flex flex-col min-h-full bg-transparent relative">
+      <EditorContent
+        editor={editor}
+        className="flex-1 p-8 prose max-w-none focus:outline-none min-h-[500px]"
+        onMouseUp={handleMouseUp}
+        onMouseDown={handleMouseDown}
+      />
+
+      {/* AI Assist Panel */}
+      {selection && !readOnly && (
+        <AITextAssistPanel
+          selectedText={selection.text}
+          position={selection.position}
+          onClose={() => setSelection(null)}
+          onApply={handleApplyAIText}
+          context="Documento didattico"
+        />
+      )}
     </div>
   )
 }

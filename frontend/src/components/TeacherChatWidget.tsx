@@ -96,19 +96,19 @@ export function TeacherChatWidget({ isOpen, onClose }: TeacherChatWidgetProps) {
       <div className="relative w-full max-w-md h-full bg-white shadow-2xl animate-in slide-in-from-right duration-300 flex flex-col border-l border-slate-200">
         
         {/* Header */}
-        <div className="p-4 border-b border-orange-100 bg-orange-50 flex items-center justify-between">
+        <div className="p-4 border-b border-cyan-100 bg-cyan-50 flex items-center justify-between">
           <div className="flex items-center gap-3 flex-1 min-w-0">
-            <div className="bg-orange-100 p-2 rounded-lg shrink-0">
-              <MessageSquare className="h-5 w-5 text-orange-600" />
+            <div className="bg-cyan-100 p-2 rounded-lg shrink-0">
+              <MessageSquare className="h-5 w-5 text-cyan-600" />
             </div>
             <div className="flex-1 min-w-0">
-              <label className="text-xs font-bold text-orange-800 uppercase tracking-wide block mb-1">
+              <label className="text-xs font-bold text-cyan-800 uppercase tracking-wide block mb-1">
                 Chat Classe
               </label>
               <select
                 value={selectedSessionId || ''}
                 onChange={(e) => handleSessionChange(e.target.value)}
-                className="w-full bg-white border border-orange-200 rounded-md py-1.5 px-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-orange-500/20 cursor-pointer"
+                className="w-full bg-white border border-cyan-200 rounded-md py-1.5 px-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-cyan-500/20 cursor-pointer"
               >
                 <option value="" disabled>Seleziona una sessione...</option>
                 {sessions.map(s => (
@@ -135,7 +135,7 @@ export function TeacherChatWidget({ isOpen, onClose }: TeacherChatWidgetProps) {
         <div className="flex-1 overflow-hidden relative bg-slate-50/50">
           {loading && sessions.length === 0 ? (
             <div className="absolute inset-0 flex items-center justify-center bg-white/80 z-10">
-              <Loader2 className="h-8 w-8 animate-spin text-orange-600" />
+              <Loader2 className="h-8 w-8 animate-spin text-cyan-600" />
             </div>
           ) : selectedSessionId && teacherProfile ? (
             <ChatSidebar

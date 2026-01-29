@@ -23,6 +23,12 @@ class UpdateProfileRequest(BaseModel):
     avatar_url: str | None = None
 
 
+class SubmitDocumentRequest(BaseModel):
+    title: str
+    content_type: str  # 'document' or 'presentation'
+    content_json: str
+
+
 @router.post("/join", response_model=StudentJoinResponse)
 async def join_session(
     request: StudentJoinRequest,
@@ -316,5 +322,67 @@ async def submit_task(
         "id": str(submission.id),
         "content": submission.content,
         "content_json": submission.content_json,
+        "submitted_at": submission.submitted_at.isoformat(),
+    }
+
+
+@router.post("/documents/submit")
+async def submit_document(
+    request: SubmitDocumentRequest,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    student: Annotated[SessionStudent, Depends(get_current_student)],
+):
+    """
+    Submit a student-created document to the teacher.
+    This creates a task of type 'student_submission' and auto-submits it.
+    The teacher will see it in their tasks/submissions view.
+    """
+    from app.models.task import TaskType
+
+    # Create a task for this submission
+    task = Task(
+        session_id=student.session_id,
+        title=f"[Studente] {request.title}",
+        description=f"Documento inviato da {student.nickname}",
+        task_type=TaskType.STUDENT_SUBMISSION,
+        status=TaskStatus.PUBLISHED,  # Auto-publish so teacher sees it
+        content_json=request.content_json,
+    )
+    db.add(task)
+    await db.flush()
+
+    # Create the submission
+    submission = TaskSubmission(
+        task_id=task.id,
+        student_id=student.id,
+        content=f"{request.content_type}: {request.title}",
+        content_json=request.content_json,
+    )
+    db.add(submission)
+    await db.commit()
+    await db.refresh(task)
+    await db.refresh(submission)
+
+    # Notify teacher about new student document
+    await sio.emit(
+        "teacher_notification",
+        {
+            "type": "student_document",
+            "session_id": str(student.session_id),
+            "student_id": str(student.id),
+            "nickname": student.nickname,
+            "task_id": str(task.id),
+            "document_title": request.title,
+            "content_type": request.content_type,
+            "message": f"{student.nickname} ha inviato un {request.content_type}: \"{request.title}\"",
+            "timestamp": datetime.utcnow().isoformat(),
+        },
+        room=f"session:{student.session_id}",
+    )
+
+    return {
+        "id": str(submission.id),
+        "task_id": str(task.id),
+        "title": request.title,
         "submitted_at": submission.submitted_at.isoformat(),
     }

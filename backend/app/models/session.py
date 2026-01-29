@@ -41,9 +41,9 @@ class Session(Base):
     # Relationships
     tenant = relationship("Tenant", back_populates="sessions")
     class_ = relationship("Class", back_populates="sessions")
-    modules = relationship("SessionModule", back_populates="session", lazy="dynamic")
-    students = relationship("SessionStudent", back_populates="session", lazy="dynamic")
-    chat_rooms = relationship("ChatRoom", back_populates="session", lazy="dynamic")
+    modules = relationship("SessionModule", back_populates="session", lazy="dynamic", cascade="all, delete-orphan")
+    students = relationship("SessionStudent", back_populates="session", lazy="dynamic", cascade="all, delete-orphan")
+    chat_rooms = relationship("ChatRoom", back_populates="session", lazy="dynamic", cascade="all, delete-orphan")
     conversations = relationship("Conversation", back_populates="session", lazy="dynamic", cascade="all, delete-orphan")
 
 

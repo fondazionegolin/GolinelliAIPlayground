@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File, Form
+from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from typing import Annotated, Optional, List
@@ -7,6 +8,8 @@ from uuid import UUID
 import logging
 import base64
 import io
+import json
+import asyncio
 
 from app.core.database import get_db
 from app.api.deps import get_current_teacher, get_current_student, get_student_or_teacher, StudentOrTeacher
@@ -883,6 +886,98 @@ IMPORTANTE: Usa questi dati reali per rispondere alle domande del docente. Quand
     except Exception as e:
         logger.error(f"Teacher chat error: {e}")
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+
+
+@router.post("/teacher/chat-stream")
+async def teacher_chat_stream(
+    request: dict,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    teacher: Annotated[User, Depends(get_current_teacher)],
+):
+    """
+    Streaming teacher chat endpoint with real-time web search feedback.
+    Returns Server-Sent Events (SSE) for progress updates.
+    """
+    content = request.get("content", "")
+    history = request.get("history", [])
+    provider = request.get("provider", "openai")
+    model = request.get("model", "gpt-5-mini")
+
+    if not content:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Content required")
+
+    # Build messages from history
+    messages = []
+    for msg in history:
+        messages.append({
+            "role": msg.get("role", "user"),
+            "content": msg.get("content", ""),
+        })
+    messages.append({"role": "user", "content": content})
+
+    async def generate_stream():
+        """Generator for SSE events"""
+        from app.services.teacher_agent import (
+            classify_intent,
+            generate_with_web_search_streaming,
+            generate_quiz_with_tools,
+            generate_exercise_with_tools,
+            generate_with_analytics,
+            TeacherIntent,
+        )
+
+        try:
+            # Step 1: Classify intent
+            yield f"data: {json.dumps({'type': 'status', 'message': '🧠 Analisi della richiesta...'})}\n\n"
+
+            intent_result = await classify_intent(content, history)
+
+            yield f"data: {json.dumps({'type': 'intent', 'intent': intent_result.intent.value, 'confidence': intent_result.confidence})}\n\n"
+
+            # Step 2: Route based on intent
+            if intent_result.intent == TeacherIntent.WEB_SEARCH:
+                yield f"data: {json.dumps({'type': 'status', 'message': '🌐 Modalità: Ricerca Web'})}\n\n"
+
+                # Use streaming web search
+                context = await load_teacher_context(db, teacher)
+                async for update in generate_with_web_search_streaming(messages, context, provider, model):
+                    yield f"data: {json.dumps(update)}\n\n"
+
+            elif intent_result.intent == TeacherIntent.QUIZ_GENERATION:
+                yield f"data: {json.dumps({'type': 'status', 'message': '❓ Modalità: Generazione Quiz'})}\n\n"
+                yield f"data: {json.dumps({'type': 'status', 'message': '⏳ Creazione domande...'})}\n\n"
+
+                result = await generate_quiz_with_tools(messages, provider, model)
+                yield f"data: {json.dumps({'type': 'done', 'content': result})}\n\n"
+
+            elif intent_result.intent == TeacherIntent.EXERCISE_GENERATION:
+                yield f"data: {json.dumps({'type': 'status', 'message': '💪 Modalità: Generazione Esercizio'})}\n\n"
+                yield f"data: {json.dumps({'type': 'status', 'message': '⏳ Creazione esercizio...'})}\n\n"
+
+                result = await generate_exercise_with_tools(messages, provider, model)
+                yield f"data: {json.dumps({'type': 'done', 'content': result})}\n\n"
+
+            else:
+                yield f"data: {json.dumps({'type': 'status', 'message': '📊 Modalità: Analytics'})}\n\n"
+                yield f"data: {json.dumps({'type': 'status', 'message': '⏳ Elaborazione risposta...'})}\n\n"
+
+                context = await load_teacher_context(db, teacher)
+                result = await generate_with_analytics(messages, context, provider, model)
+                yield f"data: {json.dumps({'type': 'done', 'content': result})}\n\n"
+
+        except Exception as e:
+            logger.error(f"Streaming error: {e}")
+            yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+
+    return StreamingResponse(
+        generate_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        }
+    )
 
 
 @router.post("/teacher/chat-with-files")

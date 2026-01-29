@@ -42,6 +42,8 @@ export const studentApi = {
   getTasks: () => api.get('/student/tasks'),
   submitTask: (taskId: string, content?: string, content_json?: string) =>
     api.post(`/student/tasks/${taskId}/submit`, null, { params: { content, content_json } }),
+  submitDocument: (data: { title: string; content_type: string; content_json: string }) =>
+    api.post('/student/documents/submit', data),
   getProfile: () => api.get('/student/profile'),
   updateProfile: (data: { avatar_url?: string }) =>
     api.patch('/student/profile', data),
