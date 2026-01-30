@@ -654,71 +654,112 @@ REGOLE IMPORTANTI:
                       key={conv.id}
                       onClick={() => { setMessages(conv.messages); setCurrentConversationId(conv.id); }}
                       className={`w-full text-left p-3 rounded-lg text-sm transition-all group ${currentConversationId === conv.id
-                          ? 'bg-cyan-50 text-cyan-700 font-medium'
+                          ? 'bg-[#48cae4]/10 text-[#00b4d8] font-medium'
                           : 'text-slate-600 hover:bg-slate-50'
+                        }`}      }`}
+                    >
+                <div className="truncate">{conv.title}</div>
+                <div className="flex items-center justify-between mt-1">
+                  <span className="text-xs text-slate-400">{conv.createdAt.toLocaleDateString()}</span>
+                  <button
+                    className="text-slate-300 opacity-0 group-hover:opacity-100 hover:text-red-500 transition-opacity p-1"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      if (confirm('Eliminare questa conversazione?')) {
+                        setConversations(prev => prev.filter(c => c.id !== conv.id))
+                        if (currentConversationId === conv.id) handleNewChat()
+                      }
+                    }}
+                  >
+                    <Trash2 className="h-3 w-3" />
+                  </button>
+                </div>
+              </button>
+              ))
+              ) : (
+              <div className="flex flex-col gap-2 items-center">
+                <Button variant="ghost" size="icon" onClick={handleNewChat} title="Nuova chat" className="p-0">
+                  <Plus className="h-5 w-5 text-[#48cae4]" />
+                </Button>
+                {conversations.map(conv => (
+                  <div
+                    key={conv.id}
+                    className={`w-2 h-2 rounded-full cursor-pointer ${currentConversationId === conv.id ? 'bg-[#48cae4]' : 'bg-slate-300'}`}
+                    title={conv.title}
+                    onClick={() => { setMessages(conv.messages); setCurrentConversationId(conv.id); }}
+                  />
+                ))}
+              </div>
+                )}
+          </div>
+        </aside>
+
+        {/* MAIN CHAT AREA */}
+        <main className="flex-1 flex flex-col relative bg-slate-50/50">
+
+          <header className="h-14 border-b border-slate-200 bg-white/80 backdrop-blur-sm px-6 flex items-center justify-between sticky top-0 z-10">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-lg flex items-center justify-center shadow-md bg-[#48cae4]">
+                <Bot className="h-5 w-5 text-white" />
+              </div>
+              <div>
+                <h1 className="text-sm font-bold text-slate-800">Supporto Docente AI</h1>
+                <p className="text-xs text-slate-500">
+                  {(agentMode === 'quiz' || agentMode === 'dataset' || agentMode === 'web_search')
+                    ? 'Claude Haiku'
+                    : AVAILABLE_MODELS.find(m => m.id === selectedModel)?.name}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-4">
+              {agentMode === 'image' && (
+                <div className="flex items-center gap-3 animate-in fade-in slide-in-from-right-4 duration-300">
+                  {/* Generatore */}
+                  <div className="flex items-center bg-slate-100/80 rounded-full p-1 border border-slate-200">
+                    <button
+                      onClick={() => setImageProvider('flux-schnell')}
+                      className={`px-3 py-1 text-xs rounded-full transition-all flex items-center gap-1 ${imageProvider === 'flux-schnell'
+                        ? 'bg-white shadow-sm text-[#00b4d8] font-bold'
+                        : 'text-slate-500 hover:text-slate-700'
                         }`}
                     >
-                      <div className="truncate">{conv.title}</div>
-                      <div className="flex items-center justify-between mt-1">
-                        <span className="text-xs text-slate-400">{conv.createdAt.toLocaleDateString()}</span>
-                        <button
-                          className="text-slate-300 opacity-0 group-hover:opacity-100 hover:text-red-500 transition-opacity p-1"
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            if (confirm('Eliminare questa conversazione?')) {
-                              setConversations(prev => prev.filter(c => c.id !== conv.id))
-                              if (currentConversationId === conv.id) handleNewChat()
-                            }
-                          }}
-                        >
-                          <Trash2 className="h-3 w-3" />
-                        </button>
-                      </div>
+                      ⚡ Flux
                     </button>
-                  ))
-                ) : (
-                  <div className="flex flex-col gap-2 items-center">
-                    <Button variant="ghost" size="icon" onClick={handleNewChat} title="Nuova chat" className="p-0">
-                      <Plus className="h-5 w-5 text-cyan-600" />
-                    </Button>
-                    {conversations.map(conv => (
-                      <div
-                        key={conv.id}
-                        className={`w-2 h-2 rounded-full cursor-pointer ${currentConversationId === conv.id ? 'bg-cyan-500' : 'bg-slate-300'}`}
-                        title={conv.title}
-                        onClick={() => { setMessages(conv.messages); setCurrentConversationId(conv.id); }}
-                      />
-                    ))}
+                    <button
+                      onClick={() => setImageProvider('dall-e')}
+                      className={`px-3 py-1 text-xs rounded-full transition-all flex items-center gap-1 ${imageProvider === 'dall-e'
+                        ? 'bg-white shadow-sm text-[#00b4d8] font-bold'
+                        : 'text-slate-500 hover:text-slate-700'
+                        }`}
+                    >
+                      🎨 DALL-E
+                    </button>
                   </div>
-                )}
-              </div>
-            </aside>
 
-            {/* MAIN CHAT AREA */}
-            <main className="flex-1 flex flex-col relative bg-slate-50/50">
-
-              <header className="h-14 border-b border-slate-200 bg-white/80 backdrop-blur-sm px-6 flex items-center justify-between sticky top-0 z-10">
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-lg bg-cyan-600 flex items-center justify-center shadow-md">
-                    <Bot className="h-5 w-5 text-white" />
-                  </div>
-                  <div>
-                    <h1 className="text-sm font-bold text-slate-800">Supporto Docente AI</h1>
-                    <p className="text-xs text-slate-500">
-                      {(agentMode === 'quiz' || agentMode === 'dataset' || agentMode === 'web_search')
-                        ? 'Claude Haiku'
-                        : AVAILABLE_MODELS.find(m => m.id === selectedModel)?.name}
-                    </p>
-                  </div>
-                </div>
-
-                {(agentMode === 'quiz' || agentMode === 'dataset' || agentMode === 'web_search') ? (
-                  <div className="text-xs bg-purple-100 text-purple-700 rounded-md px-3 py-1.5 font-medium">
-                    Claude Haiku (fisso)
-                  </div>
-                ) : (
+                  {/* Formato */}
                   <select
-                    className="text-xs bg-slate-100 border-none rounded-md px-2 py-1 text-slate-600 focus:ring-0"
+                    value={imageSize}
+                    onChange={(e) => setImageSize(e.target.value)}
+                    className="text-xs bg-slate-100/80 border border-slate-200 rounded-full px-3 py-1.5 text-slate-600 focus:ring-2 focus:ring-[#48cae4] focus:border-transparent cursor-pointer hover:bg-slate-50"
+                  >
+                    <option value="1024x1024">1:1 Quadrato</option>
+                    <option value="1024x768">4:3 Orizzontale</option>
+                    <option value="768x1024">3:4 Verticale</option>
+                    <option value="1280x720">16:9 Panorama</option>
+                    <option value="720x1280">9:16 Portrait</option>
+                  </select>
+                </div>
+              )}
+
+              {(agentMode === 'quiz' || agentMode === 'dataset' || agentMode === 'web_search') ? (
+                <div className="text-xs bg-purple-100 text-purple-700 rounded-full px-3 py-1.5 font-medium border border-purple-200">
+                  Claude Haiku (fisso)
+                </div>
+              ) : (
+                agentMode !== 'image' && (
+                  <select
+                    className="text-xs bg-slate-100 border-none rounded-full px-3 py-1.5 text-slate-600 focus:ring-0 cursor-pointer hover:bg-slate-200 transition-colors"
                     value={selectedModel}
                     onChange={(e) => setSelectedModel(e.target.value)}
                   >
@@ -726,354 +767,331 @@ REGOLE IMPORTANTI:
                       <option key={m.id} value={m.id}>{m.name}</option>
                     ))}
                   </select>
-                )}
-              </header>
+                )
+              )}
+            </div>
+          </header>
 
-              <div className="flex-1 overflow-y-auto px-6 py-8 space-y-8">
-                {messages.length === 0 ? (
-                  <div className="h-full flex flex-col items-center justify-center opacity-50">
-                    <Bot className="h-12 w-12 text-slate-300 mb-4" />
-                    <p className="text-slate-400 font-medium">Inizia una nuova conversazione o trascina dei file qui</p>
-                  </div>
-                ) : (
-                  messages.map((msg) => (
-                    <div key={msg.id} className={`flex gap-4 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                      {msg.role === 'assistant' && (
-                        <div className="w-8 h-8 rounded-full bg-white border border-slate-200 flex items-center justify-center flex-shrink-0">
-                          <Bot className="h-4 w-4 text-cyan-600" />
-                        </div>
-                      )}
-                      <div className={`max-w-[75%] space-y-1 ${msg.role === 'user' ? 'items-end flex flex-col' : 'items-start'}`}>
-                        <div className={`px-5 py-3.5 text-sm leading-relaxed shadow-sm ${msg.role === 'user' ? 'bg-cyan-500 text-cyan-950 rounded-2xl rounded-tr-sm' : 'bg-white text-slate-800 border border-slate-200 rounded-2xl rounded-tl-sm'
-                          }`}>
-                          {msg.role === 'assistant' ? (
-                            <MessageContent
-                              content={msg.content}
-                              onPublish={(type, data) => setPublishModal({ isOpen: true, type, data })}
-                              onEdit={(type, data) => setEditorModal({ isOpen: true, type, data })}
-                              toast={toast}
-                            />
-                          ) : (
-                            <ReactMarkdown className="prose prose-sm max-w-none prose-cyan">
-                              {convertEmoticons(msg.content)}
-                            </ReactMarkdown>
-                          )}
-                        </div>
-                        <span className="text-[10px] text-slate-400 px-1">{msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-                      </div>
-                    </div>
-                  ))
-                )}
-                {isLoading && !webSearchProgress && !imageGenerationProgress && (
-                  <div className="flex gap-4 justify-start">
-                    <div className="w-8 h-8 rounded-full bg-white border border-slate-200 flex items-center justify-center">
-                      <Bot className="h-4 w-4 text-cyan-600" />
-                    </div>
-                    <div className="bg-white border border-slate-200 px-4 py-3 rounded-2xl rounded-tl-sm shadow-sm">
-                      <Loader2 className="h-4 w-4 animate-spin text-cyan-600" />
-                    </div>
-                  </div>
-                )}
-
-                {/* Image Generation Progress Panel */}
-                {imageGenerationProgress && (
-                  <div className="flex gap-4 justify-start">
-                    <div className="w-8 h-8 rounded-full bg-violet-100 border border-violet-200 flex items-center justify-center flex-shrink-0">
-                      <ImageIcon className="h-4 w-4 text-violet-600" />
-                    </div>
-                    <div className="flex-1 max-w-[75%] bg-gradient-to-br from-violet-50 to-purple-50 border border-violet-200 px-5 py-4 rounded-2xl rounded-tl-sm shadow-sm">
-                      <div className="flex items-center gap-2 mb-3">
-                        <Loader2 className="h-4 w-4 animate-spin text-violet-600" />
-                        <span className="font-medium text-violet-800 text-sm">{imageGenerationProgress.status}</span>
-                      </div>
-
-                      {/* Progress Steps */}
-                      <div className="space-y-2 mb-3">
-                        {/* Step 1: Connessione */}
-                        <div className={`flex items-center gap-2 text-xs ${imageGenerationProgress.step === 'connecting'
-                            ? 'text-violet-700 font-medium'
-                            : 'text-green-600'
-                          }`}>
-                          {imageGenerationProgress.step === 'connecting' ? (
-                            <Loader2 className="h-3 w-3 animate-spin" />
-                          ) : (
-                            <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                            </svg>
-                          )}
-                          <span>Connessione al server {imageGenerationProgress.provider}</span>
-                        </div>
-                        {/* Step 2: Ottimizzazione */}
-                        <div className={`flex items-center gap-2 text-xs ${imageGenerationProgress.step === 'enhancing'
-                            ? 'text-violet-700 font-medium'
-                            : imageGenerationProgress.step === 'generating' || imageGenerationProgress.step === 'done'
-                              ? 'text-green-600'
-                              : 'text-slate-400'
-                          }`}>
-                          {imageGenerationProgress.step === 'enhancing' ? (
-                            <Loader2 className="h-3 w-3 animate-spin" />
-                          ) : imageGenerationProgress.step === 'generating' || imageGenerationProgress.step === 'done' ? (
-                            <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                            </svg>
-                          ) : (
-                            <div className="h-3 w-3 rounded-full border border-slate-300" />
-                          )}
-                          <span>Ottimizzazione prompt</span>
-                        </div>
-                        {/* Step 3: Generazione */}
-                        <div className={`flex items-center gap-2 text-xs ${imageGenerationProgress.step === 'generating'
-                            ? 'text-violet-700 font-medium'
-                            : imageGenerationProgress.step === 'done'
-                              ? 'text-green-600'
-                              : 'text-slate-400'
-                          }`}>
-                          {imageGenerationProgress.step === 'generating' ? (
-                            <Loader2 className="h-3 w-3 animate-spin" />
-                          ) : imageGenerationProgress.step === 'done' ? (
-                            <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                            </svg>
-                          ) : (
-                            <div className="h-3 w-3 rounded-full border border-slate-300" />
-                          )}
-                          <span>Generazione immagine</span>
-                        </div>
-                      </div>
-
-                      {/* Enhanced Prompt Preview */}
-                      {imageGenerationProgress.enhancedPrompt && (
-                        <div className="mt-3 border-t border-violet-200 pt-3">
-                          <div className="text-xs font-medium text-violet-700 mb-1">Prompt ottimizzato:</div>
-                          <div className="text-xs text-violet-600 bg-violet-100 px-2 py-1.5 rounded italic">
-                            "{imageGenerationProgress.enhancedPrompt.substring(0, 150)}{imageGenerationProgress.enhancedPrompt.length > 150 ? '...' : ''}"
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
-
-                {/* Web Search/Quiz Progress Panel */}
-                {webSearchProgress && (
-                  <div className="flex gap-4 justify-start">
-                    <div className="w-8 h-8 rounded-full bg-blue-100 border border-blue-200 flex items-center justify-center flex-shrink-0">
-                      <svg className="h-4 w-4 text-blue-600 animate-pulse" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                      </svg>
-                    </div>
-                    <div className="flex-1 max-w-[75%] bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-200 px-5 py-4 rounded-2xl rounded-tl-sm shadow-sm">
-                      <div className="flex items-center gap-2 mb-3">
-                        <Loader2 className="h-4 w-4 animate-spin text-blue-600" />
-                        <span className="font-medium text-blue-800 text-sm">{webSearchProgress.status}</span>
-                      </div>
-
-                      {webSearchProgress.intent && (
-                        <div className="text-xs text-blue-600 mb-3 bg-blue-100 px-2 py-1 rounded inline-block">
-                          Modalità: {webSearchProgress.intent} (confidenza: {Math.round((webSearchProgress.confidence || 0) * 100)}%)
-                        </div>
-                      )}
-
-                      {webSearchProgress.sources.length > 0 && (
-                        <div className="space-y-2 mt-3 border-t border-blue-200 pt-3">
-                          <div className="text-xs font-medium text-blue-700 mb-2">📰 Fonti in fase di lettura:</div>
-                          {webSearchProgress.sources.map((source) => (
-                            <div key={source.index} className="flex items-start gap-2 text-xs">
-                              {source.status === 'fetching' && (
-                                <Loader2 className="h-3 w-3 animate-spin text-blue-500 mt-0.5 flex-shrink-0" />
-                              )}
-                              {source.status === 'done' && (
-                                <svg className="h-3 w-3 text-green-500 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                                </svg>
-                              )}
-                              {source.status === 'error' && (
-                                <svg className="h-3 w-3 text-red-500 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                                </svg>
-                              )}
-                              <div className="flex-1 min-w-0">
-                                <div className="font-medium text-slate-700 truncate">{source.title}</div>
-                                <a href={source.url} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline truncate block">
-                                  {source.url.substring(0, 50)}...
-                                </a>
-                                {source.status === 'done' && source.content_length && (
-                                  <span className="text-green-600">✓ {source.content_length} caratteri estratti</span>
-                                )}
-                                {source.status === 'error' && source.error && (
-                                  <span className="text-red-500">✗ {source.error}</span>
-                                )}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
-                <div ref={messagesEndRef} />
+          <div className="flex-1 overflow-y-auto px-6 py-8 space-y-8">
+            {messages.length === 0 ? (
+              <div className="h-full flex flex-col items-center justify-center opacity-50">
+                <Bot className="h-12 w-12 text-slate-300 mb-4" />
+                <p className="text-slate-400 font-medium">Inizia una nuova conversazione o trascina dei file qui</p>
               </div>
+            ) : (
+              messages.map((msg) => (
+                <div key={msg.id} className={`flex gap-4 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                  {msg.role === 'assistant' && (
+                    <div className="w-8 h-8 rounded-full bg-white border border-slate-200 flex items-center justify-center flex-shrink-0">
+                      <Bot className="h-4 w-4 text-[#48cae4]" />
+                    </div>
+                  )}
+                  <div className={`max-w-[75%] space-y-1 ${msg.role === 'user' ? 'items-end flex flex-col' : 'items-start'}`}>
+                    <div className={`px-5 py-3.5 text-sm leading-relaxed shadow-sm ${msg.role === 'user' ? 'bg-[#48cae4] text-white rounded-2xl rounded-tr-sm' : 'bg-white text-slate-800 border border-slate-200 rounded-2xl rounded-tl-sm'
+                      }`}>
+                      {msg.role === 'assistant' ? (
+                        <MessageContent
+                          content={msg.content}
+                          onPublish={(type, data) => setPublishModal({ isOpen: true, type, data })}
+                          onEdit={(type, data) => setEditorModal({ isOpen: true, type, data })}
+                          toast={toast}
+                        />
+                      ) : (
+                        <ReactMarkdown className="prose prose-sm max-w-none prose-p:leading-relaxed prose-pre:bg-slate-800 prose-pre:text-slate-100">
+                          {convertEmoticons(msg.content)}
+                        </ReactMarkdown>
+                      )}
+                    </div>
+                    <span className="text-[10px] text-slate-400 px-1">{msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                  </div>
+                </div>
+              ))
+            )}
+            {isLoading && !webSearchProgress && !imageGenerationProgress && (
+              <div className="flex gap-4 justify-start">
+                <div className="w-8 h-8 rounded-full bg-white border border-slate-200 flex items-center justify-center">
+                  <Bot className="h-4 w-4 text-[#48cae4]" />
+                </div>
+                <div className="bg-white border border-slate-200 px-4 py-3 rounded-2xl rounded-tl-sm shadow-sm">
+                  <Loader2 className="h-4 w-4 animate-spin text-[#48cae4]" />
+                </div>
+              </div>
+            )}
 
-              <div className="p-4 bg-white border-t border-slate-200">
-                <div className="max-w-4xl mx-auto">
-
-                  <div className="flex gap-2 mb-3">
-                    {AGENT_MODES.map(m => (
-                      <button
-                        key={m.id}
-                        onClick={() => setAgentMode(m.id)}
-                        className={`text-xs px-3 py-1.5 rounded-full font-medium transition-colors ${agentMode === m.id ? 'bg-cyan-100 text-cyan-700' : 'text-slate-500 hover:bg-slate-100'
-                          }`}
-                      >
-                        {m.label}
-                      </button>
-                    ))}
+            {/* Image Generation Progress Panel */}
+            {imageGenerationProgress && (
+              <div className="flex gap-4 justify-start">
+                <div className="w-8 h-8 rounded-full bg-violet-100 border border-violet-200 flex items-center justify-center flex-shrink-0">
+                  <ImageIcon className="h-4 w-4 text-violet-600" />
+                </div>
+                <div className="flex-1 max-w-[75%] bg-gradient-to-br from-violet-50 to-purple-50 border border-violet-200 px-5 py-4 rounded-2xl rounded-tl-sm shadow-sm">
+                  <div className="flex items-center gap-2 mb-3">
+                    <Loader2 className="h-4 w-4 animate-spin text-violet-600" />
+                    <span className="font-medium text-violet-800 text-sm">{imageGenerationProgress.status}</span>
                   </div>
 
-                  {attachedFiles.length > 0 && (
-                    <div className="flex flex-wrap gap-2 mb-2">
-                      {attachedFiles.map((f, i) => (
-                        <div key={i} className="bg-slate-100 px-3 py-1.5 rounded-lg text-xs flex items-center gap-2 text-slate-600 border border-slate-200">
-                          {f.type === 'image' ? <ImageIcon className="h-3 w-3" /> : <File className="h-3 w-3" />}
-                          <span className="max-w-[150px] truncate">{f.file.name}</span>
-                          <button onClick={() => removeFile(i)} className="text-slate-400 hover:text-red-500">
-                            <X className="h-3 w-3" />
-                          </button>
+                  {/* Progress Steps */}
+                  <div className="space-y-2 mb-3">
+                    {/* Step 1: Connessione */}
+                    <div className={`flex items-center gap-2 text-xs ${imageGenerationProgress.step === 'connecting'
+                      ? 'text-violet-700 font-medium'
+                      : 'text-green-600'
+                      }`}>
+                      {imageGenerationProgress.step === 'connecting' ? (
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                      ) : (
+                        <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                        </svg>
+                      )}
+                      <span>Connessione al server {imageGenerationProgress.provider}</span>
+                    </div>
+                    {/* Step 2: Ottimizzazione */}
+                    <div className={`flex items-center gap-2 text-xs ${imageGenerationProgress.step === 'enhancing'
+                      ? 'text-violet-700 font-medium'
+                      : imageGenerationProgress.step === 'generating' || imageGenerationProgress.step === 'done'
+                        ? 'text-green-600'
+                        : 'text-slate-400'
+                      }`}>
+                      {imageGenerationProgress.step === 'enhancing' ? (
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                      ) : imageGenerationProgress.step === 'generating' || imageGenerationProgress.step === 'done' ? (
+                        <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                        </svg>
+                      ) : (
+                        <div className="h-3 w-3 rounded-full border border-slate-300" />
+                      )}
+                      <span>Ottimizzazione prompt</span>
+                    </div>
+                    {/* Step 3: Generazione */}
+                    <div className={`flex items-center gap-2 text-xs ${imageGenerationProgress.step === 'generating'
+                      ? 'text-violet-700 font-medium'
+                      : imageGenerationProgress.step === 'done'
+                        ? 'text-green-600'
+                        : 'text-slate-400'
+                      }`}>
+                      {imageGenerationProgress.step === 'generating' ? (
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                      ) : imageGenerationProgress.step === 'done' ? (
+                        <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                        </svg>
+                      ) : (
+                        <div className="h-3 w-3 rounded-full border border-slate-300" />
+                      )}
+                      <span>Generazione immagine</span>
+                    </div>
+                  </div>
+
+                  {/* Enhanced Prompt Preview */}
+                  {imageGenerationProgress.enhancedPrompt && (
+                    <div className="mt-3 border-t border-violet-200 pt-3">
+                      <div className="text-xs font-medium text-violet-700 mb-1">Prompt ottimizzato:</div>
+                      <div className="text-xs text-violet-600 bg-violet-100 px-2 py-1.5 rounded italic">
+                        "{imageGenerationProgress.enhancedPrompt.substring(0, 150)}{imageGenerationProgress.enhancedPrompt.length > 150 ? '...' : ''}"
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Web Search/Quiz Progress Panel */}
+            {webSearchProgress && (
+              <div className="flex gap-4 justify-start">
+                <div className="w-8 h-8 rounded-full bg-blue-100 border border-blue-200 flex items-center justify-center flex-shrink-0">
+                  <svg className="h-4 w-4 text-blue-600 animate-pulse" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                  </svg>
+                </div>
+                <div className="flex-1 max-w-[75%] bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-200 px-5 py-4 rounded-2xl rounded-tl-sm shadow-sm">
+                  <div className="flex items-center gap-2 mb-3">
+                    <Loader2 className="h-4 w-4 animate-spin text-blue-600" />
+                    <span className="font-medium text-blue-800 text-sm">{webSearchProgress.status}</span>
+                  </div>
+
+                  {webSearchProgress.intent && (
+                    <div className="text-xs text-blue-600 mb-3 bg-blue-100 px-2 py-1 rounded inline-block">
+                      Modalità: {webSearchProgress.intent} (confidenza: {Math.round((webSearchProgress.confidence || 0) * 100)}%)
+                    </div>
+                  )}
+
+                  {webSearchProgress.sources.length > 0 && (
+                    <div className="space-y-2 mt-3 border-t border-blue-200 pt-3">
+                      <div className="text-xs font-medium text-blue-700 mb-2">📰 Fonti in fase di lettura:</div>
+                      {webSearchProgress.sources.map((source) => (
+                        <div key={source.index} className="flex items-start gap-2 text-xs">
+                          {source.status === 'fetching' && (
+                            <Loader2 className="h-3 w-3 animate-spin text-blue-500 mt-0.5 flex-shrink-0" />
+                          )}
+                          {source.status === 'done' && (
+                            <svg className="h-3 w-3 text-green-500 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                            </svg>
+                          )}
+                          {source.status === 'error' && (
+                            <svg className="h-3 w-3 text-red-500 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                          )}
+                          <div className="flex-1 min-w-0">
+                            <div className="font-medium text-slate-700 truncate">{source.title}</div>
+                            <a href={source.url} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline truncate block">
+                              {source.url.substring(0, 50)}...
+                            </a>
+                            {source.status === 'done' && source.content_length && (
+                              <span className="text-green-600">✓ {source.content_length} caratteri estratti</span>
+                            )}
+                            {source.status === 'error' && source.error && (
+                              <span className="text-red-500">✗ {source.error}</span>
+                            )}
+                          </div>
                         </div>
                       ))}
                     </div>
                   )}
-
-                  <div className="relative flex items-end gap-2 bg-slate-50 border border-slate-200 rounded-xl p-2 focus-within:ring-2 focus-within:ring-cyan-500/20 transition-all shadow-inner">
-                    <input type="file" ref={fileInputRef} className="hidden" multiple onChange={handleFileSelect} />
-
-                    <Button
-                      variant="ghost" size="icon" className="h-10 w-10 text-slate-400 hover:text-cyan-600"
-                      onClick={() => fileInputRef.current?.click()}
-                    >
-                      <Paperclip className="h-5 w-5" />
-                    </Button>
-
-                    <textarea
-                      value={inputText}
-                      onChange={(e) => setInputText(e.target.value)}
-                      onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
-                      placeholder="Scrivi o trascina file qui..."
-                      className="flex-1 bg-transparent border-none focus:ring-0 resize-none py-2.5 text-sm text-slate-700"
-                      rows={1}
-                    />
-
-                    <Button
-                      onClick={handleSend}
-                      disabled={(!inputText.trim() && attachedFiles.length === 0) || isLoading}
-                      className="h-10 w-10 bg-cyan-600 hover:bg-cyan-700 text-white rounded-lg"
-                      size="icon"
-                    >
-                      <Send className="h-4 w-4" />
-                    </Button>
-                  </div>
-
-                  {/* Image generation controls */}
-                  <div className="flex items-center justify-center gap-4 mt-2 flex-wrap">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs text-slate-400">Generatore:</span>
-                      <div className="flex items-center bg-slate-100 rounded-lg p-0.5">
-                        <button
-                          onClick={() => setImageProvider('flux-schnell')}
-                          className={`px-2 py-1 text-xs rounded-md transition-all ${imageProvider === 'flux-schnell'
-                              ? 'bg-white shadow text-cyan-600 font-medium'
-                              : 'text-slate-500 hover:text-slate-700'
-                            }`}
-                        >
-                          ⚡ Flux
-                        </button>
-                        <button
-                          onClick={() => setImageProvider('dall-e')}
-                          className={`px-2 py-1 text-xs rounded-md transition-all ${imageProvider === 'dall-e'
-                              ? 'bg-white shadow text-cyan-600 font-medium'
-                              : 'text-slate-500 hover:text-slate-700'
-                            }`}
-                        >
-                          🎨 DALL-E
-                        </button>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs text-slate-400">Formato:</span>
-                      <select
-                        value={imageSize}
-                        onChange={(e) => setImageSize(e.target.value)}
-                        className="text-xs bg-slate-100 border-0 rounded-lg px-2 py-1 text-slate-600 focus:ring-1 focus:ring-cyan-300"
-                      >
-                        <option value="1024x1024">1:1 Quadrato</option>
-                        <option value="1024x768">4:3 Orizzontale</option>
-                        <option value="768x1024">3:4 Verticale</option>
-                        <option value="1280x720">16:9 Panorama</option>
-                        <option value="720x1280">9:16 Portrait</option>
-                      </select>
-                    </div>
-                  </div>
                 </div>
               </div>
-            </main>
+            )}
+            <div ref={messagesEndRef} />
+          </div>
+
+          <div className="p-4 bg-white border-t border-slate-200">
+            <div className="max-w-4xl mx-auto">
+
+              <div className="flex gap-2 mb-3">
+                {AGENT_MODES.map(m => (
+                  <button
+                    key={m.id}
+                    onClick={() => setAgentMode(m.id)}
+                    className={`text-xs px-4 py-1.5 rounded-full font-medium transition-all ${agentMode === m.id
+                      ? 'bg-[#48cae4] text-white shadow-md shadow-cyan-200'
+                      : 'text-slate-500 hover:bg-slate-100'
+                      }`}
+                  >
+                    {m.label}
+                  </button>
+                ))}
+              </div>
+
+              {attachedFiles.length > 0 && (
+                <div className="flex flex-wrap gap-2 mb-2">
+                  {attachedFiles.map((f, i) => (
+                    <div key={i} className="bg-slate-100 px-3 py-1.5 rounded-full text-xs flex items-center gap-2 text-slate-600 border border-slate-200">
+                      {f.type === 'image' ? <ImageIcon className="h-3 w-3" /> : <File className="h-3 w-3" />}
+                      <span className="max-w-[150px] truncate">{f.file.name}</span>
+                      <button onClick={() => removeFile(i)} className="text-slate-400 hover:text-red-500">
+                        <X className="h-3 w-3" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Input Pill Container */}
+              <div className="relative flex items-end gap-2 bg-white border-2 border-[#48cae4]/30 rounded-[2rem] p-1.5 pl-3 focus-within:border-[#48cae4] focus-within:ring-4 focus-within:ring-[#48cae4]/10 transition-all shadow-sm">
+                <input type="file" ref={fileInputRef} className="hidden" multiple onChange={handleFileSelect} />
+
+                <Button
+                  variant="ghost" size="icon" className="h-9 w-9 text-slate-400 hover:text-[#48cae4] hover:bg-cyan-50 rounded-full flex-shrink-0"
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  <Paperclip className="h-5 w-5" />
+                </Button>
+
+                <textarea
+                  value={inputText}
+                  onChange={(e) => setInputText(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
+                  placeholder="Scrivi o trascina file qui..."
+                  className="flex-1 bg-transparent border-none focus:ring-0 resize-none py-2.5 text-sm text-slate-700 placeholder:text-slate-400 max-h-32 min-h-[44px]"
+                  rows={1}
+                  style={{ overflow: 'hidden' }}
+                  onInput={(e) => {
+                    const target = e.target as HTMLTextAreaElement;
+                    target.style.height = 'auto';
+                    target.style.height = `${Math.min(target.scrollHeight, 128)}px`;
+                  }}
+                />
+
+                <Button
+                  onClick={handleSend}
+                  disabled={(!inputText.trim() && attachedFiles.length === 0) || isLoading}
+                  className={`h-9 w-9 rounded-full transition-all flex-shrink-0 ${(!inputText.trim() && attachedFiles.length === 0)
+                    ? 'bg-slate-200 text-slate-400'
+                    : 'bg-[#48cae4] hover:bg-[#00b4d8] text-white shadow-md'
+                    }`}
+                  size="icon"
+                >
+                  <Send className="h-4 w-4 ml-0.5" />
+                </Button>
+              </div>
+            </div>
+          </div>
+        </main>
+      </div>
+    </div >
+      </div >
+
+    {/* Publish Task Modal */ }
+  {
+    publishModal.isOpen && (
+      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[70] p-4 backdrop-blur-sm">
+        <div className="bg-white rounded-xl p-6 w-full max-w-md shadow-2xl animate-in zoom-in-95 duration-200">
+          <div className="flex justify-between items-center mb-4">
+            <h3 className="text-lg font-bold text-slate-800">Pubblica come Compito</h3>
+            <Button variant="ghost" size="icon" onClick={() => setPublishModal({ ...publishModal, isOpen: false })}>
+              <X className="h-5 w-5" />
+            </Button>
+          </div>
+
+          <p className="text-sm text-slate-600 mb-6">
+            Scegli la sessione in cui pubblicare questo {publishModal.type === 'quiz' ? 'quiz' : 'dataset'} come attività per gli studenti.
+          </p>
+
+          <div className="space-y-3 mb-6 max-h-60 overflow-y-auto">
+            {classesData?.map((session: any) => (
+              <button
+                key={session.id}
+                onClick={() => handlePublish(session.id)}
+                className="w-full text-left p-3 rounded-lg border border-slate-200 hover:border-cyan-400 hover:bg-cyan-50 transition-all flex items-center justify-between group"
+              >
+                <div>
+                  <div className="font-semibold text-sm group-hover:text-cyan-700">{session.name}</div>
+                  <div className="text-xs text-slate-500">{session.class_name}</div>
+                </div>
+                <ChevronRight className="h-4 w-4 text-slate-300 group-hover:text-cyan-500" />
+              </button>
+            ))}
+            {(!classesData || classesData.length === 0) && (
+              <p className="text-center text-xs text-slate-400 py-4">Nessuna sessione attiva trovata.</p>
+            )}
+          </div>
+
+          <div className="flex justify-end gap-2">
+            <Button variant="ghost" onClick={() => setPublishModal({ ...publishModal, isOpen: false })}>Annulla</Button>
           </div>
         </div>
       </div>
+    )
+  }
 
-      {/* Publish Task Modal */}
-      {publishModal.isOpen && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[70] p-4 backdrop-blur-sm">
-          <div className="bg-white rounded-xl p-6 w-full max-w-md shadow-2xl animate-in zoom-in-95 duration-200">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-lg font-bold text-slate-800">Pubblica come Compito</h3>
-              <Button variant="ghost" size="icon" onClick={() => setPublishModal({ ...publishModal, isOpen: false })}>
-                <X className="h-5 w-5" />
-              </Button>
-            </div>
-
-            <p className="text-sm text-slate-600 mb-6">
-              Scegli la sessione in cui pubblicare questo {publishModal.type === 'quiz' ? 'quiz' : 'dataset'} come attività per gli studenti.
-            </p>
-
-            <div className="space-y-3 mb-6 max-h-60 overflow-y-auto">
-              {classesData?.map((session: any) => (
-                <button
-                  key={session.id}
-                  onClick={() => handlePublish(session.id)}
-                  className="w-full text-left p-3 rounded-lg border border-slate-200 hover:border-cyan-400 hover:bg-cyan-50 transition-all flex items-center justify-between group"
-                >
-                  <div>
-                    <div className="font-semibold text-sm group-hover:text-cyan-700">{session.name}</div>
-                    <div className="text-xs text-slate-500">{session.class_name}</div>
-                  </div>
-                  <ChevronRight className="h-4 w-4 text-slate-300 group-hover:text-cyan-500" />
-                </button>
-              ))}
-              {(!classesData || classesData.length === 0) && (
-                <p className="text-center text-xs text-slate-400 py-4">Nessuna sessione attiva trovata.</p>
-              )}
-            </div>
-
-            <div className="flex justify-end gap-2">
-              <Button variant="ghost" onClick={() => setPublishModal({ ...publishModal, isOpen: false })}>Annulla</Button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Editor Modal for editing quiz before publishing */}
-      {editorModal.isOpen && editorModal.data && (
-        <ContentEditorModal
-          content={editorModal.data}
-          type={editorModal.type === 'quiz' ? 'quiz' : 'exercise'}
-          onSave={(editedData) => {
-            // After editing, open publish modal with edited data
-            setEditorModal({ isOpen: false, type: 'quiz', data: null })
-            setPublishModal({ isOpen: true, type: editorModal.type, data: editedData })
-          }}
-          onCancel={() => setEditorModal({ isOpen: false, type: 'quiz', data: null })}
-        />
-      )}
+  {/* Editor Modal for editing quiz before publishing */ }
+  {
+    editorModal.isOpen && editorModal.data && (
+      <ContentEditorModal
+        content={editorModal.data}
+        type={editorModal.type === 'quiz' ? 'quiz' : 'exercise'}
+        onSave={(editedData) => {
+          // After editing, open publish modal with edited data
+          setEditorModal({ isOpen: false, type: 'quiz', data: null })
+          setPublishModal({ isOpen: true, type: editorModal.type, data: editedData })
+        }}
+        onCancel={() => setEditorModal({ isOpen: false, type: 'quiz', data: null })}
+      />
+    )
+  }
     </>
   )
 }
@@ -1526,8 +1544,8 @@ function InteractiveQuiz({ quiz, onSubmitAnswers }: { quiz: QuizData; onSubmitAn
           onClick={handleSubmit}
           disabled={!allAnswered}
           className={`mt-6 w-full py-6 rounded-xl font-bold text-base transition-all ${allAnswered
-              ? 'bg-cyan-600 text-white hover:bg-cyan-700 shadow-lg shadow-cyan-200'
-              : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+            ? 'bg-cyan-600 text-white hover:bg-cyan-700 shadow-lg shadow-cyan-200'
+            : 'bg-slate-200 text-slate-400 cursor-not-allowed'
             }`}
         >
           {allAnswered ? 'Verifica Risposte' : `Rispondi a tutte le domande (${Object.keys(answers).length}/${quiz.questions.length})`}

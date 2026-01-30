@@ -501,7 +501,7 @@ export default function ChatbotModule({ sessionId, onInputFocusChange }: Chatbot
 
   // Desktop Chat interface
   return (
-    <div className="flex h-full md:h-[calc(100vh-8rem)] md:max-h-[900px] md:min-h-[500px] flex-col md:flex-row bg-slate-50 md:bg-gradient-to-b md:from-fuchsia-50/30 md:to-white md:rounded-2xl overflow-hidden md:shadow-lg md:shadow-fuchsia-100/50 md:border md:border-fuchsia-100 relative md:my-2 md:mb-6">
+    <div className="flex h-full md:h-[calc(100vh-8rem)] md:max-h-[900px] md:min-h-[500px] flex-col md:flex-row bg-slate-50 md:bg-gradient-to-b md:from-cyan-50/30 md:to-white md:rounded-2xl overflow-hidden md:shadow-lg md:shadow-cyan-100/50 md:border md:border-cyan-100 relative md:my-2 md:mb-6">
       {/* Mobile Header - Fixed height */}
       <div className="flex md:hidden items-center gap-2 px-3 py-1.5 bg-white border-b flex-shrink-0">
         <Button
@@ -512,7 +512,7 @@ export default function ChatbotModule({ sessionId, onInputFocusChange }: Chatbot
         >
           <Menu className="h-4 w-4" />
         </Button>
-        <div className="w-7 h-7 rounded-xl bg-gradient-to-br from-fuchsia-500 to-violet-600 flex items-center justify-center shadow-md">
+        <div className="w-7 h-7 rounded-xl bg-gradient-to-br from-[#48cae4] to-[#00b4d8] flex items-center justify-center shadow-md">
           {PROFILE_ICONS[selectedProfile] ? (
             <div className="text-white scale-90">{PROFILE_ICONS[selectedProfile]}</div>
           ) : (
@@ -606,7 +606,7 @@ export default function ChatbotModule({ sessionId, onInputFocusChange }: Chatbot
             <div className="flex-1 overflow-y-auto p-2 space-y-1">
               <button
                 onClick={handleNewChat}
-                className="w-full text-left px-3 py-2 rounded-lg text-sm bg-fuchsia-100 text-fuchsia-700 hover:bg-fuchsia-200 transition-colors flex items-center gap-2"
+                className="w-full text-left px-3 py-2 rounded-lg text-sm bg-cyan-100 text-cyan-700 hover:bg-cyan-200 transition-colors flex items-center gap-2"
               >
                 <Sparkles className="h-4 w-4" />
                 Nuova chat
@@ -677,14 +677,14 @@ export default function ChatbotModule({ sessionId, onInputFocusChange }: Chatbot
         className="flex-1 flex flex-col"
         onDragOver={(e) => {
           e.preventDefault()
-          e.currentTarget.classList.add('ring-2', 'ring-fuchsia-500', 'ring-inset')
+          e.currentTarget.classList.add('ring-2', 'ring-[#48cae4]', 'ring-inset')
         }}
         onDragLeave={(e) => {
-          e.currentTarget.classList.remove('ring-2', 'ring-fuchsia-500', 'ring-inset')
+          e.currentTarget.classList.remove('ring-2', 'ring-[#48cae4]', 'ring-inset')
         }}
         onDrop={(e) => {
           e.preventDefault()
-          e.currentTarget.classList.remove('ring-2', 'ring-fuchsia-500', 'ring-inset')
+          e.currentTarget.classList.remove('ring-2', 'ring-[#48cae4]', 'ring-inset')
 
           const imageData = e.dataTransfer.getData('application/x-chatbot-image')
           if (imageData) {
@@ -741,7 +741,7 @@ export default function ChatbotModule({ sessionId, onInputFocusChange }: Chatbot
           >
             <ArrowLeft className="h-4 w-4" />
           </Button>
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-fuchsia-500 to-violet-600 flex items-center justify-center shadow-md">
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#48cae4] to-[#00b4d8] flex items-center justify-center shadow-md">
             {PROFILE_ICONS[selectedProfile] ? (
               <div className="text-white scale-90">{PROFILE_ICONS[selectedProfile]}</div>
             ) : (
@@ -783,7 +783,7 @@ export default function ChatbotModule({ sessionId, onInputFocusChange }: Chatbot
                   handleChangeModel(found || null)
                 }
               }}
-              className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-fuchsia-500 focus:border-transparent"
+              className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-[#48cae4] focus:border-transparent"
             >
               <option value="">Modello predefinito</option>
               {availableModels.map((m) => (
@@ -802,7 +802,7 @@ export default function ChatbotModule({ sessionId, onInputFocusChange }: Chatbot
               <span className="text-xs text-slate-600">Risposte esaustive</span>
               <button
                 onClick={() => setVerboseMode(!verboseMode)}
-                className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${verboseMode ? 'bg-fuchsia-500' : 'bg-slate-300'}`}
+                className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${verboseMode ? 'bg-[#48cae4]' : 'bg-slate-300'}`}
               >
                 <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${verboseMode ? 'translate-x-5' : 'translate-x-1'}`} />
               </button>
@@ -817,7 +817,7 @@ export default function ChatbotModule({ sessionId, onInputFocusChange }: Chatbot
         <div className="flex-1 overflow-y-auto overflow-x-hidden px-3 py-3 md:px-4 md:py-6 space-y-3 md:space-y-6" style={{ WebkitOverflowScrolling: 'touch', scrollBehavior: 'smooth' }}>
           {messages.length === 0 ? (
             <div className="text-center py-12">
-              <div className="inline-flex items-center justify-center w-20 h-20 rounded-2xl bg-gradient-to-br from-fuchsia-500 to-violet-600 mb-6 shadow-lg">
+              <div className="inline-flex items-center justify-center w-20 h-20 rounded-2xl bg-gradient-to-br from-[#48cae4] to-[#00b4d8] mb-6 shadow-lg">
                 {PROFILE_ICONS[selectedProfile] ? (
                   <div className="text-white scale-125">{PROFILE_ICONS[selectedProfile]}</div>
                 ) : (
@@ -842,7 +842,7 @@ export default function ChatbotModule({ sessionId, onInputFocusChange }: Chatbot
             messages.map((message) => (
               <div key={message.id} className={`flex gap-3 ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                 {message.role === 'assistant' && (
-                  <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-fuchsia-500 to-violet-600 flex items-center justify-center flex-shrink-0 shadow-md">
+                  <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-[#48cae4] to-[#00b4d8] flex items-center justify-center flex-shrink-0 shadow-md">
                     {PROFILE_ICONS[selectedProfile] ? (
                       <div className="text-white scale-75">{PROFILE_ICONS[selectedProfile]}</div>
                     ) : (
@@ -851,8 +851,8 @@ export default function ChatbotModule({ sessionId, onInputFocusChange }: Chatbot
                   </div>
                 )}
                 <div className={`max-w-[80%] rounded-2xl px-4 py-3 ${message.role === 'user'
-                  ? 'bg-gradient-to-br from-fuchsia-500 to-violet-600 text-white rounded-br-md shadow-md'
-                  : 'bg-gradient-to-br from-fuchsia-50 to-violet-50 border border-fuchsia-100 shadow-sm rounded-bl-md'
+                  ? 'bg-gradient-to-br from-[#48cae4] to-[#00b4d8] text-white rounded-br-md shadow-md'
+                  : 'bg-white border border-slate-100 shadow-sm rounded-bl-md'
                   }`}>
                   {message.role === 'assistant' ? (
                     <MessageContent content={message.content} onQuizSubmit={(answers) => setInput(answers)} />
@@ -870,7 +870,7 @@ export default function ChatbotModule({ sessionId, onInputFocusChange }: Chatbot
           )}
           {sendMessageMutation.isPending && (
             <div className="flex gap-3">
-              <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-fuchsia-500 to-violet-600 flex items-center justify-center shadow-md">
+              <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-[#48cae4] to-[#00b4d8] flex items-center justify-center shadow-md">
                 {PROFILE_ICONS[selectedProfile] ? (
                   <div className="text-white scale-75">{PROFILE_ICONS[selectedProfile]}</div>
                 ) : (
@@ -880,9 +880,9 @@ export default function ChatbotModule({ sessionId, onInputFocusChange }: Chatbot
               <div className="bg-white border border-slate-100 shadow-sm rounded-2xl rounded-bl-md px-4 py-3">
                 <div className="flex items-center gap-2">
                   <div className="flex gap-1">
-                    <span className="w-2 h-2 bg-fuchsia-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></span>
-                    <span className="w-2 h-2 bg-fuchsia-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></span>
-                    <span className="w-2 h-2 bg-fuchsia-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></span>
+                    <span className="w-2 h-2 bg-[#48cae4] rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></span>
+                    <span className="w-2 h-2 bg-[#48cae4] rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></span>
+                    <span className="w-2 h-2 bg-[#48cae4] rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></span>
                   </div>
                   <span className="text-sm text-slate-400">Sto pensando...</span>
                 </div>
@@ -917,14 +917,9 @@ export default function ChatbotModule({ sessionId, onInputFocusChange }: Chatbot
             </div>
           )}
 
-          <div className={`flex items-center gap-2 bg-white/95 backdrop-blur-sm shadow-lg border border-slate-200/80 p-1.5 md:p-3 md:shadow-none md:border-t md:border-x-0 md:border-b-0 md:rounded-none md:bg-white ${attachedFiles.length > 0 ? 'rounded-b-full md:rounded-none' : 'rounded-full md:rounded-none'}`}>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/*,.pdf,.txt,.md"
-              multiple
-              className="hidden"
-              onChange={(e) => {
+          <div className="p-2 md:p-3 bg-white/95 backdrop-blur-sm md:bg-transparent">
+            <div className="relative flex items-end gap-2 bg-white border-2 border-[#48cae4]/30 rounded-[2rem] p-1.5 pl-3 focus-within:border-[#48cae4] focus-within:ring-4 focus-within:ring-[#48cae4]/10 transition-all shadow-sm">
+              <input type="file" ref={fileInputRef} className="hidden" multiple onChange={(e) => {
                 const files = Array.from(e.target.files || [])
                 files.forEach(file => {
                   const isImage = file.type.startsWith('image/')
@@ -942,50 +937,54 @@ export default function ChatbotModule({ sessionId, onInputFocusChange }: Chatbot
                 })
                 e.target.value = ''
               }}
-            />
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => fileInputRef.current?.click()}
-              className="h-12 w-12 rounded-xl text-slate-500 hover:text-fuchsia-600 hover:bg-fuchsia-50"
-            >
-              <Paperclip className="h-5 w-5" />
-            </Button>
-
-            <div className="flex-1 relative min-w-0">
-              <input
-                ref={inputRef}
-                type="text"
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onFocus={() => {
-                  setIsInputFocused(true)
-                  onInputFocusChange?.(true)
-                  setTimeout(scrollToBottom, 300)
-                }}
-                onBlur={() => {
-                  setIsInputFocused(false)
-                  onInputFocusChange?.(false)
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault()
-                    handleSend()
-                  }
-                }}
-                placeholder={attachedFiles.length > 0 ? "Descrivi..." : "Scrivi..."}
-                disabled={sendMessageMutation.isPending}
-                className="w-full px-3 py-2 md:px-4 md:py-3 bg-slate-50 md:bg-slate-50 border-0 md:border md:border-slate-200 rounded-full md:rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-fuchsia-500 transition-all"
               />
+
+              <Button
+                variant="ghost" size="icon" className="h-9 w-9 text-slate-400 hover:text-[#48cae4] hover:bg-cyan-50 rounded-full flex-shrink-0"
+                onClick={() => fileInputRef.current?.click()}
+              >
+                <Paperclip className="h-5 w-5" />
+              </Button>
+
+              <div className="flex-1 relative min-w-0">
+                <input
+                  ref={inputRef}
+                  type="text"
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  onFocus={() => {
+                    setIsInputFocused(true)
+                    onInputFocusChange?.(true)
+                    setTimeout(scrollToBottom, 300)
+                  }}
+                  onBlur={() => {
+                    setIsInputFocused(false)
+                    onInputFocusChange?.(false)
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault()
+                      handleSend()
+                    }
+                  }}
+                  placeholder={attachedFiles.length > 0 ? "Descrivi..." : "Scrivi un messaggio..."}
+                  disabled={sendMessageMutation.isPending}
+                  className="w-full py-2.5 bg-transparent border-none text-sm focus:ring-0 placeholder:text-slate-400"
+                />
+              </div>
+
+              <Button
+                onClick={() => handleSend()}
+                disabled={(!input.trim() && attachedFiles.length === 0) || sendMessageMutation.isPending}
+                size="icon"
+                className={`h-9 w-9 rounded-full transition-all flex-shrink-0 ${(!input.trim() && attachedFiles.length === 0)
+                    ? 'bg-slate-200 text-slate-400'
+                    : 'bg-gradient-to-br from-[#48cae4] to-[#00b4d8] hover:shadow-cyan-200/50 hover:scale-105 shadow-md text-white'
+                  }`}
+              >
+                <Send className="h-4 w-4 ml-0.5" />
+              </Button>
             </div>
-            <Button
-              onClick={() => handleSend()}
-              disabled={(!input.trim() && attachedFiles.length === 0) || sendMessageMutation.isPending}
-              size="sm"
-              className="h-9 w-9 md:h-10 md:w-10 rounded-full bg-gradient-to-br from-fuchsia-500 to-violet-600 hover:from-fuchsia-600 hover:to-violet-700 shadow-md transition-all flex-shrink-0 p-0"
-            >
-              <Send className="h-4 w-4" />
-            </Button>
           </div>
 
           <div className="hidden lg:flex items-center justify-center gap-4 mt-2 pb-4 flex-wrap">
