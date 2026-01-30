@@ -117,6 +117,26 @@ export const teacherApi = {
   getProfile: () => api.get('/teacher/profile'),
   updateProfile: (data: { first_name?: string; last_name?: string; institution?: string; avatar_url?: string }) =>
     api.put('/teacher/profile', data),
+  // Invitations
+  getInvitations: () => api.get('/teacher/invitations'),
+  respondToClassInvitation: (invitationId: string, accept: boolean) =>
+    api.post(`/teacher/invitations/class/${invitationId}/respond`, { accept }),
+  respondToSessionInvitation: (invitationId: string, accept: boolean) =>
+    api.post(`/teacher/invitations/session/${invitationId}/respond`, { accept }),
+  // Class teachers management
+  getClassTeachers: (classId: string) =>
+    api.get(`/teacher/classes/${classId}/teachers`),
+  inviteTeacherToClass: (classId: string, email: string) =>
+    api.post(`/teacher/classes/${classId}/teachers/invite`, { email }),
+  removeTeacherFromClass: (classId: string, teacherId: string) =>
+    api.delete(`/teacher/classes/${classId}/teachers/${teacherId}`),
+  // Session teachers management
+  getSessionTeachers: (sessionId: string) =>
+    api.get(`/teacher/sessions/${sessionId}/teachers`),
+  inviteTeacherToSession: (sessionId: string, email: string) =>
+    api.post(`/teacher/sessions/${sessionId}/teachers/invite`, { email }),
+  removeTeacherFromSession: (sessionId: string, teacherId: string) =>
+    api.delete(`/teacher/sessions/${sessionId}/teachers/${teacherId}`),
 }
 
 export const chatApi = {

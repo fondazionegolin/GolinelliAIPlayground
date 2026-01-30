@@ -8,10 +8,11 @@ from app.models.ml import MLDataset, MLExperiment, MLResult
 from app.models.assessment import Lesson, Quiz, QuizAttempt, Badge, BadgeAward
 from app.models.file import File
 from app.models.task import Task, TaskSubmission, TaskStatus, TaskType
+from app.models.invitation import ClassTeacher, ClassInvitation, SessionTeacher, SessionInvitation
 
 __all__ = [
     "Tenant",
-    "User", 
+    "User",
     "Class",
     "Session",
     "SessionModule",
@@ -39,4 +40,8 @@ __all__ = [
     "TaskSubmission",
     "TaskStatus",
     "TaskType",
+    "ClassTeacher",
+    "ClassInvitation",
+    "SessionTeacher",
+    "SessionInvitation",
 ]

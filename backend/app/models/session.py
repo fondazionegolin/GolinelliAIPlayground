@@ -20,6 +20,8 @@ class Class(Base):
     tenant = relationship("Tenant", back_populates="classes")
     teacher = relationship("User", back_populates="classes")
     sessions = relationship("Session", back_populates="class_", lazy="dynamic")
+    teachers = relationship("ClassTeacher", back_populates="class_", lazy="dynamic", cascade="all, delete-orphan")
+    invitations = relationship("ClassInvitation", back_populates="class_", lazy="dynamic", cascade="all, delete-orphan")
 
 
 class Session(Base):
@@ -45,6 +47,8 @@ class Session(Base):
     students = relationship("SessionStudent", back_populates="session", lazy="dynamic", cascade="all, delete-orphan")
     chat_rooms = relationship("ChatRoom", back_populates="session", lazy="dynamic", cascade="all, delete-orphan")
     conversations = relationship("Conversation", back_populates="session", lazy="dynamic", cascade="all, delete-orphan")
+    teachers = relationship("SessionTeacher", back_populates="session", lazy="dynamic", cascade="all, delete-orphan")
+    invitations = relationship("SessionInvitation", back_populates="session", lazy="dynamic", cascade="all, delete-orphan")
 
 
 class SessionModule(Base):

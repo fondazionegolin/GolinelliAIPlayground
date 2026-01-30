@@ -99,3 +99,10 @@ class LessonLevel(str, enum.Enum):
 class LessonCreatedBy(str, enum.Enum):
     SYSTEM = "SYSTEM"
     TEACHER = "TEACHER"
+
+
+class InvitationStatus(str, enum.Enum):
+    PENDING = "pending"
+    ACCEPTED = "accepted"
+    DECLINED = "declined"
+    EXPIRED = "expired"

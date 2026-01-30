@@ -98,6 +98,12 @@ export default function TeacherSupportChat() {
   const [imageSize, setImageSize] = useState<string>('1024x1024')
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
   const [webSearchProgress, setWebSearchProgress] = useState<WebSearchProgress | null>(null)
+  const [imageGenerationProgress, setImageGenerationProgress] = useState<{
+    status: string
+    step: 'connecting' | 'enhancing' | 'generating' | 'done' | 'error'
+    provider?: string
+    enhancedPrompt?: string
+  } | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -283,41 +289,73 @@ export default function TeacherSupportChat() {
     try {
       if (agentMode === 'image') {
         // IMAGE GENERATION FLOW
-        // 1. Intent Detection & Prompt Design (Expansion)
-        const expansionPrompt = `Sei un esperto Prompt Engineer. Il tuo compito è scrivere un prompt dettagliato e ottimizzato per generare un'immagine con il modello ${imageProvider === 'dall-e' ? 'DALL-E 3' : 'Flux Schnell'}.
-        
-        Descrizione utente: "${messageContent}"
-        
-        Regole:
-        - Scrivi SOLO il prompt in inglese.
-        - Sii molto descrittivo, specifica stile, illuminazione, composizione e dettagli.
-        - Non aggiungere altro testo, solo il prompt.`
+        const providerLabel = imageProvider === 'dall-e' ? 'DALL-E 3' : 'Flux Schnell'
 
+        // Step 1: Show connecting status
+        setImageGenerationProgress({
+          status: `Connessione al server ${providerLabel}...`,
+          step: 'connecting',
+          provider: providerLabel
+        })
+
+        // Step 2: Prompt Enhancement
+        setImageGenerationProgress({
+          status: 'Ottimizzazione del prompt...',
+          step: 'enhancing',
+          provider: providerLabel
+        })
+
+        const expansionPrompt = `Sei un esperto Prompt Engineer. Il tuo compito e' scrivere un prompt dettagliato e ottimizzato per generare un'immagine con il modello ${providerLabel}.
+
+Descrizione utente: "${messageContent}"
+
+REGOLE IMPORTANTI:
+- Scrivi SOLO il prompt in inglese, nient'altro.
+- Sii molto descrittivo: specifica stile artistico, illuminazione, composizione, colori e dettagli tecnici.
+- NON scrivere spiegazioni, commenti o altro testo.
+- NON creare quiz, domande o contenuti didattici.
+- Rispondi SOLO con il prompt ottimizzato per la generazione dell'immagine.`
+
+        // IMPORTANTE: Usa il profilo 'tutor' invece di 'teacher_support' per evitare l'intent classification
+        // che potrebbe interpretare la richiesta come generazione di quiz
         const expansionResponse = await llmApi.teacherChat(
           expansionPrompt,
-          [], // No history needed for prompt expansion context usually, or maybe beneficial?
-          'teacher_support',
-          'openai', // Use a smart model for expansion
+          [],
+          'tutor',  // NON usare 'teacher_support' - ha uses_agent:true che attiva intent classification
+          'openai',
           'gpt-5-mini'
         )
-        
+
         const enhancedPrompt = expansionResponse.data?.response?.trim() || messageContent
-        
-        // 2. Generation Request
+
+        // Step 3: Show enhanced prompt and start generation
+        setImageGenerationProgress({
+          status: `Generazione immagine con ${providerLabel}...`,
+          step: 'generating',
+          provider: providerLabel,
+          enhancedPrompt: enhancedPrompt
+        })
+
         console.log("Generating image with prompt:", enhancedPrompt, "Provider:", imageProvider)
         const genResponse = await llmApi.generateImage(enhancedPrompt, imageProvider)
         const imageUrl = genResponse.data?.image_url
         console.log("Image URL received:", imageUrl ? imageUrl.substring(0, 50) + "..." : "None")
 
+        // Clear progress
+        setImageGenerationProgress(null)
+
         if (imageUrl) {
           const assistantMessage: Message = {
             id: `resp-${Date.now()}`,
             role: 'assistant',
-            content: `🎨 **Immagine Generata**\n\n![Generata](${imageUrl})\n\n**Prompt Effettivo:**\n\`${enhancedPrompt}\``,
+            content: `**Immagine Generata**\n\n![Generata](${imageUrl})\n\n**Prompt Effettivo:**\n\`${enhancedPrompt}\``,
             timestamp: new Date()
           }
+          // IMPORTANTE: Aggiorna anche messages per mostrare subito l'immagine nella chat
+          setMessages(prev => [...prev, assistantMessage])
+
           if (currentConversationId) {
-            setConversations(prev => prev.map(c => 
+            setConversations(prev => prev.map(c =>
               c.id === currentConversationId ? { ...c, messages: [...c.messages, userMessage, assistantMessage] } : c
             ))
           } else {
@@ -497,6 +535,7 @@ export default function TeacherSupportChat() {
       }
     } catch (e) {
       console.error(e)
+      setImageGenerationProgress(null)
       toast({ title: "Errore", description: "Impossibile completare la richiesta.", variant: "destructive" })
       const errorMsg: Message = {
          id: `err-${Date.now()}`,
@@ -507,6 +546,7 @@ export default function TeacherSupportChat() {
       setMessages(prev => [...prev, errorMsg])
     } finally {
       setIsLoading(false)
+      setImageGenerationProgress(null)
     }
   }
 
@@ -576,14 +616,17 @@ export default function TeacherSupportChat() {
 
   return (
     <>
-      <div 
-        className="flex h-full bg-slate-50 font-sans"
-        onDragOver={(e) => e.preventDefault()}
-        onDrop={handleDrop}
-      >
-        
-        {/* SIDEBAR - History */}
-        <aside className={`${isSidebarCollapsed ? 'w-12' : 'w-80'} bg-white border-r border-slate-200 flex flex-col hidden md:flex transition-all duration-300`}>
+      <div className="h-full bg-slate-100 flex py-6 px-4">
+        {/* Main Content - Centered with max-width and rounded corners */}
+        <div className="flex-1 flex justify-center">
+          <div
+            className="flex h-full bg-white font-sans w-full max-w-6xl rounded-2xl shadow-lg overflow-hidden border border-slate-200"
+            onDragOver={(e) => e.preventDefault()}
+            onDrop={handleDrop}
+          >
+
+            {/* SIDEBAR - History */}
+            <aside className={`${isSidebarCollapsed ? 'w-12' : 'w-64'} bg-slate-50 border-r border-slate-200 flex flex-col hidden md:flex transition-all duration-300 flex-shrink-0 rounded-l-2xl`}>
           <div className={`p-4 border-b border-slate-100 flex items-center ${isSidebarCollapsed ? 'justify-center' : 'justify-between'}`}>
             {!isSidebarCollapsed && <h2 className="text-sm font-semibold text-slate-800 tracking-tight">Cronologia</h2>}
             <div className="flex gap-1">
@@ -723,13 +766,95 @@ export default function TeacherSupportChat() {
                 </div>
               ))
             )}
-            {isLoading && !webSearchProgress && (
+            {isLoading && !webSearchProgress && !imageGenerationProgress && (
               <div className="flex gap-4 justify-start">
                 <div className="w-8 h-8 rounded-full bg-white border border-slate-200 flex items-center justify-center">
                   <Bot className="h-4 w-4 text-cyan-600" />
                 </div>
                 <div className="bg-white border border-slate-200 px-4 py-3 rounded-2xl rounded-tl-sm shadow-sm">
                   <Loader2 className="h-4 w-4 animate-spin text-cyan-600" />
+                </div>
+              </div>
+            )}
+
+            {/* Image Generation Progress Panel */}
+            {imageGenerationProgress && (
+              <div className="flex gap-4 justify-start">
+                <div className="w-8 h-8 rounded-full bg-violet-100 border border-violet-200 flex items-center justify-center flex-shrink-0">
+                  <ImageIcon className="h-4 w-4 text-violet-600" />
+                </div>
+                <div className="flex-1 max-w-[75%] bg-gradient-to-br from-violet-50 to-purple-50 border border-violet-200 px-5 py-4 rounded-2xl rounded-tl-sm shadow-sm">
+                  <div className="flex items-center gap-2 mb-3">
+                    <Loader2 className="h-4 w-4 animate-spin text-violet-600" />
+                    <span className="font-medium text-violet-800 text-sm">{imageGenerationProgress.status}</span>
+                  </div>
+
+                  {/* Progress Steps */}
+                  <div className="space-y-2 mb-3">
+                    {/* Step 1: Connessione */}
+                    <div className={`flex items-center gap-2 text-xs ${
+                      imageGenerationProgress.step === 'connecting'
+                        ? 'text-violet-700 font-medium'
+                        : 'text-green-600'
+                    }`}>
+                      {imageGenerationProgress.step === 'connecting' ? (
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                      ) : (
+                        <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                        </svg>
+                      )}
+                      <span>Connessione al server {imageGenerationProgress.provider}</span>
+                    </div>
+                    {/* Step 2: Ottimizzazione */}
+                    <div className={`flex items-center gap-2 text-xs ${
+                      imageGenerationProgress.step === 'enhancing'
+                        ? 'text-violet-700 font-medium'
+                        : imageGenerationProgress.step === 'generating' || imageGenerationProgress.step === 'done'
+                          ? 'text-green-600'
+                          : 'text-slate-400'
+                    }`}>
+                      {imageGenerationProgress.step === 'enhancing' ? (
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                      ) : imageGenerationProgress.step === 'generating' || imageGenerationProgress.step === 'done' ? (
+                        <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                        </svg>
+                      ) : (
+                        <div className="h-3 w-3 rounded-full border border-slate-300" />
+                      )}
+                      <span>Ottimizzazione prompt</span>
+                    </div>
+                    {/* Step 3: Generazione */}
+                    <div className={`flex items-center gap-2 text-xs ${
+                      imageGenerationProgress.step === 'generating'
+                        ? 'text-violet-700 font-medium'
+                        : imageGenerationProgress.step === 'done'
+                          ? 'text-green-600'
+                          : 'text-slate-400'
+                    }`}>
+                      {imageGenerationProgress.step === 'generating' ? (
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                      ) : imageGenerationProgress.step === 'done' ? (
+                        <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                        </svg>
+                      ) : (
+                        <div className="h-3 w-3 rounded-full border border-slate-300" />
+                      )}
+                      <span>Generazione immagine</span>
+                    </div>
+                  </div>
+
+                  {/* Enhanced Prompt Preview */}
+                  {imageGenerationProgress.enhancedPrompt && (
+                    <div className="mt-3 border-t border-violet-200 pt-3">
+                      <div className="text-xs font-medium text-violet-700 mb-1">Prompt ottimizzato:</div>
+                      <div className="text-xs text-violet-600 bg-violet-100 px-2 py-1.5 rounded italic">
+                        "{imageGenerationProgress.enhancedPrompt.substring(0, 150)}{imageGenerationProgress.enhancedPrompt.length > 150 ? '...' : ''}"
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
@@ -899,6 +1024,8 @@ export default function TeacherSupportChat() {
             </div>
           </div>
         </main>
+          </div>
+        </div>
       </div>
 
       {/* Publish Task Modal */}
@@ -1123,7 +1250,7 @@ function MessageContent({ content, onPublish, onEdit, toast }: { content: string
   return (
     <div className="prose prose-sm max-w-none prose-p:text-slate-700">
       {cleanContent && (
-        <ReactMarkdown 
+        <ReactMarkdown
           remarkPlugins={[remarkGfm, remarkMath]}
           rehypePlugins={[rehypeKatex]}
           components={{
@@ -1141,6 +1268,50 @@ function MessageContent({ content, onPublish, onEdit, toast }: { content: string
                 )
             },
             pre: ({children}) => <>{children}</>,
+            img: ({src, alt, ...props}) => (
+              <div
+                className="relative group cursor-grab active:cursor-grabbing my-3 inline-block"
+                draggable
+                onDragStart={(e) => {
+                  const imageData = JSON.stringify({
+                    url: src,
+                    filename: `immagine-generata-${Date.now()}.png`
+                  })
+                  e.dataTransfer.setData('text/plain', src || '')
+                  e.dataTransfer.setData('application/x-chatbot-image', imageData)
+                  e.dataTransfer.effectAllowed = 'copy'
+                }}
+              >
+                <img
+                  src={src}
+                  alt={alt || 'Immagine generata'}
+                  className="max-w-full h-auto rounded-lg shadow-md"
+                  {...props}
+                />
+                <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      if (src) {
+                        const link = document.createElement('a')
+                        link.href = src
+                        link.download = `immagine_${Date.now()}.png`
+                        document.body.appendChild(link)
+                        link.click()
+                        document.body.removeChild(link)
+                      }
+                    }}
+                    className="bg-white/90 hover:bg-white p-2 rounded-lg shadow-md"
+                    title="Scarica immagine"
+                  >
+                    <Download className="h-4 w-4 text-slate-700" />
+                  </button>
+                </div>
+                <div className="absolute bottom-2 left-2 bg-violet-600/90 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity">
+                  Trascina nella chat di classe
+                </div>
+              </div>
+            ),
           }}
         >
           {cleanContent}

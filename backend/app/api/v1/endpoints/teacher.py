@@ -1,20 +1,29 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query, BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
+from sqlalchemy import select, func, or_
 from sqlalchemy.orm import selectinload
 from typing import Annotated, Optional
 from datetime import datetime, timedelta
 from uuid import UUID
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr
 
 from app.core.database import get_db
 from app.core.security import generate_join_code
+from app.core.permissions import (
+    teacher_can_access_class,
+    teacher_can_access_session,
+    teacher_is_class_owner,
+    teacher_is_session_owner,
+    get_class_with_access_check,
+    get_session_with_access_check,
+)
 from app.api.deps import get_current_teacher
 from app.models.user import User
 from app.models.session import Class, Session, SessionModule, SessionStudent
+from app.models.invitation import ClassTeacher, ClassInvitation, SessionTeacher, SessionInvitation
 from app.models.llm import AuditEvent
 from app.models.chat import ChatRoom, ChatMessage
-from app.models.enums import SessionStatus, ChatRoomType, SenderType
+from app.models.enums import SessionStatus, ChatRoomType, SenderType, InvitationStatus, UserRole
 from app.models.task import Task, TaskSubmission, TaskStatus, TaskType
 from app.realtime.gateway import sio
 from app.schemas.session import (
@@ -23,6 +32,16 @@ from app.schemas.session import (
     SessionModulesRequest, SessionModuleResponse,
     SessionStudentResponse, SessionLiveSnapshot,
     TaskCreate,
+)
+from app.schemas.invitation import (
+    InviteTeacherRequest,
+    InvitationResponseRequest,
+    ClassInvitationResponse,
+    SessionInvitationResponse,
+    ClassTeacherResponse,
+    SessionTeacherResponse,
+    InvitationsListResponse,
+    TeacherBasicInfo,
 )
 
 router = APIRouter()
@@ -89,17 +108,71 @@ async def update_profile(
 DEFAULT_MODULES = ["chatbot", "classification", "self_assessment", "chat"]
 
 
-@router.get("/classes", response_model=list[ClassResponse])
+class ClassWithRoleResponse(BaseModel):
+    id: UUID
+    tenant_id: UUID
+    teacher_id: UUID
+    name: str
+    created_at: datetime
+    role: str  # 'owner' or 'invited'
+    owner_name: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
+@router.get("/classes")
 async def list_classes(
     db: Annotated[AsyncSession, Depends(get_db)],
     teacher: Annotated[User, Depends(get_current_teacher)],
 ):
+    """List all classes the teacher owns or has been invited to"""
+    # Get owned classes
     result = await db.execute(
         select(Class)
         .where(Class.teacher_id == teacher.id)
+        .where(Class.tenant_id == teacher.tenant_id)
         .order_by(Class.created_at.desc())
     )
-    return result.scalars().all()
+    owned_classes = result.scalars().all()
+
+    classes_response = []
+    for cls in owned_classes:
+        classes_response.append({
+            "id": cls.id,
+            "tenant_id": cls.tenant_id,
+            "teacher_id": cls.teacher_id,
+            "name": cls.name,
+            "created_at": cls.created_at,
+            "role": "owner",
+            "owner_name": None,
+        })
+
+    # Get shared classes (via ClassTeacher)
+    result = await db.execute(
+        select(Class, User)
+        .join(ClassTeacher, ClassTeacher.class_id == Class.id)
+        .join(User, Class.teacher_id == User.id)
+        .where(ClassTeacher.teacher_id == teacher.id)
+        .where(Class.tenant_id == teacher.tenant_id)
+        .order_by(Class.created_at.desc())
+    )
+    for cls, owner in result.all():
+        owner_name = f"{owner.first_name or ''} {owner.last_name or ''}".strip() or owner.email
+        classes_response.append({
+            "id": cls.id,
+            "tenant_id": cls.tenant_id,
+            "teacher_id": cls.teacher_id,
+            "name": cls.name,
+            "created_at": cls.created_at,
+            "role": "invited",
+            "owner_name": owner_name,
+        })
+
+    # Sort by created_at desc
+    classes_response.sort(key=lambda x: x["created_at"], reverse=True)
+
+    return classes_response
 
 
 @router.post("/classes", response_model=ClassResponse)
@@ -126,15 +199,11 @@ async def update_class(
     db: Annotated[AsyncSession, Depends(get_db)],
     teacher: Annotated[User, Depends(get_current_teacher)],
 ):
-    result = await db.execute(
-        select(Class)
-        .where(Class.id == class_id)
-        .where(Class.teacher_id == teacher.id)
-    )
-    class_ = result.scalar_one_or_none()
+    # Allow access if owner or invited
+    class_ = await get_class_with_access_check(db, teacher, class_id)
     if not class_:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Class not found")
-    
+
     class_.name = request.name
     await db.commit()
     await db.refresh(class_)
@@ -147,15 +216,11 @@ async def list_sessions(
     db: Annotated[AsyncSession, Depends(get_db)],
     teacher: Annotated[User, Depends(get_current_teacher)],
 ):
-    # Verify class ownership
-    result = await db.execute(
-        select(Class)
-        .where(Class.id == class_id)
-        .where(Class.teacher_id == teacher.id)
-    )
-    if not result.scalar_one_or_none():
+    # Verify class access (owner or invited)
+    class_ = await get_class_with_access_check(db, teacher, class_id)
+    if not class_:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Class not found")
-    
+
     result = await db.execute(
         select(Session)
         .where(Session.class_id == class_id)
@@ -171,13 +236,8 @@ async def create_session(
     db: Annotated[AsyncSession, Depends(get_db)],
     teacher: Annotated[User, Depends(get_current_teacher)],
 ):
-    # Verify class ownership
-    result = await db.execute(
-        select(Class)
-        .where(Class.id == class_id)
-        .where(Class.teacher_id == teacher.id)
-    )
-    class_ = result.scalar_one_or_none()
+    # Verify class access (owner or invited can create sessions)
+    class_ = await get_class_with_access_check(db, teacher, class_id)
     if not class_:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Class not found")
     
@@ -224,15 +284,11 @@ async def update_session(
     db: Annotated[AsyncSession, Depends(get_db)],
     teacher: Annotated[User, Depends(get_current_teacher)],
 ):
-    result = await db.execute(
-        select(Session)
-        .join(Class)
-        .where(Session.id == session_id)
-        .where(Class.teacher_id == teacher.id)
-    )
-    session = result.scalar_one_or_none()
-    if not session:
+    # Verify session access (via class or direct invite)
+    session_data = await get_session_with_access_check(db, teacher, session_id)
+    if not session_data:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
+    session, _ = session_data
     
     if request.title is not None:
         session.title = request.title
@@ -261,16 +317,11 @@ async def update_session_modules(
     db: Annotated[AsyncSession, Depends(get_db)],
     teacher: Annotated[User, Depends(get_current_teacher)],
 ):
-    # Verify session ownership
-    result = await db.execute(
-        select(Session)
-        .join(Class)
-        .where(Session.id == session_id)
-        .where(Class.teacher_id == teacher.id)
-    )
-    session = result.scalar_one_or_none()
-    if not session:
+    # Verify session access
+    session_data = await get_session_with_access_check(db, teacher, session_id)
+    if not session_data:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
+    session, _ = session_data
     
     updated_modules = []
     for module_update in request.modules:
@@ -310,18 +361,11 @@ async def get_session_live(
     db: Annotated[AsyncSession, Depends(get_db)],
     teacher: Annotated[User, Depends(get_current_teacher)],
 ):
-    # Verify session ownership and get class name
-    result = await db.execute(
-        select(Session, Class)
-        .join(Class)
-        .where(Session.id == session_id)
-        .where(Class.teacher_id == teacher.id)
-    )
-    row = result.first()
-    if not row:
+    # Verify session access and get class name
+    session_data = await get_session_with_access_check(db, teacher, session_id)
+    if not session_data:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
-    
-    session, class_ = row
+    session, class_ = session_data
     
     # Get all students for this session
     result = await db.execute(
@@ -377,14 +421,8 @@ async def toggle_module(
     is_enabled: bool = True,
 ):
     """Enable or disable a module for a session"""
-    # Verify session ownership
-    result = await db.execute(
-        select(Session)
-        .join(Class)
-        .where(Session.id == session_id)
-        .where(Class.teacher_id == teacher.id)
-    )
-    if not result.scalar_one_or_none():
+    # Verify session access
+    if not await teacher_can_access_session(db, teacher, session_id):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
     
     # Find or create module entry
@@ -417,14 +455,8 @@ async def freeze_student(
     teacher: Annotated[User, Depends(get_current_teacher)],
     reason: str = "Frozen by teacher",
 ):
-    # Verify session ownership
-    result = await db.execute(
-        select(Session)
-        .join(Class)
-        .where(Session.id == session_id)
-        .where(Class.teacher_id == teacher.id)
-    )
-    if not result.scalar_one_or_none():
+    # Verify session access
+    if not await teacher_can_access_session(db, teacher, session_id):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
     
     result = await db.execute(
@@ -461,14 +493,8 @@ async def unfreeze_student(
     db: Annotated[AsyncSession, Depends(get_db)],
     teacher: Annotated[User, Depends(get_current_teacher)],
 ):
-    # Verify session ownership
-    result = await db.execute(
-        select(Session)
-        .join(Class)
-        .where(Session.id == session_id)
-        .where(Class.teacher_id == teacher.id)
-    )
-    if not result.scalar_one_or_none():
+    # Verify session access
+    if not await teacher_can_access_session(db, teacher, session_id):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
     
     result = await db.execute(
@@ -499,13 +525,13 @@ async def delete_session(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Confirmation required. Set confirm=true to delete.",
         )
-    
-    # Verify session ownership
+
+    # Only owner can delete sessions
+    if not await teacher_is_session_owner(db, teacher, session_id):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only the class owner can delete sessions")
+
     result = await db.execute(
-        select(Session)
-        .join(Class)
-        .where(Session.id == session_id)
-        .where(Class.teacher_id == teacher.id)
+        select(Session).where(Session.id == session_id)
     )
     session = result.scalar_one_or_none()
     if not session:
@@ -542,14 +568,8 @@ async def export_session(
     db: Annotated[AsyncSession, Depends(get_db)],
     teacher: Annotated[User, Depends(get_current_teacher)],
 ):
-    # Verify session ownership
-    result = await db.execute(
-        select(Session)
-        .join(Class)
-        .where(Session.id == session_id)
-        .where(Class.teacher_id == teacher.id)
-    )
-    if not result.scalar_one_or_none():
+    # Verify session access
+    if not await teacher_can_access_session(db, teacher, session_id):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
     
     # TODO: Enqueue export job via Celery
@@ -566,14 +586,8 @@ async def get_session_audit(
     cursor: Optional[str] = None,
     limit: int = Query(50, le=100),
 ):
-    # Verify session ownership
-    result = await db.execute(
-        select(Session)
-        .join(Class)
-        .where(Session.id == session_id)
-        .where(Class.teacher_id == teacher.id)
-    )
-    if not result.scalar_one_or_none():
+    # Verify session access
+    if not await teacher_can_access_session(db, teacher, session_id):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
     
     query = (
@@ -617,14 +631,8 @@ async def list_tasks(
     teacher: Annotated[User, Depends(get_current_teacher)],
 ):
     """List all tasks for a session"""
-    # Verify session ownership
-    result = await db.execute(
-        select(Session)
-        .join(Class)
-        .where(Session.id == session_id)
-        .where(Class.teacher_id == teacher.id)
-    )
-    if not result.scalar_one_or_none():
+    # Verify session access
+    if not await teacher_can_access_session(db, teacher, session_id):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
     
     result = await db.execute(
@@ -658,16 +666,11 @@ async def create_task(
     teacher: Annotated[User, Depends(get_current_teacher)],
 ):
     """Create a new task for a session"""
-    # Verify session ownership
-    result = await db.execute(
-        select(Session)
-        .join(Class)
-        .where(Session.id == session_id)
-        .where(Class.teacher_id == teacher.id)
-    )
-    session = result.scalar_one_or_none()
-    if not session:
+    # Verify session access
+    session_data = await get_session_with_access_check(db, teacher, session_id)
+    if not session_data:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
+    session, _ = session_data
 
     # Determine if this should be auto-published (lessons and presentations)
     task_type = TaskType(request.task_type) if request.task_type in [t.value for t in TaskType] else TaskType.EXERCISE
@@ -786,16 +789,11 @@ async def update_task(
     points: str = None,
 ):
     """Update a task"""
-    # Verify session ownership
-    result = await db.execute(
-        select(Session)
-        .join(Class)
-        .where(Session.id == session_id)
-        .where(Class.teacher_id == teacher.id)
-    )
-    session = result.scalar_one_or_none()
-    if not session:
+    # Verify session access
+    session_data = await get_session_with_access_check(db, teacher, session_id)
+    if not session_data:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
+    session, _ = session_data
     
     result = await db.execute(
         select(Task)
@@ -894,14 +892,8 @@ async def delete_task(
     teacher: Annotated[User, Depends(get_current_teacher)],
 ):
     """Delete a task"""
-    # Verify session ownership
-    result = await db.execute(
-        select(Session)
-        .join(Class)
-        .where(Session.id == session_id)
-        .where(Class.teacher_id == teacher.id)
-    )
-    if not result.scalar_one_or_none():
+    # Verify session access
+    if not await teacher_can_access_session(db, teacher, session_id):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
     
     result = await db.execute(
@@ -927,14 +919,8 @@ async def get_task_submissions(
     teacher: Annotated[User, Depends(get_current_teacher)],
 ):
     """Get all submissions for a task"""
-    # Verify session ownership
-    result = await db.execute(
-        select(Session)
-        .join(Class)
-        .where(Session.id == session_id)
-        .where(Class.teacher_id == teacher.id)
-    )
-    if not result.scalar_one_or_none():
+    # Verify session access
+    if not await teacher_can_access_session(db, teacher, session_id):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
     
     result = await db.execute(
@@ -970,14 +956,8 @@ async def grade_submission(
     feedback: str = None,
 ):
     """Grade a task submission"""
-    # Verify session ownership
-    result = await db.execute(
-        select(Session)
-        .join(Class)
-        .where(Session.id == session_id)
-        .where(Class.teacher_id == teacher.id)
-    )
-    if not result.scalar_one_or_none():
+    # Verify session access
+    if not await teacher_can_access_session(db, teacher, session_id):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
     
     result = await db.execute(
@@ -993,7 +973,553 @@ async def grade_submission(
         submission.score = score
     if feedback is not None:
         submission.feedback = feedback
-    
+
     await db.commit()
-    
+
     return {"message": "Submission graded", "score": score, "feedback": feedback}
+
+
+# ==================== INVITATION ENDPOINTS ====================
+
+def _teacher_to_basic_info(user: User) -> TeacherBasicInfo:
+    """Convert User to TeacherBasicInfo"""
+    return TeacherBasicInfo(
+        id=user.id,
+        email=user.email,
+        first_name=user.first_name,
+        last_name=user.last_name,
+        avatar_url=user.avatar_url,
+    )
+
+
+@router.get("/invitations", response_model=InvitationsListResponse)
+async def get_invitations(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    teacher: Annotated[User, Depends(get_current_teacher)],
+):
+    """Get all pending invitations for the current teacher"""
+    # Get pending class invitations
+    result = await db.execute(
+        select(ClassInvitation, Class, User)
+        .join(Class, ClassInvitation.class_id == Class.id)
+        .join(User, ClassInvitation.inviter_id == User.id)
+        .where(ClassInvitation.invitee_id == teacher.id)
+        .where(ClassInvitation.status == InvitationStatus.PENDING)
+        .where(ClassInvitation.tenant_id == teacher.tenant_id)
+        .order_by(ClassInvitation.created_at.desc())
+    )
+    class_invitations_data = result.all()
+
+    class_invitations = [
+        ClassInvitationResponse(
+            id=inv.id,
+            class_id=cls.id,
+            class_name=cls.name,
+            inviter=_teacher_to_basic_info(inviter),
+            status=inv.status.value,
+            created_at=inv.created_at,
+            responded_at=inv.responded_at,
+        )
+        for inv, cls, inviter in class_invitations_data
+    ]
+
+    # Get pending session invitations
+    result = await db.execute(
+        select(SessionInvitation, Session, Class, User)
+        .join(Session, SessionInvitation.session_id == Session.id)
+        .join(Class, Session.class_id == Class.id)
+        .join(User, SessionInvitation.inviter_id == User.id)
+        .where(SessionInvitation.invitee_id == teacher.id)
+        .where(SessionInvitation.status == InvitationStatus.PENDING)
+        .where(SessionInvitation.tenant_id == teacher.tenant_id)
+        .order_by(SessionInvitation.created_at.desc())
+    )
+    session_invitations_data = result.all()
+
+    session_invitations = [
+        SessionInvitationResponse(
+            id=inv.id,
+            session_id=sess.id,
+            session_title=sess.title,
+            class_name=cls.name,
+            inviter=_teacher_to_basic_info(inviter),
+            status=inv.status.value,
+            created_at=inv.created_at,
+            responded_at=inv.responded_at,
+        )
+        for inv, sess, cls, inviter in session_invitations_data
+    ]
+
+    return InvitationsListResponse(
+        class_invitations=class_invitations,
+        session_invitations=session_invitations,
+        total_pending=len(class_invitations) + len(session_invitations),
+    )
+
+
+@router.post("/invitations/class/{invitation_id}/respond")
+async def respond_to_class_invitation(
+    invitation_id: UUID,
+    request: InvitationResponseRequest,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    teacher: Annotated[User, Depends(get_current_teacher)],
+):
+    """Accept or decline a class invitation"""
+    result = await db.execute(
+        select(ClassInvitation)
+        .where(ClassInvitation.id == invitation_id)
+        .where(ClassInvitation.invitee_id == teacher.id)
+        .where(ClassInvitation.tenant_id == teacher.tenant_id)
+    )
+    invitation = result.scalar_one_or_none()
+    if not invitation:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Invitation not found")
+
+    if invitation.status != InvitationStatus.PENDING:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invitation already responded to")
+
+    invitation.responded_at = datetime.utcnow()
+
+    if request.accept:
+        invitation.status = InvitationStatus.ACCEPTED
+        # Add teacher to class
+        class_teacher = ClassTeacher(
+            tenant_id=teacher.tenant_id,
+            class_id=invitation.class_id,
+            teacher_id=teacher.id,
+            added_by_id=invitation.inviter_id,
+        )
+        db.add(class_teacher)
+    else:
+        invitation.status = InvitationStatus.DECLINED
+
+    await db.commit()
+
+    return {
+        "message": "Invitation accepted" if request.accept else "Invitation declined",
+        "status": invitation.status.value,
+    }
+
+
+@router.post("/invitations/session/{invitation_id}/respond")
+async def respond_to_session_invitation(
+    invitation_id: UUID,
+    request: InvitationResponseRequest,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    teacher: Annotated[User, Depends(get_current_teacher)],
+):
+    """Accept or decline a session invitation"""
+    result = await db.execute(
+        select(SessionInvitation)
+        .where(SessionInvitation.id == invitation_id)
+        .where(SessionInvitation.invitee_id == teacher.id)
+        .where(SessionInvitation.tenant_id == teacher.tenant_id)
+    )
+    invitation = result.scalar_one_or_none()
+    if not invitation:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Invitation not found")
+
+    if invitation.status != InvitationStatus.PENDING:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invitation already responded to")
+
+    invitation.responded_at = datetime.utcnow()
+
+    if request.accept:
+        invitation.status = InvitationStatus.ACCEPTED
+        # Add teacher to session
+        session_teacher = SessionTeacher(
+            tenant_id=teacher.tenant_id,
+            session_id=invitation.session_id,
+            teacher_id=teacher.id,
+            added_by_id=invitation.inviter_id,
+        )
+        db.add(session_teacher)
+    else:
+        invitation.status = InvitationStatus.DECLINED
+
+    await db.commit()
+
+    return {
+        "message": "Invitation accepted" if request.accept else "Invitation declined",
+        "status": invitation.status.value,
+    }
+
+
+# ==================== CLASS TEACHERS MANAGEMENT ====================
+
+@router.get("/classes/{class_id}/teachers")
+async def get_class_teachers(
+    class_id: UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    teacher: Annotated[User, Depends(get_current_teacher)],
+):
+    """Get all teachers for a class (owner + invited)"""
+    # Verify access to class
+    class_ = await get_class_with_access_check(db, teacher, class_id)
+    if not class_:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Class not found")
+
+    # Get class owner
+    result = await db.execute(
+        select(User).where(User.id == class_.teacher_id)
+    )
+    owner = result.scalar_one()
+
+    teachers_list = [
+        {
+            "id": None,  # No ClassTeacher record for owner
+            "teacher": _teacher_to_basic_info(owner),
+            "added_at": class_.created_at,
+            "added_by": _teacher_to_basic_info(owner),
+            "is_owner": True,
+        }
+    ]
+
+    # Get invited teachers
+    result = await db.execute(
+        select(ClassTeacher, User)
+        .join(User, ClassTeacher.teacher_id == User.id)
+        .where(ClassTeacher.class_id == class_id)
+    )
+    for ct, invited_teacher in result.all():
+        # Get who added this teacher
+        result_added_by = await db.execute(
+            select(User).where(User.id == ct.added_by_id)
+        )
+        added_by = result_added_by.scalar_one()
+
+        teachers_list.append({
+            "id": str(ct.id),
+            "teacher": _teacher_to_basic_info(invited_teacher),
+            "added_at": ct.added_at,
+            "added_by": _teacher_to_basic_info(added_by),
+            "is_owner": False,
+        })
+
+    # Get pending invitations (for owner to see)
+    pending_invitations = []
+    if class_.teacher_id == teacher.id:
+        result = await db.execute(
+            select(ClassInvitation, User)
+            .join(User, ClassInvitation.invitee_id == User.id)
+            .where(ClassInvitation.class_id == class_id)
+            .where(ClassInvitation.status == InvitationStatus.PENDING)
+        )
+        for inv, invitee in result.all():
+            pending_invitations.append({
+                "id": str(inv.id),
+                "invitee": _teacher_to_basic_info(invitee),
+                "created_at": inv.created_at,
+            })
+
+    return {
+        "teachers": teachers_list,
+        "pending_invitations": pending_invitations,
+        "is_owner": class_.teacher_id == teacher.id,
+    }
+
+
+@router.post("/classes/{class_id}/teachers/invite")
+async def invite_teacher_to_class(
+    class_id: UUID,
+    request: InviteTeacherRequest,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    teacher: Annotated[User, Depends(get_current_teacher)],
+):
+    """Invite a teacher to a class"""
+    # Verify access to class (any teacher with access can invite)
+    class_ = await get_class_with_access_check(db, teacher, class_id)
+    if not class_:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Class not found")
+
+    # Find the teacher to invite by email
+    result = await db.execute(
+        select(User)
+        .where(User.email == request.email)
+        .where(User.tenant_id == teacher.tenant_id)
+        .where(User.role == UserRole.TEACHER)
+    )
+    invitee = result.scalar_one_or_none()
+    if not invitee:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Teacher not found in this tenant")
+
+    # Cannot invite self
+    if invitee.id == teacher.id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot invite yourself")
+
+    # Cannot invite the owner
+    if invitee.id == class_.teacher_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="User is already the class owner")
+
+    # Check if already a member
+    result = await db.execute(
+        select(ClassTeacher)
+        .where(ClassTeacher.class_id == class_id)
+        .where(ClassTeacher.teacher_id == invitee.id)
+    )
+    if result.scalar_one_or_none():
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Teacher is already a member")
+
+    # Check if there's a pending invitation
+    result = await db.execute(
+        select(ClassInvitation)
+        .where(ClassInvitation.class_id == class_id)
+        .where(ClassInvitation.invitee_id == invitee.id)
+        .where(ClassInvitation.status == InvitationStatus.PENDING)
+    )
+    if result.scalar_one_or_none():
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invitation already pending")
+
+    # Create invitation
+    invitation = ClassInvitation(
+        tenant_id=teacher.tenant_id,
+        class_id=class_id,
+        inviter_id=teacher.id,
+        invitee_id=invitee.id,
+    )
+    db.add(invitation)
+    await db.commit()
+
+    return {
+        "message": "Invitation sent",
+        "invitee": _teacher_to_basic_info(invitee),
+    }
+
+
+@router.delete("/classes/{class_id}/teachers/{teacher_id}")
+async def remove_teacher_from_class(
+    class_id: UUID,
+    teacher_id: UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    teacher: Annotated[User, Depends(get_current_teacher)],
+):
+    """Remove a teacher from a class (only owner can do this)"""
+    # Only owner can remove teachers
+    if not await teacher_is_class_owner(db, teacher, class_id):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only the class owner can remove teachers")
+
+    # Cannot remove the owner
+    result = await db.execute(
+        select(Class).where(Class.id == class_id)
+    )
+    class_ = result.scalar_one()
+    if class_.teacher_id == teacher_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot remove the class owner")
+
+    # Find and remove the teacher
+    result = await db.execute(
+        select(ClassTeacher)
+        .where(ClassTeacher.class_id == class_id)
+        .where(ClassTeacher.teacher_id == teacher_id)
+    )
+    class_teacher = result.scalar_one_or_none()
+    if not class_teacher:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Teacher not found in class")
+
+    await db.delete(class_teacher)
+    await db.commit()
+
+    return {"message": "Teacher removed from class"}
+
+
+# ==================== SESSION TEACHERS MANAGEMENT ====================
+
+@router.get("/sessions/{session_id}/teachers")
+async def get_session_teachers(
+    session_id: UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    teacher: Annotated[User, Depends(get_current_teacher)],
+):
+    """Get all teachers for a session"""
+    # Verify access to session
+    session_data = await get_session_with_access_check(db, teacher, session_id)
+    if not session_data:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
+
+    session, class_ = session_data
+
+    # Get class owner (also session owner)
+    result = await db.execute(
+        select(User).where(User.id == class_.teacher_id)
+    )
+    owner = result.scalar_one()
+
+    teachers_list = [
+        {
+            "id": None,
+            "teacher": _teacher_to_basic_info(owner),
+            "added_at": session.created_at,
+            "added_by": _teacher_to_basic_info(owner),
+            "is_owner": True,
+            "via_class": True,
+        }
+    ]
+
+    # Get class teachers (they have access to all sessions in the class)
+    result = await db.execute(
+        select(ClassTeacher, User)
+        .join(User, ClassTeacher.teacher_id == User.id)
+        .where(ClassTeacher.class_id == class_.id)
+    )
+    for ct, class_teacher_user in result.all():
+        result_added_by = await db.execute(
+            select(User).where(User.id == ct.added_by_id)
+        )
+        added_by = result_added_by.scalar_one()
+
+        teachers_list.append({
+            "id": str(ct.id),
+            "teacher": _teacher_to_basic_info(class_teacher_user),
+            "added_at": ct.added_at,
+            "added_by": _teacher_to_basic_info(added_by),
+            "is_owner": False,
+            "via_class": True,
+        })
+
+    # Get direct session teachers
+    result = await db.execute(
+        select(SessionTeacher, User)
+        .join(User, SessionTeacher.teacher_id == User.id)
+        .where(SessionTeacher.session_id == session_id)
+    )
+    for st, session_teacher_user in result.all():
+        result_added_by = await db.execute(
+            select(User).where(User.id == st.added_by_id)
+        )
+        added_by = result_added_by.scalar_one()
+
+        teachers_list.append({
+            "id": str(st.id),
+            "teacher": _teacher_to_basic_info(session_teacher_user),
+            "added_at": st.added_at,
+            "added_by": _teacher_to_basic_info(added_by),
+            "is_owner": False,
+            "via_class": False,
+        })
+
+    # Get pending invitations
+    pending_invitations = []
+    if class_.teacher_id == teacher.id or await teacher_can_access_class(db, teacher, class_.id):
+        result = await db.execute(
+            select(SessionInvitation, User)
+            .join(User, SessionInvitation.invitee_id == User.id)
+            .where(SessionInvitation.session_id == session_id)
+            .where(SessionInvitation.status == InvitationStatus.PENDING)
+        )
+        for inv, invitee in result.all():
+            pending_invitations.append({
+                "id": str(inv.id),
+                "invitee": _teacher_to_basic_info(invitee),
+                "created_at": inv.created_at,
+            })
+
+    return {
+        "teachers": teachers_list,
+        "pending_invitations": pending_invitations,
+        "is_owner": class_.teacher_id == teacher.id,
+    }
+
+
+@router.post("/sessions/{session_id}/teachers/invite")
+async def invite_teacher_to_session(
+    session_id: UUID,
+    request: InviteTeacherRequest,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    teacher: Annotated[User, Depends(get_current_teacher)],
+):
+    """Invite a teacher to a specific session"""
+    # Verify access to session
+    session_data = await get_session_with_access_check(db, teacher, session_id)
+    if not session_data:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
+
+    session, class_ = session_data
+
+    # Find the teacher to invite by email
+    result = await db.execute(
+        select(User)
+        .where(User.email == request.email)
+        .where(User.tenant_id == teacher.tenant_id)
+        .where(User.role == UserRole.TEACHER)
+    )
+    invitee = result.scalar_one_or_none()
+    if not invitee:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Teacher not found in this tenant")
+
+    # Cannot invite self
+    if invitee.id == teacher.id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot invite yourself")
+
+    # Check if already has access via class
+    if invitee.id == class_.teacher_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="User is already the class owner")
+
+    result = await db.execute(
+        select(ClassTeacher)
+        .where(ClassTeacher.class_id == class_.id)
+        .where(ClassTeacher.teacher_id == invitee.id)
+    )
+    if result.scalar_one_or_none():
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Teacher already has access via class membership")
+
+    # Check if already a direct session member
+    result = await db.execute(
+        select(SessionTeacher)
+        .where(SessionTeacher.session_id == session_id)
+        .where(SessionTeacher.teacher_id == invitee.id)
+    )
+    if result.scalar_one_or_none():
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Teacher is already a member")
+
+    # Check if there's a pending invitation
+    result = await db.execute(
+        select(SessionInvitation)
+        .where(SessionInvitation.session_id == session_id)
+        .where(SessionInvitation.invitee_id == invitee.id)
+        .where(SessionInvitation.status == InvitationStatus.PENDING)
+    )
+    if result.scalar_one_or_none():
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invitation already pending")
+
+    # Create invitation
+    invitation = SessionInvitation(
+        tenant_id=teacher.tenant_id,
+        session_id=session_id,
+        inviter_id=teacher.id,
+        invitee_id=invitee.id,
+    )
+    db.add(invitation)
+    await db.commit()
+
+    return {
+        "message": "Invitation sent",
+        "invitee": _teacher_to_basic_info(invitee),
+    }
+
+
+@router.delete("/sessions/{session_id}/teachers/{teacher_id}")
+async def remove_teacher_from_session(
+    session_id: UUID,
+    teacher_id: UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    teacher: Annotated[User, Depends(get_current_teacher)],
+):
+    """Remove a teacher from a session (only owner can do this)"""
+    # Only class owner can remove teachers
+    if not await teacher_is_session_owner(db, teacher, session_id):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only the class owner can remove teachers")
+
+    # Find and remove the teacher from session (direct membership only)
+    result = await db.execute(
+        select(SessionTeacher)
+        .where(SessionTeacher.session_id == session_id)
+        .where(SessionTeacher.teacher_id == teacher_id)
+    )
+    session_teacher = result.scalar_one_or_none()
+    if not session_teacher:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Teacher not found in session (may have access via class)")
+
+    await db.delete(session_teacher)
+    await db.commit()
+
+    return {"message": "Teacher removed from session"}

@@ -6,13 +6,16 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent } from '@/components/ui/card'
 import { useToast } from '@/components/ui/use-toast'
-import { 
-  Plus, Users, Play, Edit2, Check, X, Loader2, 
+import { TeachersManagementModal } from '@/components/TeachersManagementModal'
+import {
+  Plus, Users, Play, Edit2, Check, X, Loader2,
   Pause, Square, Clock,
   MonitorPlay,
   ArrowRight,
   School,
-  Trash2
+  Trash2,
+  Share2,
+  UserPlus
 } from 'lucide-react'
 
 
@@ -21,6 +24,8 @@ interface ClassData {
   name: string
   created_at: string
   session_count?: number
+  role?: 'owner' | 'invited'
+  owner_name?: string
 }
 
 interface SessionData {
@@ -153,6 +158,9 @@ function ClassContainer({ classData }: { classData: ClassData }) {
   const [isEditing, setIsEditing] = useState(false)
   const [editName, setEditName] = useState(classData.name)
   const [isCreatingSession, setIsCreatingSession] = useState(false)
+  const [showTeachersModal, setShowTeachersModal] = useState(false)
+
+  const isShared = classData.role === 'invited'
 
   // Fetch active sessions for this class
   const { data: sessionsResponse } = useQuery({
@@ -224,15 +232,16 @@ function ClassContainer({ classData }: { classData: ClassData }) {
   }
 
   return (
-    <Card className="overflow-hidden border-slate-200 shadow-sm hover:shadow-md transition-shadow duration-300 bg-white group">
+    <>
+    <Card className={`overflow-hidden shadow-sm hover:shadow-md transition-shadow duration-300 bg-white group ${isShared ? 'border-2 border-cyan-200' : 'border-slate-200'}`}>
       {/* Class Header Section */}
-      <div className="bg-slate-50/50 border-b border-slate-100 p-4 md:p-5 flex flex-wrap items-center justify-between gap-4">
+      <div className={`border-b border-slate-100 p-4 md:p-5 flex flex-wrap items-center justify-between gap-4 ${isShared ? 'bg-gradient-to-r from-cyan-50/50 to-sky-50/50' : 'bg-slate-50/50'}`}>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-3">
-            <div className="p-2 bg-white rounded-lg border border-slate-200 shadow-sm">
-              <School className="h-6 w-6 text-violet-600" />
+            <div className={`p-2 rounded-lg border shadow-sm ${isShared ? 'bg-cyan-50 border-cyan-200' : 'bg-white border-slate-200'}`}>
+              <School className={`h-6 w-6 ${isShared ? 'text-cyan-600' : 'text-violet-600'}`} />
             </div>
-            
+
             {isEditing ? (
               <div className="flex gap-2 items-center">
                 <Input
@@ -253,9 +262,15 @@ function ClassContainer({ classData }: { classData: ClassData }) {
                 <h2 className="text-xl md:text-2xl font-bold text-slate-800 truncate cursor-default">
                   {classData.name}
                 </h2>
-                <Button 
-                  variant="ghost" 
-                  size="sm" 
+                {isShared && (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-cyan-100 text-cyan-700 text-xs font-medium rounded-full">
+                    <Share2 className="h-3 w-3" />
+                    Condivisa
+                  </span>
+                )}
+                <Button
+                  variant="ghost"
+                  size="sm"
                   onClick={() => setIsEditing(true)}
                   className="opacity-0 group-hover/title:opacity-100 transition-opacity h-8 w-8 p-0 text-slate-400 hover:text-slate-600"
                 >
@@ -264,26 +279,46 @@ function ClassContainer({ classData }: { classData: ClassData }) {
               </div>
             )}
           </div>
-          <p className="text-slate-500 text-sm mt-1 ml-14">
-            Creata il {new Date(classData.created_at).toLocaleDateString('it-IT')} • {sessions.length} sessioni totali
-          </p>
+          <div className="flex items-center gap-2 text-slate-500 text-sm mt-1 ml-14">
+            <span>Creata il {new Date(classData.created_at).toLocaleDateString('it-IT')}</span>
+            <span>-</span>
+            <span>{sessions.length} sessioni totali</span>
+            {isShared && classData.owner_name && (
+              <>
+                <span>-</span>
+                <span className="text-cyan-600">di {classData.owner_name}</span>
+              </>
+            )}
+          </div>
         </div>
 
-        <Button 
-          onClick={() => {
-            setIsCreatingSession(true)
-            createSessionMutation.mutate()
-          }}
-          disabled={isCreatingSession}
-          className="bg-white hover:bg-violet-50 text-violet-700 border border-violet-200 shadow-sm"
-        >
-          {isCreatingSession ? (
-            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-          ) : (
-            <Play className="h-4 w-4 mr-2 fill-current" />
-          )}
-          Nuova Sessione
-        </Button>
+        <div className="flex items-center gap-2">
+          {/* Manage Teachers Button */}
+          <Button
+            variant="outline"
+            onClick={() => setShowTeachersModal(true)}
+            className="border-slate-200 text-slate-600 hover:bg-slate-50"
+          >
+            <UserPlus className="h-4 w-4 mr-2" />
+            Docenti
+          </Button>
+
+          <Button
+            onClick={() => {
+              setIsCreatingSession(true)
+              createSessionMutation.mutate()
+            }}
+            disabled={isCreatingSession}
+            className="bg-white hover:bg-violet-50 text-violet-700 border border-violet-200 shadow-sm"
+          >
+            {isCreatingSession ? (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            ) : (
+              <Play className="h-4 w-4 mr-2 fill-current" />
+            )}
+            Nuova Sessione
+          </Button>
+        </div>
       </div>
 
       {/* Active Sessions List */}
@@ -418,5 +453,16 @@ function ClassContainer({ classData }: { classData: ClassData }) {
         )}
       </CardContent>
     </Card>
+
+    {/* Teachers Management Modal */}
+    {showTeachersModal && (
+      <TeachersManagementModal
+        type="class"
+        targetId={classData.id}
+        targetName={classData.name}
+        onClose={() => setShowTeachersModal(false)}
+      />
+    )}
+    </>
   )
 }

@@ -3,6 +3,7 @@ import { Link, useNavigate, useLocation } from 'react-router-dom'
 import { User, Settings, LogOut, ChevronDown, Users, MessageSquare, FileText, Check, Brain } from 'lucide-react'
 import { Button } from './ui/button'
 import { teacherApi } from '@/lib/api'
+import { InvitationsPanel } from './InvitationsPanel'
 
 interface TeacherProfile {
   firstName: string
@@ -185,6 +186,9 @@ export function TeacherNavbar({ currentSession, onSessionChange }: TeacherNavbar
             </div>
 
             <div className="flex items-center gap-3">
+              {/* Invitations Panel */}
+              <InvitationsPanel />
+
               {/* Session Selector */}
               <div className="relative" ref={sessionsMenuRef}>
                 <button
