@@ -53,7 +53,7 @@ export function TeacherNavbar({ currentSession, onSessionChange }: TeacherNavbar
   useEffect(() => {
     if (socketNotifications.length > 0) {
       const latestNotification = socketNotifications[socketNotifications.length - 1]
-      const notificationData = latestNotification.data as {
+      const notificationData = latestNotification.notification_data as {
         type?: string
         session_id?: string
         session_name?: string
@@ -83,7 +83,7 @@ export function TeacherNavbar({ currentSession, onSessionChange }: TeacherNavbar
           class_name: notificationData.class_name,
           student_id: notificationData.student_id || '',
           nickname: notificationData.nickname || 'Studente',
-          message: notificationData.message || latestNotification.message,
+          message: notificationData.message || latestNotification.text,
           preview: notificationData.preview,
           task_title: notificationData.task_title,
           quiz_answers: notificationData.quiz_answers,
@@ -135,7 +135,7 @@ export function TeacherNavbar({ currentSession, onSessionChange }: TeacherNavbar
 
   const loadActiveSessions = async () => {
     try {
-      const res = await teacherApi.getSessions({ status: 'ACTIVE' })
+      const res = await teacherApi.getSessions('')
       const sessionsData = res.data.map((session: {
         id: string
         name: string
