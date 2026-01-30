@@ -163,7 +163,7 @@ export function TeacherNavbar({ currentSession, onSessionChange }: TeacherNavbar
 
           // Filter for ACTIVE sessions only (note: backend uses lowercase "active")
           const activeSessions = sessions
-            .filter((session: { status: string }) => {
+            .filter((session: { status: string; title: string }) => {
               console.log(`[TeacherNavbar] Session "${session.title}" status:`, session.status)
               return session.status === 'active'  // Fixed: was 'ACTIVE', should be 'active'
             })
