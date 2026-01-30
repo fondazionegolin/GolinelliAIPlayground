@@ -11,12 +11,12 @@ import {
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 
 // File Viewer Modal Component
-function FileViewerModal({ 
-  file, 
-  onClose 
-}: { 
-  file: { url: string; filename: string; type?: string } | null; 
-  onClose: () => void 
+function FileViewerModal({
+  file,
+  onClose
+}: {
+  file: { url: string; filename: string; type?: string } | null;
+  onClose: () => void
 }) {
   if (!file) return null
 
@@ -38,9 +38,9 @@ function FileViewerModal({
   // Load CSV or text content
   useEffect(() => {
     if (!file) return
-    
+
     const ext = file.filename.split('.').pop()?.toLowerCase() || ''
-    
+
     if (ext === 'csv') {
       fetch(file.url)
         .then(res => res.text())
@@ -61,16 +61,16 @@ function FileViewerModal({
     switch (fileType) {
       case 'image':
         return (
-          <img 
-            src={file.url} 
-            alt={file.filename} 
+          <img
+            src={file.url}
+            alt={file.filename}
             className="max-w-full max-h-[80vh] object-contain rounded-lg shadow-lg"
           />
         )
       case 'pdf':
         return (
-          <iframe 
-            src={file.url} 
+          <iframe
+            src={file.url}
             className="w-full h-[80vh] rounded-lg border-0"
             title={file.filename}
           />
@@ -114,8 +114,8 @@ function FileViewerModal({
             <FileSpreadsheet className="h-24 w-24 text-green-500 mb-4" />
             <p className="text-lg font-medium text-slate-700 mb-2">{file.filename}</p>
             <p className="text-sm text-slate-500 mb-6">Anteprima Excel non disponibile. Scarica il file per visualizzarlo.</p>
-            <a 
-              href={file.url} 
+            <a
+              href={file.url}
               download={file.filename}
               className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
             >
@@ -130,8 +130,8 @@ function FileViewerModal({
             <FileText className="h-24 w-24 text-blue-500 mb-4" />
             <p className="text-lg font-medium text-slate-700 mb-2">{file.filename}</p>
             <p className="text-sm text-slate-500 mb-6">Anteprima Word non disponibile. Scarica il file per visualizzarlo.</p>
-            <a 
-              href={file.url} 
+            <a
+              href={file.url}
               download={file.filename}
               className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
             >
@@ -146,8 +146,8 @@ function FileViewerModal({
             <FileText className="h-24 w-24 text-orange-500 mb-4" />
             <p className="text-lg font-medium text-slate-700 mb-2">{file.filename}</p>
             <p className="text-sm text-slate-500 mb-6">Anteprima PowerPoint non disponibile. Scarica il file per visualizzarlo.</p>
-            <a 
-              href={file.url} 
+            <a
+              href={file.url}
               download={file.filename}
               className="flex items-center gap-2 px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors"
             >
@@ -170,8 +170,8 @@ function FileViewerModal({
             <File className="h-24 w-24 text-slate-400 mb-4" />
             <p className="text-lg font-medium text-slate-700 mb-2">{file.filename}</p>
             <p className="text-sm text-slate-500 mb-6">Anteprima non disponibile per questo tipo di file</p>
-            <a 
-              href={file.url} 
+            <a
+              href={file.url}
               download={file.filename}
               className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
             >
@@ -195,11 +195,11 @@ function FileViewerModal({
   }
 
   return (
-    <div 
+    <div
       className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-[100] p-4"
       onClick={onClose}
     >
-      <div 
+      <div
         className="bg-white rounded-xl shadow-2xl max-w-5xl w-full max-h-[95vh] overflow-hidden flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
@@ -210,24 +210,24 @@ function FileViewerModal({
             <span className="font-medium text-slate-700 truncate max-w-md">{file.filename}</span>
           </div>
           <div className="flex items-center gap-2">
-            <a 
-              href={file.url} 
-              target="_blank" 
+            <a
+              href={file.url}
+              target="_blank"
               rel="noopener noreferrer"
               className="p-2 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
               title="Apri in nuova scheda"
             >
               <ExternalLink className="h-4 w-4" />
             </a>
-            <a 
-              href={file.url} 
+            <a
+              href={file.url}
               download={file.filename}
               className="p-2 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
               title="Scarica"
             >
               <Download className="h-4 w-4" />
             </a>
-            <button 
+            <button
               onClick={onClose}
               className="p-2 text-slate-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
             >
@@ -235,7 +235,7 @@ function FileViewerModal({
             </button>
           </div>
         </div>
-        
+
         {/* Content */}
         <div className="flex-1 overflow-auto p-4 flex items-center justify-center bg-slate-100">
           {renderContent()}
@@ -314,7 +314,7 @@ export default function ChatSidebar({
           const res = await chatApi.getSessionMessages(sessionId)
           const messageData = res.data?.messages || res.data
           if (messageData && Array.isArray(messageData)) {
-             setMessages(messageData)
+            setMessages(messageData)
           }
         } catch (e) {
           console.error("Failed to load messages", e)
@@ -364,14 +364,14 @@ export default function ChatSidebar({
 
         const studentToken = localStorage.getItem('student_token')
         const accessToken = localStorage.getItem('access_token') || localStorage.getItem('token')
-        
+
         const headers: Record<string, string> = {}
         if (studentToken) {
           headers['student-token'] = studentToken
         } else if (accessToken) {
           headers['Authorization'] = `Bearer ${accessToken}`
         }
-        
+
         const res = await fetch(`/api/v1/chat/upload?session_id=${sessionId}`, {
           method: 'POST',
           headers,
@@ -644,15 +644,15 @@ export default function ChatSidebar({
               ? 'bg-indigo-600 text-white rounded-2xl rounded-tr-none'
               : 'bg-white text-slate-700 border border-slate-100 rounded-2xl rounded-tl-none'}
           `}>
-             {isMe ? linkify(content) : (
-               // For received messages, basic linkify with darker link color
-               content.split(/(https?:\/\/[^\s]+)/g).map((part: string, i: number) => {
-                 if (part.match(/(https?:\/\/[^\s]+)/g)) {
-                   return <a key={i} href={part} target="_blank" rel="noopener noreferrer" className="text-indigo-600 hover:text-indigo-800 underline break-all">{part}</a>
-                 }
-                 return part
-               })
-             )}
+            {isMe ? linkify(content) : (
+              // For received messages, basic linkify with darker link color
+              content.split(/(https?:\/\/[^\s]+)/g).map((part: string, i: number) => {
+                if (part.match(/(https?:\/\/[^\s]+)/g)) {
+                  return <a key={i} href={part} target="_blank" rel="noopener noreferrer" className="text-indigo-600 hover:text-indigo-800 underline break-all">{part}</a>
+                }
+                return part
+              })
+            )}
             {imageAttachments.length > 0 && (
               <div className="mt-2 space-y-2">
                 {imageAttachments.map((att: any, idx: number) => (
@@ -672,11 +672,10 @@ export default function ChatSidebar({
                   <button
                     key={idx}
                     onClick={() => setViewingFile({ url: att.url, filename: att.filename || 'file', type: att.type })}
-                    className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition-colors w-full text-left ${
-                      isMe 
-                        ? 'bg-indigo-500/30 hover:bg-indigo-500/50 text-white' 
+                    className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition-colors w-full text-left ${isMe
+                        ? 'bg-indigo-500/30 hover:bg-indigo-500/50 text-white'
                         : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
-                    }`}
+                      }`}
                   >
                     <Paperclip className="h-3.5 w-3.5 flex-shrink-0" />
                     <span className="truncate">{att.filename || 'Allegato'}</span>
@@ -686,7 +685,7 @@ export default function ChatSidebar({
             )}
           </div>
           <span className="text-[9px] text-slate-300 mt-1 font-medium">
-            {new Date(msg.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+            {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
           </span>
         </div>
       </div>
@@ -782,11 +781,10 @@ export default function ChatSidebar({
                 setActivePrivateChat(chat.oderId)
                 markPrivateChatRead(chat.oderId)
               }}
-              className={`relative w-12 h-12 rounded-xl flex items-center justify-center transition-all ${
-                activePrivateChat === chat.oderId
+              className={`relative w-12 h-12 rounded-xl flex items-center justify-center transition-all ${activePrivateChat === chat.oderId
                   ? 'bg-indigo-600 shadow-md'
                   : 'bg-white hover:bg-indigo-50 border border-slate-200'
-              }`}
+                }`}
               title={chat.peerName}
             >
               <Avatar className="h-8 w-8">
@@ -797,11 +795,10 @@ export default function ChatSidebar({
                     className="w-full h-full object-cover rounded-full"
                   />
                 ) : (
-                  <AvatarFallback className={`text-xs font-bold ${
-                    activePrivateChat === chat.oderId
+                  <AvatarFallback className={`text-xs font-bold ${activePrivateChat === chat.oderId
                       ? 'bg-indigo-500 text-white'
                       : 'bg-slate-200 text-slate-600'
-                  }`}>
+                    }`}>
                     {chat.peerName.substring(0, 2).toUpperCase()}
                   </AvatarFallback>
                 )}
@@ -877,11 +874,10 @@ export default function ChatSidebar({
     >
       {/* Resize handle - trasparente, blu solo su hover */}
       <div
-        className={`absolute left-0 top-0 bottom-0 w-2 cursor-ew-resize z-[100] transition-all ${
-          isResizing
+        className={`absolute left-0 top-0 bottom-0 w-2 cursor-ew-resize z-10 transition-all ${isResizing
             ? 'bg-indigo-500 w-3'
             : 'bg-slate-200/50 hover:bg-indigo-500 hover:w-3'
-        }`}
+          }`}
         onMouseDown={handleMouseDown}
         title="Trascina per ridimensionare"
       />
@@ -905,14 +901,14 @@ export default function ChatSidebar({
             </Button>
           )}
           {onToggle && !isPinned && (
-             <Button
-               variant="ghost"
-               size="icon"
-               className="h-6 w-6 text-slate-400"
-               onClick={() => onToggle(false)}
-             >
-               <X className="h-3 w-3" />
-             </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-6 w-6 text-slate-400"
+              onClick={() => onToggle(false)}
+            >
+              <X className="h-3 w-3" />
+            </Button>
           )}
         </div>
       </div>
@@ -921,22 +917,20 @@ export default function ChatSidebar({
       <div className="flex border-b border-slate-100 bg-white">
         <button
           onClick={() => setActiveTab('session')}
-          className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 text-[10px] font-bold uppercase tracking-wider transition-all ${
-            activeTab === 'session'
+          className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 text-[10px] font-bold uppercase tracking-wider transition-all ${activeTab === 'session'
               ? 'text-indigo-600 border-b-2 border-indigo-600 bg-indigo-50/50'
               : 'text-slate-400 hover:text-slate-600 hover:bg-slate-50'
-          }`}
+            }`}
         >
           <MessageSquare className="h-3.5 w-3.5" />
           Sessione
         </button>
         <button
           onClick={() => setActiveTab('users')}
-          className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 text-[10px] font-bold uppercase tracking-wider transition-all relative ${
-            activeTab === 'users'
+          className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 text-[10px] font-bold uppercase tracking-wider transition-all relative ${activeTab === 'users'
               ? 'text-indigo-600 border-b-2 border-indigo-600 bg-indigo-50/50'
               : 'text-slate-400 hover:text-slate-600 hover:bg-slate-50'
-          }`}
+            }`}
         >
           <Users className="h-3.5 w-3.5" />
           Utenti
@@ -948,11 +942,10 @@ export default function ChatSidebar({
         </button>
         <button
           onClick={() => setActiveTab('private')}
-          className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 text-[10px] font-bold uppercase tracking-wider transition-all relative ${
-            activeTab === 'private'
+          className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 text-[10px] font-bold uppercase tracking-wider transition-all relative ${activeTab === 'private'
               ? 'text-indigo-600 border-b-2 border-indigo-600 bg-indigo-50/50'
               : 'text-slate-400 hover:text-slate-600 hover:bg-slate-50'
-          }`}
+            }`}
         >
           <MessagesSquare className="h-3.5 w-3.5" />
           Private
@@ -1029,7 +1022,7 @@ export default function ChatSidebar({
             <Input
               value={inputText}
               onChange={(e) => setInputText(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }}}
+              onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
               placeholder={activeTab === 'private' ? "Messaggio privato..." : "Scrivi un messaggio..."}
               className="border-none bg-transparent focus-visible:ring-0 rounded-full h-10 text-sm px-2 flex-1"
             />

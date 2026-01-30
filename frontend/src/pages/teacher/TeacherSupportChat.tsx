@@ -108,14 +108,14 @@ export default function TeacherSupportChat() {
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   // Publish Modal State
-  const [publishModal, setPublishModal] = useState<{ isOpen: boolean, type: 'quiz' | 'dataset', data: any }>({ 
+  const [publishModal, setPublishModal] = useState<{ isOpen: boolean, type: 'quiz' | 'dataset', data: any }>({
     isOpen: false,
     type: 'quiz',
     data: null
   })
 
   // Editor Modal State (for editing quiz before publishing)
-  const [editorModal, setEditorModal] = useState<{ isOpen: boolean, type: 'quiz' | 'dataset', data: any }>({ 
+  const [editorModal, setEditorModal] = useState<{ isOpen: boolean, type: 'quiz' | 'dataset', data: any }>({
     isOpen: false,
     type: 'quiz',
     data: null
@@ -217,7 +217,7 @@ export default function TeacherSupportChat() {
 
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault()
-    
+
     // Handle image from chatbot
     const imageData = e.dataTransfer.getData('application/x-chatbot-image')
     if (imageData) {
@@ -225,7 +225,7 @@ export default function TeacherSupportChat() {
       fetch(data.url)
         .then(res => res.blob())
         .then(blob => {
-          const fileObj = Object.assign(blob, { 
+          const fileObj = Object.assign(blob, {
             name: data.filename || `immagine_${Date.now()}.png`,
             lastModified: Date.now()
           }) as File
@@ -233,7 +233,7 @@ export default function TeacherSupportChat() {
         })
       return
     }
-    
+
     // Handle CSV from chatbot dataset generator
     const csvData = e.dataTransfer.getData('application/x-chatbot-csv')
     if (csvData) {
@@ -256,14 +256,14 @@ export default function TeacherSupportChat() {
 
     const filesInfo = attachedFiles.length > 0 ? ` [Allegati: ${attachedFiles.map(f => f.file.name).join(', ')}]` : ''
     let messageContent = inputText.trim() || 'Analizza questi documenti'
-    
+
     // Handle specific agent modes
     if (inputText.trim() && agentMode !== 'default' && agentMode !== 'image') {
       const prefixes = {
-        web_search: '🌐 RICERCA WEB:',
-        report: '📈 GENERA REPORT:',
-        dataset: '📊 GENERA DATASET:',
-        quiz: '❓ GENERA QUIZ:',
+        web_search: 'RICERCA WEB:',
+        report: 'GENERA REPORT:',
+        dataset: 'GENERA DATASET:',
+        quiz: 'GENERA QUIZ:',
       }
       // Only append prefix if not already present
       // @ts-ignore
@@ -359,7 +359,7 @@ REGOLE IMPORTANTI:
               c.id === currentConversationId ? { ...c, messages: [...c.messages, userMessage, assistantMessage] } : c
             ))
           } else {
-             const newConv: Conversation = {
+            const newConv: Conversation = {
               id: `conv-${Date.now()}`,
               title: `Immagine: ${messageContent.substring(0, 30)}`,
               messages: [userMessage, assistantMessage],
@@ -468,7 +468,7 @@ REGOLE IMPORTANTI:
           } else {
             const newConv: Conversation = {
               id: `conv-${Date.now()}`,
-              title: `${agentMode === 'quiz' ? '❓' : '🌐'} ${userMessage.content.substring(0, 35)}`,
+              title: userMessage.content.substring(0, 45),
               messages: [userMessage, assistantMessage],
               createdAt: new Date()
             }
@@ -538,10 +538,10 @@ REGOLE IMPORTANTI:
       setImageGenerationProgress(null)
       toast({ title: "Errore", description: "Impossibile completare la richiesta.", variant: "destructive" })
       const errorMsg: Message = {
-         id: `err-${Date.now()}`,
-         role: 'assistant',
-         content: "Si è verificato un errore durante la generazione. Riprova.",
-         timestamp: new Date()
+        id: `err-${Date.now()}`,
+        role: 'assistant',
+        content: "Si è verificato un errore durante la generazione. Riprova.",
+        timestamp: new Date()
       }
       setMessages(prev => [...prev, errorMsg])
     } finally {
@@ -558,7 +558,7 @@ REGOLE IMPORTANTI:
 
   const handlePublish = async (sessionId: string) => {
     if (!publishModal.data) return
-    
+
     try {
       let contentJson = ""
       let taskType = ""
@@ -597,9 +597,9 @@ REGOLE IMPORTANTI:
 
       // Send notification to class chat
       const notificationMessage = publishModal.type === 'quiz'
-        ? `📝 **Nuovo Quiz Pubblicato!**\n\n🎯 **${title}**\n📊 ${numQuestions} domande\n\n👉 Vai alla sezione **Compiti** per completarlo!`
-        : `📊 **Nuovo Compito Pubblicato!**\n\n🎯 **${title}**\n\n👉 Vai alla sezione **Compiti** per completarlo!`
-      
+        ? `**Nuovo Quiz Pubblicato!**\n\n**${title}**\n${numQuestions} domande\n\nVai alla sezione **Compiti** per completarlo!`
+        : `**Nuovo Compito Pubblicato!**\n\n**${title}**\n\nVai alla sezione **Compiti** per completarlo!`
+
       try {
         await teacherApi.sendClassMessage(sessionId, notificationMessage)
       } catch (chatErr) {
@@ -627,403 +627,395 @@ REGOLE IMPORTANTI:
 
             {/* SIDEBAR - History */}
             <aside className={`${isSidebarCollapsed ? 'w-12' : 'w-64'} bg-slate-50 border-r border-slate-200 flex flex-col hidden md:flex transition-all duration-300 flex-shrink-0 rounded-l-2xl`}>
-          <div className={`p-4 border-b border-slate-100 flex items-center ${isSidebarCollapsed ? 'justify-center' : 'justify-between'}`}>
-            {!isSidebarCollapsed && <h2 className="text-sm font-semibold text-slate-800 tracking-tight">Cronologia</h2>}
-            <div className="flex gap-1">
-              {!isSidebarCollapsed && (
-                <Button variant="ghost" size="sm" onClick={handleNewChat} className="h-8 w-8 p-0 hover:bg-slate-100" title="Nuova chat">
-                  <Plus className="h-4 w-4 text-slate-600" />
-                </Button>
-              )}
-              <Button 
-                variant="ghost" 
-                size="sm" 
-                onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)} 
-                className="h-8 w-8 p-0 hover:bg-slate-100"
-                title={isSidebarCollapsed ? "Espandi cronologia" : "Comprimi cronologia"}
-              >
-                {isSidebarCollapsed ? <ChevronRight className="h-4 w-4 text-slate-600" /> : <ChevronDown className="h-4 w-4 text-slate-400 rotate-90" />}
-              </Button>
-            </div>
-          </div>
-          
-          <div className="flex-1 overflow-y-auto p-3 space-y-1">
-            {!isSidebarCollapsed ? (
-              conversations.map(conv => (
-                <button
-                  key={conv.id}
-                  onClick={() => { setMessages(conv.messages); setCurrentConversationId(conv.id); }}
-                  className={`w-full text-left p-3 rounded-lg text-sm transition-all group ${ 
-                    currentConversationId === conv.id 
-                      ? 'bg-cyan-50 text-cyan-700 font-medium' 
-                      : 'text-slate-600 hover:bg-slate-50'
-                  }`}
-                >
-                  <div className="truncate">{conv.title}</div>
-                  <div className="flex items-center justify-between mt-1">
-                    <span className="text-xs text-slate-400">{conv.createdAt.toLocaleDateString()}</span>
-                    <button
-                      className="text-slate-300 opacity-0 group-hover:opacity-100 hover:text-red-500 transition-opacity p-1"
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        if (confirm('Eliminare questa conversazione?')) {
-                          setConversations(prev => prev.filter(c => c.id !== conv.id))
-                          if (currentConversationId === conv.id) handleNewChat()
-                        }
-                      }}
-                    >
-                      <Trash2 className="h-3 w-3" />
-                    </button>
-                  </div>
-                </button>
-              ))
-            ) : (
-              <div className="flex flex-col gap-2 items-center">
-                <Button variant="ghost" size="icon" onClick={handleNewChat} title="Nuova chat" className="p-0">
-                  <Plus className="h-5 w-5 text-cyan-600" />
-                </Button>
-                {conversations.map(conv => (
-                  <div 
-                    key={conv.id} 
-                    className={`w-2 h-2 rounded-full cursor-pointer ${currentConversationId === conv.id ? 'bg-cyan-500' : 'bg-slate-300'}`}
-                    title={conv.title}
-                    onClick={() => { setMessages(conv.messages); setCurrentConversationId(conv.id); }}
-                  />
-                ))}
-              </div>
-            )}
-          </div>
-        </aside>
-
-        {/* MAIN CHAT AREA */}
-        <main className="flex-1 flex flex-col relative bg-slate-50/50">
-          
-          <header className="h-14 border-b border-slate-200 bg-white/80 backdrop-blur-sm px-6 flex items-center justify-between sticky top-0 z-10">
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-lg bg-cyan-600 flex items-center justify-center shadow-md">
-                <Bot className="h-5 w-5 text-white" />
-              </div>
-              <div>
-                <h1 className="text-sm font-bold text-slate-800">Supporto Docente AI</h1>
-                <p className="text-xs text-slate-500">
-                  {(agentMode === 'quiz' || agentMode === 'dataset' || agentMode === 'web_search') 
-                    ? 'Claude Haiku' 
-                    : AVAILABLE_MODELS.find(m => m.id === selectedModel)?.name}
-                </p>
-              </div>
-            </div>
-            
-            {(agentMode === 'quiz' || agentMode === 'dataset' || agentMode === 'web_search') ? (
-              <div className="text-xs bg-purple-100 text-purple-700 rounded-md px-3 py-1.5 font-medium">
-                🤖 Claude Haiku (fisso)
-              </div>
-            ) : (
-              <select 
-                className="text-xs bg-slate-100 border-none rounded-md px-2 py-1 text-slate-600 focus:ring-0"
-                value={selectedModel}
-                onChange={(e) => setSelectedModel(e.target.value)}
-              >
-                {AVAILABLE_MODELS.map(m => (
-                  <option key={m.id} value={m.id}>{m.name}</option>
-                ))}
-              </select>
-            )}
-          </header>
-
-          <div className="flex-1 overflow-y-auto px-6 py-8 space-y-8">
-            {messages.length === 0 ? (
-              <div className="h-full flex flex-col items-center justify-center opacity-50">
-                <Bot className="h-12 w-12 text-slate-300 mb-4" />
-                <p className="text-slate-400 font-medium">Inizia una nuova conversazione o trascina dei file qui</p>
-              </div>
-            ) : (
-              messages.map((msg) => (
-                <div key={msg.id} className={`flex gap-4 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                  {msg.role === 'assistant' && (
-                    <div className="w-8 h-8 rounded-full bg-white border border-slate-200 flex items-center justify-center flex-shrink-0">
-                      <Bot className="h-4 w-4 text-cyan-600" />
-                    </div>
+              <div className={`p-4 border-b border-slate-100 flex items-center ${isSidebarCollapsed ? 'justify-center' : 'justify-between'}`}>
+                {!isSidebarCollapsed && <h2 className="text-sm font-semibold text-slate-800 tracking-tight">Cronologia</h2>}
+                <div className="flex gap-1">
+                  {!isSidebarCollapsed && (
+                    <Button variant="ghost" size="sm" onClick={handleNewChat} className="h-8 w-8 p-0 hover:bg-slate-100" title="Nuova chat">
+                      <Plus className="h-4 w-4 text-slate-600" />
+                    </Button>
                   )}
-                  <div className={`max-w-[75%] space-y-1 ${msg.role === 'user' ? 'items-end flex flex-col' : 'items-start'}`}>
-                    <div className={`px-5 py-3.5 text-sm leading-relaxed shadow-sm ${ 
-                      msg.role === 'user' ? 'bg-cyan-500 text-cyan-950 rounded-2xl rounded-tr-sm' : 'bg-white text-slate-800 border border-slate-200 rounded-2xl rounded-tl-sm'
-                    }`}> 
-                      {msg.role === 'assistant' ? (
-                        <MessageContent 
-                          content={msg.content} 
-                          onPublish={(type, data) => setPublishModal({ isOpen: true, type, data })}
-                          onEdit={(type, data) => setEditorModal({ isOpen: true, type, data })}
-                          toast={toast}
-                        />
-                      ) : (
-                        <ReactMarkdown className="prose prose-sm max-w-none prose-cyan">
-                          {convertEmoticons(msg.content)}
-                        </ReactMarkdown>
-                      )}
-                    </div>
-                    <span className="text-[10px] text-slate-400 px-1">{msg.timestamp.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
-                  </div>
-                </div>
-              ))
-            )}
-            {isLoading && !webSearchProgress && !imageGenerationProgress && (
-              <div className="flex gap-4 justify-start">
-                <div className="w-8 h-8 rounded-full bg-white border border-slate-200 flex items-center justify-center">
-                  <Bot className="h-4 w-4 text-cyan-600" />
-                </div>
-                <div className="bg-white border border-slate-200 px-4 py-3 rounded-2xl rounded-tl-sm shadow-sm">
-                  <Loader2 className="h-4 w-4 animate-spin text-cyan-600" />
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+                    className="h-8 w-8 p-0 hover:bg-slate-100"
+                    title={isSidebarCollapsed ? "Espandi cronologia" : "Comprimi cronologia"}
+                  >
+                    {isSidebarCollapsed ? <ChevronRight className="h-4 w-4 text-slate-600" /> : <ChevronDown className="h-4 w-4 text-slate-400 rotate-90" />}
+                  </Button>
                 </div>
               </div>
-            )}
 
-            {/* Image Generation Progress Panel */}
-            {imageGenerationProgress && (
-              <div className="flex gap-4 justify-start">
-                <div className="w-8 h-8 rounded-full bg-violet-100 border border-violet-200 flex items-center justify-center flex-shrink-0">
-                  <ImageIcon className="h-4 w-4 text-violet-600" />
+              <div className="flex-1 overflow-y-auto p-3 space-y-1">
+                {!isSidebarCollapsed ? (
+                  conversations.map(conv => (
+                    <button
+                      key={conv.id}
+                      onClick={() => { setMessages(conv.messages); setCurrentConversationId(conv.id); }}
+                      className={`w-full text-left p-3 rounded-lg text-sm transition-all group ${currentConversationId === conv.id
+                          ? 'bg-cyan-50 text-cyan-700 font-medium'
+                          : 'text-slate-600 hover:bg-slate-50'
+                        }`}
+                    >
+                      <div className="truncate">{conv.title}</div>
+                      <div className="flex items-center justify-between mt-1">
+                        <span className="text-xs text-slate-400">{conv.createdAt.toLocaleDateString()}</span>
+                        <button
+                          className="text-slate-300 opacity-0 group-hover:opacity-100 hover:text-red-500 transition-opacity p-1"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            if (confirm('Eliminare questa conversazione?')) {
+                              setConversations(prev => prev.filter(c => c.id !== conv.id))
+                              if (currentConversationId === conv.id) handleNewChat()
+                            }
+                          }}
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </button>
+                      </div>
+                    </button>
+                  ))
+                ) : (
+                  <div className="flex flex-col gap-2 items-center">
+                    <Button variant="ghost" size="icon" onClick={handleNewChat} title="Nuova chat" className="p-0">
+                      <Plus className="h-5 w-5 text-cyan-600" />
+                    </Button>
+                    {conversations.map(conv => (
+                      <div
+                        key={conv.id}
+                        className={`w-2 h-2 rounded-full cursor-pointer ${currentConversationId === conv.id ? 'bg-cyan-500' : 'bg-slate-300'}`}
+                        title={conv.title}
+                        onClick={() => { setMessages(conv.messages); setCurrentConversationId(conv.id); }}
+                      />
+                    ))}
+                  </div>
+                )}
+              </div>
+            </aside>
+
+            {/* MAIN CHAT AREA */}
+            <main className="flex-1 flex flex-col relative bg-slate-50/50">
+
+              <header className="h-14 border-b border-slate-200 bg-white/80 backdrop-blur-sm px-6 flex items-center justify-between sticky top-0 z-10">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-cyan-600 flex items-center justify-center shadow-md">
+                    <Bot className="h-5 w-5 text-white" />
+                  </div>
+                  <div>
+                    <h1 className="text-sm font-bold text-slate-800">Supporto Docente AI</h1>
+                    <p className="text-xs text-slate-500">
+                      {(agentMode === 'quiz' || agentMode === 'dataset' || agentMode === 'web_search')
+                        ? 'Claude Haiku'
+                        : AVAILABLE_MODELS.find(m => m.id === selectedModel)?.name}
+                    </p>
+                  </div>
                 </div>
-                <div className="flex-1 max-w-[75%] bg-gradient-to-br from-violet-50 to-purple-50 border border-violet-200 px-5 py-4 rounded-2xl rounded-tl-sm shadow-sm">
-                  <div className="flex items-center gap-2 mb-3">
-                    <Loader2 className="h-4 w-4 animate-spin text-violet-600" />
-                    <span className="font-medium text-violet-800 text-sm">{imageGenerationProgress.status}</span>
-                  </div>
 
-                  {/* Progress Steps */}
-                  <div className="space-y-2 mb-3">
-                    {/* Step 1: Connessione */}
-                    <div className={`flex items-center gap-2 text-xs ${
-                      imageGenerationProgress.step === 'connecting'
-                        ? 'text-violet-700 font-medium'
-                        : 'text-green-600'
-                    }`}>
-                      {imageGenerationProgress.step === 'connecting' ? (
-                        <Loader2 className="h-3 w-3 animate-spin" />
-                      ) : (
-                        <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                        </svg>
-                      )}
-                      <span>Connessione al server {imageGenerationProgress.provider}</span>
-                    </div>
-                    {/* Step 2: Ottimizzazione */}
-                    <div className={`flex items-center gap-2 text-xs ${
-                      imageGenerationProgress.step === 'enhancing'
-                        ? 'text-violet-700 font-medium'
-                        : imageGenerationProgress.step === 'generating' || imageGenerationProgress.step === 'done'
-                          ? 'text-green-600'
-                          : 'text-slate-400'
-                    }`}>
-                      {imageGenerationProgress.step === 'enhancing' ? (
-                        <Loader2 className="h-3 w-3 animate-spin" />
-                      ) : imageGenerationProgress.step === 'generating' || imageGenerationProgress.step === 'done' ? (
-                        <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                        </svg>
-                      ) : (
-                        <div className="h-3 w-3 rounded-full border border-slate-300" />
-                      )}
-                      <span>Ottimizzazione prompt</span>
-                    </div>
-                    {/* Step 3: Generazione */}
-                    <div className={`flex items-center gap-2 text-xs ${
-                      imageGenerationProgress.step === 'generating'
-                        ? 'text-violet-700 font-medium'
-                        : imageGenerationProgress.step === 'done'
-                          ? 'text-green-600'
-                          : 'text-slate-400'
-                    }`}>
-                      {imageGenerationProgress.step === 'generating' ? (
-                        <Loader2 className="h-3 w-3 animate-spin" />
-                      ) : imageGenerationProgress.step === 'done' ? (
-                        <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                        </svg>
-                      ) : (
-                        <div className="h-3 w-3 rounded-full border border-slate-300" />
-                      )}
-                      <span>Generazione immagine</span>
-                    </div>
+                {(agentMode === 'quiz' || agentMode === 'dataset' || agentMode === 'web_search') ? (
+                  <div className="text-xs bg-purple-100 text-purple-700 rounded-md px-3 py-1.5 font-medium">
+                    Claude Haiku (fisso)
                   </div>
+                ) : (
+                  <select
+                    className="text-xs bg-slate-100 border-none rounded-md px-2 py-1 text-slate-600 focus:ring-0"
+                    value={selectedModel}
+                    onChange={(e) => setSelectedModel(e.target.value)}
+                  >
+                    {AVAILABLE_MODELS.map(m => (
+                      <option key={m.id} value={m.id}>{m.name}</option>
+                    ))}
+                  </select>
+                )}
+              </header>
 
-                  {/* Enhanced Prompt Preview */}
-                  {imageGenerationProgress.enhancedPrompt && (
-                    <div className="mt-3 border-t border-violet-200 pt-3">
-                      <div className="text-xs font-medium text-violet-700 mb-1">Prompt ottimizzato:</div>
-                      <div className="text-xs text-violet-600 bg-violet-100 px-2 py-1.5 rounded italic">
-                        "{imageGenerationProgress.enhancedPrompt.substring(0, 150)}{imageGenerationProgress.enhancedPrompt.length > 150 ? '...' : ''}"
+              <div className="flex-1 overflow-y-auto px-6 py-8 space-y-8">
+                {messages.length === 0 ? (
+                  <div className="h-full flex flex-col items-center justify-center opacity-50">
+                    <Bot className="h-12 w-12 text-slate-300 mb-4" />
+                    <p className="text-slate-400 font-medium">Inizia una nuova conversazione o trascina dei file qui</p>
+                  </div>
+                ) : (
+                  messages.map((msg) => (
+                    <div key={msg.id} className={`flex gap-4 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                      {msg.role === 'assistant' && (
+                        <div className="w-8 h-8 rounded-full bg-white border border-slate-200 flex items-center justify-center flex-shrink-0">
+                          <Bot className="h-4 w-4 text-cyan-600" />
+                        </div>
+                      )}
+                      <div className={`max-w-[75%] space-y-1 ${msg.role === 'user' ? 'items-end flex flex-col' : 'items-start'}`}>
+                        <div className={`px-5 py-3.5 text-sm leading-relaxed shadow-sm ${msg.role === 'user' ? 'bg-cyan-500 text-cyan-950 rounded-2xl rounded-tr-sm' : 'bg-white text-slate-800 border border-slate-200 rounded-2xl rounded-tl-sm'
+                          }`}>
+                          {msg.role === 'assistant' ? (
+                            <MessageContent
+                              content={msg.content}
+                              onPublish={(type, data) => setPublishModal({ isOpen: true, type, data })}
+                              onEdit={(type, data) => setEditorModal({ isOpen: true, type, data })}
+                              toast={toast}
+                            />
+                          ) : (
+                            <ReactMarkdown className="prose prose-sm max-w-none prose-cyan">
+                              {convertEmoticons(msg.content)}
+                            </ReactMarkdown>
+                          )}
+                        </div>
+                        <span className="text-[10px] text-slate-400 px-1">{msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                       </div>
                     </div>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {/* Web Search/Quiz Progress Panel */}
-            {webSearchProgress && (
-              <div className="flex gap-4 justify-start">
-                <div className="w-8 h-8 rounded-full bg-blue-100 border border-blue-200 flex items-center justify-center flex-shrink-0">
-                  <svg className="h-4 w-4 text-blue-600 animate-pulse" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                  </svg>
-                </div>
-                <div className="flex-1 max-w-[75%] bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-200 px-5 py-4 rounded-2xl rounded-tl-sm shadow-sm">
-                  <div className="flex items-center gap-2 mb-3">
-                    <Loader2 className="h-4 w-4 animate-spin text-blue-600" />
-                    <span className="font-medium text-blue-800 text-sm">{webSearchProgress.status}</span>
-                  </div>
-
-                  {webSearchProgress.intent && (
-                    <div className="text-xs text-blue-600 mb-3 bg-blue-100 px-2 py-1 rounded inline-block">
-                      Modalità: {webSearchProgress.intent} (confidenza: {Math.round((webSearchProgress.confidence || 0) * 100)}%)
+                  ))
+                )}
+                {isLoading && !webSearchProgress && !imageGenerationProgress && (
+                  <div className="flex gap-4 justify-start">
+                    <div className="w-8 h-8 rounded-full bg-white border border-slate-200 flex items-center justify-center">
+                      <Bot className="h-4 w-4 text-cyan-600" />
                     </div>
-                  )}
+                    <div className="bg-white border border-slate-200 px-4 py-3 rounded-2xl rounded-tl-sm shadow-sm">
+                      <Loader2 className="h-4 w-4 animate-spin text-cyan-600" />
+                    </div>
+                  </div>
+                )}
 
-                  {webSearchProgress.sources.length > 0 && (
-                    <div className="space-y-2 mt-3 border-t border-blue-200 pt-3">
-                      <div className="text-xs font-medium text-blue-700 mb-2">📰 Fonti in fase di lettura:</div>
-                      {webSearchProgress.sources.map((source) => (
-                        <div key={source.index} className="flex items-start gap-2 text-xs">
-                          {source.status === 'fetching' && (
-                            <Loader2 className="h-3 w-3 animate-spin text-blue-500 mt-0.5 flex-shrink-0" />
-                          )}
-                          {source.status === 'done' && (
-                            <svg className="h-3 w-3 text-green-500 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                {/* Image Generation Progress Panel */}
+                {imageGenerationProgress && (
+                  <div className="flex gap-4 justify-start">
+                    <div className="w-8 h-8 rounded-full bg-violet-100 border border-violet-200 flex items-center justify-center flex-shrink-0">
+                      <ImageIcon className="h-4 w-4 text-violet-600" />
+                    </div>
+                    <div className="flex-1 max-w-[75%] bg-gradient-to-br from-violet-50 to-purple-50 border border-violet-200 px-5 py-4 rounded-2xl rounded-tl-sm shadow-sm">
+                      <div className="flex items-center gap-2 mb-3">
+                        <Loader2 className="h-4 w-4 animate-spin text-violet-600" />
+                        <span className="font-medium text-violet-800 text-sm">{imageGenerationProgress.status}</span>
+                      </div>
+
+                      {/* Progress Steps */}
+                      <div className="space-y-2 mb-3">
+                        {/* Step 1: Connessione */}
+                        <div className={`flex items-center gap-2 text-xs ${imageGenerationProgress.step === 'connecting'
+                            ? 'text-violet-700 font-medium'
+                            : 'text-green-600'
+                          }`}>
+                          {imageGenerationProgress.step === 'connecting' ? (
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                          ) : (
+                            <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                             </svg>
                           )}
-                          {source.status === 'error' && (
-                            <svg className="h-3 w-3 text-red-500 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                          <span>Connessione al server {imageGenerationProgress.provider}</span>
+                        </div>
+                        {/* Step 2: Ottimizzazione */}
+                        <div className={`flex items-center gap-2 text-xs ${imageGenerationProgress.step === 'enhancing'
+                            ? 'text-violet-700 font-medium'
+                            : imageGenerationProgress.step === 'generating' || imageGenerationProgress.step === 'done'
+                              ? 'text-green-600'
+                              : 'text-slate-400'
+                          }`}>
+                          {imageGenerationProgress.step === 'enhancing' ? (
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                          ) : imageGenerationProgress.step === 'generating' || imageGenerationProgress.step === 'done' ? (
+                            <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                             </svg>
+                          ) : (
+                            <div className="h-3 w-3 rounded-full border border-slate-300" />
                           )}
-                          <div className="flex-1 min-w-0">
-                            <div className="font-medium text-slate-700 truncate">{source.title}</div>
-                            <a href={source.url} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline truncate block">
-                              {source.url.substring(0, 50)}...
-                            </a>
-                            {source.status === 'done' && source.content_length && (
-                              <span className="text-green-600">✓ {source.content_length} caratteri estratti</span>
-                            )}
-                            {source.status === 'error' && source.error && (
-                              <span className="text-red-500">✗ {source.error}</span>
-                            )}
+                          <span>Ottimizzazione prompt</span>
+                        </div>
+                        {/* Step 3: Generazione */}
+                        <div className={`flex items-center gap-2 text-xs ${imageGenerationProgress.step === 'generating'
+                            ? 'text-violet-700 font-medium'
+                            : imageGenerationProgress.step === 'done'
+                              ? 'text-green-600'
+                              : 'text-slate-400'
+                          }`}>
+                          {imageGenerationProgress.step === 'generating' ? (
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                          ) : imageGenerationProgress.step === 'done' ? (
+                            <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                            </svg>
+                          ) : (
+                            <div className="h-3 w-3 rounded-full border border-slate-300" />
+                          )}
+                          <span>Generazione immagine</span>
+                        </div>
+                      </div>
+
+                      {/* Enhanced Prompt Preview */}
+                      {imageGenerationProgress.enhancedPrompt && (
+                        <div className="mt-3 border-t border-violet-200 pt-3">
+                          <div className="text-xs font-medium text-violet-700 mb-1">Prompt ottimizzato:</div>
+                          <div className="text-xs text-violet-600 bg-violet-100 px-2 py-1.5 rounded italic">
+                            "{imageGenerationProgress.enhancedPrompt.substring(0, 150)}{imageGenerationProgress.enhancedPrompt.length > 150 ? '...' : ''}"
                           </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Web Search/Quiz Progress Panel */}
+                {webSearchProgress && (
+                  <div className="flex gap-4 justify-start">
+                    <div className="w-8 h-8 rounded-full bg-blue-100 border border-blue-200 flex items-center justify-center flex-shrink-0">
+                      <svg className="h-4 w-4 text-blue-600 animate-pulse" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                      </svg>
+                    </div>
+                    <div className="flex-1 max-w-[75%] bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-200 px-5 py-4 rounded-2xl rounded-tl-sm shadow-sm">
+                      <div className="flex items-center gap-2 mb-3">
+                        <Loader2 className="h-4 w-4 animate-spin text-blue-600" />
+                        <span className="font-medium text-blue-800 text-sm">{webSearchProgress.status}</span>
+                      </div>
+
+                      {webSearchProgress.intent && (
+                        <div className="text-xs text-blue-600 mb-3 bg-blue-100 px-2 py-1 rounded inline-block">
+                          Modalità: {webSearchProgress.intent} (confidenza: {Math.round((webSearchProgress.confidence || 0) * 100)}%)
+                        </div>
+                      )}
+
+                      {webSearchProgress.sources.length > 0 && (
+                        <div className="space-y-2 mt-3 border-t border-blue-200 pt-3">
+                          <div className="text-xs font-medium text-blue-700 mb-2">📰 Fonti in fase di lettura:</div>
+                          {webSearchProgress.sources.map((source) => (
+                            <div key={source.index} className="flex items-start gap-2 text-xs">
+                              {source.status === 'fetching' && (
+                                <Loader2 className="h-3 w-3 animate-spin text-blue-500 mt-0.5 flex-shrink-0" />
+                              )}
+                              {source.status === 'done' && (
+                                <svg className="h-3 w-3 text-green-500 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                </svg>
+                              )}
+                              {source.status === 'error' && (
+                                <svg className="h-3 w-3 text-red-500 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                </svg>
+                              )}
+                              <div className="flex-1 min-w-0">
+                                <div className="font-medium text-slate-700 truncate">{source.title}</div>
+                                <a href={source.url} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline truncate block">
+                                  {source.url.substring(0, 50)}...
+                                </a>
+                                {source.status === 'done' && source.content_length && (
+                                  <span className="text-green-600">✓ {source.content_length} caratteri estratti</span>
+                                )}
+                                {source.status === 'error' && source.error && (
+                                  <span className="text-red-500">✗ {source.error}</span>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+                <div ref={messagesEndRef} />
+              </div>
+
+              <div className="p-4 bg-white border-t border-slate-200">
+                <div className="max-w-4xl mx-auto">
+
+                  <div className="flex gap-2 mb-3">
+                    {AGENT_MODES.map(m => (
+                      <button
+                        key={m.id}
+                        onClick={() => setAgentMode(m.id)}
+                        className={`text-xs px-3 py-1.5 rounded-full font-medium transition-colors ${agentMode === m.id ? 'bg-cyan-100 text-cyan-700' : 'text-slate-500 hover:bg-slate-100'
+                          }`}
+                      >
+                        {m.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  {attachedFiles.length > 0 && (
+                    <div className="flex flex-wrap gap-2 mb-2">
+                      {attachedFiles.map((f, i) => (
+                        <div key={i} className="bg-slate-100 px-3 py-1.5 rounded-lg text-xs flex items-center gap-2 text-slate-600 border border-slate-200">
+                          {f.type === 'image' ? <ImageIcon className="h-3 w-3" /> : <File className="h-3 w-3" />}
+                          <span className="max-w-[150px] truncate">{f.file.name}</span>
+                          <button onClick={() => removeFile(i)} className="text-slate-400 hover:text-red-500">
+                            <X className="h-3 w-3" />
+                          </button>
                         </div>
                       ))}
                     </div>
                   )}
-                </div>
-              </div>
-            )}
-            <div ref={messagesEndRef} />
-          </div>
 
-          <div className="p-4 bg-white border-t border-slate-200">
-            <div className="max-w-4xl mx-auto">
-              
-              <div className="flex gap-2 mb-3">
-                {AGENT_MODES.map(m => (
-                  <button
-                    key={m.id}
-                    onClick={() => setAgentMode(m.id)}
-                    className={`text-xs px-3 py-1.5 rounded-full font-medium transition-colors ${ 
-                      agentMode === m.id ? 'bg-cyan-100 text-cyan-700' : 'text-slate-500 hover:bg-slate-100'
-                    }`}
-                  >
-                    {m.label}
-                  </button>
-                ))}
-              </div>
+                  <div className="relative flex items-end gap-2 bg-slate-50 border border-slate-200 rounded-xl p-2 focus-within:ring-2 focus-within:ring-cyan-500/20 transition-all shadow-inner">
+                    <input type="file" ref={fileInputRef} className="hidden" multiple onChange={handleFileSelect} />
 
-              {attachedFiles.length > 0 && (
-                <div className="flex flex-wrap gap-2 mb-2">
-                  {attachedFiles.map((f, i) => (
-                    <div key={i} className="bg-slate-100 px-3 py-1.5 rounded-lg text-xs flex items-center gap-2 text-slate-600 border border-slate-200">
-                      {f.type === 'image' ? <ImageIcon className="h-3 w-3" /> : <File className="h-3 w-3" />}
-                      <span className="max-w-[150px] truncate">{f.file.name}</span>
-                      <button onClick={() => removeFile(i)} className="text-slate-400 hover:text-red-500">
-                        <X className="h-3 w-3" />
-                      </button>
+                    <Button
+                      variant="ghost" size="icon" className="h-10 w-10 text-slate-400 hover:text-cyan-600"
+                      onClick={() => fileInputRef.current?.click()}
+                    >
+                      <Paperclip className="h-5 w-5" />
+                    </Button>
+
+                    <textarea
+                      value={inputText}
+                      onChange={(e) => setInputText(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
+                      placeholder="Scrivi o trascina file qui..."
+                      className="flex-1 bg-transparent border-none focus:ring-0 resize-none py-2.5 text-sm text-slate-700"
+                      rows={1}
+                    />
+
+                    <Button
+                      onClick={handleSend}
+                      disabled={(!inputText.trim() && attachedFiles.length === 0) || isLoading}
+                      className="h-10 w-10 bg-cyan-600 hover:bg-cyan-700 text-white rounded-lg"
+                      size="icon"
+                    >
+                      <Send className="h-4 w-4" />
+                    </Button>
+                  </div>
+
+                  {/* Image generation controls */}
+                  <div className="flex items-center justify-center gap-4 mt-2 flex-wrap">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-slate-400">Generatore:</span>
+                      <div className="flex items-center bg-slate-100 rounded-lg p-0.5">
+                        <button
+                          onClick={() => setImageProvider('flux-schnell')}
+                          className={`px-2 py-1 text-xs rounded-md transition-all ${imageProvider === 'flux-schnell'
+                              ? 'bg-white shadow text-cyan-600 font-medium'
+                              : 'text-slate-500 hover:text-slate-700'
+                            }`}
+                        >
+                          ⚡ Flux
+                        </button>
+                        <button
+                          onClick={() => setImageProvider('dall-e')}
+                          className={`px-2 py-1 text-xs rounded-md transition-all ${imageProvider === 'dall-e'
+                              ? 'bg-white shadow text-cyan-600 font-medium'
+                              : 'text-slate-500 hover:text-slate-700'
+                            }`}
+                        >
+                          🎨 DALL-E
+                        </button>
+                      </div>
                     </div>
-                  ))}
-                </div>
-              )}
-
-              <div className="relative flex items-end gap-2 bg-slate-50 border border-slate-200 rounded-xl p-2 focus-within:ring-2 focus-within:ring-cyan-500/20 transition-all shadow-inner">
-                <input type="file" ref={fileInputRef} className="hidden" multiple onChange={handleFileSelect} />
-                
-                <Button 
-                  variant="ghost" size="icon" className="h-10 w-10 text-slate-400 hover:text-cyan-600"
-                  onClick={() => fileInputRef.current?.click()}
-                >
-                  <Paperclip className="h-5 w-5" />
-                </Button>
-
-                <textarea
-                  value={inputText}
-                  onChange={(e) => setInputText(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
-                  placeholder="Scrivi o trascina file qui..."
-                  className="flex-1 bg-transparent border-none focus:ring-0 resize-none py-2.5 text-sm text-slate-700"
-                  rows={1}
-                />
-
-                <Button 
-                  onClick={handleSend}
-                  disabled={(!inputText.trim() && attachedFiles.length === 0) || isLoading}
-                  className="h-10 w-10 bg-cyan-600 hover:bg-cyan-700 text-white rounded-lg"
-                  size="icon"
-                >
-                  <Send className="h-4 w-4" />
-                </Button>
-              </div>
-
-              {/* Image generation controls */}
-              <div className="flex items-center justify-center gap-4 mt-2 flex-wrap">
-                <div className="flex items-center gap-2">
-                    <span className="text-xs text-slate-400">Generatore:</span>
-                    <div className="flex items-center bg-slate-100 rounded-lg p-0.5">
-                    <button
-                        onClick={() => setImageProvider('flux-schnell')}
-                        className={`px-2 py-1 text-xs rounded-md transition-all ${ 
-                        imageProvider === 'flux-schnell' 
-                            ? 'bg-white shadow text-cyan-600 font-medium' 
-                            : 'text-slate-500 hover:text-slate-700'
-                        }`}
-                    >
-                        ⚡ Flux
-                    </button>
-                    <button
-                        onClick={() => setImageProvider('dall-e')}
-                        className={`px-2 py-1 text-xs rounded-md transition-all ${ 
-                        imageProvider === 'dall-e' 
-                            ? 'bg-white shadow text-cyan-600 font-medium' 
-                            : 'text-slate-500 hover:text-slate-700'
-                        }`}
-                    >
-                        🎨 DALL-E
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-slate-400">Formato:</span>
+                      <select
+                        value={imageSize}
+                        onChange={(e) => setImageSize(e.target.value)}
+                        className="text-xs bg-slate-100 border-0 rounded-lg px-2 py-1 text-slate-600 focus:ring-1 focus:ring-cyan-300"
+                      >
+                        <option value="1024x1024">1:1 Quadrato</option>
+                        <option value="1024x768">4:3 Orizzontale</option>
+                        <option value="768x1024">3:4 Verticale</option>
+                        <option value="1280x720">16:9 Panorama</option>
+                        <option value="720x1280">9:16 Portrait</option>
+                      </select>
                     </div>
+                  </div>
                 </div>
-                <div className="flex items-center gap-2">
-                    <span className="text-xs text-slate-400">Formato:</span>
-                    <select
-                    value={imageSize}
-                    onChange={(e) => setImageSize(e.target.value)}
-                    className="text-xs bg-slate-100 border-0 rounded-lg px-2 py-1 text-slate-600 focus:ring-1 focus:ring-cyan-300"
-                    >
-                    <option value="1024x1024">1:1 Quadrato</option>
-                    <option value="1024x768">4:3 Orizzontale</option>
-                    <option value="768x1024">3:4 Verticale</option>
-                    <option value="1280x720">16:9 Panorama</option>
-                    <option value="720x1280">9:16 Portrait</option>
-                    </select>
-                </div>
-                </div>
-            </div>
-          </div>
-        </main>
+              </div>
+            </main>
           </div>
         </div>
       </div>
@@ -1034,11 +1026,11 @@ REGOLE IMPORTANTI:
           <div className="bg-white rounded-xl p-6 w-full max-w-md shadow-2xl animate-in zoom-in-95 duration-200">
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-lg font-bold text-slate-800">Pubblica come Compito</h3>
-              <Button variant="ghost" size="icon" onClick={() => setPublishModal({ ...publishModal, isOpen: false }) }>
+              <Button variant="ghost" size="icon" onClick={() => setPublishModal({ ...publishModal, isOpen: false })}>
                 <X className="h-5 w-5" />
               </Button>
             </div>
-            
+
             <p className="text-sm text-slate-600 mb-6">
               Scegli la sessione in cui pubblicare questo {publishModal.type === 'quiz' ? 'quiz' : 'dataset'} come attività per gli studenti.
             </p>
@@ -1113,7 +1105,7 @@ function convertEmoticons(text: string): string {
     ':ok:': '👌', ':wave:': '👋', ':clap:': '👏',
     ':100:': '💯', ':rocket:': '🚀', ':sparkles:': '✨',
   }
-  
+
   let result = text
   // Sort by length descending to match longer emoticons first
   const sortedEmoticons = Object.entries(emoticons).sort((a, b) => b[0].length - a[0].length)
@@ -1129,8 +1121,8 @@ function extractBase64Images(content: string): { cleanContent: string; images: s
   // Correct regex to match markdown images with data URI: ![...](data:image...)
   const startPattern = /!\[[^\]]*\]\(data:image/g
   let match
-  const matches: {start: number, end: number, url: string}[] = []
-  
+  const matches: { start: number, end: number, url: string }[] = []
+
   while ((match = startPattern.exec(content)) !== null) {
     const urlStart = match.index + match[0].length - 'data:image'.length
     let depth = 1
@@ -1142,15 +1134,15 @@ function extractBase64Images(content: string): { cleanContent: string; images: s
     }
     if (depth === 0) {
       const url = content.substring(urlStart, i - 1)
-      matches.push({start: match.index, end: i, url})
+      matches.push({ start: match.index, end: i, url })
     }
   }
-  
+
   for (let i = matches.length - 1; i >= 0; i--) {
     images.unshift(matches[i].url)
     cleanContent = cleanContent.substring(0, matches[i].start) + cleanContent.substring(matches[i].end)
   }
-  
+
   return { cleanContent: cleanContent.trim(), images }
 }
 
@@ -1165,14 +1157,14 @@ function parseContentBlocks(content: string): { quiz: QuizData | null; csv: stri
   const generatingImagePattern = /genero|creo.*immagine|sto.*generando.*immagine|genera.*immagine/i
   const generatingCsvPattern = /genero|creo.*dataset|sto.*generando.*csv|genera.*csv/i
   const generatingQuizPattern = /genero|creo|preparo.*quiz|sto.*generando.*quiz/i
-  
+
   const hasBase64Image = content.includes('data:image') && content.includes('base64')
   if (hasBase64Image) {
-      return { quiz, csv, textContent, isGenerating: false, generationType: null }
+    return { quiz, csv, textContent, isGenerating: false, generationType: null }
   }
 
-  const hasIncompleteQuiz = content.includes('```quiz') && !content.includes('```quiz') 
-    ? false 
+  const hasIncompleteQuiz = content.includes('```quiz') && !content.includes('```quiz')
+    ? false
     : (content.match(/```quiz/g)?.length || 0) > (content.match(/```quiz[\s\S]*?```/g)?.length || 0)
   const hasIncompleteCsv = (content.match(/```csv/g)?.length || 0) > (content.match(/```csv[\s\S]*?```/g)?.length || 0)
 
@@ -1218,7 +1210,7 @@ function parseContentBlocks(content: string): { quiz: QuizData | null; csv: stri
 function MessageContent({ content, onPublish, onEdit, toast }: { content: string; onPublish: (type: 'quiz' | 'dataset', data: any) => void; onEdit: (type: 'quiz' | 'dataset', data: any) => void; toast: any }) {
   const { quiz, csv, textContent, isGenerating, generationType } = parseContentBlocks(content)
   const { cleanContent, images } = extractBase64Images(textContent)
-  
+
   if (isGenerating) {
     return (
       <div className="flex flex-col items-center gap-3 py-4">
@@ -1254,21 +1246,21 @@ function MessageContent({ content, onPublish, onEdit, toast }: { content: string
           remarkPlugins={[remarkGfm, remarkMath]}
           rehypePlugins={[rehypeKatex]}
           components={{
-            p: ({children}) => <p className="mb-2 last:mb-0">{children}</p>,
-            code: ({className, children, ...props}) => {
-                const isInline = !className
-                return isInline ? (
-                  <code className="bg-slate-100 px-1.5 py-0.5 rounded text-cyan-600 text-xs font-mono" {...props}>
-                    {children}
-                  </code>
-                ) : (
-                  <code className="block bg-slate-900 text-slate-100 p-3 rounded-lg text-xs font-mono overflow-x-auto my-2" {...props}>
-                    {children}
-                  </code>
-                )
+            p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
+            code: ({ className, children, ...props }) => {
+              const isInline = !className
+              return isInline ? (
+                <code className="bg-slate-100 px-1.5 py-0.5 rounded text-cyan-600 text-xs font-mono" {...props}>
+                  {children}
+                </code>
+              ) : (
+                <code className="block bg-slate-900 text-slate-100 p-3 rounded-lg text-xs font-mono overflow-x-auto my-2" {...props}>
+                  {children}
+                </code>
+              )
             },
-            pre: ({children}) => <>{children}</>,
-            img: ({src, alt, ...props}) => (
+            pre: ({ children }) => <>{children}</>,
+            img: ({ src, alt, ...props }) => (
               <div
                 className="relative group cursor-grab active:cursor-grabbing my-3 inline-block"
                 draggable
@@ -1317,12 +1309,12 @@ function MessageContent({ content, onPublish, onEdit, toast }: { content: string
           {cleanContent}
         </ReactMarkdown>
       )}
-      
+
       {images.length > 0 && (
         <div className="my-3 space-y-3">
           {images.map((imgSrc, idx) => (
-            <div 
-              key={idx} 
+            <div
+              key={idx}
               className="relative group cursor-grab active:cursor-grabbing"
               draggable
               onDragStart={(e) => {
@@ -1355,7 +1347,7 @@ function MessageContent({ content, onPublish, onEdit, toast }: { content: string
       )}
 
       {csv && (
-        <div 
+        <div
           className="mt-3 border border-purple-200 rounded-lg overflow-hidden cursor-grab"
           draggable
           onDragStart={(e) => {
@@ -1369,8 +1361,8 @@ function MessageContent({ content, onPublish, onEdit, toast }: { content: string
               Dataset CSV ({csv.split('\n').length - 1} righe)
             </span>
             <div className="flex gap-2">
-              <Button 
-                size="sm" 
+              <Button
+                size="sm"
                 variant="outline"
                 className="h-7 text-xs border-purple-300 text-purple-700 hover:bg-purple-100"
                 onClick={() => onPublish('dataset', csv)}
@@ -1378,8 +1370,8 @@ function MessageContent({ content, onPublish, onEdit, toast }: { content: string
                 <Plus className="h-3 w-3 mr-1" />
                 Pubblica
               </Button>
-              <Button 
-                size="sm" 
+              <Button
+                size="sm"
                 variant="outline"
                 className="h-7 text-xs border-purple-300 text-purple-700 hover:bg-purple-100"
                 onClick={() => downloadCsv(csv)}
@@ -1403,8 +1395,8 @@ function MessageContent({ content, onPublish, onEdit, toast }: { content: string
               📝 Quiz: {quiz.title}
             </span>
             <div className="flex gap-2">
-              <Button 
-                size="sm" 
+              <Button
+                size="sm"
                 variant="outline"
                 className="h-7 text-xs border-cyan-300 text-cyan-700 hover:bg-cyan-100"
                 onClick={() => onEdit('quiz', quiz)}
@@ -1412,8 +1404,8 @@ function MessageContent({ content, onPublish, onEdit, toast }: { content: string
                 <Edit3 className="h-3 w-3 mr-1" />
                 Modifica
               </Button>
-              <Button 
-                size="sm" 
+              <Button
+                size="sm"
                 className="h-7 text-xs bg-cyan-600 hover:bg-cyan-700 text-white"
                 onClick={() => onPublish('quiz', quiz)}
               >
@@ -1445,14 +1437,14 @@ function InteractiveQuiz({ quiz, onSubmitAnswers }: { quiz: QuizData; onSubmitAn
   const handleSubmit = () => {
     setSubmitted(true)
     setShowExplanations(true)
-    
+
     // Format answers for sending to chatbot
     const answerText = quiz.questions.map((_, idx) => {
       const selected = answers[idx]
       const letter = selected !== undefined ? String.fromCharCode(65 + selected) : '?'
       return `${idx + 1}${letter}`
     }).join(', ')
-    
+
     onSubmitAnswers(`Le mie risposte: ${answerText}`)
   }
 
@@ -1467,25 +1459,25 @@ function InteractiveQuiz({ quiz, onSubmitAnswers }: { quiz: QuizData; onSubmitAn
       <h3 className="font-bold text-lg text-cyan-800 mb-4 flex items-center gap-2">
         📝 {quiz.title}
       </h3>
-      
+
       <div className="space-y-4">
         {quiz.questions.map((q, qIndex) => {
           const isCorrect = answers[qIndex] === q.correctIndex
           const hasAnswered = answers[qIndex] !== undefined
-          
+
           return (
             <div key={qIndex} className="bg-white rounded-lg p-4 shadow-sm border border-cyan-100">
               <p className="font-medium text-slate-800 mb-3">
                 <span className="text-cyan-600 font-bold">{qIndex + 1}.</span> {q.question}
               </p>
-              
+
               <div className="space-y-2">
                 {q.options.map((option, optIndex) => {
                   const isSelected = answers[qIndex] === optIndex
                   const isCorrectOption = q.correctIndex === optIndex
-                  
+
                   let buttonClass = "w-full text-left px-4 py-2.5 rounded-lg border transition-all text-sm "
-                  
+
                   if (submitted) {
                     if (isCorrectOption) {
                       buttonClass += "bg-green-100 border-green-400 text-green-800 font-medium"
@@ -1499,7 +1491,7 @@ function InteractiveQuiz({ quiz, onSubmitAnswers }: { quiz: QuizData; onSubmitAn
                   } else {
                     buttonClass += "bg-white border-slate-200 hover:border-cyan-300 hover:bg-cyan-50"
                   }
-                  
+
                   return (
                     <button
                       key={optIndex}
@@ -1508,14 +1500,14 @@ function InteractiveQuiz({ quiz, onSubmitAnswers }: { quiz: QuizData; onSubmitAn
                       className={buttonClass}
                     >
                       <span className="font-bold mr-3 text-xs opacity-60">{String.fromCharCode(65 + optIndex)})
-</span>                      {option}
+                      </span>                      {option}
                       {submitted && isCorrectOption && <span className="ml-auto">✅</span>}
                       {submitted && isSelected && !isCorrectOption && <span className="ml-auto">❌</span>}
                     </button>
                   )
                 })}
               </div>
-              
+
               {showExplanations && hasAnswered && (
                 <div className={`mt-3 p-3 rounded-lg text-xs ${isCorrect ? 'bg-green-50 text-green-800 border border-green-100' : 'bg-cyan-50 text-cyan-800 border border-cyan-100'}`}>
                   <div className="flex items-center gap-1.5 mb-1">
@@ -1528,16 +1520,15 @@ function InteractiveQuiz({ quiz, onSubmitAnswers }: { quiz: QuizData; onSubmitAn
           )
         })}
       </div>
-      
+
       {!submitted ? (
         <Button
           onClick={handleSubmit}
           disabled={!allAnswered}
-          className={`mt-6 w-full py-6 rounded-xl font-bold text-base transition-all ${ 
-            allAnswered 
-              ? 'bg-cyan-600 text-white hover:bg-cyan-700 shadow-lg shadow-cyan-200' 
+          className={`mt-6 w-full py-6 rounded-xl font-bold text-base transition-all ${allAnswered
+              ? 'bg-cyan-600 text-white hover:bg-cyan-700 shadow-lg shadow-cyan-200'
               : 'bg-slate-200 text-slate-400 cursor-not-allowed'
-          }`}
+            }`}
         >
           {allAnswered ? 'Verifica Risposte' : `Rispondi a tutte le domande (${Object.keys(answers).length}/${quiz.questions.length})`}
         </Button>

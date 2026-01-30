@@ -230,19 +230,19 @@ export function TeacherNavbar({ currentSession, onSessionChange }: TeacherNavbar
 
   return (
     <>
-      <nav className="fixed top-0 left-0 right-0 z-50 backdrop-blur-md border-b shadow-md" style={{ backgroundColor: '#1e293b', borderBottomColor: '#3b82f6', boxShadow: '0 4px 6px -1px rgba(59, 130, 246, 0.3)' }}>
+      <nav className="fixed top-0 left-0 right-0 z-50 backdrop-blur-md border-b shadow-md" style={{ backgroundColor: 'rgba(241, 245, 249, 0.85)', borderBottomColor: '#2563eb', boxShadow: '0 4px 6px -1px rgba(37, 99, 235, 0.15)' }}>
         <div className="max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             {/* Logo/Brand */}
             <div className="flex items-center gap-2 cursor-pointer" onClick={() => navigate('/teacher')}>
-              <div className="w-8 h-8 rounded-lg flex items-center justify-center shadow-lg" style={{ background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)', boxShadow: '0 4px 6px -1px rgba(59, 130, 246, 0.4)' }}>
+              <div className="w-8 h-8 rounded-lg flex items-center justify-center shadow-lg" style={{ background: 'linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)', boxShadow: '0 4px 6px -1px rgba(37, 99, 235, 0.4)' }}>
                 <span className="text-white font-bold text-sm">G</span>
               </div>
-              <span className="font-bold text-lg tracking-tight hidden sm:inline" style={{ color: '#ffffff' }}>Golinelli<span style={{ color: '#3b82f6' }}>AI</span></span>
+              <span className="font-bold text-lg tracking-tight hidden sm:inline" style={{ color: '#1e293b' }}>Golinelli<span style={{ color: '#2563eb' }}>AI</span></span>
             </div>
 
             {/* Desktop Navigation */}
-            <div className="hidden md:flex items-center gap-1 p-1 rounded-xl border shadow-sm" style={{ backgroundColor: 'rgba(59, 130, 246, 0.1)', borderColor: 'rgba(59, 130, 246, 0.2)' }}>
+            <div className="hidden md:flex items-center gap-1 p-1 rounded-xl border shadow-sm" style={{ backgroundColor: 'rgba(37, 99, 235, 0.08)', borderColor: 'rgba(37, 99, 235, 0.15)' }}>
               {navItems.map((item) => (
                 <Link key={item.path} to={item.path}>
                   <button
@@ -251,12 +251,12 @@ export function TeacherNavbar({ currentSession, onSessionChange }: TeacherNavbar
                       : ''
                       }`}
                     style={{
-                      backgroundColor: isActive(item.path) ? '#3b82f6' : 'transparent',
-                      color: isActive(item.path) ? '#ffffff' : '#cbd5e1',
+                      backgroundColor: isActive(item.path) ? '#2563eb' : 'transparent',
+                      color: isActive(item.path) ? '#ffffff' : '#64748b',
                     }}
                     onMouseEnter={(e) => {
                       if (!isActive(item.path)) {
-                        e.currentTarget.style.backgroundColor = 'rgba(59, 130, 246, 0.15)'
+                        e.currentTarget.style.backgroundColor = 'rgba(37, 99, 235, 0.12)'
                       }
                     }}
                     onMouseLeave={(e) => {
@@ -286,17 +286,17 @@ export function TeacherNavbar({ currentSession, onSessionChange }: TeacherNavbar
                   onClick={() => setShowSessionsMenu(!showSessionsMenu)}
                   className="hidden lg:flex items-center gap-3 px-4 py-2.5 rounded-xl border-2 transition-all duration-200 cursor-pointer"
                   style={{
-                    backgroundColor: currentSession ? '#3b82f6' : 'transparent',
-                    borderColor: '#3b82f6',
-                    color: currentSession ? '#ffffff' : '#cbd5e1',
+                    backgroundColor: currentSession ? '#2563eb' : 'transparent',
+                    borderColor: '#2563eb',
+                    color: currentSession ? '#ffffff' : '#64748b',
                   }}
                 >
                   <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${currentSession ? 'bg-green-400 animate-pulse shadow-sm shadow-green-300' : 'bg-white/50'}`} />
                   <div className="text-left min-w-0">
-                    <p className="text-xs font-semibold truncate leading-tight" style={{ color: currentSession ? '#ffffff' : '#cbd5e1' }}>{currentSession ? currentSession.name : 'Nessuna sessione'}</p>
-                    <p className="text-[10px] truncate leading-tight" style={{ color: currentSession ? 'rgba(255, 255, 255, 0.8)' : 'rgba(203, 213, 225, 0.7)' }}>{currentSession ? currentSession.className : 'Avvia una sessione'}</p>
+                    <p className="text-xs font-semibold truncate leading-tight" style={{ color: currentSession ? '#ffffff' : '#64748b' }}>{currentSession ? currentSession.name : 'Nessuna sessione'}</p>
+                    <p className="text-[10px] truncate leading-tight" style={{ color: currentSession ? 'rgba(255, 255, 255, 0.8)' : 'rgba(100, 116, 139, 0.7)' }}>{currentSession ? currentSession.className : 'Avvia una sessione'}</p>
                   </div>
-                  <ChevronDown className={`h-3 w-3 ml-1 transition-transform flex-shrink-0 ${showSessionsMenu ? 'rotate-180' : ''}`} style={{ color: currentSession ? '#ffffff' : '#cbd5e1' }} />
+                  <ChevronDown className={`h-3 w-3 ml-1 transition-transform flex-shrink-0 ${showSessionsMenu ? 'rotate-180' : ''}`} style={{ color: currentSession ? '#ffffff' : '#64748b' }} />
                 </button>
 
                 {/* Sessions Dropdown Menu */}
@@ -377,24 +377,24 @@ export function TeacherNavbar({ currentSession, onSessionChange }: TeacherNavbar
                   onClick={() => setShowDropdown(!showDropdown)}
                   className="flex items-center gap-3 rounded-full pl-1 pr-3 py-1 transition-colors border border-transparent"
                   style={{ backgroundColor: 'transparent' }}
-                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'rgba(59, 130, 246, 0.1)'}
+                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'rgba(37, 99, 235, 0.08)'}
                   onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
                 >
                   {profile.avatarUrl ? (
                     <img
                       src={profile.avatarUrl}
                       alt="Avatar"
-                      className="w-8 h-8 rounded-full object-cover border-2" style={{ borderColor: '#3b82f6' }}
+                      className="w-8 h-8 rounded-full object-cover border-2" style={{ borderColor: '#2563eb' }}
                     />
                   ) : (
-                    <div className={`w-8 h-8 rounded-full ${getAvatarColor()} flex items-center justify-center text-white text-xs font-bold border-2`} style={{ borderColor: '#3b82f6' }}>
+                    <div className={`w-8 h-8 rounded-full ${getAvatarColor()} flex items-center justify-center text-white text-xs font-bold border-2`} style={{ borderColor: '#2563eb' }}>
                       {getInitials()}
                     </div>
                   )}
                   <div className="hidden md:block text-left">
-                    <p className="text-xs font-medium leading-none" style={{ color: '#cbd5e1' }}>{profile.firstName}</p>
+                    <p className="text-xs font-medium leading-none" style={{ color: '#64748b' }}>{profile.firstName}</p>
                   </div>
-                  <ChevronDown className={`h-3 w-3 transition-transform ${showDropdown ? 'rotate-180' : ''}`} style={{ color: '#cbd5e1' }} />
+                  <ChevronDown className={`h-3 w-3 transition-transform ${showDropdown ? 'rotate-180' : ''}`} style={{ color: '#64748b' }} />
                 </button>
 
                 {/* Dropdown Menu - Modern Floating Style */}
@@ -412,7 +412,7 @@ export function TeacherNavbar({ currentSession, onSessionChange }: TeacherNavbar
                         setShowDropdown(false)
                       }}
                       className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-600 hover:bg-slate-50 transition-colors"
-                      onMouseEnter={(e) => e.currentTarget.style.color = '#3b82f6'}
+                      onMouseEnter={(e) => e.currentTarget.style.color = '#2563eb'}
                       onMouseLeave={(e) => e.currentTarget.style.color = '#475569'}
                     >
                       <Settings className="h-4 w-4" />
