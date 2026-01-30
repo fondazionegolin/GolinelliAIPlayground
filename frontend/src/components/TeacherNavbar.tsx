@@ -3,16 +3,13 @@ import { Link, useNavigate, useLocation } from 'react-router-dom'
 import { User, Settings, LogOut, ChevronDown, Users, MessageSquare, FileText, Check, Brain } from 'lucide-react'
 import { Button } from './ui/button'
 import { teacherApi } from '@/lib/api'
-import { InvitationsPanel } from './InvitationsPanel'
-import TeacherNotifications from './TeacherNotifications'
-import { TeacherNotification } from './TeacherNotifications'
+import TeacherNotifications, { TeacherNotification } from './TeacherNotifications'
 import { useSocket } from '@/hooks/useSocket'
 
 interface TeacherProfile {
   firstName: string
   lastName: string
   email: string
-  institution: string
   avatarUrl?: string
 }
 
@@ -26,7 +23,6 @@ interface ActiveSession {
   id: string
   name: string
   className: string
-  classId: string
   studentCount?: number
 }
 
@@ -36,21 +32,16 @@ interface TeacherNavbarProps {
 }
 
 export function TeacherNavbar({ currentSession, onSessionChange }: TeacherNavbarProps) {
-  const navigate = useNavigate()
   const location = useLocation()
-  const [showDropdown, setShowDropdown] = useState(false)
-  const [showSettings, setShowSettings] = useState(false)
-  const [showSessionsMenu, setShowSessionsMenu] = useState(false)
+  const navigate = useNavigate()
+
+  const [profile, setProfile] = useState<TeacherProfile>({ firstName: '', lastName: '', email: '', avatarUrl: '' })
   const [activeSessions, setActiveSessions] = useState<ActiveSession[]>([])
+  const [showDropdown, setShowDropdown] = useState(false)
+  const [showSessionsMenu, setShowSessionsMenu] = useState(false)
+  const [showSettings, setShowSettings] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
   const sessionsMenuRef = useRef<HTMLDivElement>(null)
-
-  const [profile, setProfile] = useState<TeacherProfile>({
-    firstName: 'Docente',
-    lastName: '',
-    email: '',
-    institution: ''
-  })
 
   // Global notifications state
   const [teacherNotifications, setTeacherNotifications] = useState<TeacherNotification[]>([])
@@ -60,34 +51,48 @@ export function TeacherNavbar({ currentSession, onSessionChange }: TeacherNavbar
 
   // Convert socket notifications to teacher notifications format
   useEffect(() => {
-    const newNotifs = socketNotifications
-      .filter(n => n.notification_data && (n.notification_data as Record<string, unknown>).type)
-      .map(n => {
-        const data = n.notification_data as Record<string, unknown>
-        return {
-          id: n.id,
-          type: (data.type as string) as TeacherNotification['type'],
-          session_id: (data.session_id as string) || '',
-          session_name: (data.session_name as string) || undefined,
-          class_name: (data.class_name as string) || undefined,
-          student_id: (data.student_id as string) || '',
-          nickname: (data.nickname as string) || n.sender_name || '',
-          message: n.text,
-          preview: data.preview as string | undefined,
-          task_title: data.task_title as string | undefined,
-          quiz_answers: data.quiz_answers as TeacherNotification['quiz_answers'],
-          quiz_score: data.quiz_score as TeacherNotification['quiz_score'],
-          timestamp: n.created_at,
+    if (socketNotifications.length > 0) {
+      const latestNotification = socketNotifications[socketNotifications.length - 1]
+      const notificationData = latestNotification.data as {
+        type?: string
+        session_id?: string
+        session_name?: string
+        class_name?: string
+        student_id?: string
+        nickname?: string
+        message?: string
+        preview?: string
+        task_title?: string
+        quiz_answers?: Array<{
+          question_index: number
+          question_text: string
+          student_answer: string
+          correct_answer: string
+          is_correct: boolean
+        }>
+        quiz_score?: { correct: number; total: number }
+        timestamp?: string
+      }
+
+      if (notificationData.type) {
+        const newNotification: TeacherNotification = {
+          id: latestNotification.id,
+          type: notificationData.type as TeacherNotification['type'],
+          session_id: notificationData.session_id || '',
+          session_name: notificationData.session_name,
+          class_name: notificationData.class_name,
+          student_id: notificationData.student_id || '',
+          nickname: notificationData.nickname || 'Studente',
+          message: notificationData.message || latestNotification.message,
+          preview: notificationData.preview,
+          task_title: notificationData.task_title,
+          quiz_answers: notificationData.quiz_answers,
+          quiz_score: notificationData.quiz_score,
+          timestamp: notificationData.timestamp || new Date().toISOString(),
           read: false,
         }
-      })
-
-    if (newNotifs.length > 0) {
-      setTeacherNotifications(prev => {
-        const existingIds = new Set(prev.map(p => p.id))
-        const toAdd = newNotifs.filter(n => !existingIds.has(n.id))
-        return [...prev, ...toAdd]
-      })
+        setTeacherNotifications(prev => [newNotification, ...prev])
+      }
     }
   }, [socketNotifications])
 
@@ -96,27 +101,11 @@ export function TeacherNavbar({ currentSession, onSessionChange }: TeacherNavbar
     setTeacherNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n))
   }
 
-  // Load profile from API
   useEffect(() => {
-    const loadProfile = async () => {
-      try {
-        const response = await teacherApi.getProfile()
-        const data = response.data
-        setProfile({
-          firstName: data.first_name || 'Docente',
-          lastName: data.last_name || '',
-          email: data.email || '',
-          institution: data.institution || '',
-          avatarUrl: data.avatar_url || undefined
-        })
-      } catch (err) {
-        console.error('Failed to load profile:', err)
-      }
-    }
     loadProfile()
+    loadActiveSessions()
   }, [])
 
-  // Close dropdown when clicking outside
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
@@ -130,66 +119,59 @@ export function TeacherNavbar({ currentSession, onSessionChange }: TeacherNavbar
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
 
-  // Load active sessions from all classes
-  useEffect(() => {
-    const loadActiveSessions = async () => {
-      try {
-        const classesRes = await teacherApi.getClasses()
-        const classes = classesRes.data || []
-        const allSessions: ActiveSession[] = []
-
-        for (const cls of classes) {
-          try {
-            const sessionsRes = await teacherApi.getSessions(cls.id)
-            const sessions = sessionsRes.data || []
-            for (const session of sessions) {
-              allSessions.push({
-                id: session.id,
-                name: session.name || session.title,
-                className: cls.name,
-                classId: cls.id,
-                studentCount: session.student_count || 0
-              })
-            }
-          } catch (e) {
-            console.error(`Failed to load sessions for class ${cls.id}:`, e)
-          }
-        }
-        setActiveSessions(allSessions)
-      } catch (err) {
-        console.error('Failed to load classes:', err)
-      }
+  const loadProfile = async () => {
+    try {
+      const res = await teacherApi.getProfile()
+      setProfile({
+        firstName: res.data.first_name || '',
+        lastName: res.data.last_name || '',
+        email: res.data.email,
+        avatarUrl: res.data.avatar_url || '',
+      })
+    } catch (error) {
+      console.error('Failed to load profile', error)
     }
-    loadActiveSessions()
-  }, [])
-
-  // Generate avatar with initials
-  const getInitials = () => {
-    const first = profile.firstName?.charAt(0) || 'D'
-    const last = profile.lastName?.charAt(0) || ''
-    return (first + last).toUpperCase()
   }
 
-  // Generate random color based on name (consistent)
-  const getAvatarColor = () => {
-    // Modern SaaS avatars are often neutral or branded, but we keep colors for differentiation
-    const name = profile.firstName + profile.lastName
-    const colors = [
-      'bg-indigo-500',
-      'bg-blue-500',
-      'bg-violet-500',
-      'bg-fuchsia-500',
-      'bg-rose-500',
-      'bg-cyan-500'
-    ]
-    const hash = name.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0)
-    return colors[hash % colors.length]
+  const loadActiveSessions = async () => {
+    try {
+      const res = await teacherApi.getSessions({ status: 'ACTIVE' })
+      const sessionsData = res.data.map((session: {
+        id: string
+        name: string
+        class_name: string
+        student_count?: number
+      }) => ({
+        id: session.id,
+        name: session.name,
+        className: session.class_name,
+        studentCount: session.student_count,
+      }))
+      setActiveSessions(sessionsData)
+    } catch (error) {
+      console.error('Failed to load active sessions', error)
+    }
   }
 
   const handleLogout = () => {
-    localStorage.removeItem('token')
-    localStorage.removeItem('user')
-    navigate('/login')
+    localStorage.removeItem('teacher_token')
+    navigate('/auth')
+  }
+
+  const getInitials = () => {
+    if (profile.firstName && profile.lastName) {
+      return `${profile.firstName[0]}${profile.lastName[0]}`.toUpperCase()
+    }
+    return profile.email?.slice(0, 2).toUpperCase() || '??'
+  }
+
+  const getAvatarColor = () => {
+    const colors = [
+      'bg-purple-500', 'bg-blue-500', 'bg-green-500',
+      'bg-yellow-500', 'bg-red-500', 'bg-pink-500',
+    ]
+    const charCode = profile.email?.charCodeAt(0) || 0
+    return colors[charCode % colors.length]
   }
 
   const isActive = (path: string) => location.pathname === path
@@ -203,26 +185,40 @@ export function TeacherNavbar({ currentSession, onSessionChange }: TeacherNavbar
 
   return (
     <>
-      <nav className="fixed top-0 left-0 right-0 z-50 bg-cyan-500 backdrop-blur-md border-b border-cyan-600 shadow-md shadow-cyan-700/50">
+      <nav className="fixed top-0 left-0 right-0 z-50 backdrop-blur-md border-b shadow-md" style={{ backgroundColor: '#14213d', borderBottomColor: '#fca311', boxShadow: '0 4px 6px -1px rgba(252, 163, 17, 0.3)' }}>
         <div className="max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             {/* Logo/Brand */}
             <div className="flex items-center gap-2 cursor-pointer" onClick={() => navigate('/teacher')}>
-              <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-cyan-400 to-blue-500 flex items-center justify-center shadow-lg shadow-cyan-400/30">
+              <div className="w-8 h-8 rounded-lg flex items-center justify-center shadow-lg" style={{ background: 'linear-gradient(135deg, #fca311 0%, #f48c06 100%)', boxShadow: '0 4px 6px -1px rgba(252, 163, 17, 0.3)' }}>
                 <span className="text-white font-bold text-sm">G</span>
               </div>
-              <span className="font-bold text-white text-lg tracking-tight hidden sm:inline">Golinelli<span className="text-cyan-100">AI</span></span>
+              <span className="font-bold text-lg tracking-tight hidden sm:inline" style={{ color: '#e5e5e5' }}>Golinelli<span style={{ color: '#fca311' }}>AI</span></span>
             </div>
 
             {/* Desktop Navigation */}
-            <div className="hidden md:flex items-center gap-1 bg-cyan-600/30 p-1 rounded-xl border border-cyan-400/30 shadow-sm">
+            <div className="hidden md:flex items-center gap-1 p-1 rounded-xl border shadow-sm" style={{ backgroundColor: 'rgba(252, 163, 17, 0.15)', borderColor: 'rgba(252, 163, 17, 0.3)' }}>
               {navItems.map((item) => (
                 <Link key={item.path} to={item.path}>
                   <button
                     className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-200 ${isActive(item.path)
-                      ? 'bg-cyan-700 text-white shadow-md shadow-cyan-900/30'
-                      : 'text-white/90 hover:bg-cyan-400 hover:text-white'
+                      ? 'shadow-md'
+                      : ''
                       }`}
+                    style={{
+                      backgroundColor: isActive(item.path) ? '#fca311' : 'transparent',
+                      color: isActive(item.path) ? '#14213d' : '#e5e5e5',
+                    }}
+                    onMouseEnter={(e) => {
+                      if (!isActive(item.path)) {
+                        e.currentTarget.style.backgroundColor = 'rgba(252, 163, 17, 0.3)'
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      if (!isActive(item.path)) {
+                        e.currentTarget.style.backgroundColor = 'transparent'
+                      }
+                    }}
                   >
                     <item.icon className="h-4 w-4" />
                     {item.label}
@@ -232,10 +228,7 @@ export function TeacherNavbar({ currentSession, onSessionChange }: TeacherNavbar
             </div>
 
             <div className="flex items-center gap-3">
-              {/* Invitations Panel */}
-              <InvitationsPanel />
-
-              {/* Teacher Notifications */}
+              {/* Teacher Notifications (unified) */}
               <TeacherNotifications
                 notifications={teacherNotifications}
                 onClearAll={handleClearNotifications}
@@ -246,31 +239,33 @@ export function TeacherNavbar({ currentSession, onSessionChange }: TeacherNavbar
               <div className="relative" ref={sessionsMenuRef}>
                 <button
                   onClick={() => setShowSessionsMenu(!showSessionsMenu)}
-                  className={`hidden lg:flex items-center gap-3 px-4 py-2.5 rounded-xl border-2 transition-all duration-200 cursor-pointer ${currentSession
-                    ? 'bg-cyan-600 border-cyan-400 hover:border-cyan-300 hover:shadow-md hover:shadow-cyan-900/30'
-                    : 'bg-cyan-600/50 border-cyan-400/50 hover:border-cyan-300 hover:bg-cyan-600/70'
-                    }`}
+                  className="hidden lg:flex items-center gap-3 px-4 py-2.5 rounded-xl border-2 transition-all duration-200 cursor-pointer"
+                  style={{
+                    backgroundColor: currentSession ? '#fca311' : 'transparent',
+                    borderColor: '#fca311',
+                    color: currentSession ? '#14213d' : '#e5e5e5',
+                  }}
                 >
                   <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${currentSession ? 'bg-green-400 animate-pulse shadow-sm shadow-green-300' : 'bg-white/50'}`} />
                   <div className="text-left min-w-0">
                     {currentSession ? (
                       <div className="flex items-center gap-2">
-                        <span className="text-sm font-bold text-white truncate max-w-[120px]">{currentSession.className}</span>
-                        <span className="text-cyan-200">|</span>
-                        <span className="text-sm font-medium text-cyan-100 truncate max-w-[140px]">{currentSession.name}</span>
+                        <span className="text-sm font-bold truncate max-w-[120px]" style={{ color: currentSession ? '#14213d' : '#e5e5e5' }}>{currentSession.className}</span>
+                        <span style={{ color: currentSession ? '#14213d' : '#e5e5e5' }}>|</span>
+                        <span className="text-sm font-medium truncate max-w-[140px]" style={{ color: currentSession ? '#14213d' : '#e5e5e5' }}>{currentSession.name}</span>
                       </div>
                     ) : (
-                      <span className="text-sm text-white/70">Seleziona sessione</span>
+                      <span className="text-sm" style={{ color: '#e5e5e5' }}>Seleziona sessione</span>
                     )}
                   </div>
-                  <ChevronDown className={`h-4 w-4 text-white/70 transition-transform duration-200 ${showSessionsMenu ? 'rotate-180' : ''}`} />
+                  <ChevronDown className={`h-4 w-4 transition-transform duration-200 ${showSessionsMenu ? 'rotate-180' : ''}`} style={{ color: currentSession ? '#14213d' : '#e5e5e5' }} />
                 </button>
 
                 {/* Sessions Dropdown Menu */}
                 {showSessionsMenu && (
                   <div className="absolute right-0 mt-2 w-80 bg-white rounded-2xl shadow-2xl border border-slate-100 overflow-hidden animate-in fade-in zoom-in-95 duration-150 origin-top-right z-50">
                     {/* Header */}
-                    <div className="px-5 py-4 border-b border-slate-100 bg-gradient-to-r from-cyan-50 to-sky-50">
+                    <div className="px-5 py-4 border-b border-slate-100" style={{ backgroundColor: '#fef3c7' }}>
                       <h3 className="font-bold text-slate-800">Sessioni Disponibili</h3>
                       <p className="text-xs text-slate-500 mt-0.5">Seleziona la sessione di lavoro</p>
                     </div>
@@ -342,23 +337,26 @@ export function TeacherNavbar({ currentSession, onSessionChange }: TeacherNavbar
               <div className="relative" ref={dropdownRef}>
                 <button
                   onClick={() => setShowDropdown(!showDropdown)}
-                  className="flex items-center gap-3 hover:bg-cyan-600 rounded-full pl-1 pr-3 py-1 transition-colors border border-transparent hover:border-cyan-400"
+                  className="flex items-center gap-3 rounded-full pl-1 pr-3 py-1 transition-colors border border-transparent"
+                  style={{ backgroundColor: 'transparent' }}
+                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'rgba(252, 163, 17, 0.2)'}
+                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
                 >
                   {profile.avatarUrl ? (
                     <img
                       src={profile.avatarUrl}
                       alt="Avatar"
-                      className="w-8 h-8 rounded-full object-cover ring-2 ring-cyan-600"
+                      className="w-8 h-8 rounded-full object-cover border-2" style={{ borderColor: '#fca311' }}
                     />
                   ) : (
-                    <div className={`w-8 h-8 rounded-full ${getAvatarColor()} flex items-center justify-center text-white text-xs font-bold ring-2 ring-white`}>
+                    <div className={`w-8 h-8 rounded-full ${getAvatarColor()} flex items-center justify-center text-white text-xs font-bold border-2`} style={{ borderColor: '#fca311' }}>
                       {getInitials()}
                     </div>
                   )}
                   <div className="hidden md:block text-left">
-                    <p className="text-xs font-medium text-white leading-none">{profile.firstName}</p>
+                    <p className="text-xs font-medium leading-none" style={{ color: '#e5e5e5' }}>{profile.firstName}</p>
                   </div>
-                  <ChevronDown className={`h-3 w-3 text-white transition-transform ${showDropdown ? 'rotate-180' : ''}`} />
+                  <ChevronDown className={`h-3 w-3 transition-transform ${showDropdown ? 'rotate-180' : ''}`} style={{ color: '#e5e5e5' }} />
                 </button>
 
                 {/* Dropdown Menu - Modern Floating Style */}
@@ -375,7 +373,9 @@ export function TeacherNavbar({ currentSession, onSessionChange }: TeacherNavbar
                         setShowSettings(true)
                         setShowDropdown(false)
                       }}
-                      className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-600 hover:bg-slate-50 hover:text-cyan-600 transition-colors"
+                      className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-600 hover:bg-slate-50 transition-colors"
+                      onMouseEnter={(e) => e.currentTarget.style.color = '#fca311'}
+                      onMouseLeave={(e) => e.currentTarget.style.color = '#475569'}
                     >
                       <Settings className="h-4 w-4" />
                       Impostazioni account
@@ -423,7 +423,6 @@ export function TeacherNavbar({ currentSession, onSessionChange }: TeacherNavbar
               await teacherApi.updateProfile({
                 first_name: updated.firstName,
                 last_name: updated.lastName,
-                institution: updated.institution,
                 avatar_url: updated.avatarUrl
               })
               setProfile(updated)
@@ -557,16 +556,7 @@ function SettingsModal({ profile, onSave, onClose }: SettingsModalProps) {
             />
           </div>
 
-          <div>
-            <label className="block text-xs font-semibold text-slate-500 uppercase mb-1.5">Istituto</label>
-            <input
-              type="text"
-              value={formData.institution}
-              onChange={(e) => setFormData({ ...formData, institution: e.target.value })}
-              className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all outline-none"
-              placeholder="Nome della scuola"
-            />
-          </div>
+
 
           {/* Actions */}
           <div className="flex gap-3 pt-2">
