@@ -4,6 +4,9 @@ import { User, Settings, LogOut, ChevronDown, Users, MessageSquare, FileText, Ch
 import { Button } from './ui/button'
 import { teacherApi } from '@/lib/api'
 import { InvitationsPanel } from './InvitationsPanel'
+import TeacherNotifications from './TeacherNotifications'
+import { TeacherNotification } from './TeacherNotifications'
+import { useSocket } from '@/hooks/useSocket'
 
 interface TeacherProfile {
   firstName: string
@@ -49,6 +52,50 @@ export function TeacherNavbar({ currentSession, onSessionChange }: TeacherNavbar
     institution: ''
   })
 
+  // Global notifications state
+  const [teacherNotifications, setTeacherNotifications] = useState<TeacherNotification[]>([])
+
+  // Connect to global WebSocket for teacher notifications (empty sessionId for global)
+  const { notifications: socketNotifications } = useSocket('')
+
+  // Convert socket notifications to teacher notifications format
+  useEffect(() => {
+    const newNotifs = socketNotifications
+      .filter(n => n.notification_data && (n.notification_data as Record<string, unknown>).type)
+      .map(n => {
+        const data = n.notification_data as Record<string, unknown>
+        return {
+          id: n.id,
+          type: (data.type as string) as TeacherNotification['type'],
+          session_id: (data.session_id as string) || '',
+          session_name: (data.session_name as string) || undefined,
+          class_name: (data.class_name as string) || undefined,
+          student_id: (data.student_id as string) || '',
+          nickname: (data.nickname as string) || n.sender_name || '',
+          message: n.text,
+          preview: data.preview as string | undefined,
+          task_title: data.task_title as string | undefined,
+          quiz_answers: data.quiz_answers as TeacherNotification['quiz_answers'],
+          quiz_score: data.quiz_score as TeacherNotification['quiz_score'],
+          timestamp: n.created_at,
+          read: false,
+        }
+      })
+
+    if (newNotifs.length > 0) {
+      setTeacherNotifications(prev => {
+        const existingIds = new Set(prev.map(p => p.id))
+        const toAdd = newNotifs.filter(n => !existingIds.has(n.id))
+        return [...prev, ...toAdd]
+      })
+    }
+  }, [socketNotifications])
+
+  const handleClearNotifications = () => setTeacherNotifications([])
+  const handleMarkAsRead = (id: string) => {
+    setTeacherNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n))
+  }
+
   // Load profile from API
   useEffect(() => {
     const loadProfile = async () => {
@@ -90,7 +137,7 @@ export function TeacherNavbar({ currentSession, onSessionChange }: TeacherNavbar
         const classesRes = await teacherApi.getClasses()
         const classes = classesRes.data || []
         const allSessions: ActiveSession[] = []
-        
+
         for (const cls of classes) {
           try {
             const sessionsRes = await teacherApi.getSessions(cls.id)
@@ -156,7 +203,7 @@ export function TeacherNavbar({ currentSession, onSessionChange }: TeacherNavbar
 
   return (
     <>
-      <nav className="fixed top-0 left-0 right-0 z-50 bg-cyan-50/80 backdrop-blur-md border-b border-cyan-200 shadow-md shadow-cyan-100/50">
+      <nav className="fixed top-0 left-0 right-0 z-50 bg-cyan-500 backdrop-blur-md border-b border-cyan-600 shadow-md shadow-cyan-700/50">
         <div className="max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             {/* Logo/Brand */}
@@ -164,19 +211,18 @@ export function TeacherNavbar({ currentSession, onSessionChange }: TeacherNavbar
               <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-cyan-400 to-blue-500 flex items-center justify-center shadow-lg shadow-cyan-400/30">
                 <span className="text-white font-bold text-sm">G</span>
               </div>
-              <span className="font-bold text-slate-900 text-lg tracking-tight hidden sm:inline">Golinelli<span className="text-cyan-600">AI</span></span>
+              <span className="font-bold text-white text-lg tracking-tight hidden sm:inline">Golinelli<span className="text-cyan-100">AI</span></span>
             </div>
 
             {/* Desktop Navigation */}
-            <div className="hidden md:flex items-center gap-1 bg-white/50 p-1 rounded-xl border border-cyan-100 shadow-sm">
+            <div className="hidden md:flex items-center gap-1 bg-cyan-600/30 p-1 rounded-xl border border-cyan-400/30 shadow-sm">
               {navItems.map((item) => (
                 <Link key={item.path} to={item.path}>
                   <button
-                    className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-200 ${
-                      isActive(item.path)
-                        ? 'bg-cyan-500 text-white shadow-md shadow-cyan-200'
-                        : 'text-slate-600 hover:bg-cyan-200/50 hover:text-cyan-700'
-                    }`}
+                    className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-200 ${isActive(item.path)
+                      ? 'bg-cyan-700 text-white shadow-md shadow-cyan-900/30'
+                      : 'text-white/90 hover:bg-cyan-400 hover:text-white'
+                      }`}
                   >
                     <item.icon className="h-4 w-4" />
                     {item.label}
@@ -189,29 +235,35 @@ export function TeacherNavbar({ currentSession, onSessionChange }: TeacherNavbar
               {/* Invitations Panel */}
               <InvitationsPanel />
 
+              {/* Teacher Notifications */}
+              <TeacherNotifications
+                notifications={teacherNotifications}
+                onClearAll={handleClearNotifications}
+                onMarkAsRead={handleMarkAsRead}
+              />
+
               {/* Session Selector */}
               <div className="relative" ref={sessionsMenuRef}>
                 <button
                   onClick={() => setShowSessionsMenu(!showSessionsMenu)}
-                  className={`hidden lg:flex items-center gap-3 px-4 py-2.5 rounded-xl border-2 transition-all duration-200 cursor-pointer ${
-                    currentSession
-                      ? 'bg-gradient-to-r from-cyan-50 to-sky-50 border-cyan-200 hover:border-cyan-300 hover:shadow-md hover:shadow-cyan-100'
-                      : 'bg-white/80 border-slate-200 hover:border-cyan-200 hover:bg-cyan-50/50'
-                  }`}
+                  className={`hidden lg:flex items-center gap-3 px-4 py-2.5 rounded-xl border-2 transition-all duration-200 cursor-pointer ${currentSession
+                    ? 'bg-cyan-600 border-cyan-400 hover:border-cyan-300 hover:shadow-md hover:shadow-cyan-900/30'
+                    : 'bg-cyan-600/50 border-cyan-400/50 hover:border-cyan-300 hover:bg-cyan-600/70'
+                    }`}
                 >
-                  <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${currentSession ? 'bg-green-500 animate-pulse shadow-sm shadow-green-300' : 'bg-slate-300'}`} />
+                  <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${currentSession ? 'bg-green-400 animate-pulse shadow-sm shadow-green-300' : 'bg-white/50'}`} />
                   <div className="text-left min-w-0">
                     {currentSession ? (
                       <div className="flex items-center gap-2">
-                        <span className="text-sm font-bold text-cyan-700 truncate max-w-[120px]">{currentSession.className}</span>
-                        <span className="text-slate-300">|</span>
-                        <span className="text-sm font-medium text-slate-700 truncate max-w-[140px]">{currentSession.name}</span>
+                        <span className="text-sm font-bold text-white truncate max-w-[120px]">{currentSession.className}</span>
+                        <span className="text-cyan-200">|</span>
+                        <span className="text-sm font-medium text-cyan-100 truncate max-w-[140px]">{currentSession.name}</span>
                       </div>
                     ) : (
-                      <span className="text-sm text-slate-500">Seleziona sessione</span>
+                      <span className="text-sm text-white/70">Seleziona sessione</span>
                     )}
                   </div>
-                  <ChevronDown className={`h-4 w-4 text-slate-400 transition-transform duration-200 ${showSessionsMenu ? 'rotate-180' : ''}`} />
+                  <ChevronDown className={`h-4 w-4 text-white/70 transition-transform duration-200 ${showSessionsMenu ? 'rotate-180' : ''}`} />
                 </button>
 
                 {/* Sessions Dropdown Menu */}
@@ -248,15 +300,13 @@ export function TeacherNavbar({ currentSession, onSessionChange }: TeacherNavbar
                                   setShowSessionsMenu(false)
                                   navigate(`/teacher/sessions/${session.id}`)
                                 }}
-                                className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-150 text-left group ${
-                                  isSelected
-                                    ? 'bg-cyan-100 border-2 border-cyan-300'
-                                    : 'hover:bg-slate-50 border-2 border-transparent'
-                                }`}
+                                className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-150 text-left group ${isSelected
+                                  ? 'bg-cyan-100 border-2 border-cyan-300'
+                                  : 'hover:bg-slate-50 border-2 border-transparent'
+                                  }`}
                               >
-                                <div className={`w-3 h-3 rounded-full flex-shrink-0 transition-colors ${
-                                  isSelected ? 'bg-green-500 shadow-sm shadow-green-300' : 'bg-slate-300 group-hover:bg-cyan-300'
-                                }`} />
+                                <div className={`w-3 h-3 rounded-full flex-shrink-0 transition-colors ${isSelected ? 'bg-green-500 shadow-sm shadow-green-300' : 'bg-slate-300 group-hover:bg-cyan-300'
+                                  }`} />
                                 <div className="flex-1 min-w-0">
                                   <p className={`text-sm font-medium truncate ${isSelected ? 'text-cyan-800' : 'text-slate-700'}`}>
                                     {session.name}
@@ -267,11 +317,10 @@ export function TeacherNavbar({ currentSession, onSessionChange }: TeacherNavbar
                                 </div>
                                 <div className="flex items-center gap-2">
                                   {session.studentCount !== undefined && session.studentCount > 0 && (
-                                    <span className={`text-xs px-2 py-1 rounded-full font-medium ${
-                                      isSelected
-                                        ? 'bg-cyan-200 text-cyan-700'
-                                        : 'bg-slate-100 text-slate-500 group-hover:bg-cyan-100 group-hover:text-cyan-600'
-                                    }`}>
+                                    <span className={`text-xs px-2 py-1 rounded-full font-medium ${isSelected
+                                      ? 'bg-cyan-200 text-cyan-700'
+                                      : 'bg-slate-100 text-slate-500 group-hover:bg-cyan-100 group-hover:text-cyan-600'
+                                      }`}>
                                       {session.studentCount} studenti
                                     </span>
                                   )}
@@ -293,7 +342,7 @@ export function TeacherNavbar({ currentSession, onSessionChange }: TeacherNavbar
               <div className="relative" ref={dropdownRef}>
                 <button
                   onClick={() => setShowDropdown(!showDropdown)}
-                  className="flex items-center gap-3 hover:bg-cyan-600/10 rounded-full pl-1 pr-3 py-1 transition-colors border border-transparent hover:border-cyan-700/20"
+                  className="flex items-center gap-3 hover:bg-cyan-600 rounded-full pl-1 pr-3 py-1 transition-colors border border-transparent hover:border-cyan-400"
                 >
                   {profile.avatarUrl ? (
                     <img
@@ -302,14 +351,14 @@ export function TeacherNavbar({ currentSession, onSessionChange }: TeacherNavbar
                       className="w-8 h-8 rounded-full object-cover ring-2 ring-cyan-600"
                     />
                   ) : (
-                    <div className={`w-8 h-8 rounded-full ${getAvatarColor()} flex items-center justify-center text-white text-xs font-bold ring-2 ring-cyan-600`}>
+                    <div className={`w-8 h-8 rounded-full ${getAvatarColor()} flex items-center justify-center text-white text-xs font-bold ring-2 ring-white`}>
                       {getInitials()}
                     </div>
                   )}
                   <div className="hidden md:block text-left">
-                      <p className="text-xs font-medium text-slate-900 leading-none">{profile.firstName}</p>
+                    <p className="text-xs font-medium text-white leading-none">{profile.firstName}</p>
                   </div>
-                  <ChevronDown className={`h-3 w-3 text-slate-700 transition-transform ${showDropdown ? 'rotate-180' : ''}`} />
+                  <ChevronDown className={`h-3 w-3 text-white transition-transform ${showDropdown ? 'rotate-180' : ''}`} />
                 </button>
 
                 {/* Dropdown Menu - Modern Floating Style */}
@@ -352,11 +401,10 @@ export function TeacherNavbar({ currentSession, onSessionChange }: TeacherNavbar
                 <Button
                   size="sm"
                   variant="ghost"
-                  className={`${
-                    isActive(item.path)
-                      ? 'bg-cyan-100 text-cyan-700 font-semibold'
-                      : 'text-slate-500 hover:text-cyan-600'
-                  }`}
+                  className={`${isActive(item.path)
+                    ? 'bg-cyan-100 text-cyan-700 font-semibold'
+                    : 'text-slate-500 hover:text-cyan-600'
+                    }`}
                 >
                   {item.label}
                 </Button>
@@ -454,7 +502,7 @@ function SettingsModal({ profile, onSave, onClose }: SettingsModalProps) {
                 </div>
               )}
               <div className="absolute inset-0 bg-black/40 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                 <User className="text-white w-8 h-8" />
+                <User className="text-white w-8 h-8" />
               </div>
             </div>
             <input

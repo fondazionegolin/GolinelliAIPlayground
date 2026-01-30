@@ -373,6 +373,22 @@ async def chat_public_message(sid, data):
         room=f"session:{session_id}",
     )
     
+    # Send teacher notification for public chat if student
+    if user["type"] == "student":
+        await sio.emit(
+            "teacher_notification",
+            {
+                "type": "public_chat",
+                "session_id": session_id,
+                "student_id": user["id"],
+                "nickname": sender_name,
+                "message": f"{sender_name} ha inviato un messaggio nella chat",
+                "preview": text[:100] + ("..." if len(text) > 100 else ""),
+                "timestamp": datetime.utcnow().isoformat(),
+            },
+            room=f"session:{session_id}",
+        )
+    
     return {"success": True}
 
 

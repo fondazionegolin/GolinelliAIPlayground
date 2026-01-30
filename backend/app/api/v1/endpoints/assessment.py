@@ -206,6 +206,76 @@ async def submit_quiz_attempt(
     
     await db.commit()
     await db.refresh(attempt)
+    
+    # Send detailed quiz notification to teacher
+    from app.realtime.gateway import sio
+    
+    # Prepare quiz answer details for notification
+    quiz_answers = []
+    for detail in details:
+        q_id = detail["question_id"]
+        # Find the question in quiz_data
+        question_obj = next((q for q in questions if str(q["id"]) == q_id), None)
+        if question_obj:
+            question_text = question_obj.get("question", "")
+            correct_answer = question_obj.get("correct")
+            user_answer = detail["user_answer"]
+            
+            # Format answers based on question type
+            if question_obj.get("type") == "multiple_choice":
+                options = question_obj.get("options", [])
+                # Convert index to option text if applicable
+                if isinstance(correct_answer, int) and correct_answer < len(options):
+                    correct_answer_text = options[correct_answer]
+                else:
+                    correct_answer_text = str(correct_answer)
+                    
+                if isinstance(user_answer, int) and user_answer < len(options):
+                    user_answer_text = options[user_answer]
+                else:
+                    user_answer_text = str(user_answer) if user_answer is not None else "Nessuna risposta"
+            else:
+                # For true/false or other types
+                correct_answer_text = "Vero" if correct_answer else "Falso"
+                user_answer_text = "Vero" if user_answer else "Falso" if user_answer is not None else "Nessuna risposta"
+            
+            quiz_answers.append({
+                "question_index": int(q_id) - 1,  # 0-indexed
+                "question_text": question_text,
+                "student_answer": user_answer_text,
+                "correct_answer": correct_answer_text,
+                "is_correct": detail["is_correct"],
+            })
+    
+    # Get session info and student nickname
+    try:
+        sess_result = await db.execute(
+            select(Session).where(Session.id == student.session_id)
+        )
+        session = sess_result.scalar_one_or_none()
+        
+        await sio.emit(
+            "teacher_notification",
+            {
+                "type": "quiz_completed",
+                "session_id": str(student.session_id),
+                "session_name": session.name if session else "",
+                "class_name": "",  # TODO: Load class name if needed
+                "student_id": str(student.id),
+                "nickname": student.nickname,
+                "message": f"{student.nickname} ha completato un quiz",
+                "quiz_answers": quiz_answers,
+                "quiz_score": {
+                    "correct": correct,
+                    "total": total,
+                },
+                "timestamp": datetime.utcnow().isoformat(),
+            },
+            room=f"session:{student.session_id}",
+        )
+    except Exception as e:
+        print(f"Error emitting quiz notification: {e}")
+    
     return attempt
 
 

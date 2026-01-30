@@ -1,16 +1,28 @@
 import { useState, useEffect, useRef } from 'react'
-import { Bell, UserPlus, UserMinus, MessageSquare, ClipboardCheck, X } from 'lucide-react'
+import { Bell, UserPlus, UserMinus, MessageSquare, ClipboardCheck, X, Share2, CheckCircle2, XCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
-interface TeacherNotification {
+export interface QuizAnswer {
+  question_index: number
+  question_text: string
+  student_answer: string
+  correct_answer: string
+  is_correct: boolean
+}
+
+export interface TeacherNotification {
   id: string
-  type: 'student_joined' | 'student_left' | 'private_message' | 'task_submitted'
+  type: 'student_joined' | 'student_left' | 'private_message' | 'task_submitted' | 'public_chat' | 'assignment_shared' | 'quiz_completed'
   session_id: string
+  session_name?: string
+  class_name?: string
   student_id: string
   nickname: string
   message: string
   preview?: string
   task_title?: string
+  quiz_answers?: QuizAnswer[]
+  quiz_score?: { correct: number; total: number }
   timestamp: string
   read: boolean
 }
@@ -29,8 +41,14 @@ const getNotificationIcon = (type: string) => {
       return <UserMinus className="h-3 w-3 text-orange-500" />
     case 'private_message':
       return <MessageSquare className="h-3 w-3 text-blue-500" />
+    case 'public_chat':
+      return <MessageSquare className="h-3 w-3 text-cyan-500" />
     case 'task_submitted':
       return <ClipboardCheck className="h-3 w-3 text-purple-500" />
+    case 'assignment_shared':
+      return <Share2 className="h-3 w-3 text-indigo-500" />
+    case 'quiz_completed':
+      return <CheckCircle2 className="h-3 w-3 text-emerald-500" />
     default:
       return <Bell className="h-3 w-3 text-gray-500" />
   }
@@ -41,10 +59,10 @@ const formatTime = (timestamp: string) => {
   return date.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })
 }
 
-export default function TeacherNotifications({ 
-  notifications, 
+export default function TeacherNotifications({
+  notifications,
   onClearAll,
-  onMarkAsRead 
+  onMarkAsRead
 }: TeacherNotificationsProps) {
   const [isOpen, setIsOpen] = useState(false)
   const [newNotificationIds, setNewNotificationIds] = useState<Set<string>>(new Set())
@@ -58,10 +76,10 @@ export default function TeacherNotifications({
     const newIds = notifications
       .filter(n => !prevIds.has(n.id))
       .map(n => n.id)
-    
+
     if (newIds.length > 0) {
       setNewNotificationIds(prev => new Set([...prev, ...newIds]))
-      
+
       setTimeout(() => {
         setNewNotificationIds(prev => {
           const updated = new Set(prev)
@@ -70,7 +88,7 @@ export default function TeacherNotifications({
         })
       }, 3000)
     }
-    
+
     prevNotificationsRef.current = notifications
   }, [notifications])
 
@@ -113,14 +131,14 @@ export default function TeacherNotifications({
 
       {/* Dropdown Panel */}
       {isOpen && (
-        <div className="absolute right-0 top-full mt-1 w-72 bg-white rounded-lg shadow-lg border z-50">
+        <div className="absolute right-0 top-full mt-1 w-96 bg-white rounded-lg shadow-lg border z-50">
           {/* Header */}
           <div className="flex items-center justify-between p-2 border-b">
             <span className="text-sm font-medium text-gray-700">Notifiche ({notifications.length})</span>
             {notifications.length > 0 && (
-              <Button 
-                variant="ghost" 
-                size="sm" 
+              <Button
+                variant="ghost"
+                size="sm"
                 className="h-6 px-2 text-xs text-gray-500 hover:text-gray-700"
                 onClick={onClearAll}
               >
@@ -131,9 +149,9 @@ export default function TeacherNotifications({
           </div>
 
           {/* Notifications List */}
-          <div 
+          <div
             ref={listRef}
-            className="max-h-64 overflow-y-auto"
+            className="max-h-96 overflow-y-auto"
           >
             {notifications.length === 0 ? (
               <p className="text-xs text-gray-400 text-center py-6">
@@ -143,32 +161,78 @@ export default function TeacherNotifications({
               <div className="p-1 space-y-1">
                 {notifications.map((notification) => {
                   const isNew = newNotificationIds.has(notification.id)
+                  const hasQuizDetails = notification.type === 'quiz_completed' && notification.quiz_answers
+
                   return (
                     <div
                       key={notification.id}
                       className={`
-                        flex items-start gap-2 p-2 rounded text-xs transition-all duration-300 cursor-pointer
+                        p-2 rounded text-xs transition-all duration-300
                         ${isNew ? 'bg-red-50 animate-notification' : 'hover:bg-gray-50'}
                         ${!notification.read ? 'border-l-2 border-l-blue-500 pl-1.5' : ''}
                       `}
-                      onClick={() => onMarkAsRead(notification.id)}
                     >
-                      <div className="shrink-0 mt-0.5">
-                        {getNotificationIcon(notification.type)}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className={`text-gray-700 leading-tight ${isNew ? 'font-medium text-red-700' : ''}`}>
-                          {notification.message}
-                        </p>
-                        {notification.preview && (
-                          <p className="text-gray-400 truncate mt-0.5 text-[10px]">
-                            "{notification.preview}"
+                      <div
+                        className="flex items-start gap-2 cursor-pointer"
+                        onClick={() => onMarkAsRead(notification.id)}
+                      >
+                        <div className="shrink-0 mt-0.5">
+                          {getNotificationIcon(notification.type)}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className={`text-gray-700 leading-tight ${isNew ? 'font-medium text-red-700' : ''}`}>
+                            {notification.message}
                           </p>
-                        )}
-                        <p className="text-gray-400 mt-0.5 text-[10px]">
-                          {formatTime(notification.timestamp)}
-                        </p>
+                          {notification.session_name && (
+                            <p className="text-gray-400 text-[10px] mt-0.5">
+                              📍 {notification.class_name || 'Classe'} - {notification.session_name}
+                            </p>
+                          )}
+                          {notification.preview && !hasQuizDetails && (
+                            <p className="text-gray-400 truncate mt-0.5 text-[10px]">
+                              "{notification.preview}"
+                            </p>
+                          )}
+                          <p className="text-gray-400 mt-0.5 text-[10px]">
+                            {formatTime(notification.timestamp)}
+                          </p>
+                        </div>
                       </div>
+
+                      {/* Quiz Details */}
+                      {hasQuizDetails && notification.quiz_answers && (
+                        <div className="mt-2 pl-5 space-y-1.5 border-t pt-2">
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="text-[10px] font-semibold text-gray-600">
+                              Risultato: {notification.quiz_score?.correct || 0}/{notification.quiz_score?.total || notification.quiz_answers.length}
+                            </span>
+                          </div>
+                          {notification.quiz_answers.map((answer, idx) => (
+                            <div key={idx} className="text-[10px] space-y-0.5">
+                              <div className="flex items-start gap-1">
+                                {answer.is_correct ? (
+                                  <CheckCircle2 className="h-2.5 w-2.5 text-green-500 mt-0.5 shrink-0" />
+                                ) : (
+                                  <XCircle className="h-2.5 w-2.5 text-red-500 mt-0.5 shrink-0" />
+                                )}
+                                <p className="text-gray-700 font-medium leading-tight">
+                                  Q{answer.question_index + 1}: {answer.question_text}
+                                </p>
+                              </div>
+                              <div className="pl-3.5">
+                                <p className={answer.is_correct ? 'text-green-600' : 'text-red-600'}>
+                                  <span className="font-medium">Risposta:</span> {answer.student_answer}
+                                </p>
+                                {!answer.is_correct && (
+                                  <p className="text-green-600">
+                                    <span className="font-medium">Corretta:</span> {answer.correct_answer}
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   )
                 })}
