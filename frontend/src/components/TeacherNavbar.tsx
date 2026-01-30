@@ -379,7 +379,7 @@ export function TeacherNavbar({ currentSession, onSessionChange }: TeacherNavbar
                   <div className="hidden md:block text-left">
                     <p className="text-xs font-medium leading-none" style={{ color: '#cbd5e1' }}>{profile.firstName}</p>
                   </div>
-                  <ChevronDown className={`h-3 w-3 transition-transform ${showDropdown ? 'rotate-180' : ''}`} style={{ color: '#ffffff' }} />
+                  <ChevronDown className={`h-3 w-3 transition-transform ${showDropdown ? 'rotate-180' : ''}`} style={{ color: '#cbd5e1' }} />
                 </button>
 
                 {/* Dropdown Menu - Modern Floating Style */}
