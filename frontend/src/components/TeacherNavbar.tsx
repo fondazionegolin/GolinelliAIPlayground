@@ -147,9 +147,11 @@ export function TeacherNavbar({ currentSession, onSessionChange }: TeacherNavbar
 
   const loadActiveSessions = async () => {
     try {
+      console.log('[TeacherNavbar] Loading active sessions...')
       // First, get all classes
       const classesRes = await teacherApi.getClasses()
       const classes = classesRes.data
+      console.log('[TeacherNavbar] Found classes:', classes.length)
 
       // Then, get sessions for each class and aggregate
       const allSessions: ActiveSession[] = []
@@ -157,10 +159,14 @@ export function TeacherNavbar({ currentSession, onSessionChange }: TeacherNavbar
         try {
           const sessionsRes = await teacherApi.getSessions(cls.id)
           const sessions = sessionsRes.data
+          console.log(`[TeacherNavbar] Class "${cls.name}" has ${sessions.length} sessions`)
 
-          // Filter for ACTIVE sessions only and map to our format
+          // Filter for ACTIVE sessions only (note: backend uses lowercase "active")
           const activeSessions = sessions
-            .filter((session: { status: string }) => session.status === 'ACTIVE')
+            .filter((session: { status: string }) => {
+              console.log(`[TeacherNavbar] Session "${session.title}" status:`, session.status)
+              return session.status === 'active'  // Fixed: was 'ACTIVE', should be 'active'
+            })
             .map((session: { id: string; title: string; student_count?: number }) => ({
               id: session.id,
               name: session.title,
@@ -168,12 +174,14 @@ export function TeacherNavbar({ currentSession, onSessionChange }: TeacherNavbar
               studentCount: session.student_count || 0,
             }))
 
+          console.log(`[TeacherNavbar] Found ${activeSessions.length} active sessions in class "${cls.name}"`)
           allSessions.push(...activeSessions)
         } catch (err) {
           console.error(`Failed to load sessions for class ${cls.id}`, err)
         }
       }
 
+      console.log('[TeacherNavbar] Total active sessions loaded:', allSessions.length)
       setActiveSessions(allSessions)
     } catch (error) {
       console.error('Failed to load active sessions', error)
