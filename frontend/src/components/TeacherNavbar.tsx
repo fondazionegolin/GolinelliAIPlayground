@@ -135,19 +135,34 @@ export function TeacherNavbar({ currentSession, onSessionChange }: TeacherNavbar
 
   const loadActiveSessions = async () => {
     try {
-      const res = await teacherApi.getSessions('')
-      const sessionsData = res.data.map((session: {
-        id: string
-        name: string
-        class_name: string
-        student_count?: number
-      }) => ({
-        id: session.id,
-        name: session.name,
-        className: session.class_name,
-        studentCount: session.student_count,
-      }))
-      setActiveSessions(sessionsData)
+      // First, get all classes
+      const classesRes = await teacherApi.getClasses()
+      const classes = classesRes.data
+
+      // Then, get sessions for each class and aggregate
+      const allSessions: ActiveSession[] = []
+      for (const cls of classes) {
+        try {
+          const sessionsRes = await teacherApi.getSessions(cls.id)
+          const sessions = sessionsRes.data
+
+          // Filter for ACTIVE sessions only and map to our format
+          const activeSessions = sessions
+            .filter((session: { status: string }) => session.status === 'ACTIVE')
+            .map((session: { id: string; title: string; student_count?: number }) => ({
+              id: session.id,
+              name: session.title,
+              className: cls.name,
+              studentCount: session.student_count || 0,
+            }))
+
+          allSessions.push(...activeSessions)
+        } catch (err) {
+          console.error(`Failed to load sessions for class ${cls.id}`, err)
+        }
+      }
+
+      setActiveSessions(allSessions)
     } catch (error) {
       console.error('Failed to load active sessions', error)
     }
