@@ -3,6 +3,7 @@ import { Link, useNavigate, useLocation } from 'react-router-dom'
 import { User, Settings, LogOut, ChevronDown, Users, MessageSquare, FileText, Check, Brain } from 'lucide-react'
 import { Button } from './ui/button'
 import { teacherApi } from '@/lib/api'
+import { useAuthStore } from '@/stores/auth'
 import TeacherNotifications, { TeacherNotification } from './TeacherNotifications'
 import { useSocket } from '@/hooks/useSocket'
 
@@ -182,10 +183,16 @@ export function TeacherNavbar({ currentSession, onSessionChange }: TeacherNavbar
   const handleLogout = () => {
     console.log('[TeacherNavbar] Logout clicked')
     setShowDropdown(false)
+
+    // Clear localStorage tokens
     localStorage.removeItem('teacher_token')
     localStorage.removeItem('teacher_selected_session')
-    console.log('[TeacherNavbar] Navigating to /auth')
-    navigate('/auth')
+
+    // Clear Zustand persisted auth store (THIS IS CRITICAL!)
+    useAuthStore.getState().logout()
+
+    console.log('[TeacherNavbar] Store cleared, navigating to /login')
+    navigate('/login')
   }
 
   const getInitials = () => {
