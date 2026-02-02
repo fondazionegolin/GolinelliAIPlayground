@@ -881,33 +881,66 @@ async def generate_with_web_search_streaming(
     Used for streaming real-time feedback to the frontend.
     """
     from app.services.web_search_service import web_search_service
+    from app.services.llm_service import llm_service
 
     last_message = messages[-1]["content"] if messages else ""
 
-    # Step 1: Start search
-    yield {"type": "status", "message": "🔍 Avvio ricerca web..."}
-    yield {"type": "status", "message": f"📝 Query: {last_message[:100]}..."}
+    # Step 1: Query Refinement (Chain of Thought aka "CoT")
+    yield {"type": "status", "message": "🤔 Analisi della richiesta..."}
+    
+    refinement_prompt = f"""Sei un esperto di ricerca web. Analizza la richiesta dell'utente e genera la MIGLIORE query di ricerca possibile per trovare informazioni pertinenti e aggiornate.
+    
+    Richiesta originale: "{last_message}"
+    
+    Regole:
+    - Rimuovi convenevoli o parole inutili
+    - Usa termini specifici e tecnici se necessario
+    - Se la richiesta è generica, rendila più specifica per ottenere risultati di qualità
+    - Rispondi SOLO con il testo della query, senza virgolette o altro.
+    """
+
+    try:
+        # Use a fast internal call to refine the query
+        refinement = await llm_service.generate(
+            messages=[{"role": "user", "content": refinement_prompt}],
+            system_prompt="Sei un motore di ottimizzazione query.",
+            provider="openai", 
+            model="gpt-4o-mini",  # Use correct model name
+            temperature=0.3,
+            max_tokens=60
+        )
+        refined_query = refinement.content.strip().replace('"', '') if refinement.content else ""
+        
+        # Fallback if query is empty or too short
+        if not refined_query or len(refined_query) < 3:
+            refined_query = last_message.replace("RICERCA WEB:", "").replace("ricerca web:", "").strip()
+            yield {"type": "status", "message": f"🎯 Query: {refined_query}"}
+        else:
+            yield {"type": "status", "message": f"🎯 Query ottimizzata: {refined_query}"}
+    except Exception as e:
+        logger.error(f"Query refinement failed: {e}")
+        refined_query = last_message.replace("RICERCA WEB:", "").replace("ricerca web:", "").strip()
+        yield {"type": "status", "message": f"⚠️ Ottimizzazione fallita, uso query originale..."}
 
     # Step 2: Perform search
-    yield {"type": "status", "message": "🌐 Interrogazione DuckDuckGo..."}
+    yield {"type": "status", "message": "🌐 Ricerca sul web in corso..."}
 
     results = await web_search_service.search(
-        query=last_message,
+        query=refined_query,
         num_results=5,
         fetch_content=False  # First get basic results
     )
 
     if not results:
         yield {"type": "error", "message": "❌ Nessun risultato trovato"}
-        yield {"type": "done", "content": "⚠️ **Ricerca web non riuscita**\n\nNon sono riuscito a trovare risultati."}
+        yield {"type": "done", "content": "⚠️ **Ricerca web non riuscita**\n\nNon sono riuscito a trovare risultati per la tua ricerca."}
         return
 
-    yield {"type": "status", "message": f"✅ Trovati {len(results)} risultati"}
+    yield {"type": "status", "message": f"✅ Trovati {len(results)} risultati pertinenti"}
 
     # Step 3: Fetch content from each result
     search_context_parts = []
-    sources_list = []
-
+    
     for i, result in enumerate(results, 1):
         yield {"type": "source", "index": i, "title": result.title, "url": result.url, "status": "fetching"}
 
@@ -923,57 +956,60 @@ async def generate_with_web_search_streaming(
         if result.snippet:
             source_text += f"Anteprima: {result.snippet}\n"
         if result.content:
-            content_preview = result.content[:2000]
+            content_preview = result.content[:3000] # Increased context window
             source_text += f"Contenuto:\n{content_preview}\n"
 
         search_context_parts.append(source_text)
-        sources_list.append(f"- [{result.title}]({result.url})")
 
     search_context = "\n---\n".join(search_context_parts)
 
     # Step 4: Generate response
-    yield {"type": "status", "message": f"🤖 Generazione risposta con {model}..."}
+    yield {"type": "status", "message": f"🤖 Sintesi e scrittura risposta..."}
 
     # Build source links for easy reference
     source_links = "\n".join([f"- **[{i}]** [{r.title}]({r.url})" for i, r in enumerate(results, 1)])
 
-    web_search_prompt = f"""Sei un assistente AI per docenti. Genera una REVIEW SINTETICA basata ESCLUSIVAMENTE sulle fonti web fornite.
+    web_search_prompt = f"""Sei un assistente ricercatore avanzato. Genera un report DETTAGLIATO e AGENTICO basato ESCLUSIVAMENTE sulle fonti web fornite.
 
----
-📰 FONTI DISPONIBILI:
+    DOMANDA UTENTE: "{last_message}"
+    QUERY EFFETTIVA: "{refined_query}"
 
-{search_context}
+    ---
+    📰 FONTI ANALIZZATE:
 
----
+    {search_context}
 
-📋 **FORMATO OBBLIGATORIO** - Usa ESATTAMENTE questa struttura:
+    ---
 
-## 🎯 Sintesi
-[2-3 frasi che riassumono il tema. Ogni affermazione deve linkare la fonte: [testo](url)]
+    📋 **STRUTTURA RISPOSTA** (Markdown):
 
-## 📌 Punti Chiave
+    ## 🎯 Sintesi Diretta
+    [Rispondi direttamente alla domanda dell'utente sintetizzando le informazioni trovate. Usa citazioni [1], [2]...]
 
-| # | Punto | Fonte |
-|---|-------|-------|
-| 1 | [Descrizione punto 1] | [Nome]({results[0].url if results else '#'}) |
-| 2 | [Descrizione punto 2] | [Nome](url) |
-| 3 | [Descrizione punto 3] | [Nome](url) |
+    ## 🔍 Analisi Approfondita
+    [Analizza i vari aspetti del problema/argomento emersi dalla ricerca. Usa sottotitoli se necessario.]
+    
+    - **Punto Chiave 1**: dettaglio... [1]
+    - **Punto Chiave 2**: dettaglio... [2]
 
-## 💡 Dettagli Rilevanti
-- **[Aspetto 1]**: [Spiegazione breve] → leggi di più su [fonte](url)
-- **[Aspetto 2]**: [Spiegazione breve] → leggi di più su [fonte](url)
+    ## 📊 Dati e Fatti Rilevanti
+    | Dato/Fatto | Fonte |
+    |------------|-------|
+    | [Esempio] | [1] |
 
-## ⚠️ Limitazioni
-[Cosa NON è stato trovato nelle fonti o richiede verifica]
+    ## 💡 Conclusioni
+    [Conclusioni o suggerimenti pratici basati sulla ricerca]
 
----
+    ## ⚠️ Note
+    [Eventuali contraddizioni o informazioni mancanti]
 
-⚡ REGOLE CRITICHE:
-1. OGNI informazione DEVE avere un link Markdown cliccabile: [testo](url)
-2. USA gli URL ESATTI dalle fonti sopra - NON inventare URL
-3. Sii SINTETICO: bullet points > paragrafi lunghi
-4. Se un dato non è nelle fonti, scrivi "Non trovato nelle fonti consultate"
-5. La tabella dei Punti Chiave è OBBLIGATORIA"""
+    ---
+    
+    REGOLE:
+    1. Cita SEMPRE le fonti usando [n].
+    2. Sii esaustivo ma ben strutturato.
+    3. Se le fonti non rispondono alla domanda, dillo chiaramente.
+    """
 
     response = await llm_service.generate(
         messages=messages,
@@ -987,7 +1023,7 @@ async def generate_with_web_search_streaming(
     response_text = response.content
 
     # Always append verified source list at the end
-    response_text += f"\n\n---\n## 📚 Fonti Consultate\n{source_links}"
+    response_text += f"\n\n---\n### 📚 Fonti Consultate\n{source_links}"
 
     yield {"type": "done", "content": response_text}
 

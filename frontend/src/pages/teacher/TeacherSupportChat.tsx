@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import {
   Send, Bot, Paperclip, X, Trash2, Plus, File, Image as ImageIcon, Loader2,
-  Database, Download, ChevronDown, ChevronRight, Edit3
+  Database, Download, ChevronDown, ChevronRight, Edit3, Check
 } from 'lucide-react'
 import { llmApi, teacherApi } from '@/lib/api'
 import { useToast } from '@/components/ui/use-toast'
@@ -25,14 +25,15 @@ const AVAILABLE_MODELS = [
 
 const AGENT_MODES = [
   { id: 'default', label: 'Chat' },
-  { id: 'web_search', label: 'Web Search' },
+  // { id: 'web_search', label: 'Web Search' },  // Hidden - not mature yet
   { id: 'report', label: 'Report' },
   { id: 'quiz', label: 'Quiz' },
   { id: 'image', label: 'Immagine' },
   { id: 'dataset', label: 'Dataset' },
 ] as const
 
-type AgentMode = typeof AGENT_MODES[number]['id']
+// Explicitly include web_search in type even though it's hidden from UI
+type AgentMode = typeof AGENT_MODES[number]['id'] | 'web_search'
 
 interface QuizQuestion {
   question: string
@@ -89,7 +90,9 @@ export default function TeacherSupportChat() {
   const [messages, setMessages] = useState<Message[]>([])
   const [inputText, setInputText] = useState('')
   const [isLoading, setIsLoading] = useState(false)
-  const [selectedModel, setSelectedModel] = useState(AVAILABLE_MODELS[0].id)
+  const [defaultModel, setDefaultModel] = useState(localStorage.getItem('default_model') || AVAILABLE_MODELS[0].id)
+  const [selectedModel, setSelectedModel] = useState(localStorage.getItem('default_model') || AVAILABLE_MODELS[0].id)
+  const [showModelMenu, setShowModelMenu] = useState(false)
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [currentConversationId, setCurrentConversationId] = useState<string | null>(null)
   const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([])
@@ -98,6 +101,59 @@ export default function TeacherSupportChat() {
   const [imageSize, setImageSize] = useState<string>('1024x1024')
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
   const [webSearchProgress, setWebSearchProgress] = useState<WebSearchProgress | null>(null)
+  const modelMenuRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (modelMenuRef.current && !modelMenuRef.current.contains(event.target as Node)) {
+        setShowModelMenu(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
+  const handleSetDefaultModel = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation()
+    // User wants "choose default via checkbox". 
+    // Let's assume radio behavior for default (only one default).
+    setDefaultModel(id) // Always set the clicked one as default
+    localStorage.setItem('default_model', id)
+    toast({
+      title: "Modello predefinito aggiornato",
+      description: `Il modello predefinito è ora ${AVAILABLE_MODELS.find(m => m.id === id)?.name}`
+    })
+  }
+
+  // Model Icons Components
+  const ModelIcon = ({ provider, modelId: _modelId, className = "h-4 w-4" }: { provider: string, modelId?: string, className?: string }) => {
+    if (provider === 'openai') {
+      return (
+        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className={className}>
+          <path d="M22.2819 9.8211a5.9847 5.9847 0 0 0-.5157-4.9108 6.0462 6.0462 0 0 0-6.5098-2.9A6.0651 6.0651 0 0 0 4.9807 4.1818a5.9847 5.9847 0 0 0-3.9977 2.9 6.0462 6.0462 0 0 0 .7427 7.0966 5.98 5.98 0 0 0 .511 4.9107 6.051 6.051 0 0 0 6.5146 2.9001A5.9847 5.9847 0 0 0 13.2599 24a6.0557 6.0557 0 0 0 5.7718-4.2058 5.9894 5.9894 0 0 0 3.9977-2.9001 6.0557 6.0557 0 0 0-.7475-7.0729zm-9.022 12.6081a4.4755 4.4755 0 0 1-2.8764-1.0408l.1419-.0804 3.5687-2.0594.2152-.1245v2.967A4.5422 4.5422 0 0 1 13.26 22.4292zm-6.6-4.5936a4.4255 4.4255 0 0 1-1.3976-2.5833l2.8436 1.6413.2199.1245.5415 3.129a4.5707 4.5707 0 0 1-2.2074-2.3115zm-2.4349-7.5941a4.5279 4.5279 0 0 1 2.3734-2.145l1.6746 2.8953-.2152.1245-3.5687 2.0594a4.5089 4.5089 0 0 1-.2641-2.9342zm11.9705-3.5687a4.5184 4.5184 0 0 1 2.2122 2.3163l-2.8436-1.646-.2152-.1245-.5415-3.1238a4.5327 4.5327 0 0 1 1.3881 2.578zm2.4349 7.5893a4.5231 4.5231 0 0 1-2.3686 2.1402l-1.6746-2.8905.2152-.1245 3.5687-2.0594a4.4994 4.4994 0 0 1 .2593 2.9342zm-3.5355 4.3035l-1.6841-2.8953a1.4727 1.4727 0 0 0 2.217.0095l-1.6373 2.9048a1.5155 1.5155 0 0 0 1.1044-.019zM6.9234 10.9788l1.6841 2.8953a1.487 1.487 0 0 0 0-2.588L6.9234 8.3908a1.5583 1.5583 0 0 0 0 2.588zm2.0981-6.101l1.6373 2.9048a1.487 1.487 0 0 0 2.217-.0095l-3.3213-1.9216a1.5964 1.5964 0 0 0-.533 1.0263z" fill="currentColor" />
+        </svg>
+      )
+    }
+    if (provider === 'anthropic') {
+      return (
+        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className={className}>
+          <path d="M17.4224 18.2526H19.7618L13.7844 4H10.1983L4.22095 18.2526H6.57762L7.90076 14.8687H16.082L17.4224 18.2526ZM8.79093 12.6378L11.973 4.54897L15.1913 12.6378H8.79093Z" fill="currentColor" />
+        </svg>
+      )
+    }
+    if (provider === 'ollama') { // Generic or Mistral/DeepSeek if specific provider key matches
+      return (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+          <path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2v10l5-5" />
+        </svg>
+      )
+    }
+    // DeepSeek & Mistral specific overrides if provider is ollama but id contains string?
+    // Let's refine based on explicit ID or enhanced provider map?
+    return <Bot className={className} />
+  }
+
+
   const [imageGenerationProgress, setImageGenerationProgress] = useState<{
     status: string
     step: 'connecting' | 'enhancing' | 'generating' | 'done' | 'error'
@@ -616,11 +672,12 @@ REGOLE IMPORTANTI:
 
   return (
     <>
-      <div className="h-full bg-slate-100 flex py-6 px-4">
+
+      <div className="flex h-screen md:h-[calc(100vh-10rem)] md:max-h-[850px] md:min-h-[500px] bg-white mt-24 md:mt-24 overflow-hidden items-start justify-center">
         {/* Main Content - Centered with max-width and rounded corners */}
-        <div className="flex-1 flex justify-center">
+        <div className="flex-1 flex justify-center items-center h-full">
           <div
-            className="flex h-full bg-white font-sans w-full max-w-6xl rounded-2xl shadow-lg overflow-hidden border border-slate-200"
+            className="flex h-full bg-white font-sans w-full max-w-6xl md:rounded-2xl shadow-lg overflow-hidden md:border md:border-indigo-100 relative md:shadow-indigo-100/50"
             onDragOver={(e) => e.preventDefault()}
             onDrop={handleDrop}
           >
@@ -695,11 +752,11 @@ REGOLE IMPORTANTI:
             </aside>
 
             {/* MAIN CHAT AREA */}
-            <main className="flex-1 flex flex-col relative bg-slate-50/50">
+            <main className="flex-1 flex flex-col relative bg-slate-50/50 overflow-hidden">
 
-              <header className="h-14 border-b border-slate-200 bg-white/80 backdrop-blur-sm px-6 flex items-center justify-between sticky top-0 z-10">
+              <header className="px-3 py-2 md:px-4 md:py-3 border-b border-indigo-100/50 bg-white/80 backdrop-blur-sm sticky top-0 z-10 flex items-center justify-between shrink-0">
                 <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-lg flex items-center justify-center shadow-md bg-[#4f46e5]">
+                  <div className="w-8 h-8 rounded-lg flex items-center justify-center shadow-md bg-indigo-600">
                     <Bot className="h-5 w-5 text-white" />
                   </div>
                   <div>
@@ -715,66 +772,123 @@ REGOLE IMPORTANTI:
                 <div className="flex items-center gap-4">
                   <div className="flex items-center gap-3 animate-in fade-in slide-in-from-right-4 duration-300">
                     {/* Generatore */}
-                    <div className="flex items-center bg-slate-100/80 rounded-full p-1 border border-slate-200">
-                      <button
-                        onClick={() => setImageProvider('flux-schnell')}
-                        className={`px-3 py-1 text-xs rounded-full transition-all flex items-center gap-1 ${imageProvider === 'flux-schnell'
-                          ? 'bg-white shadow-sm text-[#4f46e5] font-bold'
-                          : 'text-slate-500 hover:text-slate-700'
-                          }`}
-                      >
-                        ⚡ Flux
-                      </button>
-                      <button
-                        onClick={() => setImageProvider('dall-e')}
-                        className={`px-3 py-1 text-xs rounded-full transition-all flex items-center gap-1 ${imageProvider === 'dall-e'
-                          ? 'bg-white shadow-sm text-[#4f46e5] font-bold'
-                          : 'text-slate-500 hover:text-slate-700'
-                          }`}
-                      >
-                        🎨 DALL-E
-                      </button>
-                    </div>
+                    {agentMode === 'image' && (
+                      <>
+                        <div className="flex items-center bg-slate-100/80 rounded-full p-1 border border-slate-200">
+                          <button
+                            onClick={() => setImageProvider('flux-schnell')}
+                            className={`px-3 py-1 text-xs rounded-full transition-all flex items-center gap-1 ${imageProvider === 'flux-schnell'
+                              ? 'bg-white shadow-sm text-indigo-600 font-bold'
+                              : 'text-slate-500 hover:text-slate-700'
+                              }`}
+                          >
+                            ⚡ Flux
+                          </button>
+                          <button
+                            onClick={() => setImageProvider('dall-e')}
+                            className={`px-3 py-1 text-xs rounded-full transition-all flex items-center gap-1 ${imageProvider === 'dall-e'
+                              ? 'bg-white shadow-sm text-indigo-600 font-bold'
+                              : 'text-slate-500 hover:text-slate-700'
+                              }`}
+                          >
+                            🎨 DALL-E
+                          </button>
+                        </div>
 
-                    {/* Formato */}
-                    <select
-                      value={imageSize}
-                      onChange={(e) => setImageSize(e.target.value)}
-                      className="text-xs bg-slate-100/80 border border-slate-200 rounded-full px-3 py-1.5 text-slate-600 focus:ring-2 focus:ring-[#4f46e5] focus:border-transparent cursor-pointer hover:bg-slate-50 outline-none"
-                    >
-                      <option value="1024x1024">1:1 Quadrato</option>
-                      <option value="1024x768">4:3 Orizzontale</option>
-                      <option value="768x1024">3:4 Verticale</option>
-                      <option value="1280x720">16:9 Panorama</option>
-                      <option value="720x1280">9:16 Portrait</option>
-                    </select>
+                        {/* Formato */}
+                        <div className="relative">
+                          <select
+                            value={imageSize}
+                            onChange={(e) => setImageSize(e.target.value)}
+                            className="text-xs bg-slate-100/80 border border-slate-200 rounded-full px-3 py-1.5 text-slate-600 focus:ring-2 focus:ring-indigo-500 focus:border-transparent cursor-pointer hover:bg-slate-50 outline-none appearance-none pr-8"
+                          >
+                            <option value="1024x1024">1:1 Quadrato</option>
+                            <option value="1024x768">4:3 Orizzontale</option>
+                            <option value="768x1024">3:4 Verticale</option>
+                            <option value="1280x720">16:9 Panorama</option>
+                            <option value="720x1280">9:16 Portrait</option>
+                          </select>
+                          <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 h-3 w-3 text-slate-400 pointer-events-none" />
+                        </div>
+                      </>
+                    )}
+
+
+                    {(agentMode === 'quiz' || agentMode === 'dataset' || agentMode === 'web_search') ? (
+                      <div className="text-xs bg-purple-100 text-purple-700 rounded-full px-3 py-1.5 font-medium border border-purple-200">
+                        Claude Haiku (fisso)
+                      </div>
+                    ) : (
+                      agentMode !== 'image' && (
+                        <div className="relative" ref={modelMenuRef}>
+                          <button
+                            onClick={() => setShowModelMenu(!showModelMenu)}
+                            className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 rounded-full text-xs font-bold text-white transition-all shadow-md shadow-indigo-200 group"
+                          >
+                            <div className="p-0.5 bg-white/20 rounded-md">
+                              <ModelIcon provider={AVAILABLE_MODELS.find(m => m.id === selectedModel)?.provider || ''} modelId={selectedModel} className="h-3 w-3" />
+                            </div>
+                            <span>{AVAILABLE_MODELS.find(m => m.id === selectedModel)?.name}</span>
+                            <ChevronDown className={`h-3 w-3 text-indigo-200 transition-transform ${showModelMenu ? 'rotate-180' : ''}`} />
+                          </button>
+
+                          {/* Dropdown */}
+                          {showModelMenu && (
+                            <div className="absolute top-full right-0 mt-2 w-72 bg-white rounded-xl shadow-xl border border-slate-100 py-1 z-[100] animate-in fade-in zoom-in-95 duration-100 overflow-visible ring-1 ring-black/5">
+                              <div className="px-4 py-3 text-[10px] font-bold text-slate-400 uppercase tracking-wider bg-slate-50/50 border-b border-slate-100 mb-1 flex justify-between items-center">
+                                <span>Seleziona Modello</span>
+                                <span className="text-[9px] font-normal text-slate-400">Default</span>
+                              </div>
+                              {AVAILABLE_MODELS.map(m => (
+                                <div
+                                  key={m.id}
+                                  className={`flex items-center justify-between px-3 py-2.5 mx-1 rounded-lg hover:bg-slate-50 transition-colors cursor-pointer group ${selectedModel === m.id ? 'bg-indigo-50/50' : ''}`}
+                                  onClick={() => {
+                                    setSelectedModel(m.id)
+                                    setShowModelMenu(false)
+                                  }}
+                                >
+                                  <div className="flex items-center gap-3">
+                                    <div className={`p-2 rounded-lg ${selectedModel === m.id ? 'bg-indigo-100 ring-1 ring-indigo-200' : 'bg-slate-100 group-hover:bg-indigo-50 group-hover:text-indigo-600 transition-colors'}`}>
+                                      <ModelIcon provider={m.provider} modelId={m.id} className="h-5 w-5" />
+                                    </div>
+                                    <div className="flex flex-col">
+                                      <span className={`text-sm font-bold ${selectedModel === m.id ? 'text-indigo-900' : 'text-slate-700'}`}>
+                                        {m.name}
+                                      </span>
+                                      <span className="text-[10px] text-slate-400 capitalize font-medium">{m.provider}</span>
+                                    </div>
+                                  </div>
+
+                                  {/* Default Checkbox */}
+                                  <div
+                                    className="flex items-center justify-center w-8 h-8 rounded-full hover:bg-slate-100 transition-colors"
+                                    onClick={(e) => handleSetDefaultModel(m.id, e)}
+                                    title="Imposta come default"
+                                  >
+                                    <div className={`w-4 h-4 rounded border flex items-center justify-center transition-all duration-200 ${defaultModel === m.id
+                                      ? 'bg-indigo-600 border-indigo-600 shadow-sm'
+                                      : 'border-slate-300 text-transparent hover:border-indigo-400 mx-auto'
+                                      }`}>
+                                      {defaultModel === m.id && <Check className="h-2.5 w-2.5 text-white" strokeWidth={3} />}
+                                    </div>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )
+                    )}
                   </div>
-
-                  {(agentMode === 'quiz' || agentMode === 'dataset' || agentMode === 'web_search') ? (
-                    <div className="text-xs bg-purple-100 text-purple-700 rounded-full px-3 py-1.5 font-medium border border-purple-200">
-                      Claude Haiku (fisso)
-                    </div>
-                  ) : (
-                    agentMode !== 'image' && (
-                      <select
-                        className="text-xs bg-slate-100 border-none rounded-full px-3 py-1.5 text-slate-600 focus:ring-0 cursor-pointer hover:bg-slate-200 transition-colors"
-                        value={selectedModel}
-                        onChange={(e) => setSelectedModel(e.target.value)}
-                      >
-                        {AVAILABLE_MODELS.map(m => (
-                          <option key={m.id} value={m.id}>{m.name}</option>
-                        ))}
-                      </select>
-                    )
-                  )}
                 </div>
               </header>
 
-              <div className="flex-1 overflow-y-auto px-6 py-8 space-y-8">
+              <div className="flex-1 overflow-y-auto px-3 py-3 md:px-4 md:py-6 space-y-3 md:space-y-6" style={{ WebkitOverflowScrolling: 'touch', scrollBehavior: 'smooth' }}>
                 {messages.length === 0 ? (
                   <div className="h-full flex flex-col items-center justify-center opacity-50">
                     <Bot className="h-12 w-12 text-slate-300 mb-4" />
-                    <p className="text-slate-400 font-medium">Inizia una nuova conversazione o trascina dei file qui</p>
+                    <p className="text-slate-400 font-medium">Inizia una nuova conversazione</p>
                   </div>
                 ) : (
                   messages.map((msg) => (
@@ -785,7 +899,7 @@ REGOLE IMPORTANTI:
                         </div>
                       )}
                       <div className={`max-w-[75%] space-y-1 ${msg.role === 'user' ? 'items-end flex flex-col' : 'items-start'}`}>
-                        <div className={`px-5 py-3.5 text-sm leading-relaxed shadow-sm ${msg.role === 'user' ? 'bg-[#4f46e5] text-white rounded-2xl rounded-tr-sm' : 'bg-white text-slate-800 border border-slate-200 rounded-2xl rounded-tl-sm'
+                        <div className={`px-5 py-3.5 text-sm leading-relaxed shadow-sm ${msg.role === 'user' ? 'bg-[#4f46e5] !text-white font-medium rounded-2xl rounded-tr-sm' : 'bg-white text-slate-800 border border-slate-200 rounded-2xl rounded-tl-sm'
                           }`}>
                           {msg.role === 'assistant' ? (
                             <MessageContent
@@ -795,7 +909,7 @@ REGOLE IMPORTANTI:
                               toast={toast}
                             />
                           ) : (
-                            <ReactMarkdown className="prose prose-sm max-w-none prose-p:leading-relaxed prose-pre:bg-slate-800 prose-pre:text-slate-100">
+                            <ReactMarkdown className="prose prose-sm max-w-none prose-p:leading-relaxed prose-pre:bg-slate-800 prose-pre:text-slate-100 [&_*]:!text-white [&_strong]:font-bold">
                               {convertEmoticons(msg.content)}
                             </ReactMarkdown>
                           )}
@@ -937,13 +1051,13 @@ REGOLE IMPORTANTI:
                                 <div className="font-medium text-slate-700 truncate">{source.title}</div>
                                 <a href={source.url} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline truncate block">
                                   {source.url.substring(0, 50)}...
-                                }
-                                  {source.status === 'done' && source.content_length && (
-                                    <span className="text-green-600">✓ {source.content_length} caratteri estratti</span>
-                                  )}
-                                  {source.status === 'error' && source.error && (
-                                    <span className="text-red-500">✗ {source.error}</span>
-                                  )}
+                                </a>
+                                {source.status === 'done' && source.content_length && (
+                                  <span className="text-green-600">✓ {source.content_length} caratteri estratti</span>
+                                )}
+                                {source.status === 'error' && source.error && (
+                                  <span className="text-red-500">✗ {source.error}</span>
+                                )}
                               </div>
                             </div>
                           ))}
@@ -1093,6 +1207,7 @@ REGOLE IMPORTANTI:
     </>
   )
 }
+
 
 // Helpers
 function convertEmoticons(text: string): string {
