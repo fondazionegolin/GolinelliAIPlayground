@@ -202,44 +202,58 @@ export default function TeacherSupportChat() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
-  // Load history
+  // Load conversations from server
   useEffect(() => {
-    const saved = localStorage.getItem('teacher_support_conversations')
-    if (saved) {
+    const loadConversations = async () => {
       try {
-        const parsed = JSON.parse(saved)
-        setConversations(parsed.map((c: Conversation) => ({
-          ...c,
-          createdAt: new Date(c.createdAt),
-          messages: c.messages.map(m => ({ ...m, timestamp: new Date(m.timestamp) }))
+        const response = await teacherApi.getConversations()
+        const serverConversations = response.data || []
+        setConversations(serverConversations.map((c: any) => ({
+          id: c.id,
+          title: c.title || 'Nuova conversazione',
+          messages: [], // Messages loaded on demand when selecting a conversation
+          createdAt: new Date(c.created_at),
         })))
-      } catch (e) { console.error(e) } // Handle potential JSON parsing errors
-    }
-  }, [])
-
-  useEffect(() => {
-    if (conversations.length > 0) {
-      try {
-        localStorage.setItem('teacher_support_conversations', JSON.stringify(conversations))
       } catch (e) {
-        console.warn("Storage full, attempting to save without heavy content")
-        try {
-          // Create a lightweight copy of conversations for storage
-          // Remove base64 images from content
-          const cleanConversations = conversations.map(c => ({
-            ...c,
-            messages: c.messages.map(m => ({
-              ...m,
-              content: m.content.replace(/!\(.*\)\(data:image\/.*?\)/g, '![Immagine non salvata (troppo grande)]()')
-            }))
-          }))
-          localStorage.setItem('teacher_support_conversations', JSON.stringify(cleanConversations))
-        } catch (e2) {
-          console.error("Failed to save history to localStorage even after cleanup:", e2)
+        console.error('Failed to load conversations from server:', e)
+        // Fallback to localStorage for offline/error cases
+        const saved = localStorage.getItem('teacher_support_conversations')
+        if (saved) {
+          try {
+            const parsed = JSON.parse(saved)
+            setConversations(parsed.map((c: Conversation) => ({
+              ...c,
+              createdAt: new Date(c.createdAt),
+              messages: c.messages.map(m => ({ ...m, timestamp: new Date(m.timestamp) }))
+            })))
+          } catch (parseErr) { console.error(parseErr) }
         }
       }
     }
-  }, [conversations])
+    loadConversations()
+  }, [])
+
+  // Load messages when selecting a conversation
+  useEffect(() => {
+    const loadMessages = async () => {
+      if (!currentConversationId) return
+      try {
+        const response = await teacherApi.getConversation(currentConversationId)
+        const conv = response.data
+        if (conv?.messages) {
+          setMessages(conv.messages.map((m: any) => ({
+            id: m.id,
+            role: m.role,
+            content: m.content,
+            timestamp: new Date(m.created_at)
+          })))
+        }
+      } catch (e) {
+        console.error('Failed to load messages:', e)
+      }
+    }
+    loadMessages()
+  }, [currentConversationId])
 
   const addFiles = (files: globalThis.File[]) => {
     const newFiles: AttachedFile[] = files.map(file => {
@@ -305,6 +319,60 @@ export default function TeacherSupportChat() {
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
       addFiles(Array.from(e.dataTransfer.files))
     }
+  }
+
+  // Helper: Save message to server
+  const saveMessageToServer = async (
+    conversationId: string | null,
+    userMsg: Message,
+    assistantMsg: Message,
+    model?: string
+  ): Promise<string> => {
+    let convId: string | null = conversationId
+
+    // Create new conversation if needed
+    if (!convId) {
+      try {
+        const response = await teacherApi.createConversation({
+          title: userMsg.content.substring(0, 50) + (userMsg.content.length > 50 ? '...' : ''),
+          agent_mode: agentMode
+        })
+        convId = response.data.id
+        setCurrentConversationId(convId)
+
+        // Add to local list
+        setConversations(prev => [{
+          id: convId!,
+          title: response.data.title || 'Nuova conversazione',
+          messages: [],
+          createdAt: new Date()
+        }, ...prev])
+      } catch (e) {
+        console.error('Failed to create conversation:', e)
+        return ''
+      }
+    }
+
+    // At this point convId is guaranteed to be a string
+    if (!convId) return ''
+
+    // Save messages
+    try {
+      await teacherApi.addMessage(convId, {
+        role: userMsg.role,
+        content: userMsg.content,
+        model: model
+      })
+      await teacherApi.addMessage(convId, {
+        role: assistantMsg.role,
+        content: assistantMsg.content,
+        model: model
+      })
+    } catch (e) {
+      console.error('Failed to save messages:', e)
+    }
+
+    return convId
   }
 
   const handleSend = async () => {
@@ -410,20 +478,8 @@ REGOLE IMPORTANTI:
           // IMPORTANTE: Aggiorna anche messages per mostrare subito l'immagine nella chat
           setMessages(prev => [...prev, assistantMessage])
 
-          if (currentConversationId) {
-            setConversations(prev => prev.map(c =>
-              c.id === currentConversationId ? { ...c, messages: [...c.messages, userMessage, assistantMessage] } : c
-            ))
-          } else {
-            const newConv: Conversation = {
-              id: `conv-${Date.now()}`,
-              title: `Immagine: ${messageContent.substring(0, 30)}`,
-              messages: [userMessage, assistantMessage],
-              createdAt: new Date()
-            }
-            setConversations(prev => [newConv, ...prev])
-            setCurrentConversationId(newConv.id)
-          }
+          // Save to server
+          await saveMessageToServer(currentConversationId, userMessage, assistantMessage, selectedModel)
         } else {
           throw new Error("Nessuna URL immagine ricevuta")
         }
@@ -516,21 +572,8 @@ REGOLE IMPORTANTI:
 
           setMessages(prev => [...prev, assistantMessage])
 
-          // Update History
-          if (currentConversationId) {
-            setConversations(prev => prev.map(c =>
-              c.id === currentConversationId ? { ...c, messages: [...c.messages, userMessage, assistantMessage] } : c
-            ))
-          } else {
-            const newConv: Conversation = {
-              id: `conv-${Date.now()}`,
-              title: userMessage.content.substring(0, 45),
-              messages: [userMessage, assistantMessage],
-              createdAt: new Date()
-            }
-            setConversations(prev => [newConv, ...prev])
-            setCurrentConversationId(newConv.id)
-          }
+          // Save to server
+          await saveMessageToServer(currentConversationId, userMessage, assistantMessage, 'claude-haiku-4-5-20251001')
         } catch (e) {
           setWebSearchProgress(null)
           throw e
@@ -573,21 +616,8 @@ REGOLE IMPORTANTI:
 
         setMessages(prev => [...prev, assistantMessage])
 
-        // Update History
-        if (currentConversationId) {
-          setConversations(prev => prev.map(c =>
-            c.id === currentConversationId ? { ...c, messages: [...c.messages, userMessage, assistantMessage] } : c
-          ))
-        } else {
-          const newConv: Conversation = {
-            id: `conv-${Date.now()}`,
-            title: userMessage.content.substring(0, 40) || 'Nuova conversazione',
-            messages: [userMessage, assistantMessage],
-            createdAt: new Date()
-          }
-          setConversations(prev => [newConv, ...prev])
-          setCurrentConversationId(newConv.id)
-        }
+        // Save to server
+        await saveMessageToServer(currentConversationId, userMessage, assistantMessage, selectedModel)
       }
     } catch (e) {
       console.error(e)
@@ -720,9 +750,14 @@ REGOLE IMPORTANTI:
                         <span className="text-xs text-slate-400">{conv.createdAt.toLocaleDateString()}</span>
                         <button
                           className="text-slate-300 opacity-0 group-hover:opacity-100 hover:text-red-500 transition-opacity p-1"
-                          onClick={(e) => {
+                          onClick={async (e) => {
                             e.stopPropagation()
                             if (confirm('Eliminare questa conversazione?')) {
+                              try {
+                                await teacherApi.deleteConversation(conv.id)
+                              } catch (err) {
+                                console.error('Failed to delete conv:', err)
+                              }
                               setConversations(prev => prev.filter(c => c.id !== conv.id))
                               if (currentConversationId === conv.id) handleNewChat()
                             }

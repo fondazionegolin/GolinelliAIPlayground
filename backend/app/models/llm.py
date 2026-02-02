@@ -77,3 +77,43 @@ class AuditEvent(Base):
         Index("ix_audit_events_tenant_session_created", "tenant_id", "session_id", "created_at"),
         Index("ix_audit_events_event_type_created", "event_type", "created_at"),
     )
+
+
+class TeacherConversation(Base):
+    """Teacher AI chat conversations - server-side persistence"""
+    __tablename__ = "teacher_conversations"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id = Column(UUID(as_uuid=True), ForeignKey("tenants.id"), nullable=False, index=True)
+    teacher_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
+    title = Column(String(255), nullable=True)
+    agent_mode = Column(String(50), nullable=True)  # 'default', 'quiz', 'report', 'image', 'dataset'
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    # Relationships
+    teacher = relationship("User", backref="teacher_conversations")
+    messages = relationship("TeacherConversationMessage", back_populates="conversation", lazy="dynamic", cascade="all, delete-orphan")
+
+    __table_args__ = (
+        Index("ix_teacher_conversations_teacher_updated", "teacher_id", "updated_at"),
+    )
+
+
+class TeacherConversationMessage(Base):
+    """Messages in teacher AI chat conversations"""
+    __tablename__ = "teacher_conversation_messages"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id = Column(UUID(as_uuid=True), ForeignKey("tenants.id"), nullable=False)
+    conversation_id = Column(UUID(as_uuid=True), ForeignKey("teacher_conversations.id"), nullable=False, index=True)
+    role = Column(String(20), nullable=False)  # 'user' or 'assistant'
+    content = Column(Text, nullable=True)
+    attachments_json = Column(JSONB, nullable=True)  # file attachments metadata
+    provider = Column(String, nullable=True)
+    model = Column(String, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    # Relationships
+    conversation = relationship("TeacherConversation", back_populates="messages")
+

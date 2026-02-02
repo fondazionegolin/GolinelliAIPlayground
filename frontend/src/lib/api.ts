@@ -137,6 +137,18 @@ export const teacherApi = {
     api.post(`/teacher/sessions/${sessionId}/teachers/invite`, { email }),
   removeTeacherFromSession: (sessionId: string, teacherId: string) =>
     api.delete(`/teacher/sessions/${sessionId}/teachers/${teacherId}`),
+  // Teacher AI Conversations (server-side persistence)
+  getConversations: () => api.get('/teacher/conversations'),
+  createConversation: (data: { title?: string; agent_mode?: string }) =>
+    api.post('/teacher/conversations', data),
+  getConversation: (conversationId: string) =>
+    api.get(`/teacher/conversations/${conversationId}`),
+  deleteConversation: (conversationId: string) =>
+    api.delete(`/teacher/conversations/${conversationId}`),
+  updateConversation: (conversationId: string, data: { title?: string; agent_mode?: string }) =>
+    api.patch(`/teacher/conversations/${conversationId}`, data),
+  addMessage: (conversationId: string, data: { role: string; content: string; provider?: string; model?: string }) =>
+    api.post(`/teacher/conversations/${conversationId}/messages`, data),
 }
 
 export const chatApi = {

@@ -1523,3 +1523,256 @@ async def remove_teacher_from_session(
     await db.commit()
 
     return {"message": "Teacher removed from session"}
+
+
+# ==================== TEACHER CONVERSATIONS (AI Chat) ====================
+
+class TeacherConversationCreate(BaseModel):
+    title: Optional[str] = None
+    agent_mode: Optional[str] = "default"
+
+
+class TeacherConversationResponse(BaseModel):
+    id: UUID
+    title: Optional[str]
+    agent_mode: Optional[str]
+    created_at: datetime
+    updated_at: datetime
+    message_count: int = 0
+
+    class Config:
+        from_attributes = True
+
+
+class TeacherMessageCreate(BaseModel):
+    role: str  # 'user' or 'assistant'
+    content: str
+    provider: Optional[str] = None
+    model: Optional[str] = None
+    attachments_json: Optional[dict] = None
+
+
+class TeacherMessageResponse(BaseModel):
+    id: UUID
+    role: str
+    content: Optional[str]
+    provider: Optional[str]
+    model: Optional[str]
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+@router.get("/conversations", response_model=list[TeacherConversationResponse])
+async def list_teacher_conversations(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    teacher: Annotated[User, Depends(get_current_teacher)],
+    limit: int = Query(50, le=100),
+):
+    """List all AI chat conversations for the current teacher"""
+    from app.models import TeacherConversation, TeacherConversationMessage
+    
+    # Get conversations with message count
+    result = await db.execute(
+        select(
+            TeacherConversation,
+            func.count(TeacherConversationMessage.id).label('message_count')
+        )
+        .outerjoin(TeacherConversationMessage)
+        .where(TeacherConversation.teacher_id == teacher.id)
+        .group_by(TeacherConversation.id)
+        .order_by(TeacherConversation.updated_at.desc())
+        .limit(limit)
+    )
+    rows = result.all()
+    
+    return [
+        TeacherConversationResponse(
+            id=conv.id,
+            title=conv.title,
+            agent_mode=conv.agent_mode,
+            created_at=conv.created_at,
+            updated_at=conv.updated_at,
+            message_count=msg_count
+        )
+        for conv, msg_count in rows
+    ]
+
+
+@router.post("/conversations", response_model=TeacherConversationResponse)
+async def create_teacher_conversation(
+    request: TeacherConversationCreate,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    teacher: Annotated[User, Depends(get_current_teacher)],
+):
+    """Create a new AI chat conversation"""
+    from app.models import TeacherConversation
+    
+    conversation = TeacherConversation(
+        tenant_id=teacher.tenant_id,
+        teacher_id=teacher.id,
+        title=request.title,
+        agent_mode=request.agent_mode,
+    )
+    db.add(conversation)
+    await db.commit()
+    await db.refresh(conversation)
+    
+    return TeacherConversationResponse(
+        id=conversation.id,
+        title=conversation.title,
+        agent_mode=conversation.agent_mode,
+        created_at=conversation.created_at,
+        updated_at=conversation.updated_at,
+        message_count=0
+    )
+
+
+@router.get("/conversations/{conversation_id}", response_model=dict)
+async def get_teacher_conversation(
+    conversation_id: UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    teacher: Annotated[User, Depends(get_current_teacher)],
+):
+    """Get a conversation with all its messages"""
+    from app.models import TeacherConversation, TeacherConversationMessage
+    
+    result = await db.execute(
+        select(TeacherConversation)
+        .where(TeacherConversation.id == conversation_id)
+        .where(TeacherConversation.teacher_id == teacher.id)
+    )
+    conversation = result.scalar_one_or_none()
+    
+    if not conversation:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found")
+    
+    # Get messages
+    msg_result = await db.execute(
+        select(TeacherConversationMessage)
+        .where(TeacherConversationMessage.conversation_id == conversation_id)
+        .order_by(TeacherConversationMessage.created_at.asc())
+    )
+    messages = msg_result.scalars().all()
+    
+    return {
+        "id": conversation.id,
+        "title": conversation.title,
+        "agent_mode": conversation.agent_mode,
+        "created_at": conversation.created_at,
+        "updated_at": conversation.updated_at,
+        "messages": [
+            {
+                "id": str(m.id),
+                "role": m.role,
+                "content": m.content,
+                "provider": m.provider,
+                "model": m.model,
+                "created_at": m.created_at.isoformat(),
+            }
+            for m in messages
+        ]
+    }
+
+
+@router.post("/conversations/{conversation_id}/messages", response_model=TeacherMessageResponse)
+async def add_message_to_conversation(
+    conversation_id: UUID,
+    request: TeacherMessageCreate,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    teacher: Annotated[User, Depends(get_current_teacher)],
+):
+    """Add a message to a conversation"""
+    from app.models import TeacherConversation, TeacherConversationMessage
+    
+    # Verify ownership
+    result = await db.execute(
+        select(TeacherConversation)
+        .where(TeacherConversation.id == conversation_id)
+        .where(TeacherConversation.teacher_id == teacher.id)
+    )
+    conversation = result.scalar_one_or_none()
+    
+    if not conversation:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found")
+    
+    message = TeacherConversationMessage(
+        tenant_id=teacher.tenant_id,
+        conversation_id=conversation_id,
+        role=request.role,
+        content=request.content,
+        provider=request.provider,
+        model=request.model,
+        attachments_json=request.attachments_json,
+    )
+    db.add(message)
+    
+    # Update conversation title if first user message and no title
+    if not conversation.title and request.role == 'user':
+        conversation.title = request.content[:50] + ('...' if len(request.content) > 50 else '')
+    
+    # Update conversation timestamp
+    conversation.updated_at = func.now()
+    
+    await db.commit()
+    await db.refresh(message)
+    
+    return message
+
+
+@router.delete("/conversations/{conversation_id}")
+async def delete_teacher_conversation(
+    conversation_id: UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    teacher: Annotated[User, Depends(get_current_teacher)],
+):
+    """Delete a conversation and all its messages"""
+    from app.models import TeacherConversation
+    
+    result = await db.execute(
+        select(TeacherConversation)
+        .where(TeacherConversation.id == conversation_id)
+        .where(TeacherConversation.teacher_id == teacher.id)
+    )
+    conversation = result.scalar_one_or_none()
+    
+    if not conversation:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found")
+    
+    await db.delete(conversation)  # Cascade deletes messages
+    await db.commit()
+    
+    return {"message": "Conversation deleted"}
+
+
+@router.patch("/conversations/{conversation_id}")
+async def update_teacher_conversation(
+    conversation_id: UUID,
+    request: TeacherConversationCreate,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    teacher: Annotated[User, Depends(get_current_teacher)],
+):
+    """Update conversation title or mode"""
+    from app.models import TeacherConversation
+    
+    result = await db.execute(
+        select(TeacherConversation)
+        .where(TeacherConversation.id == conversation_id)
+        .where(TeacherConversation.teacher_id == teacher.id)
+    )
+    conversation = result.scalar_one_or_none()
+    
+    if not conversation:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found")
+    
+    if request.title is not None:
+        conversation.title = request.title
+    if request.agent_mode is not None:
+        conversation.agent_mode = request.agent_mode
+    
+    await db.commit()
+    await db.refresh(conversation)
+    
+    return {"id": conversation.id, "title": conversation.title, "agent_mode": conversation.agent_mode}
+

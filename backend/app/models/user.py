@@ -1,5 +1,5 @@
 from sqlalchemy import Column, String, Enum, DateTime, Boolean, ForeignKey, func, Text
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
 import uuid
 
@@ -22,6 +22,8 @@ class User(Base):
     is_verified = Column(Boolean, default=False, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     last_login_at = Column(DateTime(timezone=True), nullable=True)
+    preferences_json = Column(JSONB, default=dict, nullable=False, server_default='{}')
+    # preferences_json stores: { default_model, last_session_id, last_chat_session_id, ui_settings }
 
     # Relationships
     tenant = relationship("Tenant", back_populates="users")
