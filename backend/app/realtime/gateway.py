@@ -8,6 +8,7 @@ from app.core.config import settings
 from app.core.database import AsyncSessionLocal
 from app.models.session import SessionStudent
 from sqlalchemy import select
+from app.models.session import SessionStudent, Session, Class
 
 sio = socketio.AsyncServer(
     async_mode="asgi",
@@ -24,6 +25,51 @@ session_presence: dict[str, set] = {}  # session_id -> set of sids
 user_activities: dict[str, dict] = {}  # student_id -> activity info
 student_nicknames: dict[str, str] = {}  # student_id -> nickname
 student_avatars: dict[str, str] = {}  # student_id -> avatar_url
+
+# Cache for session teacher IDs (session_id -> teacher_id)
+# In production with multiple workers, this should be in Redis
+session_teacher_cache: dict[str, str] = {}
+
+async def get_session_teacher_id(session_id: str) -> Optional[str]:
+    if session_id in session_teacher_cache:
+        return session_teacher_cache[session_id]
+        
+    try:
+        async with AsyncSessionLocal() as db:
+            # Query session -> class -> teacher_id
+            result = await db.execute(
+                select(Class.teacher_id)
+                .join(Session, Session.class_id == Class.id)
+                .where(Session.id == session_id)
+            )
+            teacher_id = result.scalar_one_or_none()
+            
+            if teacher_id:
+                teacher_id_str = str(teacher_id)
+                session_teacher_cache[session_id] = teacher_id_str
+                return teacher_id_str
+    except Exception as e:
+        print(f"[Gateway] Error fetching teacher for session {session_id}: {e}")
+        
+    return None
+
+# Helper to send teacher notification
+async def notify_session_teacher(session_id: str, notification_data: dict):
+    teacher_id = await get_session_teacher_id(session_id)
+    if teacher_id:
+        print(f"[Gateway] Sending notification to teacher {teacher_id} for session {session_id}")
+        await sio.emit(
+            "teacher_notification",
+            notification_data,
+            room=f"user:{teacher_id}"
+        )
+    
+    # Still emit to session room for redundancy/other listeners
+    await sio.emit(
+        "teacher_notification",
+        notification_data,
+        room=f"session:{session_id}"
+    )
 
 
 def get_user_from_token(token: str) -> Optional[dict]:
@@ -111,8 +157,8 @@ async def connect(sid, environ, auth):
         )
         
         # Send teacher notification for student join
-        await sio.emit(
-            "teacher_notification",
+        await notify_session_teacher(
+            session_id,
             {
                 "type": "student_joined",
                 "session_id": session_id,
@@ -120,8 +166,7 @@ async def connect(sid, environ, auth):
                 "nickname": nickname,
                 "message": f"{nickname} è entrato nella sessione",
                 "timestamp": datetime.utcnow().isoformat(),
-            },
-            room=f"session:{session_id}",
+            }
         )
     
     return True
@@ -156,8 +201,8 @@ async def disconnect(sid):
         )
         
         # Send teacher notification for student leave
-        await sio.emit(
-            "teacher_notification",
+        await notify_session_teacher(
+            session_id,
             {
                 "type": "student_left",
                 "session_id": session_id,
@@ -165,8 +210,7 @@ async def disconnect(sid):
                 "nickname": nickname,
                 "message": f"{nickname} ha lasciato la sessione",
                 "timestamp": datetime.utcnow().isoformat(),
-            },
-            room=f"session:{session_id}",
+            }
         )
 
 
@@ -375,8 +419,8 @@ async def chat_public_message(sid, data):
     
     # Send teacher notification for public chat if student
     if user["type"] == "student":
-        await sio.emit(
-            "teacher_notification",
+        await notify_session_teacher(
+            session_id,
             {
                 "type": "public_chat",
                 "session_id": session_id,
@@ -385,8 +429,7 @@ async def chat_public_message(sid, data):
                 "message": f"{sender_name} ha inviato un messaggio nella chat",
                 "preview": text[:100] + ("..." if len(text) > 100 else ""),
                 "timestamp": datetime.utcnow().isoformat(),
-            },
-            room=f"session:{session_id}",
+            }
         )
     
     return {"success": True}
@@ -454,8 +497,8 @@ async def chat_private_message(sid, data):
             
     if is_target_teacher and user["type"] == "student":
         session_id = user.get("session_id")
-        await sio.emit(
-            "teacher_notification",
+        await notify_session_teacher(
+            session_id,
             {
                 "type": "private_message",
                 "session_id": session_id,
@@ -464,8 +507,7 @@ async def chat_private_message(sid, data):
                 "message": f"{sender_name} ti ha inviato un messaggio privato",
                 "preview": text[:50] + ("..." if len(text) > 50 else ""),
                 "timestamp": datetime.utcnow().isoformat(),
-            },
-            room=f"session:{session_id}",
+            }
         )
     
     return {"success": True}

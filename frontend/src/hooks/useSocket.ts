@@ -16,7 +16,7 @@ export interface ChatMessage {
   is_private?: boolean
   target_id?: string
   is_notification?: boolean
-  notification_type?: 'task' | 'document' | 'quiz' | 'system'
+  notification_type?: 'task' | 'document' | 'quiz' | 'system' | 'teacherbot_published'
   notification_data?: Record<string, unknown>
 }
 

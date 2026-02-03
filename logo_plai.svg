@@ -1,0 +1,55 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <!-- Maschera: bianco = visibile, nero = bucato -->
+    <mask id="cut">
+      <rect width="1024" height="1024" fill="white"/>
+
+      <!-- Taglio verticale a destra (la “fetta” bianca) -->
+      <path fill="black" d="
+        M 740 340
+        C 820 360, 860 420, 860 510
+        C 860 600, 820 660, 740 680
+        C 700 610, 700 410, 740 340
+        Z
+      "/>
+
+      <!-- G in negativo (anello + apertura + traverso) -->
+      <!-- Anello (cerchio grande - cerchio piccolo) -->
+      <path fill="black" fill-rule="evenodd" d="
+        M 520 300
+        A 210 210 0 1 1 519.9 300
+        Z
+        M 520 360
+        A 150 150 0 1 0 520.1 360
+        Z
+      "/>
+
+      <!-- Apertura della G (taglio in alto a destra) -->
+      <path fill="white" d="
+        M 600 270
+        C 700 300, 740 360, 740 440
+        C 740 520, 700 560, 640 600
+        L 600 560
+        C 650 530, 680 500, 680 440
+        C 680 380, 650 340, 600 320
+        Z
+      "/>
+
+      <!-- Traverso interno della G (rettangolo “morbido”) -->
+      <rect x="560" y="472" width="210" height="76" rx="32" fill="black"/>
+    </mask>
+  </defs>
+
+  <!-- NUOVOLA (shape unica blu), con maschera che crea G + taglio a destra -->
+  <g mask="url(#cut)">
+    <!-- Base nuvola -->
+    <rect x="190" y="560" width="680" height="230" rx="115" fill="#0B73B8"/>
+    <!-- Lobo sinistro -->
+    <ellipse cx="310" cy="610" rx="210" ry="150" fill="#0B73B8"/>
+    <!-- Lobo destro -->
+    <ellipse cx="770" cy="610" rx="210" ry="150" fill="#0B73B8"/>
+    <!-- Cupola centrale -->
+    <circle cx="520" cy="470" r="240" fill="#0B73B8"/>
+  </g>
+</svg>
+

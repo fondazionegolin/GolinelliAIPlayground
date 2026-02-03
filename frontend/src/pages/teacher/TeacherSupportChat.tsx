@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import {
   Send, Bot, Paperclip, X, Trash2, Plus, File, Image as ImageIcon, Loader2,
-  Database, Download, ChevronDown, ChevronRight, Edit3, Check
+  Database, Download, ChevronDown, ChevronRight, Edit3, Check, MessageCircle, Sparkles
 } from 'lucide-react'
 import { llmApi, teacherApi } from '@/lib/api'
 import { useToast } from '@/components/ui/use-toast'
@@ -13,6 +13,7 @@ import remarkMath from 'remark-math'
 import rehypeKatex from 'rehype-katex'
 import 'katex/dist/katex.min.css'
 import { ContentEditorModal } from '@/components/ContentEditorModal'
+import TeacherbotsPanel from '@/components/teacher/TeacherbotsPanel'
 
 // Constants
 const AVAILABLE_MODELS = [
@@ -87,6 +88,7 @@ interface WebSearchProgress {
 
 export default function TeacherSupportChat() {
   const { toast } = useToast()
+  const [activeTab, setActiveTab] = useState<'chat' | 'teacherbots'>('chat')
   const [messages, setMessages] = useState<Message[]>([])
   const [inputText, setInputText] = useState('')
   const [isLoading, setIsLoading] = useState(false)
@@ -707,10 +709,44 @@ REGOLE IMPORTANTI:
         {/* Main Content - Centered with max-width and rounded corners */}
         <div className="flex-1 flex justify-center items-center h-full">
           <div
-            className="flex h-full bg-white font-sans w-full max-w-6xl md:rounded-2xl shadow-lg overflow-hidden md:border md:border-indigo-100 relative md:shadow-indigo-100/50"
+            className="flex flex-col h-full bg-white font-sans w-full max-w-6xl md:rounded-2xl shadow-lg overflow-hidden md:border md:border-indigo-100 relative md:shadow-indigo-100/50"
             onDragOver={(e) => e.preventDefault()}
             onDrop={handleDrop}
           >
+            {/* Tab Navigation */}
+            <div className="flex items-center gap-1 px-4 pt-4 pb-2 bg-white border-b border-slate-100">
+              <button
+                onClick={() => setActiveTab('chat')}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                  activeTab === 'chat'
+                    ? 'bg-indigo-100 text-indigo-700'
+                    : 'text-slate-500 hover:bg-slate-100'
+                }`}
+              >
+                <MessageCircle className="h-4 w-4" />
+                Chat AI
+              </button>
+              <button
+                onClick={() => setActiveTab('teacherbots')}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                  activeTab === 'teacherbots'
+                    ? 'bg-indigo-100 text-indigo-700'
+                    : 'text-slate-500 hover:bg-slate-100'
+                }`}
+              >
+                <Sparkles className="h-4 w-4" />
+                Teacherbots
+              </button>
+            </div>
+
+            {/* Teacherbots Tab Content */}
+            {activeTab === 'teacherbots' ? (
+              <div className="flex-1 overflow-y-auto p-6">
+                <TeacherbotsPanel />
+              </div>
+            ) : (
+            /* Chat Tab Content */
+            <div className="flex flex-1 overflow-hidden">
 
             {/* SIDEBAR - History */}
             <aside className={`${isSidebarCollapsed ? 'w-12' : 'w-64'} bg-slate-50 border-r border-slate-200 flex flex-col hidden md:flex transition-all duration-300 flex-shrink-0 rounded-l-2xl`}>
@@ -1177,6 +1213,8 @@ REGOLE IMPORTANTI:
                 </div>
               </div>
             </main>
+            </div>
+            )}
           </div>
         </div>
       </div>

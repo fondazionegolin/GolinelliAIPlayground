@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { teacherApi } from '@/lib/api'
@@ -7,14 +7,14 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Switch } from '@/components/ui/switch'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useToast } from '@/components/ui/use-toast'
-import { 
-  ArrowLeft, Users, Copy, Play, Square, 
+import {
+  ArrowLeft, Users, Copy, Play, Square,
   Snowflake, Sun, Bot, Brain, MessageSquare,
   ClipboardList, Plus, Trash2, Check, Eye, ChevronDown, ChevronUp, History, User
 } from 'lucide-react'
 import { llmApi } from '@/lib/api'
 import TaskBuilder from '@/components/TaskBuilder'
-import TeacherNotifications from '@/components/TeacherNotifications'
+// TeacherNotifications removed per redesign
 import { useSocket } from '@/hooks/useSocket'
 import { useAuthStore } from '@/stores/auth'
 
@@ -58,12 +58,12 @@ export default function SessionLivePage() {
   const { toast } = useToast()
   useAuthStore() // Keep store connection for auth state
   const [autoRefresh] = useState(true)
-  const [activeTab, setActiveTab] = useState('students')
-  const [selectedStudent, setSelectedStudent] = useState<string | null>(null)
+  const [activeTab, setActiveTab] = useState('modules')
+  const [showOfflineStudents, setShowOfflineStudents] = useState(false)
   const [showTaskBuilder, setShowTaskBuilder] = useState(false)
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null)
   const [selectedConversationId, setSelectedConversationId] = useState<string | null>(null)
-  
+
   // Fetch available LLM models
   const { data: modelsData } = useQuery({
     queryKey: ['available-models'],
@@ -74,54 +74,8 @@ export default function SessionLivePage() {
     staleTime: 1000 * 60 * 10,
   })
 
-  // Get online users and notifications from socket
-  const { onlineUsers, notifications: socketNotifications } = useSocket(sessionId || '')
-  const [teacherNotifications, setTeacherNotifications] = useState<Array<{
-    id: string
-    type: 'student_joined' | 'student_left' | 'private_message' | 'task_submitted'
-    session_id: string
-    student_id: string
-    nickname: string
-    message: string
-    preview?: string
-    task_title?: string
-    timestamp: string
-    read: boolean
-  }>>([])
-
-  // Convert socket notifications to teacher notifications format
-  useEffect(() => {
-    const newNotifs = socketNotifications
-      .filter(n => n.notification_data && (n.notification_data as Record<string, unknown>).type)
-      .map(n => {
-        const data = n.notification_data as Record<string, unknown>
-        return {
-          id: n.id,
-          type: (data.type as string) as 'student_joined' | 'student_left' | 'private_message' | 'task_submitted',
-          session_id: (data.session_id as string) || sessionId || '',
-          student_id: (data.student_id as string) || '',
-          nickname: (data.nickname as string) || n.sender_name || '',
-          message: n.text,
-          preview: data.preview as string | undefined,
-          task_title: data.task_title as string | undefined,
-          timestamp: n.created_at,
-          read: false,
-        }
-      })
-    
-    if (newNotifs.length > 0) {
-      setTeacherNotifications(prev => {
-        const existingIds = new Set(prev.map(p => p.id))
-        const toAdd = newNotifs.filter(n => !existingIds.has(n.id))
-        return [...prev, ...toAdd]
-      })
-    }
-  }, [socketNotifications, sessionId])
-
-  const handleClearNotifications = () => setTeacherNotifications([])
-  const handleMarkAsRead = (id: string) => {
-    setTeacherNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n))
-  }
+  // Get online users
+  const { onlineUsers } = useSocket(sessionId || '')
 
   const { data: tasksData } = useQuery<TaskData[]>({
     queryKey: ['session-tasks', sessionId],
@@ -167,7 +121,7 @@ export default function SessionLivePage() {
   })
 
   const toggleModuleMutation = useMutation({
-    mutationFn: ({ moduleKey, isEnabled }: { moduleKey: string; isEnabled: boolean }) => 
+    mutationFn: ({ moduleKey, isEnabled }: { moduleKey: string; isEnabled: boolean }) =>
       teacherApi.toggleModule(sessionId!, moduleKey, isEnabled),
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['session-live', sessionId] })
@@ -176,7 +130,7 @@ export default function SessionLivePage() {
   })
 
   const updateDefaultModelMutation = useMutation({
-    mutationFn: ({ provider, model }: { provider: string; model: string }) => 
+    mutationFn: ({ provider, model }: { provider: string; model: string }) =>
       teacherApi.updateSession(sessionId!, { default_llm_provider: provider, default_llm_model: model }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['session-live', sessionId] })
@@ -185,7 +139,7 @@ export default function SessionLivePage() {
   })
 
   const createTaskMutation = useMutation({
-    mutationFn: (data: { title: string; description: string; task_type: string; content_json?: string }) => 
+    mutationFn: (data: { title: string; description: string; task_type: string; content_json?: string }) =>
       teacherApi.createTask(sessionId!, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['session-tasks', sessionId] })
@@ -215,25 +169,7 @@ export default function SessionLivePage() {
     toast({ title: 'Codice copiato!' })
   }
 
-  const getStatusBadge = (status: string) => {
-    const styles: Record<string, string> = {
-      draft: 'bg-gray-100 text-gray-800',
-      active: 'bg-green-100 text-green-800',
-      paused: 'bg-yellow-100 text-yellow-800',
-      ended: 'bg-red-100 text-red-800',
-    }
-    const labels: Record<string, string> = {
-      draft: 'Bozza',
-      active: 'Attiva',
-      paused: 'In pausa',
-      ended: 'Terminata',
-    }
-    return (
-      <span className={`px-3 py-1 rounded-full text-sm font-medium ${styles[status] || styles.draft}`}>
-        {labels[status] || status}
-      </span>
-    )
-  }
+
 
   const getModuleIcon = (key: string) => {
     const icons: Record<string, React.ReactNode> = {
@@ -255,320 +191,380 @@ export default function SessionLivePage() {
 
   const { session, students, modules } = data
 
+  // Separate online and offline students
+  const onlineStudents = students.filter(s => onlineUsers.some(u => u.student_id === s.id))
+  const offlineStudents = students.filter(s => !onlineUsers.some(u => u.student_id === s.id))
+
   return (
     <>
       <div className="pt-16 min-h-screen bg-slate-50">
-        <div className="max-w-7xl mx-auto p-6">
+        {/* Modern Unified Header */}
+        <div className="bg-indigo-600 text-white shadow-lg">
+          <div className="max-w-7xl mx-auto px-4 py-3">
+            <div className="flex items-center justify-between gap-4">
+              {/* Left: Back + Session Info */}
+              <div className="flex items-center gap-4 min-w-0">
+                <Link to="/teacher/sessions" className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white/10 hover:bg-white/20 transition-colors">
+                  <ArrowLeft className="h-4 w-4" />
+                  <span className="hidden sm:inline text-sm font-medium">Indietro</span>
+                </Link>
+                <div className="min-w-0">
+                  <h1 className="text-lg md:text-xl font-bold truncate">{session.title}</h1>
+                  <p className="text-sm text-white/80 truncate">{session.class_name}</p>
+                </div>
+              </div>
 
-          <div className="flex flex-wrap items-center gap-2 md:gap-4 mb-6">
-            <Link to="/teacher/sessions">
-              <Button variant="ghost" size="sm">
-                <ArrowLeft className="h-4 w-4 mr-1 md:mr-2" />
-                <span className="hidden sm:inline">Indietro</span>
-              </Button>
-            </Link>
-            <div className="flex-1 min-w-0">
-              <h2 className="text-lg md:text-2xl font-bold truncate">{session.title}</h2>
-              <p className="text-sm text-muted-foreground truncate">{session.class_name}</p>
+              {/* Center: Code + Status */}
+              <div className="hidden md:flex items-center gap-4">
+                <div className="flex items-center gap-2 px-4 py-2 rounded-lg bg-white/10">
+                  <span className="text-sm text-white/80">Codice:</span>
+                  <code className="text-lg font-mono font-bold tracking-wider">{session.join_code}</code>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 w-7 p-0 text-white hover:bg-white/20"
+                    onClick={() => copyCode(session.join_code)}
+                  >
+                    <Copy className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+                <span className={`px-3 py-1.5 rounded-full text-sm font-semibold ${session.status === 'active' ? 'bg-emerald-400/90 text-emerald-900' :
+                  session.status === 'paused' ? 'bg-amber-400/90 text-amber-900' :
+                    session.status === 'ended' ? 'bg-red-400/90 text-red-900' :
+                      'bg-slate-300/90 text-slate-700'
+                  }`}>
+                  {session.status === 'active' ? 'Attiva' :
+                    session.status === 'paused' ? 'In Pausa' :
+                      session.status === 'ended' ? 'Terminata' : 'Bozza'}
+                </span>
+              </div>
+
+              {/* Right: Controls */}
+              <div className="flex items-center gap-2">
+                {session.status === 'draft' && (
+                  <Button
+                    size="sm"
+                    className="bg-emerald-500 hover:bg-emerald-600 text-white border-0"
+                    onClick={() => updateStatusMutation.mutate('active')}
+                  >
+                    <Play className="h-4 w-4 mr-1" />
+                    <span className="hidden sm:inline">Avvia</span>
+                  </Button>
+                )}
+                {session.status === 'active' && (
+                  <>
+                    <Button
+                      size="sm"
+                      className="bg-white/20 hover:bg-white/30 text-white border-0"
+                      onClick={() => updateStatusMutation.mutate('paused')}
+                    >
+                      <Square className="h-4 w-4 mr-1" />
+                      <span className="hidden sm:inline">Pausa</span>
+                    </Button>
+                    <Button
+                      size="sm"
+                      className="bg-red-500/80 hover:bg-red-600 text-white border-0"
+                      onClick={() => updateStatusMutation.mutate('ended')}
+                    >
+                      <span className="hidden sm:inline">Termina</span>
+                      <span className="sm:hidden">Stop</span>
+                    </Button>
+                  </>
+                )}
+                {session.status === 'paused' && (
+                  <Button
+                    size="sm"
+                    className="bg-emerald-500 hover:bg-emerald-600 text-white border-0"
+                    onClick={() => updateStatusMutation.mutate('active')}
+                  >
+                    <Play className="h-4 w-4 mr-1" />
+                    <span className="hidden sm:inline">Riprendi</span>
+                  </Button>
+                )}
+              </div>
             </div>
-            {getStatusBadge(session.status)}
           </div>
+        </div>
 
-      {/* Compact Header Bar */}
-      <div className="flex flex-wrap items-center gap-3 mb-4 p-3 bg-white rounded-lg border">
-        {/* Access Code + Actions */}
-        <div className="flex items-center gap-2">
-          <div className="text-center">
-            <p className="text-xs text-muted-foreground">Codice</p>
-            <code className="text-lg font-mono font-bold text-primary">{session.join_code}</code>
-          </div>
-          <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => copyCode(session.join_code)}>
+        {/* Mobile Code Display */}
+        <div className="md:hidden bg-white border-b px-4 py-2 flex items-center justify-center gap-3">
+          <span className="text-sm text-muted-foreground">Codice:</span>
+          <code className="text-lg font-mono font-bold text-violet-600">{session.join_code}</code>
+          <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => copyCode(session.join_code)}>
             <Copy className="h-3.5 w-3.5" />
           </Button>
         </div>
 
-        <div className="h-8 w-px bg-gray-200" />
+        {/* Main Layout: Sidebar + Content */}
+        <div className="max-w-7xl mx-auto p-4 md:p-6">
+          <div className="flex flex-col lg:flex-row gap-6">
 
-        {/* Students Count */}
-        <div className="flex items-center gap-2">
-          <Users className="h-4 w-4 text-primary" />
-          <div>
-            <p className="text-xs text-muted-foreground">Studenti</p>
-            <p className="text-lg font-bold leading-none">{students.length}</p>
-          </div>
-        </div>
-
-        <div className="h-8 w-px bg-gray-200" />
-
-        {/* Session Controls */}
-        <div className="flex items-center gap-2">
-          {session.status === 'draft' && (
-            <Button size="sm" onClick={() => updateStatusMutation.mutate('active')}>
-              <Play className="h-3.5 w-3.5 mr-1" />
-              Avvia
-            </Button>
-          )}
-          {session.status === 'active' && (
-            <>
-              <Button variant="outline" size="sm" onClick={() => updateStatusMutation.mutate('paused')}>
-                <Square className="h-3.5 w-3.5 mr-1" />
-                Pausa
-              </Button>
-              <Button variant="destructive" size="sm" onClick={() => updateStatusMutation.mutate('ended')}>
-                Termina
-              </Button>
-            </>
-          )}
-          {session.status === 'paused' && (
-            <Button size="sm" onClick={() => updateStatusMutation.mutate('active')}>
-              <Play className="h-3.5 w-3.5 mr-1" />
-              Riprendi
-            </Button>
-          )}
-        </div>
-
-        {/* Notifications Toggle */}
-        <div className="ml-auto">
-          <TeacherNotifications
-            notifications={teacherNotifications}
-            onClearAll={handleClearNotifications}
-            onMarkAsRead={handleMarkAsRead}
-          />
-        </div>
-      </div>
-
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-4 mb-4 h-auto">
-          <TabsTrigger value="students" className="text-xs md:text-sm px-1 md:px-3 py-2">
-            <Users className="h-4 w-4 md:mr-2 shrink-0" />
-            <span className="hidden md:inline">Studenti</span>
-          </TabsTrigger>
-          <TabsTrigger value="modules" className="text-xs md:text-sm px-1 md:px-3 py-2">
-            <Brain className="h-4 w-4 md:mr-2 shrink-0" />
-            <span className="hidden md:inline">Moduli</span>
-          </TabsTrigger>
-          <TabsTrigger value="tasks" className="text-xs md:text-sm px-1 md:px-3 py-2">
-            <ClipboardList className="h-4 w-4 md:mr-2 shrink-0" />
-            <span className="hidden md:inline">Compiti</span>
-          </TabsTrigger>
-          <TabsTrigger value="history" className="text-xs md:text-sm px-1 md:px-3 py-2">
-            <History className="h-4 w-4 md:mr-2 shrink-0" />
-            <span className="hidden md:inline">Storico</span>
-          </TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="students">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Users className="h-5 w-5" />
-                Studenti ({students.length})
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {students.length === 0 ? (
-                <p className="text-muted-foreground text-center py-8">
-                  Nessuno studente connesso.<br />
-                  Condividi il codice <strong>{session.join_code}</strong> con gli studenti.
-                </p>
-              ) : (
-                <div className="space-y-2">
-                  {students.map((student) => {
-                    const isOnline = onlineUsers.some(u => u.student_id === student.id)
-                    return (
-                    <div
-                      key={student.id}
-                      className={`flex items-center justify-between p-3 rounded-lg ${
-                        student.is_frozen ? 'bg-blue-50 border border-blue-200' : 'bg-gray-50'
-                      }`}
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className={`w-2.5 h-2.5 rounded-full ${
-                          isOnline ? 'bg-green-500' : 'bg-gray-300'
-                        }`} title={isOnline ? 'Online' : 'Offline'} />
-                        <span className="font-medium">{student.nickname}</span>
-                        {!isOnline && (
-                          <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded">
-                            Offline
-                          </span>
-                        )}
-                        {student.is_frozen && (
-                          <span className="text-xs text-blue-600 bg-blue-100 px-2 py-0.5 rounded">
-                            Bloccato
-                          </span>
-                        )}
-                      </div>
-                      <div className="flex gap-2">
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => setSelectedStudent(student.id === selectedStudent ? null : student.id)}
-                          title="Chat privata"
-                        >
-                          <MessageSquare className={`h-4 w-4 ${selectedStudent === student.id ? 'text-emerald-500' : 'text-gray-400'}`} />
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => 
-                            student.is_frozen 
-                              ? unfreezeMutation.mutate(student.id)
-                              : freezeMutation.mutate(student.id)
-                          }
-                        >
-                          {student.is_frozen ? (
-                            <Sun className="h-4 w-4 text-yellow-500" />
-                          ) : (
-                            <Snowflake className="h-4 w-4 text-blue-500" />
-                          )}
-                        </Button>
-                      </div>
+            {/* Left Sidebar: Students */}
+            <div className="lg:w-72 xl:w-80 shrink-0">
+              <Card className="sticky top-20">
+                <CardHeader className="pb-3">
+                  <CardTitle className="flex items-center justify-between text-base">
+                    <div className="flex items-center gap-2">
+                      <Users className="h-5 w-5 text-violet-600" />
+                      <span>Studenti</span>
+                      <span className="ml-1 px-2 py-0.5 bg-emerald-100 text-emerald-700 text-xs font-semibold rounded-full">
+                        {onlineStudents.length} online
+                      </span>
                     </div>
-                  )})}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="modules">
-          <Card>
-            <CardHeader>
-              <CardTitle>Gestione Moduli</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-sm text-muted-foreground mb-4">
-                Attiva o disattiva i moduli disponibili per gli studenti in questa sessione.
-              </p>
-              <div className="space-y-3">
-                {modules.map((mod) => (
-                  <div
-                    key={mod.module_key}
-                    className={`flex items-center justify-between p-4 rounded-lg border ${
-                      mod.is_enabled ? 'bg-green-50 border-green-200' : 'bg-gray-50 border-gray-200'
-                    }`}
-                  >
-                    <div className="flex items-center gap-3">
-                      {getModuleIcon(mod.module_key)}
-                      <div>
-                        <span className="font-medium capitalize">{mod.module_key.replace('_', ' ')}</span>
-                        <p className="text-xs text-muted-foreground">
-                          {mod.module_key === 'chatbot' && 'Assistente AI con diverse modalità'}
-                          {mod.module_key === 'classification' && 'Classificazione ML: immagini, testo, dati'}
-                          {mod.module_key === 'self_assessment' && 'Quiz e autovalutazione'}
-                          {mod.module_key === 'chat' && 'Chat di classe'}
-                        </p>
-                      </div>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="pt-0">
+                  {students.length === 0 ? (
+                    <div className="text-center py-6 text-muted-foreground">
+                      <Users className="h-10 w-10 mx-auto mb-2 opacity-30" />
+                      <p className="text-sm">Nessuno studente connesso</p>
+                      <p className="text-xs mt-1">Condividi il codice <strong className="text-violet-600">{session.join_code}</strong></p>
                     </div>
-                    <Switch
-                      checked={mod.is_enabled}
-                      onCheckedChange={(checked: boolean) => 
-                        toggleModuleMutation.mutate({ moduleKey: mod.module_key, isEnabled: checked })
-                      }
-                    />
-                  </div>
-                ))}
-              </div>
-
-              {/* Default LLM Model Selector */}
-              <div className="mt-6 pt-6 border-t">
-                <h4 className="font-medium mb-2 flex items-center gap-2">
-                  <Bot className="h-4 w-4" />
-                  Modello AI di Default
-                </h4>
-                <p className="text-sm text-muted-foreground mb-3">
-                  Seleziona il modello AI che verrà usato di default dagli studenti in questa sessione.
-                </p>
-                <div className="space-y-2">
-                  {modelsData?.models?.map((m: { provider: string; model: string; name: string; description: string }) => {
-                    const isSelected = (data as SessionLiveData & { session: { default_llm_provider?: string; default_llm_model?: string } })?.session?.default_llm_provider === m.provider && 
-                                       (data as SessionLiveData & { session: { default_llm_provider?: string; default_llm_model?: string } })?.session?.default_llm_model === m.model
-                    return (
-                      <label 
-                        key={`${m.provider}:${m.model}`}
-                        className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
-                          isSelected ? 'bg-violet-50 border-violet-300' : 'bg-white border-slate-200 hover:bg-slate-50'
-                        }`}
-                      >
-                        <input
-                          type="radio"
-                          name="default_model"
-                          checked={isSelected}
-                          onChange={() => updateDefaultModelMutation.mutate({ provider: m.provider, model: m.model })}
-                          className="w-4 h-4 text-violet-600 focus:ring-violet-500"
-                        />
-                        <div className="flex-1">
-                          <span className="font-medium text-sm">{m.name}</span>
-                          <span className="text-xs text-muted-foreground ml-2">({m.provider})</span>
+                  ) : (
+                    <div className="space-y-1.5 max-h-[60vh] overflow-y-auto">
+                      {/* Online Students */}
+                      {onlineStudents.map((student) => (
+                        <div
+                          key={student.id}
+                          className={`flex items-center justify-between p-2 rounded-lg transition-colors ${student.is_frozen ? 'bg-blue-50 border border-blue-200' : 'bg-gray-50 hover:bg-gray-100'
+                            }`}
+                        >
+                          <div className="flex items-center gap-2 min-w-0">
+                            <div className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" title="Online" />
+                            <span className="font-medium text-sm truncate">{student.nickname}</span>
+                            {student.is_frozen && (
+                              <Snowflake className="h-3 w-3 text-blue-500 shrink-0" />
+                            )}
+                          </div>
+                          <div className="flex gap-1 shrink-0">
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-7 w-7 p-0"
+                              onClick={() => {
+                                window.dispatchEvent(new CustomEvent('openPrivateChat', {
+                                  detail: { id: student.id, nickname: student.nickname }
+                                }))
+                              }}
+                              title="Chat Diretta"
+                            >
+                              <MessageSquare className="h-3.5 w-3.5 text-gray-400 hover:text-emerald-500" />
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-7 w-7 p-0"
+                              onClick={() =>
+                                student.is_frozen
+                                  ? unfreezeMutation.mutate(student.id)
+                                  : freezeMutation.mutate(student.id)
+                              }
+                              title={student.is_frozen ? 'Sblocca' : 'Blocca'}
+                            >
+                              {student.is_frozen ? (
+                                <Sun className="h-3.5 w-3.5 text-yellow-500" />
+                              ) : (
+                                <Snowflake className="h-3.5 w-3.5 text-blue-400" />
+                              )}
+                            </Button>
+                          </div>
                         </div>
-                        {isSelected && <Check className="h-4 w-4 text-violet-600" />}
-                      </label>
-                    )
-                  })}
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
+                      ))}
 
-        <TabsContent value="tasks">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center justify-between">
-                <span className="flex items-center gap-2">
-                  <ClipboardList className="h-5 w-5" />
-                  Compiti e Attività
-                </span>
-                {!showTaskBuilder && (
-                  <Button size="sm" onClick={() => setShowTaskBuilder(true)}>
-                    <Plus className="h-4 w-4 mr-1" />
-                    Nuovo
-                  </Button>
-                )}
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {showTaskBuilder && (
-                <div className="mb-6">
-                  <TaskBuilder
-                    onSubmit={(data) => createTaskMutation.mutate(data)}
-                    onCancel={() => setShowTaskBuilder(false)}
-                    isLoading={createTaskMutation.isPending}
+                      {/* Offline Students Toggle */}
+                      {offlineStudents.length > 0 && (
+                        <>
+                          <button
+                            onClick={() => setShowOfflineStudents(!showOfflineStudents)}
+                            className="w-full flex items-center justify-between px-2 py-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
+                          >
+                            <span className="flex items-center gap-2">
+                              <User className="h-4 w-4" />
+                              Disconnessi ({offlineStudents.length})
+                            </span>
+                            {showOfflineStudents ? (
+                              <ChevronUp className="h-4 w-4" />
+                            ) : (
+                              <ChevronDown className="h-4 w-4" />
+                            )}
+                          </button>
+
+                          {showOfflineStudents && offlineStudents.map((student) => (
+                            <div
+                              key={student.id}
+                              className="flex items-center justify-between p-2 rounded-lg bg-gray-50/50 opacity-60"
+                            >
+                              <div className="flex items-center gap-2 min-w-0">
+                                <div className="w-2 h-2 rounded-full bg-gray-300 shrink-0" title="Offline" />
+                                <span className="text-sm truncate">{student.nickname}</span>
+                              </div>
+                              <span className="text-xs text-gray-400">offline</span>
+                            </div>
+                          ))}
+                        </>
+                      )}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Main Content Area */}
+            <div className="flex-1 min-w-0">
+              <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+                <TabsList className="grid w-full grid-cols-3 mb-4 h-auto">
+                  <TabsTrigger value="modules" className="text-xs md:text-sm px-2 md:px-4 py-2.5">
+                    <Brain className="h-4 w-4 md:mr-2 shrink-0" />
+                    <span className="hidden md:inline">Moduli</span>
+                  </TabsTrigger>
+                  <TabsTrigger value="tasks" className="text-xs md:text-sm px-2 md:px-4 py-2.5">
+                    <ClipboardList className="h-4 w-4 md:mr-2 shrink-0" />
+                    <span className="hidden md:inline">Compiti</span>
+                  </TabsTrigger>
+                  <TabsTrigger value="history" className="text-xs md:text-sm px-2 md:px-4 py-2.5">
+                    <History className="h-4 w-4 md:mr-2 shrink-0" />
+                    <span className="hidden md:inline">Storico</span>
+                  </TabsTrigger>
+                </TabsList>
+
+                <TabsContent value="modules">
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Gestione Moduli</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <p className="text-sm text-muted-foreground mb-4">
+                        Attiva o disattiva i moduli disponibili per gli studenti in questa sessione.
+                      </p>
+                      <div className="space-y-3">
+                        {modules.map((mod) => (
+                          <div
+                            key={mod.module_key}
+                            className={`flex items-center justify-between p-4 rounded-lg border ${mod.is_enabled ? 'bg-green-50 border-green-200' : 'bg-gray-50 border-gray-200'
+                              }`}
+                          >
+                            <div className="flex items-center gap-3">
+                              {getModuleIcon(mod.module_key)}
+                              <div>
+                                <span className="font-medium capitalize">{mod.module_key.replace('_', ' ')}</span>
+                                <p className="text-xs text-muted-foreground">
+                                  {mod.module_key === 'chatbot' && 'Assistente AI con diverse modalità'}
+                                  {mod.module_key === 'classification' && 'Classificazione ML: immagini, testo, dati'}
+                                  {mod.module_key === 'self_assessment' && 'Quiz e autovalutazione'}
+                                  {mod.module_key === 'chat' && 'Chat di classe'}
+                                </p>
+                              </div>
+                            </div>
+                            <Switch
+                              checked={mod.is_enabled}
+                              onCheckedChange={(checked: boolean) =>
+                                toggleModuleMutation.mutate({ moduleKey: mod.module_key, isEnabled: checked })
+                              }
+                            />
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Default LLM Model Selector */}
+                      <div className="mt-6 pt-6 border-t">
+                        <h4 className="font-medium mb-2 flex items-center gap-2">
+                          <Bot className="h-4 w-4" />
+                          Modello AI di Default
+                        </h4>
+                        <p className="text-sm text-muted-foreground mb-3">
+                          Seleziona il modello AI che verrà usato di default dagli studenti in questa sessione.
+                        </p>
+                        <div className="space-y-2">
+                          {modelsData?.models?.map((m: { provider: string; model: string; name: string; description: string }) => {
+                            const isSelected = (data as SessionLiveData & { session: { default_llm_provider?: string; default_llm_model?: string } })?.session?.default_llm_provider === m.provider &&
+                              (data as SessionLiveData & { session: { default_llm_provider?: string; default_llm_model?: string } })?.session?.default_llm_model === m.model
+                            return (
+                              <label
+                                key={`${m.provider}:${m.model}`}
+                                className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${isSelected ? 'bg-violet-50 border-violet-300' : 'bg-white border-slate-200 hover:bg-slate-50'
+                                  }`}
+                              >
+                                <input
+                                  type="radio"
+                                  name="default_model"
+                                  checked={isSelected}
+                                  onChange={() => updateDefaultModelMutation.mutate({ provider: m.provider, model: m.model })}
+                                  className="w-4 h-4 text-violet-600 focus:ring-violet-500"
+                                />
+                                <div className="flex-1">
+                                  <span className="font-medium text-sm">{m.name}</span>
+                                  <span className="text-xs text-muted-foreground ml-2">({m.provider})</span>
+                                </div>
+                                {isSelected && <Check className="h-4 w-4 text-violet-600" />}
+                              </label>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </TabsContent>
+
+                <TabsContent value="tasks">
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="flex items-center justify-between">
+                        <span className="flex items-center gap-2">
+                          <ClipboardList className="h-5 w-5" />
+                          Compiti e Attività
+                        </span>
+                        {!showTaskBuilder && (
+                          <Button size="sm" onClick={() => setShowTaskBuilder(true)}>
+                            <Plus className="h-4 w-4 mr-1" />
+                            Nuovo
+                          </Button>
+                        )}
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      {showTaskBuilder && (
+                        <div className="mb-6">
+                          <TaskBuilder
+                            onSubmit={(data) => createTaskMutation.mutate(data)}
+                            onCancel={() => setShowTaskBuilder(false)}
+                            isLoading={createTaskMutation.isPending}
+                          />
+                        </div>
+                      )}
+
+                      {!tasksData || tasksData.length === 0 ? (
+                        <p className="text-center text-muted-foreground py-8">
+                          Nessun compito assegnato. Crea il primo compito sopra.
+                        </p>
+                      ) : (
+                        <div className="space-y-3">
+                          {tasksData.map((task) => (
+                            <TaskCard
+                              key={task.id}
+                              task={task}
+                              sessionId={sessionId!}
+                              isExpanded={expandedTaskId === task.id}
+                              onToggle={() => setExpandedTaskId(expandedTaskId === task.id ? null : task.id)}
+                              onPublish={() => publishTaskMutation.mutate(task.id)}
+                              onDelete={() => deleteTaskMutation.mutate(task.id)}
+                            />
+                          ))}
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                </TabsContent>
+
+                <TabsContent value="history">
+                  <ConversationHistoryView
+                    sessionId={sessionId!}
+                    selectedConversationId={selectedConversationId}
+                    onSelectConversation={setSelectedConversationId}
                   />
-                </div>
-              )}
-
-              {!tasksData || tasksData.length === 0 ? (
-                <p className="text-center text-muted-foreground py-8">
-                  Nessun compito assegnato. Crea il primo compito sopra.
-                </p>
-              ) : (
-                <div className="space-y-3">
-                  {tasksData.map((task) => (
-                    <TaskCard
-                      key={task.id}
-                      task={task}
-                      sessionId={sessionId!}
-                      isExpanded={expandedTaskId === task.id}
-                      onToggle={() => setExpandedTaskId(expandedTaskId === task.id ? null : task.id)}
-                      onPublish={() => publishTaskMutation.mutate(task.id)}
-                      onDelete={() => deleteTaskMutation.mutate(task.id)}
-                    />
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="history">
-          <ConversationHistoryView 
-            sessionId={sessionId!} 
-            selectedConversationId={selectedConversationId}
-            onSelectConversation={setSelectedConversationId}
-          />
-        </TabsContent>
-      </Tabs>
+                </TabsContent>
+              </Tabs>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -611,9 +607,8 @@ function TaskCard({ task, sessionId, isExpanded, onToggle, onPublish, onDelete }
         <div className="flex-1">
           <div className="flex items-center gap-2">
             <span className="font-medium">{task.title}</span>
-            <span className={`text-xs px-2 py-0.5 rounded ${
-              task.status === 'published' ? 'bg-green-100 text-green-700' : 'bg-gray-200 text-gray-600'
-            }`}>
+            <span className={`text-xs px-2 py-0.5 rounded ${task.status === 'published' ? 'bg-green-100 text-green-700' : 'bg-gray-200 text-gray-600'
+              }`}>
               {task.status === 'published' ? 'Pubblicato' : 'Bozza'}
             </span>
             <span className="text-xs px-2 py-0.5 rounded bg-blue-100 text-blue-700 capitalize">
@@ -711,7 +706,7 @@ interface ConversationHistoryViewProps {
 
 function ConversationHistoryView({ sessionId, selectedConversationId, onSelectConversation }: ConversationHistoryViewProps) {
   const [expandedStudents, setExpandedStudents] = useState<Set<string>>(new Set())
-  
+
   const toggleStudent = (studentId: string) => {
     setExpandedStudents(prev => {
       const next = new Set(prev)
@@ -813,11 +808,10 @@ function ConversationHistoryView({ sessionId, selectedConversationId, onSelectCo
                   <button
                     key={conv.id}
                     onClick={() => onSelectConversation(conv.id)}
-                    className={`w-full text-left px-4 py-3 pl-10 hover:bg-slate-50 transition-colors border-l-4 ${
-                      selectedConversationId === conv.id 
-                        ? 'border-l-violet-500 bg-violet-50' 
-                        : 'border-l-transparent'
-                    }`}
+                    className={`w-full text-left px-4 py-3 pl-10 hover:bg-slate-50 transition-colors border-l-4 ${selectedConversationId === conv.id
+                      ? 'border-l-violet-500 bg-violet-50'
+                      : 'border-l-transparent'
+                      }`}
                   >
                     <div className="flex items-center justify-between">
                       <span className="text-sm font-medium capitalize">{conv.profile_key}</span>
@@ -845,7 +839,7 @@ function ConversationHistoryView({ sessionId, selectedConversationId, onSelectCo
           <CardTitle className="flex items-center justify-between text-base">
             <span className="flex items-center gap-2">
               <Bot className="h-5 w-5" />
-              {selectedConversation 
+              {selectedConversation
                 ? `${selectedConversation.student_nickname} - ${selectedConversation.profile_key}`
                 : 'Seleziona una conversazione'
               }
@@ -882,11 +876,10 @@ function ConversationHistoryView({ sessionId, selectedConversationId, onSelectCo
                       <Bot className="h-4 w-4 text-white" />
                     </div>
                   )}
-                  <div className={`max-w-[80%] rounded-xl px-4 py-2 ${
-                    msg.role === 'user' 
-                      ? 'bg-slate-800 text-white' 
-                      : 'bg-slate-100 text-slate-800'
-                  }`}>
+                  <div className={`max-w-[80%] rounded-xl px-4 py-2 ${msg.role === 'user'
+                    ? 'bg-slate-800 text-white'
+                    : 'bg-slate-100 text-slate-800'
+                    }`}>
                     <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
                     <p className={`text-xs mt-1 ${msg.role === 'user' ? 'text-slate-400' : 'text-slate-500'}`}>
                       {new Date(msg.created_at).toLocaleTimeString('it-IT')}

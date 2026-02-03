@@ -9,6 +9,7 @@ from app.models.assessment import Lesson, Quiz, QuizAttempt, Badge, BadgeAward
 from app.models.file import File
 from app.models.task import Task, TaskSubmission, TaskStatus, TaskType
 from app.models.invitation import ClassTeacher, ClassInvitation, SessionTeacher, SessionInvitation
+from app.models.teacherbot import Teacherbot, TeacherbotStatus, TeacherbotPublication, TeacherbotConversation, TeacherbotMessage
 
 __all__ = [
     "Tenant",
@@ -46,4 +47,9 @@ __all__ = [
     "SessionInvitation",
     "TeacherConversation",
     "TeacherConversationMessage",
+    "Teacherbot",
+    "TeacherbotStatus",
+    "TeacherbotPublication",
+    "TeacherbotConversation",
+    "TeacherbotMessage",
 ]

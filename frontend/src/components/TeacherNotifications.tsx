@@ -31,6 +31,7 @@ interface TeacherNotificationsProps {
   notifications: TeacherNotification[]
   onClearAll: () => void
   onMarkAsRead: (id: string) => void
+  onNotificationClick: (notification: TeacherNotification) => void
 }
 
 const getNotificationIcon = (type: string) => {
@@ -62,7 +63,8 @@ const formatTime = (timestamp: string) => {
 export default function TeacherNotifications({
   notifications,
   onClearAll,
-  onMarkAsRead
+  onMarkAsRead,
+  onNotificationClick
 }: TeacherNotificationsProps) {
   const [isOpen, setIsOpen] = useState(false)
   const [newNotificationIds, setNewNotificationIds] = useState<Set<string>>(new Set())
@@ -167,15 +169,17 @@ export default function TeacherNotifications({
                     <div
                       key={notification.id}
                       className={`
-                        p-2 rounded text-xs transition-all duration-300
-                        ${isNew ? 'bg-red-50 animate-notification' : 'hover:bg-gray-50'}
-                        ${!notification.read ? 'border-l-2 border-l-blue-500 pl-1.5' : ''}
-                      `}
+                          cursor-pointer p-2 rounded text-xs transition-all duration-300
+                          ${isNew ? 'bg-red-50 animate-notification' : 'hover:bg-gray-50'}
+                          ${!notification.read ? 'border-l-2 border-l-blue-500 pl-1.5' : ''}
+                        `}
+                      onClick={() => {
+                        onMarkAsRead(notification.id)
+                        onNotificationClick(notification)
+                        setIsOpen(false)
+                      }}
                     >
-                      <div
-                        className="flex items-start gap-2 cursor-pointer"
-                        onClick={() => onMarkAsRead(notification.id)}
-                      >
+                      <div className="flex items-start gap-2">
                         <div className="shrink-0 mt-0.5">
                           {getNotificationIcon(notification.type)}
                         </div>

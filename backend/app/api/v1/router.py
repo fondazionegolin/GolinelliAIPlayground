@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from app.api.v1.endpoints import auth, admin, teacher, student, chat, llm, rag, ml, assessment, files
+from app.api.v1.endpoints import auth, admin, teacher, student, chat, llm, rag, ml, assessment, files, teacherbots
 
 api_router = APIRouter()
 
@@ -14,3 +14,4 @@ api_router.include_router(rag.router, prefix="/rag", tags=["rag"])
 api_router.include_router(ml.router, prefix="/ml", tags=["ml"])
 api_router.include_router(assessment.router, prefix="/self", tags=["self-assessment"])
 api_router.include_router(files.router, prefix="/files", tags=["files"])
+api_router.include_router(teacherbots.router, prefix="/teacherbots", tags=["teacherbots"])

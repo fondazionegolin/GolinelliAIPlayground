@@ -9,14 +9,21 @@ import { useToast } from '@/components/ui/use-toast'
 import { TeachersManagementModal } from '@/components/TeachersManagementModal'
 import {
   Plus, Users, Play, Edit2, Check, X, Loader2,
-  Pause, Square, Clock,
-  MonitorPlay,
+  Pause, Square,
   ArrowRight,
   School,
-  Trash2,
   Share2,
-  UserPlus
+  Clock,
+  MoreVertical,
+  UserPlus,
+  MonitorPlay
 } from 'lucide-react'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 
 
 interface ClassData {
@@ -73,81 +80,81 @@ export default function ClassesPage() {
   return (
     <div className="p-6">
       <div className="max-w-7xl mx-auto space-y-6">
-          
-          {/* Header Principale */}
-          <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-            <div>
-              <h1 className="text-3xl font-bold text-slate-900 tracking-tight flex items-center gap-3">
-                Gestione Classi e Sessioni
-              </h1>
-              <p className="text-slate-500 mt-2 text-lg">
-                Monitora le tue classi e gestisci le sessioni attive da un unico pannello.
-              </p>
+
+        {/* Header Principale */}
+        <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+          <div>
+            <h1 className="text-3xl font-bold text-slate-900 tracking-tight flex items-center gap-3">
+              Gestione Classi e Sessioni
+            </h1>
+            <p className="text-slate-500 mt-2 text-lg">
+              Monitora le tue classi e gestisci le sessioni attive da un unico pannello.
+            </p>
+          </div>
+          <Button
+            onClick={() => setShowNewForm(true)}
+            disabled={showNewForm}
+            size="lg"
+            className="bg-violet-600 hover:bg-violet-700 shadow-md transition-all hover:scale-105 font-medium"
+          >
+            <Plus className="h-5 w-5 mr-2" />
+            Nuova Classe
+          </Button>
+        </div>
+
+        {showNewForm && (
+          <Card className="border-2 border-violet-100 bg-white shadow-lg animate-in slide-in-from-top-4 duration-300">
+            <CardContent className="pt-6">
+              <form onSubmit={handleCreate} className="flex gap-4 items-end">
+                <div className="flex-1">
+                  <label className="text-sm font-semibold text-violet-900 mb-2 block">Nome della nuova classe</label>
+                  <Input
+                    placeholder="es. 3A Informatica - A.S. 2024/25"
+                    value={newClassName}
+                    onChange={(e) => setNewClassName(e.target.value)}
+                    autoFocus
+                    className="bg-slate-50 border-slate-200 focus-visible:ring-violet-500 text-lg h-12"
+                  />
+                </div>
+                <Button type="submit" disabled={createMutation.isPending} size="lg" className="bg-violet-600 h-12 px-8">
+                  Crea Classe
+                </Button>
+                <Button type="button" variant="ghost" size="lg" onClick={() => setShowNewForm(false)} className="h-12">
+                  Annulla
+                </Button>
+              </form>
+            </CardContent>
+          </Card>
+        )}
+
+        {isLoading ? (
+          <div className="grid gap-6">
+            {[1, 2, 3].map(i => (
+              <Card key={i} className="h-48 animate-pulse bg-slate-100" />
+            ))}
+          </div>
+        ) : !classes?.length ? (
+          <div className="text-center py-24 bg-white rounded-3xl border-2 border-dashed border-slate-200 shadow-sm">
+            <div className="w-20 h-20 bg-violet-50 rounded-full flex items-center justify-center mx-auto mb-6">
+              <School className="h-10 w-10 text-violet-400" />
             </div>
-            <Button 
-              onClick={() => setShowNewForm(true)} 
-              disabled={showNewForm} 
-              size="lg"
-              className="bg-violet-600 hover:bg-violet-700 shadow-md transition-all hover:scale-105 font-medium"
-            >
-              <Plus className="h-5 w-5 mr-2" />
-              Nuova Classe
+            <h3 className="text-xl font-bold text-slate-900 mb-2">Nessuna classe presente</h3>
+            <p className="text-slate-500 mb-8 max-w-md mx-auto">
+              Inizia creando la tua prima classe per poter avviare sessioni di lavoro con gli studenti.
+            </p>
+            <Button onClick={() => setShowNewForm(true)} variant="outline" size="lg" className="border-violet-200 text-violet-700 hover:bg-violet-50">
+              Crea la tua prima classe
             </Button>
           </div>
-
-          {showNewForm && (
-            <Card className="border-2 border-violet-100 bg-white shadow-lg animate-in slide-in-from-top-4 duration-300">
-              <CardContent className="pt-6">
-                <form onSubmit={handleCreate} className="flex gap-4 items-end">
-                  <div className="flex-1">
-                    <label className="text-sm font-semibold text-violet-900 mb-2 block">Nome della nuova classe</label>
-                    <Input
-                      placeholder="es. 3A Informatica - A.S. 2024/25"
-                      value={newClassName}
-                      onChange={(e) => setNewClassName(e.target.value)}
-                      autoFocus
-                      className="bg-slate-50 border-slate-200 focus-visible:ring-violet-500 text-lg h-12"
-                    />
-                  </div>
-                  <Button type="submit" disabled={createMutation.isPending} size="lg" className="bg-violet-600 h-12 px-8">
-                    Crea Classe
-                  </Button>
-                  <Button type="button" variant="ghost" size="lg" onClick={() => setShowNewForm(false)} className="h-12">
-                    Annulla
-                  </Button>
-                </form>
-              </CardContent>
-            </Card>
-          )}
-
-          {isLoading ? (
-            <div className="grid gap-6">
-              {[1, 2, 3].map(i => (
-                <Card key={i} className="h-48 animate-pulse bg-slate-100" />
-              ))}
-            </div>
-          ) : !classes?.length ? (
-            <div className="text-center py-24 bg-white rounded-3xl border-2 border-dashed border-slate-200 shadow-sm">
-              <div className="w-20 h-20 bg-violet-50 rounded-full flex items-center justify-center mx-auto mb-6">
-                <School className="h-10 w-10 text-violet-400" />
-              </div>
-              <h3 className="text-xl font-bold text-slate-900 mb-2">Nessuna classe presente</h3>
-              <p className="text-slate-500 mb-8 max-w-md mx-auto">
-                Inizia creando la tua prima classe per poter avviare sessioni di lavoro con gli studenti.
-              </p>
-              <Button onClick={() => setShowNewForm(true)} variant="outline" size="lg" className="border-violet-200 text-violet-700 hover:bg-violet-50">
-                Crea la tua prima classe
-              </Button>
-            </div>
-          ) : (
-            <div className="space-y-6">
-              {classes.map((cls) => (
-                <ClassContainer key={cls.id} classData={cls} />
-              ))}
-            </div>
-          )}
-        </div>
+        ) : (
+          <div className="space-y-8">
+            {classes.map((cls) => (
+              <ClassContainer key={cls.id} classData={cls} />
+            ))}
+          </div>
+        )}
       </div>
+    </div >
   )
 }
 
@@ -170,9 +177,9 @@ function ClassContainer({ classData }: { classData: ClassData }) {
   })
 
   const sessions = (sessionsResponse?.data || []) as SessionData[]
-  // Show active and paused sessions prominently. Finished sessions are hidden or can be shown in history.
+  // Show active and active-paused sessions prominently.
   const activeSessions = sessions.filter(s => s.status !== 'finished')
-  
+
   // Sort: active first, then paused
   activeSessions.sort((a, b) => {
     if (a.status === 'active' && b.status !== 'active') return -1;
@@ -197,29 +204,17 @@ function ClassContainer({ classData }: { classData: ClassData }) {
     onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ['sessions', classData.id] })
       toast({ title: 'Sessione avviata!' })
-      // Navigate immediately to the new session control panel
       navigate(`/teacher/sessions/${res.data.id}`)
     },
     onSettled: () => setIsCreatingSession(false)
   })
 
   const updateSessionStatusMutation = useMutation({
-    mutationFn: ({ id, status }: { id: string, status: string }) => 
+    mutationFn: ({ id, status }: { id: string, status: string }) =>
       teacherApi.updateSession(id, { status }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['sessions', classData.id] })
       toast({ title: 'Stato sessione aggiornato' })
-    }
-  })
-
-  const deleteSessionMutation = useMutation({
-    mutationFn: (sessionId: string) => teacherApi.deleteSession(sessionId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['sessions', classData.id] })
-      toast({ title: 'Sessione eliminata' })
-    },
-    onError: () => {
-      toast({ variant: 'destructive', title: 'Errore nell\'eliminazione della sessione' })
     }
   })
 
@@ -231,238 +226,218 @@ function ClassContainer({ classData }: { classData: ClassData }) {
     }
   }
 
+  const lastActiveSession = activeSessions.length > 0 ? activeSessions[0] : null
+  const otherSessions = activeSessions.length > 1 ? activeSessions.slice(1) : []
+
   return (
     <>
-    <Card className={`overflow-hidden shadow-sm hover:shadow-md transition-shadow duration-300 bg-white group ${isShared ? 'border-2 border-cyan-200' : 'border-slate-200'}`}>
-      {/* Class Header Section */}
-      <div className={`border-b border-slate-100 p-4 md:p-5 flex flex-wrap items-center justify-between gap-4 ${isShared ? 'bg-gradient-to-r from-cyan-50/50 to-sky-50/50' : 'bg-slate-50/50'}`}>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-3">
-            <div className={`p-2 rounded-lg border shadow-sm ${isShared ? 'bg-cyan-50 border-cyan-200' : 'bg-white border-slate-200'}`}>
-              <School className={`h-6 w-6 ${isShared ? 'text-cyan-600' : 'text-violet-600'}`} />
-            </div>
+      <div className={`rounded-2xl border bg-white shadow-sm transition-all duration-300 hover:shadow-md ${isShared ? 'border-cyan-200' : 'border-slate-200'}`}>
+        {/* WIDE CARD LAYOUT */}
+        <div className="flex flex-col lg:flex-row">
 
-            {isEditing ? (
-              <div className="flex gap-2 items-center">
-                <Input
-                  value={editName}
-                  onChange={(e) => setEditName(e.target.value)}
-                  autoFocus
-                  className="h-10 text-lg font-bold bg-white min-w-[300px]"
-                />
-                <Button size="sm" onClick={handleSaveEdit} className="h-10 w-10 p-0 bg-green-600 hover:bg-green-700">
-                  <Check className="h-5 w-5" />
-                </Button>
-                <Button size="sm" variant="ghost" onClick={() => setIsEditing(false)} className="h-10 w-10 p-0">
-                  <X className="h-5 w-5" />
-                </Button>
+          {/* LEFT: Class Info & Stats */}
+          <div className="p-6 lg:w-1/3 flex flex-col justify-between border-b lg:border-b-0 lg:border-r border-slate-100 bg-slate-50/30 rounded-l-2xl">
+            <div>
+              <div className="flex items-start justify-between mb-4">
+                <div className={`p-3 rounded-xl shadow-sm ${isShared ? 'bg-cyan-100 text-cyan-700' : 'bg-violet-100 text-violet-700'}`}>
+                  <School className="h-8 w-8" />
+                </div>
+                {/* Mobile Actions Menu */}
+                <div className="lg:hidden">
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                        <MoreVertical className="h-4 w-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem onClick={() => setIsEditing(true)}>
+                        <Edit2 className="mr-2 h-4 w-4" /> Rinomina
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => setShowTeachersModal(true)}>
+                        <Users className="mr-2 h-4 w-4" /> Docenti
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
               </div>
-            ) : (
-              <div className="flex items-center gap-2 group/title">
-                <h2 className="text-xl md:text-2xl font-bold text-slate-800 truncate cursor-default">
-                  {classData.name}
-                </h2>
-                {isShared && (
-                  <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-cyan-100 text-cyan-700 text-xs font-medium rounded-full">
-                    <Share2 className="h-3 w-3" />
-                    Condivisa
+
+              {isEditing ? (
+                <div className="flex gap-2 items-center mb-2">
+                  <Input
+                    value={editName}
+                    onChange={(e) => setEditName(e.target.value)}
+                    autoFocus
+                    className="h-9 text-lg font-bold bg-white"
+                  />
+                  <Button size="sm" onClick={handleSaveEdit} className="h-9 w-9 p-0 bg-green-600 hover:bg-green-700">
+                    <Check className="h-4 w-4" />
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={() => setIsEditing(false)} className="h-9 w-9 p-0">
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+              ) : (
+                <h2 className="text-2xl font-bold text-slate-800 mb-2">{classData.name}</h2>
+              )}
+
+              <div className="flex items-center gap-3 text-sm text-slate-500 mb-6">
+                {isShared ? (
+                  <span className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-cyan-50 text-cyan-700 font-medium border border-cyan-100">
+                    <Share2 className="h-3.5 w-3.5" />
+                    {classData.owner_name ? `di ${classData.owner_name}` : 'Condivisa'}
+                  </span>
+                ) : (
+                  <span className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200">
+                    <Users className="h-3.5 w-3.5" />
+                    Personale
                   </span>
                 )}
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setIsEditing(true)}
-                  className="opacity-0 group-hover/title:opacity-100 transition-opacity h-8 w-8 p-0 text-slate-400 hover:text-slate-600"
-                >
-                  <Edit2 className="h-4 w-4" />
-                </Button>
+                <span className="text-slate-400">•</span>
+                <span>Creata: {new Date(classData.created_at).toLocaleDateString('it-IT')}</span>
               </div>
-            )}
-          </div>
-          <div className="flex items-center gap-2 text-slate-500 text-sm mt-1 ml-14">
-            <span>Creata il {new Date(classData.created_at).toLocaleDateString('it-IT')}</span>
-            <span>-</span>
-            <span>{sessions.length} sessioni totali</span>
-            {isShared && classData.owner_name && (
-              <>
-                <span>-</span>
-                <span className="text-cyan-600">di {classData.owner_name}</span>
-              </>
-            )}
-          </div>
-        </div>
+            </div>
 
-        <div className="flex items-center gap-2">
-          {/* Manage Teachers Button */}
-          <Button
-            variant="outline"
-            onClick={() => setShowTeachersModal(true)}
-            className="border-slate-200 text-slate-600 hover:bg-slate-50"
-          >
-            <UserPlus className="h-4 w-4 mr-2" />
-            Docenti
-          </Button>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="bg-white p-3 rounded-lg border border-slate-100 shadow-sm">
+                <span className="text-xs text-slate-400 uppercase font-semibold block mb-1">Sessioni Attive</span>
+                <span className="text-2xl font-bold text-violet-600">{activeSessions.length}</span>
+              </div>
+              <div className="bg-white p-3 rounded-lg border border-slate-100 shadow-sm">
+                <span className="text-xs text-slate-400 uppercase font-semibold block mb-1">Totali</span>
+                <span className="text-2xl font-bold text-slate-700">{sessions.length}</span>
+              </div>
+            </div>
 
-          <Button
-            onClick={() => {
-              setIsCreatingSession(true)
-              createSessionMutation.mutate()
-            }}
-            disabled={isCreatingSession}
-            className="bg-white hover:bg-violet-50 text-violet-700 border border-violet-200 shadow-sm"
-          >
-            {isCreatingSession ? (
-              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-            ) : (
-              <Play className="h-4 w-4 mr-2 fill-current" />
-            )}
-            Nuova Sessione
-          </Button>
+            <div className="hidden lg:flex gap-2 mt-6">
+              <Button variant="outline" size="sm" onClick={() => setIsEditing(true)} className="flex-1 border-slate-200">
+                <Edit2 className="h-4 w-4 mr-2" /> Modifica
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => setShowTeachersModal(true)} className="flex-1 border-slate-200">
+                <UserPlus className="h-4 w-4 mr-2" /> Docenti
+              </Button>
+            </div>
+          </div>
+
+          {/* RIGHT: Content & Actions */}
+          <div className="p-6 lg:w-2/3 flex flex-col">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-lg font-semibold text-slate-700 flex items-center gap-2">
+                <MonitorPlay className="h-5 w-5 text-violet-500" />
+                Attività Recenti
+              </h3>
+              <Button
+                onClick={() => {
+                  setIsCreatingSession(true)
+                  createSessionMutation.mutate()
+                }}
+                disabled={isCreatingSession}
+                className="bg-violet-600 hover:bg-violet-700 shadow-violet-100 text-white"
+              >
+                {isCreatingSession ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Play className="h-4 w-4 mr-2 fill-current" />}
+                Nuova Sessione
+              </Button>
+            </div>
+
+            {/* Latest Active Session Highlight */}
+            <div className="flex-1">
+              {lastActiveSession ? (
+                <div className="space-y-4">
+                  <div className="bg-violet-50/50 border border-violet-100 rounded-xl p-4 transition-all hover:bg-violet-50 hover:border-violet-200 hover:shadow-sm group/main-session">
+                    <div className="flex justify-between items-start mb-3">
+                      <div className="flex items-center gap-3">
+                        {lastActiveSession.status === 'active' ? (
+                          <span className="relative flex h-3 w-3">
+                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                            <span className="relative inline-flex rounded-full h-3 w-3 bg-green-500"></span>
+                          </span>
+                        ) : (
+                          <span className="flex h-3 w-3 rounded-full bg-amber-400"></span>
+                        )}
+                        <div>
+                          <h4
+                            className="font-bold text-lg text-slate-800 cursor-pointer hover:text-violet-700 hover:underline"
+                            onClick={() => navigate(`/teacher/sessions/${lastActiveSession.id}`)}
+                          >
+                            {lastActiveSession.title}
+                          </h4>
+                          <p className="text-sm text-slate-500 flex items-center gap-2 mt-0.5">
+                            <Clock className="h-3.5 w-3.5" />
+                            Avviata alle {new Date(lastActiveSession.created_at).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })}
+                          </p>
+                        </div>
+                      </div>
+                      <Button onClick={() => navigate(`/teacher/sessions/${lastActiveSession.id}`)} size="sm" className="hidden lg:flex">
+                        Apri Pannello <ArrowRight className="h-4 w-4 ml-1" />
+                      </Button>
+                    </div>
+
+                    <div className="flex items-center gap-2 mt-4 pt-3 border-t border-violet-100/50">
+                      <div className="flex items-center px-2 py-1 bg-white rounded border border-slate-100 text-xs font-medium text-slate-600">
+                        <Users className="h-3.5 w-3.5 mr-1.5 text-violet-500" />
+                        {lastActiveSession.active_students_count || 0} Studenti
+                      </div>
+                      <div className="ml-auto flex gap-1">
+                        {/* Quick Actions */}
+                        {lastActiveSession.status === 'active' ? (
+                          <Button size="sm" variant="ghost" onClick={() => updateSessionStatusMutation.mutate({ id: lastActiveSession.id, status: 'paused' })} className="h-8 px-2 text-amber-600 hover:text-amber-700 hover:bg-amber-50">
+                            <Pause className="h-3.5 w-3.5 mr-1" /> Pausa
+                          </Button>
+                        ) : (
+                          <Button size="sm" variant="ghost" onClick={() => updateSessionStatusMutation.mutate({ id: lastActiveSession.id, status: 'active' })} className="h-8 px-2 text-green-600 hover:text-green-700 hover:bg-green-50">
+                            <Play className="h-3.5 w-3.5 mr-1" /> Riprendi
+                          </Button>
+                        )}
+                        <Button size="sm" variant="ghost" onClick={() => { if (confirm('Terminare?')) updateSessionStatusMutation.mutate({ id: lastActiveSession.id, status: 'finished' }) }} className="h-8 w-8 p-0 text-red-400 hover:text-red-600 hover:bg-red-50">
+                          <Square className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Other Sessions List */}
+                  {otherSessions.length > 0 && (
+                    <div className="space-y-2 mt-4">
+                      <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Altre sessioni attive</h4>
+                      {otherSessions.map(os => (
+                        <div key={os.id} className="flex items-center justify-between p-3 rounded-lg border border-slate-100 hover:bg-slate-50 transition-colors">
+                          <div className="flex items-center gap-3 overflow-hidden">
+                            <div className={`w-2 h-2 rounded-full flex-shrink-0 ${os.status === 'active' ? 'bg-green-500' : 'bg-amber-400'}`} />
+                            <span className="font-medium text-slate-700 truncate">{os.title}</span>
+                          </div>
+                          <Button variant="ghost" size="sm" onClick={() => navigate(`/teacher/sessions/${os.id}`)} className="h-7 text-xs">
+                            Apri
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="h-full flex flex-col items-center justify-center p-8 bg-slate-50 rounded-xl border border-dashed border-slate-200">
+                  <div className="p-3 bg-white rounded-full shadow-sm mb-3">
+                    <Play className="h-6 w-6 text-slate-300 ml-1" />
+                  </div>
+                  <p className="text-slate-500 font-medium mb-1">Nessuna sessione attiva</p>
+                  <p className="text-sm text-slate-400 text-center max-w-xs">
+                    Avvia una nuova sessione per iniziare a lavorare con la classe.
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       </div>
 
-      {/* Active Sessions List */}
-      <CardContent className="p-0">
-        {activeSessions.length > 0 ? (
-          <div className="divide-y divide-slate-100">
-            {activeSessions.map((session) => (
-              <div 
-                key={session.id}
-                className="p-4 md:p-5 hover:bg-slate-50/80 transition-colors flex flex-col md:flex-row md:items-center gap-4 group/session"
-              >
-                {/* Session Status & Info */}
-                <div 
-                  className="flex-1 min-w-0 cursor-pointer"
-                  onClick={() => navigate(`/teacher/sessions/${session.id}`)}
-                >
-                  <div className="flex items-center gap-3 mb-2">
-                    {session.status === 'active' ? (
-                      <span className="relative flex h-3 w-3">
-                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-                        <span className="relative inline-flex rounded-full h-3 w-3 bg-green-500"></span>
-                      </span>
-                    ) : (
-                      <span className="flex h-3 w-3 rounded-full bg-amber-400"></span>
-                    )}
-                    <h3 className="text-lg font-semibold text-slate-900 group-hover/session:text-violet-700 transition-colors flex items-center gap-2">
-                      {session.title}
-                      <ArrowRight className="h-4 w-4 opacity-0 -ml-2 group-hover/session:opacity-100 group-hover/session:ml-0 transition-all text-violet-400" />
-                    </h3>
-                  </div>
-                  
-                  <div className="flex flex-wrap items-center gap-4 text-sm text-slate-500">
-                    <span className="flex items-center gap-1.5 bg-slate-100/50 px-2 py-1 rounded">
-                      <Clock className="h-3.5 w-3.5" />
-                      Avviata alle {new Date(session.created_at).toLocaleTimeString('it-IT', {hour: '2-digit', minute:'2-digit'})}
-                    </span>
-                    <span className="flex items-center gap-1.5 bg-slate-100/50 px-2 py-1 rounded">
-                      <Users className="h-3.5 w-3.5" />
-                      <strong className="text-slate-700">{session.active_students_count || 0}</strong> studenti connessi
-                    </span>
-                  </div>
-                </div>
-
-                {/* Quick Controls */}
-                <div className="flex items-center gap-2 self-start md:self-center bg-white p-1 rounded-lg border border-slate-100 shadow-sm">
-                  {session.status === 'active' ? (
-                    <Button 
-                      size="sm" 
-                      variant="ghost"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        updateSessionStatusMutation.mutate({ id: session.id, status: 'paused' });
-                      }}
-                      className="text-amber-600 hover:text-amber-700 hover:bg-amber-50 h-9"
-                    >
-                      <Pause className="h-4 w-4 mr-2" />
-                      Pausa
-                    </Button>
-                  ) : (
-                    <Button 
-                      size="sm" 
-                      variant="ghost"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        updateSessionStatusMutation.mutate({ id: session.id, status: 'active' });
-                      }}
-                      className="text-green-600 hover:text-green-700 hover:bg-green-50 h-9"
-                    >
-                      <Play className="h-4 w-4 mr-2" />
-                      Riprendi
-                    </Button>
-                  )}
-                  
-                  <div className="w-px h-6 bg-slate-200 mx-1"></div>
-
-                  <Button 
-                    size="sm" 
-                    variant="ghost"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      if(confirm('Terminare definitivamente questa sessione?')) {
-                        updateSessionStatusMutation.mutate({ id: session.id, status: 'finished' });
-                      }
-                    }}
-                    className="text-red-500 hover:text-red-600 hover:bg-red-50 h-9 px-3"
-                    title="Termina Sessione"
-                  >
-                    <Square className="h-4 w-4 fill-current scale-90" />
-                  </Button>
-
-                  <Button 
-                    size="sm" 
-                    variant="ghost"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      if(confirm('Eliminare definitivamente questa sessione? Questa azione non può essere annullata.')) {
-                        deleteSessionMutation.mutate(session.id);
-                      }
-                    }}
-                    className="text-red-600 hover:text-red-700 hover:bg-red-50 h-9 px-3"
-                    title="Elimina Sessione"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </div>
-
-                {/* Main Action Button */}
-                <Button 
-                  onClick={() => navigate(`/teacher/sessions/${session.id}`)}
-                  className="bg-violet-600 hover:bg-violet-700 text-white shadow-sm shadow-violet-200 h-11 px-6 hidden md:flex"
-                >
-                  <MonitorPlay className="h-4 w-4 mr-2" />
-                  Apri Pannello
-                </Button>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="p-8 text-center bg-slate-50/30">
-            <p className="text-slate-500 italic">Nessuna sessione attiva al momento.</p>
-            <Button 
-              variant="link" 
-              onClick={() => {
-                setIsCreatingSession(true)
-                createSessionMutation.mutate()
-              }}
-              className="text-violet-600 mt-1 h-auto p-0 font-medium"
-            >
-              Avvia subito una lezione
-            </Button>
-          </div>
-        )}
-      </CardContent>
-    </Card>
-
-    {/* Teachers Management Modal */}
-    {showTeachersModal && (
-      <TeachersManagementModal
-        type="class"
-        targetId={classData.id}
-        targetName={classData.name}
-        onClose={() => setShowTeachersModal(false)}
-      />
-    )}
+      {/* Teachers Management Modal */}
+      {showTeachersModal && (
+        <TeachersManagementModal
+          type="class"
+          targetId={classData.id}
+          targetName={classData.name}
+          onClose={() => setShowTeachersModal(false)}
+        />
+      )}
     </>
   )
 }

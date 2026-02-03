@@ -228,6 +228,29 @@ export function TeacherNavbar({ currentSession, onSessionChange }: TeacherNavbar
     { path: '/teacher/ml-lab', label: 'ML Lab', icon: Brain },
   ]
 
+  const handleNotificationClick = (notification: TeacherNotification) => {
+    // Navigate to session if applicable
+    if (notification.session_id) {
+      if (notification.type === 'private_message' || notification.type === 'public_chat') {
+        const sessionInfo = {
+          id: notification.session_id,
+          name: notification.session_name || 'Sessione',
+          className: notification.class_name || 'Classe'
+        }
+        onSessionChange?.(sessionInfo)
+        localStorage.setItem('teacher_selected_session', JSON.stringify(sessionInfo))
+        navigate(`/teacher/sessions/${notification.session_id}?tab=chat`)
+      } else if (notification.type === 'task_submitted' || notification.type === 'quiz_completed') {
+        navigate(`/teacher/sessions/${notification.session_id}?tab=tasks`)
+      } else {
+        navigate(`/teacher/sessions/${notification.session_id}`)
+      }
+      setShowDropdown(false) // Close profile dropdown if open
+    }
+  }
+
+
+
   return (
     <>
       <nav className="fixed top-0 left-0 right-0 z-50 bg-indigo-50/80 backdrop-blur-md border-b border-indigo-200 shadow-md shadow-indigo-100/50">
@@ -264,6 +287,7 @@ export function TeacherNavbar({ currentSession, onSessionChange }: TeacherNavbar
                 notifications={teacherNotifications}
                 onClearAll={handleClearNotifications}
                 onMarkAsRead={handleMarkAsRead}
+                onNotificationClick={handleNotificationClick}
               />
 
               {/* Session Selector */}

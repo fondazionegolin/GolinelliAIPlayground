@@ -5,8 +5,8 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
   Send, MessageSquare, Bell, Paperclip, X, Image as ImageIcon,
-  Users, MessagesSquare, MessageCircle, Circle, Pin, PinOff,
-  FileText, FileSpreadsheet, File, Download, ExternalLink
+  MessagesSquare, MessageCircle, Pin, PinOff,
+  FileText, FileSpreadsheet, File, Download, ExternalLink, Wand2, Users
 } from 'lucide-react'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 
@@ -247,7 +247,7 @@ function FileViewerModal({
 
 export type { ChatMessage }
 
-type TabType = 'session' | 'users' | 'private'
+type TabType = 'session' | 'private' | 'users'
 
 interface ChatSidebarProps {
   sessionId: string
@@ -294,12 +294,13 @@ export default function ChatSidebar({
     connected,
     messages: socketMessages,
     sendPublicMessage,
-    onlineUsers,
+
     privateChats,
     sendPrivateMessage,
     startPrivateChat,
     markPrivateChatRead,
-    currentUserId: socketCurrentUserId
+    currentUserId: socketCurrentUserId,
+    onlineUsers
   } = useSocket(sessionId)
 
   useEffect(() => {
@@ -348,6 +349,29 @@ export default function ChatSidebar({
       markPrivateChatRead(activePrivateChat)
     }
   }, [activeTab, activePrivateChat, markPrivateChatRead])
+
+  // Listen for external openPrivateChat events (e.g., from Chat Diretta action)
+  useEffect(() => {
+    const handleOpenPrivateChat = (event: CustomEvent<{ id: string; nickname: string }>) => {
+      const student = event.detail
+      if (student && student.id) {
+        // Create a minimal OnlineUser to start private chat
+        const user: OnlineUser = {
+          student_id: student.id,
+          nickname: student.nickname,
+          role: 'student'
+        }
+        startPrivateChat(user)
+        setActivePrivateChat(student.id)
+        setActiveTab('private')
+      }
+    }
+
+    window.addEventListener('openPrivateChat', handleOpenPrivateChat as EventListener)
+    return () => {
+      window.removeEventListener('openPrivateChat', handleOpenPrivateChat as EventListener)
+    }
+  }, [startPrivateChat])
 
   const handleSend = async () => {
     if (!inputText.trim() && attachedFiles.length === 0) return
@@ -539,14 +563,7 @@ export default function ChatSidebar({
     onWidthChange?.(chatWidth)
   }, [chatWidth, onWidthChange])
 
-  const handleUserClick = (user: OnlineUser) => {
-    // Don't allow chatting with yourself
-    if (user.student_id === currentUserId || user.student_id === socketCurrentUserId) return
 
-    startPrivateChat(user)
-    setActivePrivateChat(user.student_id)
-    setActiveTab('private')
-  }
 
   const containerClasses = `relative flex flex-col h-full bg-white border-l border-slate-200 overflow-hidden ${className || (isMobileView
     ? "w-full"
@@ -591,6 +608,56 @@ export default function ChatSidebar({
     }
 
     if (isNotification) {
+      // Special rendering for teacherbot_published notifications
+      if (msg.notification_type === 'teacherbot_published' && msg.notification_data) {
+        const data = typeof msg.notification_data === 'string'
+          ? JSON.parse(msg.notification_data)
+          : msg.notification_data
+
+        const colorMap: Record<string, string> = {
+          indigo: 'bg-indigo-500',
+          blue: 'bg-blue-500',
+          green: 'bg-green-500',
+          red: 'bg-red-500',
+          purple: 'bg-purple-500',
+          pink: 'bg-pink-500',
+          orange: 'bg-orange-500',
+          teal: 'bg-teal-500',
+          cyan: 'bg-cyan-500',
+        }
+        const botColor = colorMap[data.color] || 'bg-indigo-500'
+
+        return (
+          <div
+            key={msg.id}
+            className="mx-2 p-3 bg-gradient-to-br from-indigo-50 to-purple-50 border border-indigo-200 rounded-xl shadow-sm"
+          >
+            <div className="flex items-center gap-3">
+              <div className={`w-10 h-10 rounded-lg ${botColor} flex items-center justify-center shadow-md flex-shrink-0`}>
+                <Wand2 className="h-5 w-5 text-white" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-1.5 mb-0.5">
+                  <span className="text-[10px] font-bold text-indigo-600 uppercase">Nuovo Assistente</span>
+                </div>
+                <p className="text-sm font-semibold text-slate-800 truncate">{data.name}</p>
+                {data.synopsis && (
+                  <p className="text-xs text-slate-500 line-clamp-2 mt-0.5">{data.synopsis}</p>
+                )}
+              </div>
+            </div>
+            <button
+              onClick={() => onNotificationClick?.(msg)}
+              className="mt-3 w-full py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-lg transition-colors flex items-center justify-center gap-1.5"
+            >
+              <Wand2 className="h-3.5 w-3.5" />
+              Prova ora
+            </button>
+          </div>
+        )
+      }
+
+      // Default notification rendering
       return (
         <div
           key={msg.id}
@@ -673,8 +740,8 @@ export default function ChatSidebar({
                     key={idx}
                     onClick={() => setViewingFile({ url: att.url, filename: att.filename || 'file', type: att.type })}
                     className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition-colors w-full text-left ${isMe
-                        ? 'bg-indigo-500/30 hover:bg-indigo-500/50 text-white'
-                        : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                      ? 'bg-indigo-500/30 hover:bg-indigo-500/50 text-white'
+                      : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
                       }`}
                   >
                     <Paperclip className="h-3.5 w-3.5 flex-shrink-0" />
@@ -692,68 +759,7 @@ export default function ChatSidebar({
     )
   }
 
-  const renderUsersTab = () => {
-    const otherUsers = onlineUsers.filter(u => u.student_id !== currentUserId && u.student_id !== socketCurrentUserId)
 
-    return (
-      <div className="flex-1 overflow-y-auto p-4 space-y-2 bg-slate-50/30">
-        {otherUsers.length === 0 ? (
-          <div className="h-full flex flex-col items-center justify-center text-slate-300 opacity-50">
-            <Users className="h-8 w-8 mb-2" />
-            <p className="text-[10px] font-medium uppercase">Nessun altro utente connesso</p>
-          </div>
-        ) : (
-          <>
-            <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-3 px-1">
-              {otherUsers.length} {otherUsers.length === 1 ? 'utente connesso' : 'utenti connessi'}
-            </div>
-            {otherUsers.map((user) => (
-              <div
-                key={user.student_id}
-                onClick={() => handleUserClick(user)}
-                className="flex items-center gap-3 p-3 bg-white rounded-xl border border-slate-100 hover:border-indigo-200 hover:bg-indigo-50/50 cursor-pointer transition-all group"
-              >
-                <div className="relative">
-                  <Avatar className="h-10 w-10 border-2 border-white shadow-sm">
-                    {user.avatar_url ? (
-                      <img
-                        src={user.avatar_url}
-                        alt={user.nickname || 'Avatar'}
-                        className="w-full h-full object-cover rounded-full"
-                      />
-                    ) : (
-                      <AvatarFallback className="bg-slate-200 text-slate-600 text-sm font-bold">
-                        {(user.nickname || '?').substring(0, 2).toUpperCase()}
-                      </AvatarFallback>
-                    )}
-                  </Avatar>
-                  <Circle className="absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 fill-emerald-500 text-white" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <p className="font-semibold text-sm text-slate-700 truncate group-hover:text-indigo-700">
-                      {user.nickname || (user.role === 'teacher' ? 'Docente' : 'Studente')}
-                    </p>
-                    {user.role === 'teacher' && (
-                      <span className="text-[8px] font-black bg-orange-100 text-orange-600 px-1 py-0.5 rounded leading-none">
-                        DOCENTE
-                      </span>
-                    )}
-                  </div>
-                  {user.activity?.module_key && (
-                    <p className="text-[10px] text-slate-400 truncate">
-                      {user.activity.module_key} {user.activity.step && `- ${user.activity.step}`}
-                    </p>
-                  )}
-                </div>
-                <MessageCircle className="h-4 w-4 text-slate-300 group-hover:text-indigo-500 transition-colors" />
-              </div>
-            ))}
-          </>
-        )}
-      </div>
-    )
-  }
 
   const renderPrivateChatsTab = () => {
     const chatList = Object.values(privateChats)
@@ -763,7 +769,7 @@ export default function ChatSidebar({
         <div className="flex-1 flex flex-col items-center justify-center text-slate-300 opacity-50 p-4">
           <MessagesSquare className="h-8 w-8 mb-2" />
           <p className="text-[10px] font-medium uppercase text-center">Nessuna chat privata</p>
-          <p className="text-[9px] mt-1 text-center">Clicca su un utente nella tab "Utenti" per iniziare</p>
+          <p className="text-[9px] mt-1 text-center">Inizia una chat dalla lista studenti</p>
         </div>
       )
     }
@@ -782,8 +788,8 @@ export default function ChatSidebar({
                 markPrivateChatRead(chat.oderId)
               }}
               className={`relative w-12 h-12 rounded-xl flex items-center justify-center transition-all ${activePrivateChat === chat.oderId
-                  ? 'bg-indigo-600 shadow-md'
-                  : 'bg-white hover:bg-indigo-50 border border-slate-200'
+                ? 'bg-indigo-600 shadow-md'
+                : 'bg-white hover:bg-indigo-50 border border-slate-200'
                 }`}
               title={chat.peerName}
             >
@@ -796,8 +802,8 @@ export default function ChatSidebar({
                   />
                 ) : (
                   <AvatarFallback className={`text-xs font-bold ${activePrivateChat === chat.oderId
-                      ? 'bg-indigo-500 text-white'
-                      : 'bg-slate-200 text-slate-600'
+                    ? 'bg-indigo-500 text-white'
+                    : 'bg-slate-200 text-slate-600'
                     }`}>
                     {chat.peerName.substring(0, 2).toUpperCase()}
                   </AvatarFallback>
@@ -860,6 +866,57 @@ export default function ChatSidebar({
     )
   }
 
+  const renderUsersTab = () => {
+    return (
+      <div className="flex-1 overflow-y-auto p-4 space-y-2 bg-slate-50/30">
+        <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4 px-1">
+          Online ({onlineUsers.length})
+        </h3>
+        {onlineUsers.length === 0 ? (
+          <div className="text-center py-8 text-slate-400">
+            <p className="text-xs">Nessun utente online</p>
+          </div>
+        ) : (
+          onlineUsers.map(user => (
+            <div
+              key={user.student_id}
+              className="flex items-center justify-between p-3 bg-white border border-slate-100 rounded-xl shadow-sm hover:border-indigo-200 transition-all"
+            >
+              <div className="flex items-center gap-3">
+                <Avatar className="h-8 w-8">
+                  <AvatarFallback className="bg-indigo-100 text-indigo-600 text-xs font-bold">
+                    {(user.nickname || 'Guest').substring(0, 2).toUpperCase()}
+                  </AvatarFallback>
+                </Avatar>
+                <div>
+                  <p className="font-semibold text-sm text-slate-800">{user.nickname || 'Unknown'}</p>
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                    <p className="text-[10px] text-slate-500 uppercase font-medium">{user.role === 'teacher' ? 'Docente' : 'Studente'}</p>
+                  </div>
+                </div>
+              </div>
+              {user.student_id !== currentUserId && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => {
+                    startPrivateChat(user)
+                    setActiveTab('private')
+                    setActivePrivateChat(user.student_id)
+                  }}
+                  className="h-8 w-8 p-0 rounded-full text-slate-400 hover:text-indigo-600 hover:bg-indigo-50"
+                >
+                  <MessageCircle className="h-4 w-4" />
+                </Button>
+              )}
+            </div>
+          ))
+        )}
+      </div>
+    )
+  }
+
   const showInputArea = activeTab === 'session' || (activeTab === 'private' && activePrivateChat)
 
   return (
@@ -875,8 +932,8 @@ export default function ChatSidebar({
       {/* Resize handle - trasparente, blu solo su hover */}
       <div
         className={`absolute left-0 top-0 bottom-0 w-2 cursor-ew-resize z-10 transition-all ${isResizing
-            ? 'bg-indigo-500 w-3'
-            : 'bg-slate-200/50 hover:bg-indigo-500 hover:w-3'
+          ? 'bg-indigo-500 w-3'
+          : 'bg-slate-200/50 hover:bg-indigo-500 hover:w-3'
           }`}
         onMouseDown={handleMouseDown}
         title="Trascina per ridimensionare"
@@ -918,33 +975,19 @@ export default function ChatSidebar({
         <button
           onClick={() => setActiveTab('session')}
           className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 text-[10px] font-bold uppercase tracking-wider transition-all ${activeTab === 'session'
-              ? 'text-indigo-600 border-b-2 border-indigo-600 bg-indigo-50/50'
-              : 'text-slate-400 hover:text-slate-600 hover:bg-slate-50'
+            ? 'text-indigo-600 border-b-2 border-indigo-600 bg-indigo-50/50'
+            : 'text-slate-400 hover:text-slate-600 hover:bg-slate-50'
             }`}
         >
           <MessageSquare className="h-3.5 w-3.5" />
           Sessione
         </button>
-        <button
-          onClick={() => setActiveTab('users')}
-          className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 text-[10px] font-bold uppercase tracking-wider transition-all relative ${activeTab === 'users'
-              ? 'text-indigo-600 border-b-2 border-indigo-600 bg-indigo-50/50'
-              : 'text-slate-400 hover:text-slate-600 hover:bg-slate-50'
-            }`}
-        >
-          <Users className="h-3.5 w-3.5" />
-          Utenti
-          {onlineUsers.filter(u => u.student_id !== currentUserId && u.student_id !== socketCurrentUserId).length > 0 && (
-            <span className="ml-1 px-1.5 py-0.5 text-[8px] bg-emerald-500 text-white rounded-full">
-              {onlineUsers.filter(u => u.student_id !== currentUserId && u.student_id !== socketCurrentUserId).length}
-            </span>
-          )}
-        </button>
+
         <button
           onClick={() => setActiveTab('private')}
           className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 text-[10px] font-bold uppercase tracking-wider transition-all relative ${activeTab === 'private'
-              ? 'text-indigo-600 border-b-2 border-indigo-600 bg-indigo-50/50'
-              : 'text-slate-400 hover:text-slate-600 hover:bg-slate-50'
+            ? 'text-indigo-600 border-b-2 border-indigo-600 bg-indigo-50/50'
+            : 'text-slate-400 hover:text-slate-600 hover:bg-slate-50'
             }`}
         >
           <MessagesSquare className="h-3.5 w-3.5" />
@@ -955,13 +998,26 @@ export default function ChatSidebar({
             </span>
           )}
         </button>
+
+        <button
+          onClick={() => setActiveTab('users')}
+          className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 text-[10px] font-bold uppercase tracking-wider transition-all ${activeTab === 'users'
+            ? 'text-indigo-600 border-b-2 border-indigo-600 bg-indigo-50/50'
+            : 'text-slate-400 hover:text-slate-600 hover:bg-slate-50'
+            }`}
+        >
+          <Users className="h-3.5 w-3.5" />
+          Utenti
+        </button>
       </div>
 
       {/* Tab content */}
       <div className="flex-1 overflow-hidden flex flex-col">
         {activeTab === 'session' && renderSessionChat()}
-        {activeTab === 'users' && renderUsersTab()}
+
         {activeTab === 'private' && renderPrivateChatsTab()}
+
+        {activeTab === 'users' && renderUsersTab()}
       </div>
 
       {/* Input area - only show for session chat or when a private chat is selected */}

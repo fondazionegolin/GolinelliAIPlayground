@@ -513,6 +513,47 @@ async def unfreeze_student(
     return {"message": "Student unfrozen", "student_id": str(student_id)}
 
 
+@router.delete("/sessions/{session_id}/students/{student_id}")
+async def remove_student(
+    session_id: UUID,
+    student_id: UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    teacher: Annotated[User, Depends(get_current_teacher)],
+):
+    """Remove a student from a session (hard delete)"""
+    # Verify session access
+    if not await teacher_can_access_session(db, teacher, session_id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
+    
+    result = await db.execute(
+        select(SessionStudent)
+        .where(SessionStudent.id == student_id)
+        .where(SessionStudent.session_id == session_id)
+    )
+    student = result.scalar_one_or_none()
+    if not student:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Student not found")
+    
+    student_nickname = student.nickname
+    
+    # Log audit event before deletion
+    audit = AuditEvent(
+        tenant_id=student.tenant_id,
+        session_id=session_id,
+        actor_type="TEACHER",
+        actor_user_id=teacher.id,
+        event_type="USER_REMOVED",
+        payload_json={"student_id": str(student_id), "nickname": student_nickname},
+    )
+    db.add(audit)
+    
+    # Delete the student (cascade will handle related records)
+    await db.delete(student)
+    await db.commit()
+    
+    return {"message": "Student removed", "student_id": str(student_id), "nickname": student_nickname}
+
+
 @router.delete("/sessions/{session_id}")
 async def delete_session(
     session_id: UUID,

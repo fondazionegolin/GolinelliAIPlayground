@@ -27,11 +27,13 @@ interface ChatConversationViewProps {
   profileKey: string
   profileName: string
   profileIcon?: React.ReactNode
+  profileColor?: string
   messages: Message[]
   onSend: (content: string, files?: File[]) => void
   onBack: () => void
   isLoading: boolean
   suggestedPrompts?: string[]
+  isTeacherbot?: boolean
 }
 
 export function ChatConversationView({
@@ -39,12 +41,18 @@ export function ChatConversationView({
   profileKey: _profileKey,
   profileName,
   profileIcon,
+  profileColor = 'bg-gradient-to-br from-sky-500 to-blue-600',
   messages,
   onSend,
   onBack,
   isLoading,
   suggestedPrompts = [],
+  isTeacherbot: _isTeacherbot = false,
 }: ChatConversationViewProps) {
+  // Get the appropriate color class for avatars
+  const avatarColorClass = profileColor.startsWith('bg-')
+    ? profileColor
+    : `bg-${profileColor}-500`
   const [input, setInput] = useState('')
   const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([])
   const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -118,7 +126,7 @@ export function ChatConversationView({
           <ArrowLeft className="h-5 w-5 text-slate-600" />
         </Button>
         {profileIcon && (
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-sky-500 to-blue-600 flex items-center justify-center shadow-md">
+          <div className={`w-9 h-9 rounded-xl ${avatarColorClass} flex items-center justify-center shadow-md`}>
             <div className="text-white scale-75">{profileIcon}</div>
           </div>
         )}
@@ -141,7 +149,7 @@ export function ChatConversationView({
         {/* Empty state with suggestions */}
         {messages.length === 0 && (
           <div className="text-center py-8">
-            <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-sky-500 to-blue-600 mb-4 shadow-lg">
+            <div className={`inline-flex items-center justify-center w-16 h-16 rounded-2xl ${avatarColorClass} mb-4 shadow-lg`}>
               {profileIcon ? (
                 <div className="text-white scale-110">{profileIcon}</div>
               ) : (
@@ -178,6 +186,7 @@ export function ChatConversationView({
             key={message.id}
             message={message}
             profileIcon={profileIcon}
+            avatarColorClass={avatarColorClass}
             isCopied={copiedId === message.id}
             onCopy={() => handleCopy(message.id, message.content)}
           />
@@ -186,7 +195,7 @@ export function ChatConversationView({
         {/* Loading indicator */}
         {isLoading && (
           <div className="flex gap-3">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-sky-500 to-blue-600 flex items-center justify-center shadow-md flex-shrink-0">
+            <div className={`w-9 h-9 rounded-xl ${avatarColorClass} flex items-center justify-center shadow-md flex-shrink-0`}>
               {profileIcon ? (
                 <div className="text-white scale-75">{profileIcon}</div>
               ) : (
@@ -309,11 +318,13 @@ export function ChatConversationView({
 const MessageBubble = memo(function MessageBubble({
   message,
   profileIcon,
+  avatarColorClass = 'bg-gradient-to-br from-sky-500 to-blue-600',
   isCopied,
   onCopy,
 }: {
   message: Message
   profileIcon?: React.ReactNode
+  avatarColorClass?: string
   isCopied: boolean
   onCopy: () => void
 }) {
@@ -327,7 +338,7 @@ const MessageBubble = memo(function MessageBubble({
     >
       {/* Assistant avatar */}
       {!isUser && (
-        <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-sky-500 to-blue-600 flex items-center justify-center flex-shrink-0 shadow-md">
+        <div className={`w-9 h-9 rounded-xl ${avatarColorClass} flex items-center justify-center flex-shrink-0 shadow-md`}>
           {profileIcon ? (
             <div className="text-white scale-75">{profileIcon}</div>
           ) : (

@@ -95,6 +95,8 @@ export const teacherApi = {
     api.post(`/teacher/sessions/${sessionId}/freeze/${studentId}`, null, { params: { reason } }),
   unfreezeStudent: (sessionId: string, studentId: string) =>
     api.post(`/teacher/sessions/${sessionId}/unfreeze/${studentId}`),
+  removeStudent: (sessionId: string, studentId: string) =>
+    api.delete(`/teacher/sessions/${sessionId}/students/${studentId}`),
   deleteSession: (sessionId: string) =>
     api.delete(`/teacher/sessions/${sessionId}`, { params: { confirm: true } }),
   exportSession: (sessionId: string) =>
@@ -277,4 +279,72 @@ export const filesApi = {
     api.post('/files/complete', { file_id: fileId, checksum_sha256: checksum }),
   getDownloadUrl: (fileId: string) =>
     api.get(`/files/${fileId}/download-url`),
+}
+
+export const teacherbotsApi = {
+  // Teacher endpoints
+  list: () => api.get('/teacherbots/teacherbots'),
+  create: (data: {
+    name: string
+    synopsis?: string
+    description?: string
+    icon?: string
+    color?: string
+    system_prompt: string
+    is_proactive?: boolean
+    proactive_message?: string
+    enable_reporting?: boolean
+    report_prompt?: string
+    llm_provider?: string
+    llm_model?: string
+    temperature?: number
+  }) => api.post('/teacherbots/teacherbots', data),
+  get: (id: string) => api.get(`/teacherbots/teacherbots/${id}`),
+  update: (id: string, data: {
+    name?: string
+    synopsis?: string
+    description?: string
+    icon?: string
+    color?: string
+    system_prompt?: string
+    is_proactive?: boolean
+    proactive_message?: string
+    enable_reporting?: boolean
+    report_prompt?: string
+    llm_provider?: string
+    llm_model?: string
+    temperature?: number
+    status?: string
+  }) => api.patch(`/teacherbots/teacherbots/${id}`, data),
+  delete: (id: string) => api.delete(`/teacherbots/teacherbots/${id}`),
+  test: (id: string, content: string, history?: { role: string; content: string }[]) =>
+    api.post(`/teacherbots/teacherbots/${id}/test`, { content, history }),
+  publish: (id: string, classId: string) =>
+    api.post(`/teacherbots/teacherbots/${id}/publish`, { class_id: classId }),
+  getPublications: (id: string) =>
+    api.get(`/teacherbots/teacherbots/${id}/publications`),
+  unpublish: (id: string, publicationId: string) =>
+    api.delete(`/teacherbots/teacherbots/${id}/publications/${publicationId}`),
+  getReports: (id: string) =>
+    api.get(`/teacherbots/teacherbots/${id}/reports`),
+
+  // Student endpoints
+  listAvailable: () => api.get('/teacherbots/student/teacherbots'),
+  startConversation: (teacherbotId: string, sessionId: string) =>
+    api.post(`/teacherbots/student/teacherbots/${teacherbotId}/conversations`, { session_id: sessionId }),
+  getConversations: () => api.get('/teacherbots/student/teacherbots/conversations'),
+  getConversationMessages: (conversationId: string) =>
+    api.get(`/teacherbots/student/teacherbots/conversations/${conversationId}/messages`),
+  sendMessage: (conversationId: string, content: string) =>
+    api.post(`/teacherbots/student/teacherbots/conversations/${conversationId}/message`, { content }),
+  sendMessageWithFiles: (conversationId: string, content: string, files: File[]) => {
+    const formData = new FormData()
+    formData.append('content', content)
+    files.forEach(file => formData.append('files', file))
+    return api.post(`/teacherbots/student/teacherbots/conversations/${conversationId}/message-with-files`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    })
+  },
+  endConversation: (conversationId: string) =>
+    api.post(`/teacherbots/student/teacherbots/conversations/${conversationId}/end`),
 }
