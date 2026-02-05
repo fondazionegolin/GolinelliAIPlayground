@@ -13,7 +13,7 @@ class CreditLimit(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     tenant_id = Column(UUID(as_uuid=True), ForeignKey("tenants.id"), nullable=True, index=True)
     
-    level = Column(Enum(LimitLevel), nullable=False)
+    level = Column(Enum(LimitLevel, native_enum=False), nullable=False)
     
     # Entity references - only one should be set based on level
     teacher_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True, index=True)
@@ -44,7 +44,7 @@ class CreditTransaction(Base):
     tenant_id = Column(UUID(as_uuid=True), ForeignKey("tenants.id"), nullable=True, index=True)
     
     timestamp = Column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)
-    transaction_type = Column(Enum(CreditTransactionType), nullable=False)
+    transaction_type = Column(Enum(CreditTransactionType, native_enum=False), nullable=False)
     
     cost = Column(Float, nullable=False, default=0.0)
     
@@ -78,7 +78,7 @@ class CreditRequest(Base):
     amount_requested = Column(Float, nullable=False)
     reason = Column(Text, nullable=True)
     
-    status = Column(Enum(CreditRequestStatus), default=CreditRequestStatus.PENDING, nullable=False)
+    status = Column(Enum(CreditRequestStatus, native_enum=False), default=CreditRequestStatus.PENDING, nullable=False)
     
     reviewed_by_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     reviewed_at = Column(DateTime(timezone=True), nullable=True)
