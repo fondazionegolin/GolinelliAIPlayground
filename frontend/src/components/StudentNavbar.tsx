@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { User, Settings, LogOut, ChevronDown, Bot, Brain, Award, Home, FileEdit, Menu, X } from 'lucide-react'
+import { User, Settings, LogOut, ChevronDown, Bot, Brain, Award, Home, FileEdit, Menu, X, MessageSquare } from 'lucide-react'
 import { Button } from './ui/button'
 import { studentApi } from '@/lib/api'
 
@@ -16,13 +16,17 @@ interface StudentNavbarProps {
   sessionTitle?: string
   joinCode?: string
   sessionId?: string
+  showChatToggle?: boolean
+  onShowChatSidebar?: () => void
 }
 
 export function StudentNavbar({
   activeModule,
   onNavigate,
   sessionTitle,
-  joinCode
+  joinCode,
+  showChatToggle = false,
+  onShowChatSidebar
 }: StudentNavbarProps) {
   const navigate = useNavigate()
   const [showDropdown, setShowDropdown] = useState(false)
@@ -160,6 +164,15 @@ export function StudentNavbar({
                       <span className="text-xs font-semibold text-slate-500 bg-white/60 px-2 py-0.5 rounded">{joinCode}</span>
                     </div>
                   </div>
+                  {showChatToggle && (
+                    <button
+                      className="ml-2 h-8 w-8 rounded-full border border-fuchsia-200 bg-white text-fuchsia-600 hover:bg-fuchsia-100 transition"
+                      onClick={onShowChatSidebar}
+                      title="Apri chat di classe"
+                    >
+                      <MessageSquare className="h-4 w-4 mx-auto" />
+                    </button>
+                  )}
                 </div>
               )}
 

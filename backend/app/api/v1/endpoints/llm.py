@@ -22,6 +22,7 @@ from app.schemas.llm import (
     MessageCreate, ConversationMessageResponse, ExplainRequest, ExplainResponse,
 )
 from app.services.llm_service import llm_service
+from app.services.credit_service import credit_service
 from app.services.chatbot_profiles import get_profile, get_all_profiles, CHATBOT_PROFILES
 
 logger = logging.getLogger(__name__)
@@ -182,7 +183,7 @@ async def delete_conversation(
         raise HTTPException(status_code=404, detail="Conversation not found")
     
     # Verify ownership
-    if auth.role == "student" and conversation.student_id != auth.user.id:
+    if auth.is_student and conversation.student_id != auth.student.id:
         raise HTTPException(status_code=403, detail="Not authorized")
     
     # Delete messages first
@@ -209,8 +210,8 @@ async def delete_all_session_conversations(
     # Build query based on user role
     query = select(Conversation).where(Conversation.session_id == session_id)
     
-    if auth.role == "student":
-        query = query.where(Conversation.student_id == auth.user.id)
+    if auth.is_student:
+        query = query.where(Conversation.student_id == auth.student.id)
     
     result = await db.execute(query)
     conversations = result.scalars().all()
@@ -337,6 +338,33 @@ async def send_message(
     if conversation.student_id != student.id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
     
+    # Fetch context for credits (Session -> Class -> Teacher)
+    session_result = await db.execute(
+        select(Session, Class)
+        .join(Class, Session.class_id == Class.id)
+        .where(Session.id == conversation.session_id)
+    )
+    session_rw = session_result.first()
+    if not session_rw:
+        raise HTTPException(status_code=404, detail="Session not found")
+    session_obj, class_obj = session_rw
+
+    # Check credit availability
+    is_allowed = await credit_service.check_availability(
+        db, 
+        student.tenant_id, 
+        estimated_cost=0.0001, # Minimal check
+        teacher_id=class_obj.teacher_id,
+        class_id=class_obj.id,
+        session_id=session_obj.id,
+        student_id=student.id
+    )
+    if not is_allowed:
+        raise HTTPException(
+            status_code=status.HTTP_402_PAYMENT_REQUIRED, 
+            detail="Credit limit exceeded for this session/class."
+        )
+
     # Save user message
     user_message = ConversationMessage(
         tenant_id=student.tenant_id,
@@ -393,6 +421,10 @@ async def send_message(
     ]
     is_image_request = any(re.search(p, request.content.lower()) for p in image_request_patterns)
     
+    provider = "none"
+    model = "none"
+    token_usage = {"prompt_tokens": 0, "completion_tokens": 0}
+    
     if is_image_request:
         # Extract the image description from the request
         try:
@@ -414,6 +446,14 @@ async def send_message(
             provider = "openai" if image_provider == "dall-e" else "flux"
             model = "dall-e-3" if image_provider == "dall-e" else "flux-schnell"
             token_usage = {"prompt_tokens": 0, "completion_tokens": 0}
+            
+            # TRACK IMAGE COST
+            img_cost = credit_service.calculate_cost_for_model(provider, model, 0, 0, image_count=1)
+            await credit_service.track_usage(
+                db, student.tenant_id, provider, model, img_cost, 
+                {"image_prompt": image_prompt, "size": image_size},
+                teacher_id=class_obj.teacher_id, class_id=class_obj.id, session_id=session_obj.id, student_id=student.id
+            )
         except Exception as e:
             logger.error(f"Image generation error: {e}")
             assistant_content = f"Mi dispiace, non sono riuscito a generare l'immagine. Errore: {str(e)}"
@@ -448,6 +488,15 @@ async def send_message(
                 provider = conversation.llm_provider or "openai"
                 model = conversation.llm_model or "gpt-4o-mini"
                 token_usage = {"prompt_tokens": 0, "completion_tokens": 0}
+                
+                # Tracking for math agent (approximation)
+                txt_cost = credit_service.calculate_cost_for_model(provider, model, 1000, 500) # Estimate
+                await credit_service.track_usage(
+                    db, student.tenant_id, provider, model, txt_cost, 
+                    {"note": "math_agent_estimate"},
+                    teacher_id=class_obj.teacher_id, class_id=class_obj.id, session_id=session_obj.id, student_id=student.id
+                )
+
             except Exception as e:
                 logger.error(f"Math agent error: {e}")
                 # Fallback to regular LLM
@@ -466,6 +515,14 @@ async def send_message(
                     "prompt_tokens": llm_response.prompt_tokens,
                     "completion_tokens": llm_response.completion_tokens,
                 }
+                
+                # Track fallback
+                txt_cost = credit_service.calculate_cost_for_model(provider, model, token_usage["prompt_tokens"], token_usage["completion_tokens"])
+                await credit_service.track_usage(
+                    db, student.tenant_id, provider, model, txt_cost, 
+                    token_usage,
+                    teacher_id=class_obj.teacher_id, class_id=class_obj.id, session_id=session_obj.id, student_id=student.id
+                )
         else:
             # Call LLM service with conversation's preferred provider/model
             try:
@@ -485,6 +542,19 @@ async def send_message(
                     "prompt_tokens": llm_response.prompt_tokens,
                     "completion_tokens": llm_response.completion_tokens,
                 }
+                
+                # TRACK TEXT COST (Standard)
+                txt_cost = credit_service.calculate_cost_for_model(
+                    provider, model, 
+                    token_usage.get("prompt_tokens", 0), 
+                    token_usage.get("completion_tokens", 0)
+                )
+                await credit_service.track_usage(
+                    db, student.tenant_id, provider, model, txt_cost, 
+                    token_usage,
+                    teacher_id=class_obj.teacher_id, class_id=class_obj.id, session_id=session_obj.id, student_id=student.id
+                )
+
             except Exception as e:
                 logger.error(f"LLM service error: {e}")
                 # Fallback response if LLM fails
@@ -492,6 +562,7 @@ async def send_message(
                 provider = "fallback"
                 model = "none"
                 token_usage = {"prompt_tokens": 0, "completion_tokens": 0}
+                # No charge for error
     
     # Save assistant message
     assistant_message = ConversationMessage(
@@ -525,8 +596,53 @@ async def generate_image(
     if not prompt:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Prompt required")
     
+    # Determine context
+    teacher_id = None
+    class_id = None
+    session_id = None
+    student_id = None
+    tenant_id = None
+    
+    if auth.is_student:
+        tenant_id = auth.student.tenant_id
+        student_id = auth.student.id
+        session_id = auth.student.session_id
+        # Need to fetch class/teacher
+        session_result = await db.execute(
+            select(Session, Class)
+            .join(Class, Session.class_id == Class.id)
+            .where(Session.id == session_id)
+        )
+        res = session_result.first()
+        if res:
+            sess, cls = res
+            class_id = cls.id
+            teacher_id = cls.teacher_id
+    else:
+        tenant_id = auth.teacher.tenant_id
+        teacher_id = auth.teacher.id
+    
+    # Check credits
+    allowed = await credit_service.check_availability(
+        db, tenant_id, 0.001, teacher_id, class_id, session_id, student_id
+    )
+    if not allowed:
+        raise HTTPException(status_code=402, detail="Credit limit exceeded")
+    
     try:
         image_url = await llm_service.generate_image(prompt, provider=provider)
+        
+        # Track Usage
+        real_provider = "openai" if provider == "dall-e" else "flux"
+        real_model = "dall-e-3" if provider == "dall-e" else "flux-schnell"
+        cost = credit_service.calculate_cost_for_model(real_provider, real_model, 0, 0, image_count=1)
+        
+        await credit_service.track_usage(
+            db, tenant_id, real_provider, real_model, cost, 
+            {"prompt": prompt, "type": "direct_generation"},
+            teacher_id, class_id, session_id, student_id
+        )
+        
         return {"image_url": image_url, "prompt": prompt, "provider": provider}
     except Exception as e:
         logger.error(f"Image generation error: {e}")
@@ -551,6 +667,30 @@ async def send_message_with_files(
     
     if conversation.student_id != student.id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
+    
+    # Fetch context for credits (Session -> Class -> Teacher)
+    session_result = await db.execute(
+        select(Session, Class)
+        .join(Class, Session.class_id == Class.id)
+        .where(Session.id == conversation.session_id)
+    )
+    session_rw = session_result.first()
+    if not session_rw:
+        raise HTTPException(status_code=404, detail="Session not found")
+    session_obj, class_obj = session_rw
+
+    # Check credit availability
+    allowed = await credit_service.check_availability(
+        db, 
+        student.tenant_id, 
+        estimated_cost=0.0001, # Minimal check
+        teacher_id=class_obj.teacher_id,
+        class_id=class_obj.id,
+        session_id=session_obj.id,
+        student_id=student.id
+    )
+    if not allowed:
+        raise HTTPException(status_code=402, detail="Credit limit exceeded for this session/class.")
     
     # Process attached files
     file_contents = []
@@ -584,20 +724,38 @@ async def send_message_with_files(
             try:
                 base64_image = base64.b64encode(file_data).decode("utf-8")
                 # Use GPT-4 Vision to describe the image
-                vision_response = await llm_service.generate(
-                    messages=[{
-                        "role": "user",
-                        "content": [
-                            {"type": "text", "text": "Descrivi dettagliatamente questa immagine in italiano."},
-                            {"type": "image_url", "image_url": {"url": f"data:{mime_type};base64,{base64_image}"}}
-                        ]
-                    }],
-                    provider="openai",
-                    model="gpt-4o",
-                    temperature=0.3,
-                    max_tokens=1000,
-                )
-                extracted_text = f"[Immagine: {filename}]\n{vision_response.content}"
+                # This incurs cost!
+                vision_model = "gpt-4o"
+                
+                # Double check credits for vision
+                if not await credit_service.check_availability(
+                    db, student.tenant_id, 0.005, class_obj.teacher_id, class_obj.id, session_obj.id, student.id
+                ):
+                     extracted_text = "[Immagine non analizzata: credito insufficiente]"
+                else:
+                    vision_response = await llm_service.generate(
+                        messages=[{
+                            "role": "user",
+                            "content": [
+                                {"type": "text", "text": "Descrivi dettagliatamente questa immagine in italiano."},
+                                {"type": "image_url", "image_url": {"url": f"data:{mime_type};base64,{base64_image}"}}
+                            ]
+                        }],
+                        provider="openai",
+                        model=vision_model,
+                        temperature=0.3,
+                        max_tokens=1000,
+                    )
+                    extracted_text = f"[Immagine: {filename}]\n{vision_response.content}"
+                    
+                    # Track Vision Usage
+                    v_cost = credit_service.calculate_cost_for_model("openai", vision_model, vision_response.prompt_tokens, vision_response.completion_tokens)
+                    await credit_service.track_usage(
+                        db, student.tenant_id, "openai", vision_model, v_cost,
+                        {"type": "vision_analysis", "filename": filename},
+                        class_obj.teacher_id, class_obj.id, session_obj.id, student.id
+                    )
+
             except Exception as e:
                 extracted_text = f"[Immagine: {filename} - impossibile analizzare: {str(e)}]"
         
@@ -650,6 +808,10 @@ async def send_message_with_files(
     system_prompt = profile["system_prompt"] + "\n\nQuando l'utente allega documenti, analizzali attentamente e rispondi in base al loro contenuto."
     temperature = profile.get("temperature", 0.7)
     
+    provider = "none"
+    model = "none"
+    token_usage = {"prompt_tokens": 0, "completion_tokens": 0}
+    
     # Call LLM
     try:
         llm_response = await llm_service.generate(
@@ -667,6 +829,15 @@ async def send_message_with_files(
             "prompt_tokens": llm_response.prompt_tokens,
             "completion_tokens": llm_response.completion_tokens,
         }
+        
+        # Track Usage
+        cost = credit_service.calculate_cost_for_model(provider, model, token_usage["prompt_tokens"], token_usage["completion_tokens"])
+        await credit_service.track_usage(
+            db, student.tenant_id, provider, model, cost,
+            token_usage,
+            class_obj.teacher_id, class_obj.id, session_obj.id, student.id
+        )
+
     except Exception as e:
         logger.error(f"LLM service error: {e}")
         assistant_content = "Mi dispiace, si è verificato un errore. Per favore riprova."

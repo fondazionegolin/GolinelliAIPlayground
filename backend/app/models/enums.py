@@ -106,3 +106,24 @@ class InvitationStatus(str, enum.Enum):
     ACCEPTED = "accepted"
     DECLINED = "declined"
     EXPIRED = "expired"
+
+
+class CreditTransactionType(str, enum.Enum):
+    API_CALL = "API_CALL"
+    ADJUSTMENT = "ADJUSTMENT"
+    REFUND = "REFUND"
+    ALLOCATION = "ALLOCATION"
+
+
+class LimitLevel(str, enum.Enum):
+    GLOBAL = "GLOBAL"
+    TEACHER = "TEACHER"
+    CLASS = "CLASS"
+    STUDENT = "STUDENT"
+    SESSION = "SESSION"
+
+
+class CreditRequestStatus(str, enum.Enum):
+    PENDING = "pending"
+    APPROVED = "approved"
+    REJECTED = "rejected"

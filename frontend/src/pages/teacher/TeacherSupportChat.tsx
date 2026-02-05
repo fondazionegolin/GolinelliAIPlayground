@@ -1,8 +1,9 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useMemo } from 'react'
 import { Button } from '@/components/ui/button'
 import {
   Send, Bot, Paperclip, X, Trash2, Plus, File, Image as ImageIcon, Loader2,
-  Database, Download, ChevronDown, ChevronRight, Edit3, Check, MessageCircle, Sparkles
+  Database, Download, ChevronDown, ChevronRight, Edit3, Check, MessageCircle, Sparkles,
+  Palette
 } from 'lucide-react'
 import { llmApi, teacherApi } from '@/lib/api'
 import { useToast } from '@/components/ui/use-toast'
@@ -97,10 +98,14 @@ export default function TeacherSupportChat() {
   const [showModelMenu, setShowModelMenu] = useState(false)
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [currentConversationId, setCurrentConversationId] = useState<string | null>(null)
+  const [, setConversationCache] = useState<Record<string, Message[]>>({})
+  const conversationCacheRef = useRef<Record<string, Message[]>>({})
   const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([])
   const [agentMode, setAgentMode] = useState<AgentMode>('default')
   const [imageProvider, setImageProvider] = useState<'dall-e' | 'flux-schnell'>('flux-schnell')
   const [imageSize, setImageSize] = useState<string>('1024x1024')
+  const [chatBg, setChatBg] = useState<string>('')
+  const [showBgPalette, setShowBgPalette] = useState(false)
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
   const [webSearchProgress, setWebSearchProgress] = useState<WebSearchProgress | null>(null)
   const modelMenuRef = useRef<HTMLDivElement>(null)
@@ -163,6 +168,48 @@ export default function TeacherSupportChat() {
     enhancedPrompt?: string
   } | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+
+  const baseBgSwatches = [
+    { label: 'Slate scuro', color: '#0f172a' },
+    { label: 'Grigio scuro', color: '#1f2937' },
+    { label: 'Viola scuro', color: '#2e1065' },
+    { label: 'Giallo', color: '#facc15' },
+  ]
+
+  const paletteColors = useMemo(() => {
+    const colors: string[] = []
+    for (let i = 0; i < 256; i += 1) {
+      const hue = (i % 16) * (360 / 16)
+      const light = 20 + Math.floor(i / 16) * (60 / 15)
+      colors.push(`hsl(${hue}, 55%, ${light}%)`)
+    }
+    return colors
+  }, [])
+
+  const isDarkColor = (color: string) => {
+    if (!color) return false
+    if (color.startsWith('#')) {
+      const hex = color.replace('#', '')
+      const full = hex.length === 3
+        ? hex.split('').map(c => c + c).join('')
+        : hex
+      const r = parseInt(full.substring(0, 2), 16) / 255
+      const g = parseInt(full.substring(2, 4), 16) / 255
+      const b = parseInt(full.substring(4, 6), 16) / 255
+      const luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b
+      return luminance < 0.45
+    }
+    if (color.startsWith('hsl')) {
+      const match = color.match(/hsl\\(\\s*([\\d.]+),\\s*([\\d.]+)%?,\\s*([\\d.]+)%?\\s*\\)/i)
+      if (match) {
+        const lightness = parseFloat(match[3])
+        return lightness < 45
+      }
+    }
+    return false
+  }
+
+  const chatBgIsDark = chatBg ? isDarkColor(chatBg) : false
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   // Publish Modal State
@@ -216,6 +263,21 @@ export default function TeacherSupportChat() {
           messages: [], // Messages loaded on demand when selecting a conversation
           createdAt: new Date(c.created_at),
         })))
+
+        const cached = localStorage.getItem('teacher_support_messages_cache')
+        if (cached) {
+          try {
+            const parsed = JSON.parse(cached)
+            const hydrated: Record<string, Message[]> = {}
+            for (const [id, msgs] of Object.entries(parsed)) {
+              hydrated[id] = (msgs as any[]).map(m => ({ ...m, timestamp: new Date(m.timestamp) }))
+            }
+            setConversationCache(hydrated)
+            conversationCacheRef.current = hydrated
+          } catch {
+            // ignore cache parse errors
+          }
+        }
       } catch (e) {
         console.error('Failed to load conversations from server:', e)
         // Fallback to localStorage for offline/error cases
@@ -235,20 +297,57 @@ export default function TeacherSupportChat() {
     loadConversations()
   }, [])
 
+  useEffect(() => {
+    const savedCurrent = localStorage.getItem('teacher_support_current_conversation_id')
+    if (savedCurrent) {
+      setCurrentConversationId(savedCurrent)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (currentConversationId) {
+      localStorage.setItem('teacher_support_current_conversation_id', currentConversationId)
+    } else {
+      localStorage.removeItem('teacher_support_current_conversation_id')
+    }
+  }, [currentConversationId])
+
   // Load messages when selecting a conversation
   useEffect(() => {
     const loadMessages = async () => {
       if (!currentConversationId) return
       try {
+        const cachedMessages = conversationCacheRef.current[currentConversationId]
+        if (cachedMessages && cachedMessages.length > 0) {
+          setMessages(cachedMessages)
+        }
+
         const response = await teacherApi.getConversation(currentConversationId)
         const conv = response.data
         if (conv?.messages) {
-          setMessages(conv.messages.map((m: any) => ({
+          const serverMessages = conv.messages.map((m: any) => ({
             id: m.id,
             role: m.role,
             content: m.content,
             timestamp: new Date(m.created_at)
-          })))
+          }))
+
+          const localMessages = cachedMessages || []
+          const localLast = localMessages[localMessages.length - 1]?.timestamp?.getTime() || 0
+          const serverLast = serverMessages[serverMessages.length - 1]?.timestamp?.getTime() || 0
+          const shouldReplace =
+            (serverMessages.length > localMessages.length) ||
+            (serverMessages.length === localMessages.length && serverLast >= localLast) ||
+            localMessages.length === 0
+
+          if (shouldReplace) {
+            setMessages(serverMessages)
+            setConversationCache(prev => {
+              const next = { ...prev, [currentConversationId]: serverMessages }
+              conversationCacheRef.current = next
+              return next
+            })
+          }
         }
       } catch (e) {
         console.error('Failed to load messages:', e)
@@ -256,6 +355,20 @@ export default function TeacherSupportChat() {
     }
     loadMessages()
   }, [currentConversationId])
+
+  useEffect(() => {
+    if (!currentConversationId) return
+    setConversationCache(prev => {
+      const next = { ...prev, [currentConversationId]: messages }
+      conversationCacheRef.current = next
+      localStorage.setItem('teacher_support_messages_cache', JSON.stringify(next))
+      return next
+    })
+  }, [messages, currentConversationId])
+
+  useEffect(() => {
+    localStorage.setItem('teacher_support_conversations', JSON.stringify(conversations))
+  }, [conversations])
 
   const addFiles = (files: globalThis.File[]) => {
     const newFiles: AttachedFile[] = files.map(file => {
@@ -290,6 +403,35 @@ export default function TeacherSupportChat() {
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault()
 
+    const sessionFileData = e.dataTransfer.getData('application/x-session-file')
+    if (sessionFileData) {
+      try {
+        const data = JSON.parse(sessionFileData)
+        let fileUrl = data.url as string
+        const handleFile = (blob: Blob) => {
+          const fileObj = new globalThis.File([blob], data.filename || 'file', {
+            type: data.mime_type || blob.type || 'application/octet-stream'
+          })
+          const isImage = fileObj.type.startsWith('image/')
+          setAttachedFiles(prev => [...prev, { file: fileObj, type: isImage ? 'image' : 'document', preview: isImage ? URL.createObjectURL(fileObj) : undefined }])
+        }
+        if (fileUrl.includes('/api/v1/files/') && fileUrl.endsWith('/download-url')) {
+          fetch(fileUrl)
+            .then(res => res.json())
+            .then(json => fetch(json.download_url || json.url || fileUrl))
+            .then(res => res.blob())
+            .then(handleFile)
+        } else {
+          fetch(fileUrl)
+            .then(res => res.blob())
+            .then(handleFile)
+        }
+      } catch (err) {
+        console.error('Failed to handle session file drop', err)
+      }
+      return
+    }
+
     // Handle image from chatbot
     const imageData = e.dataTransfer.getData('application/x-chatbot-image')
     if (imageData) {
@@ -323,6 +465,28 @@ export default function TeacherSupportChat() {
     }
   }
 
+  const ensureConversation = async (titleSeed: string) => {
+    if (currentConversationId) return currentConversationId
+    try {
+      const response = await teacherApi.createConversation({
+        title: titleSeed.substring(0, 50) + (titleSeed.length > 50 ? '...' : ''),
+        agent_mode: agentMode
+      })
+      const convId = response.data.id
+      setCurrentConversationId(convId)
+      setConversations(prev => [{
+        id: convId,
+        title: response.data.title || 'Nuova conversazione',
+        messages: [],
+        createdAt: new Date()
+      }, ...prev])
+      return convId
+    } catch (e) {
+      console.error('Failed to create conversation:', e)
+      return null
+    }
+  }
+
   // Helper: Save message to server
   const saveMessageToServer = async (
     conversationId: string | null,
@@ -331,29 +495,6 @@ export default function TeacherSupportChat() {
     model?: string
   ): Promise<string> => {
     let convId: string | null = conversationId
-
-    // Create new conversation if needed
-    if (!convId) {
-      try {
-        const response = await teacherApi.createConversation({
-          title: userMsg.content.substring(0, 50) + (userMsg.content.length > 50 ? '...' : ''),
-          agent_mode: agentMode
-        })
-        convId = response.data.id
-        setCurrentConversationId(convId)
-
-        // Add to local list
-        setConversations(prev => [{
-          id: convId!,
-          title: response.data.title || 'Nuova conversazione',
-          messages: [],
-          createdAt: new Date()
-        }, ...prev])
-      } catch (e) {
-        console.error('Failed to create conversation:', e)
-        return ''
-      }
-    }
 
     // At this point convId is guaranteed to be a string
     if (!convId) return ''
@@ -406,6 +547,7 @@ export default function TeacherSupportChat() {
       timestamp: new Date()
     }
 
+    const convId = await ensureConversation(messageContent)
     setMessages(prev => [...prev, userMessage])
     setInputText('')
     const currentFiles = [...attachedFiles]
@@ -481,7 +623,7 @@ REGOLE IMPORTANTI:
           setMessages(prev => [...prev, assistantMessage])
 
           // Save to server
-          await saveMessageToServer(currentConversationId, userMessage, assistantMessage, selectedModel)
+          await saveMessageToServer(convId, userMessage, assistantMessage, selectedModel)
         } else {
           throw new Error("Nessuna URL immagine ricevuta")
         }
@@ -575,7 +717,7 @@ REGOLE IMPORTANTI:
           setMessages(prev => [...prev, assistantMessage])
 
           // Save to server
-          await saveMessageToServer(currentConversationId, userMessage, assistantMessage, 'claude-haiku-4-5-20251001')
+          await saveMessageToServer(convId, userMessage, assistantMessage, 'claude-haiku-4-5-20251001')
         } catch (e) {
           setWebSearchProgress(null)
           throw e
@@ -619,7 +761,7 @@ REGOLE IMPORTANTI:
         setMessages(prev => [...prev, assistantMessage])
 
         // Save to server
-        await saveMessageToServer(currentConversationId, userMessage, assistantMessage, selectedModel)
+        await saveMessageToServer(convId, userMessage, assistantMessage, selectedModel)
       }
     } catch (e) {
       console.error(e)
@@ -705,11 +847,10 @@ REGOLE IMPORTANTI:
   return (
     <>
 
-      <div className="flex h-screen md:h-[calc(100vh-10rem)] md:max-h-[850px] md:min-h-[500px] bg-white mt-24 md:mt-24 overflow-hidden items-start justify-center">
-        {/* Main Content - Centered with max-width and rounded corners */}
-        <div className="flex-1 flex justify-center items-center h-full">
+      <div className="h-full flex flex-col p-0">
+        <div className="flex-1 flex h-full">
           <div
-            className="flex flex-col h-full bg-white font-sans w-full max-w-6xl md:rounded-2xl shadow-lg overflow-hidden md:border md:border-indigo-100 relative md:shadow-indigo-100/50"
+            className="flex flex-col h-full bg-slate-50 font-sans w-full overflow-hidden"
             onDragOver={(e) => e.preventDefault()}
             onDrop={handleDrop}
           >
@@ -717,22 +858,20 @@ REGOLE IMPORTANTI:
             <div className="flex items-center gap-1 px-4 pt-4 pb-2 bg-white border-b border-slate-100">
               <button
                 onClick={() => setActiveTab('chat')}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                  activeTab === 'chat'
-                    ? 'bg-indigo-100 text-indigo-700'
-                    : 'text-slate-500 hover:bg-slate-100'
-                }`}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${activeTab === 'chat'
+                  ? 'bg-indigo-100 text-indigo-700'
+                  : 'text-slate-500 hover:bg-slate-100'
+                  }`}
               >
                 <MessageCircle className="h-4 w-4" />
                 Chat AI
               </button>
               <button
                 onClick={() => setActiveTab('teacherbots')}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                  activeTab === 'teacherbots'
-                    ? 'bg-indigo-100 text-indigo-700'
-                    : 'text-slate-500 hover:bg-slate-100'
-                }`}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${activeTab === 'teacherbots'
+                  ? 'bg-indigo-100 text-indigo-700'
+                  : 'text-slate-500 hover:bg-slate-100'
+                  }`}
               >
                 <Sparkles className="h-4 w-4" />
                 Teacherbots
@@ -745,475 +884,546 @@ REGOLE IMPORTANTI:
                 <TeacherbotsPanel />
               </div>
             ) : (
-            /* Chat Tab Content */
-            <div className="flex flex-1 overflow-hidden">
+              /* Chat Tab Content */
+              <div className="flex flex-1 overflow-hidden">
 
-            {/* SIDEBAR - History */}
-            <aside className={`${isSidebarCollapsed ? 'w-12' : 'w-64'} bg-slate-50 border-r border-slate-200 flex flex-col hidden md:flex transition-all duration-300 flex-shrink-0 rounded-l-2xl`}>
-              <div className={`p-4 border-b border-slate-100 flex items-center ${isSidebarCollapsed ? 'justify-center' : 'justify-between'}`}>
-                {!isSidebarCollapsed && <h2 className="text-sm font-semibold text-slate-800 tracking-tight">Cronologia</h2>}
-                <div className="flex gap-1">
-                  {!isSidebarCollapsed && (
-                    <Button variant="ghost" size="sm" onClick={handleNewChat} className="h-8 w-8 p-0 hover:bg-slate-100" title="Nuova chat">
-                      <Plus className="h-4 w-4 text-slate-600" />
-                    </Button>
-                  )}
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
-                    className="h-8 w-8 p-0 hover:bg-slate-100"
-                    title={isSidebarCollapsed ? "Espandi cronologia" : "Comprimi cronologia"}
-                  >
-                    {isSidebarCollapsed ? <ChevronRight className="h-4 w-4 text-slate-600" /> : <ChevronDown className="h-4 w-4 text-slate-400 rotate-90" />}
-                  </Button>
-                </div>
-              </div>
+                {/* SIDEBAR - History */}
+                <aside className={`${isSidebarCollapsed ? 'w-12' : 'w-64'} bg-slate-50 border-r border-slate-200 flex flex-col hidden md:flex transition-all duration-300 flex-shrink-0 rounded-l-2xl`}>
+                  <div className={`p-4 border-b border-slate-100 flex items-center ${isSidebarCollapsed ? 'justify-center' : 'justify-between'}`}>
+                    {!isSidebarCollapsed && <h2 className="text-sm font-semibold text-slate-800 tracking-tight">Cronologia</h2>}
+                    <div className="flex gap-1">
+                      {!isSidebarCollapsed && (
+                        <Button variant="ghost" size="sm" onClick={handleNewChat} className="h-8 w-8 p-0 hover:bg-slate-100" title="Nuova chat">
+                          <Plus className="h-4 w-4 text-slate-600" />
+                        </Button>
+                      )}
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+                        className="h-8 w-8 p-0 hover:bg-slate-100"
+                        title={isSidebarCollapsed ? "Espandi cronologia" : "Comprimi cronologia"}
+                      >
+                        {isSidebarCollapsed ? <ChevronRight className="h-4 w-4 text-slate-600" /> : <ChevronDown className="h-4 w-4 text-slate-400 rotate-90" />}
+                      </Button>
+                    </div>
+                  </div>
 
-              <div className="flex-1 overflow-y-auto p-3 space-y-1">
-                {!isSidebarCollapsed ? (
-                  conversations.map(conv => (
-                    <button
-                      key={conv.id}
-                      onClick={() => { setMessages(conv.messages); setCurrentConversationId(conv.id); }}
-                      className={`w-full text-left p-3 rounded-lg text-sm transition-all group ${currentConversationId === conv.id
-                        ? 'bg-[#4f46e5]/10 text-[#4f46e5] font-medium'
-                        : 'text-slate-600 hover:bg-slate-50'
-                        }`}
-                    >
-                      <div className="truncate">{conv.title}</div>
-                      <div className="flex items-center justify-between mt-1">
-                        <span className="text-xs text-slate-400">{conv.createdAt.toLocaleDateString()}</span>
+                  <div className="flex-1 overflow-y-auto p-3 space-y-1">
+                    {!isSidebarCollapsed ? (
+                      conversations.map(conv => (
                         <button
-                          className="text-slate-300 opacity-0 group-hover:opacity-100 hover:text-red-500 transition-opacity p-1"
-                          onClick={async (e) => {
-                            e.stopPropagation()
-                            if (confirm('Eliminare questa conversazione?')) {
-                              try {
-                                await teacherApi.deleteConversation(conv.id)
-                              } catch (err) {
-                                console.error('Failed to delete conv:', err)
-                              }
-                              setConversations(prev => prev.filter(c => c.id !== conv.id))
-                              if (currentConversationId === conv.id) handleNewChat()
-                            }
-                          }}
+                          key={conv.id}
+                          onClick={() => { setCurrentConversationId(conv.id); }}
+                          className={`w-full text-left p-3 rounded-lg text-sm transition-all group ${currentConversationId === conv.id
+                            ? 'bg-[#4f46e5]/10 text-[#4f46e5] font-medium'
+                            : 'text-slate-600 hover:bg-slate-50'
+                            }`}
                         >
-                          <Trash2 className="h-3 w-3" />
+                          <div className="truncate">{conv.title}</div>
+                          <div className="flex items-center justify-between mt-1">
+                            <span className="text-xs text-slate-400">{conv.createdAt.toLocaleDateString()}</span>
+                            <button
+                              className="text-slate-300 opacity-0 group-hover:opacity-100 hover:text-red-500 transition-opacity p-1"
+                              onClick={async (e) => {
+                                e.stopPropagation()
+                                if (confirm('Eliminare questa conversazione?')) {
+                                  try {
+                                    await teacherApi.deleteConversation(conv.id)
+                                  } catch (err) {
+                                    console.error('Failed to delete conv:', err)
+                                  }
+                                  setConversations(prev => prev.filter(c => c.id !== conv.id))
+                                  setConversationCache(prev => {
+                                    const next = { ...prev }
+                                    delete next[conv.id]
+                                    conversationCacheRef.current = next
+                                    localStorage.setItem('teacher_support_messages_cache', JSON.stringify(next))
+                                    return next
+                                  })
+                                  if (currentConversationId === conv.id) handleNewChat()
+                                }
+                              }}
+                            >
+                              <Trash2 className="h-3 w-3" />
+                            </button>
+                          </div>
                         </button>
+                      ))
+                    ) : (
+                      <div className="flex flex-col gap-2 items-center">
+                        <Button variant="ghost" size="icon" onClick={handleNewChat} title="Nuova chat" className="p-0">
+                          <Plus className="h-5 w-5 text-[#4f46e5]" />
+                        </Button>
+                        {conversations.map(conv => (
+                          <div
+                            key={conv.id}
+                            className={`w-2 h-2 rounded-full cursor-pointer ${currentConversationId === conv.id ? 'bg-[#4f46e5]' : 'bg-slate-300'}`}
+                            title={conv.title}
+                            onClick={() => { setCurrentConversationId(conv.id); }}
+                          />
+                        ))}
                       </div>
-                    </button>
-                  ))
-                ) : (
-                  <div className="flex flex-col gap-2 items-center">
-                    <Button variant="ghost" size="icon" onClick={handleNewChat} title="Nuova chat" className="p-0">
-                      <Plus className="h-5 w-5 text-[#4f46e5]" />
-                    </Button>
-                    {conversations.map(conv => (
-                      <div
-                        key={conv.id}
-                        className={`w-2 h-2 rounded-full cursor-pointer ${currentConversationId === conv.id ? 'bg-[#4f46e5]' : 'bg-slate-300'}`}
-                        title={conv.title}
-                        onClick={() => { setMessages(conv.messages); setCurrentConversationId(conv.id); }}
-                      />
-                    ))}
-                  </div>
-                )}
-              </div>
-            </aside>
-
-            {/* MAIN CHAT AREA */}
-            <main className="flex-1 flex flex-col relative bg-slate-50/50 overflow-hidden">
-
-              <header className="px-3 py-2 md:px-4 md:py-3 border-b border-indigo-100/50 bg-white/80 backdrop-blur-sm sticky top-0 z-10 flex items-center justify-between shrink-0">
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-lg flex items-center justify-center shadow-md bg-indigo-600">
-                    <Bot className="h-5 w-5 text-white" />
-                  </div>
-                  <div>
-                    <h1 className="text-sm font-bold text-slate-800">Supporto Docente AI</h1>
-                    <p className="text-xs text-slate-500">
-                      {(agentMode === 'quiz' || agentMode === 'dataset' || agentMode === 'web_search')
-                        ? 'Claude Haiku'
-                        : AVAILABLE_MODELS.find(m => m.id === selectedModel)?.name}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-4">
-                  <div className="flex items-center gap-3 animate-in fade-in slide-in-from-right-4 duration-300">
-                    {/* Generatore */}
-                    {agentMode === 'image' && (
-                      <>
-                        <div className="flex items-center bg-slate-100/80 rounded-full p-1 border border-slate-200">
-                          <button
-                            onClick={() => setImageProvider('flux-schnell')}
-                            className={`px-3 py-1 text-xs rounded-full transition-all flex items-center gap-1 ${imageProvider === 'flux-schnell'
-                              ? 'bg-white shadow-sm text-indigo-600 font-bold'
-                              : 'text-slate-500 hover:text-slate-700'
-                              }`}
-                          >
-                            ⚡ Flux
-                          </button>
-                          <button
-                            onClick={() => setImageProvider('dall-e')}
-                            className={`px-3 py-1 text-xs rounded-full transition-all flex items-center gap-1 ${imageProvider === 'dall-e'
-                              ? 'bg-white shadow-sm text-indigo-600 font-bold'
-                              : 'text-slate-500 hover:text-slate-700'
-                              }`}
-                          >
-                            🎨 DALL-E
-                          </button>
-                        </div>
-
-                        {/* Formato */}
-                        <div className="relative">
-                          <select
-                            value={imageSize}
-                            onChange={(e) => setImageSize(e.target.value)}
-                            className="text-xs bg-slate-100/80 border border-slate-200 rounded-full px-3 py-1.5 text-slate-600 focus:ring-2 focus:ring-indigo-500 focus:border-transparent cursor-pointer hover:bg-slate-50 outline-none appearance-none pr-8"
-                          >
-                            <option value="1024x1024">1:1 Quadrato</option>
-                            <option value="1024x768">4:3 Orizzontale</option>
-                            <option value="768x1024">3:4 Verticale</option>
-                            <option value="1280x720">16:9 Panorama</option>
-                            <option value="720x1280">9:16 Portrait</option>
-                          </select>
-                          <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 h-3 w-3 text-slate-400 pointer-events-none" />
-                        </div>
-                      </>
                     )}
+                  </div>
+                </aside>
+
+                {/* MAIN CHAT AREA */}
+                <main
+                  className="flex-1 flex flex-col relative overflow-hidden"
+                  style={chatBg ? { backgroundColor: chatBg } : undefined}
+                >
+
+                  <header className="px-3 py-2 md:px-4 md:py-3 border-b border-indigo-100/50 bg-white/80 backdrop-blur-sm sticky top-0 z-10 flex items-center justify-between shrink-0">
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-full flex items-center justify-center shadow-md bg-indigo-600">
+                        <Bot className="h-4 w-4 text-white translate-y-[1px]" />
+                      </div>
+                      <div>
+                        <h1 className="text-sm font-bold text-slate-800">Supporto Docente AI</h1>
+                        <p className="text-xs text-slate-500">
+                          {(agentMode === 'quiz' || agentMode === 'dataset' || agentMode === 'web_search')
+                            ? 'Claude Haiku'
+                            : AVAILABLE_MODELS.find(m => m.id === selectedModel)?.name}
+                        </p>
+                      </div>
+                    </div>
+
+                      <div className="flex items-center gap-4">
+                        <div className="flex items-center gap-3 animate-in fade-in slide-in-from-right-4 duration-300">
+                        {/* Generatore */}
+                        {agentMode === 'image' && (
+                          <>
+                            <div className="flex items-center bg-slate-100/80 rounded-full p-1 border border-slate-200">
+                              <button
+                                onClick={() => setImageProvider('flux-schnell')}
+                                className={`px-3 py-1 text-xs rounded-full transition-all flex items-center gap-1 ${imageProvider === 'flux-schnell'
+                                  ? 'bg-white shadow-sm text-indigo-600 font-bold'
+                                  : 'text-slate-500 hover:text-slate-700'
+                                  }`}
+                              >
+                                ⚡ Flux
+                              </button>
+                              <button
+                                onClick={() => setImageProvider('dall-e')}
+                                className={`px-3 py-1 text-xs rounded-full transition-all flex items-center gap-1 ${imageProvider === 'dall-e'
+                                  ? 'bg-white shadow-sm text-indigo-600 font-bold'
+                                  : 'text-slate-500 hover:text-slate-700'
+                                  }`}
+                              >
+                                🎨 DALL-E
+                              </button>
+                            </div>
+
+                            {/* Formato */}
+                            <div className="relative">
+                              <select
+                                value={imageSize}
+                                onChange={(e) => setImageSize(e.target.value)}
+                                className="text-xs bg-slate-100/80 border border-slate-200 rounded-full px-3 py-1.5 text-slate-600 focus:ring-2 focus:ring-indigo-500 focus:border-transparent cursor-pointer hover:bg-slate-50 outline-none appearance-none pr-8"
+                              >
+                                <option value="1024x1024">1:1 Quadrato</option>
+                                <option value="1024x768">4:3 Orizzontale</option>
+                                <option value="768x1024">3:4 Verticale</option>
+                                <option value="1280x720">16:9 Panorama</option>
+                                <option value="720x1280">9:16 Portrait</option>
+                              </select>
+                              <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 h-3 w-3 text-slate-400 pointer-events-none" />
+                            </div>
+                          </>
+                        )}
 
 
-                    {(agentMode === 'quiz' || agentMode === 'dataset' || agentMode === 'web_search') ? (
-                      <div className="text-xs bg-purple-100 text-purple-700 rounded-full px-3 py-1.5 font-medium border border-purple-200">
-                        Claude Haiku (fisso)
+                        {(agentMode === 'quiz' || agentMode === 'dataset' || agentMode === 'web_search') ? (
+                          <div className="text-xs bg-purple-100 text-purple-700 rounded-full px-3 py-1.5 font-medium border border-purple-200">
+                            Claude Haiku (fisso)
+                          </div>
+                        ) : (
+                          agentMode !== 'image' && (
+                            <div className="relative" ref={modelMenuRef}>
+                              <button
+                                onClick={() => setShowModelMenu(!showModelMenu)}
+                                className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 rounded-full text-xs font-bold text-white transition-all shadow-md shadow-indigo-200 group"
+                              >
+                                <div className="p-0.5 bg-white/20 rounded-md">
+                                  <ModelIcon provider={AVAILABLE_MODELS.find(m => m.id === selectedModel)?.provider || ''} modelId={selectedModel} className="h-3 w-3" />
+                                </div>
+                                <span>{AVAILABLE_MODELS.find(m => m.id === selectedModel)?.name}</span>
+                                <ChevronDown className={`h-3 w-3 text-indigo-200 transition-transform ${showModelMenu ? 'rotate-180' : ''}`} />
+                              </button>
+
+                              {/* Dropdown */}
+                              {showModelMenu && (
+                                <div className="absolute top-full right-0 mt-2 w-72 bg-white rounded-xl shadow-xl border border-slate-100 py-1 z-[100] animate-in fade-in zoom-in-95 duration-100 overflow-visible ring-1 ring-black/5">
+                                  <div className="px-4 py-3 text-[10px] font-bold text-slate-400 uppercase tracking-wider bg-slate-50/50 border-b border-slate-100 mb-1 flex justify-between items-center">
+                                    <span>Seleziona Modello</span>
+                                    <span className="text-[9px] font-normal text-slate-400">Default</span>
+                                  </div>
+                                  {AVAILABLE_MODELS.map(m => (
+                                    <div
+                                      key={m.id}
+                                      className={`flex items-center justify-between px-3 py-2.5 mx-1 rounded-lg hover:bg-slate-50 transition-colors cursor-pointer group ${selectedModel === m.id ? 'bg-indigo-50/50' : ''}`}
+                                      onClick={() => {
+                                        setSelectedModel(m.id)
+                                        setShowModelMenu(false)
+                                      }}
+                                    >
+                                      <div className="flex items-center gap-3">
+                                        <div className={`p-2 rounded-lg ${selectedModel === m.id ? 'bg-indigo-100 ring-1 ring-indigo-200' : 'bg-slate-100 group-hover:bg-indigo-50 group-hover:text-indigo-600 transition-colors'}`}>
+                                          <ModelIcon provider={m.provider} modelId={m.id} className="h-5 w-5" />
+                                        </div>
+                                        <div className="flex flex-col">
+                                          <span className={`text-sm font-bold ${selectedModel === m.id ? 'text-indigo-900' : 'text-slate-700'}`}>
+                                            {m.name}
+                                          </span>
+                                          <span className="text-[10px] text-slate-400 capitalize font-medium">{m.provider}</span>
+                                        </div>
+                                      </div>
+
+                                      {/* Default Checkbox */}
+                                      <div
+                                        className="flex items-center justify-center w-8 h-8 rounded-full hover:bg-slate-100 transition-colors"
+                                        onClick={(e) => handleSetDefaultModel(m.id, e)}
+                                        title="Imposta come default"
+                                      >
+                                        <div className={`w-4 h-4 rounded border flex items-center justify-center transition-all duration-200 ${defaultModel === m.id
+                                          ? 'bg-indigo-600 border-indigo-600 shadow-sm'
+                                          : 'border-slate-300 text-transparent hover:border-indigo-400 mx-auto'
+                                          }`}>
+                                          {defaultModel === m.id && <Check className="h-2.5 w-2.5 text-white" strokeWidth={3} />}
+                                        </div>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          )
+                        )}
+                      </div>
+
+                      <div className="hidden lg:flex items-center gap-2 relative">
+                        <div className="flex items-center gap-1">
+                          {baseBgSwatches.map((swatch) => (
+                            <button
+                              key={swatch.label}
+                              onClick={() => setChatBg(swatch.color)}
+                              title={swatch.label}
+                              className={`h-5 w-5 rounded-full border border-slate-200 shadow-sm transition-transform hover:scale-105 ${chatBg === swatch.color ? 'ring-2 ring-indigo-500 ring-offset-2' : ''}`}
+                              style={{ backgroundColor: swatch.color }}
+                            />
+                          ))}
+                        </div>
+                        <div className="relative">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setShowBgPalette((v) => !v)}
+                            className="text-slate-500 hover:text-slate-700"
+                            title="Scegli colore"
+                          >
+                            <Palette className="h-4 w-4" />
+                          </Button>
+                          {showBgPalette && (
+                            <div className="absolute right-0 top-10 z-30 w-56 rounded-xl border border-slate-200 bg-white p-2 shadow-xl">
+                              <div className="grid grid-cols-8 gap-1">
+                                {paletteColors.map((color, idx) => (
+                                  <button
+                                    key={`${color}-${idx}`}
+                                    onClick={() => {
+                                      setChatBg(color)
+                                      setShowBgPalette(false)
+                                    }}
+                                    className="h-5 w-5 rounded border border-slate-100 hover:scale-110 transition-transform"
+                                    style={{ backgroundColor: color }}
+                                    title={color}
+                                  />
+                                ))}
+                              </div>
+                              <div className="mt-2 flex items-center justify-between text-[10px] text-slate-400">
+                                <span>Jolly 256</span>
+                                <button
+                                  onClick={() => {
+                                    setChatBg('')
+                                    setShowBgPalette(false)
+                                  }}
+                                  className="text-slate-500 hover:text-slate-700"
+                                >
+                                  Reset
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </header>
+
+                  <div
+                    className={`flex-1 overflow-y-auto px-3 py-3 md:px-4 md:py-6 space-y-3 md:space-y-6 ${chatBgIsDark ? 'text-white' : ''}`}
+                    style={{ WebkitOverflowScrolling: 'touch', scrollBehavior: 'smooth' }}
+                  >
+                    {messages.length === 0 ? (
+                      <div className="h-full flex flex-col items-center justify-center opacity-50">
+                        <Bot className="h-12 w-12 text-slate-300 mb-4" />
+                        <p className="text-slate-400 font-medium">Inizia una nuova conversazione</p>
                       </div>
                     ) : (
-                      agentMode !== 'image' && (
-                        <div className="relative" ref={modelMenuRef}>
-                          <button
-                            onClick={() => setShowModelMenu(!showModelMenu)}
-                            className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 rounded-full text-xs font-bold text-white transition-all shadow-md shadow-indigo-200 group"
-                          >
-                            <div className="p-0.5 bg-white/20 rounded-md">
-                              <ModelIcon provider={AVAILABLE_MODELS.find(m => m.id === selectedModel)?.provider || ''} modelId={selectedModel} className="h-3 w-3" />
+                      messages.map((msg) => (
+                        <div key={msg.id} className={`flex gap-4 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                          {msg.role === 'assistant' && (
+                            <div className="w-8 h-8 rounded-full bg-white border border-slate-200 flex items-center justify-center flex-shrink-0">
+                              <Bot className="h-4 w-4 text-[#4f46e5]" />
                             </div>
-                            <span>{AVAILABLE_MODELS.find(m => m.id === selectedModel)?.name}</span>
-                            <ChevronDown className={`h-3 w-3 text-indigo-200 transition-transform ${showModelMenu ? 'rotate-180' : ''}`} />
-                          </button>
+                          )}
+                          <div className={`max-w-[75%] space-y-1 ${msg.role === 'user' ? 'items-end flex flex-col' : 'items-start'}`}>
+                            <div className={`px-5 py-3.5 text-sm leading-relaxed shadow-sm ${msg.role === 'user'
+                              ? `${chatBgIsDark ? 'bg-white/20 text-white border border-white/20' : 'bg-[#4f46e5] !text-white'} font-medium rounded-2xl rounded-tr-sm`
+                              : `${chatBgIsDark ? 'bg-white/10 text-white border border-white/15' : 'bg-white text-slate-800 border border-slate-200'} rounded-2xl rounded-tl-sm ${chatBgIsDark ? 'prose prose-invert' : ''}`
+                              }`}>
+                              {msg.role === 'assistant' ? (
+                                <MessageContent
+                                  content={msg.content}
+                                  onPublish={(type, data) => setPublishModal({ isOpen: true, type, data })}
+                                  onEdit={(type, data) => setEditorModal({ isOpen: true, type, data })}
+                                  toast={toast}
+                                  darkMode={chatBgIsDark}
+                                />
+                              ) : (
+                                <ReactMarkdown className={`prose prose-sm max-w-none prose-p:leading-relaxed prose-pre:bg-slate-800 prose-pre:text-slate-100 [&_*]:!text-white [&_strong]:font-bold`}>
+                                  {convertEmoticons(msg.content)}
+                                </ReactMarkdown>
+                              )}
+                            </div>
+                            <span className={`text-[10px] px-1 ${chatBgIsDark ? 'text-white/70' : 'text-slate-400'}`}>{msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                    {isLoading && !webSearchProgress && !imageGenerationProgress && (
+                      <div className="flex gap-4 justify-start">
+                        <div className="w-8 h-8 rounded-full bg-white border border-slate-200 flex items-center justify-center">
+                          <Bot className="h-4 w-4 text-[#4f46e5]" />
+                        </div>
+                        <div className={`${chatBgIsDark ? 'bg-white/10 border border-white/15' : 'bg-white border border-slate-200'} px-4 py-3 rounded-2xl rounded-tl-sm shadow-sm`}>
+                          <Loader2 className={`h-4 w-4 animate-spin ${chatBgIsDark ? 'text-white' : 'text-[#4f46e5]'}`} />
+                        </div>
+                      </div>
+                    )}
 
-                          {/* Dropdown */}
-                          {showModelMenu && (
-                            <div className="absolute top-full right-0 mt-2 w-72 bg-white rounded-xl shadow-xl border border-slate-100 py-1 z-[100] animate-in fade-in zoom-in-95 duration-100 overflow-visible ring-1 ring-black/5">
-                              <div className="px-4 py-3 text-[10px] font-bold text-slate-400 uppercase tracking-wider bg-slate-50/50 border-b border-slate-100 mb-1 flex justify-between items-center">
-                                <span>Seleziona Modello</span>
-                                <span className="text-[9px] font-normal text-slate-400">Default</span>
+                    {/* Image Generation Progress Panel */}
+                    {imageGenerationProgress && (
+                      <div className="flex gap-4 justify-start">
+                        <div className="w-8 h-8 rounded-full bg-violet-100 border border-violet-200 flex items-center justify-center flex-shrink-0">
+                          <ImageIcon className="h-4 w-4 text-violet-600" />
+                        </div>
+                        <div className="flex-1 max-w-[75%] bg-gradient-to-br from-violet-50 to-purple-50 border border-violet-200 px-5 py-4 rounded-2xl rounded-tl-sm shadow-sm">
+                          <div className="flex items-center gap-2 mb-3">
+                            <Loader2 className="h-4 w-4 animate-spin text-violet-600" />
+                            <span className="font-medium text-violet-800 text-sm">{imageGenerationProgress.status}</span>
+                          </div>
+
+                          {/* Progress Steps */}
+                          <div className="space-y-2 mb-3">
+                            {/* Step 1: Connessione */}
+                            <div className={`flex items-center gap-2 text-xs ${imageGenerationProgress.step === 'connecting'
+                              ? 'text-violet-700 font-medium'
+                              : 'text-green-600'
+                              }`}>
+                              {imageGenerationProgress.step === 'connecting' ? (
+                                <Loader2 className="h-3 w-3 animate-spin" />
+                              ) : (
+                                <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                </svg>
+                              )}
+                              <span>Connessione al server {imageGenerationProgress.provider}</span>
+                            </div>
+                            {/* Step 2: Ottimizzazione */}
+                            <div className={`flex items-center gap-2 text-xs ${imageGenerationProgress.step === 'enhancing'
+                              ? 'text-violet-700 font-medium'
+                              : imageGenerationProgress.step === 'generating' || imageGenerationProgress.step === 'done'
+                                ? 'text-green-600'
+                                : 'text-slate-400'
+                              }`}>
+                              {imageGenerationProgress.step === 'enhancing' ? (
+                                <Loader2 className="h-3 w-3 animate-spin" />
+                              ) : imageGenerationProgress.step === 'generating' || imageGenerationProgress.step === 'done' ? (
+                                <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                </svg>
+                              ) : (
+                                <div className="h-3 w-3 rounded-full border border-slate-300" />
+                              )}
+                              <span>Ottimizzazione prompt</span>
+                            </div>
+                            {/* Step 3: Generazione */}
+                            <div className={`flex items-center gap-2 text-xs ${imageGenerationProgress.step === 'generating'
+                              ? 'text-violet-700 font-medium'
+                              : imageGenerationProgress.step === 'done'
+                                ? 'text-green-600'
+                                : 'text-slate-400'
+                              }`}>
+                              {imageGenerationProgress.step === 'generating' ? (
+                                <Loader2 className="h-3 w-3 animate-spin" />
+                              ) : imageGenerationProgress.step === 'done' ? (
+                                <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                </svg>
+                              ) : (
+                                <div className="h-3 w-3 rounded-full border border-slate-300" />
+                              )}
+                              <span>Generazione immagine</span>
+                            </div>
+                          </div>
+
+                          {/* Enhanced Prompt Preview */}
+                          {imageGenerationProgress.enhancedPrompt && (
+                            <div className="mt-3 border-t border-violet-200 pt-3">
+                              <div className="text-xs font-medium text-violet-700 mb-1">Prompt ottimizzato:</div>
+                              <div className="text-xs text-violet-600 bg-violet-100 px-2 py-1.5 rounded italic">
+                                "{imageGenerationProgress.enhancedPrompt.substring(0, 150)}{imageGenerationProgress.enhancedPrompt.length > 150 ? '...' : ''}"
                               </div>
-                              {AVAILABLE_MODELS.map(m => (
-                                <div
-                                  key={m.id}
-                                  className={`flex items-center justify-between px-3 py-2.5 mx-1 rounded-lg hover:bg-slate-50 transition-colors cursor-pointer group ${selectedModel === m.id ? 'bg-indigo-50/50' : ''}`}
-                                  onClick={() => {
-                                    setSelectedModel(m.id)
-                                    setShowModelMenu(false)
-                                  }}
-                                >
-                                  <div className="flex items-center gap-3">
-                                    <div className={`p-2 rounded-lg ${selectedModel === m.id ? 'bg-indigo-100 ring-1 ring-indigo-200' : 'bg-slate-100 group-hover:bg-indigo-50 group-hover:text-indigo-600 transition-colors'}`}>
-                                      <ModelIcon provider={m.provider} modelId={m.id} className="h-5 w-5" />
-                                    </div>
-                                    <div className="flex flex-col">
-                                      <span className={`text-sm font-bold ${selectedModel === m.id ? 'text-indigo-900' : 'text-slate-700'}`}>
-                                        {m.name}
-                                      </span>
-                                      <span className="text-[10px] text-slate-400 capitalize font-medium">{m.provider}</span>
-                                    </div>
-                                  </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
 
-                                  {/* Default Checkbox */}
-                                  <div
-                                    className="flex items-center justify-center w-8 h-8 rounded-full hover:bg-slate-100 transition-colors"
-                                    onClick={(e) => handleSetDefaultModel(m.id, e)}
-                                    title="Imposta come default"
-                                  >
-                                    <div className={`w-4 h-4 rounded border flex items-center justify-center transition-all duration-200 ${defaultModel === m.id
-                                      ? 'bg-indigo-600 border-indigo-600 shadow-sm'
-                                      : 'border-slate-300 text-transparent hover:border-indigo-400 mx-auto'
-                                      }`}>
-                                      {defaultModel === m.id && <Check className="h-2.5 w-2.5 text-white" strokeWidth={3} />}
-                                    </div>
+                    {/* Web Search/Quiz Progress Panel */}
+                    {webSearchProgress && (
+                      <div className="flex gap-4 justify-start">
+                        <div className="w-8 h-8 rounded-full bg-blue-100 border border-blue-200 flex items-center justify-center flex-shrink-0">
+                          <svg className="h-4 w-4 text-blue-600 animate-pulse" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                          </svg>
+                        </div>
+                        <div className="flex-1 max-w-[75%] bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-200 px-5 py-4 rounded-2xl rounded-tl-sm shadow-sm">
+                          <div className="flex items-center gap-2 mb-3">
+                            <Loader2 className="h-4 w-4 animate-spin text-blue-600" />
+                            <span className="font-medium text-blue-800 text-sm">{webSearchProgress.status}</span>
+                          </div>
+
+                          {webSearchProgress.intent && (
+                            <div className="text-xs text-blue-600 mb-3 bg-blue-100 px-2 py-1 rounded inline-block">
+                              Modalità: {webSearchProgress.intent} (confidenza: {Math.round((webSearchProgress.confidence || 0) * 100)}%)
+                            </div>
+                          )}
+
+                          {webSearchProgress.sources.length > 0 && (
+                            <div className="space-y-2 mt-3 border-t border-blue-200 pt-3">
+                              <div className="text-xs font-medium text-blue-700 mb-2">📰 Fonti in fase di lettura:</div>
+                              {webSearchProgress.sources.map((source) => (
+                                <div key={source.index} className="flex items-start gap-2 text-xs">
+                                  {source.status === 'fetching' && (
+                                    <Loader2 className="h-3 w-3 animate-spin text-blue-500 mt-0.5 flex-shrink-0" />
+                                  )}
+                                  {source.status === 'done' && (
+                                    <svg className="h-3 w-3 text-green-500 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                    </svg>
+                                  )}
+                                  {source.status === 'error' && (
+                                    <svg className="h-3 w-3 text-red-500 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                    </svg>
+                                  )}
+                                  <div className="flex-1 min-w-0">
+                                    <div className="font-medium text-slate-700 truncate">{source.title}</div>
+                                    <a href={source.url} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline truncate block">
+                                      {source.url.substring(0, 50)}...
+                                    </a>
+                                    {source.status === 'done' && source.content_length && (
+                                      <span className="text-green-600">✓ {source.content_length} caratteri estratti</span>
+                                    )}
+                                    {source.status === 'error' && source.error && (
+                                      <span className="text-red-500">✗ {source.error}</span>
+                                    )}
                                   </div>
                                 </div>
                               ))}
                             </div>
                           )}
                         </div>
-                      )
+                      </div>
                     )}
+                    <div ref={messagesEndRef} />
                   </div>
-                </div>
-              </header>
 
-              <div className="flex-1 overflow-y-auto px-3 py-3 md:px-4 md:py-6 space-y-3 md:space-y-6" style={{ WebkitOverflowScrolling: 'touch', scrollBehavior: 'smooth' }}>
-                {messages.length === 0 ? (
-                  <div className="h-full flex flex-col items-center justify-center opacity-50">
-                    <Bot className="h-12 w-12 text-slate-300 mb-4" />
-                    <p className="text-slate-400 font-medium">Inizia una nuova conversazione</p>
-                  </div>
-                ) : (
-                  messages.map((msg) => (
-                    <div key={msg.id} className={`flex gap-4 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                      {msg.role === 'assistant' && (
-                        <div className="w-8 h-8 rounded-full bg-white border border-slate-200 flex items-center justify-center flex-shrink-0">
-                          <Bot className="h-4 w-4 text-[#4f46e5]" />
-                        </div>
-                      )}
-                      <div className={`max-w-[75%] space-y-1 ${msg.role === 'user' ? 'items-end flex flex-col' : 'items-start'}`}>
-                        <div className={`px-5 py-3.5 text-sm leading-relaxed shadow-sm ${msg.role === 'user' ? 'bg-[#4f46e5] !text-white font-medium rounded-2xl rounded-tr-sm' : 'bg-white text-slate-800 border border-slate-200 rounded-2xl rounded-tl-sm'
-                          }`}>
-                          {msg.role === 'assistant' ? (
-                            <MessageContent
-                              content={msg.content}
-                              onPublish={(type, data) => setPublishModal({ isOpen: true, type, data })}
-                              onEdit={(type, data) => setEditorModal({ isOpen: true, type, data })}
-                              toast={toast}
-                            />
-                          ) : (
-                            <ReactMarkdown className="prose prose-sm max-w-none prose-p:leading-relaxed prose-pre:bg-slate-800 prose-pre:text-slate-100 [&_*]:!text-white [&_strong]:font-bold">
-                              {convertEmoticons(msg.content)}
-                            </ReactMarkdown>
-                          )}
-                        </div>
-                        <span className="text-[10px] text-slate-400 px-1">{msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-                      </div>
-                    </div>
-                  ))
-                )}
-                {isLoading && !webSearchProgress && !imageGenerationProgress && (
-                  <div className="flex gap-4 justify-start">
-                    <div className="w-8 h-8 rounded-full bg-white border border-slate-200 flex items-center justify-center">
-                      <Bot className="h-4 w-4 text-[#4f46e5]" />
-                    </div>
-                    <div className="bg-white border border-slate-200 px-4 py-3 rounded-2xl rounded-tl-sm shadow-sm">
-                      <Loader2 className="h-4 w-4 animate-spin text-[#4f46e5]" />
-                    </div>
-                  </div>
-                )}
+                  <div className="p-4 bg-white border-t border-slate-200">
+                    <div className="max-w-4xl mx-auto">
 
-                {/* Image Generation Progress Panel */}
-                {imageGenerationProgress && (
-                  <div className="flex gap-4 justify-start">
-                    <div className="w-8 h-8 rounded-full bg-violet-100 border border-violet-200 flex items-center justify-center flex-shrink-0">
-                      <ImageIcon className="h-4 w-4 text-violet-600" />
-                    </div>
-                    <div className="flex-1 max-w-[75%] bg-gradient-to-br from-violet-50 to-purple-50 border border-violet-200 px-5 py-4 rounded-2xl rounded-tl-sm shadow-sm">
-                      <div className="flex items-center gap-2 mb-3">
-                        <Loader2 className="h-4 w-4 animate-spin text-violet-600" />
-                        <span className="font-medium text-violet-800 text-sm">{imageGenerationProgress.status}</span>
+                      <div className="flex gap-2 mb-3">
+                        {AGENT_MODES.map(m => (
+                          <button
+                            key={m.id}
+                            onClick={() => setAgentMode(m.id)}
+                            className={`text-xs px-4 py-1.5 rounded-full font-medium transition-all ${agentMode === m.id
+                              ? 'bg-[#4f46e5] text-white shadow-md shadow-indigo-200'
+                              : 'text-slate-500 hover:bg-slate-100'
+                              }`}
+                          >
+                            {m.label}
+                          </button>
+                        ))}
                       </div>
 
-                      {/* Progress Steps */}
-                      <div className="space-y-2 mb-3">
-                        {/* Step 1: Connessione */}
-                        <div className={`flex items-center gap-2 text-xs ${imageGenerationProgress.step === 'connecting'
-                          ? 'text-violet-700 font-medium'
-                          : 'text-green-600'
-                          }`}>
-                          {imageGenerationProgress.step === 'connecting' ? (
-                            <Loader2 className="h-3 w-3 animate-spin" />
-                          ) : (
-                            <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                            </svg>
-                          )}
-                          <span>Connessione al server {imageGenerationProgress.provider}</span>
-                        </div>
-                        {/* Step 2: Ottimizzazione */}
-                        <div className={`flex items-center gap-2 text-xs ${imageGenerationProgress.step === 'enhancing'
-                          ? 'text-violet-700 font-medium'
-                          : imageGenerationProgress.step === 'generating' || imageGenerationProgress.step === 'done'
-                            ? 'text-green-600'
-                            : 'text-slate-400'
-                          }`}>
-                          {imageGenerationProgress.step === 'enhancing' ? (
-                            <Loader2 className="h-3 w-3 animate-spin" />
-                          ) : imageGenerationProgress.step === 'generating' || imageGenerationProgress.step === 'done' ? (
-                            <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                            </svg>
-                          ) : (
-                            <div className="h-3 w-3 rounded-full border border-slate-300" />
-                          )}
-                          <span>Ottimizzazione prompt</span>
-                        </div>
-                        {/* Step 3: Generazione */}
-                        <div className={`flex items-center gap-2 text-xs ${imageGenerationProgress.step === 'generating'
-                          ? 'text-violet-700 font-medium'
-                          : imageGenerationProgress.step === 'done'
-                            ? 'text-green-600'
-                            : 'text-slate-400'
-                          }`}>
-                          {imageGenerationProgress.step === 'generating' ? (
-                            <Loader2 className="h-3 w-3 animate-spin" />
-                          ) : imageGenerationProgress.step === 'done' ? (
-                            <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                            </svg>
-                          ) : (
-                            <div className="h-3 w-3 rounded-full border border-slate-300" />
-                          )}
-                          <span>Generazione immagine</span>
-                        </div>
-                      </div>
-
-                      {/* Enhanced Prompt Preview */}
-                      {imageGenerationProgress.enhancedPrompt && (
-                        <div className="mt-3 border-t border-violet-200 pt-3">
-                          <div className="text-xs font-medium text-violet-700 mb-1">Prompt ottimizzato:</div>
-                          <div className="text-xs text-violet-600 bg-violet-100 px-2 py-1.5 rounded italic">
-                            "{imageGenerationProgress.enhancedPrompt.substring(0, 150)}{imageGenerationProgress.enhancedPrompt.length > 150 ? '...' : ''}"
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
-
-                {/* Web Search/Quiz Progress Panel */}
-                {webSearchProgress && (
-                  <div className="flex gap-4 justify-start">
-                    <div className="w-8 h-8 rounded-full bg-blue-100 border border-blue-200 flex items-center justify-center flex-shrink-0">
-                      <svg className="h-4 w-4 text-blue-600 animate-pulse" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                      </svg>
-                    </div>
-                    <div className="flex-1 max-w-[75%] bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-200 px-5 py-4 rounded-2xl rounded-tl-sm shadow-sm">
-                      <div className="flex items-center gap-2 mb-3">
-                        <Loader2 className="h-4 w-4 animate-spin text-blue-600" />
-                        <span className="font-medium text-blue-800 text-sm">{webSearchProgress.status}</span>
-                      </div>
-
-                      {webSearchProgress.intent && (
-                        <div className="text-xs text-blue-600 mb-3 bg-blue-100 px-2 py-1 rounded inline-block">
-                          Modalità: {webSearchProgress.intent} (confidenza: {Math.round((webSearchProgress.confidence || 0) * 100)}%)
-                        </div>
-                      )}
-
-                      {webSearchProgress.sources.length > 0 && (
-                        <div className="space-y-2 mt-3 border-t border-blue-200 pt-3">
-                          <div className="text-xs font-medium text-blue-700 mb-2">📰 Fonti in fase di lettura:</div>
-                          {webSearchProgress.sources.map((source) => (
-                            <div key={source.index} className="flex items-start gap-2 text-xs">
-                              {source.status === 'fetching' && (
-                                <Loader2 className="h-3 w-3 animate-spin text-blue-500 mt-0.5 flex-shrink-0" />
-                              )}
-                              {source.status === 'done' && (
-                                <svg className="h-3 w-3 text-green-500 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                                </svg>
-                              )}
-                              {source.status === 'error' && (
-                                <svg className="h-3 w-3 text-red-500 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                                </svg>
-                              )}
-                              <div className="flex-1 min-w-0">
-                                <div className="font-medium text-slate-700 truncate">{source.title}</div>
-                                <a href={source.url} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline truncate block">
-                                  {source.url.substring(0, 50)}...
-                                </a>
-                                {source.status === 'done' && source.content_length && (
-                                  <span className="text-green-600">✓ {source.content_length} caratteri estratti</span>
-                                )}
-                                {source.status === 'error' && source.error && (
-                                  <span className="text-red-500">✗ {source.error}</span>
-                                )}
-                              </div>
+                      {attachedFiles.length > 0 && (
+                        <div className="flex flex-wrap gap-2 mb-2">
+                          {attachedFiles.map((f, i) => (
+                            <div key={i} className="bg-slate-100 px-3 py-1.5 rounded-full text-xs flex items-center gap-2 text-slate-600 border border-slate-200">
+                              {f.type === 'image' ? <ImageIcon className="h-3 w-3" /> : <File className="h-3 w-3" />}
+                              <span className="max-w-[150px] truncate">{f.file.name}</span>
+                              <button onClick={() => removeFile(i)} className="text-slate-400 hover:text-red-500">
+                                <X className="h-3 w-3" />
+                              </button>
                             </div>
                           ))}
                         </div>
                       )}
+
+                      {/* Input Pill Container */}
+                      <div className="relative flex items-end gap-2 bg-white border-2 border-[#4f46e5]/40 rounded-[2rem] p-1.5 pl-3 focus-within:border-[#4f46e5] focus-within:ring-4 focus-within:ring-[#4f46e5]/10 transition-all shadow-sm">
+                        <input type="file" ref={fileInputRef} className="hidden" multiple onChange={handleFileSelect} />
+
+                        <Button
+                          variant="ghost" size="icon" className="h-9 w-9 text-slate-400 hover:text-[#4f46e5] hover:bg-indigo-50 rounded-full flex-shrink-0"
+                          onClick={() => fileInputRef.current?.click()}
+                        >
+                          <Paperclip className="h-5 w-5" />
+                        </Button>
+
+                        <textarea
+                          value={inputText}
+                          onChange={(e) => setInputText(e.target.value)}
+                          onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
+                          placeholder="Scrivi o trascina file qui..."
+                          className="flex-1 bg-transparent border-none focus:ring-0 focus:outline-none outline-none resize-none py-2.5 text-sm text-slate-700 placeholder:text-slate-400 max-h-32 min-h-[44px]"
+                          rows={1}
+                          style={{ overflow: 'hidden' }}
+                          onInput={(e) => {
+                            const target = e.target as HTMLTextAreaElement;
+                            target.style.height = 'auto';
+                            target.style.height = `${Math.min(target.scrollHeight, 128)}px`;
+                          }}
+                        />
+
+                        <Button
+                          onClick={handleSend}
+                          disabled={(!inputText.trim() && attachedFiles.length === 0) || isLoading}
+                          className={`h-9 w-9 rounded-full transition-all flex-shrink-0 ${(!inputText.trim() && attachedFiles.length === 0)
+                            ? 'bg-slate-200 text-slate-400'
+                            : 'bg-[#4f46e5] hover:bg-[#4338ca] text-white shadow-md'
+                            }`}
+                          size="icon"
+                        >
+                          <Send className="h-4 w-4 ml-0.5" />
+                        </Button>
+                      </div>
                     </div>
                   </div>
-                )}
-                <div ref={messagesEndRef} />
+                </main>
               </div>
-
-              <div className="p-4 bg-white border-t border-slate-200">
-                <div className="max-w-4xl mx-auto">
-
-                  <div className="flex gap-2 mb-3">
-                    {AGENT_MODES.map(m => (
-                      <button
-                        key={m.id}
-                        onClick={() => setAgentMode(m.id)}
-                        className={`text-xs px-4 py-1.5 rounded-full font-medium transition-all ${agentMode === m.id
-                          ? 'bg-[#4f46e5] text-white shadow-md shadow-indigo-200'
-                          : 'text-slate-500 hover:bg-slate-100'
-                          }`}
-                      >
-                        {m.label}
-                      </button>
-                    ))}
-                  </div>
-
-                  {attachedFiles.length > 0 && (
-                    <div className="flex flex-wrap gap-2 mb-2">
-                      {attachedFiles.map((f, i) => (
-                        <div key={i} className="bg-slate-100 px-3 py-1.5 rounded-full text-xs flex items-center gap-2 text-slate-600 border border-slate-200">
-                          {f.type === 'image' ? <ImageIcon className="h-3 w-3" /> : <File className="h-3 w-3" />}
-                          <span className="max-w-[150px] truncate">{f.file.name}</span>
-                          <button onClick={() => removeFile(i)} className="text-slate-400 hover:text-red-500">
-                            <X className="h-3 w-3" />
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
-                  {/* Input Pill Container */}
-                  <div className="relative flex items-end gap-2 bg-white border-2 border-[#4f46e5]/40 rounded-[2rem] p-1.5 pl-3 focus-within:border-[#4f46e5] focus-within:ring-4 focus-within:ring-[#4f46e5]/10 transition-all shadow-sm">
-                    <input type="file" ref={fileInputRef} className="hidden" multiple onChange={handleFileSelect} />
-
-                    <Button
-                      variant="ghost" size="icon" className="h-9 w-9 text-slate-400 hover:text-[#4f46e5] hover:bg-indigo-50 rounded-full flex-shrink-0"
-                      onClick={() => fileInputRef.current?.click()}
-                    >
-                      <Paperclip className="h-5 w-5" />
-                    </Button>
-
-                    <textarea
-                      value={inputText}
-                      onChange={(e) => setInputText(e.target.value)}
-                      onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
-                      placeholder="Scrivi o trascina file qui..."
-                      className="flex-1 bg-transparent border-none focus:ring-0 focus:outline-none outline-none resize-none py-2.5 text-sm text-slate-700 placeholder:text-slate-400 max-h-32 min-h-[44px]"
-                      rows={1}
-                      style={{ overflow: 'hidden' }}
-                      onInput={(e) => {
-                        const target = e.target as HTMLTextAreaElement;
-                        target.style.height = 'auto';
-                        target.style.height = `${Math.min(target.scrollHeight, 128)}px`;
-                      }}
-                    />
-
-                    <Button
-                      onClick={handleSend}
-                      disabled={(!inputText.trim() && attachedFiles.length === 0) || isLoading}
-                      className={`h-9 w-9 rounded-full transition-all flex-shrink-0 ${(!inputText.trim() && attachedFiles.length === 0)
-                        ? 'bg-slate-200 text-slate-400'
-                        : 'bg-[#4f46e5] hover:bg-[#4338ca] text-white shadow-md'
-                        }`}
-                      size="icon"
-                    >
-                      <Send className="h-4 w-4 ml-0.5" />
-                    </Button>
-                  </div>
-                </div>
-              </div>
-            </main>
-            </div>
             )}
           </div>
         </div>
@@ -1411,14 +1621,14 @@ function parseContentBlocks(content: string): { quiz: QuizData | null; csv: stri
   return { quiz, csv, textContent, isGenerating, generationType }
 }
 
-function MessageContent({ content, onPublish, onEdit, toast }: { content: string; onPublish: (type: 'quiz' | 'dataset', data: any) => void; onEdit: (type: 'quiz' | 'dataset', data: any) => void; toast: any }) {
+function MessageContent({ content, onPublish, onEdit, toast, darkMode = false }: { content: string; onPublish: (type: 'quiz' | 'dataset', data: any) => void; onEdit: (type: 'quiz' | 'dataset', data: any) => void; toast: any; darkMode?: boolean }) {
   const { quiz, csv, textContent, isGenerating, generationType } = parseContentBlocks(content)
   const { cleanContent, images } = extractBase64Images(textContent)
 
   if (isGenerating) {
     return (
       <div className="flex flex-col items-center gap-3 py-4">
-        <div className="flex items-center gap-2 text-cyan-600">
+        <div className={`flex items-center gap-2 ${darkMode ? 'text-cyan-200' : 'text-cyan-600'}`}>
           <Loader2 className="h-5 w-5 animate-spin" />
           <span className="font-medium">
             {generationType === 'image' && 'Generazione immagine in corso...'}
@@ -1444,7 +1654,7 @@ function MessageContent({ content, onPublish, onEdit, toast }: { content: string
   }
 
   return (
-    <div className="prose prose-sm max-w-none prose-p:text-slate-700">
+    <div className={`prose prose-sm max-w-none ${darkMode ? 'prose-invert text-white' : 'text-slate-800'} ${darkMode ? '' : 'prose-p:text-slate-700'}`}>
       {cleanContent && (
         <ReactMarkdown
           remarkPlugins={[remarkGfm, remarkMath]}
@@ -1454,7 +1664,7 @@ function MessageContent({ content, onPublish, onEdit, toast }: { content: string
             code: ({ className, children, ...props }) => {
               const isInline = !className
               return isInline ? (
-                <code className="bg-slate-100 px-1.5 py-0.5 rounded text-cyan-600 text-xs font-mono" {...props}>
+                <code className={`${darkMode ? 'bg-white/10 text-white' : 'bg-slate-100 text-cyan-600'} px-1.5 py-0.5 rounded text-xs font-mono`} {...props}>
                   {children}
                 </code>
               ) : (

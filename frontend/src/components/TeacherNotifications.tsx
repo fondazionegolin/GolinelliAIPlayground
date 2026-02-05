@@ -120,7 +120,7 @@ export default function TeacherNotifications({
       <Button
         variant="ghost"
         size="sm"
-        className="relative h-8 px-2"
+        className="relative h-8 w-8 p-0 flex items-center justify-center"
         onClick={() => setIsOpen(!isOpen)}
       >
         <Bell className="h-4 w-4" />

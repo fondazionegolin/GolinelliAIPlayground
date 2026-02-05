@@ -279,11 +279,13 @@ export const filesApi = {
     api.post('/files/complete', { file_id: fileId, checksum_sha256: checksum }),
   getDownloadUrl: (fileId: string) =>
     api.get(`/files/${fileId}/download-url`),
+  listSessionFiles: (sessionId: string) =>
+    api.get(`/files/session/${sessionId}`),
 }
 
 export const teacherbotsApi = {
   // Teacher endpoints
-  list: () => api.get('/teacherbots/teacherbots'),
+  list: () => api.get('/teacherbots'),
   create: (data: {
     name: string
     synopsis?: string
@@ -298,8 +300,8 @@ export const teacherbotsApi = {
     llm_provider?: string
     llm_model?: string
     temperature?: number
-  }) => api.post('/teacherbots/teacherbots', data),
-  get: (id: string) => api.get(`/teacherbots/teacherbots/${id}`),
+  }) => api.post('/teacherbots', data),
+  get: (id: string) => api.get(`/teacherbots/${id}`),
   update: (id: string, data: {
     name?: string
     synopsis?: string
@@ -315,36 +317,61 @@ export const teacherbotsApi = {
     llm_model?: string
     temperature?: number
     status?: string
-  }) => api.patch(`/teacherbots/teacherbots/${id}`, data),
-  delete: (id: string) => api.delete(`/teacherbots/teacherbots/${id}`),
+  }) => api.patch(`/teacherbots/${id}`, data),
+  delete: (id: string) => api.delete(`/teacherbots/${id}`),
   test: (id: string, content: string, history?: { role: string; content: string }[]) =>
-    api.post(`/teacherbots/teacherbots/${id}/test`, { content, history }),
+    api.post(`/teacherbots/${id}/test`, { content, history }),
   publish: (id: string, classId: string) =>
-    api.post(`/teacherbots/teacherbots/${id}/publish`, { class_id: classId }),
+    api.post(`/teacherbots/${id}/publish`, { class_id: classId }),
   getPublications: (id: string) =>
-    api.get(`/teacherbots/teacherbots/${id}/publications`),
+    api.get(`/teacherbots/${id}/publications`),
   unpublish: (id: string, publicationId: string) =>
-    api.delete(`/teacherbots/teacherbots/${id}/publications/${publicationId}`),
+    api.delete(`/teacherbots/${id}/publications/${publicationId}`),
   getReports: (id: string) =>
-    api.get(`/teacherbots/teacherbots/${id}/reports`),
+    api.get(`/teacherbots/${id}/reports`),
 
   // Student endpoints
-  listAvailable: () => api.get('/teacherbots/student/teacherbots'),
+  listAvailable: () => api.get('/student/teacherbots'),
   startConversation: (teacherbotId: string, sessionId: string) =>
-    api.post(`/teacherbots/student/teacherbots/${teacherbotId}/conversations`, { session_id: sessionId }),
-  getConversations: () => api.get('/teacherbots/student/teacherbots/conversations'),
+    api.post(`/student/teacherbots/${teacherbotId}/conversations`, { session_id: sessionId }),
+  getConversations: () => api.get('/student/teacherbots/conversations'),
   getConversationMessages: (conversationId: string) =>
-    api.get(`/teacherbots/student/teacherbots/conversations/${conversationId}/messages`),
+    api.get(`/student/teacherbots/conversations/${conversationId}/messages`),
   sendMessage: (conversationId: string, content: string) =>
-    api.post(`/teacherbots/student/teacherbots/conversations/${conversationId}/message`, { content }),
+    api.post(`/student/teacherbots/conversations/${conversationId}/message`, { content }),
   sendMessageWithFiles: (conversationId: string, content: string, files: File[]) => {
     const formData = new FormData()
     formData.append('content', content)
     files.forEach(file => formData.append('files', file))
-    return api.post(`/teacherbots/student/teacherbots/conversations/${conversationId}/message-with-files`, formData, {
+    return api.post(`/student/teacherbots/conversations/${conversationId}/message-with-files`, formData, {
       headers: { 'Content-Type': 'multipart/form-data' }
     })
   },
   endConversation: (conversationId: string) =>
-    api.post(`/teacherbots/student/teacherbots/conversations/${conversationId}/end`),
+    api.post(`/student/teacherbots/conversations/${conversationId}/end`),
+}
+
+export const creditsApi = {
+  getStats: (startDate?: string, endDate?: string) =>
+    api.get('/credits/stats', { params: { start_date: startDate, end_date: endDate } }),
+  getLimits: (level?: string) =>
+    api.get('/credits/limits', { params: { level } }),
+  updateLimit: (id: string, data: { amount_cap: number; reset_frequency?: string }) =>
+    api.put(`/credits/limits/${id}`, data),
+  createGlobalLimit: (amount_cap: number) =>
+    api.post('/credits/limits', null, { params: { amount_cap } }),
+  getRequests: (status?: string) =>
+    api.get('/credits/requests', { params: { status } }),
+  reviewRequest: (id: string, status: string, notes?: string) =>
+    api.post(`/credits/requests/${id}/review`, { status, admin_notes: notes }),
+  inviteTeacher: (email: string, firstName?: string, lastName?: string, school?: string) =>
+    api.post('/credits/invitations', { email, first_name: firstName, last_name: lastName, school }),
+  bulkInvite: (file: File) => {
+    const formData = new FormData()
+    formData.append('file', file)
+    return api.post('/credits/invitations/bulk', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    })
+  },
+  getInvitations: () => api.get('/credits/invitations'),
 }

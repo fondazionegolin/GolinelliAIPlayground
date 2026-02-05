@@ -1,14 +1,16 @@
 import { Routes, Route, Link, useLocation } from 'react-router-dom'
 import { useAuthStore } from '@/stores/auth'
 import { Button } from '@/components/ui/button'
-import { 
-  Building2, Users, BarChart3, LogOut, 
-  LayoutDashboard, UserCheck, UserCog 
+import {
+  Building2, Users, BarChart3, LogOut,
+  LayoutDashboard, UserCheck, UserCog
 } from 'lucide-react'
 import TenantsPage from './TenantsPage'
 import TeacherRequestsPage from './TeacherRequestsPage'
 import UsersPage from './UsersPage'
 import UsagePage from './UsagePage'
+import CreditsPage from './CreditsPage'
+import { AppBackground } from '@/components/ui/AppBackground'
 
 const navItems = [
   { path: '/admin', label: 'Dashboard', icon: LayoutDashboard, exact: true },
@@ -16,6 +18,7 @@ const navItems = [
   { path: '/admin/teacher-requests', label: 'Richieste Docenti', icon: UserCheck },
   { path: '/admin/users', label: 'Utenti', icon: UserCog },
   { path: '/admin/usage', label: 'Utilizzo', icon: BarChart3 },
+  { path: '/admin/credits', label: 'Crediti & Costi', icon: BarChart3 }, // Reusing icon or better 'Coins' if available
 ]
 
 export default function AdminDashboard() {
@@ -23,15 +26,15 @@ export default function AdminDashboard() {
   const location = useLocation()
 
   return (
-    <div className="min-h-screen bg-gray-50 flex">
+    <AppBackground className="min-h-screen flex">
       <aside className="w-64 bg-white border-r flex flex-col">
         <div className="p-4 border-b">
           <h1 className="text-xl font-bold text-primary">EduAI Admin</h1>
         </div>
-        
+
         <nav className="flex-1 p-4 space-y-1">
           {navItems.map((item) => {
-            const isActive = item.exact 
+            const isActive = item.exact
               ? location.pathname === item.path
               : location.pathname.startsWith(item.path)
             return (
@@ -63,9 +66,10 @@ export default function AdminDashboard() {
           <Route path="teacher-requests" element={<TeacherRequestsPage />} />
           <Route path="users" element={<UsersPage />} />
           <Route path="usage" element={<UsagePage />} />
+          <Route path="credits" element={<CreditsPage />} />
         </Routes>
       </main>
-    </div>
+    </AppBackground>
   )
 }
 

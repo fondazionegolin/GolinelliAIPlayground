@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { useToast } from '@/components/ui/use-toast'
 import { Users } from 'lucide-react'
+import { AppBackground } from '@/components/ui/AppBackground'
 
 export default function LoginPage() {
   const [email, setEmail] = useState('')
@@ -24,7 +25,7 @@ export default function LoginPage() {
     try {
       const response = await authApi.login(email, password)
       const { access_token, user_id, role, tenant_id } = response.data
-      
+
       setUser(
         { id: user_id, email, role, tenant_id },
         access_token
@@ -53,7 +54,7 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
+    <AppBackground className="min-h-screen flex items-center justify-center p-4">
       <div className="w-full max-w-md space-y-6">
         <div className="text-center">
           <div className="flex justify-center mb-4">
@@ -126,6 +127,6 @@ export default function LoginPage() {
           </Link>
         </p>
       </div>
-    </div>
+    </AppBackground>
   )
 }

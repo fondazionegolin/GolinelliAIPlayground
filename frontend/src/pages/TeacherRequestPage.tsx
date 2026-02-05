@@ -7,6 +7,7 @@ import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { useToast } from '@/components/ui/use-toast'
 import { GraduationCap, ArrowLeft, CheckCircle } from 'lucide-react'
+import { AppBackground } from '@/components/ui/AppBackground'
 
 export default function TeacherRequestPage() {
   const [email, setEmail] = useState('')
@@ -49,13 +50,13 @@ export default function TeacherRequestPage() {
 
   if (submitted) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
+      <AppBackground className="min-h-screen flex items-center justify-center p-4">
         <Card className="w-full max-w-md">
           <CardContent className="pt-6 text-center">
             <CheckCircle className="h-16 w-16 text-green-500 mx-auto mb-4" />
             <h2 className="text-xl font-bold mb-2">Richiesta Inviata!</h2>
             <p className="text-muted-foreground mb-6">
-              La tua richiesta è stata inviata con successo. 
+              La tua richiesta è stata inviata con successo.
               Riceverai una notifica quando sarà approvata dall'amministratore.
             </p>
             <Button onClick={() => navigate('/login')}>
@@ -63,12 +64,12 @@ export default function TeacherRequestPage() {
             </Button>
           </CardContent>
         </Card>
-      </div>
+      </AppBackground>
     )
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
+    <AppBackground className="min-h-screen flex items-center justify-center p-4">
       <div className="w-full max-w-md space-y-6">
         <div className="text-center">
           <div className="flex justify-center mb-4">
@@ -151,6 +152,6 @@ export default function TeacherRequestPage() {
           </Link>
         </div>
       </div>
-    </div>
+    </AppBackground>
   )
 }

@@ -9,6 +9,7 @@ import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { useToast } from '@/components/ui/use-toast'
 import { ArrowLeft } from 'lucide-react'
+import { AppBackground } from '@/components/ui/AppBackground'
 
 export default function StudentJoinPage() {
   const [joinCode, setJoinCode] = useState('')
@@ -25,7 +26,7 @@ export default function StudentJoinPage() {
     try {
       const response = await studentApi.join(joinCode.toUpperCase(), nickname)
       const { join_token, student_id, session_id, session_title } = response.data
-      
+
       setStudentSession(
         { student_id, session_id, session_title, nickname },
         join_token
@@ -46,7 +47,7 @@ export default function StudentJoinPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-green-50 to-emerald-100 flex items-center justify-center p-4">
+    <AppBackground className="min-h-screen flex items-center justify-center p-4">
       <div className="w-full max-w-md space-y-6">
         <div className="text-center">
           <div className="flex justify-center mb-4">
@@ -104,6 +105,6 @@ export default function StudentJoinPage() {
           </Link>
         </div>
       </div>
-    </div>
+    </AppBackground>
   )
 }

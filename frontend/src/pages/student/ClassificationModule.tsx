@@ -711,9 +711,54 @@ function TextClassification() {
             onDragLeave={(e) => {
               e.currentTarget.classList.remove('border-blue-500', 'bg-blue-50')
             }}
-            onDrop={(e) => {
+            onDrop={async (e) => {
               e.preventDefault()
               e.currentTarget.classList.remove('border-blue-500', 'bg-blue-50')
+              const sessionFileData = e.dataTransfer.getData('application/x-session-file')
+              if (sessionFileData) {
+                try {
+                  const data = JSON.parse(sessionFileData)
+                  let fileUrl = data.url as string
+                  if (fileUrl.includes('/api/v1/files/') && fileUrl.endsWith('/download-url')) {
+                    const res = await fetch(fileUrl)
+                    const json = await res.json()
+                    fileUrl = json.download_url || json.url || fileUrl
+                  }
+                  const res = await fetch(fileUrl)
+                  const blob = await res.blob()
+                  const fileObj = new globalThis.File([blob], data.filename || 'file', {
+                    type: data.mime_type || blob.type || 'application/octet-stream'
+                  })
+                  if (fileObj.name.endsWith('.csv') || fileObj.name.endsWith('.txt')) {
+                    const reader = new FileReader()
+                    reader.onload = (event) => {
+                      const text = event.target?.result as string
+                      const lines = text.split('\n').filter((l: string) => l.trim())
+                      const newSamples: TextSample[] = []
+                      const uniqueLabels = new Set<string>()
+                      for (const line of lines) {
+                        const parts = line.includes(';') ? line.split(';') : line.split(',')
+                        if (parts.length >= 2) {
+                          const label = parts[parts.length - 1].trim().replace(/"/g, '')
+                          const text = parts.slice(0, -1).join(',').trim().replace(/"/g, '')
+                          if (text && label) {
+                            newSamples.push({ text, label })
+                            uniqueLabels.add(label)
+                          }
+                        }
+                      }
+                      if (newSamples.length > 0) {
+                        setSamples(newSamples)
+                        setLabels(Array.from(uniqueLabels))
+                      }
+                    }
+                    reader.readAsText(fileObj)
+                  }
+                } catch (err) {
+                  console.error('Failed to handle session file drop', err)
+                }
+                return
+              }
               // Handle dropped CSV from chatbot
               const csvData = e.dataTransfer.getData('application/x-chatbot-csv')
               if (csvData) {
@@ -1238,9 +1283,58 @@ function DataClassification() {
             onDragLeave={(e) => {
               e.currentTarget.classList.remove('border-emerald-500', 'bg-emerald-50')
             }}
-            onDrop={(e) => {
+            onDrop={async (e) => {
               e.preventDefault()
               e.currentTarget.classList.remove('border-emerald-500', 'bg-emerald-50')
+              const sessionFileData = e.dataTransfer.getData('application/x-session-file')
+              if (sessionFileData) {
+                try {
+                  const data = JSON.parse(sessionFileData)
+                  let fileUrl = data.url as string
+                  if (fileUrl.includes('/api/v1/files/') && fileUrl.endsWith('/download-url')) {
+                    const res = await fetch(fileUrl)
+                    const json = await res.json()
+                    fileUrl = json.download_url || json.url || fileUrl
+                  }
+                  const res = await fetch(fileUrl)
+                  const blob = await res.blob()
+                  const fileObj = new globalThis.File([blob], data.filename || 'file', {
+                    type: data.mime_type || blob.type || 'application/octet-stream'
+                  })
+                  if (fileObj.name.endsWith('.csv')) {
+                    const reader = new FileReader()
+                    reader.onload = (event) => {
+                      const text = event.target?.result as string
+                      const lines = text.split('\n').filter((l: string) => l.trim())
+                      if (lines.length > 1) {
+                        const headers = lines[0].split(',').map((h: string) => h.trim().replace(/"/g, ''))
+                        const rows = lines.slice(1).map((line: string) => {
+                          const values = line.split(',').map((v: string) => v.trim().replace(/"/g, ''))
+                          const row: DataRow = {}
+                          headers.forEach((h: string, i: number) => { row[h] = values[i] || '' })
+                          return row
+                        })
+                        setData(rows)
+                        const cols: ColumnInfo[] = headers.map((h: string) => {
+                          const isNumeric = rows.every((r: DataRow) => !isNaN(parseFloat(r[h] as string)))
+                          const uniqueVals = new Set(rows.map((r: DataRow) => r[h]))
+                          return { 
+                            name: h, 
+                            type: isNumeric ? 'numeric' : 'categorical',
+                            uniqueValues: uniqueVals.size,
+                            sampleValues: Array.from(uniqueVals).slice(0, 5) as (string | number)[]
+                          }
+                        })
+                        setColumns(cols)
+                      }
+                    }
+                    reader.readAsText(fileObj)
+                  }
+                } catch (err) {
+                  console.error('Failed to handle session file drop', err)
+                }
+                return
+              }
               // Handle dropped CSV from chatbot
               const csvData = e.dataTransfer.getData('application/x-chatbot-csv')
               if (csvData) {

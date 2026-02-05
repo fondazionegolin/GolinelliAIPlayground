@@ -30,9 +30,11 @@ interface ActiveSession {
 interface TeacherNavbarProps {
   currentSession?: SessionInfo | null
   onSessionChange?: (session: SessionInfo) => void
+  showChatToggle?: boolean
+  onShowChatSidebar?: () => void
 }
 
-export function TeacherNavbar({ currentSession, onSessionChange }: TeacherNavbarProps) {
+export function TeacherNavbar({ currentSession, onSessionChange, showChatToggle = false, onShowChatSidebar }: TeacherNavbarProps) {
   const location = useLocation()
   const navigate = useNavigate()
 
@@ -253,7 +255,7 @@ export function TeacherNavbar({ currentSession, onSessionChange }: TeacherNavbar
 
   return (
     <>
-      <nav className="fixed top-0 left-0 right-0 z-50 bg-indigo-50/80 backdrop-blur-md border-b border-indigo-200 shadow-md shadow-indigo-100/50">
+      <nav className="fixed top-0 left-0 right-0 z-50 bg-white/90 backdrop-blur-md border-b border-indigo-100 shadow-sm">
         <div className="max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             {/* Logo/Brand */}
@@ -265,7 +267,7 @@ export function TeacherNavbar({ currentSession, onSessionChange }: TeacherNavbar
             </div>
 
             {/* Desktop Navigation */}
-            <div className="hidden md:flex items-center gap-1 bg-white/50 p-1 rounded-xl border border-indigo-100 shadow-sm">
+            <div className="hidden md:flex items-center gap-1 bg-slate-100/80 p-1 rounded-xl border border-slate-200 shadow-inner">
               {navItems.map((item) => (
                 <Link key={item.path} to={item.path}>
                   <button
@@ -291,18 +293,30 @@ export function TeacherNavbar({ currentSession, onSessionChange }: TeacherNavbar
               />
 
               {/* Session Selector */}
-              <div className="relative" ref={sessionsMenuRef}>
+              <div className="relative flex items-center gap-2" ref={sessionsMenuRef}>
                 <button
                   onClick={() => setShowSessionsMenu(!showSessionsMenu)}
-                  className="hidden lg:flex items-center gap-3 px-4 py-2.5 rounded-xl border-2 bg-gradient-to-r from-indigo-50 to-blue-50 border-indigo-200 hover:border-indigo-300 transition-all cursor-pointer"
+                  className="hidden lg:flex items-center gap-3 px-4 py-2.5 rounded-xl border-2 bg-gradient-to-r from-indigo-50 to-violet-50 border-indigo-200 hover:border-indigo-300 transition-all cursor-pointer"
                 >
                   <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${currentSession ? 'bg-green-500 animate-pulse shadow-sm shadow-green-300' : 'bg-slate-300'}`} />
                   <div className="text-left min-w-0">
-                    <p className="text-xs font-semibold text-indigo-900 truncate leading-tight">{currentSession ? currentSession.name : 'Nessuna sessione'}</p>
-                    <p className="text-[10px] text-indigo-600/70 truncate leading-tight">{currentSession ? currentSession.className : 'Seleziona...'}</p>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-bold text-indigo-700 truncate max-w-[160px]">{currentSession ? currentSession.name : 'Nessuna sessione'}</span>
+                      <span className="text-slate-300">|</span>
+                      <span className="text-xs font-semibold text-slate-500 bg-white/60 px-2 py-0.5 rounded">{currentSession ? currentSession.className : 'Seleziona...'}</span>
+                    </div>
                   </div>
                   <ChevronDown className={`h-3 w-3 ml-1 text-indigo-400 transition-transform flex-shrink-0 ${showSessionsMenu ? 'rotate-180' : ''}`} />
                 </button>
+                {showChatToggle && (
+                  <button
+                    className="hidden lg:flex items-center justify-center h-11 w-11 rounded-full border border-indigo-200 bg-white text-indigo-600 hover:bg-indigo-50 transition shadow-sm"
+                    onClick={onShowChatSidebar}
+                    title="Apri chat di classe"
+                  >
+                    <MessageSquare className="h-5 w-5" />
+                  </button>
+                )}
 
                 {/* Sessions Dropdown Menu */}
                 {showSessionsMenu && (

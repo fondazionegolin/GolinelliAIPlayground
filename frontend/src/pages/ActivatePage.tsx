@@ -7,6 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { useToast } from '@/components/ui/use-toast'
 import { Eye, EyeOff, Copy, Check, KeyRound, Loader2 } from 'lucide-react'
 import api from '@/lib/api'
+import { AppBackground } from '@/components/ui/AppBackground'
 
 interface ActivationInfo {
   first_name: string
@@ -20,14 +21,14 @@ export default function ActivatePage() {
   const { token } = useParams<{ token: string }>()
   const navigate = useNavigate()
   const { toast } = useToast()
-  
+
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [info, setInfo] = useState<ActivationInfo | null>(null)
-  
+
   const [showPassword, setShowPassword] = useState(false)
   const [copied, setCopied] = useState(false)
-  
+
   const [newPassword, setNewPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [changingPassword, setChangingPassword] = useState(false)
@@ -75,7 +76,7 @@ export default function ActivatePage() {
 
   const handleChangePassword = async (e: React.FormEvent) => {
     e.preventDefault()
-    
+
     if (newPassword !== confirmPassword) {
       toast({
         variant: 'destructive',
@@ -100,7 +101,7 @@ export default function ActivatePage() {
       await api.post(`/auth/activate/${token}/change-password`, {
         new_password: newPassword,
       })
-      
+
       setPasswordChanged(true)
       toast({
         title: 'Password aggiornata',
@@ -120,20 +121,20 @@ export default function ActivatePage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
+      <AppBackground className="min-h-screen flex items-center justify-center p-4">
         <Card className="w-full max-w-md">
           <CardContent className="pt-6 flex flex-col items-center gap-4">
             <Loader2 className="h-8 w-8 animate-spin text-primary" />
             <p className="text-muted-foreground">Caricamento...</p>
           </CardContent>
         </Card>
-      </div>
+      </AppBackground>
     )
   }
 
   if (error) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
+      <AppBackground className="min-h-screen flex items-center justify-center p-4">
         <Card className="w-full max-w-md">
           <CardHeader>
             <CardTitle className="text-destructive">Errore</CardTitle>
@@ -145,13 +146,13 @@ export default function ActivatePage() {
             </Button>
           </CardContent>
         </Card>
-      </div>
+      </AppBackground>
     )
   }
 
   if (passwordChanged) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
+      <AppBackground className="min-h-screen flex items-center justify-center p-4">
         <Card className="w-full max-w-md">
           <CardHeader>
             <div className="flex justify-center mb-4">
@@ -170,12 +171,12 @@ export default function ActivatePage() {
             </Button>
           </CardContent>
         </Card>
-      </div>
+      </AppBackground>
     )
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
+    <AppBackground className="min-h-screen flex items-center justify-center p-4">
       <div className="w-full max-w-md space-y-6">
         <div className="text-center">
           <div className="flex justify-center mb-4">
@@ -202,7 +203,7 @@ export default function ActivatePage() {
                 {info?.email}
               </div>
             </div>
-            
+
             <div className="space-y-2">
               <Label>Password temporanea</Label>
               <div className="flex gap-2">
@@ -289,6 +290,6 @@ export default function ActivatePage() {
           </button>
         </p>
       </div>
-    </div>
+    </AppBackground>
   )
 }

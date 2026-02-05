@@ -7,7 +7,9 @@ from datetime import datetime
 from uuid import UUID, uuid4
 
 from app.core.database import get_db
+from app.core.config import settings
 from app.api.deps import get_current_teacher, get_current_student, get_student_or_teacher, StudentOrTeacher
+from app.core.permissions import teacher_can_access_session
 from app.models.user import User
 from app.models.session import Session, SessionStudent, Class
 from app.models.chat import ChatRoom, ChatMessage
@@ -52,16 +54,9 @@ async def get_session_messages(
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
         tenant_id = auth.student.tenant_id
     else:
-        result = await db.execute(
-            select(Session)
-            .join(Class)
-            .where(Session.id == session_id)
-            .where(Class.teacher_id == auth.teacher.id)
-        )
-        session = result.scalar_one_or_none()
-        if not session:
+        if not await teacher_can_access_session(db, auth.teacher, session_id):
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
-        tenant_id = session.tenant_id
+        tenant_id = auth.teacher.tenant_id
     
     # Get or create public room
     room = await get_or_create_public_room(db, session_id, tenant_id)
@@ -148,16 +143,9 @@ async def send_session_message(
         sender_teacher_id = None
         sender_name = auth.student.nickname
     else:
-        result = await db.execute(
-            select(Session)
-            .join(Class)
-            .where(Session.id == session_id)
-            .where(Class.teacher_id == auth.teacher.id)
-        )
-        session = result.scalar_one_or_none()
-        if not session:
+        if not await teacher_can_access_session(db, auth.teacher, session_id):
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
-        tenant_id = session.tenant_id
+        tenant_id = auth.teacher.tenant_id
         sender_type = SenderType.TEACHER
         sender_teacher_id = auth.teacher.id
         sender_student_id = None
@@ -283,13 +271,10 @@ async def create_or_get_dm_room(
     db: Annotated[AsyncSession, Depends(get_db)],
     teacher: Annotated[User, Depends(get_current_teacher)],
 ):
-    # Verify session ownership
-    result = await db.execute(
-        select(Session)
-        .join(Class)
-        .where(Session.id == request.session_id)
-        .where(Class.teacher_id == teacher.id)
-    )
+    # Verify access to session
+    if not await teacher_can_access_session(db, teacher, request.session_id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
+    result = await db.execute(select(Session).where(Session.id == request.session_id))
     session = result.scalar_one_or_none()
     if not session:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
@@ -350,14 +335,7 @@ async def get_room_messages(
         if room.room_type == ChatRoomType.DM and room.student_id != auth.student.id:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
     else:
-        # Verify teacher owns session
-        result = await db.execute(
-            select(Session)
-            .join(Class)
-            .where(Session.id == room.session_id)
-            .where(Class.teacher_id == auth.teacher.id)
-        )
-        if not result.scalar_one_or_none():
+        if not await teacher_can_access_session(db, auth.teacher, room.session_id):
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
     
     query = (
@@ -401,13 +379,9 @@ async def send_message(
         tenant_id = auth.student.tenant_id
         session_id = auth.student.session_id
     else:
-        # Verify teacher owns session
-        result = await db.execute(
-            select(Session)
-            .join(Class)
-            .where(Session.id == room.session_id)
-            .where(Class.teacher_id == auth.teacher.id)
-        )
+        if not await teacher_can_access_session(db, auth.teacher, room.session_id):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
+        result = await db.execute(select(Session).where(Session.id == room.session_id))
         session = result.scalar_one_or_none()
         if not session:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
@@ -459,6 +433,14 @@ async def upload_chat_files(
         print(f"[UPLOAD] Invalid session_id: {session_id}")
         raise HTTPException(status_code=400, detail="Invalid session_id")
 
+    # Verify access
+    if auth.is_student:
+        if auth.student.session_id != session_uuid:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
+    else:
+        if not await teacher_can_access_session(db, auth.teacher, session_uuid):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
+
     # Create upload directory if not exists
     upload_dir = Path("uploads/chat") / str(session_uuid)
     upload_dir.mkdir(parents=True, exist_ok=True)
@@ -480,17 +462,34 @@ async def upload_chat_files(
     for file in files:
         try:
             print(f"[UPLOAD] Processing file: {file.filename}, content_type: {file.content_type}")
+            if not file.content_type or file.content_type not in settings.ALLOWED_MIME_TYPES:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Mime type not allowed: {file.content_type}",
+                )
+
             # Generate unique filename
             file_ext = file.filename.split('.')[-1] if '.' in file.filename and file.filename else 'bin'
             unique_filename = f"{uuid4()}.{file_ext}"
             file_path = upload_dir / unique_filename
 
             # Save file
-            content = await file.read()
-            print(f"[UPLOAD] Read {len(content)} bytes from file")
-
+            max_size = settings.MAX_UPLOAD_SIZE_MB * 1024 * 1024
+            size_bytes = 0
+            hasher = hashlib.sha256()
             async with aiofiles.open(file_path, 'wb') as f:
-                await f.write(content)
+                while True:
+                    chunk = await file.read(1024 * 1024)
+                    if not chunk:
+                        break
+                    size_bytes += len(chunk)
+                    if size_bytes > max_size:
+                        raise HTTPException(
+                            status_code=status.HTTP_400_BAD_REQUEST,
+                            detail=f"File too large. Max size: {settings.MAX_UPLOAD_SIZE_MB}MB",
+                        )
+                    hasher.update(chunk)
+                    await f.write(chunk)
 
             print(f"[UPLOAD] Saved file to {file_path}")
 
@@ -500,7 +499,6 @@ async def upload_chat_files(
             print(f"[UPLOAD] Generated URL: {file_url}")
 
             # Save to database for session files listing
-            checksum = hashlib.sha256(content).hexdigest()
             file_record = FileModel(
                 tenant_id=tenant_id,
                 owner_type=owner_type,
@@ -511,8 +509,8 @@ async def upload_chat_files(
                 storage_key=f"chat/{session_uuid}/{unique_filename}",
                 filename=file.filename or unique_filename,
                 mime_type=file.content_type or "application/octet-stream",
-                size_bytes=len(content),
-                checksum_sha256=checksum,
+                size_bytes=size_bytes,
+                checksum_sha256=hasher.hexdigest(),
             )
             db.add(file_record)
             
@@ -520,6 +518,11 @@ async def upload_chat_files(
             print(f"[UPLOAD] Failed to upload file {file.filename if file.filename else 'unknown'}: {e}")
             import traceback
             traceback.print_exc()
+            try:
+                if 'file_path' in locals() and file_path.exists():
+                    file_path.unlink()
+            except Exception:
+                pass
             continue
 
     # Commit all file records

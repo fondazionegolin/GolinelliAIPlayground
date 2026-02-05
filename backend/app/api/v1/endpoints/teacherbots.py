@@ -28,6 +28,7 @@ from app.schemas.teacherbot import (
     TeacherbotReportResponse, StudentTeacherbotResponse,
 )
 from app.services.llm_service import llm_service
+from app.services.credit_service import credit_service
 from app.realtime.gateway import sio
 
 router = APIRouter()
@@ -224,6 +225,13 @@ async def test_teacherbot(
     if not bot:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Teacherbot not found")
 
+    # Check credits (Teacher level)
+    allowed = await credit_service.check_availability(
+        db, teacher.tenant_id, 0.0001, teacher_id=teacher.id
+    )
+    if not allowed:
+        raise HTTPException(status_code=402, detail="Credit limit exceeded")
+
     # Build messages from history
     messages = []
     if request.history:
@@ -238,6 +246,14 @@ async def test_teacherbot(
         provider=bot.llm_provider,
         model=bot.llm_model,
         temperature=bot.temperature,
+    )
+
+    # Track usage (Context: Teacher only)
+    cost = credit_service.calculate_cost_for_model(llm_response.provider, llm_response.model, llm_response.prompt_tokens, llm_response.completion_tokens)
+    await credit_service.track_usage(
+        db, teacher.tenant_id, llm_response.provider, llm_response.model, cost,
+        {"type": "teacherbot_test", "bot_id": str(bot.id)},
+        teacher_id=teacher.id
     )
 
     # Mark as testing if still draft
@@ -667,6 +683,34 @@ async def send_teacherbot_message(
     if not conv:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found")
 
+    # Fetch context for credits (Session -> Class -> Teacher)
+    session_result = await db.execute(
+        select(Session, Class)
+        .join(Class, Session.class_id == Class.id)
+        .where(Session.id == conv.session_id)
+    )
+    session_rw = session_result.first()
+    if not session_rw:
+        # Should not happen as session is linked
+        raise HTTPException(status_code=404, detail="Session not found")
+    session_obj, class_obj = session_rw
+
+    # Check credit availability
+    allowed = await credit_service.check_availability(
+        db, 
+        student.tenant_id, 
+        estimated_cost=0.0001, # Minimal check
+        teacher_id=class_obj.teacher_id,
+        class_id=class_obj.id,
+        session_id=session_obj.id,
+        student_id=student.id
+    )
+    if not allowed:
+        raise HTTPException(
+            status_code=status.HTTP_402_PAYMENT_REQUIRED, 
+            detail="Credit limit exceeded for this session/class."
+        )
+
     # Get teacherbot
     result = await db.execute(
         select(Teacherbot).where(Teacherbot.id == conv.teacherbot_id)
@@ -699,6 +743,14 @@ async def send_teacherbot_message(
         provider=bot.llm_provider,
         model=bot.llm_model,
         temperature=bot.temperature,
+    )
+
+    # Track usage
+    cost = credit_service.calculate_cost_for_model(llm_response.provider, llm_response.model, llm_response.prompt_tokens, llm_response.completion_tokens)
+    await credit_service.track_usage(
+        db, student.tenant_id, llm_response.provider, llm_response.model, cost,
+        {"type": "teacherbot_chat", "bot_id": str(bot.id)},
+        teacher_id=class_obj.teacher_id, class_id=class_obj.id, session_id=session_obj.id, student_id=student.id
     )
 
     # Save assistant message
@@ -746,6 +798,33 @@ async def send_teacherbot_message_with_files(
     if not conv:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found")
 
+    # Fetch context for credits (Session -> Class -> Teacher)
+    session_result = await db.execute(
+        select(Session, Class)
+        .join(Class, Session.class_id == Class.id)
+        .where(Session.id == conv.session_id)
+    )
+    session_rw = session_result.first()
+    if not session_rw:
+        raise HTTPException(status_code=404, detail="Session not found")
+    session_obj, class_obj = session_rw
+
+    # Check credit availability
+    allowed = await credit_service.check_availability(
+        db, 
+        student.tenant_id, 
+        estimated_cost=0.0001, # Minimal check
+        teacher_id=class_obj.teacher_id,
+        class_id=class_obj.id,
+        session_id=session_obj.id,
+        student_id=student.id
+    )
+    if not allowed:
+        raise HTTPException(
+            status_code=status.HTTP_402_PAYMENT_REQUIRED, 
+            detail="Credit limit exceeded for this session/class."
+        )
+
     # Get teacherbot
     result = await db.execute(
         select(Teacherbot).where(Teacherbot.id == conv.teacherbot_id)
@@ -784,20 +863,37 @@ async def send_teacherbot_message_with_files(
             try:
                 base64_image = base64.b64encode(file_data).decode("utf-8")
                 # Use GPT-4 Vision to describe the image
-                vision_response = await llm_service.generate(
-                    messages=[{
-                        "role": "user",
-                        "content": [
-                            {"type": "text", "text": "Descrivi dettagliatamente questa immagine in italiano."},
-                            {"type": "image_url", "image_url": {"url": f"data:{mime_type};base64,{base64_image}"}}
-                        ]
-                    }],
-                    provider="openai",
-                    model="gpt-4o",
-                    temperature=0.3,
-                    max_tokens=1000,
-                )
-                extracted_text = f"[Immagine: {filename}]\n{vision_response.content}"
+                vision_model = "gpt-4o"
+                
+                # Check credits for vision
+                if not await credit_service.check_availability(
+                    db, student.tenant_id, 0.005, class_obj.teacher_id, class_obj.id, session_obj.id, student.id
+                ):
+                     extracted_text = "[Immagine non analizzata: credito insufficiente]"
+                else:
+                    vision_response = await llm_service.generate(
+                        messages=[{
+                            "role": "user",
+                            "content": [
+                                {"type": "text", "text": "Descrivi dettagliatamente questa immagine in italiano."},
+                                {"type": "image_url", "image_url": {"url": f"data:{mime_type};base64,{base64_image}"}}
+                            ]
+                        }],
+                        provider="openai",
+                        model=vision_model,
+                        temperature=0.3,
+                        max_tokens=1000,
+                    )
+                    extracted_text = f"[Immagine: {filename}]\n{vision_response.content}"
+                    
+                    # Track Vision Usage
+                    v_cost = credit_service.calculate_cost_for_model("openai", vision_model, vision_response.prompt_tokens, vision_response.completion_tokens)
+                    await credit_service.track_usage(
+                        db, student.tenant_id, "openai", vision_model, v_cost,
+                        {"type": "vision_analysis", "filename": filename},
+                        class_obj.teacher_id, class_obj.id, session_obj.id, student.id
+                    )
+
             except Exception as e:
                 extracted_text = f"[Immagine: {filename} - impossibile analizzare: {str(e)}]"
         
@@ -836,8 +932,7 @@ async def send_teacherbot_message_with_files(
     
     # Build messages for LLM
     messages = []
-    # Exclude the message we just added (last one) to avoid duplication when reconstructing with full content
-    # Actually, we stored the short content/clean content in DB for user msg, but we want to send full content to LLM
+    # Exclude the message we just added
     for msg in history[:-1]:  
         messages.append({
             "role": msg.role,
@@ -856,6 +951,14 @@ async def send_teacherbot_message_with_files(
         provider=bot.llm_provider,
         model=bot.llm_model,
         temperature=bot.temperature,
+    )
+    
+    # Track usage (Response)
+    cost = credit_service.calculate_cost_for_model(llm_response.provider, llm_response.model, llm_response.prompt_tokens, llm_response.completion_tokens)
+    await credit_service.track_usage(
+        db, student.tenant_id, llm_response.provider, llm_response.model, cost,
+        {"type": "teacherbot_chat", "bot_id": str(bot.id)},
+        teacher_id=class_obj.teacher_id, class_id=class_obj.id, session_id=session_obj.id, student_id=student.id
     )
 
     # Save assistant message
@@ -914,6 +1017,24 @@ async def end_teacherbot_conversation(
     # Skip if reporting not enabled
     if not bot.enable_reporting:
         return {"message": "Reporting not enabled for this teacherbot"}
+    
+    # Fetch context for credits (Session -> Class -> Teacher)
+    session_result = await db.execute(
+        select(Session, Class)
+        .join(Class, Session.class_id == Class.id)
+        .where(Session.id == conv.session_id)
+    )
+    session_rw = session_result.first()
+    if not session_rw:
+        raise HTTPException(status_code=404, detail="Session not found")
+    session_obj, class_obj = session_rw
+
+    # Check availability
+    allowed = await credit_service.check_availability(
+        db, student.tenant_id, 0.01, class_obj.teacher_id, class_obj.id, session_obj.id, student.id
+    )
+    if not allowed:
+        return {"message": "Conversation ended, but report generation skipped due to insufficient credits."}
 
     # Get all messages
     result = await db.execute(
@@ -943,6 +1064,14 @@ async def end_teacherbot_conversation(
             model=bot.llm_model,
             temperature=0.3,  # Lower temperature for consistent report generation
         )
+        
+        # Track usage
+        cost = credit_service.calculate_cost_for_model(llm_response.provider, llm_response.model, llm_response.prompt_tokens, llm_response.completion_tokens)
+        await credit_service.track_usage(
+             db, student.tenant_id, llm_response.provider, llm_response.model, cost,
+             {"type": "teacherbot_report", "bot_id": str(bot.id)},
+             teacher_id=class_obj.teacher_id, class_id=class_obj.id, session_id=session_obj.id, student_id=student.id
+        )
 
         # Try to parse JSON response
         try:
@@ -965,4 +1094,5 @@ async def end_teacherbot_conversation(
         return {"message": "Report generated", "report": report_json}
 
     except Exception as e:
+        logger.error(f"Report generation error: {e}")
         return {"message": f"Failed to generate report: {str(e)}"}

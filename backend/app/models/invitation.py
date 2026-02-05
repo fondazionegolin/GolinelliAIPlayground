@@ -95,3 +95,30 @@ class SessionInvitation(Base):
     session = relationship("Session", back_populates="invitations")
     inviter = relationship("User", foreign_keys=[inviter_id])
     invitee = relationship("User", foreign_keys=[invitee_id])
+
+
+class PlatformInvitation(Base):
+    """Invitation for a new teacher to join the platform (sent by Admin)"""
+    __tablename__ = "platform_invitations"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id = Column(UUID(as_uuid=True), ForeignKey("tenants.id"), nullable=True, index=True)
+    
+    email = Column(String, nullable=False, index=True)
+    first_name = Column(String, nullable=True)
+    last_name = Column(String, nullable=True)
+    school = Column(String, nullable=True)  # Info from CSV
+    role = Column(String, default="TEACHER") # Usually TEACHER
+    
+    token = Column(String, unique=True, nullable=False, index=True)
+    
+    status = Column(Enum(InvitationStatus), default=InvitationStatus.PENDING, nullable=False)
+    
+    invited_by_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+    responded_at = Column(DateTime(timezone=True), nullable=True)
+
+    # Relationships
+    invited_by = relationship("User", foreign_keys=[invited_by_id])

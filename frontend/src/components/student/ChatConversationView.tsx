@@ -68,6 +68,15 @@ export function ChatConversationView({
     }
   }, [messages.length, isLoading])
 
+  // Auto-focus input after assistant replies
+  useEffect(() => {
+    if (isLoading) return
+    const last = messages[messages.length - 1]
+    if (last && last.role === 'assistant') {
+      inputRef.current?.focus()
+    }
+  }, [messages, isLoading])
+
   // Handle send
   const handleSend = useCallback(() => {
     if ((!input.trim() && attachedFiles.length === 0) || isLoading) return

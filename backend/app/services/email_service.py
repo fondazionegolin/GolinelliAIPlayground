@@ -132,5 +132,55 @@ Se non hai richiesto questo account, puoi ignorare questa email.
         
         return await self.send_email(to_email, subject, html_content, text_content)
 
+    async def send_invitation_email(
+        self,
+        to_email: str,
+        token: str,
+        first_name: Optional[str] = None,
+    ) -> bool:
+        """Send platform invitation email"""
+        link = f"{settings.FRONTEND_URL}/invite?token={token}"
+        name = first_name or "Docente"
+        subject = "👋 Sei stato invitato su EduAI Platform"
+        
+        html_content = f"""
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+</head>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
+    <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 30px; border-radius: 10px 10px 0 0; text-align: center;">
+        <h1 style="color: white; margin: 0; font-size: 28px;">🎓 EduAI Platform</h1>
+    </div>
+    
+    <div style="background: #ffffff; padding: 30px; border: 1px solid #e0e0e0; border-top: none; border-radius: 0 0 10px 10px;">
+        <h2 style="color: #333; margin-top: 0;">Ciao, {name}!</h2>
+        
+        <p>Sei stato invitato a unirti alla piattaforma <strong>EduAI</strong> come docente.</p>
+        
+        <p>Per accettare l'invito e configurare il tuo account, clicca sul pulsante qui sotto:</p>
+        
+        <div style="text-align: center; margin: 30px 0;">
+            <a href="{link}" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 15px 30px; text-decoration: none; border-radius: 8px; font-weight: bold; display: inline-block; font-size: 16px;">
+                Accetta invito
+            </a>
+        </div>
+        
+        <p style="color: #666; font-size: 14px;">
+            <strong>⚠️ Questo link scadrà tra 7 giorni.</strong>
+        </p>
+        
+        <p style="color: #999; font-size: 12px; text-align: center; margin-top: 30px;">
+            Questa email è stata inviata automaticamente da EduAI Platform.
+        </p>
+    </div>
+</body>
+</html>
+"""
+        text_content = f"Ciao {name},\n\nSei stato invitato su EduAI Platform.\nPer accettare, visita: {link}\n\nIl link scade tra 7 giorni."
+        
+        return await self.send_email(to_email, subject, html_content, text_content)
+
 
 email_service = EmailService()

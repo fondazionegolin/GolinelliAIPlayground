@@ -197,7 +197,7 @@ export default function SessionLivePage() {
 
   return (
     <>
-      <div className="pt-16 min-h-screen bg-slate-50">
+      <div className="min-h-screen">
         {/* Modern Unified Header */}
         <div className="bg-indigo-600 text-white shadow-lg">
           <div className="max-w-7xl mx-auto px-4 py-3">

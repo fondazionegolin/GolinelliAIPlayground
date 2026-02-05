@@ -8,6 +8,7 @@ from uuid import UUID, uuid4
 from app.core.database import get_db
 from app.core.config import settings
 from app.api.deps import get_student_or_teacher, StudentOrTeacher
+from app.core.permissions import teacher_can_access_session
 from app.models.file import File
 from app.models.enums import OwnerType, Scope
 from app.schemas.file import (
@@ -163,6 +164,9 @@ async def list_session_files(
     if auth.is_student:
         if auth.student.session_id != session_id:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
+    else:
+        if not await teacher_can_access_session(db, auth.teacher, session_id):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
     
     result = await db.execute(
         select(File)
@@ -178,7 +182,7 @@ async def list_session_files(
             "filename": f.filename,
             "mime_type": f.mime_type,
             "size_bytes": f.size_bytes,
-            "url": f"/uploads/chat/{f.storage_key.split('/')[-1]}" if "chat/" in f.storage_key else f"/api/v1/files/{f.id}/download-url",
+            "url": f"/uploads/{f.storage_key}" if "chat/" in f.storage_key else f"/api/v1/files/{f.id}/download-url",
             "created_at": f.created_at.isoformat(),
             "owner_type": f.owner_type.value,
         }

@@ -1,0 +1,321 @@
+from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, func, desc, or_, and_
+from typing import Annotated, List, Optional
+from datetime import datetime, timedelta
+import uuid
+import csv
+import io
+import secrets
+
+from app.core.database import get_db
+from app.api.deps import get_current_admin
+from app.services.email_service import email_service
+from app.models.user import User
+from app.models.invitation import PlatformInvitation
+from app.models.credits import CreditLimit, CreditTransaction, CreditRequest
+from app.models.enums import LimitLevel, CreditRequestStatus, InvitationStatus, CreditTransactionType, UserRole
+from app.schemas.credits import (
+    CreditLimitResponse, CreditLimitUpdate, CreditLimitBase,
+    CreditTransactionResponse, ConsumptionStats,
+    CreditRequestResponse, CreditRequestReview,
+    PlatformInvitationCreate, PlatformInvitationResponse
+)
+
+router = APIRouter()
+
+# ==================== ANALYTICS ====================
+
+@router.get("/stats", response_model=ConsumptionStats)
+async def get_consumption_stats(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    admin: Annotated[User, Depends(get_current_admin)],
+    start_date: Optional[datetime] = None,
+    end_date: Optional[datetime] = None,
+):
+    """Get consumption analytics"""
+    conditions = [CreditTransaction.tenant_id == admin.tenant_id]
+    if start_date:
+        conditions.append(CreditTransaction.timestamp >= start_date)
+    if end_date:
+        conditions.append(CreditTransaction.timestamp <= end_date)
+        
+    # Total Cost
+    stmt = select(func.sum(CreditTransaction.cost)).where(*conditions)
+    total_cost = (await db.execute(stmt)).scalar() or 0.0
+    
+    # Provider Breakdown
+    stmt = select(CreditTransaction.provider, func.sum(CreditTransaction.cost)).where(*conditions).group_by(CreditTransaction.provider)
+    rows = (await db.execute(stmt)).all()
+    provider_breakdown = {r[0] or "unknown": r[1] for r in rows}
+    
+    # Model Breakdown
+    stmt = select(CreditTransaction.model, func.sum(CreditTransaction.cost)).where(*conditions).group_by(CreditTransaction.model)
+    rows = (await db.execute(stmt)).all()
+    model_breakdown = {r[0] or "unknown": r[1] for r in rows}
+    
+    # Daily Usage
+    # This is postgres specific date truncation
+    stmt = select(
+        func.date_trunc('day', CreditTransaction.timestamp).label('day'),
+        func.sum(CreditTransaction.cost)
+    ).where(*conditions).group_by('day').order_by('day')
+    rows = (await db.execute(stmt)).all()
+    daily_usage = [{"date": r[0].isoformat(), "cost": r[1]} for r in rows]
+    
+    return ConsumptionStats(
+        total_cost=total_cost,
+        provider_breakdown=provider_breakdown,
+        model_breakdown=model_breakdown,
+        daily_usage=daily_usage
+    )
+
+# ==================== LIMITS ====================
+
+@router.get("/limits", response_model=List[CreditLimitResponse])
+async def list_limits(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    admin: Annotated[User, Depends(get_current_admin)],
+    level: Optional[LimitLevel] = None,
+):
+    """List credit limits"""
+    stmt = select(CreditLimit).where(CreditLimit.tenant_id == admin.tenant_id)
+    if level:
+        stmt = stmt.where(CreditLimit.level == level)
+    stmt = stmt.order_by(CreditLimit.level, CreditLimit.id)
+    
+    result = await db.execute(stmt)
+    return result.scalars().all()
+
+@router.put("/limits/{limit_id}", response_model=CreditLimitResponse)
+async def update_limit(
+    limit_id: uuid.UUID,
+    update: CreditLimitUpdate,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    admin: Annotated[User, Depends(get_current_admin)],
+):
+    """Update a specific limit"""
+    stmt = select(CreditLimit).where(CreditLimit.id == limit_id, CreditLimit.tenant_id == admin.tenant_id)
+    limit = (await db.execute(stmt)).scalar_one_or_none()
+    
+    if not limit:
+        raise HTTPException(status_code=404, detail="Limit not found")
+        
+    limit.amount_cap = update.amount_cap
+    if update.reset_frequency:
+        limit.reset_frequency = update.reset_frequency
+    
+    limit.last_updated = datetime.utcnow()
+    await db.commit()
+    await db.refresh(limit)
+    return limit
+
+@router.post("/limits", response_model=CreditLimitResponse)
+async def create_global_limit(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    admin: Annotated[User, Depends(get_current_admin)],
+    amount_cap: float = Query(..., gt=0),
+):
+    """Create or update the GLOBAL limit (convenience endpoint)"""
+    stmt = select(CreditLimit).where(CreditLimit.tenant_id == admin.tenant_id, CreditLimit.level == LimitLevel.GLOBAL)
+    limit = (await db.execute(stmt)).scalar_one_or_none()
+    
+    if limit:
+        limit.amount_cap = amount_cap
+    else:
+        limit = CreditLimit(
+            tenant_id=admin.tenant_id,
+            level=LimitLevel.GLOBAL,
+            amount_cap=amount_cap,
+            reset_frequency="MONTHLY",
+            period_start=datetime.utcnow()
+        )
+        db.add(limit)
+    
+    await db.commit()
+    await db.refresh(limit)
+    return limit
+
+# ==================== REQUESTS ====================
+
+@router.get("/requests", response_model=List[CreditRequestResponse])
+async def list_credit_requests(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    admin: Annotated[User, Depends(get_current_admin)],
+    status: Optional[CreditRequestStatus] = None,
+):
+    """List credit requests"""
+    stmt = select(CreditRequest).where(CreditRequest.tenant_id == admin.tenant_id)
+    if status:
+        stmt = stmt.where(CreditRequest.status == status)
+    stmt = stmt.order_by(desc(CreditRequest.created_at))
+    
+    result = await db.execute(stmt)
+    return result.scalars().all()
+
+@router.post("/requests/{request_id}/review", response_model=CreditRequestResponse)
+async def review_credit_request(
+    request_id: uuid.UUID,
+    review: CreditRequestReview,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    admin: Annotated[User, Depends(get_current_admin)],
+):
+    """Approve or reject a credit request"""
+    stmt = select(CreditRequest).where(CreditRequest.id == request_id, CreditRequest.tenant_id == admin.tenant_id)
+    req = (await db.execute(stmt)).scalar_one_or_none()
+    
+    if not req:
+        raise HTTPException(status_code=404, detail="Request not found")
+    
+    if req.status != CreditRequestStatus.PENDING:
+        raise HTTPException(status_code=400, detail="Request already reviewed")
+    
+    req.status = review.status
+    req.admin_notes = review.admin_notes
+    req.reviewed_by_id = admin.id
+    req.reviewed_at = datetime.utcnow()
+    
+    if review.status == CreditRequestStatus.APPROVED:
+        # If approved, we should ideally increase the teacher's limit or allocate credits
+        # For now, we assume this is a manual process or we automate it here
+        # Let's find the teacher's limit
+        stmt = select(CreditLimit).where(
+            CreditLimit.teacher_id == req.requester_id, 
+            CreditLimit.level == LimitLevel.TEACHER
+        )
+        limit = (await db.execute(stmt)).scalar_one_or_none()
+        if limit:
+            limit.amount_cap += req.amount_requested
+            # Also reset usage if they were blocked? Or just increasing cap is enough.
+        else:
+            # Create limit if missing
+             limit = CreditLimit(
+                tenant_id=req.tenant_id,
+                level=LimitLevel.TEACHER,
+                teacher_id=req.requester_id,
+                amount_cap=req.amount_requested, # Start with requested amount? Or base + requested
+                reset_frequency="MONTHLY",
+                period_start=datetime.utcnow()
+            )
+             db.add(limit)
+        
+        # Log allocation transaction
+        tx = CreditTransaction(
+            tenant_id=req.tenant_id,
+            transaction_type=CreditTransactionType.ALLOCATION,
+            cost=-req.amount_requested, # Negative cost = credit? Or just log amount. Cost usually positive for expense.
+            # If cost is expense, then allocation is... weird. 
+            # Let's say cost is strictly expense. 
+            # We don't store "balance", we store "usage" vs "cap".
+            # So Request is just to increase Cap.
+            # We don't need a transaction for increasing cap, but audit is good.
+            usage_details={"request_id": str(req.id), "notes": "Credit Request Approved"},
+            teacher_id=req.requester_id
+        )
+        db.add(tx)
+
+    await db.commit()
+    await db.refresh(req)
+    return req
+
+# ==================== INVITATIONS ====================
+
+@router.post("/invitations", response_model=PlatformInvitationResponse)
+async def invite_teacher(
+    invitation: PlatformInvitationCreate,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    admin: Annotated[User, Depends(get_current_admin)],
+):
+    """Invite a new teacher via email"""
+    # Check if user already exists
+    stmt = select(User).where(User.email == invitation.email)
+    existing_user = (await db.execute(stmt)).scalar_one_or_none()
+    if existing_user:
+        raise HTTPException(status_code=400, detail="User with this email already exists")
+    
+    # Check if invitation already exists
+    stmt = select(PlatformInvitation).where(PlatformInvitation.email == invitation.email, PlatformInvitation.status == InvitationStatus.PENDING)
+    existing_inv = (await db.execute(stmt)).scalar_one_or_none()
+    if existing_inv:
+        raise HTTPException(status_code=400, detail="Invitation already pending")
+    
+    token = secrets.token_urlsafe(32)
+    inv = PlatformInvitation(
+        tenant_id=admin.tenant_id,
+        email=invitation.email,
+        first_name=invitation.first_name,
+        last_name=invitation.last_name,
+        school=invitation.school,
+        role="TEACHER",
+        token=token,
+        status=InvitationStatus.PENDING,
+        invited_by_id=admin.id,
+        expires_at=datetime.utcnow() + timedelta(days=7)
+    )
+    db.add(inv)
+    await db.commit()
+    await db.refresh(inv)
+    
+    await email_service.send_invitation_email(invitation.email, token, invitation.first_name)
+    
+    return inv
+
+@router.post("/invitations/bulk", response_model=List[PlatformInvitationResponse])
+async def bulk_invite_teachers(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    admin: Annotated[User, Depends(get_current_admin)],
+    file: UploadFile = File(...),
+):
+    """Bulk invite teachers via CSV (email, first_name, last_name, school)"""
+    content = await file.read()
+    text = content.decode("utf-8")
+    
+    csv_reader = csv.DictReader(io.StringIO(text))
+    invitations = []
+    
+    for row in csv_reader:
+        email = row.get("email")
+        if not email:
+            continue
+            
+        # Basic check
+        stmt = select(User).where(User.email == email)
+        if (await db.execute(stmt)).scalar_one_or_none():
+            continue # Skip existing
+            
+        token = secrets.token_urlsafe(32)
+        inv = PlatformInvitation(
+            tenant_id=admin.tenant_id,
+            email=email,
+            first_name=row.get("first_name"),
+            last_name=row.get("last_name"),
+            school=row.get("school"),
+            role="TEACHER",
+            token=token,
+            status=InvitationStatus.PENDING,
+            invited_by_id=admin.id,
+            expires_at=datetime.utcnow() + timedelta(days=7)
+        )
+        db.add(inv)
+        invitations.append(inv)
+    
+    if invitations:
+        await db.commit()
+        for inv in invitations:
+            await db.refresh(inv)
+            try:
+                await email_service.send_invitation_email(inv.email, inv.token, inv.first_name)
+            except Exception as e:
+                # logger.error(f"Failed to send email to {inv.email}: {e}")
+                pass
+            
+    return invitations
+
+@router.get("/invitations", response_model=List[PlatformInvitationResponse])
+async def list_invitations(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    admin: Annotated[User, Depends(get_current_admin)],
+):
+    stmt = select(PlatformInvitation).where(PlatformInvitation.tenant_id == admin.tenant_id).order_by(desc(PlatformInvitation.created_at))
+    result = await db.execute(stmt)
+    return result.scalars().all()

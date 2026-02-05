@@ -19,6 +19,7 @@ import { MobileHeader } from '@/components/student/MobileHeader'
 import { StudentNavbar } from '@/components/StudentNavbar'
 import { useMobile, useKeyboard } from '@/hooks/useMobile'
 import { useSwipeBack } from '@/hooks/useSwipeBack'
+import { AppBackground } from '@/components/ui/AppBackground'
 
 interface SessionInfo {
   session: {
@@ -120,7 +121,9 @@ export default function StudentDashboard() {
   const [openTaskId, setOpenTaskId] = useState<string | null>(null)
   const [pendingTasksCount, setPendingTasksCount] = useState(0)
   const [lastDocument] = useState<string | null>(null)
-  const [sidebarWidth, setSidebarWidth] = useState(320)
+  const [sidebarWidth, setSidebarWidth] = useState(380)
+  const [selectedTeacherbotId, setSelectedTeacherbotId] = useState<string | null>(null)
+  const [showSidebar, setShowSidebar] = useState(true)
 
   const { isMobile } = useMobile()
   const { isOpen: isKeyboardOpen } = useKeyboard()
@@ -131,6 +134,21 @@ export default function StudentDashboard() {
       setActiveModule(null)
     }
   }, [activeModule])
+
+  const handleTeacherbotNotificationClick = useCallback((notification: any) => {
+    try {
+      const data = typeof notification.notification_data === 'string'
+        ? JSON.parse(notification.notification_data)
+        : notification.notification_data
+      const teacherbotId = data?.teacherbot_id
+      if (teacherbotId) {
+        setSelectedTeacherbotId(teacherbotId)
+        setActiveModule('chatbot')
+      }
+    } catch {
+      // Ignore malformed notification data
+    }
+  }, [])
 
   const swipeState = useSwipeBack({
     onSwipeBack: handleSwipeBack,
@@ -213,7 +231,7 @@ export default function StudentDashboard() {
   const headerConfig = getHeaderConfig()
 
   return (
-    <div className="h-[100dvh] bg-slate-50 flex flex-col">
+    <AppBackground className="h-[100dvh] flex flex-col">
       {/* Desktop Navbar - hidden on mobile */}
       <div className="hidden md:block h-16 flex-shrink-0">
         <StudentNavbar
@@ -222,6 +240,8 @@ export default function StudentDashboard() {
           sessionTitle={sessionInfo.session.title}
           joinCode={sessionInfo.session.join_code}
           sessionId={sessionInfo.session.id}
+          showChatToggle={!showSidebar}
+          onShowChatSidebar={() => setShowSidebar(true)}
         />
       </div>
 
@@ -247,7 +267,7 @@ export default function StudentDashboard() {
       {/* Main Layout with Chat Sidebar */}
       <div className={`flex flex-1 overflow-hidden ${isMobile ? 'pt-14' : ''}`}>
         {/* Main Content Area */}
-        <main className={`flex-1 ${activeModule === 'chatbot' || activeModule === 'classe' ? 'overflow-hidden' : 'overflow-y-auto'}`}>
+        <main className={`flex-1 relative ${activeModule === 'chatbot' || activeModule === 'classe' ? 'overflow-hidden' : 'overflow-y-auto'}`}>
           <AnimatePresence mode="wait">
             <motion.div
               key={activeModule || 'home'}
@@ -286,6 +306,8 @@ export default function StudentDashboard() {
                     openTaskId={openTaskId}
                     studentId={sessionInfo.student.id}
                     studentName={sessionInfo.student.nickname}
+                    onTeacherbotNotificationClick={handleTeacherbotNotificationClick}
+                    selectedTeacherbotId={selectedTeacherbotId}
                   />
                 </div>
               )}
@@ -293,24 +315,26 @@ export default function StudentDashboard() {
           </AnimatePresence>
         </main>
 
-        {/* Chat Sidebar - Always visible on desktop */}
-        <div
-          className="hidden lg:block border-l border-slate-200 bg-white flex-shrink-0"
-          style={{ width: `${sidebarWidth}px`, height: '100%' }}
-        >
-          <ChatSidebar
-            sessionId={sessionInfo.session.id}
-            userType="student"
-            currentUserId={sessionInfo.student.id}
-            currentUserName={sessionInfo.student.nickname}
-            isPinned={true}
-            onPinToggle={() => { }}
-            onToggle={() => { }}
-            onWidthChange={setSidebarWidth}
-            initialWidth={sidebarWidth}
-            className="h-full w-full"
-          />
-        </div>
+        {showSidebar ? (
+          <div
+            className="hidden lg:block border-l border-slate-200 bg-white flex-shrink-0 relative"
+            style={{ width: `${sidebarWidth}px`, height: '100%' }}
+          >
+            <ChatSidebar
+              sessionId={sessionInfo.session.id}
+              userType="student"
+              currentUserId={sessionInfo.student.id}
+              currentUserName={sessionInfo.student.nickname}
+              isPinned={true}
+              onPinToggle={() => setShowSidebar(false)}
+              onToggle={() => { }}
+              onWidthChange={setSidebarWidth}
+              initialWidth={sidebarWidth}
+              className="h-full w-full"
+              onNotificationClick={handleTeacherbotNotificationClick}
+            />
+          </div>
+        ) : null}
       </div>
 
       {/* Mobile Bottom Navigation */}
@@ -319,7 +343,7 @@ export default function StudentDashboard() {
         onNavigate={setActiveModule}
         hidden={isKeyboardOpen}
       />
-    </div>
+    </AppBackground>
   )
 }
 
@@ -520,12 +544,14 @@ function HomeView({
   )
 }
 
-function ModuleView({ moduleKey, sessionId, openTaskId, studentId, studentName }: {
+function ModuleView({ moduleKey, sessionId, openTaskId, studentId, studentName, onTeacherbotNotificationClick, selectedTeacherbotId }: {
   moduleKey: string;
   sessionId: string;
   openTaskId?: string | null;
   studentId?: string;
   studentName?: string;
+  onTeacherbotNotificationClick?: (notification: any) => void;
+  selectedTeacherbotId?: string | null;
 }) {
   // Class chat module - full screen ChatSidebar
   if (moduleKey === 'classe' || moduleKey === 'chat') {
@@ -538,6 +564,7 @@ function ModuleView({ moduleKey, sessionId, openTaskId, studentId, studentName }
           currentUserName={studentName || 'Studente'}
           isMobileView={true}
           className="h-full"
+          onNotificationClick={onTeacherbotNotificationClick}
         />
       </div>
     )
@@ -545,8 +572,11 @@ function ModuleView({ moduleKey, sessionId, openTaskId, studentId, studentName }
 
   if (moduleKey === 'chatbot') {
     return (
-      <div className="h-[calc(100dvh-7rem)] md:h-auto flex flex-col">
-        <ChatbotModule sessionId={sessionId} />
+      <div className="h-[calc(100dvh-7rem)] md:h-full flex flex-col overflow-y-auto">
+        <ChatbotModule
+          sessionId={sessionId}
+          initialTeacherbotId={selectedTeacherbotId}
+        />
       </div>
     )
   }

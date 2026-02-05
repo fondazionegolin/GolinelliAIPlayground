@@ -241,8 +241,8 @@ export default function TeacherbotForm({ teacherbotId, onBack, onSaved }: Teache
   }
 
   return (
-    <div className="h-full flex flex-col">
-      <div className="flex items-center gap-4 mb-6">
+    <div className="h-full min-h-[600px] flex flex-col">
+      <div className="flex items-center gap-4 mb-4 flex-shrink-0">
         <Button variant="ghost" onClick={onBack} className="text-slate-600">
           <ArrowLeft className="h-4 w-4 mr-2" />
           Indietro
@@ -264,8 +264,9 @@ export default function TeacherbotForm({ teacherbotId, onBack, onSaved }: Teache
         )}
       </div>
 
-      <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto">
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <form onSubmit={handleSubmit} className="flex-1 flex flex-col min-h-0">
+        <div className="flex-1 overflow-y-auto pr-1">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Left Column - Basic Info */}
           <div className="space-y-6">
             <div className="bg-white rounded-xl border border-slate-200 p-5">
@@ -398,7 +399,7 @@ export default function TeacherbotForm({ teacherbotId, onBack, onSaved }: Teache
           </div>
 
           {/* Right Column - System Prompt */}
-          <div className="bg-white rounded-xl border border-slate-200 p-5 flex flex-col relative h-[600px] lg:h-auto">
+          <div className="bg-white rounded-xl border border-slate-200 p-5 flex flex-col relative h-[520px] lg:h-[640px]">
             <h3 className="font-semibold text-slate-800 mb-2">
               System Prompt <span className="text-red-500">*</span>
             </h3>
@@ -437,9 +438,10 @@ Il tuo obiettivo è:
             )}
           </div>
         </div>
+        </div>
 
         {/* Save Button */}
-        <div className="mt-6 flex justify-end gap-3 pb-8">
+        <div className="mt-4 pt-4 pb-4 flex justify-end gap-3 border-t border-slate-200 bg-white/95 backdrop-blur-sm sticky bottom-0">
           <Button type="button" variant="outline" onClick={onBack}>
             Annulla
           </Button>
