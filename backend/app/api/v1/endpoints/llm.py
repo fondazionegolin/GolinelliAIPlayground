@@ -30,6 +30,37 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+async def safe_track_usage(
+    db: AsyncSession,
+    tenant_id,
+    provider,
+    model,
+    cost,
+    metadata,
+    teacher_id=None,
+    class_id=None,
+    session_id=None,
+    student_id=None,
+    context: str = "",
+):
+    try:
+        await credit_service.track_usage(
+            db, tenant_id, provider, model, cost,
+            metadata,
+            teacher_id, class_id, session_id, student_id
+        )
+    except Exception:
+        logger.exception(
+            "Credit tracking failed%s tenant=%s provider=%s model=%s session=%s student=%s",
+            f" ({context})" if context else "",
+            tenant_id,
+            provider,
+            model,
+            session_id,
+            student_id,
+        )
+
+
 @router.get("/chatbot-profiles")
 async def list_chatbot_profiles():
     """Get all available chatbot profiles with their configurations"""
@@ -449,10 +480,11 @@ async def send_message(
             
             # TRACK IMAGE COST
             img_cost = credit_service.calculate_cost_for_model(provider, model, 0, 0, image_count=1)
-            await credit_service.track_usage(
-                db, student.tenant_id, provider, model, img_cost, 
+            await safe_track_usage(
+                db, student.tenant_id, provider, model, img_cost,
                 {"image_prompt": image_prompt, "size": image_size},
-                teacher_id=class_obj.teacher_id, class_id=class_obj.id, session_id=session_obj.id, student_id=student.id
+                teacher_id=class_obj.teacher_id, class_id=class_obj.id, session_id=session_obj.id, student_id=student.id,
+                context="image_generation"
             )
         except Exception as e:
             logger.error(f"Image generation error: {e}")
@@ -491,10 +523,11 @@ async def send_message(
                 
                 # Tracking for math agent (approximation)
                 txt_cost = credit_service.calculate_cost_for_model(provider, model, 1000, 500) # Estimate
-                await credit_service.track_usage(
-                    db, student.tenant_id, provider, model, txt_cost, 
+                await safe_track_usage(
+                    db, student.tenant_id, provider, model, txt_cost,
                     {"note": "math_agent_estimate"},
-                    teacher_id=class_obj.teacher_id, class_id=class_obj.id, session_id=session_obj.id, student_id=student.id
+                    teacher_id=class_obj.teacher_id, class_id=class_obj.id, session_id=session_obj.id, student_id=student.id,
+                    context="math_agent"
                 )
 
             except Exception as e:
@@ -518,10 +551,11 @@ async def send_message(
                 
                 # Track fallback
                 txt_cost = credit_service.calculate_cost_for_model(provider, model, token_usage["prompt_tokens"], token_usage["completion_tokens"])
-                await credit_service.track_usage(
-                    db, student.tenant_id, provider, model, txt_cost, 
+                await safe_track_usage(
+                    db, student.tenant_id, provider, model, txt_cost,
                     token_usage,
-                    teacher_id=class_obj.teacher_id, class_id=class_obj.id, session_id=session_obj.id, student_id=student.id
+                    teacher_id=class_obj.teacher_id, class_id=class_obj.id, session_id=session_obj.id, student_id=student.id,
+                    context="math_agent_fallback"
                 )
         else:
             # Call LLM service with conversation's preferred provider/model
@@ -549,10 +583,11 @@ async def send_message(
                     token_usage.get("prompt_tokens", 0), 
                     token_usage.get("completion_tokens", 0)
                 )
-                await credit_service.track_usage(
-                    db, student.tenant_id, provider, model, txt_cost, 
+                await safe_track_usage(
+                    db, student.tenant_id, provider, model, txt_cost,
                     token_usage,
-                    teacher_id=class_obj.teacher_id, class_id=class_obj.id, session_id=session_obj.id, student_id=student.id
+                    teacher_id=class_obj.teacher_id, class_id=class_obj.id, session_id=session_obj.id, student_id=student.id,
+                    context="llm_standard"
                 )
 
             except Exception as e:
@@ -631,22 +666,22 @@ async def generate_image(
     
     try:
         image_url = await llm_service.generate_image(prompt, provider=provider)
-        
-        # Track Usage
-        real_provider = "openai" if provider == "dall-e" else "flux"
-        real_model = "dall-e-3" if provider == "dall-e" else "flux-schnell"
-        cost = credit_service.calculate_cost_for_model(real_provider, real_model, 0, 0, image_count=1)
-        
-        await credit_service.track_usage(
-            db, tenant_id, real_provider, real_model, cost, 
-            {"prompt": prompt, "type": "direct_generation"},
-            teacher_id, class_id, session_id, student_id
-        )
-        
-        return {"image_url": image_url, "prompt": prompt, "provider": provider}
     except Exception as e:
         logger.error(f"Image generation error: {e}")
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+
+    # Track Usage (non-blocking)
+    real_provider = "openai" if provider == "dall-e" else "flux"
+    real_model = "dall-e-3" if provider == "dall-e" else "flux-schnell"
+    cost = credit_service.calculate_cost_for_model(real_provider, real_model, 0, 0, image_count=1)
+    await safe_track_usage(
+        db, tenant_id, real_provider, real_model, cost,
+        {"prompt": prompt, "type": "direct_generation"},
+        teacher_id, class_id, session_id, student_id,
+        context="generate_image"
+    )
+
+    return {"image_url": image_url, "prompt": prompt, "provider": provider}
 
 
 @router.post("/conversations/{conversation_id}/message-with-files")
@@ -750,10 +785,11 @@ async def send_message_with_files(
                     
                     # Track Vision Usage
                     v_cost = credit_service.calculate_cost_for_model("openai", vision_model, vision_response.prompt_tokens, vision_response.completion_tokens)
-                    await credit_service.track_usage(
+                    await safe_track_usage(
                         db, student.tenant_id, "openai", vision_model, v_cost,
                         {"type": "vision_analysis", "filename": filename},
-                        class_obj.teacher_id, class_obj.id, session_obj.id, student.id
+                        class_obj.teacher_id, class_obj.id, session_obj.id, student.id,
+                        context="vision_analysis"
                     )
 
             except Exception as e:
@@ -832,10 +868,11 @@ async def send_message_with_files(
         
         # Track Usage
         cost = credit_service.calculate_cost_for_model(provider, model, token_usage["prompt_tokens"], token_usage["completion_tokens"])
-        await credit_service.track_usage(
+        await safe_track_usage(
             db, student.tenant_id, provider, model, cost,
             token_usage,
-            class_obj.teacher_id, class_obj.id, session_obj.id, student.id
+            class_obj.teacher_id, class_obj.id, session_obj.id, student.id,
+            context="message_with_files"
         )
 
     except Exception as e:
