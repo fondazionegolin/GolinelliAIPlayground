@@ -115,10 +115,11 @@ export function StudentNavbar({
           <div className="flex items-center justify-between h-16">
             {/* Logo/Brand */}
             <div className="flex items-center gap-2 cursor-pointer" onClick={() => onNavigate?.(null)}>
-              <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-fuchsia-400 to-purple-500 flex items-center justify-center shadow-lg shadow-fuchsia-400/30">
-                <span className="text-white font-bold text-sm">G</span>
-              </div>
-              <span className="font-bold text-slate-900 text-lg tracking-tight hidden sm:inline">Golinelli<span className="text-fuchsia-600">AI</span></span>
+              <span className="font-semibold text-lg tracking-tight hidden sm:inline">
+                <span className="text-slate-700/70">GOLINELLI</span>
+                <span className="text-fuchsia-600">AI</span>
+                <span className="text-slate-700/70">playground</span>
+              </span>
             </div>
 
             {/* Mobile Menu Button - Hidden since MobileNav handles navigation */}
