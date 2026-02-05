@@ -139,6 +139,39 @@ export default function ChatbotModule({ sessionId, initialTeacherbotId, onInputF
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [isInputFocused, setIsInputFocused] = useState(false)
 
+  const isDarkColor = (color: string) => {
+    const hex = color.replace('#', '')
+    const bigint = parseInt(hex.length === 3 ? hex.split('').map((c) => c + c).join('') : hex, 16)
+    const r = (bigint >> 16) & 255
+    const g = (bigint >> 8) & 255
+    const b = bigint & 255
+    const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255
+    return luminance < 0.5
+  }
+
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(`studentChatBg:${sessionId}`)
+      if (stored) setChatBg(stored)
+    } catch (e) {
+      console.error('Failed to load chat background', e)
+    }
+  }, [sessionId])
+
+  useEffect(() => {
+    try {
+      if (chatBg) {
+        localStorage.setItem(`studentChatBg:${sessionId}`, chatBg)
+      } else {
+        localStorage.removeItem(`studentChatBg:${sessionId}`)
+      }
+    } catch (e) {
+      console.error('Failed to save chat background', e)
+    }
+  }, [chatBg, sessionId])
+
+  const chatBgIsDark = chatBg ? isDarkColor(chatBg) : false
+
   const baseBgSwatches = [
     { label: 'Slate scuro', color: '#0f172a' },
     { label: 'Grigio scuro', color: '#1f2937' },
@@ -1230,7 +1263,7 @@ export default function ChatbotModule({ sessionId, initialTeacherbotId, onInputF
         )}
 
         {/* Messages area */}
-        <div className="flex-1 overflow-y-auto overflow-x-hidden px-3 py-3 md:px-4 md:py-6 space-y-3 md:space-y-6" style={{ WebkitOverflowScrolling: 'touch', scrollBehavior: 'smooth' }}>
+        <div className={`flex-1 overflow-y-auto overflow-x-hidden px-3 py-3 md:px-4 md:py-6 space-y-3 md:space-y-6 ${chatBgIsDark ? 'text-white' : ''}`} style={{ WebkitOverflowScrolling: 'touch', scrollBehavior: 'smooth' }}>
           {messages.length === 0 ? (
             <div className="text-center py-12">
               <div className={`inline-flex items-center justify-center w-20 h-20 rounded-2xl ${selectedTeacherbot ? getTeacherbotColorClass(selectedTeacherbot.color) : 'bg-gradient-to-br from-[#4f46e5] to-[#818cf8]'} mb-6 shadow-lg`}>
@@ -1242,14 +1275,14 @@ export default function ChatbotModule({ sessionId, initialTeacherbotId, onInputF
                   <Bot className="h-10 w-10 text-white" />
                 )}
               </div>
-              <h3 className="font-bold text-xl text-slate-800 mb-2">Ciao! Sono {selectedTeacherbot ? selectedTeacherbot.name : currentProfile?.name}</h3>
-              <p className="text-slate-500 max-w-md mx-auto mb-8">{selectedTeacherbot ? '' : currentProfile?.description}</p>
+              <h3 className={`font-bold text-xl mb-2 ${chatBgIsDark ? 'text-white' : 'text-slate-800'}`}>Ciao! Sono {selectedTeacherbot ? selectedTeacherbot.name : currentProfile?.name}</h3>
+              <p className={`${chatBgIsDark ? 'text-white/70' : 'text-slate-500'} max-w-md mx-auto mb-8`}>{selectedTeacherbot ? '' : currentProfile?.description}</p>
               <div className="flex flex-wrap gap-2 justify-center max-w-lg mx-auto">
                 {currentProfile?.suggested_prompts && !selectedTeacherbot && currentProfile.suggested_prompts.map((suggestion) => (
                   <button
                     key={suggestion}
                     onClick={() => setInput(suggestion)}
-                    className="px-4 py-2 bg-white border border-slate-200 rounded-full text-sm text-slate-600 hover:bg-slate-50 hover:border-slate-300 transition-all shadow-sm"
+                    className={`px-4 py-2 rounded-full text-sm transition-all shadow-sm ${chatBgIsDark ? 'bg-white/10 border border-white/15 text-white hover:bg-white/15' : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 hover:border-slate-300'}`}
                   >
                     {suggestion}
                   </button>
@@ -1272,10 +1305,10 @@ export default function ChatbotModule({ sessionId, initialTeacherbotId, onInputF
                 )}
                 <div className={`max-w-[80%] rounded-2xl px-4 py-3 ${message.role === 'user'
                   ? 'bg-gradient-to-br from-[#4f46e5] to-[#818cf8] text-white rounded-br-md shadow-md'
-                  : 'bg-white border border-slate-100 shadow-sm rounded-bl-md'
+                  : `${chatBgIsDark ? 'bg-white/10 text-white border border-white/15' : 'bg-white border border-slate-100'} shadow-sm rounded-bl-md`
                   }`}>
                   {message.role === 'assistant' ? (
-                    <MessageContent content={message.content} onQuizSubmit={(answers) => setInput(answers)} />
+                    <MessageContent content={message.content} onQuizSubmit={(answers) => setInput(answers)} darkMode={chatBgIsDark} />
                   ) : (
                     <p className="text-sm whitespace-pre-wrap">{message.content}</p>
                   )}
@@ -1299,14 +1332,14 @@ export default function ChatbotModule({ sessionId, initialTeacherbotId, onInputF
                   <Bot className="h-5 w-5 text-white" />
                 )}
               </div>
-              <div className="bg-white border border-slate-100 shadow-sm rounded-2xl rounded-bl-md px-4 py-3">
+              <div className={`${chatBgIsDark ? 'bg-white/10 border border-white/15' : 'bg-white border border-slate-100'} shadow-sm rounded-2xl rounded-bl-md px-4 py-3`}>
                 <div className="flex items-center gap-2">
                   <div className="flex gap-1">
-                    <span className="w-2 h-2 bg-[#4f46e5] rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></span>
-                    <span className="w-2 h-2 bg-[#4f46e5] rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></span>
-                    <span className="w-2 h-2 bg-[#4f46e5] rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></span>
+                    <span className={`w-2 h-2 ${chatBgIsDark ? 'bg-white' : 'bg-[#4f46e5]'} rounded-full animate-bounce`} style={{ animationDelay: '0ms' }}></span>
+                    <span className={`w-2 h-2 ${chatBgIsDark ? 'bg-white' : 'bg-[#4f46e5]'} rounded-full animate-bounce`} style={{ animationDelay: '150ms' }}></span>
+                    <span className={`w-2 h-2 ${chatBgIsDark ? 'bg-white' : 'bg-[#4f46e5]'} rounded-full animate-bounce`} style={{ animationDelay: '300ms' }}></span>
                   </div>
-                  <span className="text-sm text-slate-400">Sto pensando...</span>
+                  <span className={`text-sm ${chatBgIsDark ? 'text-white/70' : 'text-slate-400'}`}>Sto pensando...</span>
                 </div>
               </div>
             </div>
@@ -1479,27 +1512,27 @@ function extractBase64Images(content: string): { cleanContent: string; images: s
   return { cleanContent: cleanContent.trim(), images }
 }
 
-function MessageContent({ content, onQuizSubmit }: { content: string; onQuizSubmit: (answers: string) => void }) {
+function MessageContent({ content, onQuizSubmit, darkMode = false }: { content: string; onQuizSubmit: (answers: string) => void; darkMode?: boolean }) {
   const { quiz, csv, textContent, isGenerating, generationType } = parseContentBlocks(content)
   const { cleanContent, images } = extractBase64Images(textContent)
 
   if (isGenerating) {
     return (
       <div className="flex flex-col items-center gap-3 py-4">
-        <div className="flex items-center gap-2 text-fuchsia-600">
-          <Loader2 className="h-5 w-5 animate-spin" />
-          <span className="font-medium">
+      <div className={`flex items-center gap-2 ${darkMode ? 'text-white' : 'text-fuchsia-600'}`}>
+        <Loader2 className="h-5 w-5 animate-spin" />
+        <span className="font-medium">
             {generationType === 'quiz' && 'Generazione quiz in corso...'}
             {generationType === 'image' && 'Generazione immagine in corso...'}
             {generationType === 'csv' && 'Generazione dataset in corso...'}
             {!generationType && 'Elaborazione in corso...'}
           </span>
         </div>
-        <div className="w-full max-w-xs bg-gray-200 rounded-full h-2 overflow-hidden">
-          <div className="bg-fuchsia-500 h-2 rounded-full animate-pulse" style={{ width: '60%' }}></div>
-        </div>
+      <div className={`w-full max-w-xs rounded-full h-2 overflow-hidden ${darkMode ? 'bg-white/10' : 'bg-gray-200'}`}>
+        <div className={`${darkMode ? 'bg-white/70' : 'bg-fuchsia-500'} h-2 rounded-full animate-pulse`} style={{ width: '60%' }}></div>
       </div>
-    )
+    </div>
+  )
   }
 
   const downloadCsv = (csvContent: string) => {
@@ -1515,7 +1548,7 @@ function MessageContent({ content, onQuizSubmit }: { content: string; onQuizSubm
   }
 
   return (
-    <div className="prose prose-sm prose-slate max-w-none">
+    <div className={`prose prose-sm max-w-none ${darkMode ? 'prose-invert text-white' : 'prose-slate'}`}>
       {cleanContent && (
         <ReactMarkdown
           remarkPlugins={[remarkGfm, remarkMath]}
@@ -1525,11 +1558,11 @@ function MessageContent({ content, onQuizSubmit }: { content: string; onQuizSubm
             code: ({ className, children, ...props }) => {
               const isInline = !className
               return isInline ? (
-                <code className="bg-slate-100 px-1.5 py-0.5 rounded text-fuchsia-600 text-xs font-mono" {...props}>
+                <code className={`${darkMode ? 'bg-white/10 text-white' : 'bg-slate-100 text-fuchsia-600'} px-1.5 py-0.5 rounded text-xs font-mono`} {...props}>
                   {children}
                 </code>
               ) : (
-                <code className="block bg-slate-900 text-slate-100 p-3 rounded-lg text-xs font-mono overflow-x-auto my-2" {...props}>
+                <code className={`block ${darkMode ? 'bg-white/10 text-white' : 'bg-slate-900 text-slate-100'} p-3 rounded-lg text-xs font-mono overflow-x-auto my-2`} {...props}>
                   {children}
                 </code>
               )
@@ -1537,12 +1570,12 @@ function MessageContent({ content, onQuizSubmit }: { content: string; onQuizSubm
             pre: ({ children }) => <>{children}</>,
             ul: ({ children }) => <ul className="list-disc pl-4 mb-2 space-y-1">{children}</ul>,
             ol: ({ children }) => <ol className="list-decimal pl-4 mb-2 space-y-1">{children}</ol>,
-            li: ({ children }) => <li className="text-sm">{children}</li>,
-            strong: ({ children }) => <strong className="font-semibold text-slate-800">{children}</strong>,
-            h1: ({ children }) => <h1 className="text-lg font-bold mb-2 text-slate-800">{children}</h1>,
-            h2: ({ children }) => <h2 className="text-base font-bold mb-2 text-slate-800">{children}</h2>,
-            h3: ({ children }) => <h3 className="text-sm font-bold mb-1 text-slate-800">{children}</h3>,
-            blockquote: ({ children }) => <blockquote className="border-l-4 border-fuchsia-300 pl-3 italic text-slate-600 my-2">{children}</blockquote>,
+            li: ({ children }) => <li className={`text-sm ${darkMode ? 'text-white' : ''}`}>{children}</li>,
+            strong: ({ children }) => <strong className={`font-semibold ${darkMode ? 'text-white' : 'text-slate-800'}`}>{children}</strong>,
+            h1: ({ children }) => <h1 className={`text-lg font-bold mb-2 ${darkMode ? 'text-white' : 'text-slate-800'}`}>{children}</h1>,
+            h2: ({ children }) => <h2 className={`text-base font-bold mb-2 ${darkMode ? 'text-white' : 'text-slate-800'}`}>{children}</h2>,
+            h3: ({ children }) => <h3 className={`text-sm font-bold mb-1 ${darkMode ? 'text-white' : 'text-slate-800'}`}>{children}</h3>,
+            blockquote: ({ children }) => <blockquote className={`border-l-4 ${darkMode ? 'border-white/30 text-white/80' : 'border-fuchsia-300 text-slate-600'} pl-3 italic my-2`}>{children}</blockquote>,
           }}
         >
           {cleanContent}

@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button'
 import {
   Send, Bot, Paperclip, X, Trash2, Plus, File, Image as ImageIcon, Loader2,
   Database, Download, ChevronDown, ChevronRight, Edit3, Check, MessageCircle, Sparkles,
-  Palette
+  Palette, FileText, CheckSquare, MessageSquare
 } from 'lucide-react'
 import { llmApi, teacherApi } from '@/lib/api'
 import { useToast } from '@/components/ui/use-toast'
@@ -210,6 +210,27 @@ export default function TeacherSupportChat() {
   }
 
   const chatBgIsDark = chatBg ? isDarkColor(chatBg) : false
+
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem('teacherChatBg')
+      if (stored) setChatBg(stored)
+    } catch (e) {
+      console.error('Failed to load chat background', e)
+    }
+  }, [])
+
+  useEffect(() => {
+    try {
+      if (chatBg) {
+        localStorage.setItem('teacherChatBg', chatBg)
+      } else {
+        localStorage.removeItem('teacherChatBg')
+      }
+    } catch (e) {
+      console.error('Failed to save chat background', e)
+    }
+  }, [chatBg])
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   // Publish Modal State
@@ -1353,19 +1374,32 @@ REGOLE IMPORTANTI:
                   <div className="p-4 bg-white border-t border-slate-200">
                     <div className="max-w-4xl mx-auto">
 
-                      <div className="flex gap-2 mb-3">
-                        {AGENT_MODES.map(m => (
-                          <button
-                            key={m.id}
-                            onClick={() => setAgentMode(m.id)}
-                            className={`text-xs px-4 py-1.5 rounded-full font-medium transition-all ${agentMode === m.id
-                              ? 'bg-[#4f46e5] text-white shadow-md shadow-indigo-200'
-                              : 'text-slate-500 hover:bg-slate-100'
-                              }`}
-                          >
-                            {m.label}
-                          </button>
-                        ))}
+                      <div className="flex gap-2 mb-3 flex-wrap">
+                        {AGENT_MODES.map(m => {
+                          const icon = m.id === 'default'
+                            ? <MessageSquare className="h-3.5 w-3.5" />
+                            : m.id === 'report'
+                              ? <FileText className="h-3.5 w-3.5" />
+                              : m.id === 'quiz'
+                                ? <CheckSquare className="h-3.5 w-3.5" />
+                                : m.id === 'image'
+                                  ? <ImageIcon className="h-3.5 w-3.5" />
+                                  : <Database className="h-3.5 w-3.5" />
+
+                          return (
+                            <button
+                              key={m.id}
+                              onClick={() => setAgentMode(m.id)}
+                              className={`text-xs px-4 py-1.5 rounded-full font-medium transition-all flex items-center gap-1.5 ${agentMode === m.id
+                                ? 'bg-[#4f46e5] text-white shadow-md shadow-indigo-200'
+                                : 'text-slate-500 hover:bg-slate-100'
+                                }`}
+                            >
+                              {icon}
+                              {m.label}
+                            </button>
+                          )
+                        })}
                       </div>
 
                       {attachedFiles.length > 0 && (
