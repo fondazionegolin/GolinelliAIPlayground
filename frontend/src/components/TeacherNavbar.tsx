@@ -260,10 +260,14 @@ export function TeacherNavbar({ currentSession, onSessionChange, showChatToggle 
           <div className="flex items-center justify-between h-16">
             {/* Logo/Brand */}
             <div className="flex items-center gap-2 cursor-pointer" onClick={() => navigate('/teacher')}>
-              <span className="font-semibold text-lg tracking-tight hidden sm:inline">
-                <span className="text-slate-700/70">GOLINELLI</span>
-                <span className="text-indigo-600">AI</span>
-                <span className="text-slate-700/70">playground</span>
+              <span className="hidden sm:inline font-semibold text-[15px] tracking-[0.12em] text-slate-700/80 uppercase">
+                Golinelli
+              </span>
+              <span className="hidden sm:inline px-2 py-0.5 rounded-full bg-[#fffcd1] text-[#7a3d00] text-[12px] font-semibold tracking-[0.14em] uppercase">
+                AI
+              </span>
+              <span className="hidden sm:inline font-semibold text-[15px] tracking-[0.12em] text-slate-700/80 lowercase">
+                playground
               </span>
             </div>
 
