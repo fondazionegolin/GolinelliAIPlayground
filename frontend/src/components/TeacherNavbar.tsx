@@ -261,14 +261,14 @@ export function TeacherNavbar({ currentSession, onSessionChange, showChatToggle 
             {/* Logo/Brand */}
             <div className="flex items-center gap-2 cursor-pointer" onClick={() => navigate('/teacher')}>
               <div className="hidden sm:flex flex-col leading-none">
-                <span className="font-semibold text-[14px] tracking-[0.18em] text-slate-700/80 uppercase">
+                <span className="font-extrabold text-[15px] tracking-[0.2em] text-slate-800/90 uppercase">
                   Golinelli
                 </span>
-                <span className="mt-1 inline-flex items-center gap-2">
-                  <span className="px-2 py-0.5 rounded-full bg-gradient-to-r from-[#fff2a8] to-[#ffd27a] text-[#7a3d00] text-[11px] font-semibold tracking-[0.18em] uppercase shadow-sm">
+                <span className="mt-1.5 inline-flex items-center gap-2">
+                  <span className="px-2.5 py-0.5 rounded-full bg-gradient-to-r from-[#ffb703] to-[#ffd166] text-[#3a1d00] text-[11px] font-extrabold tracking-[0.2em] uppercase shadow-md shadow-orange-300/60">
                     AI
                   </span>
-                  <span className="font-semibold text-[13px] tracking-[0.12em] text-slate-700/80 lowercase">
+                  <span className="font-bold text-[13px] tracking-[0.14em] text-slate-800/90 lowercase">
                     playground
                   </span>
                 </span>
