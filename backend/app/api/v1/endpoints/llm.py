@@ -1202,7 +1202,13 @@ async def teacher_chat_with_files(
     """Teacher chat endpoint with file upload support"""
     import json
     import base64
+    import asyncio
     
+    MAX_FILE_BYTES = 3 * 1024 * 1024  # 3 MB per file
+    MAX_TEXT_CHARS = 12000
+    MAX_PDF_PAGES = 5
+    MAX_TOTAL_CHARS = 20000
+
     # Parse history from JSON string
     try:
         parsed_history = json.loads(history)
@@ -1211,15 +1217,22 @@ async def teacher_chat_with_files(
     
     # Process uploaded files
     file_contents = []
+    total_chars = 0
     for file in files:
         file_data = await file.read()
         file_name = file.filename or "document"
         file_type = file.content_type or "application/octet-stream"
+
+        if len(file_data) > MAX_FILE_BYTES:
+            file_contents.append(f"\n[File troppo grande: {file_name} ({len(file_data)} bytes)]\n")
+            continue
         
         # For text files, extract content directly
         if file_type.startswith("text/") or file_name.endswith((".txt", ".md", ".csv", ".json")):
             try:
-                text_content = file_data.decode("utf-8")
+                text_content = file_data.decode("utf-8", errors="ignore")
+                if len(text_content) > MAX_TEXT_CHARS:
+                    text_content = text_content[:MAX_TEXT_CHARS] + "\n...[troncato]..."
                 file_contents.append(f"\n--- Contenuto di {file_name} ---\n{text_content}\n--- Fine {file_name} ---\n")
             except:
                 file_contents.append(f"\n[File {file_name} non leggibile come testo]\n")
@@ -1230,17 +1243,27 @@ async def teacher_chat_with_files(
                 from io import BytesIO
                 reader = PdfReader(BytesIO(file_data))
                 pdf_text = ""
-                for page in reader.pages:
+                for idx, page in enumerate(reader.pages):
+                    if idx >= MAX_PDF_PAGES:
+                        break
                     pdf_text += page.extract_text() or ""
+                    if len(pdf_text) > MAX_TEXT_CHARS:
+                        break
+                if len(pdf_text) > MAX_TEXT_CHARS:
+                    pdf_text = pdf_text[:MAX_TEXT_CHARS] + "\n...[troncato]..."
                 file_contents.append(f"\n--- Contenuto di {file_name} (PDF) ---\n{pdf_text}\n--- Fine {file_name} ---\n")
             except Exception as e:
                 file_contents.append(f"\n[Errore lettura PDF {file_name}: {str(e)}]\n")
         elif file_type.startswith("image/"):
-            # For images, encode as base64 for vision models
-            b64_image = base64.b64encode(file_data).decode("utf-8")
+            # Non inviamo base64: solo nota
             file_contents.append(f"\n[Immagine allegata: {file_name}]\n")
         else:
             file_contents.append(f"\n[File allegato: {file_name} ({file_type})]\n")
+
+        total_chars = sum(len(fc) for fc in file_contents)
+        if total_chars >= MAX_TOTAL_CHARS:
+            file_contents.append("\n[Allegati troncati per limiti di dimensione]\n")
+            break
     
     # Combine content with file contents
     full_content = content
@@ -1269,7 +1292,7 @@ async def teacher_chat_with_files(
             provider=provider,
             model=model,
             temperature=temperature,
-            max_tokens=4096,
+            max_tokens=2048,
         )
         
         return {
