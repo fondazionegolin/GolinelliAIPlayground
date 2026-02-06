@@ -3,7 +3,7 @@ import {
   Bold, Italic, Underline, Strikethrough,
   AlignLeft, AlignCenter, AlignRight, AlignJustify,
   List, ListOrdered, Undo, Redo, Image as ImageIcon, Link as LinkIcon,
-  Heading1, Heading2, Pilcrow, Type, Plus, Minus, ZoomIn, ZoomOut, Sparkles
+  Heading1, Heading2, Pilcrow, Type, Plus, Minus, ZoomIn, ZoomOut, Sparkles, Rows3
 } from 'lucide-react'
 import { Button } from './ui/button'
 import { Editor } from '@tiptap/react'
@@ -25,6 +25,8 @@ interface UnifiedToolbarProps {
   onUpdateBlockStyle?: (key: string, value: any) => void
   onOpenAIAssist?: (position: { x: number; y: number }) => void
   onAIAssistAnchorChange?: (position: { x: number; y: number }) => void
+  showRuledLines?: boolean
+  onToggleRuledLines?: () => void
 }
 
 const FONTS = [
@@ -43,7 +45,9 @@ export function UnifiedToolbar({
   selectedBlock,
   onUpdateBlockStyle,
   onOpenAIAssist,
-  onAIAssistAnchorChange
+  onAIAssistAnchorChange,
+  showRuledLines = false,
+  onToggleRuledLines
 }: UnifiedToolbarProps) {
   const [showImageModal, setShowImageModal] = useState(false)
   const aiAssistButtonRef = useRef<HTMLButtonElement | null>(null)
@@ -206,6 +210,15 @@ export function UnifiedToolbar({
 
           {/* Document Zoom */}
           <div className="flex items-center gap-0.5 border-l pl-2 ml-1 border-slate-300">
+            <Button
+              size="icon"
+              variant="ghost"
+              className={`h-8 w-8 ${showRuledLines ? 'bg-slate-200 text-slate-900' : 'text-slate-500'}`}
+              onClick={onToggleRuledLines}
+              title="Mostra/Nascondi righe del foglio"
+            >
+              <Rows3 className="h-4 w-4" />
+            </Button>
             <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => setDocScale?.(Math.max(0.5, docScale - 0.1))}>
               <ZoomOut className="h-4 w-4" />
             </Button>

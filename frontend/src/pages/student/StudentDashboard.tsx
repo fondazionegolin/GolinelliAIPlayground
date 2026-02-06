@@ -291,7 +291,7 @@ export default function StudentDashboard() {
               animate="animate"
               exit="exit"
               transition={{ duration: 0.2, ease: 'easeInOut' }}
-              className={`${activeModule === 'chatbot' || activeModule === 'classe' ? 'p-0 md:p-6 h-full' : 'p-4 md:p-6'}`}
+              className={`${activeModule === 'chatbot' || activeModule === 'classe' || activeModule === 'documents' ? 'p-0 md:p-6 h-full' : 'p-4 md:p-6'}`}
               style={swipeState.isActive ? { transform: `translateX(${swipeState.x}px)` } : undefined}
             >
               {!activeModule ? (
@@ -305,7 +305,7 @@ export default function StudentDashboard() {
                 />
               ) : (
                 <div className="h-full flex flex-col">
-                  <div className={`mb-4 ${activeModule === 'chatbot' || activeModule === 'classe' ? 'hidden md:block' : ''}`}>
+                  <div className={`mb-4 ${activeModule === 'chatbot' || activeModule === 'classe' || activeModule === 'documents' ? 'hidden md:block' : ''}`}>
                     <Button
                       variant="ghost"
                       className="gap-2 pl-0 hover:bg-transparent text-slate-600"
@@ -620,7 +620,7 @@ function ModuleView({ moduleKey, sessionId, openTaskId, studentId, studentName, 
 
   if (moduleKey === 'documents') {
     return (
-      <div className="pb-20 md:pb-4">
+      <div className="h-[calc(100dvh-7rem)] md:h-full">
         <StudentDocumentsModule sessionId={sessionId} />
       </div>
     )

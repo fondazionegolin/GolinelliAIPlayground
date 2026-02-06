@@ -92,6 +92,7 @@ export default function StudentDocumentsModule({ sessionId: _sessionId }: Studen
   const [scale, setScale] = useState(1)
   const [docScale, setDocScale] = useState(1)
   const [docMargins, setDocMargins] = useState({ vertical: 56, horizontal: 56 })
+  const [showRuledLines, setShowRuledLines] = useState(false)
   const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null)
 
   // Refs
@@ -183,13 +184,6 @@ export default function StudentDocumentsModule({ sessionId: _sessionId }: Studen
   const handleTitleChange = (value: string) => {
     setDocument(d => ({ ...d, title: value }))
     upsertDraft(value)
-  }
-
-  const adjustMargins = (axis: 'horizontal' | 'vertical', delta: number) => {
-    setDocMargins(prev => ({
-      ...prev,
-      [axis]: Math.max(16, Math.min(160, prev[axis] + delta))
-    }))
   }
 
   useEffect(() => {
@@ -422,7 +416,7 @@ export default function StudentDocumentsModule({ sessionId: _sessionId }: Studen
 
   return (
     <>
-      <div className="h-[calc(100vh-120px)] flex flex-col bg-slate-100 overflow-hidden rounded-xl border shadow-sm">
+      <div className="h-full flex flex-col bg-slate-100 overflow-hidden">
 
         {/* Header / Meta-Toolbar */}
         <div className="h-14 bg-white border-b flex items-center justify-between px-4 z-20 shadow-sm shrink-0">
@@ -478,6 +472,8 @@ export default function StudentDocumentsModule({ sessionId: _sessionId }: Studen
           editor={editor}
           docScale={docScale}
           setDocScale={setDocScale}
+          showRuledLines={showRuledLines}
+          onToggleRuledLines={() => setShowRuledLines(v => !v)}
           scale={scale}
           setScale={setScale}
           onAddSlideBlock={addSlideBlock}
@@ -560,14 +556,14 @@ export default function StudentDocumentsModule({ sessionId: _sessionId }: Studen
           </div>
 
           {/* Main Area */}
-          <div className="flex-1 bg-slate-100 flex items-start justify-center p-8 relative overflow-y-auto"
+          <div className="flex-1 bg-slate-100 flex items-start justify-center p-4 md:p-6 relative overflow-y-auto"
                onClick={() => setSelectedBlockId(null)}
           >
 
              {/* MODE: DOCUMENT */}
              {mode === 'document' && (
                <div
-                 className="mb-20 print:shadow-none flex flex-col relative transition-all"
+                 className="mb-20 print:shadow-none flex flex-col relative transition-all overflow-hidden"
                  style={{
                    width: FORMAT_DIMENSIONS.a4.width,
                    minHeight: FORMAT_DIMENSIONS.a4.height,
@@ -578,49 +574,39 @@ export default function StudentDocumentsModule({ sessionId: _sessionId }: Studen
                    padding: `${docMargins.vertical}px ${docMargins.horizontal}px`
                  }}
                >
+                  {/* Top guides for lateral margins */}
+                  <div className="pointer-events-none absolute top-3 left-0 right-0 z-10">
+                    <div className="relative h-4">
+                      <div
+                        className="absolute top-2 border-t border-slate-300"
+                        style={{ left: docMargins.horizontal, right: docMargins.horizontal }}
+                      />
+                      <div
+                        className="absolute top-0 h-4 border-l border-slate-400"
+                        style={{ left: docMargins.horizontal }}
+                      />
+                      <div
+                        className="absolute top-0 h-4 border-l border-slate-400"
+                        style={{ right: docMargins.horizontal }}
+                      />
+                    </div>
+                  </div>
 
-                  {/* Rulers */}
-                  <div className="absolute -top-8 left-0 right-0 flex justify-center">
-                    <div className="flex items-center gap-2 bg-white/90 border border-slate-200 rounded-full px-3 py-1 shadow-sm">
-                      <button
-                        className="h-6 w-6 rounded-full hover:bg-slate-100 text-slate-600"
-                        onClick={() => adjustMargins('horizontal', -8)}
-                        title="Riduci margine orizzontale"
-                      >
-                        −
-                      </button>
-                      <span className="text-[10px] uppercase tracking-wide text-slate-500">Orizz</span>
-                      <button
-                        className="h-6 w-6 rounded-full hover:bg-slate-100 text-slate-600"
-                        onClick={() => adjustMargins('horizontal', 8)}
-                        title="Aumenta margine orizzontale"
-                      >
-                        +
-                      </button>
-                    </div>
-                  </div>
-                  <div className="absolute top-0 -left-8 bottom-0 flex items-center">
-                    <div className="flex flex-col items-center gap-2 bg-white/90 border border-slate-200 rounded-full px-1 py-3 shadow-sm">
-                      <button
-                        className="h-6 w-6 rounded-full hover:bg-slate-100 text-slate-600"
-                        onClick={() => adjustMargins('vertical', -8)}
-                        title="Riduci margine verticale"
-                      >
-                        −
-                      </button>
-                      <span className="text-[10px] uppercase tracking-wide text-slate-500 [writing-mode:vertical-rl] rotate-180">Vert</span>
-                      <button
-                        className="h-6 w-6 rounded-full hover:bg-slate-100 text-slate-600"
-                        onClick={() => adjustMargins('vertical', 8)}
-                        title="Aumenta margine verticale"
-                      >
-                        +
-                      </button>
-                    </div>
-                  </div>
+                  {showRuledLines && (
+                    <div
+                      className="pointer-events-none absolute z-0"
+                      style={{
+                        top: docMargins.vertical,
+                        right: docMargins.horizontal,
+                        bottom: docMargins.vertical,
+                        left: docMargins.horizontal,
+                        backgroundImage: 'repeating-linear-gradient(to bottom, transparent 0, transparent 27px, rgba(148, 163, 184, 0.35) 27px, rgba(148, 163, 184, 0.35) 28px)'
+                      }}
+                    />
+                  )}
 
                   {/* Visual Header Section */}
-                  <div className="pb-4 flex items-center gap-6 border-b border-transparent hover:border-slate-100 transition-colors group/header">
+                  <div className="pb-4 flex items-center gap-6 border-b border-transparent hover:border-slate-100 transition-colors group/header relative z-10">
                     {/* Logo Area */}
                     <div className="w-20 h-20 bg-slate-50 rounded-lg flex items-center justify-center cursor-pointer hover:bg-slate-100 relative overflow-hidden group/logo border border-dashed border-slate-300 hover:border-indigo-400 transition-colors">
                       {document.header?.logoUrl ? (
@@ -656,7 +642,7 @@ export default function StudentDocumentsModule({ sessionId: _sessionId }: Studen
                     </div>
                   </div>
 
-                  <div className="flex-1 flex flex-col">
+                  <div className="flex-1 flex flex-col relative z-10">
                     <RichTextEditor
                       content={document.textContent || ''}
                       onChange={(html) => setDocument(d => ({ ...d, textContent: html }))}
