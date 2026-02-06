@@ -274,8 +274,8 @@ export function TeacherNavbar({ currentSession, onSessionChange, showChatToggle 
               {navItems.map((item) => (
                 <Link key={item.path} to={item.path}>
                   <button
-                    className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-200 ${isActive(item.path)
-                      ? 'bg-indigo-600 text-white shadow-md shadow-indigo-200'
+                    className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-[12px] font-semibold transition-all duration-200 ${isActive(item.path)
+                      ? 'bg-indigo-600 text-white shadow-md shadow-indigo-200 font-bold'
                       : 'text-slate-600 hover:bg-indigo-100/50 hover:text-indigo-700'
                       }`}
                   >

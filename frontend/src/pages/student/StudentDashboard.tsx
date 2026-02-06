@@ -199,6 +199,17 @@ export default function StudentDashboard() {
     return () => clearInterval(interval)
   }, [studentSession, navigate, logout, location.search])
 
+  useEffect(() => {
+    const handleResize = () => {
+      if (window.innerWidth < 1100) {
+        setShowSidebar(false)
+      }
+    }
+    handleResize()
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
+  }, [])
+
   // Get header config based on active module
   const getHeaderConfig = () => {
     if (!activeModule) {

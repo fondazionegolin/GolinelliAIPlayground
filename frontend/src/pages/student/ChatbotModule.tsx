@@ -186,6 +186,17 @@ export default function ChatbotModule({ sessionId, initialTeacherbotId, onInputF
     }
   }, [chatBg, sessionId])
 
+  useEffect(() => {
+    const handleResize = () => {
+      if (window.innerWidth < 1200) {
+        setShowHistory(false)
+      }
+    }
+    handleResize()
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
+  }, [])
+
   const handleSetDefaultChatBg = (color: string) => {
     try {
       localStorage.setItem('studentChatBgDefault', color)

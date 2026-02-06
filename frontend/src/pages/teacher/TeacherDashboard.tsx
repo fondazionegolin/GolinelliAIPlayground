@@ -89,6 +89,17 @@ export default function TeacherDashboard() {
     loadProfile()
   }, [])
 
+  useEffect(() => {
+    const handleResize = () => {
+      if (window.innerWidth < 1100) {
+        setShowSidebar(false)
+      }
+    }
+    handleResize()
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
+  }, [])
+
   return (
     <AppBackground className="h-screen flex flex-col overflow-hidden">
       <TeacherNavbar

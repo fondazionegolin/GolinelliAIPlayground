@@ -143,8 +143,8 @@ export function StudentNavbar({
                   <button
                     key={item.label}
                     onClick={() => onNavigate(item.key)}
-                    className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-200 ${activeModule === item.key
-                        ? 'bg-fuchsia-500 text-white shadow-md shadow-fuchsia-200'
+                    className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-[12px] font-semibold transition-all duration-200 ${activeModule === item.key
+                        ? 'bg-fuchsia-500 text-white shadow-md shadow-fuchsia-200 font-bold'
                         : 'text-slate-600 hover:bg-fuchsia-200/50 hover:text-fuchsia-700'
                       }`}
                   >

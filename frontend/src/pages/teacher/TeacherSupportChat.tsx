@@ -239,6 +239,17 @@ export default function TeacherSupportChat() {
     }
   }, [chatBg])
 
+  useEffect(() => {
+    const handleResize = () => {
+      if (window.innerWidth < 1200) {
+        setIsSidebarCollapsed(true)
+      }
+    }
+    handleResize()
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
+  }, [])
+
   const handleSetDefaultChatBg = (color: string) => {
     try {
       localStorage.setItem('teacherChatBgDefault', color)
