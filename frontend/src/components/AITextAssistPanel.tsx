@@ -133,7 +133,9 @@ Testo da trasformare:
 ${selectedText}
 """
 
-Rispondi SOLO con il testo trasformato, senza introduzioni.`
+${/converti in formula|formula|latex/i.test(customInstruction)
+  ? 'Se l\'istruzione richiede una formula, rispondi SOLO con LaTeX valido racchiuso tra $...$ (o $$...$$ se necessario), senza altro testo.'
+  : 'Rispondi SOLO con il testo trasformato, senza introduzioni.'}`
         break
     }
 

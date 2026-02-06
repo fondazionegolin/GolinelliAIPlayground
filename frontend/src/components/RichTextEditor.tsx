@@ -9,6 +9,8 @@ import { Color } from '@tiptap/extension-color'
 import FontFamily from '@tiptap/extension-font-family'
 import { useEffect, useState, useCallback } from 'react'
 import { AITextAssistPanel } from './AITextAssistPanel'
+import { looksLikeMarkdown, renderMarkdownToHtml } from '@/lib/markdown'
+import 'katex/dist/katex.min.css'
 
 interface RichTextEditorProps {
   content: string
@@ -126,7 +128,8 @@ export function RichTextEditor({ content, onChange, onEditorReady, readOnly = fa
     if (!editor) return
 
     const { from, to } = editor.state.selection
-    editor.chain().focus().deleteRange({ from, to }).insertContent(newText).run()
+    const nextContent = looksLikeMarkdown(newText) ? renderMarkdownToHtml(newText) : newText
+    editor.chain().focus().deleteRange({ from, to }).insertContent(nextContent).run()
     setSelection(null)
   }, [editor])
 
