@@ -70,10 +70,12 @@ async def get_session_messages(
     )
     messages = result.scalars().all()
     
-    # Get student nicknames and avatars
+    # Get sender metadata (student + teacher)
     student_ids = [m.sender_student_id for m in messages if m.sender_student_id]
+    teacher_ids = [m.sender_teacher_id for m in messages if m.sender_teacher_id]
     nicknames = {}
     avatars = {}
+    accents = {}
     if student_ids:
         result = await db.execute(
             select(SessionStudent).where(SessionStudent.id.in_(student_ids))
@@ -82,6 +84,15 @@ async def get_session_messages(
             nicknames[str(student.id)] = student.nickname
             if student.avatar_url:
                 avatars[str(student.id)] = student.avatar_url
+            if student.ui_accent:
+                accents[str(student.id)] = student.ui_accent
+    if teacher_ids:
+        result = await db.execute(
+            select(User).where(User.id.in_(teacher_ids))
+        )
+        for teacher_user in result.scalars().all():
+            if teacher_user.ui_accent:
+                accents[str(teacher_user.id)] = teacher_user.ui_accent
     
     def extract_notification_info(attachments):
         """Extract notification info from attachments"""
@@ -111,6 +122,7 @@ async def get_session_messages(
             "sender_id": str(m.sender_student_id or m.sender_teacher_id or "system"),
             "sender_name": nicknames.get(str(m.sender_student_id), "Docente") if m.sender_student_id else "Docente",
             "sender_avatar_url": avatars.get(str(m.sender_student_id)) if m.sender_student_id else None,
+            "sender_accent": accents.get(str(m.sender_student_id or m.sender_teacher_id)),
             "text": m.message_text,
             "attachments": m.attachments,
             "created_at": m.created_at.isoformat(),
@@ -142,6 +154,7 @@ async def send_session_message(
         sender_student_id = auth.student.id
         sender_teacher_id = None
         sender_name = auth.student.nickname
+        sender_accent = auth.student.ui_accent
     else:
         if not await teacher_can_access_session(db, auth.teacher, session_id):
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
@@ -150,6 +163,7 @@ async def send_session_message(
         sender_teacher_id = auth.teacher.id
         sender_student_id = None
         sender_name = "Docente"
+        sender_accent = auth.teacher.ui_accent
     
     # Get or create public room
     room = await get_or_create_public_room(db, session_id, tenant_id)
@@ -190,6 +204,7 @@ async def send_session_message(
         "sender_type": sender_type.value,
         "sender_id": str(sender_student_id or sender_teacher_id),
         "sender_name": sender_name,
+        "sender_accent": sender_accent,
         "text": request.text,
         "attachments": attachments,
         "created_at": message.created_at.isoformat(),

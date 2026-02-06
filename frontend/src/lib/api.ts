@@ -52,7 +52,7 @@ export const studentApi = {
   deleteDocumentDraft: (draftId: string) =>
     api.delete(`/student/documents/drafts/${draftId}`),
   getProfile: () => api.get('/student/profile'),
-  updateProfile: (data: { avatar_url?: string }) =>
+  updateProfile: (data: { avatar_url?: string; ui_accent?: string }) =>
     api.patch('/student/profile', data),
 }
 
@@ -124,7 +124,7 @@ export const teacherApi = {
     api.patch(`/teacher/sessions/${sessionId}/tasks/${taskId}/submissions/${submissionId}`, null, { params: data }),
   // Profile
   getProfile: () => api.get('/teacher/profile'),
-  updateProfile: (data: { first_name?: string; last_name?: string; institution?: string; avatar_url?: string }) =>
+  updateProfile: (data: { first_name?: string; last_name?: string; institution?: string; avatar_url?: string; ui_accent?: string }) =>
     api.put('/teacher/profile', data),
   // Invitations
   getInvitations: () => api.get('/teacher/invitations'),

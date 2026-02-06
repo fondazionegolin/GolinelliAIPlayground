@@ -75,6 +75,7 @@ class SessionStudent(Base):
     nickname = Column(String, nullable=False)
     join_token = Column(Text, unique=True, nullable=False)
     avatar_url = Column(Text, nullable=True)
+    ui_accent = Column(String(32), nullable=True)
     is_frozen = Column(Boolean, default=False, nullable=False)
     frozen_reason = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)

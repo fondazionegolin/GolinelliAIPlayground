@@ -47,6 +47,7 @@ from app.schemas.invitation import (
 )
 
 router = APIRouter()
+TEACHER_ACCENTS = {"red", "indigo", "gray", "green", "slateblue"}
 
 
 # Profile schemas
@@ -56,6 +57,7 @@ class ProfileResponse(BaseModel):
     email: str | None = None
     institution: str | None = None
     avatar_url: str | None = None
+    ui_accent: str | None = None
 
 
 class ProfileUpdate(BaseModel):
@@ -63,6 +65,7 @@ class ProfileUpdate(BaseModel):
     last_name: str | None = None
     institution: str | None = None
     avatar_url: str | None = None
+    ui_accent: str | None = None
 
 
 # Profile endpoints
@@ -77,6 +80,7 @@ async def get_profile(
         email=teacher.email,
         institution=teacher.institution,
         avatar_url=teacher.avatar_url,
+        ui_accent=teacher.ui_accent,
     )
 
 
@@ -95,6 +99,10 @@ async def update_profile(
         teacher.institution = request.institution
     if request.avatar_url is not None:
         teacher.avatar_url = request.avatar_url
+    if request.ui_accent is not None:
+        if request.ui_accent not in TEACHER_ACCENTS:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid ui_accent")
+        teacher.ui_accent = request.ui_accent
 
     await db.commit()
     await db.refresh(teacher)
@@ -105,6 +113,7 @@ async def update_profile(
         email=teacher.email,
         institution=teacher.institution,
         avatar_url=teacher.avatar_url,
+        ui_accent=teacher.ui_accent,
     )
 
 DEFAULT_MODULES = ["chatbot", "classification", "self_assessment", "chat"]

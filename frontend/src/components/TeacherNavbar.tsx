@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, type CSSProperties } from 'react'
 import { Link, useNavigate, useLocation } from 'react-router-dom'
 import { User, Settings, LogOut, ChevronDown, Users, MessageSquare, FileText, Check, Brain } from 'lucide-react'
 import { Button } from './ui/button'
@@ -7,12 +7,14 @@ import { teacherApi } from '@/lib/api'
 import { useAuthStore } from '@/stores/auth'
 import TeacherNotifications, { TeacherNotification } from './TeacherNotifications'
 import { useSocket } from '@/hooks/useSocket'
+import { DEFAULT_TEACHER_ACCENT, getTeacherAccentTheme, TEACHER_ACCENTS, type TeacherAccentId } from '@/lib/teacherAccent'
 
 interface TeacherProfile {
   firstName: string
   lastName: string
   email: string
   avatarUrl?: string
+  uiAccent?: TeacherAccentId
 }
 
 interface SessionInfo {
@@ -39,13 +41,21 @@ export function TeacherNavbar({ currentSession, onSessionChange, showChatToggle 
   const location = useLocation()
   const navigate = useNavigate()
 
-  const [profile, setProfile] = useState<TeacherProfile>({ firstName: '', lastName: '', email: '', avatarUrl: '' })
+  const [profile, setProfile] = useState<TeacherProfile>({ firstName: '', lastName: '', email: '', avatarUrl: '', uiAccent: DEFAULT_TEACHER_ACCENT })
   const [activeSessions, setActiveSessions] = useState<ActiveSession[]>([])
   const [showDropdown, setShowDropdown] = useState(false)
   const [showSessionsMenu, setShowSessionsMenu] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
   const sessionsMenuRef = useRef<HTMLDivElement>(null)
+  const accentTheme = getTeacherAccentTheme(profile.uiAccent)
+  const accentVars = {
+    '--teacher-accent': accentTheme.accent,
+    '--teacher-accent-text': accentTheme.text,
+    '--teacher-accent-soft': accentTheme.soft,
+    '--teacher-accent-soft-strong': accentTheme.softStrong,
+    '--teacher-accent-border': accentTheme.border,
+  } as CSSProperties
 
   // Global notifications state
   const [teacherNotifications, setTeacherNotifications] = useState<TeacherNotification[]>([])
@@ -142,6 +152,7 @@ export function TeacherNavbar({ currentSession, onSessionChange, showChatToggle 
         lastName: res.data.last_name || '',
         email: res.data.email,
         avatarUrl: res.data.avatar_url || '',
+        uiAccent: res.data.ui_accent || DEFAULT_TEACHER_ACCENT,
       })
     } catch (error) {
       console.error('Failed to load profile', error)
@@ -256,12 +267,12 @@ export function TeacherNavbar({ currentSession, onSessionChange, showChatToggle 
 
   return (
     <>
-      <nav className="fixed top-0 left-0 right-0 z-50 bg-white/90 backdrop-blur-md border-b border-slate-200 shadow-sm">
+      <nav className="fixed top-0 left-0 right-0 z-50 bg-white/90 backdrop-blur-md border-b border-slate-200 shadow-sm" style={accentVars}>
         <div className="max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             {/* Logo/Brand */}
             <div className="flex items-center gap-1 cursor-pointer" onClick={() => navigate('/teacher')}>
-              <LogoMark className="h-9 w-9 mix-blend-multiply" bubbleColor="#ef4444" />
+              <LogoMark className="h-9 w-9 mix-blend-multiply" bubbleColor={accentTheme.accent} />
               <span className="-ml-1 pb-[1px] text-[11px] font-extrabold leading-[1.15] tracking-[0.2em] text-slate-900">
                 <span className="block bg-gradient-to-r from-rose-500 via-pink-500 to-red-500 bg-clip-text text-transparent">AI</span>
                 <span className="block bg-gradient-to-r from-slate-900 via-slate-700 to-slate-900 bg-clip-text text-transparent">Play</span>
@@ -275,8 +286,8 @@ export function TeacherNavbar({ currentSession, onSessionChange, showChatToggle 
                 <Link key={item.path} to={item.path}>
                   <button
                     className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-[12px] font-semibold transition-all duration-200 ${isActive(item.path)
-                      ? 'bg-red-500 text-white font-bold'
-                      : 'text-slate-600 hover:bg-slate-100 hover:text-red-500'
+                      ? 'bg-[var(--teacher-accent)] text-white font-bold'
+                      : 'text-slate-600 hover:bg-slate-100 hover:text-[var(--teacher-accent-text)]'
                       }`}
                   >
                     <item.icon className="h-4 w-4" />
@@ -304,7 +315,7 @@ export function TeacherNavbar({ currentSession, onSessionChange, showChatToggle 
                   <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${currentSession ? 'bg-green-500 animate-pulse shadow-sm shadow-green-300' : 'bg-slate-300'}`} />
                   <div className="text-left min-w-0">
                     <div className="flex items-center gap-2">
-                      <span className="text-sm font-bold text-red-500 truncate max-w-[160px]">{currentSession ? currentSession.name : 'Nessuna sessione'}</span>
+                      <span className="text-sm font-bold text-[var(--teacher-accent-text)] truncate max-w-[160px]">{currentSession ? currentSession.name : 'Nessuna sessione'}</span>
                       <span className="text-slate-300">|</span>
                       <span className="text-xs font-semibold text-slate-500 bg-white/60 px-2 py-0.5 rounded">{currentSession ? currentSession.className : 'Seleziona...'}</span>
                     </div>
@@ -313,7 +324,7 @@ export function TeacherNavbar({ currentSession, onSessionChange, showChatToggle 
                 </button>
                 {showChatToggle && (
                   <button
-                    className="hidden lg:flex items-center justify-center h-11 w-11 rounded-full border border-slate-200 bg-white text-red-500 hover:bg-slate-50 transition shadow-sm"
+                    className="hidden lg:flex items-center justify-center h-11 w-11 rounded-full border border-slate-200 bg-white text-[var(--teacher-accent-text)] hover:bg-slate-50 transition shadow-sm"
                     onClick={onShowChatSidebar}
                     title="Apri chat di classe"
                   >
@@ -363,7 +374,7 @@ export function TeacherNavbar({ currentSession, onSessionChange, showChatToggle 
                                 <div className={`w-3 h-3 rounded-full flex-shrink-0 transition-colors ${isSelected ? 'bg-green-500 shadow-sm shadow-green-300' : 'bg-slate-300 group-hover:bg-slate-400'
                                   }`} />
                                 <div className="flex-1 min-w-0">
-                                  <p className={`text-sm font-medium truncate ${isSelected ? 'text-red-500' : 'text-slate-700'}`}>
+                                  <p className={`text-sm font-medium truncate ${isSelected ? 'text-[var(--teacher-accent-text)]' : 'text-slate-700'}`}>
                                     {session.name}
                                   </p>
                                   <p className={`text-xs truncate ${isSelected ? 'text-slate-700' : 'text-slate-400'}`}>
@@ -374,13 +385,13 @@ export function TeacherNavbar({ currentSession, onSessionChange, showChatToggle 
                                   {session.studentCount !== undefined && session.studentCount > 0 && (
                                     <span className={`text-xs px-2 py-1 rounded-full font-medium ${isSelected
                                       ? 'bg-slate-200 text-slate-800'
-                                      : 'bg-slate-100 text-slate-500 group-hover:bg-slate-200 group-hover:text-red-500'
+                                      : 'bg-slate-100 text-slate-500 group-hover:bg-slate-200 group-hover:text-[var(--teacher-accent-text)]'
                                       }`}>
                                       {session.studentCount} studenti
                                     </span>
                                   )}
                                   {isSelected && (
-                                    <Check className="h-4 w-4 text-red-500" />
+                                    <Check className="h-4 w-4 text-[var(--teacher-accent-text)]" />
                                   )}
                                 </div>
                               </button>
@@ -403,10 +414,11 @@ export function TeacherNavbar({ currentSession, onSessionChange, showChatToggle 
                     <img
                       src={profile.avatarUrl}
                       alt="Avatar"
-                      className="w-8 h-8 rounded-full object-cover ring-2 ring-red-500"
+                      className="w-8 h-8 rounded-full object-cover"
+                      style={{ boxShadow: `0 0 0 2px ${accentTheme.accent}` }}
                     />
                   ) : (
-                    <div className={`w-8 h-8 rounded-full ${getAvatarColor()} flex items-center justify-center text-white text-xs font-bold ring-2 ring-red-500`}>
+                    <div className={`w-8 h-8 rounded-full ${getAvatarColor()} flex items-center justify-center text-white text-xs font-bold`} style={{ boxShadow: `0 0 0 2px ${accentTheme.accent}` }}>
                       {getInitials()}
                     </div>
                   )}
@@ -430,7 +442,7 @@ export function TeacherNavbar({ currentSession, onSessionChange, showChatToggle 
                         setShowSettings(true)
                         setShowDropdown(false)
                       }}
-                      className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-600 hover:bg-slate-50 hover:text-red-500 transition-colors"
+                      className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-600 hover:bg-slate-50 hover:text-[var(--teacher-accent-text)] transition-colors"
                     >
                       <Settings className="h-4 w-4" />
                       Impostazioni account
@@ -457,8 +469,8 @@ export function TeacherNavbar({ currentSession, onSessionChange, showChatToggle 
                   size="sm"
                   variant="ghost"
                   className={`${isActive(item.path)
-                    ? 'bg-red-500 text-white font-bold'
-                    : 'text-slate-500 hover:text-red-500'
+                    ? 'bg-[var(--teacher-accent)] text-white font-bold'
+                    : 'text-slate-500 hover:text-[var(--teacher-accent-text)]'
                     }`}
                 >
                   {item.label}
@@ -478,7 +490,8 @@ export function TeacherNavbar({ currentSession, onSessionChange, showChatToggle 
               await teacherApi.updateProfile({
                 first_name: updated.firstName,
                 last_name: updated.lastName,
-                avatar_url: updated.avatarUrl
+                avatar_url: updated.avatarUrl,
+                ui_accent: updated.uiAccent,
               })
               setProfile(updated)
               setShowSettings(false)
@@ -504,6 +517,7 @@ interface SettingsModalProps {
 function SettingsModal({ profile, onSave, onClose }: SettingsModalProps) {
   const [formData, setFormData] = useState(profile)
   const [previewUrl, setPreviewUrl] = useState(profile.avatarUrl || '')
+  const modalAccentTheme = getTeacherAccentTheme(formData.uiAccent)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -584,7 +598,7 @@ function SettingsModal({ profile, onSave, onClose }: SettingsModalProps) {
                 type="text"
                 value={formData.firstName}
                 onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
-                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-red-500 focus:border-transparent transition-all outline-none"
+                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-slate-400 focus:border-transparent transition-all outline-none"
                 required
               />
             </div>
@@ -594,7 +608,7 @@ function SettingsModal({ profile, onSave, onClose }: SettingsModalProps) {
                 type="text"
                 value={formData.lastName}
                 onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
-                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-red-500 focus:border-transparent transition-all outline-none"
+                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-slate-400 focus:border-transparent transition-all outline-none"
                 required
               />
             </div>
@@ -606,9 +620,33 @@ function SettingsModal({ profile, onSave, onClose }: SettingsModalProps) {
               type="email"
               value={formData.email}
               onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-              className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-red-500 focus:border-transparent transition-all outline-none"
+              className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-slate-400 focus:border-transparent transition-all outline-none"
               required
             />
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-slate-500 uppercase mb-2">Colore Accento</label>
+            <div className="grid grid-cols-5 gap-2">
+              {(Object.values(TEACHER_ACCENTS)).map((accentOption) => {
+                const isSelected = formData.uiAccent === accentOption.id
+                return (
+                  <button
+                    key={accentOption.id}
+                    type="button"
+                    onClick={() => setFormData({ ...formData, uiAccent: accentOption.id })}
+                    className={`relative h-10 rounded-lg border transition-all ${isSelected ? 'border-slate-500' : 'border-slate-200 hover:border-slate-300'}`}
+                    style={{ backgroundColor: accentOption.soft }}
+                    title={accentOption.label}
+                  >
+                    <span className="absolute inset-0 m-auto h-5 w-5 rounded-full" style={{ backgroundColor: accentOption.accent }} />
+                    {isSelected && (
+                      <Check className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-white text-slate-700 p-0.5 shadow" />
+                    )}
+                  </button>
+                )
+              })}
+            </div>
           </div>
 
 
@@ -618,7 +656,7 @@ function SettingsModal({ profile, onSave, onClose }: SettingsModalProps) {
             <Button type="button" variant="ghost" onClick={onClose} className="flex-1 text-slate-500 hover:text-slate-700 hover:bg-slate-100">
               Annulla
             </Button>
-            <Button type="submit" className="flex-1 bg-red-500 hover:bg-red-600 text-white shadow-lg shadow-red-500/30">
+            <Button type="submit" className="flex-1 text-white shadow-lg" style={{ backgroundColor: modalAccentTheme.accent }}>
               Salva Modifiche
             </Button>
           </div>

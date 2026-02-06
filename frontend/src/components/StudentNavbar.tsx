@@ -10,6 +10,7 @@ interface StudentProfile {
   id?: string
   nickname: string
   avatarUrl?: string
+  uiAccent?: StudentAccentId
 }
 
 interface StudentNavbarProps {
@@ -62,14 +63,20 @@ export function StudentNavbar({
         setProfile({
           id: data.id,
           nickname: data.nickname || 'Studente',
-          avatarUrl: data.avatar_url || undefined
+          avatarUrl: data.avatar_url || undefined,
+          uiAccent: data.ui_accent || undefined,
         })
+        if (data.ui_accent && onAccentChange) {
+          const serverAccent = data.ui_accent as StudentAccentId
+          onAccentChange(serverAccent)
+          saveStudentAccent(serverAccent)
+        }
       } catch (err) {
         console.error('Failed to load profile:', err)
       }
     }
     loadProfile()
-  }, [])
+  }, [onAccentChange])
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -288,7 +295,8 @@ export function StudentNavbar({
           onSave={async (updated, nextAccent) => {
             try {
               await studentApi.updateProfile({
-                avatar_url: updated.avatarUrl
+                avatar_url: updated.avatarUrl,
+                ui_accent: nextAccent,
               })
               setProfile(updated)
               onAccentChange?.(nextAccent)

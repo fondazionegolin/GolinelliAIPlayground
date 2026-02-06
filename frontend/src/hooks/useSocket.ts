@@ -9,6 +9,7 @@ export interface ChatMessage {
   sender_id: string
   sender_name?: string
   sender_avatar_url?: string
+  sender_accent?: string
   text: string
   attachments?: unknown[]
   created_at: string
@@ -24,6 +25,7 @@ export interface OnlineUser {
   student_id: string
   nickname?: string
   avatar_url?: string
+  ui_accent?: string
   role?: 'student' | 'teacher'
   activity?: {
     module_key?: string

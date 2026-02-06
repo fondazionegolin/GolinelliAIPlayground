@@ -6,9 +6,9 @@ import json
 from app.core.security import decode_token
 from app.core.config import settings
 from app.core.database import AsyncSessionLocal
-from app.models.session import SessionStudent
 from sqlalchemy import select
 from app.models.session import SessionStudent, Session, Class
+from app.models.user import User
 
 sio = socketio.AsyncServer(
     async_mode="asgi",
@@ -25,6 +25,8 @@ session_presence: dict[str, set] = {}  # session_id -> set of sids
 user_activities: dict[str, dict] = {}  # student_id -> activity info
 student_nicknames: dict[str, str] = {}  # student_id -> nickname
 student_avatars: dict[str, str] = {}  # student_id -> avatar_url
+student_accents: dict[str, str] = {}  # student_id -> ui_accent
+teacher_accents: dict[str, str] = {}  # teacher_id -> ui_accent
 
 # Cache for session teacher IDs (session_id -> teacher_id)
 # In production with multiple workers, this should be in Redis
@@ -128,10 +130,25 @@ async def connect(sid, environ, auth):
                     select(SessionStudent).where(SessionStudent.id == student_id)
                 )
                 student_obj = result.scalar_one_or_none()
-                if student_obj and student_obj.avatar_url:
-                    student_avatars[student_id] = student_obj.avatar_url
+                if student_obj:
+                    if student_obj.avatar_url:
+                        student_avatars[student_id] = student_obj.avatar_url
+                    if student_obj.ui_accent:
+                        student_accents[student_id] = student_obj.ui_accent
         except Exception as e:
             print(f"Error fetching student avatar: {e}")
+    else:
+        teacher_id = user["id"]
+        try:
+            async with AsyncSessionLocal() as db:
+                result = await db.execute(
+                    select(User).where(User.id == teacher_id)
+                )
+                teacher_obj = result.scalar_one_or_none()
+                if teacher_obj and teacher_obj.ui_accent:
+                    teacher_accents[teacher_id] = teacher_obj.ui_accent
+        except Exception as e:
+            print(f"Error fetching teacher accent: {e}")
         
         if session_id not in session_presence:
             session_presence[session_id] = set()
@@ -149,6 +166,7 @@ async def connect(sid, environ, auth):
                 "student_id": student_id,
                 "nickname": nickname,
                 "avatar_url": student_avatars.get(student_id),
+                "ui_accent": student_accents.get(student_id),
                 "status": "online",
                 "last_seen_at": datetime.utcnow().isoformat(),
             },
@@ -238,6 +256,7 @@ async def join_session(sid, data):
     user_role = user.get("type", "student")
     nickname = student_nicknames.get(user["id"], user.get("nickname", "Studente")) if user_role == "student" else "Docente"
     avatar = student_avatars.get(user["id"]) if user_role == "student" else None
+    accent = student_accents.get(user["id"]) if user_role == "student" else teacher_accents.get(user["id"])
     
     await sio.emit(
         "presence_update",
@@ -245,6 +264,7 @@ async def join_session(sid, data):
             "student_id": user["id"],
             "nickname": nickname,
             "avatar_url": avatar,
+            "ui_accent": accent,
             "status": "online",
             "role": user_role
         },
@@ -264,6 +284,7 @@ async def join_session(sid, data):
                     "student_id": u["id"],
                     "nickname": student_nicknames.get(u["id"], u.get("nickname", "Studente")) if role == "student" else "Docente",
                     "avatar_url": student_avatars.get(u["id"]) if role == "student" else None,
+                    "ui_accent": student_accents.get(u["id"]) if role == "student" else teacher_accents.get(u["id"]),
                     "activity": user_activities.get(u["id"], {}) if role == "student" else None,
                     "role": role
                 }
@@ -383,13 +404,40 @@ async def chat_public_message(sid, data):
     text = data.get("text", "")
     attachments = data.get("attachments", [])
     
-    # Get sender name and avatar
+    # Refresh sender metadata from DB for consistent cross-client rendering.
     if user["type"] == "student":
         sender_name = student_nicknames.get(user["id"], "Studente")
         sender_avatar_url = student_avatars.get(user["id"])
+        sender_accent = student_accents.get(user["id"])
+        try:
+            async with AsyncSessionLocal() as db:
+                result = await db.execute(select(SessionStudent).where(SessionStudent.id == user["id"]))
+                student_obj = result.scalar_one_or_none()
+                if student_obj:
+                    sender_name = student_obj.nickname or sender_name
+                    sender_avatar_url = student_obj.avatar_url
+                    sender_accent = student_obj.ui_accent
+                    student_nicknames[user["id"]] = sender_name
+                    if sender_avatar_url:
+                        student_avatars[user["id"]] = sender_avatar_url
+                    if sender_accent:
+                        student_accents[user["id"]] = sender_accent
+        except Exception as e:
+            print(f"[Gateway] Error refreshing student sender metadata: {e}")
     else:
         sender_name = "Docente"
         sender_avatar_url = None  # TODO: Add teacher avatar support
+        sender_accent = teacher_accents.get(user["id"])
+        try:
+            async with AsyncSessionLocal() as db:
+                result = await db.execute(select(User).where(User.id == user["id"]))
+                teacher_obj = result.scalar_one_or_none()
+                if teacher_obj:
+                    sender_accent = teacher_obj.ui_accent
+                    if sender_accent:
+                        teacher_accents[user["id"]] = sender_accent
+        except Exception as e:
+            print(f"[Gateway] Error refreshing teacher sender accent: {e}")
     
     # Note: Message persistence is handled by the API endpoint (sendSessionMessage)
     # which is called before this socket event. This socket event only broadcasts
@@ -402,6 +450,7 @@ async def chat_public_message(sid, data):
         "sender_id": user["id"],
         "sender_name": sender_name,
         "sender_avatar_url": sender_avatar_url,
+        "sender_accent": sender_accent,
         "text": text,
         "attachments": attachments,
         "created_at": datetime.utcnow().isoformat(),
@@ -445,13 +494,40 @@ async def chat_private_message(sid, data):
     text = data.get("text", "")
     attachments = data.get("attachments", [])
     
-    # Get sender name and avatar
+    # Refresh sender metadata from DB for consistent cross-client rendering.
     if user["type"] == "student":
         sender_name = student_nicknames.get(user["id"], "Studente")
         sender_avatar_url = student_avatars.get(user["id"])
+        sender_accent = student_accents.get(user["id"])
+        try:
+            async with AsyncSessionLocal() as db:
+                result = await db.execute(select(SessionStudent).where(SessionStudent.id == user["id"]))
+                student_obj = result.scalar_one_or_none()
+                if student_obj:
+                    sender_name = student_obj.nickname or sender_name
+                    sender_avatar_url = student_obj.avatar_url
+                    sender_accent = student_obj.ui_accent
+                    student_nicknames[user["id"]] = sender_name
+                    if sender_avatar_url:
+                        student_avatars[user["id"]] = sender_avatar_url
+                    if sender_accent:
+                        student_accents[user["id"]] = sender_accent
+        except Exception as e:
+            print(f"[Gateway] Error refreshing student DM sender metadata: {e}")
     else:
         sender_name = "Docente"
         sender_avatar_url = None  # TODO: Add teacher avatar support
+        sender_accent = teacher_accents.get(user["id"])
+        try:
+            async with AsyncSessionLocal() as db:
+                result = await db.execute(select(User).where(User.id == user["id"]))
+                teacher_obj = result.scalar_one_or_none()
+                if teacher_obj:
+                    sender_accent = teacher_obj.ui_accent
+                    if sender_accent:
+                        teacher_accents[user["id"]] = sender_accent
+        except Exception as e:
+            print(f"[Gateway] Error refreshing teacher DM sender accent: {e}")
     
     message = {
         "id": f"dm-{datetime.utcnow().timestamp()}",
@@ -459,6 +535,7 @@ async def chat_private_message(sid, data):
         "sender_id": user["id"],
         "sender_name": sender_name,
         "sender_avatar_url": sender_avatar_url,
+        "sender_accent": sender_accent,
         "text": text,
         "attachments": attachments,
         "created_at": datetime.utcnow().isoformat(),
@@ -565,6 +642,7 @@ async def teacher_publish_task(sid, data):
                 "sender_type": "TEACHER",
                 "sender_id": user["id"],
                 "sender_name": "Docente",
+                "sender_accent": teacher_accents.get(user["id"]),
                 "text": f"📋 Nuovo compito assegnato: {title}",
                 "created_at": datetime.utcnow().isoformat(),
                 "is_notification": True,
@@ -608,6 +686,7 @@ async def teacher_upload_document(sid, data):
                 "sender_type": "TEACHER",
                 "sender_id": user["id"],
                 "sender_name": "Docente",
+                "sender_accent": teacher_accents.get(user["id"]),
                 "text": f"📄 Nuovo documento caricato: {filename}",
                 "created_at": datetime.utcnow().isoformat(),
                 "is_notification": True,
@@ -635,6 +714,7 @@ async def teacher_broadcast_message(sid, data):
         "sender_type": "TEACHER",
         "sender_id": user["id"],
         "sender_name": "Docente",
+        "sender_accent": teacher_accents.get(user["id"]),
         "text": text,
         "created_at": datetime.utcnow().isoformat(),
     }

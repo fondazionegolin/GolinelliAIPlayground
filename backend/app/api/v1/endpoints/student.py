@@ -20,9 +20,12 @@ from app.realtime.gateway import sio
 
 router = APIRouter()
 
+STUDENT_ACCENTS = {"pink", "blue", "cyan", "orange", "mustard"}
+
 
 class UpdateProfileRequest(BaseModel):
     avatar_url: str | None = None
+    ui_accent: str | None = None
 
 
 class SubmitDocumentRequest(BaseModel):
@@ -156,6 +159,7 @@ async def get_profile(
         "id": str(student.id),
         "nickname": student.nickname,
         "avatar_url": student.avatar_url,
+        "ui_accent": student.ui_accent,
         "created_at": student.created_at.isoformat() if student.created_at else None,
     }
 
@@ -169,6 +173,10 @@ async def update_profile(
     """Update student profile (avatar, etc)"""
     if request.avatar_url is not None:
         student.avatar_url = request.avatar_url
+    if request.ui_accent is not None:
+        if request.ui_accent not in STUDENT_ACCENTS:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid ui_accent")
+        student.ui_accent = request.ui_accent
     
     await db.commit()
     await db.refresh(student)
@@ -177,6 +185,7 @@ async def update_profile(
         "id": str(student.id),
         "nickname": student.nickname,
         "avatar_url": student.avatar_url,
+        "ui_accent": student.ui_accent,
     }
 
 
