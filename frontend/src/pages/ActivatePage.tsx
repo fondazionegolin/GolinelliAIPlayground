@@ -183,10 +183,12 @@ export default function ActivatePage() {
             <img
               src="http://drive.golinelli.ai/public/39a38e5f53a447e8a148d109fb05afed"
               alt="AI playground"
-              className="h-12 w-12 object-contain"
+              className="h-12 w-12 object-contain bg-transparent mix-blend-multiply"
             />
-            <span className="text-2xl font-extrabold tracking-wide text-gray-900">
-              <span className="bg-gradient-to-r from-gray-900 via-gray-600 to-gray-900 bg-clip-text text-transparent">AI playground</span>
+            <span className="text-[20px] font-extrabold leading-[1.05] tracking-[0.2em] text-gray-900 uppercase text-left">
+              <span className="block bg-gradient-to-r from-gray-900 via-gray-600 to-gray-900 bg-clip-text text-transparent">AI</span>
+              <span className="block bg-gradient-to-r from-gray-900 via-gray-600 to-gray-900 bg-clip-text text-transparent">PLAY</span>
+              <span className="block bg-gradient-to-r from-gray-900 via-gray-600 to-gray-900 bg-clip-text text-transparent">ground</span>
             </span>
           </div>
           <h1 className="text-3xl font-bold text-gray-900">Attivazione Account</h1>

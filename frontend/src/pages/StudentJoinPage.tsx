@@ -54,10 +54,12 @@ export default function StudentJoinPage() {
             <img
               src="http://drive.golinelli.ai/public/39a38e5f53a447e8a148d109fb05afed"
               alt="AI playground"
-              className="h-14 w-14 object-contain"
+              className="h-14 w-14 object-contain bg-transparent mix-blend-multiply"
             />
-            <h1 className="text-3xl font-extrabold tracking-wide text-gray-900">
-              <span className="bg-gradient-to-r from-gray-900 via-gray-600 to-gray-900 bg-clip-text text-transparent">AI playground</span>
+            <h1 className="text-[22px] font-extrabold leading-[1.05] tracking-[0.2em] text-gray-900 uppercase text-left">
+              <span className="block bg-gradient-to-r from-gray-900 via-gray-600 to-gray-900 bg-clip-text text-transparent">AI</span>
+              <span className="block bg-gradient-to-r from-gray-900 via-gray-600 to-gray-900 bg-clip-text text-transparent">PLAY</span>
+              <span className="block bg-gradient-to-r from-gray-900 via-gray-600 to-gray-900 bg-clip-text text-transparent">ground</span>
             </h1>
           </div>
           <p className="text-gray-600 mt-2">Inserisci il codice fornito dal docente</p>
