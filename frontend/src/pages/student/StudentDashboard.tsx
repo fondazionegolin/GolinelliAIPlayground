@@ -305,15 +305,17 @@ export default function StudentDashboard() {
                 />
               ) : (
                 <div className="h-full flex flex-col">
-                  <div className={`mb-4 ${activeModule === 'chatbot' || activeModule === 'classe' || activeModule === 'documents' ? 'hidden md:block' : ''}`}>
-                    <Button
-                      variant="ghost"
-                      className="gap-2 pl-0 hover:bg-transparent text-slate-600"
-                      onClick={() => setActiveModule(null)}
-                    >
-                      ← Torna alla home
-                    </Button>
-                  </div>
+                  {activeModule !== 'documents' && (
+                    <div className={`mb-4 ${activeModule === 'chatbot' || activeModule === 'classe' ? 'hidden md:block' : ''}`}>
+                      <Button
+                        variant="ghost"
+                        className="gap-2 pl-0 hover:bg-transparent text-slate-600"
+                        onClick={() => setActiveModule(null)}
+                      >
+                        ← Torna alla home
+                      </Button>
+                    </div>
+                  )}
 
                   <ModuleView
                     moduleKey={activeModule}

@@ -109,6 +109,7 @@ export default function TeacherDocumentsPage() {
   
   // Refs
   const canvasRef = useRef<HTMLDivElement>(null)
+  const documentPageRef = useRef<HTMLDivElement>(null)
   
   // UI State
   const [showPublishModal, setShowPublishModal] = useState(false)
@@ -117,6 +118,7 @@ export default function TeacherDocumentsPage() {
   const [draftSaveState, setDraftSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
   const [aiPanelAnchor, setAiPanelAnchor] = useState<{ x: number; y: number } | null>(null)
   const [aiOpenRequestId, setAiOpenRequestId] = useState(0)
+  const [draggingMargin, setDraggingMargin] = useState<'left' | 'right' | null>(null)
 
   const currentSlide = document.slides?.[currentSlideIndex] || { id: 'fallback', title: 'Slide', blocks: [] }
   const selectedBlock = currentSlide.blocks.find(b => b.id === selectedBlockId)
@@ -563,6 +565,35 @@ export default function TeacherDocumentsPage() {
     }
   }
 
+  useEffect(() => {
+    if (!draggingMargin || mode !== 'document') return
+
+    const onMouseMove = (event: MouseEvent) => {
+      const page = documentPageRef.current
+      if (!page) return
+      const rect = page.getBoundingClientRect()
+      const pageWidth = FORMAT_DIMENSIONS.a4.width
+      const scaleFactor = rect.width / pageWidth
+      if (scaleFactor <= 0) return
+
+      const rawMargin = draggingMargin === 'left'
+        ? (event.clientX - rect.left) / scaleFactor
+        : (rect.right - event.clientX) / scaleFactor
+
+      const nextMargin = Math.max(16, Math.min(220, Math.round(rawMargin)))
+      setDocMargins(prev => ({ ...prev, horizontal: nextMargin }))
+    }
+
+    const onMouseUp = () => setDraggingMargin(null)
+
+    window.addEventListener('mousemove', onMouseMove)
+    window.addEventListener('mouseup', onMouseUp)
+    return () => {
+      window.removeEventListener('mousemove', onMouseMove)
+      window.removeEventListener('mouseup', onMouseUp)
+    }
+  }, [draggingMargin, mode])
+
   return (
     <>
       <div className="h-full flex flex-col bg-slate-100 overflow-hidden"> 
@@ -728,14 +759,15 @@ export default function TeacherDocumentsPage() {
           </div>
 
           {/* Main Area */}
-          <div className="flex-1 bg-slate-100 flex items-start justify-center p-4 md:p-6 relative overflow-y-auto" 
+          <div className="flex-1 bg-slate-100 flex items-start justify-center p-2 md:p-3 relative overflow-y-auto" 
                onClick={() => setSelectedBlockId(null)} // Deselect block when clicking background
           > 
              
              {/* MODE: DOCUMENT */}
              {mode === 'document' && (
                <div
-                 className="mb-20 print:shadow-none flex flex-col relative transition-all overflow-hidden"
+                 ref={documentPageRef}
+                 className="mb-6 print:shadow-none flex flex-col relative transition-all overflow-hidden"
                  style={{
                    width: FORMAT_DIMENSIONS.a4.width,
                    minHeight: FORMAT_DIMENSIONS.a4.height,
@@ -746,7 +778,7 @@ export default function TeacherDocumentsPage() {
                    padding: `${docMargins.vertical}px ${docMargins.horizontal}px`
                  }}
                >
-                  {/* Top guides for lateral margins */}
+                  {/* Top guides for lateral margins with drag handles */}
                   <div className="pointer-events-none absolute top-3 left-0 right-0 z-10">
                     <div className="relative h-4">
                       <div
@@ -754,47 +786,29 @@ export default function TeacherDocumentsPage() {
                         style={{ left: docMargins.horizontal, right: docMargins.horizontal }}
                       />
                       <div
-                        className="absolute top-0 h-4 border-l border-slate-400"
+                        className="pointer-events-auto absolute top-0 h-4 border-l border-slate-400"
                         style={{ left: docMargins.horizontal }}
                       />
                       <div
-                        className="absolute top-0 h-4 border-l border-slate-400"
+                        className="pointer-events-auto absolute top-0 h-4 border-l border-slate-400"
                         style={{ right: docMargins.horizontal }}
                       />
-                    </div>
-                  </div>
-
-                  {/* Inline page margin sliders */}
-                  <div className="absolute top-3 right-3 z-20 w-40 rounded-md border border-slate-200 bg-white/95 p-2 shadow-sm">
-                    <div className="space-y-2">
-                      <div>
-                        <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-500">
-                          Margine laterale {docMargins.horizontal}px
-                        </label>
-                        <input
-                          type="range"
-                          min={16}
-                          max={160}
-                          step={2}
-                          value={docMargins.horizontal}
-                          onChange={(e) => setDocMargins(prev => ({ ...prev, horizontal: Number(e.target.value) }))}
-                          className="h-1.5 w-full accent-slate-700"
-                        />
-                      </div>
-                      <div>
-                        <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-500">
-                          Margine alto/basso {docMargins.vertical}px
-                        </label>
-                        <input
-                          type="range"
-                          min={16}
-                          max={160}
-                          step={2}
-                          value={docMargins.vertical}
-                          onChange={(e) => setDocMargins(prev => ({ ...prev, vertical: Number(e.target.value) }))}
-                          className="h-1.5 w-full accent-slate-700"
-                        />
-                      </div>
+                      <button
+                        type="button"
+                        className="pointer-events-auto absolute -top-0.5 h-3.5 w-3.5 -translate-x-1/2 cursor-ew-resize rounded-full border border-slate-500 bg-white shadow-sm"
+                        style={{ left: docMargins.horizontal }}
+                        onMouseDown={() => setDraggingMargin('left')}
+                        aria-label="Regola margine sinistro"
+                        title="Trascina per regolare margine sinistro"
+                      />
+                      <button
+                        type="button"
+                        className="pointer-events-auto absolute -top-0.5 h-3.5 w-3.5 -translate-x-1/2 cursor-ew-resize rounded-full border border-slate-500 bg-white shadow-sm"
+                        style={{ left: FORMAT_DIMENSIONS.a4.width - docMargins.horizontal }}
+                        onMouseDown={() => setDraggingMargin('right')}
+                        aria-label="Regola margine destro"
+                        title="Trascina per regolare margine destro"
+                      />
                     </div>
                   </div>
 
@@ -806,7 +820,7 @@ export default function TeacherDocumentsPage() {
                         right: docMargins.horizontal,
                         bottom: docMargins.vertical,
                         left: docMargins.horizontal,
-                        backgroundImage: 'repeating-linear-gradient(to bottom, transparent 0, transparent 27px, rgba(148, 163, 184, 0.35) 27px, rgba(148, 163, 184, 0.35) 28px)'
+                        backgroundImage: 'repeating-linear-gradient(to bottom, transparent 0, transparent 21px, rgba(148, 163, 184, 0.35) 21px, rgba(148, 163, 184, 0.35) 22px, transparent 22px, transparent 28px)'
                       }}
                     />
                   )}
@@ -824,7 +838,7 @@ export default function TeacherDocumentsPage() {
                       content={document.textContent || ''}
                       onChange={(html) => setDocument(d => ({ ...d, textContent: html }))}
                       onEditorReady={setEditor}
-                      contentClassName="h-full min-h-full prose max-w-none focus:outline-none p-0 cursor-text"
+                      contentClassName="h-full min-h-full max-w-none focus:outline-none p-0 cursor-text [&_.ProseMirror]:min-h-full [&_.ProseMirror]:h-full [&_.ProseMirror]:text-[16px] [&_.ProseMirror]:leading-7 [&_.ProseMirror_p]:m-0 [&_.ProseMirror_h1]:m-0 [&_.ProseMirror_h2]:m-0 [&_.ProseMirror_h3]:m-0 [&_.ProseMirror_ul]:my-0 [&_.ProseMirror_ol]:my-0"
                       aiPanelAnchor={aiPanelAnchor}
                       aiOpenRequestId={aiOpenRequestId}
                       onMissingSelectionForAI={() => {
