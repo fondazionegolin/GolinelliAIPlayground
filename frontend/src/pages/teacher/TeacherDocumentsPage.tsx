@@ -72,6 +72,9 @@ const DOC_PAGE_GAP = 28
 export default function TeacherDocumentsPage() {
   const { toast } = useToast()
   const [draftId, setDraftId] = useState<string | null>(null)
+  const draftIdRef = useRef<string | null>(null)
+  const pendingDraftPayloadRef = useRef<{ title: string; doc_type: string; content_json: string } | null>(null)
+  const isSavingDraftRef = useRef(false)
   
   // State
   const [mode, setMode] = useState<EditorMode>('document') 
@@ -109,6 +112,9 @@ export default function TeacherDocumentsPage() {
   const [showPublishModal, setShowPublishModal] = useState(false)
   const [selectedSessionId, setSelectedSessionId] = useState('')
   const [showNewModal, setShowNewModal] = useState(false)
+  const [draftSaveState, setDraftSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
+  const [aiPanelAnchor, setAiPanelAnchor] = useState<{ x: number; y: number } | null>(null)
+  const [aiOpenRequestId, setAiOpenRequestId] = useState(0)
 
   const currentSlide = document.slides?.[currentSlideIndex] || { id: 'fallback', title: 'Slide', blocks: [] }
   const selectedBlock = currentSlide.blocks.find(b => b.id === selectedBlockId)
@@ -127,6 +133,7 @@ export default function TeacherDocumentsPage() {
     setCurrentSlideIndex(0)
     setSelectedBlockId(null)
     setDraftId(null)
+    draftIdRef.current = null
   }
 
   const createNewPresentation = () => {
@@ -142,22 +149,35 @@ export default function TeacherDocumentsPage() {
     setCurrentSlideIndex(0)
     setSelectedBlockId(null)
     setDraftId(null)
+    draftIdRef.current = null
   }
 
-  const upsertDraft = async (titleOverride?: string) => {
+  const buildDraftPayload = () => {
     const type = mode === 'slides' ? 'presentation' : 'document'
     const contentJson = JSON.stringify(
       mode === 'slides'
         ? { type: 'presentation_v2', format: document.format, slides: document.slides }
         : { type: 'document_v1', htmlContent: document.textContent || '', header: document.header, margins: docMargins }
     )
+    return {
+      title: document.title || 'Senza titolo',
+      doc_type: type,
+      content_json: contentJson,
+    }
+  }
+
+  const flushDraftSaveQueue = async () => {
+    if (isSavingDraftRef.current) return
+    if (!pendingDraftPayloadRef.current) return
+
+    const payload = pendingDraftPayloadRef.current
+    pendingDraftPayloadRef.current = null
+    isSavingDraftRef.current = true
+    setDraftSaveState('saving')
+
     try {
-      if (draftId) {
-        const res = await teacherApi.updateDocumentDraft(draftId, {
-          title: titleOverride ?? document.title,
-          doc_type: type,
-          content_json: contentJson
-        })
+      if (draftIdRef.current) {
+        const res = await teacherApi.updateDocumentDraft(draftIdRef.current, payload)
         const updated: DraftDocument = {
           id: res.data.id,
           title: res.data.title,
@@ -167,11 +187,8 @@ export default function TeacherDocumentsPage() {
         }
         setDraftDocuments(prev => [updated, ...prev.filter(d => d.id !== updated.id)])
       } else {
-        const res = await teacherApi.createDocumentDraft({
-          title: titleOverride ?? document.title,
-          doc_type: type,
-          content_json: contentJson
-        })
+        const res = await teacherApi.createDocumentDraft(payload)
+        draftIdRef.current = res.data.id
         setDraftId(res.data.id)
         const created: DraftDocument = {
           id: res.data.id,
@@ -182,14 +199,25 @@ export default function TeacherDocumentsPage() {
         }
         setDraftDocuments(prev => [created, ...prev.filter(d => d.id !== created.id)])
       }
+      setDraftSaveState('saved')
     } catch (e) {
       console.error('Draft save failed', e)
+      setDraftSaveState('error')
+    } finally {
+      isSavingDraftRef.current = false
+      if (pendingDraftPayloadRef.current) {
+        void flushDraftSaveQueue()
+      }
     }
+  }
+
+  const queueDraftSave = () => {
+    pendingDraftPayloadRef.current = buildDraftPayload()
+    void flushDraftSaveQueue()
   }
 
   const handleTitleChange = (value: string) => {
     setDocument(d => ({ ...d, title: value }))
-    upsertDraft(value)
   }
 
   const adjustMargins = (axis: 'horizontal' | 'vertical', delta: number) => {
@@ -281,9 +309,13 @@ export default function TeacherDocumentsPage() {
   }, [classesData])
 
   useEffect(() => {
+    draftIdRef.current = draftId
+  }, [draftId])
+
+  useEffect(() => {
     const timer = setTimeout(() => {
-      upsertDraft()
-    }, 400)
+      queueDraftSave()
+    }, 600)
     return () => clearTimeout(timer)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [document, mode, docMargins])
@@ -296,6 +328,7 @@ export default function TeacherDocumentsPage() {
       if (doc.type === 'presentation' || content.type === 'presentation_v2' || content.slides) {
         setMode('slides')
         setDraftId(null)
+        draftIdRef.current = null
         const safeSlides = (content.slides && Array.isArray(content.slides) && content.slides.length > 0) 
           ? content.slides.map((s: any) => ({
               id: s.id || crypto.randomUUID(),
@@ -316,6 +349,7 @@ export default function TeacherDocumentsPage() {
       } else {
         setMode('document')
         setDraftId(null)
+        draftIdRef.current = null
         if (content.margins) {
           setDocMargins({
             vertical: content.margins.vertical ?? content.margins.top ?? 56,
@@ -345,6 +379,7 @@ export default function TeacherDocumentsPage() {
       if (doc.type === 'presentation' || content.type === 'presentation_v2' || content.slides) {
         setMode('slides')
         setDraftId(doc.id)
+        draftIdRef.current = doc.id
         const safeSlides = (content.slides && Array.isArray(content.slides) && content.slides.length > 0)
           ? content.slides.map((s: any) => ({
               id: s.id || crypto.randomUUID(),
@@ -365,6 +400,7 @@ export default function TeacherDocumentsPage() {
       } else {
         setMode('document')
         setDraftId(doc.id)
+        draftIdRef.current = doc.id
         if (content.margins) {
           setDocMargins({
             vertical: content.margins.vertical ?? content.margins.top ?? 56,
@@ -561,11 +597,25 @@ export default function TeacherDocumentsPage() {
 
              <Button
                onClick={() => setShowNewModal(true)}
-               className="bg-slate-900 text-white hover:bg-slate-800 px-4"
+               className="bg-red-500 text-white hover:bg-red-600 px-4"
              >
                <Plus className="h-4 w-4 mr-2" />
                Nuovo
              </Button>
+             <span className={`text-xs font-medium ${
+               draftSaveState === 'saving'
+                 ? 'text-slate-500'
+                 : draftSaveState === 'saved'
+                   ? 'text-emerald-600'
+                   : draftSaveState === 'error'
+                     ? 'text-red-600'
+                     : 'text-slate-400'
+             }`}>
+               {draftSaveState === 'saving' && 'Salvataggio...'}
+               {draftSaveState === 'saved' && 'Bozza salvata'}
+               {draftSaveState === 'error' && 'Errore salvataggio'}
+               {draftSaveState === 'idle' && 'Bozza automatica'}
+             </span>
 
              <div className="h-6 w-px bg-slate-200" />
 
@@ -597,6 +647,10 @@ export default function TeacherDocumentsPage() {
           onAddSlideImage={addSlideImage}
           selectedBlock={selectedBlock}
           onUpdateBlockStyle={updateBlockStyle}
+          onOpenAIAssist={(position) => {
+            setAiPanelAnchor(position)
+            setAiOpenRequestId(v => v + 1)
+          }}
         />
 
         <div className="flex-1 flex overflow-hidden"> 
@@ -792,6 +846,14 @@ export default function TeacherDocumentsPage() {
                       onChange={(html) => setDocument(d => ({ ...d, textContent: html }))}
                       onEditorReady={setEditor}
                       contentClassName="flex-1 prose max-w-none focus:outline-none min-h-[500px] p-0"
+                      aiPanelAnchor={aiPanelAnchor}
+                      aiOpenRequestId={aiOpenRequestId}
+                      onMissingSelectionForAI={() => {
+                        toast({
+                          title: 'Seleziona prima un testo',
+                          description: 'L’assistente AI lavora sul testo selezionato nel documento.',
+                        })
+                      }}
                     />
                   </div>
                </div>
@@ -848,7 +910,7 @@ export default function TeacherDocumentsPage() {
               </p>
               <div className="flex flex-col gap-3">
                 <Button
-                  className="w-full justify-center bg-emerald-600 hover:bg-emerald-700 text-white"
+                  className="w-full justify-center bg-red-500 hover:bg-red-600 text-white"
                   onClick={() => {
                     createNewDocument()
                     setShowNewModal(false)
@@ -858,7 +920,7 @@ export default function TeacherDocumentsPage() {
                   Nuovo documento
                 </Button>
                 <Button
-                  className="w-full justify-center bg-indigo-600 hover:bg-indigo-700 text-white"
+                  className="w-full justify-center bg-red-500 hover:bg-red-600 text-white"
                   onClick={() => {
                     createNewPresentation()
                     setShowNewModal(false)

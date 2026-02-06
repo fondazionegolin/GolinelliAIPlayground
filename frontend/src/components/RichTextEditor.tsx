@@ -18,9 +18,14 @@ interface RichTextEditorProps {
   onEditorReady?: (editor: Editor) => void
   readOnly?: boolean
   contentClassName?: string
+  aiPanelAnchor?: { x: number; y: number } | null
+  aiOpenRequestId?: number
+  onMissingSelectionForAI?: () => void
 }
 
 interface SelectionState {
+  from: number
+  to: number
   text: string
   position: { x: number; y: number }
 }
@@ -44,7 +49,16 @@ const LinkShortcut = Extension.create({
   },
 })
 
-export function RichTextEditor({ content, onChange, onEditorReady, readOnly = false, contentClassName }: RichTextEditorProps) {
+export function RichTextEditor({
+  content,
+  onChange,
+  onEditorReady,
+  readOnly = false,
+  contentClassName,
+  aiPanelAnchor,
+  aiOpenRequestId = 0,
+  onMissingSelectionForAI
+}: RichTextEditorProps) {
   const [selection, setSelection] = useState<SelectionState | null>(null)
 
   const editor = useEditor({
@@ -83,25 +97,35 @@ export function RichTextEditor({ content, onChange, onEditorReady, readOnly = fa
       const selectedText = editor.state.doc.textBetween(from, to, ' ')
 
       if (selectedText && selectedText.trim().length > 3) {
-        // Get selection coordinates
-        const domSelection = window.getSelection()
-        if (domSelection && domSelection.rangeCount > 0) {
-          const range = domSelection.getRangeAt(0)
-          const rect = range.getBoundingClientRect()
-
-          setSelection({
-            text: selectedText.trim(),
-            position: {
-              x: rect.left + rect.width / 2 - 140, // Center the panel
-              y: rect.bottom + 8
-            }
-          })
-        }
+        const fallbackPosition = { x: 20, y: 80 }
+        setSelection({
+          from,
+          to,
+          text: selectedText.trim(),
+          position: aiPanelAnchor || fallbackPosition
+        })
       } else {
         setSelection(null)
       }
     }, 10)
-  }, [editor, readOnly])
+  }, [editor, readOnly, aiPanelAnchor])
+
+  // Open AI panel explicitly from toolbar button, anchored under toolbar icon.
+  useEffect(() => {
+    if (!editor || readOnly || aiOpenRequestId === 0) return
+    const { from, to } = editor.state.selection
+    const selectedText = editor.state.doc.textBetween(from, to, ' ').trim()
+    if (!selectedText || selectedText.length < 1) {
+      onMissingSelectionForAI?.()
+      return
+    }
+    setSelection({
+      from,
+      to,
+      text: selectedText,
+      position: aiPanelAnchor || { x: 20, y: 80 }
+    })
+  }, [aiOpenRequestId, editor, readOnly, aiPanelAnchor, onMissingSelectionForAI])
 
   // Close panel when clicking elsewhere or when selection changes
   const handleMouseDown = useCallback(() => {
@@ -125,13 +149,13 @@ export function RichTextEditor({ content, onChange, onEditorReady, readOnly = fa
 
   // Apply AI-generated text
   const handleApplyAIText = useCallback((newText: string) => {
-    if (!editor) return
+    if (!editor || !selection) return
 
-    const { from, to } = editor.state.selection
+    const { from, to } = selection
     const nextContent = looksLikeMarkdown(newText) ? renderMarkdownToHtml(newText) : newText
     editor.chain().focus().deleteRange({ from, to }).insertContent(nextContent).run()
     setSelection(null)
-  }, [editor])
+  }, [editor, selection])
 
   if (!editor) {
     return null

@@ -3,7 +3,7 @@ import {
   Bold, Italic, Underline, Strikethrough,
   AlignLeft, AlignCenter, AlignRight, AlignJustify,
   List, ListOrdered, Undo, Redo, Image as ImageIcon, Link as LinkIcon,
-  Heading1, Heading2, Pilcrow, Type, Plus, Minus, ZoomIn, ZoomOut
+  Heading1, Heading2, Pilcrow, Type, Plus, Minus, ZoomIn, ZoomOut, Sparkles
 } from 'lucide-react'
 import { Button } from './ui/button'
 import { Editor } from '@tiptap/react'
@@ -23,6 +23,7 @@ interface UnifiedToolbarProps {
   onAddSlideImage?: (imageUrl: string) => void
   selectedBlock?: SlideBlock
   onUpdateBlockStyle?: (key: string, value: any) => void
+  onOpenAIAssist?: (position: { x: number; y: number }) => void
 }
 
 const FONTS = [
@@ -39,7 +40,8 @@ export function UnifiedToolbar({
   onAddSlideBlock,
   onAddSlideImage,
   selectedBlock,
-  onUpdateBlockStyle
+  onUpdateBlockStyle,
+  onOpenAIAssist
 }: UnifiedToolbarProps) {
   const [showImageModal, setShowImageModal] = useState(false)
 
@@ -162,6 +164,22 @@ export function UnifiedToolbar({
             </Button>
             <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => setShowImageModal(true)} title="Inserisci immagine">
               <ImageIcon className="h-4 w-4" />
+            </Button>
+            <Button
+              size="icon"
+              variant="ghost"
+              className="h-8 w-8 text-red-500 hover:text-red-600 hover:bg-red-50"
+              onClick={(e) => {
+                if (!onOpenAIAssist) return
+                const rect = (e.currentTarget as HTMLButtonElement).getBoundingClientRect()
+                onOpenAIAssist({
+                  x: rect.left + rect.width - 320,
+                  y: rect.bottom + 8
+                })
+              }}
+              title="Assistente AI (testo selezionato)"
+            >
+              <Sparkles className="h-4 w-4" />
             </Button>
           </div>
 
