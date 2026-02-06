@@ -104,7 +104,7 @@ export default function TeacherbotsPanel() {
 
   const getColorClass = (color: string) => {
     const colorMap: Record<string, string> = {
-      indigo: 'bg-indigo-500',
+      indigo: 'bg-[#181b1e]',
       blue: 'bg-blue-500',
       green: 'bg-green-500',
       red: 'bg-red-500',
@@ -114,7 +114,7 @@ export default function TeacherbotsPanel() {
       teal: 'bg-teal-500',
       cyan: 'bg-cyan-500',
     }
-    return colorMap[color] || 'bg-indigo-500'
+    return colorMap[color] || 'bg-[#181b1e]'
   }
 
   if (viewMode === 'create') {
@@ -140,7 +140,7 @@ export default function TeacherbotsPanel() {
           <h2 className="text-lg font-bold text-slate-800">I tuoi Teacherbots</h2>
           <p className="text-sm text-slate-500">Crea assistenti AI personalizzati per i tuoi studenti</p>
         </div>
-        <Button onClick={() => setViewMode('create')} className="bg-indigo-600 hover:bg-indigo-700">
+        <Button onClick={() => setViewMode('create')} className="bg-[#181b1e] hover:bg-[#0f1113]">
           <Plus className="h-4 w-4 mr-2" />
           Nuovo Teacherbot
         </Button>
@@ -148,14 +148,14 @@ export default function TeacherbotsPanel() {
 
       {isLoading ? (
         <div className="flex items-center justify-center py-12">
-          <Loader2 className="h-8 w-8 animate-spin text-indigo-600" />
+          <Loader2 className="h-8 w-8 animate-spin text-[#181b1e]" />
         </div>
       ) : teacherbots && teacherbots.length > 0 ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {teacherbots.map((bot) => (
             <div
               key={bot.id}
-              className="bg-white rounded-xl border border-slate-200 p-4 hover:shadow-lg hover:border-indigo-200 transition-all group"
+              className="bg-white rounded-xl border border-slate-200 p-4 hover:shadow-lg hover:border-[#181b1e]/20 transition-all group"
             >
               <div className="flex items-start gap-3 mb-3">
                 <div className={`w-10 h-10 rounded-lg ${getColorClass(bot.color)} flex items-center justify-center flex-shrink-0`}>
@@ -195,7 +195,7 @@ export default function TeacherbotsPanel() {
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="flex-1 text-slate-600 hover:text-indigo-600 hover:bg-indigo-50"
+                  className="flex-1 text-slate-600 hover:text-[#181b1e] hover:bg-[#181b1e]/5"
                   onClick={() => handleEdit(bot.id)}
                 >
                   <Settings className="h-4 w-4 mr-1" />
@@ -204,7 +204,7 @@ export default function TeacherbotsPanel() {
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="flex-1 text-slate-600 hover:text-indigo-600 hover:bg-indigo-50"
+                  className="flex-1 text-slate-600 hover:text-[#181b1e] hover:bg-[#181b1e]/5"
                   onClick={() => handleTest(bot.id)}
                 >
                   <Eye className="h-4 w-4 mr-1" />
@@ -214,7 +214,7 @@ export default function TeacherbotsPanel() {
                   <Button
                     variant="ghost"
                     size="sm"
-                    className="flex-1 text-slate-600 hover:text-indigo-600 hover:bg-indigo-50"
+                    className="flex-1 text-slate-600 hover:text-[#181b1e] hover:bg-[#181b1e]/5"
                     onClick={() => handleReports(bot.id)}
                   >
                     <FileText className="h-4 w-4 mr-1" />
@@ -235,14 +235,14 @@ export default function TeacherbotsPanel() {
         </div>
       ) : (
         <div className="flex flex-col items-center justify-center py-12 text-center">
-          <div className="w-16 h-16 rounded-full bg-indigo-100 flex items-center justify-center mb-4">
-            <Bot className="h-8 w-8 text-indigo-600" />
+          <div className="w-16 h-16 rounded-full bg-[#181b1e]/10 flex items-center justify-center mb-4">
+            <Bot className="h-8 w-8 text-[#181b1e]" />
           </div>
           <h3 className="text-lg font-semibold text-slate-800 mb-2">Nessun Teacherbot</h3>
           <p className="text-sm text-slate-500 mb-4 max-w-md">
             Crea il tuo primo assistente AI personalizzato per interagire con gli studenti.
           </p>
-          <Button onClick={() => setViewMode('create')} className="bg-indigo-600 hover:bg-indigo-700">
+          <Button onClick={() => setViewMode('create')} className="bg-[#181b1e] hover:bg-[#0f1113]">
             <Plus className="h-4 w-4 mr-2" />
             Crea il tuo primo Teacherbot
           </Button>

@@ -106,7 +106,7 @@ export default function TeacherbotTestChat({ teacherbotId, onBack }: TeacherbotT
 
   const getColorClass = (color: string) => {
     const colorMap: Record<string, string> = {
-      indigo: 'bg-indigo-500',
+      indigo: 'bg-[#181b1e]',
       blue: 'bg-blue-500',
       green: 'bg-green-500',
       red: 'bg-red-500',
@@ -116,13 +116,13 @@ export default function TeacherbotTestChat({ teacherbotId, onBack }: TeacherbotT
       teal: 'bg-teal-500',
       cyan: 'bg-cyan-500',
     }
-    return colorMap[color] || 'bg-indigo-500'
+    return colorMap[color] || 'bg-[#181b1e]'
   }
 
   if (isLoadingBot) {
     return (
       <div className="flex items-center justify-center py-12">
-        <Loader2 className="h-8 w-8 animate-spin text-indigo-600" />
+        <Loader2 className="h-8 w-8 animate-spin text-[#181b1e]" />
       </div>
     )
   }
@@ -170,7 +170,7 @@ export default function TeacherbotTestChat({ teacherbotId, onBack }: TeacherbotT
                 )}
                 <div className={`max-w-[70%] px-4 py-3 rounded-2xl ${
                   msg.role === 'user'
-                    ? 'bg-indigo-600 text-white rounded-tr-sm'
+                    ? 'bg-[#181b1e] text-white rounded-tr-sm'
                     : 'bg-slate-100 text-slate-800 rounded-tl-sm'
                 }`}>
                   {msg.role === 'assistant' ? (
@@ -214,13 +214,13 @@ export default function TeacherbotTestChat({ teacherbotId, onBack }: TeacherbotT
                 }
               }}
               placeholder="Scrivi un messaggio di test..."
-              className="flex-1 px-4 py-2 border border-slate-200 rounded-full focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-sm"
+              className="flex-1 px-4 py-2 border border-slate-200 rounded-full focus:ring-2 focus:ring-[#181b1e] focus:border-transparent text-sm"
               disabled={isLoading}
             />
             <Button
               onClick={handleSend}
               disabled={!inputText.trim() || isLoading}
-              className="rounded-full bg-indigo-600 hover:bg-indigo-700"
+              className="rounded-full bg-[#181b1e] hover:bg-[#0f1113]"
             >
               <Send className="h-4 w-4" />
             </Button>

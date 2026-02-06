@@ -173,7 +173,7 @@ function FileViewerModal({
             <a
               href={file.url}
               download={file.filename}
-              className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
+              className="flex items-center gap-2 px-4 py-2 bg-[#181b1e] text-white rounded-lg hover:bg-[#0f1113] transition-colors"
             >
               <Download className="h-4 w-4" />
               Scarica file
@@ -214,7 +214,7 @@ function FileViewerModal({
               href={file.url}
               target="_blank"
               rel="noopener noreferrer"
-              className="p-2 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+              className="p-2 text-slate-500 hover:text-[#181b1e] hover:bg-[#181b1e]/5 rounded-lg transition-colors"
               title="Apri in nuova scheda"
             >
               <ExternalLink className="h-4 w-4" />
@@ -222,7 +222,7 @@ function FileViewerModal({
             <a
               href={file.url}
               download={file.filename}
-              className="p-2 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+              className="p-2 text-slate-500 hover:text-[#181b1e] hover:bg-[#181b1e]/5 rounded-lg transition-colors"
               title="Scarica"
             >
               <Download className="h-4 w-4" />
@@ -777,7 +777,7 @@ export default function ChatSidebar({
     const urlRegex = /(https?:\/\/[^\s]+)/g
     return text.split(urlRegex).map((part, i) => {
       if (part.match(urlRegex)) {
-        return <a key={i} href={part} target="_blank" rel="noopener noreferrer" className="text-indigo-200 hover:text-white underline break-all">{part}</a>
+        return <a key={i} href={part} target="_blank" rel="noopener noreferrer" className="text-[#181b1e]/30 hover:text-white underline break-all">{part}</a>
       }
       return part
     })
@@ -809,7 +809,7 @@ export default function ChatSidebar({
           : msg.notification_data
 
         const colorMap: Record<string, string> = {
-          indigo: 'bg-indigo-500',
+          indigo: 'bg-[#181b1e]',
           blue: 'bg-blue-500',
           green: 'bg-green-500',
           red: 'bg-red-500',
@@ -819,12 +819,12 @@ export default function ChatSidebar({
           teal: 'bg-teal-500',
           cyan: 'bg-cyan-500',
         }
-        const botColor = colorMap[data.color] || 'bg-indigo-500'
+        const botColor = colorMap[data.color] || 'bg-[#181b1e]'
 
         return (
           <div
             key={msg.id}
-            className="mx-2 p-3 bg-gradient-to-br from-indigo-50 to-purple-50 border border-indigo-200 rounded-xl shadow-sm"
+            className="mx-2 p-3 bg-gradient-to-br from-[#181b1e]/5 to-slate-50 border border-[#181b1e]/20 rounded-xl shadow-sm"
           >
             <div className="flex items-center gap-3">
               <div className={`w-10 h-10 rounded-lg ${botColor} flex items-center justify-center shadow-md flex-shrink-0`}>
@@ -832,7 +832,7 @@ export default function ChatSidebar({
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-1.5 mb-0.5">
-                  <span className="text-[10px] font-bold text-indigo-600 uppercase">Nuovo Assistente</span>
+                  <span className="text-[10px] font-bold text-[#181b1e] uppercase">Nuovo Assistente</span>
                 </div>
                 <p className="text-sm font-semibold text-slate-800 truncate">{data.name}</p>
                 {data.synopsis && (
@@ -842,7 +842,7 @@ export default function ChatSidebar({
             </div>
             <button
               onClick={() => onNotificationClick?.(msg)}
-              className="mt-3 w-full py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-lg transition-colors flex items-center justify-center gap-1.5"
+              className="mt-3 w-full py-2 bg-[#181b1e] hover:bg-[#0f1113] text-white text-xs font-semibold rounded-lg transition-colors flex items-center justify-center gap-1.5"
             >
               <Wand2 className="h-3.5 w-3.5" />
               Prova ora
@@ -856,13 +856,13 @@ export default function ChatSidebar({
         <div
           key={msg.id}
           onClick={() => onNotificationClick?.(msg)}
-          className="mx-2 p-3 bg-indigo-50 border border-indigo-100 rounded-xl cursor-pointer hover:bg-indigo-100 transition-colors shadow-sm group"
+          className="mx-2 p-3 bg-[#181b1e]/5 border border-[#181b1e]/15 rounded-xl cursor-pointer hover:bg-[#181b1e]/10 transition-colors shadow-sm group"
         >
           <div className="flex items-center gap-2 mb-1">
-            <Bell className="h-3 w-3 text-indigo-600" />
-            <span className="text-[10px] font-bold text-indigo-600 uppercase">Notifica</span>
+            <Bell className="h-3 w-3 text-[#181b1e]" />
+            <span className="text-[10px] font-bold text-[#181b1e] uppercase">Notifica</span>
           </div>
-          <p className="text-xs font-semibold text-slate-800 group-hover:text-indigo-700">{content}</p>
+          <p className="text-xs font-semibold text-slate-800 group-hover:text-[#181b1e]">{content}</p>
         </div>
       )
     }
@@ -885,7 +885,7 @@ export default function ChatSidebar({
                   className="w-full h-full object-cover rounded-full"
                 />
               ) : (
-                <AvatarFallback className={`text-[9px] font-black ${isMe ? 'bg-indigo-600 text-white' : 'bg-slate-200 text-slate-600'}`}>
+                <AvatarFallback className={`text-[9px] font-black ${isMe ? 'bg-[#181b1e] text-white' : 'bg-slate-200 text-slate-600'}`}>
                   {(msg.sender_name || '?').substring(0, 2).toUpperCase()}
                 </AvatarFallback>
               )}
@@ -902,14 +902,14 @@ export default function ChatSidebar({
           <div className={`
             px-3.5 py-2.5 text-sm leading-snug shadow-sm
             ${isMe
-              ? 'bg-indigo-600 text-white rounded-2xl rounded-tr-none'
+              ? 'bg-[#181b1e] text-white rounded-2xl rounded-tr-none'
               : 'bg-white text-slate-700 border border-slate-100 rounded-2xl rounded-tl-none'}
           `}>
             {isMe ? linkify(content) : (
               // For received messages, basic linkify with darker link color
               content.split(/(https?:\/\/[^\s]+)/g).map((part: string, i: number) => {
                 if (part.match(/(https?:\/\/[^\s]+)/g)) {
-                  return <a key={i} href={part} target="_blank" rel="noopener noreferrer" className="text-indigo-600 hover:text-indigo-800 underline break-all">{part}</a>
+                  return <a key={i} href={part} target="_blank" rel="noopener noreferrer" className="text-[#181b1e] hover:text-[#0f1113] underline break-all">{part}</a>
                 }
                 return part
               })
@@ -934,7 +934,7 @@ export default function ChatSidebar({
                     key={idx}
                     onClick={() => setViewingFile({ url: att.url, filename: att.filename || 'file', type: att.type })}
                     className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition-colors w-full text-left ${isMe
-                      ? 'bg-indigo-500/30 hover:bg-indigo-500/50 text-white'
+                      ? 'bg-[#181b1e]/30 hover:bg-[#181b1e]/50 text-white'
                       : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
                       }`}
                   >
@@ -982,8 +982,8 @@ export default function ChatSidebar({
                 markPrivateChatRead(chat.oderId)
               }}
               className={`relative w-12 h-12 rounded-xl flex items-center justify-center transition-all ${activePrivateChat === chat.oderId
-                ? 'bg-indigo-600 shadow-md'
-                : 'bg-white hover:bg-indigo-50 border border-slate-200'
+                ? 'bg-[#181b1e] shadow-md'
+                : 'bg-white hover:bg-[#181b1e]/5 border border-slate-200'
                 }`}
               title={chat.peerName}
             >
@@ -996,7 +996,7 @@ export default function ChatSidebar({
                   />
                 ) : (
                   <AvatarFallback className={`text-xs font-bold ${activePrivateChat === chat.oderId
-                    ? 'bg-indigo-500 text-white'
+                    ? 'bg-[#181b1e] text-white'
                     : 'bg-slate-200 text-slate-600'
                     }`}>
                     {chat.peerName.substring(0, 2).toUpperCase()}
@@ -1074,11 +1074,11 @@ export default function ChatSidebar({
           onlineUsers.map(user => (
             <div
               key={user.student_id}
-              className="flex items-center justify-between p-3 bg-white border border-slate-100 rounded-xl shadow-sm hover:border-indigo-200 transition-all"
+              className="flex items-center justify-between p-3 bg-white border border-slate-100 rounded-xl shadow-sm hover:border-[#181b1e]/20 transition-all"
             >
               <div className="flex items-center gap-3">
                 <Avatar className="h-8 w-8">
-                  <AvatarFallback className="bg-indigo-100 text-indigo-600 text-xs font-bold">
+                  <AvatarFallback className="bg-[#181b1e]/10 text-[#181b1e] text-xs font-bold">
                     {(user.nickname || 'Guest').substring(0, 2).toUpperCase()}
                   </AvatarFallback>
                 </Avatar>
@@ -1099,7 +1099,7 @@ export default function ChatSidebar({
                     setActiveTab('private')
                     setActivePrivateChat(user.student_id)
                   }}
-                  className="h-8 w-8 p-0 rounded-full text-slate-400 hover:text-indigo-600 hover:bg-indigo-50"
+                  className="h-8 w-8 p-0 rounded-full text-slate-400 hover:text-[#181b1e] hover:bg-[#181b1e]/5"
                 >
                   <MessageCircle className="h-4 w-4" />
                 </Button>
@@ -1222,7 +1222,7 @@ export default function ChatSidebar({
             </div>
             <div className="flex items-center gap-2 flex-shrink-0">
               <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase ${typeTagStyles}`}>{typeTag}</span>
-              <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase bg-indigo-50 text-indigo-700">
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase bg-[#181b1e]/5 text-[#181b1e]">
                 {ownerTag}
               </span>
             </div>
@@ -1268,7 +1268,7 @@ export default function ChatSidebar({
             </div>
             <div className="flex flex-wrap gap-1 mt-2">
               <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase ${typeTagStyles}`}>{typeTag}</span>
-              <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase bg-indigo-50 text-indigo-700">
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase bg-[#181b1e]/5 text-[#181b1e]">
                 {ownerTag}
               </span>
             </div>
@@ -1300,7 +1300,7 @@ export default function ChatSidebar({
                 }}
                 onClick={(e) => e.stopPropagation()}
                 placeholder="Aggiungi tag…"
-                className="w-full text-xs px-2 py-1 rounded-md border border-slate-200 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                className="w-full text-xs px-2 py-1 rounded-md border border-slate-200 focus:outline-none focus:ring-1 focus:ring-[#181b1e]"
               />
             </div>
           </div>
@@ -1439,7 +1439,7 @@ export default function ChatSidebar({
                 key={item.key}
                 onClick={() => setActiveFilter(item.key as typeof activeFilter)}
                 className={`px-3 py-1 rounded-full text-[10px] font-semibold uppercase transition-colors ${activeFilter === item.key
-                  ? 'bg-indigo-600 text-white'
+                  ? 'bg-[#181b1e] text-white'
                   : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                   }`}
               >
@@ -1450,7 +1450,7 @@ export default function ChatSidebar({
           <div className="mt-3 flex items-center gap-2 text-xs text-slate-400">
             <button
               onClick={() => setActiveFolder(null)}
-              className={`font-semibold ${!activeFolder ? 'text-indigo-600' : 'text-slate-500 hover:text-indigo-600'}`}
+              className={`font-semibold ${!activeFolder ? 'text-[#181b1e]' : 'text-slate-500 hover:text-[#181b1e]'}`}
             >
               Tutti i file
             </button>
@@ -1465,7 +1465,7 @@ export default function ChatSidebar({
 
         <div className="p-3 space-y-3">
           {filesDropActive && (
-            <div className="border-2 border-dashed border-indigo-400 bg-indigo-50/70 text-indigo-700 rounded-xl p-6 text-center text-sm font-semibold">
+            <div className="border-2 border-dashed border-[#181b1e]/40 bg-[#181b1e]/5/70 text-[#181b1e] rounded-xl p-6 text-center text-sm font-semibold">
               Rilascia qui per condividere i file con la classe
             </div>
           )}
@@ -1488,10 +1488,10 @@ export default function ChatSidebar({
                 <button
                   key={folder}
                   onClick={() => setActiveFolder(folder)}
-                  className="rounded-xl border border-slate-200 bg-white p-4 text-left hover:border-indigo-300 hover:shadow-sm transition-all"
+                  className="rounded-xl border border-slate-200 bg-white p-4 text-left hover:border-[#181b1e]/30 hover:shadow-sm transition-all"
                 >
                   <div className="flex items-center gap-2">
-                    <Folder className="h-5 w-5 text-indigo-500" />
+                    <Folder className="h-5 w-5 text-[#181b1e]" />
                     <span className="font-semibold text-slate-800 truncate">{folder}</span>
                   </div>
                   <p className="text-[10px] text-slate-400 mt-2">{(folderMap[folder] || []).length} file</p>
@@ -1528,8 +1528,8 @@ export default function ChatSidebar({
       {/* Resize handle - trasparente, blu solo su hover */}
       <div
         className={`absolute left-0 top-0 bottom-0 w-2 cursor-ew-resize z-10 transition-all ${isResizing
-          ? 'bg-indigo-500 w-3'
-          : 'bg-slate-200/50 hover:bg-indigo-500 hover:w-3'
+          ? 'bg-[#181b1e] w-3'
+          : 'bg-slate-200/50 hover:bg-[#181b1e] hover:w-3'
           }`}
         onMouseDown={handleMouseDown}
         title="Trascina per ridimensionare"
@@ -1546,7 +1546,7 @@ export default function ChatSidebar({
             <Button
               variant="ghost"
               size="icon"
-              className={`h-6 w-6 ${isPinned ? 'text-indigo-600 bg-indigo-50' : 'text-slate-400'}`}
+              className={`h-6 w-6 ${isPinned ? 'text-[#181b1e] bg-[#181b1e]/5' : 'text-slate-400'}`}
               onClick={onPinToggle}
               title={isPinned ? "Sblocca Sidebar" : "Fissa Sidebar"}
             >
@@ -1577,7 +1577,7 @@ export default function ChatSidebar({
             }
           }}
           className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 text-[10px] font-bold uppercase tracking-wider transition-all ${activeTab === 'session'
-            ? 'text-indigo-600 border-b-2 border-indigo-600 bg-indigo-50/50'
+            ? 'text-[#181b1e] border-b-2 border-[#181b1e] bg-[#181b1e]/5'
             : 'text-slate-400 hover:text-slate-600 hover:bg-slate-50'
             }`}
         >
@@ -1588,7 +1588,7 @@ export default function ChatSidebar({
         <button
           onClick={() => setActiveTab('private')}
           className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 text-[10px] font-bold uppercase tracking-wider transition-all relative ${activeTab === 'private'
-            ? 'text-indigo-600 border-b-2 border-indigo-600 bg-indigo-50/50'
+            ? 'text-[#181b1e] border-b-2 border-[#181b1e] bg-[#181b1e]/5'
             : 'text-slate-400 hover:text-slate-600 hover:bg-slate-50'
             }`}
         >
@@ -1604,7 +1604,7 @@ export default function ChatSidebar({
         <button
           onClick={() => setActiveTab('files')}
           className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 text-[10px] font-bold uppercase tracking-wider transition-all ${activeTab === 'files'
-            ? 'text-indigo-600 border-b-2 border-indigo-600 bg-indigo-50/50'
+            ? 'text-[#181b1e] border-b-2 border-[#181b1e] bg-[#181b1e]/5'
             : 'text-slate-400 hover:text-slate-600 hover:bg-slate-50'
             }`}
         >
@@ -1615,7 +1615,7 @@ export default function ChatSidebar({
         <button
           onClick={() => setActiveTab('users')}
           className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 text-[10px] font-bold uppercase tracking-wider transition-all ${activeTab === 'users'
-            ? 'text-indigo-600 border-b-2 border-indigo-600 bg-indigo-50/50'
+            ? 'text-[#181b1e] border-b-2 border-[#181b1e] bg-[#181b1e]/5'
             : 'text-slate-400 hover:text-slate-600 hover:bg-slate-50'
             }`}
         >
@@ -1673,7 +1673,7 @@ export default function ChatSidebar({
             </div>
           )}
 
-          <div className="relative flex items-center bg-slate-50 rounded-full border border-slate-200 focus-within:border-indigo-400 focus-within:ring-2 focus-within:ring-indigo-100 transition-all px-1">
+          <div className="relative flex items-center bg-slate-50 rounded-full border border-slate-200 focus-within:border-[#181b1e]/40 focus-within:ring-2 focus-within:ring-[#181b1e]/20 transition-all px-1">
             <input
               ref={fileInputRef}
               type="file"
@@ -1686,7 +1686,7 @@ export default function ChatSidebar({
               size="icon"
               variant="ghost"
               onClick={() => fileInputRef.current?.click()}
-              className="w-8 h-8 rounded-full text-slate-500 hover:text-indigo-600 hover:bg-indigo-50"
+              className="w-8 h-8 rounded-full text-slate-500 hover:text-[#181b1e] hover:bg-[#181b1e]/5"
             >
               <Paperclip className="h-4 w-4" />
             </Button>
@@ -1701,7 +1701,7 @@ export default function ChatSidebar({
               size="icon"
               onClick={handleSend}
               disabled={!inputText.trim() && attachedFiles.length === 0}
-              className={`w-8 h-8 rounded-full ${(!inputText.trim() && attachedFiles.length === 0) ? 'bg-slate-200 text-slate-400' : 'bg-indigo-600 text-white shadow-md'}`}
+              className={`w-8 h-8 rounded-full ${(!inputText.trim() && attachedFiles.length === 0) ? 'bg-slate-200 text-slate-400' : 'bg-[#181b1e] text-white shadow-md'}`}
             >
               <Send className="h-4 w-4" />
             </Button>
@@ -1710,10 +1710,10 @@ export default function ChatSidebar({
       )}
 
       {dragActive && (
-        <div className="absolute inset-0 bg-indigo-500/10 backdrop-blur-sm flex items-center justify-center z-50 border-4 border-dashed border-indigo-400 rounded-lg">
+        <div className="absolute inset-0 bg-[#181b1e]/10 backdrop-blur-sm flex items-center justify-center z-50 border-4 border-dashed border-[#181b1e]/40 rounded-lg">
           <div className="text-center">
-            <ImageIcon className="h-12 w-12 text-indigo-600 mx-auto mb-2" />
-            <p className="text-sm font-semibold text-indigo-700">Trascina qui i file</p>
+            <ImageIcon className="h-12 w-12 text-[#181b1e] mx-auto mb-2" />
+            <p className="text-sm font-semibold text-[#181b1e]">Trascina qui i file</p>
           </div>
         </div>
       )}

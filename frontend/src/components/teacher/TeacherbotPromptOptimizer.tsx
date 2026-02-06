@@ -128,7 +128,7 @@ Rispondi SOLO con il testo del System Prompt ottimizzato, pronto per essere inco
             }}
         >
             {/* Header */}
-            <div className="bg-gradient-to-r from-indigo-600 to-violet-600 px-4 py-2 flex items-center justify-between shrink-0">
+            <div className="bg-gradient-to-r from-[#181b1e] to-slate-800 px-4 py-2 flex items-center justify-between shrink-0">
                 <div className="flex items-center gap-2 text-white">
                     <Sparkles className="h-4 w-4" />
                     <span className="font-medium text-sm">Ottimizzatore Prompt AI</span>
@@ -155,7 +155,7 @@ Rispondi SOLO con il testo del System Prompt ottimizzato, pronto per essere inco
                 {!result && !isLoading && (
                     <Button
                         onClick={handleOptimize}
-                        className="w-full bg-indigo-600 hover:bg-indigo-700 text-white gap-2"
+                        className="w-full bg-[#181b1e] hover:bg-[#0f1113] text-white gap-2"
                     >
                         <Zap className="h-4 w-4" />
                         Espandi System Prompt
@@ -165,7 +165,7 @@ Rispondi SOLO con il testo del System Prompt ottimizzato, pronto per essere inco
                 {/* Loading */}
                 {isLoading && (
                     <div className="py-8 flex flex-col items-center justify-center gap-3">
-                        <Loader2 className="h-8 w-8 text-indigo-600 animate-spin" />
+                        <Loader2 className="h-8 w-8 text-[#181b1e] animate-spin" />
                         <p className="text-sm text-slate-600 font-medium">L'AI sta scrivendo il prompt migliore...</p>
                     </div>
                 )}
@@ -182,7 +182,7 @@ Rispondi SOLO con il testo del System Prompt ottimizzato, pronto per essere inco
                 {result && (
                     <div className="flex flex-col gap-3 flex-1 overflow-hidden">
                         <div className="flex items-center justify-between">
-                            <span className="text-sm font-medium text-indigo-700">Proposta AI:</span>
+                            <span className="text-sm font-medium text-[#181b1e]">Proposta AI:</span>
                         </div>
                         <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 overflow-y-auto min-h-[150px] relative">
                             <p className="text-xs font-mono whitespace-pre-wrap text-slate-700">{result}</p>

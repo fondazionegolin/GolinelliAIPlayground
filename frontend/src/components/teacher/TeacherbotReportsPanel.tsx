@@ -58,7 +58,7 @@ export default function TeacherbotReportsPanel({ teacherbotId, onBack }: Teacher
 
   const getColorClass = (color: string) => {
     const colorMap: Record<string, string> = {
-      indigo: 'bg-indigo-500',
+      indigo: 'bg-[#181b1e]',
       blue: 'bg-blue-500',
       green: 'bg-green-500',
       purple: 'bg-purple-500',
@@ -68,13 +68,13 @@ export default function TeacherbotReportsPanel({ teacherbotId, onBack }: Teacher
       cyan: 'bg-cyan-500',
       red: 'bg-red-500',
     }
-    return colorMap[color] || 'bg-indigo-500'
+    return colorMap[color] || 'bg-[#181b1e]'
   }
 
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <Loader2 className="h-8 w-8 animate-spin text-indigo-600" />
+        <Loader2 className="h-8 w-8 animate-spin text-[#181b1e]" />
       </div>
     )
   }
@@ -112,8 +112,8 @@ export default function TeacherbotReportsPanel({ teacherbotId, onBack }: Teacher
                   onClick={() => setExpandedReport(expandedReport === report.id ? null : report.id)}
                   className="w-full p-4 flex items-center gap-4 hover:bg-slate-50 transition-colors"
                 >
-                  <div className="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center flex-shrink-0">
-                    <User className="h-5 w-5 text-indigo-600" />
+                  <div className="w-10 h-10 rounded-full bg-[#181b1e]/10 flex items-center justify-center flex-shrink-0">
+                    <User className="h-5 w-5 text-[#181b1e]" />
                   </div>
                   <div className="flex-1 text-left">
                     <div className="font-semibold text-slate-800">{report.student_nickname}</div>
@@ -142,7 +142,7 @@ export default function TeacherbotReportsPanel({ teacherbotId, onBack }: Teacher
                     {report.summary && (
                       <div className="mb-4">
                         <h4 className="font-semibold text-slate-700 mb-2 flex items-center gap-2">
-                          <span className="w-2 h-2 rounded-full bg-indigo-500"></span>
+                          <span className="w-2 h-2 rounded-full bg-[#181b1e]"></span>
                           Sintesi
                         </h4>
                         <p className="text-sm text-slate-600 bg-white p-3 rounded-lg border border-slate-200">

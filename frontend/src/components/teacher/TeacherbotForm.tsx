@@ -215,7 +215,7 @@ export default function TeacherbotForm({ teacherbotId, onBack, onSaved }: Teache
 
   const getColorClass = (color: string, isSelected: boolean) => {
     const baseColors: Record<string, string> = {
-      indigo: 'bg-indigo-500',
+      indigo: 'bg-[#181b1e]',
       blue: 'bg-blue-500',
       green: 'bg-green-500',
       purple: 'bg-purple-500',
@@ -225,7 +225,7 @@ export default function TeacherbotForm({ teacherbotId, onBack, onSaved }: Teache
       cyan: 'bg-cyan-500',
       red: 'bg-red-500',
     }
-    const base = baseColors[color] || 'bg-indigo-500'
+    const base = baseColors[color] || 'bg-[#181b1e]'
     return isSelected ? `${base} ring-2 ring-offset-2 ring-${color}-500` : base
   }
 
@@ -235,7 +235,7 @@ export default function TeacherbotForm({ teacherbotId, onBack, onSaved }: Teache
   if (isLoadingBot && isEditing) {
     return (
       <div className="flex items-center justify-center py-12">
-        <Loader2 className="h-8 w-8 animate-spin text-indigo-600" />
+        <Loader2 className="h-8 w-8 animate-spin text-[#181b1e]" />
       </div>
     )
   }
@@ -256,7 +256,7 @@ export default function TeacherbotForm({ teacherbotId, onBack, onSaved }: Teache
           <Button
             variant="outline"
             onClick={() => setShowPublishModal(true)}
-            className="text-indigo-600 border-indigo-200 hover:bg-indigo-50"
+            className="text-[#181b1e] border-[#181b1e]/20 hover:bg-[#181b1e]/5"
           >
             <Globe className="h-4 w-4 mr-2" />
             Pubblica
@@ -281,7 +281,7 @@ export default function TeacherbotForm({ teacherbotId, onBack, onSaved }: Teache
                     type="text"
                     value={formData.name}
                     onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                    className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                    className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-[#181b1e] focus:border-transparent"
                     placeholder="es. Tutor di Matematica"
                     maxLength={100}
                   />
@@ -295,7 +295,7 @@ export default function TeacherbotForm({ teacherbotId, onBack, onSaved }: Teache
                     type="text"
                     value={formData.synopsis}
                     onChange={(e) => setFormData({ ...formData, synopsis: e.target.value })}
-                    className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                    className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-[#181b1e] focus:border-transparent"
                     placeholder="es. Un assistente per esercizi di algebra"
                     maxLength={255}
                   />
@@ -334,14 +334,14 @@ export default function TeacherbotForm({ teacherbotId, onBack, onSaved }: Teache
                 </div>
 
                 {formData.is_proactive && (
-                  <div className="ml-1 pl-4 border-l-2 border-indigo-100 animate-in slide-in-from-top-2">
+                  <div className="ml-1 pl-4 border-l-2 border-[#181b1e]/15 animate-in slide-in-from-top-2">
                     <label className="block text-sm font-medium text-slate-700 mb-1">
                       Messaggio iniziale
                     </label>
                     <textarea
                       value={formData.proactive_message}
                       onChange={(e) => setFormData({ ...formData, proactive_message: e.target.value })}
-                      className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                      className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-[#181b1e] focus:border-transparent"
                       placeholder="es. Ciao! Sono qui per aiutarti con la matematica. Su quale argomento vorresti lavorare oggi?"
                       rows={2}
                     />
@@ -362,14 +362,14 @@ export default function TeacherbotForm({ teacherbotId, onBack, onSaved }: Teache
                 </div>
 
                 {formData.enable_reporting && (
-                  <div className="ml-1 pl-4 border-l-2 border-indigo-100 animate-in slide-in-from-top-2">
+                  <div className="ml-1 pl-4 border-l-2 border-[#181b1e]/15 animate-in slide-in-from-top-2">
                     <label className="block text-sm font-medium text-slate-700 mb-1">
                       Prompt per il report (opzionale)
                     </label>
                     <textarea
                       value={formData.report_prompt}
                       onChange={(e) => setFormData({ ...formData, report_prompt: e.target.value })}
-                      className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-sm"
+                      className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-[#181b1e] focus:border-transparent text-sm"
                       placeholder="Lascia vuoto per usare il prompt predefinito"
                       rows={3}
                     />
@@ -406,7 +406,7 @@ export default function TeacherbotForm({ teacherbotId, onBack, onSaved }: Teache
             <p className="text-sm text-slate-500 mb-4">
               Definisci la personalità e il comportamento del tuo assistente.
               <br />
-              <span className="text-indigo-600 text-xs italic">
+              <span className="text-[#181b1e] text-xs italic">
                 💡 Suggerimento: Seleziona del testo per attivare l'ottimizzatore AI.
               </span>
             </p>
@@ -416,7 +416,7 @@ export default function TeacherbotForm({ teacherbotId, onBack, onSaved }: Teache
               value={formData.system_prompt}
               onChange={(e) => setFormData({ ...formData, system_prompt: e.target.value })}
               onMouseUp={handleMouseUpWithEvent}
-              className="flex-1 w-full px-4 py-3 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent font-mono text-sm resize-none"
+              className="flex-1 w-full px-4 py-3 border border-slate-200 rounded-lg focus:ring-2 focus:ring-[#181b1e] focus:border-transparent font-mono text-sm resize-none"
               placeholder={`Esempio:
 Sei un tutor esperto di matematica per studenti delle scuole superiori.
 
@@ -448,7 +448,7 @@ Il tuo obiettivo è:
           <Button
             type="submit"
             disabled={saveMutation.isPending}
-            className="bg-indigo-600 hover:bg-indigo-700"
+            className="bg-[#181b1e] hover:bg-[#0f1113]"
           >
             {saveMutation.isPending ? (
               <Loader2 className="h-4 w-4 mr-2 animate-spin" />
@@ -508,8 +508,8 @@ Il tuo obiettivo è:
                   type="button"
                   onClick={() => setSelectedClassId(cls.id)}
                   className={`w-full text-left p-3 rounded-lg border transition-all ${selectedClassId === cls.id
-                    ? 'border-indigo-400 bg-indigo-50'
-                    : 'border-slate-200 hover:border-indigo-200 hover:bg-slate-50'
+                    ? 'border-[#181b1e]/40 bg-[#181b1e]/5'
+                    : 'border-slate-200 hover:border-[#181b1e]/20 hover:bg-slate-50'
                     }`}
                 >
                   <div className="font-medium text-slate-800">{cls.name}</div>
@@ -532,7 +532,7 @@ Il tuo obiettivo è:
               <Button
                 onClick={handlePublish}
                 disabled={!selectedClassId || publishMutation.isPending}
-                className="bg-indigo-600 hover:bg-indigo-700"
+                className="bg-[#181b1e] hover:bg-[#0f1113]"
               >
                 {publishMutation.isPending ? (
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
