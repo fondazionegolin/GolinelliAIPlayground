@@ -99,11 +99,14 @@ export default function StudentDocumentsModule({ sessionId: _sessionId }: Studen
   // Refs
   const canvasRef = useRef<HTMLDivElement>(null)
   const documentPageRef = useRef<HTMLDivElement>(null)
+  const toolbarHostRef = useRef<HTMLDivElement>(null)
 
   // UI State
   const [showSubmitModal, setShowSubmitModal] = useState(false)
   const [showNewModal, setShowNewModal] = useState(false)
   const [draggingMargin, setDraggingMargin] = useState<'left' | 'right' | null>(null)
+  const [aiPanelAnchor, setAiPanelAnchor] = useState<{ x: number; y: number } | null>(null)
+  const [aiOpenRequestId, setAiOpenRequestId] = useState(0)
 
   const currentSlide = document.slides?.[currentSlideIndex] || { id: 'fallback', title: 'Slide', blocks: [] }
   const selectedBlock = currentSlide.blocks.find(b => b.id === selectedBlockId)
@@ -435,6 +438,21 @@ export default function StudentDocumentsModule({ sessionId: _sessionId }: Studen
     }
   }, [draggingMargin, mode])
 
+  useEffect(() => {
+    const updateAnchor = () => {
+      if (!toolbarHostRef.current) return
+      const rect = toolbarHostRef.current.getBoundingClientRect()
+      setAiPanelAnchor({
+        x: Math.max(20, rect.right - 360),
+        y: rect.bottom + 8
+      })
+    }
+
+    updateAnchor()
+    window.addEventListener('resize', updateAnchor)
+    return () => window.removeEventListener('resize', updateAnchor)
+  }, [mode, showSidebar])
+
   return (
     <>
       <div className="h-full flex flex-col bg-slate-100 overflow-hidden">
@@ -488,20 +506,39 @@ export default function StudentDocumentsModule({ sessionId: _sessionId }: Studen
         </div>
 
         {/* Unified Toolbar */}
-        <UnifiedToolbar
-          mode={mode}
-          editor={editor}
-          docScale={docScale}
-          setDocScale={setDocScale}
-          showRuledLines={showRuledLines}
-          onToggleRuledLines={() => setShowRuledLines(v => !v)}
-          scale={scale}
-          setScale={setScale}
-          onAddSlideBlock={addSlideBlock}
-          onAddSlideImage={addSlideImage}
-          selectedBlock={selectedBlock}
-          onUpdateBlockStyle={updateBlockStyle}
-        />
+        <div ref={toolbarHostRef}>
+          <UnifiedToolbar
+            mode={mode}
+            editor={editor}
+            docScale={docScale}
+            setDocScale={setDocScale}
+            showRuledLines={showRuledLines}
+            onToggleRuledLines={() => setShowRuledLines(v => !v)}
+            scale={scale}
+            setScale={setScale}
+            onAddSlideBlock={addSlideBlock}
+            onAddSlideImage={addSlideImage}
+            selectedBlock={selectedBlock}
+            onUpdateBlockStyle={updateBlockStyle}
+            onOpenAIAssist={() => {
+              if (!toolbarHostRef.current) return
+              const rect = toolbarHostRef.current.getBoundingClientRect()
+              setAiPanelAnchor({
+                x: Math.max(20, rect.right - 360),
+                y: rect.bottom + 8
+              })
+              setAiOpenRequestId(v => v + 1)
+            }}
+            onAIAssistAnchorChange={() => {
+              if (!toolbarHostRef.current) return
+              const rect = toolbarHostRef.current.getBoundingClientRect()
+              setAiPanelAnchor({
+                x: Math.max(20, rect.right - 360),
+                y: rect.bottom + 8
+              })
+            }}
+          />
+        </div>
 
         <div className="flex-1 flex overflow-hidden">
 
@@ -646,7 +683,8 @@ export default function StudentDocumentsModule({ sessionId: _sessionId }: Studen
                   <div
                     className="flex-1 flex flex-col relative z-10"
                     style={{ minHeight: FORMAT_DIMENSIONS.a4.height - docMargins.vertical * 2 }}
-                    onMouseDown={() => {
+                    onMouseDown={(e) => {
+                      if (e.target !== e.currentTarget) return
                       if (editor && mode === 'document') {
                         editor.chain().focus('end').run()
                       }
@@ -657,6 +695,14 @@ export default function StudentDocumentsModule({ sessionId: _sessionId }: Studen
                       onChange={(html) => setDocument(d => ({ ...d, textContent: html }))}
                       onEditorReady={setEditor}
                       contentClassName="h-full min-h-full max-w-none focus:outline-none p-0 cursor-text [&_.ProseMirror]:min-h-full [&_.ProseMirror]:h-full [&_.ProseMirror]:text-[16px] [&_.ProseMirror]:leading-7 [&_.ProseMirror_p]:m-0 [&_.ProseMirror_h1]:m-0 [&_.ProseMirror_h2]:m-0 [&_.ProseMirror_h3]:m-0 [&_.ProseMirror_ul]:my-0 [&_.ProseMirror_ol]:my-0"
+                      aiPanelAnchor={aiPanelAnchor}
+                      aiOpenRequestId={aiOpenRequestId}
+                      onMissingSelectionForAI={() => {
+                        toast({
+                          title: 'Seleziona prima un testo',
+                          description: 'L’assistente AI lavora sul testo selezionato nel documento.',
+                        })
+                      }}
                     />
                   </div>
                </div>

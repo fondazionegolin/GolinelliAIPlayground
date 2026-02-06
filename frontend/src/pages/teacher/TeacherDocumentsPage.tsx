@@ -110,6 +110,7 @@ export default function TeacherDocumentsPage() {
   // Refs
   const canvasRef = useRef<HTMLDivElement>(null)
   const documentPageRef = useRef<HTMLDivElement>(null)
+  const toolbarHostRef = useRef<HTMLDivElement>(null)
   
   // UI State
   const [showPublishModal, setShowPublishModal] = useState(false)
@@ -594,6 +595,21 @@ export default function TeacherDocumentsPage() {
     }
   }, [draggingMargin, mode])
 
+  useEffect(() => {
+    const updateAnchor = () => {
+      if (!toolbarHostRef.current) return
+      const rect = toolbarHostRef.current.getBoundingClientRect()
+      setAiPanelAnchor({
+        x: Math.max(20, rect.right - 360),
+        y: rect.bottom + 8
+      })
+    }
+
+    updateAnchor()
+    window.addEventListener('resize', updateAnchor)
+    return () => window.removeEventListener('resize', updateAnchor)
+  }, [mode, showSidebar])
+
   return (
     <>
       <div className="h-full flex flex-col bg-slate-100 overflow-hidden"> 
@@ -651,27 +667,39 @@ export default function TeacherDocumentsPage() {
         </div>
 
         {/* Unified Toolbar */}
-        <UnifiedToolbar
-          mode={mode}
-          editor={editor}
-          docScale={docScale}
-          setDocScale={setDocScale}
-          showRuledLines={showRuledLines}
-          onToggleRuledLines={() => setShowRuledLines(v => !v)}
-          scale={scale}
-          setScale={setScale}
-          onAddSlideBlock={addSlideBlock}
-          onAddSlideImage={addSlideImage}
-          selectedBlock={selectedBlock}
-          onUpdateBlockStyle={updateBlockStyle}
-          onOpenAIAssist={(position) => {
-            setAiPanelAnchor(position)
-            setAiOpenRequestId(v => v + 1)
-          }}
-          onAIAssistAnchorChange={(position) => {
-            setAiPanelAnchor(position)
-          }}
-        />
+        <div ref={toolbarHostRef}>
+          <UnifiedToolbar
+            mode={mode}
+            editor={editor}
+            docScale={docScale}
+            setDocScale={setDocScale}
+            showRuledLines={showRuledLines}
+            onToggleRuledLines={() => setShowRuledLines(v => !v)}
+            scale={scale}
+            setScale={setScale}
+            onAddSlideBlock={addSlideBlock}
+            onAddSlideImage={addSlideImage}
+            selectedBlock={selectedBlock}
+            onUpdateBlockStyle={updateBlockStyle}
+            onOpenAIAssist={() => {
+              if (!toolbarHostRef.current) return
+              const rect = toolbarHostRef.current.getBoundingClientRect()
+              setAiPanelAnchor({
+                x: Math.max(20, rect.right - 360),
+                y: rect.bottom + 8
+              })
+              setAiOpenRequestId(v => v + 1)
+            }}
+            onAIAssistAnchorChange={() => {
+              if (!toolbarHostRef.current) return
+              const rect = toolbarHostRef.current.getBoundingClientRect()
+              setAiPanelAnchor({
+                x: Math.max(20, rect.right - 360),
+                y: rect.bottom + 8
+              })
+            }}
+          />
+        </div>
 
         <div className="flex-1 flex overflow-hidden"> 
           
@@ -828,7 +856,8 @@ export default function TeacherDocumentsPage() {
                   <div
                     className="flex-1 flex flex-col relative z-10"
                     style={{ minHeight: FORMAT_DIMENSIONS.a4.height - docMargins.vertical * 2 }}
-                    onMouseDown={() => {
+                    onMouseDown={(e) => {
+                      if (e.target !== e.currentTarget) return
                       if (editor && mode === 'document') {
                         editor.chain().focus('end').run()
                       }
