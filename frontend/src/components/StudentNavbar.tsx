@@ -5,6 +5,7 @@ import { Button } from './ui/button'
 import { LogoMark } from './LogoMark'
 import { studentApi } from '@/lib/api'
 import { DEFAULT_STUDENT_ACCENT, getStudentAccentTheme, saveStudentAccent, STUDENT_ACCENTS, type StudentAccentId } from '@/lib/studentAccent'
+import { useAuthStore } from '@/stores/auth'
 
 interface StudentProfile {
   id?: string
@@ -36,6 +37,7 @@ export function StudentNavbar({
   onAccentChange
 }: StudentNavbarProps) {
   const navigate = useNavigate()
+  const logout = useAuthStore((s) => s.logout)
   const [showDropdown, setShowDropdown] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
   const [showMobileMenu, setShowMobileMenu] = useState(false)
@@ -116,9 +118,9 @@ export function StudentNavbar({
   }
 
   const handleLogout = () => {
-    localStorage.removeItem('student_token')
+    logout()
     localStorage.removeItem('student_nickname')
-    navigate('/student/join')
+    navigate('/join')
   }
 
   const navItems = [
