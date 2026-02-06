@@ -118,7 +118,7 @@ export function StudentNavbar({
             <div className="flex items-center gap-1 cursor-pointer" onClick={() => onNavigate?.(null)}>
               <LogoMark className="h-9 w-9 mix-blend-multiply" bubbleColor="#f43f5e" />
               <span className="-ml-1 pb-[1px] text-[11px] font-extrabold leading-[1.15] tracking-[0.2em] text-slate-900">
-                <span className="block bg-gradient-to-r from-slate-900 via-slate-700 to-slate-900 bg-clip-text text-transparent">AI</span>
+                <span className="block bg-gradient-to-r from-rose-500 via-pink-500 to-red-500 bg-clip-text text-transparent">AI</span>
                 <span className="block bg-gradient-to-r from-slate-900 via-slate-700 to-slate-900 bg-clip-text text-transparent">Play</span>
                 <span className="block bg-gradient-to-r from-slate-900 via-slate-700 to-slate-900 bg-clip-text text-transparent">Ground</span>
               </span>
