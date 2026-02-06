@@ -316,7 +316,6 @@ export default function TeacherDocumentsPage() {
       } else {
         setMode('document')
         setDraftId(null)
-        setDocView('paged')
         if (content.margins) {
           setDocMargins({
             vertical: content.margins.vertical ?? content.margins.top ?? 56,
@@ -366,7 +365,6 @@ export default function TeacherDocumentsPage() {
       } else {
         setMode('document')
         setDraftId(doc.id)
-        setDocView('paged')
         if (content.margins) {
           setDocMargins({
             vertical: content.margins.vertical ?? content.margins.top ?? 56,

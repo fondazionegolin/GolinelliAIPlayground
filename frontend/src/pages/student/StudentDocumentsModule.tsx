@@ -245,7 +245,6 @@ export default function StudentDocumentsModule({ sessionId: _sessionId }: Studen
       } else {
         setMode('document')
         setDraftId(doc.id)
-        setDocView('paged')
         if (content.margins) {
           setDocMargins({
             vertical: content.margins.vertical ?? content.margins.top ?? 56,
