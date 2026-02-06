@@ -10,6 +10,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { useToast } from '@/components/ui/use-toast'
 import { ArrowLeft } from 'lucide-react'
 import { AppBackground } from '@/components/ui/AppBackground'
+import { LogoMark } from '@/components/LogoMark'
 
 export default function StudentJoinPage() {
   const [joinCode, setJoinCode] = useState('')
@@ -51,15 +52,11 @@ export default function StudentJoinPage() {
       <div className="w-full max-w-md space-y-6">
         <div className="text-center">
           <div className="flex items-center justify-center gap-3 mb-4">
-            <img
-              src="http://drive.golinelli.ai/public/f8b9de7d45bd416e9210a1109e08241a"
-              alt="AI playground"
-              className="h-14 w-14 object-contain bg-transparent mix-blend-multiply"
-            />
-            <h1 className="text-[22px] font-extrabold leading-[1.05] tracking-[0.2em] text-gray-900 text-left">
+            <LogoMark className="h-14 w-14 mix-blend-multiply" bubbleColor="#f43f5e" />
+            <h1 className="text-[22px] font-extrabold leading-[1.15] tracking-[0.2em] text-gray-900 text-left pb-[1px]">
               <span className="block bg-gradient-to-r from-gray-900 via-gray-600 to-gray-900 bg-clip-text text-transparent">AI</span>
               <span className="block bg-gradient-to-r from-gray-900 via-gray-600 to-gray-900 bg-clip-text text-transparent">Play</span>
-              <span className="block bg-gradient-to-r from-gray-900 via-gray-600 to-gray-900 bg-clip-text text-transparent">ground</span>
+              <span className="block bg-gradient-to-r from-gray-900 via-gray-600 to-gray-900 bg-clip-text text-transparent">Ground</span>
             </h1>
           </div>
           <p className="text-gray-600 mt-2">Inserisci il codice fornito dal docente</p>

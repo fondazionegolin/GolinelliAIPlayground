@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import { Link, useNavigate, useLocation } from 'react-router-dom'
 import { User, Settings, LogOut, ChevronDown, Users, MessageSquare, FileText, Check, Brain } from 'lucide-react'
 import { Button } from './ui/button'
+import { LogoMark } from './LogoMark'
 import { teacherApi } from '@/lib/api'
 import { useAuthStore } from '@/stores/auth'
 import TeacherNotifications, { TeacherNotification } from './TeacherNotifications'
@@ -260,15 +261,11 @@ export function TeacherNavbar({ currentSession, onSessionChange, showChatToggle 
           <div className="flex items-center justify-between h-16">
             {/* Logo/Brand */}
             <div className="flex items-center gap-1 cursor-pointer" onClick={() => navigate('/teacher')}>
-              <img
-                src="http://drive.golinelli.ai/public/f8b9de7d45bd416e9210a1109e08241a"
-                alt="AI playground"
-                className="h-9 w-9 object-contain bg-transparent mix-blend-multiply"
-              />
-              <span className="-ml-1 text-[11px] font-extrabold leading-[1.05] tracking-[0.2em] text-slate-900">
+              <LogoMark className="h-9 w-9 mix-blend-multiply" bubbleColor="#4f46e5" />
+              <span className="-ml-1 pb-[1px] text-[11px] font-extrabold leading-[1.15] tracking-[0.2em] text-slate-900">
                 <span className="block bg-gradient-to-r from-slate-900 via-slate-700 to-slate-900 bg-clip-text text-transparent">AI</span>
                 <span className="block bg-gradient-to-r from-slate-900 via-slate-700 to-slate-900 bg-clip-text text-transparent">Play</span>
-                <span className="block bg-gradient-to-r from-slate-900 via-slate-700 to-slate-900 bg-clip-text text-transparent">ground</span>
+                <span className="block bg-gradient-to-r from-slate-900 via-slate-700 to-slate-900 bg-clip-text text-transparent">Ground</span>
               </span>
             </div>
 
