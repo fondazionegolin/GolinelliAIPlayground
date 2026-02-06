@@ -11,6 +11,8 @@ from app.core.security import create_student_join_token
 from app.api.deps import get_current_student
 from app.models.session import Session, SessionStudent, SessionModule
 from app.models.task import Task, TaskSubmission, TaskStatus
+from app.models.document_draft import DocumentDraft
+from app.schemas.document_draft import DocumentDraftCreate, DocumentDraftUpdate
 from app.models.enums import SessionStatus
 from app.schemas.auth import StudentJoinRequest, StudentJoinResponse
 from app.schemas.session import SessionResponse, SessionModuleResponse
@@ -186,6 +188,114 @@ async def heartbeat(
     student.last_seen_at = datetime.utcnow()
     await db.commit()
     return {"status": "ok", "last_seen_at": student.last_seen_at.isoformat()}
+
+
+# ==================== DOCUMENT DRAFTS ====================
+
+@router.get("/documents/drafts")
+async def list_document_drafts(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    student: Annotated[SessionStudent, Depends(get_current_student)],
+):
+    result = await db.execute(
+        select(DocumentDraft)
+        .where(DocumentDraft.owner_student_id == student.id)
+        .order_by(DocumentDraft.updated_at.desc())
+    )
+    drafts = result.scalars().all()
+    return [
+        {
+            "id": str(d.id),
+            "title": d.title,
+            "doc_type": d.doc_type,
+            "content_json": d.content_json,
+            "session_id": str(d.session_id) if d.session_id else None,
+            "created_at": d.created_at.isoformat(),
+            "updated_at": d.updated_at.isoformat(),
+        }
+        for d in drafts
+    ]
+
+
+@router.post("/documents/drafts")
+async def create_document_draft(
+    request: DocumentDraftCreate,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    student: Annotated[SessionStudent, Depends(get_current_student)],
+):
+    draft = DocumentDraft(
+        tenant_id=student.tenant_id,
+        session_id=student.session_id,
+        owner_student_id=student.id,
+        title=request.title,
+        doc_type=request.doc_type,
+        content_json=request.content_json,
+    )
+    db.add(draft)
+    await db.commit()
+    await db.refresh(draft)
+    return {
+        "id": str(draft.id),
+        "title": draft.title,
+        "doc_type": draft.doc_type,
+        "content_json": draft.content_json,
+        "session_id": str(draft.session_id) if draft.session_id else None,
+        "created_at": draft.created_at.isoformat(),
+        "updated_at": draft.updated_at.isoformat(),
+    }
+
+
+@router.patch("/documents/drafts/{draft_id}")
+async def update_document_draft(
+    draft_id: UUID,
+    request: DocumentDraftUpdate,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    student: Annotated[SessionStudent, Depends(get_current_student)],
+):
+    result = await db.execute(
+        select(DocumentDraft)
+        .where(DocumentDraft.id == draft_id)
+        .where(DocumentDraft.owner_student_id == student.id)
+    )
+    draft = result.scalar_one_or_none()
+    if not draft:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Draft not found")
+    if request.title is not None:
+        draft.title = request.title
+    if request.doc_type is not None:
+        draft.doc_type = request.doc_type
+    if request.content_json is not None:
+        draft.content_json = request.content_json
+    await db.commit()
+    await db.refresh(draft)
+    return {
+        "id": str(draft.id),
+        "title": draft.title,
+        "doc_type": draft.doc_type,
+        "content_json": draft.content_json,
+        "session_id": str(draft.session_id) if draft.session_id else None,
+        "created_at": draft.created_at.isoformat(),
+        "updated_at": draft.updated_at.isoformat(),
+    }
+
+
+@router.delete("/documents/drafts/{draft_id}")
+async def delete_document_draft(
+    draft_id: UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    student: Annotated[SessionStudent, Depends(get_current_student)],
+):
+    result = await db.execute(
+        select(DocumentDraft)
+        .where(DocumentDraft.id == draft_id)
+        .where(DocumentDraft.owner_student_id == student.id)
+    )
+    draft = result.scalar_one_or_none()
+    if not draft:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Draft not found")
+    await db.delete(draft)
+    await db.commit()
+    return {"status": "deleted"}
 
 
 @router.get("/tasks")

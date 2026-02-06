@@ -9,6 +9,7 @@ import { useToast } from '@/components/ui/use-toast'
 import { useQuery } from '@tanstack/react-query'
 import { SlideEditor, SlideBlock } from '@/components/SlideEditor'
 import { RichTextEditor } from '@/components/RichTextEditor'
+import { PagedDocumentPreview } from '@/components/PagedDocumentPreview'
 import { UnifiedToolbar } from '@/components/UnifiedToolbar'
 import { Editor } from '@tiptap/react'
 
@@ -71,7 +72,7 @@ const DOC_PAGE_GAP = 28
 
 export default function TeacherDocumentsPage() {
   const { toast } = useToast()
-  const draftStorageKey = 'teacher_docs_drafts'
+  const [draftId, setDraftId] = useState<string | null>(null)
   
   // State
   const [mode, setMode] = useState<EditorMode>('document') 
@@ -99,7 +100,8 @@ export default function TeacherDocumentsPage() {
   const [currentSlideIndex, setCurrentSlideIndex] = useState(0)
   const [scale, setScale] = useState(1)
   const [docScale, setDocScale] = useState(1)
-  const [docMargins, setDocMargins] = useState({ top: 56, right: 56, bottom: 56, left: 56 })
+  const [docView, setDocView] = useState<'edit' | 'paged'>('paged')
+  const [docMargins, setDocMargins] = useState({ vertical: 56, horizontal: 56 })
   const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null)
   
   // Refs
@@ -126,6 +128,8 @@ export default function TeacherDocumentsPage() {
     setMode('document')
     setCurrentSlideIndex(0)
     setSelectedBlockId(null)
+    setDraftId(null)
+    setDocView('paged')
   }
 
   const createNewPresentation = () => {
@@ -140,34 +144,62 @@ export default function TeacherDocumentsPage() {
     setMode('slides')
     setCurrentSlideIndex(0)
     setSelectedBlockId(null)
+    setDraftId(null)
   }
 
-  const saveDrafts = (drafts: DraftDocument[]) => {
-    setDraftDocuments(drafts)
-    localStorage.setItem(draftStorageKey, JSON.stringify(drafts))
-  }
-
-  const upsertDraft = (titleOverride?: string) => {
+  const upsertDraft = async (titleOverride?: string) => {
     const type = mode === 'slides' ? 'presentation' : 'document'
     const contentJson = JSON.stringify(
       mode === 'slides'
         ? { type: 'presentation_v2', format: document.format, slides: document.slides }
         : { type: 'document_v1', htmlContent: document.textContent || '', header: document.header, margins: docMargins }
     )
-    const nextDraft: DraftDocument = {
-      id: document.id,
-      title: titleOverride ?? document.title,
-      type,
-      updatedAt: new Date().toISOString(),
-      contentJson
+    try {
+      if (draftId) {
+        const res = await teacherApi.updateDocumentDraft(draftId, {
+          title: titleOverride ?? document.title,
+          doc_type: type,
+          content_json: contentJson
+        })
+        const updated: DraftDocument = {
+          id: res.data.id,
+          title: res.data.title,
+          type: res.data.doc_type,
+          updatedAt: res.data.updated_at,
+          contentJson: res.data.content_json,
+        }
+        setDraftDocuments(prev => [updated, ...prev.filter(d => d.id !== updated.id)])
+      } else {
+        const res = await teacherApi.createDocumentDraft({
+          title: titleOverride ?? document.title,
+          doc_type: type,
+          content_json: contentJson
+        })
+        setDraftId(res.data.id)
+        const created: DraftDocument = {
+          id: res.data.id,
+          title: res.data.title,
+          type: res.data.doc_type,
+          updatedAt: res.data.updated_at,
+          contentJson: res.data.content_json,
+        }
+        setDraftDocuments(prev => [created, ...prev.filter(d => d.id !== created.id)])
+      }
+    } catch (e) {
+      console.error('Draft save failed', e)
     }
-    const next = [nextDraft, ...draftDocuments.filter(d => d.id !== document.id)]
-    saveDrafts(next)
   }
 
   const handleTitleChange = (value: string) => {
     setDocument(d => ({ ...d, title: value }))
     upsertDraft(value)
+  }
+
+  const adjustMargins = (axis: 'horizontal' | 'vertical', delta: number) => {
+    setDocMargins(prev => ({
+      ...prev,
+      [axis]: Math.max(16, Math.min(160, prev[axis] + delta))
+    }))
   }
 
   // Fetch classes and sessions
@@ -192,14 +224,22 @@ export default function TeacherDocumentsPage() {
 
   // Load existing documents
   useEffect(() => {
-    const storedDrafts = localStorage.getItem(draftStorageKey)
-    if (storedDrafts) {
+    const fetchDrafts = async () => {
       try {
-        setDraftDocuments(JSON.parse(storedDrafts))
-      } catch {
-        setDraftDocuments([])
+        const res = await teacherApi.listDocumentDrafts()
+        const drafts: DraftDocument[] = (res.data || []).map((d: any) => ({
+          id: d.id,
+          title: d.title,
+          type: d.doc_type,
+          updatedAt: d.updated_at,
+          contentJson: d.content_json
+        }))
+        setDraftDocuments(drafts)
+      } catch (e) {
+        console.error('Failed to load drafts', e)
       }
     }
+    fetchDrafts()
 
     const fetchDocuments = async () => {
       if (!classesData || classesData.length === 0) return
@@ -258,6 +298,7 @@ export default function TeacherDocumentsPage() {
       
       if (doc.type === 'presentation' || content.type === 'presentation_v2' || content.slides) {
         setMode('slides')
+        setDraftId(null)
         const safeSlides = (content.slides && Array.isArray(content.slides) && content.slides.length > 0) 
           ? content.slides.map((s: any) => ({
               id: s.id || crypto.randomUUID(),
@@ -277,12 +318,12 @@ export default function TeacherDocumentsPage() {
         setSelectedBlockId(null)
       } else {
         setMode('document')
+        setDraftId(null)
+        setDocView('paged')
         if (content.margins) {
           setDocMargins({
-            top: content.margins.top ?? 56,
-            right: content.margins.right ?? 56,
-            bottom: content.margins.bottom ?? 56,
-            left: content.margins.left ?? 56
+            vertical: content.margins.vertical ?? content.margins.top ?? 56,
+            horizontal: content.margins.horizontal ?? content.margins.left ?? 56,
           })
         }
         setDocument({
@@ -307,6 +348,7 @@ export default function TeacherDocumentsPage() {
       const content = JSON.parse(doc.contentJson)
       if (doc.type === 'presentation' || content.type === 'presentation_v2' || content.slides) {
         setMode('slides')
+        setDraftId(doc.id)
         const safeSlides = (content.slides && Array.isArray(content.slides) && content.slides.length > 0)
           ? content.slides.map((s: any) => ({
               id: s.id || crypto.randomUUID(),
@@ -326,12 +368,12 @@ export default function TeacherDocumentsPage() {
         setSelectedBlockId(null)
       } else {
         setMode('document')
+        setDraftId(doc.id)
+        setDocView('paged')
         if (content.margins) {
           setDocMargins({
-            top: content.margins.top ?? 56,
-            right: content.margins.right ?? 56,
-            bottom: content.margins.bottom ?? 56,
-            left: content.margins.left ?? 56
+            vertical: content.margins.vertical ?? content.margins.top ?? 56,
+            horizontal: content.margins.horizontal ?? content.margins.left ?? 56,
           })
         }
         setDocument({
@@ -541,6 +583,14 @@ export default function TeacherDocumentsPage() {
           </div>
           
           <div className="flex gap-2">
+             {mode === 'document' && (
+               <Button
+                 variant="outline"
+                 onClick={() => setDocView(v => (v === 'paged' ? 'edit' : 'paged'))}
+               >
+                 {docView === 'paged' ? 'Modifica' : 'Anteprima pagine'}
+               </Button>
+             )}
              <Button variant="outline" onClick={() => setShowPublishModal(true)}>
                <Upload className="h-4 w-4 mr-2" />
                Pubblica
@@ -554,8 +604,6 @@ export default function TeacherDocumentsPage() {
           editor={editor}
           docScale={docScale}
           setDocScale={setDocScale}
-          docMargins={docMargins}
-          onChangeDocMargins={setDocMargins}
           scale={scale}
           setScale={setScale}
           onAddSlideBlock={addSlideBlock}
@@ -663,62 +711,115 @@ export default function TeacherDocumentsPage() {
                    minHeight: FORMAT_DIMENSIONS.a4.height,
                    transform: `scale(${docScale})`,
                    transformOrigin: 'top center',
-                   backgroundImage: `repeating-linear-gradient(to bottom, #ffffff 0, #ffffff ${FORMAT_DIMENSIONS.a4.height}px, #f1f5f9 ${FORMAT_DIMENSIONS.a4.height}px, #f1f5f9 ${FORMAT_DIMENSIONS.a4.height + DOC_PAGE_GAP}px)`,
-                   boxShadow: '0 10px 30px rgba(15, 23, 42, 0.12)',
-                   padding: `${docMargins.top}px ${docMargins.right}px ${docMargins.bottom}px ${docMargins.left}px`
+                   backgroundImage: docView === 'edit'
+                     ? `repeating-linear-gradient(to bottom, #ffffff 0, #ffffff ${FORMAT_DIMENSIONS.a4.height}px, #f1f5f9 ${FORMAT_DIMENSIONS.a4.height}px, #f1f5f9 ${FORMAT_DIMENSIONS.a4.height + DOC_PAGE_GAP}px)`
+                     : undefined,
+                   boxShadow: docView === 'edit' ? '0 10px 30px rgba(15, 23, 42, 0.12)' : undefined,
+                   padding: docView === 'edit' ? `${docMargins.vertical}px ${docMargins.horizontal}px` : 0
                  }}
                >
 
-                  {/* Visual Header Section */}
-                  <div className="pb-4 flex items-center gap-6 border-b border-transparent hover:border-slate-100 transition-colors group/header">
-                    {/* Logo Area */}
-                    <div className="w-20 h-20 bg-slate-50 rounded-lg flex items-center justify-center cursor-pointer hover:bg-slate-100 relative overflow-hidden group/logo border border-dashed border-slate-300 hover:border-violet-400 transition-colors">
-                      {document.header?.logoUrl ? (
-                        <img src={document.header.logoUrl} className="w-full h-full object-contain" alt="Logo" />
-                      ) : (
-                        <div className="text-center p-1">
-                          <Upload className="h-5 w-5 text-slate-400 mx-auto mb-1" />
-                          <span className="text-[9px] text-slate-400 block uppercase">Logo</span>
-                        </div>
-                      )}
-                      <input 
-                        type="file" 
-                        accept="image/*"
-                        className="absolute inset-0 opacity-0 cursor-pointer" 
-                        onChange={handleLogoUpload} 
-                      />
-                      {document.header?.logoUrl && (
-                        <div className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 group-hover/logo:opacity-100 transition-opacity">
-                          <span className="text-white text-xs font-medium">Cambia</span>
-                        </div>
-                      )}
+                  {/* Rulers */}
+                  <div className="absolute -top-8 left-0 right-0 flex justify-center">
+                    <div className="flex items-center gap-2 bg-white/90 border border-slate-200 rounded-full px-3 py-1 shadow-sm">
+                      <button
+                        className="h-6 w-6 rounded-full hover:bg-slate-100 text-slate-600"
+                        onClick={() => adjustMargins('horizontal', -8)}
+                        title="Riduci margine orizzontale"
+                      >
+                        −
+                      </button>
+                      <span className="text-[10px] uppercase tracking-wide text-slate-500">Orizz</span>
+                      <button
+                        className="h-6 w-6 rounded-full hover:bg-slate-100 text-slate-600"
+                        onClick={() => adjustMargins('horizontal', 8)}
+                        title="Aumenta margine orizzontale"
+                      >
+                        +
+                      </button>
                     </div>
-                    
-                    {/* Title Area */}
-                    <div className="flex-1">
-                      <input 
-                        className="text-3xl font-bold w-full border-none focus:ring-0 placeholder:text-slate-300 px-0 text-slate-900" 
-                        placeholder="Titolo Intestazione" 
-                        value={document.header?.title || ''}
-                        onChange={(e) => setDocument(d => ({ ...d, header: { ...d.header!, title: e.target.value } }))}
-                      />
-                      <input 
-                        className="text-base text-slate-500 w-full border-none focus:ring-0 placeholder:text-slate-300 px-0 mt-1" 
-                        placeholder="Sottotitolo o Dettagli..." 
-                        value={document.header?.subtitle || ''}
-                        onChange={(e) => setDocument(d => ({ ...d, header: { ...d.header!, subtitle: e.target.value } }))}
-                      />
+                  </div>
+                  <div className="absolute top-0 -left-8 bottom-0 flex items-center">
+                    <div className="flex flex-col items-center gap-2 bg-white/90 border border-slate-200 rounded-full px-1 py-3 shadow-sm">
+                      <button
+                        className="h-6 w-6 rounded-full hover:bg-slate-100 text-slate-600"
+                        onClick={() => adjustMargins('vertical', -8)}
+                        title="Riduci margine verticale"
+                      >
+                        −
+                      </button>
+                      <span className="text-[10px] uppercase tracking-wide text-slate-500 [writing-mode:vertical-rl] rotate-180">Vert</span>
+                      <button
+                        className="h-6 w-6 rounded-full hover:bg-slate-100 text-slate-600"
+                        onClick={() => adjustMargins('vertical', 8)}
+                        title="Aumenta margine verticale"
+                      >
+                        +
+                      </button>
                     </div>
                   </div>
 
-                  <div className="flex-1 flex flex-col">
-                    <RichTextEditor 
-                      content={document.textContent || ''}
-                      onChange={(html) => setDocument(d => ({ ...d, textContent: html }))}
-                      onEditorReady={setEditor}
-                      contentClassName="flex-1 prose max-w-none focus:outline-none min-h-[500px] p-0"
+                  {docView === 'edit' ? (
+                    <>
+                      {/* Visual Header Section */}
+                      <div className="pb-4 flex items-center gap-6 border-b border-transparent hover:border-slate-100 transition-colors group/header">
+                        {/* Logo Area */}
+                        <div className="w-20 h-20 bg-slate-50 rounded-lg flex items-center justify-center cursor-pointer hover:bg-slate-100 relative overflow-hidden group/logo border border-dashed border-slate-300 hover:border-violet-400 transition-colors">
+                          {document.header?.logoUrl ? (
+                            <img src={document.header.logoUrl} className="w-full h-full object-contain" alt="Logo" />
+                          ) : (
+                            <div className="text-center p-1">
+                              <Upload className="h-5 w-5 text-slate-400 mx-auto mb-1" />
+                              <span className="text-[9px] text-slate-400 block uppercase">Logo</span>
+                            </div>
+                          )}
+                          <input
+                            type="file"
+                            accept="image/*"
+                            className="absolute inset-0 opacity-0 cursor-pointer"
+                            onChange={handleLogoUpload}
+                          />
+                          {document.header?.logoUrl && (
+                            <div className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 group-hover/logo:opacity-100 transition-opacity">
+                              <span className="text-white text-xs font-medium">Cambia</span>
+                            </div>
+                          )}
+                        </div>
+                        
+                        {/* Title Area */}
+                        <div className="flex-1">
+                          <input
+                            className="text-3xl font-bold w-full border-none focus:ring-0 placeholder:text-slate-300 px-0 text-slate-900"
+                            placeholder="Titolo Intestazione"
+                            value={document.header?.title || ''}
+                            onChange={(e) => setDocument(d => ({ ...d, header: { ...d.header!, title: e.target.value } }))}
+                          />
+                          <input
+                            className="text-base text-slate-500 w-full border-none focus:ring-0 placeholder:text-slate-300 px-0 mt-1"
+                            placeholder="Sottotitolo o Dettagli..."
+                            value={document.header?.subtitle || ''}
+                            onChange={(e) => setDocument(d => ({ ...d, header: { ...d.header!, subtitle: e.target.value } }))}
+                          />
+                        </div>
+                      </div>
+
+                      <div className="flex-1 flex flex-col">
+                        <RichTextEditor
+                          content={document.textContent || ''}
+                          onChange={(html) => setDocument(d => ({ ...d, textContent: html }))}
+                          onEditorReady={setEditor}
+                          contentClassName="flex-1 prose max-w-none focus:outline-none min-h-[500px] p-0"
+                        />
+                      </div>
+                    </>
+                  ) : (
+                    <PagedDocumentPreview
+                      contentHtml={document.textContent || ''}
+                      header={document.header}
+                      margins={docMargins}
+                      pageGap={DOC_PAGE_GAP}
                     />
-                  </div>
+                  )}
                </div>
              )}
 

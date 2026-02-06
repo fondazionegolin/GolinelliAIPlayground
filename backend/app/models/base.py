@@ -7,6 +7,7 @@ from app.models.llm import LLMProfile, Conversation, ConversationMessage, AuditE
 from app.models.rag import RAGDocument, RAGChunk, RAGEmbedding, RAGCitation
 from app.models.ml import MLDataset, MLExperiment, MLResult
 from app.models.assessment import Lesson, Quiz, QuizAttempt, Badge, BadgeAward
+from app.models.document_draft import DocumentDraft
 
 __all__ = [
     "Tenant",
@@ -35,4 +36,5 @@ __all__ = [
     "QuizAttempt",
     "Badge",
     "BadgeAward",
+    "DocumentDraft",
 ]

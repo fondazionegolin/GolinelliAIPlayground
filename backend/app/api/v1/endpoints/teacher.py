@@ -25,6 +25,8 @@ from app.models.llm import AuditEvent
 from app.models.chat import ChatRoom, ChatMessage
 from app.models.enums import SessionStatus, ChatRoomType, SenderType, InvitationStatus, UserRole
 from app.models.task import Task, TaskSubmission, TaskStatus, TaskType
+from app.models.document_draft import DocumentDraft
+from app.schemas.document_draft import DocumentDraftCreate, DocumentDraftUpdate
 from app.realtime.gateway import sio
 from app.schemas.session import (
     ClassCreate, ClassResponse,
@@ -664,6 +666,121 @@ async def get_session_audit(
 
 
 # ==================== TASK ENDPOINTS ====================
+
+# ==================== DOCUMENT DRAFTS ====================
+
+@router.get("/documents/drafts")
+async def list_document_drafts(
+    session_id: UUID | None = None,
+    db: Annotated[AsyncSession, Depends(get_db)] = None,
+    teacher: Annotated[User, Depends(get_current_teacher)] = None,
+):
+    query = select(DocumentDraft).where(DocumentDraft.owner_teacher_id == teacher.id)
+    if session_id:
+        if not await teacher_can_access_session(db, teacher, session_id):
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
+        query = query.where(DocumentDraft.session_id == session_id)
+    result = await db.execute(query.order_by(DocumentDraft.updated_at.desc()))
+    drafts = result.scalars().all()
+    return [
+        {
+            "id": str(d.id),
+            "title": d.title,
+            "doc_type": d.doc_type,
+            "content_json": d.content_json,
+            "session_id": str(d.session_id) if d.session_id else None,
+            "created_at": d.created_at.isoformat(),
+            "updated_at": d.updated_at.isoformat(),
+        }
+        for d in drafts
+    ]
+
+
+@router.post("/documents/drafts")
+async def create_document_draft(
+    request: DocumentDraftCreate,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    teacher: Annotated[User, Depends(get_current_teacher)],
+):
+    if request.session_id and not await teacher_can_access_session(db, teacher, request.session_id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
+    draft = DocumentDraft(
+        tenant_id=teacher.tenant_id,
+        session_id=request.session_id,
+        owner_teacher_id=teacher.id,
+        title=request.title,
+        doc_type=request.doc_type,
+        content_json=request.content_json,
+    )
+    db.add(draft)
+    await db.commit()
+    await db.refresh(draft)
+    return {
+        "id": str(draft.id),
+        "title": draft.title,
+        "doc_type": draft.doc_type,
+        "content_json": draft.content_json,
+        "session_id": str(draft.session_id) if draft.session_id else None,
+        "created_at": draft.created_at.isoformat(),
+        "updated_at": draft.updated_at.isoformat(),
+    }
+
+
+@router.patch("/documents/drafts/{draft_id}")
+async def update_document_draft(
+    draft_id: UUID,
+    request: DocumentDraftUpdate,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    teacher: Annotated[User, Depends(get_current_teacher)],
+):
+    result = await db.execute(
+        select(DocumentDraft)
+        .where(DocumentDraft.id == draft_id)
+        .where(DocumentDraft.owner_teacher_id == teacher.id)
+    )
+    draft = result.scalar_one_or_none()
+    if not draft:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Draft not found")
+    if request.session_id and not await teacher_can_access_session(db, teacher, request.session_id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
+    if request.title is not None:
+        draft.title = request.title
+    if request.doc_type is not None:
+        draft.doc_type = request.doc_type
+    if request.content_json is not None:
+        draft.content_json = request.content_json
+    if request.session_id is not None:
+        draft.session_id = request.session_id
+    await db.commit()
+    await db.refresh(draft)
+    return {
+        "id": str(draft.id),
+        "title": draft.title,
+        "doc_type": draft.doc_type,
+        "content_json": draft.content_json,
+        "session_id": str(draft.session_id) if draft.session_id else None,
+        "created_at": draft.created_at.isoformat(),
+        "updated_at": draft.updated_at.isoformat(),
+    }
+
+
+@router.delete("/documents/drafts/{draft_id}")
+async def delete_document_draft(
+    draft_id: UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    teacher: Annotated[User, Depends(get_current_teacher)],
+):
+    result = await db.execute(
+        select(DocumentDraft)
+        .where(DocumentDraft.id == draft_id)
+        .where(DocumentDraft.owner_teacher_id == teacher.id)
+    )
+    draft = result.scalar_one_or_none()
+    if not draft:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Draft not found")
+    await db.delete(draft)
+    await db.commit()
+    return {"status": "deleted"}
 
 @router.get("/sessions/{session_id}/tasks")
 async def list_tasks(
@@ -1816,4 +1933,3 @@ async def update_teacher_conversation(
     await db.refresh(conversation)
     
     return {"id": conversation.id, "title": conversation.title, "agent_mode": conversation.agent_mode}
-

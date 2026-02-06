@@ -44,6 +44,13 @@ export const studentApi = {
     api.post(`/student/tasks/${taskId}/submit`, null, { params: { content, content_json } }),
   submitDocument: (data: { title: string; content_type: string; content_json: string }) =>
     api.post('/student/documents/submit', data),
+  listDocumentDrafts: () => api.get('/student/documents/drafts'),
+  createDocumentDraft: (data: { title: string; doc_type: string; content_json: string }) =>
+    api.post('/student/documents/drafts', data),
+  updateDocumentDraft: (draftId: string, data: { title?: string; doc_type?: string; content_json?: string }) =>
+    api.patch(`/student/documents/drafts/${draftId}`, data),
+  deleteDocumentDraft: (draftId: string) =>
+    api.delete(`/student/documents/drafts/${draftId}`),
   getProfile: () => api.get('/student/profile'),
   updateProfile: (data: { avatar_url?: string }) =>
     api.patch('/student/profile', data),
@@ -151,6 +158,13 @@ export const teacherApi = {
     api.patch(`/teacher/conversations/${conversationId}`, data),
   addMessage: (conversationId: string, data: { role: string; content: string; provider?: string; model?: string }) =>
     api.post(`/teacher/conversations/${conversationId}/messages`, data),
+  listDocumentDrafts: (sessionId?: string) => api.get('/teacher/documents/drafts', { params: { session_id: sessionId } }),
+  createDocumentDraft: (data: { title: string; doc_type: string; content_json: string; session_id?: string }) =>
+    api.post('/teacher/documents/drafts', data),
+  updateDocumentDraft: (draftId: string, data: { title?: string; doc_type?: string; content_json?: string; session_id?: string }) =>
+    api.patch(`/teacher/documents/drafts/${draftId}`, data),
+  deleteDocumentDraft: (draftId: string) =>
+    api.delete(`/teacher/documents/drafts/${draftId}`),
 }
 
 export const chatApi = {
