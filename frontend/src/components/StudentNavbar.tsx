@@ -116,13 +116,13 @@ export function StudentNavbar({
             {/* Logo/Brand */}
             <div className="flex items-center gap-3 cursor-pointer" onClick={() => onNavigate?.(null)}>
               <img
-                src="http://drive.golinelli.ai/public/39a38e5f53a447e8a148d109fb05afed"
+                src="http://drive.golinelli.ai/public/f8b9de7d45bd416e9210a1109e08241a"
                 alt="AI playground"
                 className="h-9 w-9 object-contain bg-transparent mix-blend-multiply"
               />
-              <span className="text-[11px] font-extrabold leading-[1.05] tracking-[0.2em] text-slate-900 uppercase">
+              <span className="text-[11px] font-extrabold leading-[1.05] tracking-[0.2em] text-slate-900">
                 <span className="block bg-gradient-to-r from-slate-900 via-slate-700 to-slate-900 bg-clip-text text-transparent">AI</span>
-                <span className="block bg-gradient-to-r from-slate-900 via-slate-700 to-slate-900 bg-clip-text text-transparent">PLAY</span>
+                <span className="block bg-gradient-to-r from-slate-900 via-slate-700 to-slate-900 bg-clip-text text-transparent">Play</span>
                 <span className="block bg-gradient-to-r from-slate-900 via-slate-700 to-slate-900 bg-clip-text text-transparent">ground</span>
               </span>
             </div>

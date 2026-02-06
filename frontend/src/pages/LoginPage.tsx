@@ -59,13 +59,13 @@ export default function LoginPage() {
         <div className="text-center">
           <div className="flex items-center justify-center gap-3 mb-4">
             <img
-              src="http://drive.golinelli.ai/public/39a38e5f53a447e8a148d109fb05afed"
+              src="http://drive.golinelli.ai/public/f8b9de7d45bd416e9210a1109e08241a"
               alt="AI playground"
               className="h-14 w-14 object-contain bg-transparent mix-blend-multiply"
             />
-            <h1 className="text-[22px] font-extrabold leading-[1.05] tracking-[0.2em] text-gray-900 uppercase text-left">
+            <h1 className="text-[22px] font-extrabold leading-[1.05] tracking-[0.2em] text-gray-900 text-left">
               <span className="block bg-gradient-to-r from-gray-900 via-gray-600 to-gray-900 bg-clip-text text-transparent">AI</span>
-              <span className="block bg-gradient-to-r from-gray-900 via-gray-600 to-gray-900 bg-clip-text text-transparent">PLAY</span>
+              <span className="block bg-gradient-to-r from-gray-900 via-gray-600 to-gray-900 bg-clip-text text-transparent">Play</span>
               <span className="block bg-gradient-to-r from-gray-900 via-gray-600 to-gray-900 bg-clip-text text-transparent">ground</span>
             </h1>
           </div>
