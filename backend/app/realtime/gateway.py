@@ -137,19 +137,7 @@ async def connect(sid, environ, auth):
                         student_accents[student_id] = student_obj.ui_accent
         except Exception as e:
             print(f"Error fetching student avatar: {e}")
-    else:
-        teacher_id = user["id"]
-        try:
-            async with AsyncSessionLocal() as db:
-                result = await db.execute(
-                    select(User).where(User.id == teacher_id)
-                )
-                teacher_obj = result.scalar_one_or_none()
-                if teacher_obj and teacher_obj.ui_accent:
-                    teacher_accents[teacher_id] = teacher_obj.ui_accent
-        except Exception as e:
-            print(f"Error fetching teacher accent: {e}")
-        
+
         if session_id not in session_presence:
             session_presence[session_id] = set()
         session_presence[session_id].add(sid)
@@ -186,6 +174,18 @@ async def connect(sid, environ, auth):
                 "timestamp": datetime.utcnow().isoformat(),
             }
         )
+    else:
+        teacher_id = user["id"]
+        try:
+            async with AsyncSessionLocal() as db:
+                result = await db.execute(
+                    select(User).where(User.id == teacher_id)
+                )
+                teacher_obj = result.scalar_one_or_none()
+                if teacher_obj and teacher_obj.ui_accent:
+                    teacher_accents[teacher_id] = teacher_obj.ui_accent
+        except Exception as e:
+            print(f"Error fetching teacher accent: {e}")
     
     return True
 
