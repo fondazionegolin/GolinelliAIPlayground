@@ -777,7 +777,7 @@ export default function ChatSidebar({
     const urlRegex = /(https?:\/\/[^\s]+)/g
     return text.split(urlRegex).map((part, i) => {
       if (part.match(urlRegex)) {
-        return <a key={i} href={part} target="_blank" rel="noopener noreferrer" className="text-[#181b1e]/30 hover:text-white underline break-all">{part}</a>
+        return <a key={i} href={part} target="_blank" rel="noopener noreferrer" className="text-red-600 hover:text-red-700 underline break-all">{part}</a>
       }
       return part
     })
@@ -885,7 +885,7 @@ export default function ChatSidebar({
                   className="w-full h-full object-cover rounded-full"
                 />
               ) : (
-                <AvatarFallback className={`text-[9px] font-black ${isMe ? 'bg-[#181b1e] text-white' : 'bg-slate-200 text-slate-600'}`}>
+                <AvatarFallback className={`text-[9px] font-black ${isMe ? 'bg-gray-300 text-gray-700' : 'bg-gray-200 text-gray-600'}`}>
                   {(msg.sender_name || '?').substring(0, 2).toUpperCase()}
                 </AvatarFallback>
               )}
@@ -902,14 +902,14 @@ export default function ChatSidebar({
           <div className={`
             px-3.5 py-2.5 text-sm leading-snug shadow-sm
             ${isMe
-              ? 'bg-[#181b1e] text-white rounded-2xl rounded-tr-none'
-              : 'bg-white text-slate-700 border border-slate-100 rounded-2xl rounded-tl-none'}
+              ? 'bg-gray-100 text-gray-800 border border-gray-200 rounded-2xl rounded-tr-none'
+              : 'bg-gray-50 text-gray-700 border border-gray-200 rounded-2xl rounded-tl-none'}
           `}>
             {isMe ? linkify(content) : (
               // For received messages, basic linkify with darker link color
               content.split(/(https?:\/\/[^\s]+)/g).map((part: string, i: number) => {
                 if (part.match(/(https?:\/\/[^\s]+)/g)) {
-                  return <a key={i} href={part} target="_blank" rel="noopener noreferrer" className="text-[#181b1e] hover:text-[#0f1113] underline break-all">{part}</a>
+                  return <a key={i} href={part} target="_blank" rel="noopener noreferrer" className="text-red-600 hover:text-red-700 underline break-all">{part}</a>
                 }
                 return part
               })
@@ -934,8 +934,8 @@ export default function ChatSidebar({
                     key={idx}
                     onClick={() => setViewingFile({ url: att.url, filename: att.filename || 'file', type: att.type })}
                     className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition-colors w-full text-left ${isMe
-                      ? 'bg-[#181b1e]/30 hover:bg-[#181b1e]/50 text-white'
-                      : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                      ? 'bg-gray-200 hover:bg-gray-300 text-gray-700'
+                      : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
                       }`}
                   >
                     <Paperclip className="h-3.5 w-3.5 flex-shrink-0" />

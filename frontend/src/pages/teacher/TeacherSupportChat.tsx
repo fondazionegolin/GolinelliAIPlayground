@@ -36,6 +36,9 @@ const AGENT_MODES = [
 
 // Explicitly include web_search in type even though it's hidden from UI
 type AgentMode = typeof AGENT_MODES[number]['id'] | 'web_search'
+// Width below which the chat history sidebar auto-collapses.
+// Increase this value if you want earlier collapse.
+const CHAT_HISTORY_COLLAPSE_BREAKPOINT = 1360
 
 interface QuizQuestion {
   question: string
@@ -241,9 +244,7 @@ export default function TeacherSupportChat() {
 
   useEffect(() => {
     const handleResize = () => {
-      if (window.innerWidth < 1200) {
-        setIsSidebarCollapsed(true)
-      }
+      setIsSidebarCollapsed(window.innerWidth < CHAT_HISTORY_COLLAPSE_BREAKPOINT)
     }
     handleResize()
     window.addEventListener('resize', handleResize)
@@ -907,7 +908,7 @@ REGOLE IMPORTANTI:
               <button
                 onClick={() => setActiveTab('chat')}
                 className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${activeTab === 'chat'
-                  ? 'bg-indigo-100 text-indigo-700'
+                  ? 'bg-red-100 text-red-700'
                   : 'text-slate-500 hover:bg-slate-100'
                   }`}
               >
@@ -917,7 +918,7 @@ REGOLE IMPORTANTI:
               <button
                 onClick={() => setActiveTab('teacherbots')}
                 className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${activeTab === 'teacherbots'
-                  ? 'bg-indigo-100 text-indigo-700'
+                  ? 'bg-red-100 text-red-700'
                   : 'text-slate-500 hover:bg-slate-100'
                   }`}
               >
@@ -964,7 +965,7 @@ REGOLE IMPORTANTI:
                           key={conv.id}
                           onClick={() => { setCurrentConversationId(conv.id); }}
                           className={`w-full text-left p-3 rounded-lg text-sm transition-all group ${currentConversationId === conv.id
-                            ? 'bg-[#4f46e5]/10 text-[#4f46e5] font-medium'
+                            ? 'bg-red-50 text-red-600 font-medium'
                             : 'text-slate-600 hover:bg-slate-50'
                             }`}
                         >
@@ -1001,12 +1002,12 @@ REGOLE IMPORTANTI:
                     ) : (
                       <div className="flex flex-col gap-2 items-center">
                         <Button variant="ghost" size="icon" onClick={handleNewChat} title="Nuova chat" className="p-0">
-                          <Plus className="h-5 w-5 text-[#4f46e5]" />
+                          <Plus className="h-5 w-5 text-red-500" />
                         </Button>
                         {conversations.map(conv => (
                           <div
                             key={conv.id}
-                            className={`w-2 h-2 rounded-full cursor-pointer ${currentConversationId === conv.id ? 'bg-[#4f46e5]' : 'bg-slate-300'}`}
+                            className={`w-2 h-2 rounded-full cursor-pointer ${currentConversationId === conv.id ? 'bg-red-500' : 'bg-slate-300'}`}
                             title={conv.title}
                             onClick={() => { setCurrentConversationId(conv.id); }}
                           />
@@ -1022,9 +1023,9 @@ REGOLE IMPORTANTI:
                   style={chatBg ? { backgroundColor: chatBg } : undefined}
                 >
 
-                  <header className="px-3 py-2 md:px-4 md:py-3 border-b border-indigo-100/50 bg-white/80 backdrop-blur-sm sticky top-0 z-10 flex items-center justify-between shrink-0">
+                  <header className="px-3 py-2 md:px-4 md:py-3 border-b border-red-100/60 bg-white/80 backdrop-blur-sm sticky top-0 z-10 flex items-center justify-between shrink-0">
                     <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-full flex items-center justify-center shadow-md bg-indigo-600">
+                      <div className="w-8 h-8 rounded-full flex items-center justify-center shadow-md bg-red-500">
                         <Bot className="h-4 w-4 text-white translate-y-[1px]" />
                       </div>
                       <div>
@@ -1046,7 +1047,7 @@ REGOLE IMPORTANTI:
                               <button
                                 onClick={() => setImageProvider('flux-schnell')}
                                 className={`px-3 py-1 text-xs rounded-full transition-all flex items-center gap-1 ${imageProvider === 'flux-schnell'
-                                  ? 'bg-white shadow-sm text-indigo-600 font-bold'
+                                  ? 'bg-white shadow-sm text-red-500 font-bold'
                                   : 'text-slate-500 hover:text-slate-700'
                                   }`}
                               >
@@ -1055,7 +1056,7 @@ REGOLE IMPORTANTI:
                               <button
                                 onClick={() => setImageProvider('dall-e')}
                                 className={`px-3 py-1 text-xs rounded-full transition-all flex items-center gap-1 ${imageProvider === 'dall-e'
-                                  ? 'bg-white shadow-sm text-indigo-600 font-bold'
+                                  ? 'bg-white shadow-sm text-red-500 font-bold'
                                   : 'text-slate-500 hover:text-slate-700'
                                   }`}
                               >
@@ -1068,7 +1069,7 @@ REGOLE IMPORTANTI:
                               <select
                                 value={imageSize}
                                 onChange={(e) => setImageSize(e.target.value)}
-                                className="text-xs bg-slate-100/80 border border-slate-200 rounded-full px-3 py-1.5 text-slate-600 focus:ring-2 focus:ring-indigo-500 focus:border-transparent cursor-pointer hover:bg-slate-50 outline-none appearance-none pr-8"
+                                className="text-xs bg-slate-100/80 border border-slate-200 rounded-full px-3 py-1.5 text-slate-600 focus:ring-2 focus:ring-red-500 focus:border-transparent cursor-pointer hover:bg-slate-50 outline-none appearance-none pr-8"
                               >
                                 <option value="1024x1024">1:1 Quadrato</option>
                                 <option value="1024x768">4:3 Orizzontale</option>
@@ -1091,13 +1092,13 @@ REGOLE IMPORTANTI:
                             <div className="relative" ref={modelMenuRef}>
                               <button
                                 onClick={() => setShowModelMenu(!showModelMenu)}
-                                className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 rounded-full text-xs font-bold text-white transition-all shadow-md shadow-indigo-200 group"
+                                className="flex items-center gap-2 px-4 py-2 bg-red-500 hover:bg-red-600 rounded-full text-xs font-bold text-white transition-all shadow-md shadow-red-200 group"
                               >
                                 <div className="p-0.5 bg-white/20 rounded-md">
                                   <ModelIcon provider={AVAILABLE_MODELS.find(m => m.id === selectedModel)?.provider || ''} modelId={selectedModel} className="h-3 w-3" />
                                 </div>
                                 <span>{AVAILABLE_MODELS.find(m => m.id === selectedModel)?.name}</span>
-                                <ChevronDown className={`h-3 w-3 text-indigo-200 transition-transform ${showModelMenu ? 'rotate-180' : ''}`} />
+                                <ChevronDown className={`h-3 w-3 text-red-200 transition-transform ${showModelMenu ? 'rotate-180' : ''}`} />
                               </button>
 
                               {/* Dropdown */}
@@ -1110,18 +1111,18 @@ REGOLE IMPORTANTI:
                                   {AVAILABLE_MODELS.map(m => (
                                     <div
                                       key={m.id}
-                                      className={`flex items-center justify-between px-3 py-2.5 mx-1 rounded-lg hover:bg-slate-50 transition-colors cursor-pointer group ${selectedModel === m.id ? 'bg-indigo-50/50' : ''}`}
+                                      className={`flex items-center justify-between px-3 py-2.5 mx-1 rounded-lg hover:bg-slate-50 transition-colors cursor-pointer group ${selectedModel === m.id ? 'bg-red-50' : ''}`}
                                       onClick={() => {
                                         setSelectedModel(m.id)
                                         setShowModelMenu(false)
                                       }}
                                     >
                                       <div className="flex items-center gap-3">
-                                        <div className={`p-2 rounded-lg ${selectedModel === m.id ? 'bg-indigo-100 ring-1 ring-indigo-200' : 'bg-slate-100 group-hover:bg-indigo-50 group-hover:text-indigo-600 transition-colors'}`}>
+                                        <div className={`p-2 rounded-lg ${selectedModel === m.id ? 'bg-red-100 ring-1 ring-red-200' : 'bg-slate-100 group-hover:bg-red-50 group-hover:text-red-500 transition-colors'}`}>
                                           <ModelIcon provider={m.provider} modelId={m.id} className="h-5 w-5" />
                                         </div>
                                         <div className="flex flex-col">
-                                          <span className={`text-sm font-bold ${selectedModel === m.id ? 'text-indigo-900' : 'text-slate-700'}`}>
+                                          <span className={`text-sm font-bold ${selectedModel === m.id ? 'text-red-900' : 'text-slate-700'}`}>
                                             {m.name}
                                           </span>
                                           <span className="text-[10px] text-slate-400 capitalize font-medium">{m.provider}</span>
@@ -1135,8 +1136,8 @@ REGOLE IMPORTANTI:
                                         title="Imposta come default"
                                       >
                                         <div className={`w-4 h-4 rounded border flex items-center justify-center transition-all duration-200 ${defaultModel === m.id
-                                          ? 'bg-indigo-600 border-indigo-600 shadow-sm'
-                                          : 'border-slate-300 text-transparent hover:border-indigo-400 mx-auto'
+                                          ? 'bg-red-500 border-red-500 shadow-sm'
+                                          : 'border-slate-300 text-transparent hover:border-red-400 mx-auto'
                                           }`}>
                                           {defaultModel === m.id && <Check className="h-2.5 w-2.5 text-white" strokeWidth={3} />}
                                         </div>
@@ -1157,7 +1158,7 @@ REGOLE IMPORTANTI:
                               key={swatch.label}
                               onClick={() => setChatBg(swatch.color)}
                               title={swatch.label}
-                              className={`h-5 w-5 rounded-full shadow-sm transition-transform hover:scale-105 ${chatBg === swatch.color ? 'ring-2 ring-indigo-500 ring-offset-2' : ''}`}
+                              className={`h-5 w-5 rounded-full shadow-sm transition-transform hover:scale-105 ${chatBg === swatch.color ? 'ring-2 ring-red-500 ring-offset-2' : ''}`}
                               style={{ backgroundColor: swatch.color }}
                             />
                           ))}
@@ -1241,12 +1242,12 @@ REGOLE IMPORTANTI:
                         <div key={msg.id} className={`flex gap-4 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                           {msg.role === 'assistant' && (
                             <div className="w-8 h-8 rounded-full bg-white border border-slate-200 flex items-center justify-center flex-shrink-0">
-                              <Bot className="h-4 w-4 text-[#4f46e5]" />
+                              <Bot className="h-4 w-4 text-red-500" />
                             </div>
                           )}
                           <div className={`max-w-[75%] space-y-1 ${msg.role === 'user' ? 'items-end flex flex-col' : 'items-start'}`}>
                             <div className={`px-5 py-3.5 text-sm leading-relaxed shadow-sm ${msg.role === 'user'
-                              ? `${chatBgIsDark ? 'bg-white/20 text-white border border-white/20' : 'bg-[#4f46e5] !text-white'} font-medium rounded-2xl rounded-tr-sm`
+                              ? `${chatBgIsDark ? 'bg-white/20 text-white border border-white/20' : 'bg-red-500 !text-white'} font-medium rounded-2xl rounded-tr-sm`
                               : `${chatBgIsDark ? 'bg-white/10 text-white border border-white/15' : 'bg-white text-slate-800 border border-slate-200'} rounded-2xl rounded-tl-sm ${chatBgIsDark ? 'prose prose-invert' : ''}`
                               }`}>
                               {msg.role === 'assistant' ? (
@@ -1271,10 +1272,10 @@ REGOLE IMPORTANTI:
                     {isLoading && !webSearchProgress && !imageGenerationProgress && (
                       <div className="flex gap-4 justify-start">
                         <div className="w-8 h-8 rounded-full bg-white border border-slate-200 flex items-center justify-center">
-                          <Bot className="h-4 w-4 text-[#4f46e5]" />
+                          <Bot className="h-4 w-4 text-red-500" />
                         </div>
                         <div className={`${chatBgIsDark ? 'bg-white/10 border border-white/15' : 'bg-white border border-slate-200'} px-4 py-3 rounded-2xl rounded-tl-sm shadow-sm`}>
-                          <Loader2 className={`h-4 w-4 animate-spin ${chatBgIsDark ? 'text-white' : 'text-[#4f46e5]'}`} />
+                          <Loader2 className={`h-4 w-4 animate-spin ${chatBgIsDark ? 'text-white' : 'text-red-500'}`} />
                         </div>
                       </div>
                     )}
@@ -1366,7 +1367,7 @@ REGOLE IMPORTANTI:
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                           </svg>
                         </div>
-                        <div className="flex-1 max-w-[75%] bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-200 px-5 py-4 rounded-2xl rounded-tl-sm shadow-sm">
+                        <div className="flex-1 max-w-[75%] bg-gradient-to-br from-red-50 to-rose-50 border border-red-200 px-5 py-4 rounded-2xl rounded-tl-sm shadow-sm">
                           <div className="flex items-center gap-2 mb-3">
                             <Loader2 className="h-4 w-4 animate-spin text-blue-600" />
                             <span className="font-medium text-blue-800 text-sm">{webSearchProgress.status}</span>
@@ -1438,7 +1439,7 @@ REGOLE IMPORTANTI:
                               key={m.id}
                               onClick={() => setAgentMode(m.id)}
                               className={`text-xs px-4 py-1.5 rounded-full font-medium transition-all flex items-center gap-1.5 ${agentMode === m.id
-                                ? 'bg-[#4f46e5] text-white shadow-md shadow-indigo-200'
+                                ? 'bg-red-500 text-white shadow-md shadow-red-200'
                                 : 'text-slate-500 hover:bg-slate-100'
                                 }`}
                             >
@@ -1464,11 +1465,11 @@ REGOLE IMPORTANTI:
                       )}
 
                       {/* Input Pill Container */}
-                      <div className="relative flex items-end gap-2 bg-white border-2 border-[#4f46e5]/40 rounded-[2rem] p-1.5 pl-3 focus-within:border-[#4f46e5] focus-within:ring-4 focus-within:ring-[#4f46e5]/10 transition-all shadow-sm">
+                      <div className="relative flex items-end gap-2 bg-white border-2 border-red-500/40 rounded-[2rem] p-1.5 pl-3 focus-within:border-red-500 focus-within:ring-4 focus-within:ring-red-500/10 transition-all shadow-sm">
                         <input type="file" ref={fileInputRef} className="hidden" multiple onChange={handleFileSelect} />
 
                         <Button
-                          variant="ghost" size="icon" className="h-9 w-9 text-slate-400 hover:text-[#4f46e5] hover:bg-indigo-50 rounded-full flex-shrink-0"
+                          variant="ghost" size="icon" className="h-9 w-9 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-full flex-shrink-0"
                           onClick={() => fileInputRef.current?.click()}
                         >
                           <Paperclip className="h-5 w-5" />
@@ -1494,7 +1495,7 @@ REGOLE IMPORTANTI:
                           disabled={(!inputText.trim() && attachedFiles.length === 0) || isLoading}
                           className={`h-9 w-9 rounded-full transition-all flex-shrink-0 ${(!inputText.trim() && attachedFiles.length === 0)
                             ? 'bg-slate-200 text-slate-400'
-                            : 'bg-[#4f46e5] hover:bg-[#4338ca] text-white shadow-md'
+                            : 'bg-red-500 hover:bg-red-600 text-white shadow-md'
                             }`}
                           size="icon"
                         >
@@ -1531,13 +1532,13 @@ REGOLE IMPORTANTI:
                   <button
                     key={session.id}
                     onClick={() => handlePublish(session.id)}
-                    className="w-full text-left p-3 rounded-lg border border-slate-200 hover:border-indigo-400 hover:bg-indigo-50 transition-all flex items-center justify-between group"
+                    className="w-full text-left p-3 rounded-lg border border-slate-200 hover:border-red-400 hover:bg-red-50 transition-all flex items-center justify-between group"
                   >
                     <div>
-                      <div className="font-semibold text-sm group-hover:text-indigo-700">{session.name}</div>
+                      <div className="font-semibold text-sm group-hover:text-red-700">{session.name}</div>
                       <div className="text-xs text-slate-500">{session.class_name}</div>
                     </div>
-                    <ChevronRight className="h-4 w-4 text-slate-300 group-hover:text-indigo-500" />
+                    <ChevronRight className="h-4 w-4 text-slate-300 group-hover:text-red-500" />
                   </button>
                 ))}
                 {(!classesData || classesData.length === 0) && (

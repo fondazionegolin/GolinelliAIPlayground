@@ -261,7 +261,7 @@ export function TeacherNavbar({ currentSession, onSessionChange, showChatToggle 
           <div className="flex items-center justify-between h-16">
             {/* Logo/Brand */}
             <div className="flex items-center gap-1 cursor-pointer" onClick={() => navigate('/teacher')}>
-              <LogoMark className="h-9 w-9 mix-blend-multiply" bubbleColor="#181b1e" />
+              <LogoMark className="h-9 w-9 mix-blend-multiply" bubbleColor="#ef4444" />
               <span className="-ml-1 pb-[1px] text-[11px] font-extrabold leading-[1.15] tracking-[0.2em] text-slate-900">
                 <span className="block bg-gradient-to-r from-rose-500 via-pink-500 to-red-500 bg-clip-text text-transparent">AI</span>
                 <span className="block bg-gradient-to-r from-slate-900 via-slate-700 to-slate-900 bg-clip-text text-transparent">Play</span>
@@ -270,13 +270,13 @@ export function TeacherNavbar({ currentSession, onSessionChange, showChatToggle 
             </div>
 
             {/* Desktop Navigation */}
-            <div className="hidden md:flex items-center gap-1 h-11 bg-white p-1 rounded-xl border border-slate-200 shadow-sm outline outline-1 outline-slate-200/70">
+            <div className="hidden md:flex items-center gap-1 h-11 bg-white p-1 rounded-xl border border-slate-200 outline outline-1 outline-slate-200/70">
               {navItems.map((item) => (
                 <Link key={item.path} to={item.path}>
                   <button
                     className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-[12px] font-semibold transition-all duration-200 ${isActive(item.path)
-                      ? 'bg-[#181b1e] text-white shadow-md shadow-black/20 font-bold'
-                      : 'text-slate-600 hover:bg-slate-100 hover:text-[#181b1e]'
+                      ? 'bg-red-500 text-white font-bold'
+                      : 'text-slate-600 hover:bg-slate-100 hover:text-red-500'
                       }`}
                   >
                     <item.icon className="h-4 w-4" />
@@ -304,7 +304,7 @@ export function TeacherNavbar({ currentSession, onSessionChange, showChatToggle 
                   <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${currentSession ? 'bg-green-500 animate-pulse shadow-sm shadow-green-300' : 'bg-slate-300'}`} />
                   <div className="text-left min-w-0">
                     <div className="flex items-center gap-2">
-                      <span className="text-sm font-bold text-[#181b1e] truncate max-w-[160px]">{currentSession ? currentSession.name : 'Nessuna sessione'}</span>
+                      <span className="text-sm font-bold text-red-500 truncate max-w-[160px]">{currentSession ? currentSession.name : 'Nessuna sessione'}</span>
                       <span className="text-slate-300">|</span>
                       <span className="text-xs font-semibold text-slate-500 bg-white/60 px-2 py-0.5 rounded">{currentSession ? currentSession.className : 'Seleziona...'}</span>
                     </div>
@@ -313,7 +313,7 @@ export function TeacherNavbar({ currentSession, onSessionChange, showChatToggle 
                 </button>
                 {showChatToggle && (
                   <button
-                    className="hidden lg:flex items-center justify-center h-11 w-11 rounded-full border border-slate-200 bg-white text-[#181b1e] hover:bg-slate-50 transition shadow-sm"
+                    className="hidden lg:flex items-center justify-center h-11 w-11 rounded-full border border-slate-200 bg-white text-red-500 hover:bg-slate-50 transition shadow-sm"
                     onClick={onShowChatSidebar}
                     title="Apri chat di classe"
                   >
@@ -363,7 +363,7 @@ export function TeacherNavbar({ currentSession, onSessionChange, showChatToggle 
                                 <div className={`w-3 h-3 rounded-full flex-shrink-0 transition-colors ${isSelected ? 'bg-green-500 shadow-sm shadow-green-300' : 'bg-slate-300 group-hover:bg-slate-400'
                                   }`} />
                                 <div className="flex-1 min-w-0">
-                                  <p className={`text-sm font-medium truncate ${isSelected ? 'text-[#181b1e]' : 'text-slate-700'}`}>
+                                  <p className={`text-sm font-medium truncate ${isSelected ? 'text-red-500' : 'text-slate-700'}`}>
                                     {session.name}
                                   </p>
                                   <p className={`text-xs truncate ${isSelected ? 'text-slate-700' : 'text-slate-400'}`}>
@@ -374,13 +374,13 @@ export function TeacherNavbar({ currentSession, onSessionChange, showChatToggle 
                                   {session.studentCount !== undefined && session.studentCount > 0 && (
                                     <span className={`text-xs px-2 py-1 rounded-full font-medium ${isSelected
                                       ? 'bg-slate-200 text-slate-800'
-                                      : 'bg-slate-100 text-slate-500 group-hover:bg-slate-200 group-hover:text-[#181b1e]'
+                                      : 'bg-slate-100 text-slate-500 group-hover:bg-slate-200 group-hover:text-red-500'
                                       }`}>
                                       {session.studentCount} studenti
                                     </span>
                                   )}
                                   {isSelected && (
-                                    <Check className="h-4 w-4 text-[#181b1e]" />
+                                    <Check className="h-4 w-4 text-red-500" />
                                   )}
                                 </div>
                               </button>
@@ -403,10 +403,10 @@ export function TeacherNavbar({ currentSession, onSessionChange, showChatToggle 
                     <img
                       src={profile.avatarUrl}
                       alt="Avatar"
-                      className="w-8 h-8 rounded-full object-cover ring-2 ring-[#181b1e]"
+                      className="w-8 h-8 rounded-full object-cover ring-2 ring-red-500"
                     />
                   ) : (
-                    <div className={`w-8 h-8 rounded-full ${getAvatarColor()} flex items-center justify-center text-white text-xs font-bold ring-2 ring-[#181b1e]`}>
+                    <div className={`w-8 h-8 rounded-full ${getAvatarColor()} flex items-center justify-center text-white text-xs font-bold ring-2 ring-red-500`}>
                       {getInitials()}
                     </div>
                   )}
@@ -430,7 +430,7 @@ export function TeacherNavbar({ currentSession, onSessionChange, showChatToggle 
                         setShowSettings(true)
                         setShowDropdown(false)
                       }}
-                      className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-600 hover:bg-slate-50 hover:text-[#181b1e] transition-colors"
+                      className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-600 hover:bg-slate-50 hover:text-red-500 transition-colors"
                     >
                       <Settings className="h-4 w-4" />
                       Impostazioni account
@@ -457,8 +457,8 @@ export function TeacherNavbar({ currentSession, onSessionChange, showChatToggle 
                   size="sm"
                   variant="ghost"
                   className={`${isActive(item.path)
-                    ? 'bg-slate-200 text-[#181b1e] font-semibold'
-                    : 'text-slate-500 hover:text-[#181b1e]'
+                    ? 'bg-red-500 text-white font-bold'
+                    : 'text-slate-500 hover:text-red-500'
                     }`}
                 >
                   {item.label}
@@ -584,7 +584,7 @@ function SettingsModal({ profile, onSave, onClose }: SettingsModalProps) {
                 type="text"
                 value={formData.firstName}
                 onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
-                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-[#181b1e] focus:border-transparent transition-all outline-none"
+                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-red-500 focus:border-transparent transition-all outline-none"
                 required
               />
             </div>
@@ -594,7 +594,7 @@ function SettingsModal({ profile, onSave, onClose }: SettingsModalProps) {
                 type="text"
                 value={formData.lastName}
                 onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
-                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-[#181b1e] focus:border-transparent transition-all outline-none"
+                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-red-500 focus:border-transparent transition-all outline-none"
                 required
               />
             </div>
@@ -606,7 +606,7 @@ function SettingsModal({ profile, onSave, onClose }: SettingsModalProps) {
               type="email"
               value={formData.email}
               onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-              className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-[#181b1e] focus:border-transparent transition-all outline-none"
+              className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-red-500 focus:border-transparent transition-all outline-none"
               required
             />
           </div>
@@ -618,7 +618,7 @@ function SettingsModal({ profile, onSave, onClose }: SettingsModalProps) {
             <Button type="button" variant="ghost" onClick={onClose} className="flex-1 text-slate-500 hover:text-slate-700 hover:bg-slate-100">
               Annulla
             </Button>
-            <Button type="submit" className="flex-1 bg-[#181b1e] hover:bg-[#0f1113] text-white shadow-lg shadow-black/20">
+            <Button type="submit" className="flex-1 bg-red-500 hover:bg-red-600 text-white shadow-lg shadow-red-500/30">
               Salva Modifiche
             </Button>
           </div>

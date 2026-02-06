@@ -11,6 +11,10 @@ import ChatSidebar from '@/components/ChatSidebar'
 import { teacherApi } from '@/lib/api'
 import { AppBackground } from '@/components/ui/AppBackground'
 
+// Width below which the right class chat sidebar auto-hides.
+// Increase this value if you want earlier collapse.
+const CHATBAR_AUTO_HIDE_BREAKPOINT = 1280
+
 export default function TeacherDashboard() {
   const location = useLocation()
 
@@ -91,9 +95,7 @@ export default function TeacherDashboard() {
 
   useEffect(() => {
     const handleResize = () => {
-      if (window.innerWidth < 1100) {
-        setShowSidebar(false)
-      }
+      setShowSidebar(window.innerWidth >= CHATBAR_AUTO_HIDE_BREAKPOINT)
     }
     handleResize()
     window.addEventListener('resize', handleResize)
