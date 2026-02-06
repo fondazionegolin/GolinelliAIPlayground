@@ -174,7 +174,7 @@ export function RichTextEditor({
       {selection && !readOnly && (
         <AITextAssistPanel
           selectedText={selection.text}
-          position={selection.position}
+          position={aiPanelAnchor || selection.position}
           onClose={() => setSelection(null)}
           onApply={handleApplyAIText}
           context="Documento didattico"

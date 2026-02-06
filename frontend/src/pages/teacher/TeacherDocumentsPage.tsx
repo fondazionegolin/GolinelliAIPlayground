@@ -651,6 +651,9 @@ export default function TeacherDocumentsPage() {
             setAiPanelAnchor(position)
             setAiOpenRequestId(v => v + 1)
           }}
+          onAIAssistAnchorChange={(position) => {
+            setAiPanelAnchor(position)
+          }}
         />
 
         <div className="flex-1 flex overflow-hidden"> 

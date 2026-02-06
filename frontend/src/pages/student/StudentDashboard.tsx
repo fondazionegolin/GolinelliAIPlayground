@@ -20,6 +20,7 @@ import { StudentNavbar } from '@/components/StudentNavbar'
 import { useMobile, useKeyboard } from '@/hooks/useMobile'
 import { useSwipeBack } from '@/hooks/useSwipeBack'
 import { AppBackground } from '@/components/ui/AppBackground'
+import { loadStudentAccent, type StudentAccentId } from '@/lib/studentAccent'
 
 interface SessionInfo {
   session: {
@@ -124,6 +125,7 @@ export default function StudentDashboard() {
   const [sidebarWidth, setSidebarWidth] = useState(380)
   const [selectedTeacherbotId, setSelectedTeacherbotId] = useState<string | null>(null)
   const [showSidebar, setShowSidebar] = useState(true)
+  const [studentAccent, setStudentAccent] = useState<StudentAccentId>(loadStudentAccent())
 
   const { isMobile } = useMobile()
   const { isOpen: isKeyboardOpen } = useKeyboard()
@@ -253,6 +255,8 @@ export default function StudentDashboard() {
           sessionId={sessionInfo.session.id}
           showChatToggle={!showSidebar}
           onShowChatSidebar={() => setShowSidebar(true)}
+          accent={studentAccent}
+          onAccentChange={setStudentAccent}
         />
       </div>
 
@@ -304,7 +308,7 @@ export default function StudentDashboard() {
                   <div className={`mb-4 ${activeModule === 'chatbot' || activeModule === 'classe' ? 'hidden md:block' : ''}`}>
                     <Button
                       variant="ghost"
-                      className="gap-2 pl-0 hover:bg-transparent text-slate-600 hover:text-fuchsia-600"
+                      className="gap-2 pl-0 hover:bg-transparent text-slate-600"
                       onClick={() => setActiveModule(null)}
                     >
                       ← Torna alla home
@@ -319,6 +323,7 @@ export default function StudentDashboard() {
                     studentName={sessionInfo.student.nickname}
                     onTeacherbotNotificationClick={handleTeacherbotNotificationClick}
                     selectedTeacherbotId={selectedTeacherbotId}
+                    studentAccent={studentAccent}
                   />
                 </div>
               )}
@@ -336,6 +341,7 @@ export default function StudentDashboard() {
               userType="student"
               currentUserId={sessionInfo.student.id}
               currentUserName={sessionInfo.student.nickname}
+              studentAccent={studentAccent}
               isPinned={true}
               onPinToggle={() => setShowSidebar(false)}
               onToggle={() => { }}
@@ -555,7 +561,7 @@ function HomeView({
   )
 }
 
-function ModuleView({ moduleKey, sessionId, openTaskId, studentId, studentName, onTeacherbotNotificationClick, selectedTeacherbotId }: {
+function ModuleView({ moduleKey, sessionId, openTaskId, studentId, studentName, onTeacherbotNotificationClick, selectedTeacherbotId, studentAccent }: {
   moduleKey: string;
   sessionId: string;
   openTaskId?: string | null;
@@ -563,6 +569,7 @@ function ModuleView({ moduleKey, sessionId, openTaskId, studentId, studentName, 
   studentName?: string;
   onTeacherbotNotificationClick?: (notification: any) => void;
   selectedTeacherbotId?: string | null;
+  studentAccent: StudentAccentId;
 }) {
   // Class chat module - full screen ChatSidebar
   if (moduleKey === 'classe' || moduleKey === 'chat') {
@@ -573,6 +580,7 @@ function ModuleView({ moduleKey, sessionId, openTaskId, studentId, studentName, 
           userType="student"
           currentUserId={studentId || ''}
           currentUserName={studentName || 'Studente'}
+          studentAccent={studentAccent}
           isMobileView={true}
           className="h-full"
           onNotificationClick={onTeacherbotNotificationClick}

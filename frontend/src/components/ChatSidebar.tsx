@@ -9,6 +9,7 @@ import {
   FileText, FileSpreadsheet, File, Download, ExternalLink, Wand2, Users, Folder, Search, Upload, List, Grid2X2, Minus, Plus
 } from 'lucide-react'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+import { DEFAULT_STUDENT_ACCENT, getStudentAccentTheme, type StudentAccentId } from '@/lib/studentAccent'
 
 // File Viewer Modal Component
 function FileViewerModal({
@@ -264,6 +265,7 @@ interface ChatSidebarProps {
   userType: 'teacher' | 'student'
   currentUserId: string
   currentUserName: string
+  studentAccent?: StudentAccentId
   onNotificationClick?: (notification: ChatMessage) => void
   isMobileView?: boolean
   onToggle?: Dispatch<SetStateAction<boolean>>
@@ -276,7 +278,9 @@ interface ChatSidebarProps {
 
 export default function ChatSidebar({
   sessionId,
+  userType,
   currentUserId,
+  studentAccent = DEFAULT_STUDENT_ACCENT,
   onNotificationClick,
   isMobileView = false,
   onToggle,
@@ -306,6 +310,7 @@ export default function ChatSidebar({
   const [tagInputs, setTagInputs] = useState<Record<string, string>>({})
   const [filesViewMode, setFilesViewMode] = useState<'grid' | 'list'>('grid')
   const [filesIconScale, setFilesIconScale] = useState(1)
+  const studentAccentTheme = getStudentAccentTheme(studentAccent)
   const scrollRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const libraryFileInputRef = useRef<HTMLInputElement>(null)
@@ -773,11 +778,11 @@ export default function ChatSidebar({
   const totalUnreadPrivate = Object.values(privateChats).reduce((acc, chat) => acc + chat.unreadCount, 0)
 
   // Linkify function
-  const linkify = (text: string) => {
+  const linkify = (text: string, linkClassName = 'text-red-600 hover:text-red-700 underline break-all') => {
     const urlRegex = /(https?:\/\/[^\s]+)/g
     return text.split(urlRegex).map((part, i) => {
       if (part.match(urlRegex)) {
-        return <a key={i} href={part} target="_blank" rel="noopener noreferrer" className="text-red-600 hover:text-red-700 underline break-all">{part}</a>
+        return <a key={i} href={part} target="_blank" rel="noopener noreferrer" className={linkClassName}>{part}</a>
       }
       return part
     })
@@ -872,6 +877,7 @@ export default function ChatSidebar({
       : []
     const imageAttachments = allAttachments.filter((att: any) => att.type === 'image')
     const fileAttachments = allAttachments.filter((att: any) => att.type !== 'image')
+    const isStudentOwnBubble = isMe && userType === 'student'
 
     return (
       <div key={msg.id} className={`flex gap-3 ${isMe ? 'flex-row-reverse' : ''}`}>
@@ -902,10 +908,14 @@ export default function ChatSidebar({
           <div className={`
             px-3.5 py-2.5 text-sm leading-snug shadow-sm
             ${isMe
-              ? 'bg-gray-100 text-gray-800 border border-gray-200 rounded-2xl rounded-tr-none'
+              ? isStudentOwnBubble
+                ? 'border rounded-2xl rounded-tr-none'
+                : 'bg-gray-100 text-gray-800 border border-gray-200 rounded-2xl rounded-tr-none'
               : 'bg-gray-50 text-gray-700 border border-gray-200 rounded-2xl rounded-tl-none'}
-          `}>
-            {isMe ? linkify(content) : (
+          `}
+            style={isStudentOwnBubble ? { backgroundColor: studentAccentTheme.accent, borderColor: studentAccentTheme.accent, color: '#ffffff' } : undefined}
+          >
+            {isMe ? linkify(content, isStudentOwnBubble ? 'text-white/90 hover:text-white underline break-all' : undefined) : (
               // For received messages, basic linkify with darker link color
               content.split(/(https?:\/\/[^\s]+)/g).map((part: string, i: number) => {
                 if (part.match(/(https?:\/\/[^\s]+)/g)) {
@@ -934,9 +944,12 @@ export default function ChatSidebar({
                     key={idx}
                     onClick={() => setViewingFile({ url: att.url, filename: att.filename || 'file', type: att.type })}
                     className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition-colors w-full text-left ${isMe
-                      ? 'bg-gray-200 hover:bg-gray-300 text-gray-700'
+                      ? isStudentOwnBubble
+                        ? 'text-slate-800 hover:brightness-95'
+                        : 'bg-gray-200 hover:bg-gray-300 text-gray-700'
                       : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
                       }`}
+                    style={isStudentOwnBubble ? { backgroundColor: studentAccentTheme.softStrong, color: studentAccentTheme.text } : undefined}
                   >
                     <Paperclip className="h-3.5 w-3.5 flex-shrink-0" />
                     <span className="truncate">{att.filename || 'Allegato'}</span>

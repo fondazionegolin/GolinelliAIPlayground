@@ -1,9 +1,10 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, type CSSProperties } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { User, Settings, LogOut, ChevronDown, Bot, Brain, Award, Home, FileEdit, Menu, X, MessageSquare } from 'lucide-react'
+import { User, Settings, LogOut, ChevronDown, Bot, Brain, Award, Home, FileEdit, Menu, X, MessageSquare, Check } from 'lucide-react'
 import { Button } from './ui/button'
 import { LogoMark } from './LogoMark'
 import { studentApi } from '@/lib/api'
+import { DEFAULT_STUDENT_ACCENT, getStudentAccentTheme, saveStudentAccent, STUDENT_ACCENTS, type StudentAccentId } from '@/lib/studentAccent'
 
 interface StudentProfile {
   id?: string
@@ -19,6 +20,8 @@ interface StudentNavbarProps {
   sessionId?: string
   showChatToggle?: boolean
   onShowChatSidebar?: () => void
+  accent?: StudentAccentId
+  onAccentChange?: (accent: StudentAccentId) => void
 }
 
 export function StudentNavbar({
@@ -27,7 +30,9 @@ export function StudentNavbar({
   sessionTitle,
   joinCode,
   showChatToggle = false,
-  onShowChatSidebar
+  onShowChatSidebar,
+  accent = DEFAULT_STUDENT_ACCENT,
+  onAccentChange
 }: StudentNavbarProps) {
   const navigate = useNavigate()
   const [showDropdown, setShowDropdown] = useState(false)
@@ -39,6 +44,14 @@ export function StudentNavbar({
   const [profile, setProfile] = useState<StudentProfile>({
     nickname: 'Studente'
   })
+  const accentTheme = getStudentAccentTheme(accent)
+  const accentVars = {
+    '--student-accent': accentTheme.accent,
+    '--student-accent-soft': accentTheme.soft,
+    '--student-accent-soft-strong': accentTheme.softStrong,
+    '--student-accent-border': accentTheme.border,
+    '--student-accent-text': accentTheme.text,
+  } as CSSProperties
 
   // Load profile from API
   useEffect(() => {
@@ -111,7 +124,10 @@ export function StudentNavbar({
 
   return (
     <>
-      <nav className="fixed top-0 left-0 right-0 z-50 bg-fuchsia-50/80 backdrop-blur-md border-b border-fuchsia-200 shadow-md shadow-fuchsia-100/50">
+      <nav
+        className="fixed top-0 left-0 right-0 z-50 bg-white/90 backdrop-blur-md border-b border-slate-200 shadow-sm"
+        style={accentVars}
+      >
         <div className="max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             {/* Logo/Brand */}
@@ -129,23 +145,23 @@ export function StudentNavbar({
               <div className="hidden">
                 <button
                   onClick={() => setShowMobileMenu(!showMobileMenu)}
-                  className="p-2 rounded-lg hover:bg-fuchsia-100 transition-colors"
+                  className="p-2 rounded-lg hover:bg-[var(--student-accent-soft)] transition-colors"
                 >
-                  {showMobileMenu ? <X className="h-5 w-5 text-fuchsia-600" /> : <Menu className="h-5 w-5 text-fuchsia-600" />}
+                  {showMobileMenu ? <X className="h-5 w-5 text-[var(--student-accent-text)]" /> : <Menu className="h-5 w-5 text-[var(--student-accent-text)]" />}
                 </button>
               </div>
             )}
 
             {/* Desktop Navigation */}
             {onNavigate && (
-              <div className="hidden md:flex items-center gap-1 bg-white/50 p-1 rounded-xl border border-fuchsia-100 shadow-sm">
+              <div className="hidden md:flex items-center gap-1 h-11 bg-white p-1 rounded-xl border border-slate-200 outline outline-1 outline-slate-200/70">
                 {navItems.map((item) => (
                   <button
                     key={item.label}
                     onClick={() => onNavigate(item.key)}
                     className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-[12px] font-semibold transition-all duration-200 ${activeModule === item.key
-                        ? 'bg-fuchsia-500 text-white shadow-md shadow-fuchsia-200 font-bold'
-                        : 'text-slate-600 hover:bg-fuchsia-200/50 hover:text-fuchsia-700'
+                        ? 'bg-[var(--student-accent)] text-white font-bold'
+                        : 'text-slate-600 hover:bg-[var(--student-accent-soft)] hover:text-[var(--student-accent-text)]'
                       }`}
                   >
                     <item.icon className="h-4 w-4" />
@@ -158,18 +174,19 @@ export function StudentNavbar({
             <div className="flex items-center gap-2">
               {/* Session Info - Always visible */}
               {sessionTitle && (
-                <div className="hidden lg:flex items-center gap-3 px-4 py-2.5 rounded-xl border-2 bg-gradient-to-r from-fuchsia-50 to-purple-50 border-fuchsia-200">
+                <div className="hidden lg:flex items-center gap-3 h-11 px-4 rounded-xl border-2 bg-white border-slate-200 outline outline-1 outline-slate-200/70">
                   <div className="w-2.5 h-2.5 rounded-full bg-green-500 animate-pulse shadow-sm shadow-green-300" />
                   <div className="text-left min-w-0">
                     <div className="flex items-center gap-2">
-                      <span className="text-sm font-bold text-fuchsia-700 truncate max-w-[140px]">{sessionTitle}</span>
+                      <span className="text-sm font-bold text-[var(--student-accent-text)] truncate max-w-[140px]">{sessionTitle}</span>
                       <span className="text-slate-300">|</span>
                       <span className="text-xs font-semibold text-slate-500 bg-white/60 px-2 py-0.5 rounded">{joinCode}</span>
                     </div>
                   </div>
                   {showChatToggle && (
                     <button
-                      className="ml-2 h-8 w-8 rounded-full border border-fuchsia-200 bg-white text-fuchsia-600 hover:bg-fuchsia-100 transition"
+                      className="ml-2 h-8 w-8 rounded-full border bg-white transition"
+                      style={{ borderColor: accentTheme.border, color: accentTheme.text }}
                       onClick={onShowChatSidebar}
                       title="Apri chat di classe"
                     >
@@ -183,16 +200,20 @@ export function StudentNavbar({
               <div className="relative" ref={dropdownRef}>
                 <button
                   onClick={() => setShowDropdown(!showDropdown)}
-                  className="flex items-center gap-3 hover:bg-fuchsia-600/10 rounded-full pl-1 pr-3 py-1 transition-colors border border-transparent hover:border-fuchsia-700/20"
+                  className="flex items-center gap-3 hover:bg-slate-100 rounded-full pl-1 pr-3 py-1 transition-colors border border-transparent hover:border-slate-300"
                 >
                   {profile.avatarUrl ? (
                     <img
                       src={profile.avatarUrl}
                       alt="Avatar"
-                      className="w-8 h-8 rounded-full object-cover ring-2 ring-fuchsia-600"
+                      className="w-8 h-8 rounded-full object-cover"
+                      style={{ boxShadow: `0 0 0 2px ${accentTheme.accent}` }}
                     />
                   ) : (
-                    <div className={`w-8 h-8 rounded-full ${getAvatarColor()} flex items-center justify-center text-white text-xs font-bold ring-2 ring-fuchsia-600`}>
+                    <div
+                      className={`w-8 h-8 rounded-full ${getAvatarColor()} flex items-center justify-center text-white text-xs font-bold`}
+                      style={{ boxShadow: `0 0 0 2px ${accentTheme.accent}` }}
+                    >
                       {getInitials()}
                     </div>
                   )}
@@ -214,7 +235,7 @@ export function StudentNavbar({
                         setShowSettings(true)
                         setShowDropdown(false)
                       }}
-                      className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-600 hover:bg-slate-50 hover:text-fuchsia-600 transition-colors"
+                      className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-600 hover:bg-slate-50 hover:text-[var(--student-accent-text)] transition-colors"
                     >
                       <Settings className="h-4 w-4" />
                       Impostazioni
@@ -235,7 +256,7 @@ export function StudentNavbar({
 
           {/* Mobile Menu Dropdown */}
           {showMobileMenu && (
-            <div ref={mobileMenuRef} className="md:hidden absolute top-full left-0 right-0 bg-white border-b border-fuchsia-200 shadow-lg animate-in slide-in-from-top-2 duration-200">
+            <div ref={mobileMenuRef} className="md:hidden absolute top-full left-0 right-0 bg-white border-b border-slate-200 shadow-lg animate-in slide-in-from-top-2 duration-200">
               <div className="px-4 py-3 space-y-1">
                 {navItems.map((item) => (
                   <button
@@ -245,8 +266,8 @@ export function StudentNavbar({
                       setShowMobileMenu(false)
                     }}
                     className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${activeModule === item.key
-                        ? 'bg-fuchsia-100 text-fuchsia-700'
-                        : 'text-slate-600 hover:bg-fuchsia-50 hover:text-fuchsia-700'
+                        ? 'bg-[var(--student-accent-soft)] text-[var(--student-accent-text)]'
+                        : 'text-slate-600 hover:bg-[var(--student-accent-soft)] hover:text-[var(--student-accent-text)]'
                       }`}
                   >
                     <item.icon className="h-4 w-4" />
@@ -263,12 +284,15 @@ export function StudentNavbar({
       {showSettings && (
         <SettingsModal
           profile={profile}
-          onSave={async (updated) => {
+          accent={accent}
+          onSave={async (updated, nextAccent) => {
             try {
               await studentApi.updateProfile({
                 avatar_url: updated.avatarUrl
               })
               setProfile(updated)
+              onAccentChange?.(nextAccent)
+              saveStudentAccent(nextAccent)
               setShowSettings(false)
             } catch (err) {
               console.error('Failed to save profile:', err)
@@ -285,13 +309,16 @@ export function StudentNavbar({
 // Settings Modal Component
 interface SettingsModalProps {
   profile: StudentProfile
-  onSave: (profile: StudentProfile) => Promise<void> | void
+  accent: StudentAccentId
+  onSave: (profile: StudentProfile, accent: StudentAccentId) => Promise<void> | void
   onClose: () => void
 }
 
-function SettingsModal({ profile, onSave, onClose }: SettingsModalProps) {
+function SettingsModal({ profile, accent, onSave, onClose }: SettingsModalProps) {
   const [formData, setFormData] = useState(profile)
   const [previewUrl, setPreviewUrl] = useState(profile.avatarUrl || '')
+  const [selectedAccent, setSelectedAccent] = useState<StudentAccentId>(accent)
+  const selectedTheme = getStudentAccentTheme(selectedAccent)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -318,7 +345,7 @@ function SettingsModal({ profile, onSave, onClose }: SettingsModalProps) {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    onSave(formData)
+    onSave(formData, selectedAccent)
   }
 
   // Generate initials for preview
@@ -385,12 +412,43 @@ function SettingsModal({ profile, onSave, onClose }: SettingsModalProps) {
             <p className="text-xs text-slate-400 mt-1">Il nickname non può essere modificato</p>
           </div>
 
+          <div>
+            <label className="block text-xs font-semibold text-slate-500 uppercase mb-2">Colore Accento</label>
+            <div className="grid grid-cols-5 gap-2">
+              {(Object.values(STUDENT_ACCENTS)).map((accentOption) => {
+                const isSelected = selectedAccent === accentOption.id
+                return (
+                  <button
+                    key={accentOption.id}
+                    type="button"
+                    onClick={() => setSelectedAccent(accentOption.id)}
+                    className={`relative h-10 rounded-lg border transition-all ${isSelected ? 'border-slate-500' : 'border-slate-200 hover:border-slate-300'}`}
+                    style={{ backgroundColor: accentOption.soft }}
+                    title={accentOption.label}
+                  >
+                    <span
+                      className="absolute inset-0 m-auto h-5 w-5 rounded-full"
+                      style={{ backgroundColor: accentOption.accent }}
+                    />
+                    {isSelected && (
+                      <Check className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-white text-slate-700 p-0.5 shadow" />
+                    )}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+
           {/* Actions */}
           <div className="flex gap-3 pt-2">
             <Button type="button" variant="ghost" onClick={onClose} className="flex-1 text-slate-500 hover:text-slate-700 hover:bg-slate-100">
               Annulla
             </Button>
-            <Button type="submit" className="flex-1 bg-fuchsia-600 hover:bg-fuchsia-700 text-white shadow-lg shadow-fuchsia-500/30">
+            <Button
+              type="submit"
+              className="flex-1 text-white shadow-lg"
+              style={{ backgroundColor: selectedTheme.accent }}
+            >
               Salva Modifiche
             </Button>
           </div>

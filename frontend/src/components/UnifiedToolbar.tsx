@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import {
   Bold, Italic, Underline, Strikethrough,
   AlignLeft, AlignCenter, AlignRight, AlignJustify,
@@ -24,6 +24,7 @@ interface UnifiedToolbarProps {
   selectedBlock?: SlideBlock
   onUpdateBlockStyle?: (key: string, value: any) => void
   onOpenAIAssist?: (position: { x: number; y: number }) => void
+  onAIAssistAnchorChange?: (position: { x: number; y: number }) => void
 }
 
 const FONTS = [
@@ -41,9 +42,11 @@ export function UnifiedToolbar({
   onAddSlideImage,
   selectedBlock,
   onUpdateBlockStyle,
-  onOpenAIAssist
+  onOpenAIAssist,
+  onAIAssistAnchorChange
 }: UnifiedToolbarProps) {
   const [showImageModal, setShowImageModal] = useState(false)
+  const aiAssistButtonRef = useRef<HTMLButtonElement | null>(null)
 
   const handleImageGenerated = (imageUrl: string) => {
     if (mode === 'document' && editor) {
@@ -66,6 +69,23 @@ export function UnifiedToolbar({
       editor.chain().focus().extendMarkRange('link').setLink({ href: url }).run()
     }
   }
+
+  useEffect(() => {
+    if (mode !== 'document' || !onAIAssistAnchorChange) return
+
+    const emitAnchor = () => {
+      if (!aiAssistButtonRef.current) return
+      const rect = aiAssistButtonRef.current.getBoundingClientRect()
+      onAIAssistAnchorChange({
+        x: rect.left + rect.width - 320,
+        y: rect.bottom + 8
+      })
+    }
+
+    emitAnchor()
+    window.addEventListener('resize', emitAnchor)
+    return () => window.removeEventListener('resize', emitAnchor)
+  }, [mode, onAIAssistAnchorChange])
 
   return (
     <div className="flex items-center gap-1 p-2 border-b border-slate-200 bg-white flex-wrap sticky top-0 z-20 h-14 shadow-sm">
@@ -166,6 +186,7 @@ export function UnifiedToolbar({
               <ImageIcon className="h-4 w-4" />
             </Button>
             <Button
+              ref={aiAssistButtonRef}
               size="icon"
               variant="ghost"
               className="h-8 w-8 text-red-500 hover:text-red-600 hover:bg-red-50"
