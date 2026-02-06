@@ -57,10 +57,16 @@ export default function LoginPage() {
     <AppBackground className="min-h-screen flex items-center justify-center p-4">
       <div className="w-full max-w-md space-y-6">
         <div className="text-center">
-          <div className="flex justify-center mb-4">
-            <img src="/golinelli-logo.svg" alt="Golinelli" className="h-16 w-16" />
+          <div className="flex items-center justify-center gap-3 mb-4">
+            <img
+              src="http://drive.golinelli.ai/public/4bfdcd78541a4cdeaad26219c2237f28"
+              alt="AI playground"
+              className="h-14 w-14 object-contain"
+            />
+            <h1 className="text-3xl font-extrabold tracking-wide text-gray-900">
+              <span className="bg-gradient-to-r from-gray-900 via-gray-600 to-gray-900 bg-clip-text text-transparent">AI playground</span>
+            </h1>
           </div>
-          <h1 className="text-3xl font-bold text-gray-900">Golinelli AI Playground</h1>
           <p className="text-gray-600 mt-2">Piattaforma educativa AI per scuole</p>
         </div>
 

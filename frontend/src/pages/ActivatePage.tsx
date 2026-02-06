@@ -179,8 +179,15 @@ export default function ActivatePage() {
     <AppBackground className="min-h-screen flex items-center justify-center p-4">
       <div className="w-full max-w-md space-y-6">
         <div className="text-center">
-          <div className="flex justify-center mb-4">
-            <img src="/golinelli-logo.svg" alt="Golinelli" className="h-16 w-16" />
+          <div className="flex items-center justify-center gap-3 mb-2">
+            <img
+              src="http://drive.golinelli.ai/public/4bfdcd78541a4cdeaad26219c2237f28"
+              alt="AI playground"
+              className="h-12 w-12 object-contain"
+            />
+            <span className="text-2xl font-extrabold tracking-wide text-gray-900">
+              <span className="bg-gradient-to-r from-gray-900 via-gray-600 to-gray-900 bg-clip-text text-transparent">AI playground</span>
+            </span>
           </div>
           <h1 className="text-3xl font-bold text-gray-900">Attivazione Account</h1>
           <p className="text-gray-600 mt-2">Benvenuto/a, {info?.first_name}!</p>

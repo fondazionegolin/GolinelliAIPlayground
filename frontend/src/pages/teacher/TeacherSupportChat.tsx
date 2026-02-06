@@ -105,6 +105,7 @@ export default function TeacherSupportChat() {
   const [imageProvider, setImageProvider] = useState<'dall-e' | 'flux-schnell'>('flux-schnell')
   const [imageSize, setImageSize] = useState<string>('1024x1024')
   const [chatBg, setChatBg] = useState<string>('')
+  const [chatBgDefault, setChatBgDefault] = useState<string>('')
   const [showBgPalette, setShowBgPalette] = useState(false)
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
   const [webSearchProgress, setWebSearchProgress] = useState<WebSearchProgress | null>(null)
@@ -213,8 +214,14 @@ export default function TeacherSupportChat() {
 
   useEffect(() => {
     try {
+      const storedDefault = localStorage.getItem('teacherChatBgDefault')
+      if (storedDefault) setChatBgDefault(storedDefault)
       const stored = localStorage.getItem('teacherChatBg')
-      if (stored) setChatBg(stored)
+      if (stored) {
+        setChatBg(stored)
+      } else if (storedDefault) {
+        setChatBg(storedDefault)
+      }
     } catch (e) {
       console.error('Failed to load chat background', e)
     }
@@ -231,6 +238,15 @@ export default function TeacherSupportChat() {
       console.error('Failed to save chat background', e)
     }
   }, [chatBg])
+
+  const handleSetDefaultChatBg = (color: string) => {
+    try {
+      localStorage.setItem('teacherChatBgDefault', color)
+      setChatBgDefault(color)
+    } catch (e) {
+      console.error('Failed to save default chat background', e)
+    }
+  }
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   // Publish Modal State
@@ -1130,7 +1146,7 @@ REGOLE IMPORTANTI:
                               key={swatch.label}
                               onClick={() => setChatBg(swatch.color)}
                               title={swatch.label}
-                              className={`h-5 w-5 rounded-full border border-slate-200 shadow-sm transition-transform hover:scale-105 ${chatBg === swatch.color ? 'ring-2 ring-indigo-500 ring-offset-2' : ''}`}
+                              className={`h-5 w-5 rounded-full shadow-sm transition-transform hover:scale-105 ${chatBg === swatch.color ? 'ring-2 ring-indigo-500 ring-offset-2' : ''}`}
                               style={{ backgroundColor: swatch.color }}
                             />
                           ))}
@@ -1155,7 +1171,7 @@ REGOLE IMPORTANTI:
                                       setChatBg(color)
                                       setShowBgPalette(false)
                                     }}
-                                    className="h-5 w-5 rounded border border-slate-100 hover:scale-110 transition-transform"
+                                    className="h-5 w-5 rounded hover:scale-110 transition-transform"
                                     style={{ backgroundColor: color }}
                                     title={color}
                                   />
@@ -1163,15 +1179,35 @@ REGOLE IMPORTANTI:
                               </div>
                               <div className="mt-2 flex items-center justify-between text-[10px] text-slate-400">
                                 <span>Jolly 256</span>
-                                <button
-                                  onClick={() => {
-                                    setChatBg('')
-                                    setShowBgPalette(false)
-                                  }}
-                                  className="text-slate-500 hover:text-slate-700"
-                                >
-                                  Reset
-                                </button>
+                                <div className="flex items-center gap-2">
+                                  <button
+                                    onClick={() => chatBg && handleSetDefaultChatBg(chatBg)}
+                                    className={`text-slate-500 hover:text-slate-700 ${chatBg ? '' : 'opacity-40 cursor-not-allowed'}`}
+                                    disabled={!chatBg}
+                                  >
+                                    Imposta default
+                                  </button>
+                                  {chatBgDefault && (
+                                    <button
+                                      onClick={() => {
+                                        setChatBg(chatBgDefault)
+                                        setShowBgPalette(false)
+                                      }}
+                                      className="text-slate-500 hover:text-slate-700"
+                                    >
+                                      Usa default
+                                    </button>
+                                  )}
+                                  <button
+                                    onClick={() => {
+                                      setChatBg('')
+                                      setShowBgPalette(false)
+                                    }}
+                                    className="text-slate-500 hover:text-slate-700"
+                                  >
+                                    Reset
+                                  </button>
+                                </div>
                               </div>
                             </div>
                           )}

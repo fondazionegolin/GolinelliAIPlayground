@@ -259,20 +259,15 @@ export function TeacherNavbar({ currentSession, onSessionChange, showChatToggle 
         <div className="max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             {/* Logo/Brand */}
-            <div className="flex items-center gap-2 cursor-pointer" onClick={() => navigate('/teacher')}>
-              <div className="hidden sm:flex flex-col leading-none">
-                <span className="font-extrabold text-[15px] tracking-[0.2em] text-slate-800/90 uppercase">
-                  Golinelli
-                </span>
-                <span className="mt-1.5 inline-flex items-center gap-2">
-                  <span className="px-2.5 py-0.5 rounded-full bg-gradient-to-r from-[#ffb703] to-[#ffd166] text-[#3a1d00] text-[11px] font-extrabold tracking-[0.2em] uppercase shadow-md shadow-orange-300/60">
-                    AI
-                  </span>
-                  <span className="font-bold text-[13px] tracking-[0.14em] text-slate-800/90 lowercase">
-                    playground
-                  </span>
-                </span>
-              </div>
+            <div className="flex items-center gap-3 cursor-pointer" onClick={() => navigate('/teacher')}>
+              <img
+                src="http://drive.golinelli.ai/public/4bfdcd78541a4cdeaad26219c2237f28"
+                alt="AI playground"
+                className="h-9 w-9 object-contain"
+              />
+              <span className="text-base font-extrabold tracking-wide text-slate-900">
+                <span className="bg-gradient-to-r from-slate-900 via-slate-700 to-slate-900 bg-clip-text text-transparent">AI playground</span>
+              </span>
             </div>
 
             {/* Desktop Navigation */}

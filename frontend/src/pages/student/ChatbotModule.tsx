@@ -132,6 +132,7 @@ export default function ChatbotModule({ sessionId, initialTeacherbotId, onInputF
   const [imageSize, setImageSize] = useState<string>('1024x1024')
   const [verboseMode, setVerboseMode] = useState(false)
   const [chatBg, setChatBg] = useState<string>('')
+  const [chatBgDefault, setChatBgDefault] = useState<string>('')
   const [showBgPalette, setShowBgPalette] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const isGeneratingRef = useRef(false)
@@ -151,12 +152,27 @@ export default function ChatbotModule({ sessionId, initialTeacherbotId, onInputF
 
   useEffect(() => {
     try {
+      const storedDefault = localStorage.getItem('studentChatBgDefault')
+      if (storedDefault) setChatBgDefault(storedDefault)
+    } catch (e) {
+      console.error('Failed to load default chat background', e)
+    }
+  }, [])
+
+  useEffect(() => {
+    try {
       const stored = localStorage.getItem(`studentChatBg:${sessionId}`)
-      if (stored) setChatBg(stored)
+      if (stored) {
+        setChatBg(stored)
+      } else if (chatBgDefault) {
+        setChatBg(chatBgDefault)
+      } else {
+        setChatBg('')
+      }
     } catch (e) {
       console.error('Failed to load chat background', e)
     }
-  }, [sessionId])
+  }, [sessionId, chatBgDefault])
 
   useEffect(() => {
     try {
@@ -169,6 +185,15 @@ export default function ChatbotModule({ sessionId, initialTeacherbotId, onInputF
       console.error('Failed to save chat background', e)
     }
   }, [chatBg, sessionId])
+
+  const handleSetDefaultChatBg = (color: string) => {
+    try {
+      localStorage.setItem('studentChatBgDefault', color)
+      setChatBgDefault(color)
+    } catch (e) {
+      console.error('Failed to save default chat background', e)
+    }
+  }
 
   const chatBgIsDark = chatBg ? isDarkColor(chatBg) : false
 
@@ -1159,7 +1184,7 @@ export default function ChatbotModule({ sessionId, initialTeacherbotId, onInputF
                   key={swatch.label}
                   onClick={() => setChatBg(swatch.color)}
                   title={swatch.label}
-                  className={`h-5 w-5 rounded-full border border-slate-200 shadow-sm transition-transform hover:scale-105 ${chatBg === swatch.color ? 'ring-2 ring-indigo-500 ring-offset-2' : ''}`}
+                  className={`h-5 w-5 rounded-full shadow-sm transition-transform hover:scale-105 ${chatBg === swatch.color ? 'ring-2 ring-indigo-500 ring-offset-2' : ''}`}
                   style={{ backgroundColor: swatch.color }}
                 />
               ))}
@@ -1184,14 +1209,33 @@ export default function ChatbotModule({ sessionId, initialTeacherbotId, onInputF
                           setChatBg(color)
                           setShowBgPalette(false)
                         }}
-                        className="h-5 w-5 rounded border border-slate-100 hover:scale-110 transition-transform"
-                        style={{ backgroundColor: color }}
-                        title={color}
-                      />
-                    ))}
-                  </div>
-                  <div className="mt-2 flex items-center justify-between text-[10px] text-slate-400">
-                    <span>Jolly 256</span>
+                      className="h-5 w-5 rounded hover:scale-110 transition-transform"
+                      style={{ backgroundColor: color }}
+                      title={color}
+                    />
+                  ))}
+                </div>
+                <div className="mt-2 flex items-center justify-between text-[10px] text-slate-400">
+                  <span>Jolly 256</span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => chatBg && handleSetDefaultChatBg(chatBg)}
+                      className={`text-slate-500 hover:text-slate-700 ${chatBg ? '' : 'opacity-40 cursor-not-allowed'}`}
+                      disabled={!chatBg}
+                    >
+                      Imposta default
+                    </button>
+                    {chatBgDefault && (
+                      <button
+                        onClick={() => {
+                          setChatBg(chatBgDefault)
+                          setShowBgPalette(false)
+                        }}
+                        className="text-slate-500 hover:text-slate-700"
+                      >
+                        Usa default
+                      </button>
+                    )}
                     <button
                       onClick={() => {
                         setChatBg('')
@@ -1203,8 +1247,9 @@ export default function ChatbotModule({ sessionId, initialTeacherbotId, onInputF
                     </button>
                   </div>
                 </div>
-              )}
-            </div>
+              </div>
+            )}
+          </div>
           </div>
           <Button
             variant="ghost"
