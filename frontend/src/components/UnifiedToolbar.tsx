@@ -14,6 +14,10 @@ interface UnifiedToolbarProps {
   mode: 'document' | 'slides'
   // Document Mode Props
   editor?: Editor | null
+  docScale?: number
+  setDocScale?: (s: number) => void
+  docMargins?: { top: number; right: number; bottom: number; left: number }
+  onChangeDocMargins?: (margins: { top: number; right: number; bottom: number; left: number }) => void
   // Slide Mode Props
   scale?: number
   setScale?: (s: number) => void
@@ -30,6 +34,10 @@ const FONTS = [
 export function UnifiedToolbar({
   mode,
   editor,
+  docScale = 1,
+  setDocScale,
+  docMargins,
+  onChangeDocMargins,
   scale = 1,
   setScale,
   onAddSlideBlock,
@@ -160,6 +168,52 @@ export function UnifiedToolbar({
               <ImageIcon className="h-4 w-4" />
             </Button>
           </div>
+
+          {/* Document Zoom */}
+          <div className="flex items-center gap-0.5 border-l pl-2 ml-1 border-slate-300">
+            <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => setDocScale?.(Math.max(0.5, docScale - 0.1))}>
+              <ZoomOut className="h-4 w-4" />
+            </Button>
+            <span className="text-xs w-10 text-center">{Math.round(docScale * 100)}%</span>
+            <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => setDocScale?.(Math.min(2, docScale + 0.1))}>
+              <ZoomIn className="h-4 w-4" />
+            </Button>
+          </div>
+
+          {/* Margins */}
+          {docMargins && onChangeDocMargins && (
+            <div className="flex items-center gap-1 border-l pl-2 ml-1 border-slate-300">
+              <span className="text-[10px] uppercase text-slate-500">Margini</span>
+              <input
+                type="number"
+                className="h-8 w-12 text-xs border rounded px-1"
+                value={docMargins.top}
+                onChange={(e) => onChangeDocMargins({ ...docMargins, top: parseInt(e.target.value || '0', 10) })}
+                title="Margine alto"
+              />
+              <input
+                type="number"
+                className="h-8 w-12 text-xs border rounded px-1"
+                value={docMargins.right}
+                onChange={(e) => onChangeDocMargins({ ...docMargins, right: parseInt(e.target.value || '0', 10) })}
+                title="Margine destro"
+              />
+              <input
+                type="number"
+                className="h-8 w-12 text-xs border rounded px-1"
+                value={docMargins.bottom}
+                onChange={(e) => onChangeDocMargins({ ...docMargins, bottom: parseInt(e.target.value || '0', 10) })}
+                title="Margine basso"
+              />
+              <input
+                type="number"
+                className="h-8 w-12 text-xs border rounded px-1"
+                value={docMargins.left}
+                onChange={(e) => onChangeDocMargins({ ...docMargins, left: parseInt(e.target.value || '0', 10) })}
+                title="Margine sinistro"
+              />
+            </div>
+          )}
         </>
       )}
 

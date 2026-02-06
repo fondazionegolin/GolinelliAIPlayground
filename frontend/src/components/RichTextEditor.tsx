@@ -15,6 +15,7 @@ interface RichTextEditorProps {
   onChange: (html: string) => void
   onEditorReady?: (editor: Editor) => void
   readOnly?: boolean
+  contentClassName?: string
 }
 
 interface SelectionState {
@@ -41,7 +42,7 @@ const LinkShortcut = Extension.create({
   },
 })
 
-export function RichTextEditor({ content, onChange, onEditorReady, readOnly = false }: RichTextEditorProps) {
+export function RichTextEditor({ content, onChange, onEditorReady, readOnly = false, contentClassName }: RichTextEditorProps) {
   const [selection, setSelection] = useState<SelectionState | null>(null)
 
   const editor = useEditor({
@@ -137,7 +138,7 @@ export function RichTextEditor({ content, onChange, onEditorReady, readOnly = fa
     <div className="flex flex-col min-h-full bg-transparent relative">
       <EditorContent
         editor={editor}
-        className="flex-1 p-8 prose max-w-none focus:outline-none min-h-[500px]"
+        className={contentClassName || "flex-1 p-8 prose max-w-none focus:outline-none min-h-[500px]"}
         onMouseUp={handleMouseUp}
         onMouseDown={handleMouseDown}
       />

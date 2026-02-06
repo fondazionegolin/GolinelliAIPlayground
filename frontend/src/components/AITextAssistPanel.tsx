@@ -10,7 +10,7 @@ interface AITextAssistPanelProps {
   context?: string // Optional context about the document
 }
 
-type AssistAction = 'expand' | 'reformat' | 'generate'
+type AssistAction = 'expand' | 'reformat' | 'generate' | 'custom'
 
 export function AITextAssistPanel({
   selectedText,
@@ -23,6 +23,7 @@ export function AITextAssistPanel({
   const [result, setResult] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [activeAction, setActiveAction] = useState<AssistAction | null>(null)
+  const [customInstruction, setCustomInstruction] = useState('')
   const panelRef = useRef<HTMLDivElement>(null)
 
   // Adjust position to stay within viewport
@@ -118,6 +119,21 @@ ${selectedText}
 """
 
 Rispondi SOLO con il contenuto generato, senza introduzioni. Sii conciso e diretto.`
+        break
+      case 'custom':
+        prompt = `Applica ESATTAMENTE l'istruzione seguente al testo selezionato, come se fosse una trasformazione diretta del documento. Non aggiungere commenti o spiegazioni.${contextInfo}
+
+Istruzione:
+"""
+${customInstruction}
+"""
+
+Testo da trasformare:
+"""
+${selectedText}
+"""
+
+Rispondi SOLO con il testo trasformato, senza introduzioni.`
         break
     }
 
@@ -276,6 +292,31 @@ Rispondi SOLO con il contenuto generato, senza introduzioni. Sii conciso e diret
             >
               <Check className="h-4 w-4" />
               Applica
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Custom instruction */}
+      {!result && !isLoading && (
+        <div className="p-3 pt-0">
+          <div className="border-t border-slate-200 pt-3">
+            <div className="flex items-center gap-2 text-slate-700 mb-2">
+              <Wand2 className="h-4 w-4 text-pink-500" />
+              <span className="text-sm font-semibold">Modifica personalizzata</span>
+            </div>
+            <textarea
+              value={customInstruction}
+              onChange={(e) => setCustomInstruction(e.target.value)}
+              className="w-full min-h-[70px] text-sm border rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-pink-400/40"
+              placeholder="Es: traduci tutto in inglese; togli tutte le maiuscole; riduci a un punto elenco."
+            />
+            <button
+              onClick={() => handleAction('custom')}
+              disabled={!customInstruction.trim()}
+              className="mt-2 w-full py-2 text-sm bg-pink-600 text-white rounded-lg hover:bg-pink-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Applica istruzione
             </button>
           </div>
         </div>

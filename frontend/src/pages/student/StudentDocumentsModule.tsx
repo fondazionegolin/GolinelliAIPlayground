@@ -38,12 +38,22 @@ interface Document {
   header?: DocumentHeader
 }
 
+interface DraftDocument {
+  id: string
+  title: string
+  type: 'presentation' | 'document'
+  updatedAt: string
+  contentJson: string
+}
+
 // Format dimensions
 const FORMAT_DIMENSIONS = {
   '16:9': { width: 960, height: 540, label: '16:9 (Presentazione)' },
   '4:3': { width: 800, height: 600, label: '4:3 (Standard)' },
   'a4': { width: 794, height: 1123, label: 'A4 (Documento)' }
 }
+
+const DOC_PAGE_GAP = 28
 
 interface StudentDocumentsModuleProps {
   sessionId: string
@@ -53,6 +63,7 @@ export default function StudentDocumentsModule({ sessionId: _sessionId }: Studen
   // sessionId is available for future use (e.g., if we need session-specific features)
   void _sessionId
   const { toast } = useToast()
+  const draftStorageKey = 'student_docs_drafts'
 
   // State
   const [mode, setMode] = useState<EditorMode>('document')
@@ -71,6 +82,7 @@ export default function StudentDocumentsModule({ sessionId: _sessionId }: Studen
   const [showSidebar, setShowSidebar] = useState(true)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [submitted, setSubmitted] = useState(false)
+  const [draftDocuments, setDraftDocuments] = useState<DraftDocument[]>([])
 
   // Editor State
   const [editor, setEditor] = useState<Editor | null>(null)
@@ -78,6 +90,8 @@ export default function StudentDocumentsModule({ sessionId: _sessionId }: Studen
   // Slide Editor State
   const [currentSlideIndex, setCurrentSlideIndex] = useState(0)
   const [scale, setScale] = useState(1)
+  const [docScale, setDocScale] = useState(1)
+  const [docMargins, setDocMargins] = useState({ top: 56, right: 56, bottom: 56, left: 56 })
   const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null)
 
   // Refs
@@ -85,9 +99,134 @@ export default function StudentDocumentsModule({ sessionId: _sessionId }: Studen
 
   // UI State
   const [showSubmitModal, setShowSubmitModal] = useState(false)
+  const [showNewModal, setShowNewModal] = useState(false)
 
   const currentSlide = document.slides?.[currentSlideIndex] || { id: 'fallback', title: 'Slide', blocks: [] }
   const selectedBlock = currentSlide.blocks.find(b => b.id === selectedBlockId)
+
+  const createNewDocument = () => {
+    const newDocId = crypto.randomUUID()
+    setDocument({
+      id: newDocId,
+      title: 'Il mio documento',
+      format: 'a4',
+      slides: [],
+      textContent: '<h1>Il mio documento</h1><p>Inizia a scrivere qui...</p>',
+      header: { title: '', subtitle: '', logoUrl: '' }
+    })
+    setMode('document')
+    setSubmitted(false)
+    setCurrentSlideIndex(0)
+    setSelectedBlockId(null)
+  }
+
+  const createNewPresentation = () => {
+    const newDocId = crypto.randomUUID()
+    setDocument({
+      id: newDocId,
+      title: 'La mia presentazione',
+      format: '16:9',
+      slides: [{ id: crypto.randomUUID(), title: 'Slide 1', blocks: [] }],
+      textContent: ''
+    })
+    setMode('slides')
+    setSubmitted(false)
+    setCurrentSlideIndex(0)
+    setSelectedBlockId(null)
+  }
+
+  const saveDrafts = (drafts: DraftDocument[]) => {
+    setDraftDocuments(drafts)
+    localStorage.setItem(draftStorageKey, JSON.stringify(drafts))
+  }
+
+  const upsertDraft = (titleOverride?: string) => {
+    const type = mode === 'slides' ? 'presentation' : 'document'
+    const contentJson = JSON.stringify(
+      mode === 'slides'
+        ? { type: 'presentation_v2', format: document.format, slides: document.slides }
+        : { type: 'document_v1', htmlContent: document.textContent || '', header: document.header, margins: docMargins }
+    )
+    const nextDraft: DraftDocument = {
+      id: document.id,
+      title: titleOverride ?? document.title,
+      type,
+      updatedAt: new Date().toISOString(),
+      contentJson
+    }
+    const next = [nextDraft, ...draftDocuments.filter(d => d.id !== document.id)]
+    saveDrafts(next)
+  }
+
+  const handleTitleChange = (value: string) => {
+    setDocument(d => ({ ...d, title: value }))
+    upsertDraft(value)
+  }
+
+  useEffect(() => {
+    const storedDrafts = localStorage.getItem(draftStorageKey)
+    if (storedDrafts) {
+      try {
+        setDraftDocuments(JSON.parse(storedDrafts))
+      } catch {
+        setDraftDocuments([])
+      }
+    }
+  }, [draftStorageKey])
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      upsertDraft()
+    }, 400)
+    return () => clearTimeout(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [document, mode, docMargins])
+
+  const loadDraft = (doc: DraftDocument) => {
+    try {
+      const content = JSON.parse(doc.contentJson)
+      if (doc.type === 'presentation' || content.type === 'presentation_v2' || content.slides) {
+        setMode('slides')
+        const safeSlides = (content.slides && Array.isArray(content.slides) && content.slides.length > 0)
+          ? content.slides.map((s: any) => ({
+              id: s.id || crypto.randomUUID(),
+              title: s.title || 'Slide',
+              blocks: s.blocks || []
+            }))
+          : [{ id: crypto.randomUUID(), title: 'Slide 1', blocks: [] }]
+
+        setDocument({
+          id: doc.id,
+          title: doc.title,
+          format: content.format || '16:9',
+          slides: safeSlides,
+          textContent: ''
+        })
+        setCurrentSlideIndex(0)
+        setSelectedBlockId(null)
+      } else {
+        setMode('document')
+        if (content.margins) {
+          setDocMargins({
+            top: content.margins.top ?? 56,
+            right: content.margins.right ?? 56,
+            bottom: content.margins.bottom ?? 56,
+            left: content.margins.left ?? 56
+          })
+        }
+        setDocument({
+          id: doc.id,
+          title: doc.title,
+          format: 'a4',
+          slides: [],
+          textContent: content.htmlContent || content.content || '',
+          header: content.header || { title: '', subtitle: '', logoUrl: '' }
+        })
+      }
+    } catch (e) {
+      console.error(e)
+    }
+  }
 
   // Fit canvas
   useEffect(() => {
@@ -106,16 +245,6 @@ export default function StudentDocumentsModule({ sessionId: _sessionId }: Studen
     handleResize()
     return () => window.removeEventListener('resize', handleResize)
   }, [document.format, mode, showSidebar])
-
-  // Actions
-  const switchMode = (newMode: EditorMode) => {
-    setMode(newMode)
-    if (newMode === 'document') {
-      setDocument(d => ({ ...d, format: 'a4' }))
-    } else {
-      setDocument(d => ({ ...d, format: '16:9' }))
-    }
-  }
 
   const addSlide = () => {
     const newSlide: Slide = {
@@ -212,7 +341,8 @@ export default function StudentDocumentsModule({ sessionId: _sessionId }: Studen
           type: 'student_document',
           title: document.title,
           htmlContent: document.textContent,
-          header: document.header
+          header: document.header,
+          margins: docMargins
         })
       }
 
@@ -250,16 +380,7 @@ export default function StudentDocumentsModule({ sessionId: _sessionId }: Studen
   }
 
   const resetDocument = () => {
-    setDocument({
-      id: crypto.randomUUID(),
-      title: 'Il mio documento',
-      format: 'a4',
-      slides: [{ id: crypto.randomUUID(), title: 'Slide 1', blocks: [] }],
-      textContent: '<h1>Il mio documento</h1><p>Inizia a scrivere qui...</p>',
-      header: { title: '', subtitle: '', logoUrl: '' }
-    })
-    setMode('document')
-    setSubmitted(false)
+    createNewDocument()
   }
 
   return (
@@ -278,32 +399,19 @@ export default function StudentDocumentsModule({ sessionId: _sessionId }: Studen
                {showSidebar ? <ChevronLeft className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
              </Button>
 
-             <div className="flex items-center gap-2 bg-slate-100 p-1 rounded-md mr-2">
-                <Button
-                  size="sm"
-                  variant={mode === 'document' ? 'secondary' : 'ghost'}
-                  className={mode === 'document' ? 'shadow-sm bg-white' : ''}
-                  onClick={() => switchMode('document')}
-                >
-                  <FileText className="h-4 w-4 mr-2" />
-                  Doc
-                </Button>
-                <Button
-                  size="sm"
-                  variant={mode === 'slides' ? 'secondary' : 'ghost'}
-                  className={mode === 'slides' ? 'shadow-sm bg-white' : ''}
-                  onClick={() => switchMode('slides')}
-                >
-                  <Monitor className="h-4 w-4 mr-2" />
-                  Slide
-                </Button>
-             </div>
+             <Button
+               onClick={() => setShowNewModal(true)}
+               className="bg-slate-900 text-white hover:bg-slate-800 px-4"
+             >
+               <Plus className="h-4 w-4 mr-2" />
+               Nuovo
+             </Button>
 
              <div className="h-6 w-px bg-slate-200" />
 
              <Input
                value={document.title}
-               onChange={(e) => setDocument(d => ({ ...d, title: e.target.value }))}
+               onChange={(e) => handleTitleChange(e.target.value)}
                className="font-bold border-transparent hover:border-slate-200 focus:border-indigo-500 w-64 text-lg"
                placeholder="Nome file..."
              />
@@ -331,6 +439,10 @@ export default function StudentDocumentsModule({ sessionId: _sessionId }: Studen
         <UnifiedToolbar
           mode={mode}
           editor={editor}
+          docScale={docScale}
+          setDocScale={setDocScale}
+          docMargins={docMargins}
+          onChangeDocMargins={setDocMargins}
           scale={scale}
           setScale={setScale}
           onAddSlideBlock={addSlideBlock}
@@ -374,6 +486,33 @@ export default function StudentDocumentsModule({ sessionId: _sessionId }: Studen
               </div>
             )}
 
+            {/* Drafts */}
+            <div className="border-t">
+              <div className="p-3 border-b bg-slate-50">
+                <h3 className="font-semibold text-xs uppercase text-slate-500">Bozze</h3>
+              </div>
+              <div className="max-h-40 overflow-y-auto p-2">
+                {draftDocuments.length === 0 && (
+                  <p className="text-xs text-center text-slate-400 py-2">Nessuna bozza</p>
+                )}
+                {draftDocuments.map((doc) => (
+                  <div
+                    key={doc.id}
+                    onClick={() => loadDraft(doc)}
+                    className="group flex items-start gap-3 p-2 rounded-lg hover:bg-slate-100 cursor-pointer transition-colors border border-transparent hover:border-slate-200 mb-1"
+                  >
+                    <div className={`p-1.5 rounded-md ${doc.type === 'presentation' ? 'bg-indigo-100 text-indigo-600' : 'bg-emerald-100 text-emerald-600'}`}>
+                      {doc.type === 'presentation' ? <Monitor className="h-3 w-3" /> : <FileText className="h-3 w-3" />}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-medium text-slate-700 truncate">{doc.title}</p>
+                      <p className="text-[10px] text-slate-400 truncate">{new Date(doc.updatedAt).toLocaleDateString()}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
             {/* Status indicator */}
             {submitted && (
               <div className="p-4 bg-green-50 border-t">
@@ -392,10 +531,21 @@ export default function StudentDocumentsModule({ sessionId: _sessionId }: Studen
 
              {/* MODE: DOCUMENT */}
              {mode === 'document' && (
-               <div className="w-full max-w-[800px] min-h-[1100px] mb-20 print:shadow-none bg-white shadow-lg flex flex-col relative transition-all">
+               <div
+                 className="mb-20 print:shadow-none flex flex-col relative transition-all"
+                 style={{
+                   width: FORMAT_DIMENSIONS.a4.width,
+                   minHeight: FORMAT_DIMENSIONS.a4.height,
+                   transform: `scale(${docScale})`,
+                   transformOrigin: 'top center',
+                   backgroundImage: `repeating-linear-gradient(to bottom, #ffffff 0, #ffffff ${FORMAT_DIMENSIONS.a4.height}px, #f1f5f9 ${FORMAT_DIMENSIONS.a4.height}px, #f1f5f9 ${FORMAT_DIMENSIONS.a4.height + DOC_PAGE_GAP}px)`,
+                   boxShadow: '0 10px 30px rgba(15, 23, 42, 0.12)',
+                   padding: `${docMargins.top}px ${docMargins.right}px ${docMargins.bottom}px ${docMargins.left}px`
+                 }}
+               >
 
                   {/* Visual Header Section */}
-                  <div className="px-10 pt-10 pb-4 flex items-center gap-6 border-b border-transparent hover:border-slate-100 transition-colors group/header">
+                  <div className="pb-4 flex items-center gap-6 border-b border-transparent hover:border-slate-100 transition-colors group/header">
                     {/* Logo Area */}
                     <div className="w-20 h-20 bg-slate-50 rounded-lg flex items-center justify-center cursor-pointer hover:bg-slate-100 relative overflow-hidden group/logo border border-dashed border-slate-300 hover:border-indigo-400 transition-colors">
                       {document.header?.logoUrl ? (
@@ -436,6 +586,7 @@ export default function StudentDocumentsModule({ sessionId: _sessionId }: Studen
                       content={document.textContent || ''}
                       onChange={(html) => setDocument(d => ({ ...d, textContent: html }))}
                       onEditorReady={setEditor}
+                      contentClassName="flex-1 prose max-w-none focus:outline-none min-h-[500px] p-0"
                     />
                   </div>
                </div>
@@ -481,6 +632,43 @@ export default function StudentDocumentsModule({ sessionId: _sessionId }: Studen
 
           </div>
         </div>
+
+        {/* New Document Modal */}
+        {showNewModal && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-lg p-6 w-full max-w-md mx-4 shadow-xl">
+              <h3 className="text-lg font-semibold mb-2">Crea nuovo</h3>
+              <p className="text-sm text-gray-600 mb-4">
+                Scegli se creare un nuovo documento o una nuova presentazione.
+              </p>
+              <div className="flex flex-col gap-3">
+                <Button
+                  className="w-full justify-center bg-emerald-600 hover:bg-emerald-700 text-white"
+                  onClick={() => {
+                    createNewDocument()
+                    setShowNewModal(false)
+                  }}
+                >
+                  <FileText className="h-4 w-4 mr-2" />
+                  Nuovo documento
+                </Button>
+                <Button
+                  className="w-full justify-center bg-indigo-600 hover:bg-indigo-700 text-white"
+                  onClick={() => {
+                    createNewPresentation()
+                    setShowNewModal(false)
+                  }}
+                >
+                  <Monitor className="h-4 w-4 mr-2" />
+                  Nuova presentazione
+                </Button>
+              </div>
+              <div className="flex justify-end mt-4">
+                <Button variant="outline" onClick={() => setShowNewModal(false)}>Annulla</Button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Submit Modal */}
         {showSubmitModal && (
