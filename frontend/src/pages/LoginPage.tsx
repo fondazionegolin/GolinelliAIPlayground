@@ -59,7 +59,7 @@ export default function LoginPage() {
         <div className="text-center">
           <div className="flex items-center justify-center gap-3 mb-4">
             <img
-              src="http://drive.golinelli.ai/public/4bfdcd78541a4cdeaad26219c2237f28"
+              src="http://drive.golinelli.ai/public/39a38e5f53a447e8a148d109fb05afed"
               alt="AI playground"
               className="h-14 w-14 object-contain"
             />

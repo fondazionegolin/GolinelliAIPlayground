@@ -261,7 +261,7 @@ export function TeacherNavbar({ currentSession, onSessionChange, showChatToggle 
             {/* Logo/Brand */}
             <div className="flex items-center gap-3 cursor-pointer" onClick={() => navigate('/teacher')}>
               <img
-                src="http://drive.golinelli.ai/public/4bfdcd78541a4cdeaad26219c2237f28"
+                src="http://drive.golinelli.ai/public/39a38e5f53a447e8a148d109fb05afed"
                 alt="AI playground"
                 className="h-9 w-9 object-contain"
               />
