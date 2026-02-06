@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
-  Plus, Trash2, Upload, Monitor, FileText, ChevronLeft, ChevronRight, Send, CheckCircle
+  Plus, Trash2, Monitor, FileText, ChevronLeft, ChevronRight, Send, CheckCircle
 } from 'lucide-react'
 import { studentApi } from '@/lib/api'
 import { useToast } from '@/components/ui/use-toast'
@@ -54,6 +54,7 @@ const FORMAT_DIMENSIONS = {
 }
 
 const DOC_PAGE_GAP = 28
+const EMPTY_DOC_HTML = '<p></p>'
 
 interface StudentDocumentsModuleProps {
   sessionId: string
@@ -73,7 +74,7 @@ export default function StudentDocumentsModule({ sessionId: _sessionId }: Studen
     slides: [
       { id: crypto.randomUUID(), title: 'Slide 1', blocks: [] }
     ],
-    textContent: '<h1>Il mio documento</h1><p>Inizia a scrivere qui...</p>',
+    textContent: EMPTY_DOC_HTML,
     header: { title: '', subtitle: '', logoUrl: '' }
   })
 
@@ -112,7 +113,7 @@ export default function StudentDocumentsModule({ sessionId: _sessionId }: Studen
       title: 'Il mio documento',
       format: 'a4',
       slides: [],
-      textContent: '<h1>Il mio documento</h1><p>Inizia a scrivere qui...</p>',
+      textContent: EMPTY_DOC_HTML,
       header: { title: '', subtitle: '', logoUrl: '' }
     })
     setMode('document')
@@ -250,7 +251,7 @@ export default function StudentDocumentsModule({ sessionId: _sessionId }: Studen
           title: doc.title,
           format: 'a4',
           slides: [],
-          textContent: content.htmlContent || content.content || '',
+          textContent: content.htmlContent || content.content || EMPTY_DOC_HTML,
           header: content.header || { title: '', subtitle: '', logoUrl: '' }
         })
       }
@@ -396,17 +397,6 @@ export default function StudentDocumentsModule({ sessionId: _sessionId }: Studen
       toast({ title: "Errore invio", description: "Impossibile inviare il documento. Riprova.", variant: "destructive" })
     } finally {
       setIsSubmitting(false)
-    }
-  }
-
-  const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (file) {
-      const reader = new FileReader()
-      reader.onloadend = () => {
-        setDocument(d => ({ ...d, header: { ...d.header!, logoUrl: reader.result as string } }))
-      }
-      reader.readAsDataURL(file)
     }
   }
 
@@ -592,6 +582,40 @@ export default function StudentDocumentsModule({ sessionId: _sessionId }: Studen
                     </div>
                   </div>
 
+                  {/* Inline page margin sliders */}
+                  <div className="absolute top-3 right-3 z-20 w-40 rounded-md border border-slate-200 bg-white/95 p-2 shadow-sm">
+                    <div className="space-y-2">
+                      <div>
+                        <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+                          Margine laterale {docMargins.horizontal}px
+                        </label>
+                        <input
+                          type="range"
+                          min={16}
+                          max={160}
+                          step={2}
+                          value={docMargins.horizontal}
+                          onChange={(e) => setDocMargins(prev => ({ ...prev, horizontal: Number(e.target.value) }))}
+                          className="h-1.5 w-full accent-slate-700"
+                        />
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+                          Margine alto/basso {docMargins.vertical}px
+                        </label>
+                        <input
+                          type="range"
+                          min={16}
+                          max={160}
+                          step={2}
+                          value={docMargins.vertical}
+                          onChange={(e) => setDocMargins(prev => ({ ...prev, vertical: Number(e.target.value) }))}
+                          className="h-1.5 w-full accent-slate-700"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
                   {showRuledLines && (
                     <div
                       className="pointer-events-none absolute z-0"
@@ -605,49 +629,20 @@ export default function StudentDocumentsModule({ sessionId: _sessionId }: Studen
                     />
                   )}
 
-                  {/* Visual Header Section */}
-                  <div className="pb-4 flex items-center gap-6 border-b border-transparent hover:border-slate-100 transition-colors group/header relative z-10">
-                    {/* Logo Area */}
-                    <div className="w-20 h-20 bg-slate-50 rounded-lg flex items-center justify-center cursor-pointer hover:bg-slate-100 relative overflow-hidden group/logo border border-dashed border-slate-300 hover:border-indigo-400 transition-colors">
-                      {document.header?.logoUrl ? (
-                        <img src={document.header.logoUrl} className="w-full h-full object-contain" alt="Logo" />
-                      ) : (
-                        <div className="text-center p-1">
-                          <Upload className="h-5 w-5 text-slate-400 mx-auto mb-1" />
-                          <span className="text-[9px] text-slate-400 block uppercase">Logo</span>
-                        </div>
-                      )}
-                      <input
-                        type="file"
-                        accept="image/*"
-                        className="absolute inset-0 opacity-0 cursor-pointer"
-                        onChange={handleLogoUpload}
-                      />
-                    </div>
-
-                    {/* Title Area */}
-                    <div className="flex-1">
-                      <input
-                        className="text-3xl font-bold w-full border-none focus:ring-0 placeholder:text-slate-300 px-0 text-slate-900"
-                        placeholder="Titolo Intestazione"
-                        value={document.header?.title || ''}
-                        onChange={(e) => setDocument(d => ({ ...d, header: { ...d.header!, title: e.target.value } }))}
-                      />
-                      <input
-                        className="text-base text-slate-500 w-full border-none focus:ring-0 placeholder:text-slate-300 px-0 mt-1"
-                        placeholder="Sottotitolo o Dettagli..."
-                        value={document.header?.subtitle || ''}
-                        onChange={(e) => setDocument(d => ({ ...d, header: { ...d.header!, subtitle: e.target.value } }))}
-                      />
-                    </div>
-                  </div>
-
-                  <div className="flex-1 flex flex-col relative z-10">
+                  <div
+                    className="flex-1 flex flex-col relative z-10"
+                    style={{ minHeight: FORMAT_DIMENSIONS.a4.height - docMargins.vertical * 2 }}
+                    onMouseDown={() => {
+                      if (editor && mode === 'document') {
+                        editor.chain().focus('end').run()
+                      }
+                    }}
+                  >
                     <RichTextEditor
                       content={document.textContent || ''}
                       onChange={(html) => setDocument(d => ({ ...d, textContent: html }))}
                       onEditorReady={setEditor}
-                      contentClassName="flex-1 prose max-w-none focus:outline-none min-h-[500px] p-0"
+                      contentClassName="h-full min-h-full prose max-w-none focus:outline-none p-0 cursor-text"
                     />
                   </div>
                </div>
