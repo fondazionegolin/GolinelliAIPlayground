@@ -275,12 +275,12 @@ export default function SessionLivePage() {
           </div>
 
       {/* Compact Header Bar */}
-      <div className="flex flex-wrap items-center gap-3 mb-4 p-3 bg-white rounded-lg border">
+      <div className="flex flex-wrap items-center gap-3 mb-4 p-2.5 bg-white rounded-lg border border-slate-200 shadow-sm">
         {/* Access Code + Actions */}
         <div className="flex items-center gap-2">
           <div className="text-center">
             <p className="text-xs text-muted-foreground">Codice</p>
-            <code className="text-lg font-mono font-bold text-primary">{session.join_code}</code>
+            <code className="text-lg font-mono font-bold text-slate-900">{session.join_code}</code>
           </div>
           <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => copyCode(session.join_code)}>
             <Copy className="h-3.5 w-3.5" />
@@ -291,7 +291,7 @@ export default function SessionLivePage() {
 
         {/* Students Count */}
         <div className="flex items-center gap-2">
-          <Users className="h-4 w-4 text-primary" />
+          <Users className="h-4 w-4 text-slate-700" />
           <div>
             <p className="text-xs text-muted-foreground">Studenti</p>
             <p className="text-lg font-bold leading-none">{students.length}</p>
@@ -338,20 +338,20 @@ export default function SessionLivePage() {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-4 mb-4 h-auto">
-          <TabsTrigger value="students" className="text-xs md:text-sm px-1 md:px-3 py-2">
+        <TabsList className="grid w-full grid-cols-4 mb-4 h-10 bg-white border border-slate-200 rounded-lg shadow-sm p-1">
+          <TabsTrigger value="students" className="text-xs md:text-sm px-1 md:px-3 py-2 aria-selected:bg-slate-900 aria-selected:text-white">
             <Users className="h-4 w-4 md:mr-2 shrink-0" />
             <span className="hidden md:inline">Studenti</span>
           </TabsTrigger>
-          <TabsTrigger value="modules" className="text-xs md:text-sm px-1 md:px-3 py-2">
+          <TabsTrigger value="modules" className="text-xs md:text-sm px-1 md:px-3 py-2 aria-selected:bg-slate-900 aria-selected:text-white">
             <Brain className="h-4 w-4 md:mr-2 shrink-0" />
             <span className="hidden md:inline">Moduli</span>
           </TabsTrigger>
-          <TabsTrigger value="tasks" className="text-xs md:text-sm px-1 md:px-3 py-2">
+          <TabsTrigger value="tasks" className="text-xs md:text-sm px-1 md:px-3 py-2 aria-selected:bg-slate-900 aria-selected:text-white">
             <ClipboardList className="h-4 w-4 md:mr-2 shrink-0" />
             <span className="hidden md:inline">Compiti</span>
           </TabsTrigger>
-          <TabsTrigger value="history" className="text-xs md:text-sm px-1 md:px-3 py-2">
+          <TabsTrigger value="history" className="text-xs md:text-sm px-1 md:px-3 py-2 aria-selected:bg-slate-900 aria-selected:text-white">
             <History className="h-4 w-4 md:mr-2 shrink-0" />
             <span className="hidden md:inline">Storico</span>
           </TabsTrigger>

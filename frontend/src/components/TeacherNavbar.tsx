@@ -127,12 +127,12 @@ export function TeacherNavbar({ currentSession, onSessionChange }: TeacherNavbar
     // Modern SaaS avatars are often neutral or branded, but we keep colors for differentiation
     const name = profile.firstName + profile.lastName
     const colors = [
-      'bg-indigo-500',
-      'bg-blue-500',
-      'bg-violet-500',
-      'bg-fuchsia-500',
-      'bg-rose-500',
-      'bg-cyan-500'
+      'bg-slate-700',
+      'bg-gray-700',
+      'bg-zinc-700',
+      'bg-neutral-700',
+      'bg-slate-800',
+      'bg-gray-800'
     ]
     const hash = name.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0)
     return colors[hash % colors.length]
@@ -155,26 +155,26 @@ export function TeacherNavbar({ currentSession, onSessionChange }: TeacherNavbar
 
   return (
     <>
-      <nav className="fixed top-0 left-0 right-0 z-50 bg-cyan-50/80 backdrop-blur-md border-b border-cyan-200 shadow-md shadow-cyan-100/50">
+      <nav className="fixed top-0 left-0 right-0 z-50 bg-slate-50/90 backdrop-blur-md border-b border-slate-200 shadow-md shadow-slate-200/50">
         <div className="max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             {/* Logo/Brand */}
             <div className="flex items-center gap-2 cursor-pointer" onClick={() => navigate('/teacher')}>
-              <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-cyan-400 to-blue-500 flex items-center justify-center shadow-lg shadow-cyan-400/30">
+              <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-slate-800 to-slate-900 flex items-center justify-center shadow-lg shadow-slate-400/30">
                 <span className="text-white font-bold text-sm">G</span>
               </div>
-              <span className="font-bold text-slate-900 text-lg tracking-tight hidden sm:inline">Golinelli<span className="text-cyan-600">AI</span></span>
+              <span className="font-bold text-slate-900 text-lg tracking-tight hidden sm:inline">Golinelli<span className="text-slate-700">AI</span></span>
             </div>
 
             {/* Desktop Navigation */}
-            <div className="hidden md:flex items-center gap-1 bg-white/50 p-1 rounded-xl border border-cyan-100 shadow-sm">
+            <div className="hidden md:flex items-center gap-1 bg-white/70 p-1 rounded-xl border border-slate-200 shadow-sm">
               {navItems.map((item) => (
                 <Link key={item.path} to={item.path}>
                   <button
                     className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-200 ${
                       isActive(item.path)
-                        ? 'bg-cyan-500 text-white shadow-md shadow-cyan-200'
-                        : 'text-slate-600 hover:bg-cyan-200/50 hover:text-cyan-700'
+                        ? 'bg-slate-900 text-white shadow-md shadow-slate-300'
+                        : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
                     }`}
                   >
                     <item.icon className="h-4 w-4" />
@@ -189,17 +189,17 @@ export function TeacherNavbar({ currentSession, onSessionChange }: TeacherNavbar
               <div className="relative" ref={sessionsMenuRef}>
                 <button
                   onClick={() => setShowSessionsMenu(!showSessionsMenu)}
-                  className={`hidden lg:flex items-center gap-3 px-4 py-2.5 rounded-xl border-2 transition-all duration-200 cursor-pointer ${
+                  className={`hidden lg:flex items-center gap-3 px-3 py-2 rounded-lg border transition-all duration-200 cursor-pointer ${
                     currentSession
-                      ? 'bg-gradient-to-r from-cyan-50 to-sky-50 border-cyan-200 hover:border-cyan-300 hover:shadow-md hover:shadow-cyan-100'
-                      : 'bg-white/80 border-slate-200 hover:border-cyan-200 hover:bg-cyan-50/50'
+                      ? 'bg-white border-slate-300 hover:border-slate-400 hover:shadow-md hover:shadow-slate-200'
+                      : 'bg-white/80 border-slate-200 hover:border-slate-300 hover:bg-slate-50'
                   }`}
                 >
                   <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${currentSession ? 'bg-green-500 animate-pulse shadow-sm shadow-green-300' : 'bg-slate-300'}`} />
                   <div className="text-left min-w-0">
                     {currentSession ? (
                       <div className="flex items-center gap-2">
-                        <span className="text-sm font-bold text-cyan-700 truncate max-w-[120px]">{currentSession.className}</span>
+                        <span className="text-sm font-bold text-slate-900 truncate max-w-[120px]">{currentSession.className}</span>
                         <span className="text-slate-300">|</span>
                         <span className="text-sm font-medium text-slate-700 truncate max-w-[140px]">{currentSession.name}</span>
                       </div>
@@ -214,7 +214,7 @@ export function TeacherNavbar({ currentSession, onSessionChange }: TeacherNavbar
                 {showSessionsMenu && (
                   <div className="absolute right-0 mt-2 w-80 bg-white rounded-2xl shadow-2xl border border-slate-100 overflow-hidden animate-in fade-in zoom-in-95 duration-150 origin-top-right z-50">
                     {/* Header */}
-                    <div className="px-5 py-4 border-b border-slate-100 bg-gradient-to-r from-cyan-50 to-sky-50">
+                    <div className="px-5 py-4 border-b border-slate-100 bg-slate-50">
                       <h3 className="font-bold text-slate-800">Sessioni Disponibili</h3>
                       <p className="text-xs text-slate-500 mt-0.5">Seleziona la sessione di lavoro</p>
                     </div>
@@ -246,18 +246,18 @@ export function TeacherNavbar({ currentSession, onSessionChange }: TeacherNavbar
                                 }}
                                 className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-150 text-left group ${
                                   isSelected
-                                    ? 'bg-cyan-100 border-2 border-cyan-300'
+                                    ? 'bg-slate-100 border-2 border-slate-300'
                                     : 'hover:bg-slate-50 border-2 border-transparent'
                                 }`}
                               >
                                 <div className={`w-3 h-3 rounded-full flex-shrink-0 transition-colors ${
-                                  isSelected ? 'bg-green-500 shadow-sm shadow-green-300' : 'bg-slate-300 group-hover:bg-cyan-300'
+                                  isSelected ? 'bg-green-500 shadow-sm shadow-green-300' : 'bg-slate-300 group-hover:bg-slate-400'
                                 }`} />
                                 <div className="flex-1 min-w-0">
-                                  <p className={`text-sm font-medium truncate ${isSelected ? 'text-cyan-800' : 'text-slate-700'}`}>
+                                  <p className={`text-sm font-medium truncate ${isSelected ? 'text-slate-900' : 'text-slate-700'}`}>
                                     {session.name}
                                   </p>
-                                  <p className={`text-xs truncate ${isSelected ? 'text-cyan-600' : 'text-slate-400'}`}>
+                                  <p className={`text-xs truncate ${isSelected ? 'text-slate-700' : 'text-slate-400'}`}>
                                     {session.className}
                                   </p>
                                 </div>
@@ -265,14 +265,14 @@ export function TeacherNavbar({ currentSession, onSessionChange }: TeacherNavbar
                                   {session.studentCount !== undefined && session.studentCount > 0 && (
                                     <span className={`text-xs px-2 py-1 rounded-full font-medium ${
                                       isSelected
-                                        ? 'bg-cyan-200 text-cyan-700'
-                                        : 'bg-slate-100 text-slate-500 group-hover:bg-cyan-100 group-hover:text-cyan-600'
+                                        ? 'bg-slate-200 text-slate-800'
+                                        : 'bg-slate-100 text-slate-500 group-hover:bg-slate-200 group-hover:text-slate-700'
                                     }`}>
                                       {session.studentCount} studenti
                                     </span>
                                   )}
                                   {isSelected && (
-                                    <Check className="h-5 w-5 text-cyan-600" />
+                                    <Check className="h-5 w-5 text-slate-900" />
                                   )}
                                 </div>
                               </button>
@@ -289,16 +289,16 @@ export function TeacherNavbar({ currentSession, onSessionChange }: TeacherNavbar
               <div className="relative" ref={dropdownRef}>
                 <button
                   onClick={() => setShowDropdown(!showDropdown)}
-                  className="flex items-center gap-3 hover:bg-cyan-600/10 rounded-full pl-1 pr-3 py-1 transition-colors border border-transparent hover:border-cyan-700/20"
+                  className="flex items-center gap-3 hover:bg-slate-200/60 rounded-full pl-1 pr-3 py-1 transition-colors border border-transparent hover:border-slate-400/40"
                 >
                   {profile.avatarUrl ? (
                     <img
                       src={profile.avatarUrl}
                       alt="Avatar"
-                      className="w-8 h-8 rounded-full object-cover ring-2 ring-cyan-600"
+                      className="w-8 h-8 rounded-full object-cover ring-2 ring-slate-700"
                     />
                   ) : (
-                    <div className={`w-8 h-8 rounded-full ${getAvatarColor()} flex items-center justify-center text-white text-xs font-bold ring-2 ring-cyan-600`}>
+                    <div className={`w-8 h-8 rounded-full ${getAvatarColor()} flex items-center justify-center text-white text-xs font-bold ring-2 ring-slate-700`}>
                       {getInitials()}
                     </div>
                   )}
@@ -322,7 +322,7 @@ export function TeacherNavbar({ currentSession, onSessionChange }: TeacherNavbar
                         setShowSettings(true)
                         setShowDropdown(false)
                       }}
-                      className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-600 hover:bg-slate-50 hover:text-cyan-600 transition-colors"
+                      className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition-colors"
                     >
                       <Settings className="h-4 w-4" />
                       Impostazioni account
@@ -350,8 +350,8 @@ export function TeacherNavbar({ currentSession, onSessionChange }: TeacherNavbar
                   variant="ghost"
                   className={`${
                     isActive(item.path)
-                      ? 'bg-cyan-100 text-cyan-700 font-semibold'
-                      : 'text-slate-500 hover:text-cyan-600'
+                      ? 'bg-slate-200 text-slate-900 font-semibold'
+                      : 'text-slate-500 hover:text-slate-900'
                   }`}
                 >
                   {item.label}
@@ -478,7 +478,7 @@ function SettingsModal({ profile, onSave, onClose }: SettingsModalProps) {
                 type="text"
                 value={formData.firstName}
                 onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
-                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all outline-none"
+                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-slate-700 focus:border-transparent transition-all outline-none"
                 required
               />
             </div>
@@ -488,7 +488,7 @@ function SettingsModal({ profile, onSave, onClose }: SettingsModalProps) {
                 type="text"
                 value={formData.lastName}
                 onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
-                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all outline-none"
+                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-slate-700 focus:border-transparent transition-all outline-none"
                 required
               />
             </div>
@@ -500,7 +500,7 @@ function SettingsModal({ profile, onSave, onClose }: SettingsModalProps) {
               type="email"
               value={formData.email}
               onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-              className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all outline-none"
+              className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-slate-700 focus:border-transparent transition-all outline-none"
               required
             />
           </div>
@@ -511,7 +511,7 @@ function SettingsModal({ profile, onSave, onClose }: SettingsModalProps) {
               type="text"
               value={formData.institution}
               onChange={(e) => setFormData({ ...formData, institution: e.target.value })}
-              className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all outline-none"
+              className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-slate-700 focus:border-transparent transition-all outline-none"
               placeholder="Nome della scuola"
             />
           </div>
@@ -521,7 +521,7 @@ function SettingsModal({ profile, onSave, onClose }: SettingsModalProps) {
             <Button type="button" variant="ghost" onClick={onClose} className="flex-1 text-slate-500 hover:text-slate-700 hover:bg-slate-100">
               Annulla
             </Button>
-            <Button type="submit" className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white shadow-lg shadow-indigo-500/30">
+            <Button type="submit" className="flex-1 bg-slate-900 hover:bg-slate-800 text-white shadow-lg shadow-slate-400/30">
               Salva Modifiche
             </Button>
           </div>
