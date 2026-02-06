@@ -9,7 +9,6 @@ import { useToast } from '@/components/ui/use-toast'
 import { useQuery } from '@tanstack/react-query'
 import { SlideEditor, SlideBlock } from '@/components/SlideEditor'
 import { RichTextEditor } from '@/components/RichTextEditor'
-import { PagedDocumentPreview } from '@/components/PagedDocumentPreview'
 import { UnifiedToolbar } from '@/components/UnifiedToolbar'
 import { Editor } from '@tiptap/react'
 
@@ -100,7 +99,6 @@ export default function TeacherDocumentsPage() {
   const [currentSlideIndex, setCurrentSlideIndex] = useState(0)
   const [scale, setScale] = useState(1)
   const [docScale, setDocScale] = useState(1)
-  const [docView, setDocView] = useState<'edit' | 'paged'>('paged')
   const [docMargins, setDocMargins] = useState({ vertical: 56, horizontal: 56 })
   const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null)
   
@@ -129,7 +127,6 @@ export default function TeacherDocumentsPage() {
     setCurrentSlideIndex(0)
     setSelectedBlockId(null)
     setDraftId(null)
-    setDocView('paged')
   }
 
   const createNewPresentation = () => {
@@ -583,14 +580,6 @@ export default function TeacherDocumentsPage() {
           </div>
           
           <div className="flex gap-2">
-             {mode === 'document' && (
-               <Button
-                 variant="outline"
-                 onClick={() => setDocView(v => (v === 'paged' ? 'edit' : 'paged'))}
-               >
-                 {docView === 'paged' ? 'Modifica' : 'Anteprima pagine'}
-               </Button>
-             )}
              <Button variant="outline" onClick={() => setShowPublishModal(true)}>
                <Upload className="h-4 w-4 mr-2" />
                Pubblica
@@ -711,11 +700,9 @@ export default function TeacherDocumentsPage() {
                    minHeight: FORMAT_DIMENSIONS.a4.height,
                    transform: `scale(${docScale})`,
                    transformOrigin: 'top center',
-                   backgroundImage: docView === 'edit'
-                     ? `repeating-linear-gradient(to bottom, #ffffff 0, #ffffff ${FORMAT_DIMENSIONS.a4.height}px, #f1f5f9 ${FORMAT_DIMENSIONS.a4.height}px, #f1f5f9 ${FORMAT_DIMENSIONS.a4.height + DOC_PAGE_GAP}px)`
-                     : undefined,
-                   boxShadow: docView === 'edit' ? '0 10px 30px rgba(15, 23, 42, 0.12)' : undefined,
-                   padding: docView === 'edit' ? `${docMargins.vertical}px ${docMargins.horizontal}px` : 0
+                   backgroundImage: `repeating-linear-gradient(to bottom, #ffffff 0, #ffffff ${FORMAT_DIMENSIONS.a4.height}px, #f1f5f9 ${FORMAT_DIMENSIONS.a4.height}px, #f1f5f9 ${FORMAT_DIMENSIONS.a4.height + DOC_PAGE_GAP}px)`,
+                   boxShadow: '0 10px 30px rgba(15, 23, 42, 0.12)',
+                   padding: `${docMargins.vertical}px ${docMargins.horizontal}px`
                  }}
                >
 
@@ -759,67 +746,56 @@ export default function TeacherDocumentsPage() {
                     </div>
                   </div>
 
-                  {docView === 'edit' ? (
-                    <>
-                      {/* Visual Header Section */}
-                      <div className="pb-4 flex items-center gap-6 border-b border-transparent hover:border-slate-100 transition-colors group/header">
-                        {/* Logo Area */}
-                        <div className="w-20 h-20 bg-slate-50 rounded-lg flex items-center justify-center cursor-pointer hover:bg-slate-100 relative overflow-hidden group/logo border border-dashed border-slate-300 hover:border-violet-400 transition-colors">
-                          {document.header?.logoUrl ? (
-                            <img src={document.header.logoUrl} className="w-full h-full object-contain" alt="Logo" />
-                          ) : (
-                            <div className="text-center p-1">
-                              <Upload className="h-5 w-5 text-slate-400 mx-auto mb-1" />
-                              <span className="text-[9px] text-slate-400 block uppercase">Logo</span>
-                            </div>
-                          )}
-                          <input
-                            type="file"
-                            accept="image/*"
-                            className="absolute inset-0 opacity-0 cursor-pointer"
-                            onChange={handleLogoUpload}
-                          />
-                          {document.header?.logoUrl && (
-                            <div className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 group-hover/logo:opacity-100 transition-opacity">
-                              <span className="text-white text-xs font-medium">Cambia</span>
-                            </div>
-                          )}
+                  {/* Visual Header Section */}
+                  <div className="pb-4 flex items-center gap-6 border-b border-transparent hover:border-slate-100 transition-colors group/header">
+                    {/* Logo Area */}
+                    <div className="w-20 h-20 bg-slate-50 rounded-lg flex items-center justify-center cursor-pointer hover:bg-slate-100 relative overflow-hidden group/logo border border-dashed border-slate-300 hover:border-violet-400 transition-colors">
+                      {document.header?.logoUrl ? (
+                        <img src={document.header.logoUrl} className="w-full h-full object-contain" alt="Logo" />
+                      ) : (
+                        <div className="text-center p-1">
+                          <Upload className="h-5 w-5 text-slate-400 mx-auto mb-1" />
+                          <span className="text-[9px] text-slate-400 block uppercase">Logo</span>
                         </div>
-                        
-                        {/* Title Area */}
-                        <div className="flex-1">
-                          <input
-                            className="text-3xl font-bold w-full border-none focus:ring-0 placeholder:text-slate-300 px-0 text-slate-900"
-                            placeholder="Titolo Intestazione"
-                            value={document.header?.title || ''}
-                            onChange={(e) => setDocument(d => ({ ...d, header: { ...d.header!, title: e.target.value } }))}
-                          />
-                          <input
-                            className="text-base text-slate-500 w-full border-none focus:ring-0 placeholder:text-slate-300 px-0 mt-1"
-                            placeholder="Sottotitolo o Dettagli..."
-                            value={document.header?.subtitle || ''}
-                            onChange={(e) => setDocument(d => ({ ...d, header: { ...d.header!, subtitle: e.target.value } }))}
-                          />
+                      )}
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="absolute inset-0 opacity-0 cursor-pointer"
+                        onChange={handleLogoUpload}
+                      />
+                      {document.header?.logoUrl && (
+                        <div className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 group-hover/logo:opacity-100 transition-opacity">
+                          <span className="text-white text-xs font-medium">Cambia</span>
                         </div>
-                      </div>
+                      )}
+                    </div>
+                    
+                    {/* Title Area */}
+                    <div className="flex-1">
+                      <input
+                        className="text-3xl font-bold w-full border-none focus:ring-0 placeholder:text-slate-300 px-0 text-slate-900"
+                        placeholder="Titolo Intestazione"
+                        value={document.header?.title || ''}
+                        onChange={(e) => setDocument(d => ({ ...d, header: { ...d.header!, title: e.target.value } }))}
+                      />
+                      <input
+                        className="text-base text-slate-500 w-full border-none focus:ring-0 placeholder:text-slate-300 px-0 mt-1"
+                        placeholder="Sottotitolo o Dettagli..."
+                        value={document.header?.subtitle || ''}
+                        onChange={(e) => setDocument(d => ({ ...d, header: { ...d.header!, subtitle: e.target.value } }))}
+                      />
+                    </div>
+                  </div>
 
-                      <div className="flex-1 flex flex-col">
-                        <RichTextEditor
-                          content={document.textContent || ''}
-                          onChange={(html) => setDocument(d => ({ ...d, textContent: html }))}
-                          onEditorReady={setEditor}
-                          contentClassName="flex-1 prose max-w-none focus:outline-none min-h-[500px] p-0"
-                        />
-                      </div>
-                    </>
-                  ) : (
-                    <PagedDocumentPreview
-                      contentHtml={document.textContent || ''}
-                      header={document.header}
-                      margins={docMargins}
-                      pageGap={DOC_PAGE_GAP}
+                  <div className="flex-1 flex flex-col">
+                    <RichTextEditor
+                      content={document.textContent || ''}
+                      onChange={(html) => setDocument(d => ({ ...d, textContent: html }))}
+                      onEditorReady={setEditor}
+                      contentClassName="flex-1 prose max-w-none focus:outline-none min-h-[500px] p-0"
                     />
-                  )}
+                  </div>
                </div>
              )}
 
