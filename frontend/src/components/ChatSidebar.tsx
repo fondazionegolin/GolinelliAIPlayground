@@ -311,6 +311,7 @@ export default function ChatSidebar({
   const [tagInputs, setTagInputs] = useState<Record<string, string>>({})
   const [filesViewMode, setFilesViewMode] = useState<'grid' | 'list'>('grid')
   const [filesIconScale, setFilesIconScale] = useState(1)
+  const [loadMessagesBlocked, setLoadMessagesBlocked] = useState(false)
   const studentAccentTheme = getStudentAccentTheme(studentAccent)
   const scrollRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -403,7 +404,12 @@ export default function ChatSidebar({
   }, [socketMessages])
 
   useEffect(() => {
+    setLoadMessagesBlocked(false)
+  }, [sessionId])
+
+  useEffect(() => {
     if (messages.length === 0 && !isLoading) {
+      if (loadMessagesBlocked) return
       const loadMessages = async () => {
         setIsLoading(true)
         try {
@@ -412,15 +418,20 @@ export default function ChatSidebar({
           if (messageData && Array.isArray(messageData)) {
             setMessages(messageData)
           }
-        } catch (e) {
+        } catch (e: any) {
           console.error("Failed to load messages", e)
+          const status = e?.response?.status
+          // Avoid infinite retry noise when backend denies access.
+          if (status === 403 || status === 401) {
+            setLoadMessagesBlocked(true)
+          }
         } finally {
           setIsLoading(false)
         }
       }
       loadMessages()
     }
-  }, [sessionId, messages.length, isLoading])
+  }, [sessionId, messages.length, isLoading, loadMessagesBlocked])
 
   useEffect(() => {
     if (activeTab === 'files') {

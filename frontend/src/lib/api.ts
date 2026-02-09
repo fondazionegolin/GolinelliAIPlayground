@@ -7,7 +7,21 @@ const api = axios.create({
 
 api.interceptors.request.use((config) => {
   const studentToken = localStorage.getItem('student_token')
-  if (studentToken) {
+  let hasTeacherAuth = false
+  try {
+    const raw = localStorage.getItem('eduai-auth')
+    if (raw) {
+      const parsed = JSON.parse(raw)
+      const state = parsed?.state
+      hasTeacherAuth = Boolean(state?.user && state?.accessToken)
+    }
+  } catch {
+    hasTeacherAuth = false
+  }
+
+  // Important: don't send student-token when teacher auth is active,
+  // otherwise mixed auth routes may resolve the request as student.
+  if (studentToken && !hasTeacherAuth) {
     config.headers['student-token'] = studentToken
   }
   return config
