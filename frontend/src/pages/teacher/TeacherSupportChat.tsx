@@ -90,6 +90,119 @@ interface WebSearchProgress {
   confidence?: number
 }
 
+type DatasetInterviewStepKey =
+  | 'context'
+  | 'dataType'
+  | 'correlation'
+  | 'columnCount'
+  | 'headers'
+  | 'rowCount'
+
+interface DatasetInterviewAnswers {
+  context: string
+  dataType: string
+  correlation: string
+  columnCount: number
+  headers: string[]
+  rowCount: number
+}
+
+const DATASET_INTERVIEW_STEPS: Array<{ key: DatasetInterviewStepKey; question: string }> = [
+  {
+    key: 'context',
+    question: 'Perfetto. Iniziamo: qual e il contesto del dataset? (es. vendite scuola, risultati test, presenze)',
+  },
+  {
+    key: 'dataType',
+    question: 'Che tipologia di dati vuoi? (numerici, categorici, misti, temporali...)',
+  },
+  {
+    key: 'correlation',
+    question: 'Che relazione/correlazione vuoi tra i dati? (positiva, negativa, nessuna, non lineare...)',
+  },
+  {
+    key: 'columnCount',
+    question: 'Quante colonne deve avere il CSV? (inserisci solo un numero)',
+  },
+  {
+    key: 'headers',
+    question: 'Indica le intestazioni delle colonne, separate da virgola (es. eta,voto,ore_studio).',
+  },
+  {
+    key: 'rowCount',
+    question: 'Quante righe deve avere il dataset? (inserisci solo un numero)',
+  },
+]
+
+interface DatasetInterviewState {
+  active: boolean
+  stepIndex: number
+  answers: Partial<DatasetInterviewAnswers>
+}
+
+type ImageInterviewStepKey = 'subject' | 'action' | 'background' | 'style'
+
+interface ImageInterviewAnswers {
+  subject: string
+  action: string
+  background: string
+  style: string
+}
+
+const IMAGE_INTERVIEW_STEPS: Array<{ key: ImageInterviewStepKey; question: string }> = [
+  {
+    key: 'subject',
+    question: "Modalita immagine attiva. Ti faccio una breve intervista guidata.\n\n1) Chi e il soggetto dell'immagine?",
+  },
+  {
+    key: 'action',
+    question: '2) Cosa succede nella scena?',
+  },
+  {
+    key: 'background',
+    question: '3) Quale sfondo vuoi?',
+  },
+  {
+    key: 'style',
+    question: '4) Quale stile visivo preferisci? (es. realistico, cartoon, acquerello, 3D)',
+  },
+]
+
+interface ImageInterviewState {
+  active: boolean
+  stepIndex: number
+  answers: Partial<ImageInterviewAnswers>
+}
+
+type ReportInterviewStepKey = 'session' | 'focus' | 'scope'
+
+interface ReportInterviewAnswers {
+  session: string
+  focus: string
+  scope: string
+}
+
+const REPORT_INTERVIEW_STEPS: Array<{ key: ReportInterviewStepKey; question: string }> = [
+  {
+    key: 'session',
+    question: 'Modalita report attiva. Ti faccio una breve intervista guidata.\n\n1) A quale sessione sei interessato?',
+  },
+  {
+    key: 'focus',
+    question: '2) Cosa ti interessa sapere? (compiti svolti, interazioni con chatbot, interazioni col docente, altro)',
+  },
+  {
+    key: 'scope',
+    question: '3) Vuoi un report di tutta la classe o di alcuni studenti nello specifico? Se specifici, indica i nomi/nickname separati da virgola.',
+  },
+]
+
+interface ReportInterviewState {
+  active: boolean
+  stepIndex: number
+  answers: Partial<ReportInterviewAnswers>
+}
+
 export default function TeacherSupportChat() {
   const { toast } = useToast()
   const [activeTab, setActiveTab] = useState<'chat' | 'teacherbots'>('chat')
@@ -112,6 +225,21 @@ export default function TeacherSupportChat() {
   const [showBgPalette, setShowBgPalette] = useState(false)
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
   const [webSearchProgress, setWebSearchProgress] = useState<WebSearchProgress | null>(null)
+  const [datasetInterview, setDatasetInterview] = useState<DatasetInterviewState>({
+    active: false,
+    stepIndex: 0,
+    answers: {},
+  })
+  const [imageInterview, setImageInterview] = useState<ImageInterviewState>({
+    active: false,
+    stepIndex: 0,
+    answers: {},
+  })
+  const [reportInterview, setReportInterview] = useState<ReportInterviewState>({
+    active: false,
+    stepIndex: 0,
+    answers: {},
+  })
   const modelMenuRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -361,6 +489,12 @@ export default function TeacherSupportChat() {
     }
   }, [currentConversationId])
 
+  useEffect(() => {
+    setDatasetInterview({ active: false, stepIndex: 0, answers: {} })
+    setImageInterview({ active: false, stepIndex: 0, answers: {} })
+    setReportInterview({ active: false, stepIndex: 0, answers: {} })
+  }, [currentConversationId])
+
   // Load messages when selecting a conversation
   useEffect(() => {
     const loadMessages = async () => {
@@ -567,23 +701,623 @@ export default function TeacherSupportChat() {
     return convId
   }
 
+  const saveSingleMessageToServer = async (
+    conversationId: string | null,
+    msg: Message,
+    model?: string
+  ): Promise<void> => {
+    if (!conversationId) return
+    try {
+      await teacherApi.addMessage(conversationId, {
+        role: msg.role,
+        content: msg.content,
+        model
+      })
+    } catch (e) {
+      console.error('Failed to save message:', e)
+    }
+  }
+
+  const runStreamingRequest = async (content: string, history: Message[]): Promise<string> => {
+    setWebSearchProgress({ status: 'Inizializzazione...', sources: [] })
+
+    try {
+      const response = await fetch('/api/v1/llm/teacher/chat-stream', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify({
+          content,
+          history: history.map(m => ({ role: m.role, content: m.content })),
+          provider: 'anthropic',
+          model: 'claude-haiku-4-5-20251001'
+        })
+      })
+
+      if (!response.ok) throw new Error('Stream request failed')
+
+      const reader = response.body?.getReader()
+      const decoder = new TextDecoder()
+      let finalContent = ''
+
+      if (reader) {
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+
+          const chunk = decoder.decode(value)
+          const lines = chunk.split('\n')
+
+          for (const line of lines) {
+            if (!line.startsWith('data: ')) continue
+            let data: any
+            try {
+              data = JSON.parse(line.slice(6))
+            } catch {
+              // Ignore malformed chunks
+              continue
+            }
+
+            if (data.type === 'status') {
+              setWebSearchProgress(prev => ({ ...prev!, status: data.message }))
+            } else if (data.type === 'intent') {
+              setWebSearchProgress(prev => ({
+                ...prev!,
+                intent: data.intent,
+                confidence: data.confidence
+              }))
+            } else if (data.type === 'source') {
+              setWebSearchProgress(prev => {
+                const sources = [...(prev?.sources || [])]
+                const existingIdx = sources.findIndex(s => s.index === data.index)
+                if (existingIdx >= 0) {
+                  sources[existingIdx] = data
+                } else {
+                  sources.push(data)
+                }
+                return { ...prev!, sources }
+              })
+            } else if (data.type === 'done') {
+              finalContent = data.content
+            } else if (data.type === 'error') {
+              throw new Error(data.message || 'Errore durante lo stream')
+            }
+          }
+        }
+      }
+
+      return finalContent || 'Nessun risultato dalla generazione.'
+    } finally {
+      setWebSearchProgress(null)
+    }
+  }
+
+  const resetDatasetInterview = () => {
+    setDatasetInterview({ active: false, stepIndex: 0, answers: {} })
+  }
+
+  const resetImageInterview = () => {
+    setImageInterview({ active: false, stepIndex: 0, answers: {} })
+  }
+
+  const resetReportInterview = () => {
+    setReportInterview({ active: false, stepIndex: 0, answers: {} })
+  }
+
+  const startDatasetInterview = () => {
+    setDatasetInterview({ active: true, stepIndex: 0, answers: {} })
+    setMessages(prev => [
+      ...prev,
+      {
+        id: `ds-q-${Date.now()}`,
+        role: 'assistant',
+        content: `Modalita dataset attiva. Ti faccio una breve intervista guidata.\n\n${DATASET_INTERVIEW_STEPS[0].question}`,
+        timestamp: new Date()
+      }
+    ])
+  }
+
+  const startImageInterview = () => {
+    setImageInterview({ active: true, stepIndex: 0, answers: {} })
+    setMessages(prev => [
+      ...prev,
+      {
+        id: `img-q-${Date.now()}`,
+        role: 'assistant',
+        content: IMAGE_INTERVIEW_STEPS[0].question,
+        timestamp: new Date()
+      }
+    ])
+  }
+
+  const startReportInterview = () => {
+    setReportInterview({ active: true, stepIndex: 0, answers: {} })
+    setMessages(prev => [
+      ...prev,
+      {
+        id: `rep-q-${Date.now()}`,
+        role: 'assistant',
+        content: REPORT_INTERVIEW_STEPS[0].question,
+        timestamp: new Date()
+      }
+    ])
+  }
+
+  const buildDatasetSummary = (answers: DatasetInterviewAnswers) => {
+    return [
+      'Riepilogo specifiche dataset:',
+      `- Contesto: ${answers.context}`,
+      `- Tipologia dati: ${answers.dataType}`,
+      `- Correlazione: ${answers.correlation}`,
+      `- Colonne: ${answers.columnCount}`,
+      `- Intestazioni: ${answers.headers.join(', ')}`,
+      `- Righe: ${answers.rowCount}`,
+      '',
+      'Procedo ora con la generazione del CSV.'
+    ].join('\n')
+  }
+
+  const buildDatasetGenerationPrompt = (answers: DatasetInterviewAnswers) => {
+    return `GENERA DATASET: Crea un dataset CSV sintetico seguendo ESATTAMENTE queste specifiche:
+- Contesto: ${answers.context}
+- Tipologia dati: ${answers.dataType}
+- Correlazione: ${answers.correlation}
+- Numero colonne: ${answers.columnCount}
+- Intestazioni colonne (usa esattamente questi nomi e in quest'ordine): ${answers.headers.join(',')}
+- Numero righe: ${answers.rowCount}
+
+Vincoli obbligatori:
+1) Restituisci il dataset in formato CSV valido.
+2) Mantieni coerenza con il contesto e con la correlazione richiesta.
+3) Nessuna spiegazione prima del CSV.
+4) Dopo il CSV, aggiungi una breve nota (max 5 righe) che spiega come hai impostato la correlazione.`
+  }
+
+  const buildImageSummary = (answers: ImageInterviewAnswers) => {
+    return [
+      'Riepilogo specifiche immagine:',
+      `- Soggetto: ${answers.subject}`,
+      `- Azione/scena: ${answers.action}`,
+      `- Sfondo: ${answers.background}`,
+      `- Stile: ${answers.style}`,
+      '',
+      'Procedo ora con la generazione dell\'immagine.'
+    ].join('\n')
+  }
+
+  const buildImageGenerationPrompt = (answers: ImageInterviewAnswers) => {
+    return `Genera un'immagine con queste specifiche:
+- Soggetto: ${answers.subject}
+- Scena/Azione: ${answers.action}
+- Sfondo: ${answers.background}
+- Stile visivo: ${answers.style}`
+  }
+
+  const buildReportSummary = (answers: ReportInterviewAnswers) => {
+    return [
+      'Riepilogo specifiche report:',
+      `- Sessione: ${answers.session}`,
+      `- Focus: ${answers.focus}`,
+      `- Ambito: ${answers.scope}`,
+      '',
+      'Procedo ora con la generazione del report.'
+    ].join('\n')
+  }
+
+  const buildReportGenerationPrompt = (answers: ReportInterviewAnswers) => {
+    return `GENERA REPORT: Crea un report didattico dettagliato con queste specifiche:
+- Sessione da analizzare: ${answers.session}
+- Informazioni richieste: ${answers.focus}
+- Ambito del report: ${answers.scope}
+
+Requisiti:
+1) Sezione iniziale con sintesi esecutiva.
+2) Analisi puntuale in base alle informazioni richieste.
+3) Se l'ambito riguarda studenti specifici, separa chiaramente i risultati per studente.
+4) Concludi con osservazioni operative e prossimi passi didattici.`
+  }
+
   const handleSend = async () => {
     if ((!inputText.trim() && attachedFiles.length === 0) || isLoading) return
+    const userInput = inputText.trim()
+
+    if (agentMode === 'dataset' && datasetInterview.active) {
+      if (!userInput) return
+      const convId = await ensureConversation('Generazione dataset guidata')
+      const userMessage: Message = {
+        id: `msg-${Date.now()}`,
+        role: 'user',
+        content: userInput,
+        timestamp: new Date()
+      }
+      setMessages(prev => [...prev, userMessage])
+      setInputText('')
+
+      const currentStep = DATASET_INTERVIEW_STEPS[datasetInterview.stepIndex]
+      if (!currentStep) return
+
+      const nextAnswers = { ...datasetInterview.answers }
+      let followUp: string | null = null
+
+      if (currentStep.key === 'context') {
+        nextAnswers.context = userInput
+      } else if (currentStep.key === 'dataType') {
+        nextAnswers.dataType = userInput
+      } else if (currentStep.key === 'correlation') {
+        nextAnswers.correlation = userInput
+      } else if (currentStep.key === 'columnCount') {
+        const parsed = Number.parseInt(userInput, 10)
+        if (Number.isNaN(parsed) || parsed < 2 || parsed > 100) {
+          followUp = 'Inserisci un numero valido di colonne (tra 2 e 100).'
+        } else {
+          nextAnswers.columnCount = parsed
+        }
+      } else if (currentStep.key === 'headers') {
+        const headers = userInput
+          .split(',')
+          .map(h => h.trim())
+          .filter(Boolean)
+        const expected = nextAnswers.columnCount || 0
+        if (headers.length === 0) {
+          followUp = 'Non ho trovato intestazioni valide. Inseriscile separate da virgola.'
+        } else if (expected > 0 && headers.length !== expected) {
+          followUp = `Hai indicato ${headers.length} intestazioni ma ${expected} colonne. Reinserisci le intestazioni.`
+        } else {
+          nextAnswers.headers = headers
+        }
+      } else if (currentStep.key === 'rowCount') {
+        const parsed = Number.parseInt(userInput, 10)
+        if (Number.isNaN(parsed) || parsed < 5 || parsed > 200000) {
+          followUp = 'Inserisci un numero valido di righe (tra 5 e 200000).'
+        } else {
+          nextAnswers.rowCount = parsed
+        }
+      }
+
+      if (followUp) {
+        const assistantMessage: Message = {
+          id: `resp-${Date.now()}`,
+          role: 'assistant',
+          content: followUp,
+          timestamp: new Date()
+        }
+        setMessages(prev => [...prev, assistantMessage])
+        await saveMessageToServer(convId, userMessage, assistantMessage, 'claude-haiku-4-5-20251001')
+        return
+      }
+
+      const isLastStep = datasetInterview.stepIndex === DATASET_INTERVIEW_STEPS.length - 1
+      if (!isLastStep) {
+        const nextStepIndex = datasetInterview.stepIndex + 1
+        setDatasetInterview({
+          active: true,
+          stepIndex: nextStepIndex,
+          answers: nextAnswers
+        })
+        const assistantMessage: Message = {
+          id: `resp-${Date.now()}`,
+          role: 'assistant',
+          content: DATASET_INTERVIEW_STEPS[nextStepIndex].question,
+          timestamp: new Date()
+        }
+        setMessages(prev => [...prev, assistantMessage])
+        await saveMessageToServer(convId, userMessage, assistantMessage, 'claude-haiku-4-5-20251001')
+        return
+      }
+
+      const finalAnswers = nextAnswers as DatasetInterviewAnswers
+      const summaryMessage: Message = {
+        id: `resp-${Date.now()}`,
+        role: 'assistant',
+        content: buildDatasetSummary(finalAnswers),
+        timestamp: new Date()
+      }
+      setMessages(prev => [...prev, summaryMessage])
+      await saveMessageToServer(convId, userMessage, summaryMessage, 'claude-haiku-4-5-20251001')
+
+      setDatasetInterview({
+        active: false,
+        stepIndex: DATASET_INTERVIEW_STEPS.length,
+        answers: finalAnswers
+      })
+
+      const generationPrompt = buildDatasetGenerationPrompt(finalAnswers)
+      setIsLoading(true)
+      try {
+        const finalContent = await runStreamingRequest(generationPrompt, [...messages, userMessage, summaryMessage])
+        const assistantMessage: Message = {
+          id: `resp-${Date.now()}`,
+          role: 'assistant',
+          content: finalContent,
+          timestamp: new Date()
+        }
+        setMessages(prev => [...prev, assistantMessage])
+        await saveSingleMessageToServer(convId, assistantMessage, 'claude-haiku-4-5-20251001')
+      } catch (e) {
+        console.error(e)
+        toast({ title: "Errore", description: "Impossibile generare il dataset.", variant: "destructive" })
+        const errorMsg: Message = {
+          id: `err-${Date.now()}`,
+          role: 'assistant',
+          content: "Si è verificato un errore durante la generazione. Riprova.",
+          timestamp: new Date()
+        }
+        setMessages(prev => [...prev, errorMsg])
+      } finally {
+        setIsLoading(false)
+      }
+      return
+    }
+
+    if (agentMode === 'image' && imageInterview.active) {
+      if (!userInput) return
+      const convId = await ensureConversation('Generazione immagine guidata')
+      const userMessage: Message = {
+        id: `msg-${Date.now()}`,
+        role: 'user',
+        content: userInput,
+        timestamp: new Date()
+      }
+      setMessages(prev => [...prev, userMessage])
+      setInputText('')
+
+      const currentStep = IMAGE_INTERVIEW_STEPS[imageInterview.stepIndex]
+      if (!currentStep) return
+
+      const nextAnswers = { ...imageInterview.answers }
+      let followUp: string | null = null
+
+      if (!userInput.trim()) {
+        followUp = 'Risposta vuota. Inserisci un testo breve per continuare.'
+      } else if (currentStep.key === 'subject') {
+        nextAnswers.subject = userInput
+      } else if (currentStep.key === 'action') {
+        nextAnswers.action = userInput
+      } else if (currentStep.key === 'background') {
+        nextAnswers.background = userInput
+      } else if (currentStep.key === 'style') {
+        nextAnswers.style = userInput
+      }
+
+      if (followUp) {
+        const assistantMessage: Message = {
+          id: `resp-${Date.now()}`,
+          role: 'assistant',
+          content: followUp,
+          timestamp: new Date()
+        }
+        setMessages(prev => [...prev, assistantMessage])
+        await saveMessageToServer(convId, userMessage, assistantMessage, selectedModel)
+        return
+      }
+
+      const isLastStep = imageInterview.stepIndex === IMAGE_INTERVIEW_STEPS.length - 1
+      if (!isLastStep) {
+        const nextStepIndex = imageInterview.stepIndex + 1
+        setImageInterview({
+          active: true,
+          stepIndex: nextStepIndex,
+          answers: nextAnswers
+        })
+        const assistantMessage: Message = {
+          id: `resp-${Date.now()}`,
+          role: 'assistant',
+          content: IMAGE_INTERVIEW_STEPS[nextStepIndex].question,
+          timestamp: new Date()
+        }
+        setMessages(prev => [...prev, assistantMessage])
+        await saveMessageToServer(convId, userMessage, assistantMessage, selectedModel)
+        return
+      }
+
+      const finalAnswers = nextAnswers as ImageInterviewAnswers
+      const summaryMessage: Message = {
+        id: `resp-${Date.now()}`,
+        role: 'assistant',
+        content: buildImageSummary(finalAnswers),
+        timestamp: new Date()
+      }
+      setMessages(prev => [...prev, summaryMessage])
+      await saveMessageToServer(convId, userMessage, summaryMessage, selectedModel)
+
+      setImageInterview({
+        active: false,
+        stepIndex: IMAGE_INTERVIEW_STEPS.length,
+        answers: finalAnswers
+      })
+
+      const providerLabel = imageProvider === 'dall-e' ? 'DALL-E 3' : 'Flux Schnell'
+      const imagePromptRequest = buildImageGenerationPrompt(finalAnswers)
+      setIsLoading(true)
+
+      try {
+        setImageGenerationProgress({
+          status: `Connessione al server ${providerLabel}...`,
+          step: 'connecting',
+          provider: providerLabel
+        })
+        setImageGenerationProgress({
+          status: 'Ottimizzazione del prompt...',
+          step: 'enhancing',
+          provider: providerLabel
+        })
+
+        const expansionPrompt = `Sei un esperto Prompt Engineer. Il tuo compito e' scrivere un prompt dettagliato e ottimizzato per generare un'immagine con il modello ${providerLabel}.
+
+Descrizione utente: "${imagePromptRequest}"
+
+REGOLE IMPORTANTI:
+- Scrivi SOLO il prompt in inglese, nient'altro.
+- Sii molto descrittivo: specifica stile artistico, illuminazione, composizione, colori e dettagli tecnici.
+- NON scrivere spiegazioni, commenti o altro testo.
+- Rispondi SOLO con il prompt ottimizzato per la generazione dell'immagine.`
+
+        const expansionResponse = await llmApi.teacherChat(
+          expansionPrompt,
+          [],
+          'tutor',
+          'openai',
+          'gpt-5-mini'
+        )
+
+        const enhancedPrompt = expansionResponse.data?.response?.trim() || imagePromptRequest
+
+        setImageGenerationProgress({
+          status: `Generazione immagine con ${providerLabel}...`,
+          step: 'generating',
+          provider: providerLabel,
+          enhancedPrompt
+        })
+
+        const genResponse = await llmApi.generateImage(enhancedPrompt, imageProvider)
+        const imageUrl = genResponse.data?.image_url
+        setImageGenerationProgress(null)
+
+        if (!imageUrl) {
+          throw new Error('Nessuna URL immagine ricevuta')
+        }
+
+        const assistantMessage: Message = {
+          id: `resp-${Date.now()}`,
+          role: 'assistant',
+          content: `**Immagine Generata**\n\n![Generata](${imageUrl})\n\n**Prompt Effettivo:**\n\`${enhancedPrompt}\``,
+          timestamp: new Date()
+        }
+        setMessages(prev => [...prev, assistantMessage])
+        await saveSingleMessageToServer(convId, assistantMessage, selectedModel)
+      } catch (e) {
+        console.error(e)
+        setImageGenerationProgress(null)
+        toast({ title: "Errore", description: "Impossibile generare l'immagine.", variant: "destructive" })
+        const errorMsg: Message = {
+          id: `err-${Date.now()}`,
+          role: 'assistant',
+          content: "Si è verificato un errore durante la generazione. Riprova.",
+          timestamp: new Date()
+        }
+        setMessages(prev => [...prev, errorMsg])
+      } finally {
+        setIsLoading(false)
+      }
+      return
+    }
+
+    if (agentMode === 'report' && reportInterview.active) {
+      if (!userInput) return
+      const convId = await ensureConversation('Generazione report guidata')
+      const userMessage: Message = {
+        id: `msg-${Date.now()}`,
+        role: 'user',
+        content: userInput,
+        timestamp: new Date()
+      }
+      setMessages(prev => [...prev, userMessage])
+      setInputText('')
+
+      const currentStep = REPORT_INTERVIEW_STEPS[reportInterview.stepIndex]
+      if (!currentStep) return
+
+      const nextAnswers = { ...reportInterview.answers }
+      let followUp: string | null = null
+
+      if (!userInput.trim()) {
+        followUp = 'Risposta vuota. Inserisci un testo breve per continuare.'
+      } else if (currentStep.key === 'session') {
+        nextAnswers.session = userInput
+      } else if (currentStep.key === 'focus') {
+        nextAnswers.focus = userInput
+      } else if (currentStep.key === 'scope') {
+        nextAnswers.scope = userInput
+      }
+
+      if (followUp) {
+        const assistantMessage: Message = {
+          id: `resp-${Date.now()}`,
+          role: 'assistant',
+          content: followUp,
+          timestamp: new Date()
+        }
+        setMessages(prev => [...prev, assistantMessage])
+        await saveMessageToServer(convId, userMessage, assistantMessage, 'claude-haiku-4-5-20251001')
+        return
+      }
+
+      const isLastStep = reportInterview.stepIndex === REPORT_INTERVIEW_STEPS.length - 1
+      if (!isLastStep) {
+        const nextStepIndex = reportInterview.stepIndex + 1
+        setReportInterview({
+          active: true,
+          stepIndex: nextStepIndex,
+          answers: nextAnswers
+        })
+        const assistantMessage: Message = {
+          id: `resp-${Date.now()}`,
+          role: 'assistant',
+          content: REPORT_INTERVIEW_STEPS[nextStepIndex].question,
+          timestamp: new Date()
+        }
+        setMessages(prev => [...prev, assistantMessage])
+        await saveMessageToServer(convId, userMessage, assistantMessage, 'claude-haiku-4-5-20251001')
+        return
+      }
+
+      const finalAnswers = nextAnswers as ReportInterviewAnswers
+      const summaryMessage: Message = {
+        id: `resp-${Date.now()}`,
+        role: 'assistant',
+        content: buildReportSummary(finalAnswers),
+        timestamp: new Date()
+      }
+      setMessages(prev => [...prev, summaryMessage])
+      await saveMessageToServer(convId, userMessage, summaryMessage, 'claude-haiku-4-5-20251001')
+
+      setReportInterview({
+        active: false,
+        stepIndex: REPORT_INTERVIEW_STEPS.length,
+        answers: finalAnswers
+      })
+
+      const generationPrompt = buildReportGenerationPrompt(finalAnswers)
+      setIsLoading(true)
+      try {
+        const finalContent = await runStreamingRequest(generationPrompt, [...messages, userMessage, summaryMessage])
+        const assistantMessage: Message = {
+          id: `resp-${Date.now()}`,
+          role: 'assistant',
+          content: finalContent,
+          timestamp: new Date()
+        }
+        setMessages(prev => [...prev, assistantMessage])
+        await saveSingleMessageToServer(convId, assistantMessage, 'claude-haiku-4-5-20251001')
+      } catch (e) {
+        console.error(e)
+        toast({ title: "Errore", description: "Impossibile generare il report.", variant: "destructive" })
+        const errorMsg: Message = {
+          id: `err-${Date.now()}`,
+          role: 'assistant',
+          content: "Si è verificato un errore durante la generazione del report. Riprova.",
+          timestamp: new Date()
+        }
+        setMessages(prev => [...prev, errorMsg])
+      } finally {
+        setIsLoading(false)
+      }
+      return
+    }
 
     const filesInfo = attachedFiles.length > 0 ? ` [Allegati: ${attachedFiles.map(f => f.file.name).join(', ')}]` : ''
-    let messageContent = inputText.trim() || 'Analizza questi documenti'
+    let messageContent = userInput || 'Analizza questi documenti'
 
-    // Handle specific agent modes
-    if (inputText.trim() && agentMode !== 'default' && agentMode !== 'image') {
-      const prefixes = {
+    if (userInput && agentMode !== 'default' && agentMode !== 'image') {
+      const prefixes: Partial<Record<AgentMode, string>> = {
         web_search: 'RICERCA WEB:',
         report: 'GENERA REPORT:',
         dataset: 'GENERA DATASET:',
         quiz: 'GENERA QUIZ:',
       }
-      // Only append prefix if not already present
-      // @ts-ignore
-      const prefix = prefixes[agentMode] || ''
+      const prefix = prefixes[agentMode]
       if (prefix && !messageContent.startsWith(prefix)) {
         messageContent = `${prefix} ${messageContent}`
       }
@@ -677,100 +1411,16 @@ REGOLE IMPORTANTI:
           throw new Error("Nessuna URL immagine ricevuta")
         }
 
-      } else if (agentMode === 'web_search' || agentMode === 'quiz' || agentMode === 'dataset') {
-        // STREAMING WEB SEARCH, QUIZ or DATASET FLOW - Always use Claude Haiku
-        const history = messages.map(m => ({ role: m.role, content: m.content }))
-
-        // Initialize progress state
-        setWebSearchProgress({ status: 'Inizializzazione...', sources: [] })
-
-        try {
-          const response = await fetch('/api/v1/llm/teacher/chat-stream', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            credentials: 'include', // Send cookies for authentication
-            body: JSON.stringify({
-              content: messageContent,
-              history,
-              provider: 'anthropic',
-              model: 'claude-haiku-4-5-20251001'
-            })
-          })
-
-          if (!response.ok) throw new Error('Stream request failed')
-
-          const reader = response.body?.getReader()
-          const decoder = new TextDecoder()
-          let finalContent = ''
-
-          if (reader) {
-            while (true) {
-              const { done, value } = await reader.read()
-              if (done) break
-
-              const chunk = decoder.decode(value)
-              const lines = chunk.split('\n')
-
-              for (const line of lines) {
-                if (line.startsWith('data: ')) {
-                  try {
-                    const data = JSON.parse(line.slice(6))
-
-                    if (data.type === 'status') {
-                      setWebSearchProgress(prev => ({
-                        ...prev!,
-                        status: data.message
-                      }))
-                    } else if (data.type === 'intent') {
-                      setWebSearchProgress(prev => ({
-                        ...prev!,
-                        intent: data.intent,
-                        confidence: data.confidence
-                      }))
-                    } else if (data.type === 'source') {
-                      setWebSearchProgress(prev => {
-                        const sources = [...(prev?.sources || [])]
-                        const existingIdx = sources.findIndex(s => s.index === data.index)
-                        if (existingIdx >= 0) {
-                          sources[existingIdx] = data
-                        } else {
-                          sources.push(data)
-                        }
-                        return { ...prev!, sources }
-                      })
-                    } else if (data.type === 'done') {
-                      finalContent = data.content
-                    } else if (data.type === 'error') {
-                      throw new Error(data.message)
-                    }
-                  } catch (e) {
-                    // Skip invalid JSON
-                  }
-                }
-              }
-            }
-          }
-
-          // Clear progress and show result
-          setWebSearchProgress(null)
-
-          const assistantMessage: Message = {
-            id: `resp-${Date.now()}`,
-            role: 'assistant',
-            content: finalContent || 'Nessun risultato dalla generazione.',
-            timestamp: new Date()
-          }
-
-          setMessages(prev => [...prev, assistantMessage])
-
-          // Save to server
-          await saveMessageToServer(convId, userMessage, assistantMessage, 'claude-haiku-4-5-20251001')
-        } catch (e) {
-          setWebSearchProgress(null)
-          throw e
+      } else if (agentMode === 'web_search' || agentMode === 'quiz' || agentMode === 'dataset' || agentMode === 'report') {
+        const finalContent = await runStreamingRequest(messageContent, [...messages, userMessage])
+        const assistantMessage: Message = {
+          id: `resp-${Date.now()}`,
+          role: 'assistant',
+          content: finalContent,
+          timestamp: new Date()
         }
+        setMessages(prev => [...prev, assistantMessage])
+        await saveMessageToServer(convId, userMessage, assistantMessage, 'claude-haiku-4-5-20251001')
       } else {
         // STANDARD CHAT FLOW
         const history = messages.map(m => ({ role: m.role, content: m.content }))
@@ -833,6 +1483,35 @@ REGOLE IMPORTANTI:
     setMessages([])
     setCurrentConversationId(null)
     setAttachedFiles([])
+    resetDatasetInterview()
+    resetImageInterview()
+    resetReportInterview()
+  }
+
+  const handleChangeAgentMode = (mode: AgentMode) => {
+    if (mode === agentMode) {
+      if (mode === 'dataset' && !datasetInterview.active) {
+        startDatasetInterview()
+      } else if (mode === 'image' && !imageInterview.active) {
+        startImageInterview()
+      } else if (mode === 'report' && !reportInterview.active) {
+        startReportInterview()
+      }
+      return
+    }
+
+    setAgentMode(mode)
+    if (mode === 'dataset' || mode === 'image' || mode === 'report') {
+      setAttachedFiles([])
+      setInputText('')
+    }
+    resetDatasetInterview()
+    resetImageInterview()
+    resetReportInterview()
+
+    if (mode === 'dataset') startDatasetInterview()
+    if (mode === 'image') startImageInterview()
+    if (mode === 'report') startReportInterview()
   }
 
   const handlePublish = async (sessionId: string) => {
@@ -892,6 +1571,11 @@ REGOLE IMPORTANTI:
       toast({ title: "Errore pubblicazione", variant: "destructive" })
     }
   }
+
+  const hasActiveInterview =
+    (agentMode === 'dataset' && datasetInterview.active) ||
+    (agentMode === 'image' && imageInterview.active) ||
+    (agentMode === 'report' && reportInterview.active)
 
   return (
     <>
@@ -1031,7 +1715,7 @@ REGOLE IMPORTANTI:
                       <div>
                         <h1 className="text-sm font-bold text-slate-800">Supporto Docente AI</h1>
                         <p className="text-xs text-slate-500">
-                          {(agentMode === 'quiz' || agentMode === 'dataset' || agentMode === 'web_search')
+                          {(agentMode === 'quiz' || agentMode === 'dataset' || agentMode === 'web_search' || agentMode === 'report')
                             ? 'Claude Haiku'
                             : AVAILABLE_MODELS.find(m => m.id === selectedModel)?.name}
                         </p>
@@ -1083,7 +1767,7 @@ REGOLE IMPORTANTI:
                         )}
 
 
-                        {(agentMode === 'quiz' || agentMode === 'dataset' || agentMode === 'web_search') ? (
+                        {(agentMode === 'quiz' || agentMode === 'dataset' || agentMode === 'web_search' || agentMode === 'report') ? (
                           <div className="text-xs bg-purple-100 text-purple-700 rounded-full px-3 py-1.5 font-medium border border-purple-200">
                             Claude Haiku (fisso)
                           </div>
@@ -1437,7 +2121,7 @@ REGOLE IMPORTANTI:
                           return (
                             <button
                               key={m.id}
-                              onClick={() => setAgentMode(m.id)}
+                              onClick={() => handleChangeAgentMode(m.id)}
                               className={`text-xs px-4 py-1.5 rounded-full font-medium transition-all flex items-center gap-1.5 ${agentMode === m.id
                                 ? 'bg-red-500 text-white shadow-md shadow-red-200'
                                 : 'text-slate-500 hover:bg-slate-100'
@@ -1479,7 +2163,7 @@ REGOLE IMPORTANTI:
                           value={inputText}
                           onChange={(e) => setInputText(e.target.value)}
                           onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
-                          placeholder="Scrivi o trascina file qui..."
+                          placeholder={hasActiveInterview ? 'Rispondi alla domanda corrente...' : 'Scrivi o trascina file qui...'}
                           className="flex-1 bg-transparent border-none focus:ring-0 focus:outline-none outline-none resize-none py-2.5 text-sm text-slate-700 placeholder:text-slate-400 max-h-32 min-h-[44px]"
                           rows={1}
                           style={{ overflow: 'hidden' }}
