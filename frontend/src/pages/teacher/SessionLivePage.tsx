@@ -34,6 +34,7 @@ interface TaskData {
   status: string
   due_at: string | null
   points: string | null
+  content_json?: string | null
   created_at: string
 }
 
@@ -586,12 +587,56 @@ interface SubmissionData {
   student_id: string
   student_nickname: string
   content: string
+  content_json?: string | null
   submitted_at: string
   score: string | null
   feedback: string | null
 }
 
+interface QuizQuestion {
+  question: string
+  options: string[]
+  correctIndex: number
+}
+
+interface QuizWrongAnswerDetail {
+  questionNumber: number
+  question: string
+  selectedAnswer: string
+  correctAnswer: string
+}
+
 function TaskCard({ task, sessionId, isExpanded, onToggle, onPublish, onDelete }: TaskCardProps) {
+  const getWrongQuizAnswers = (submission: SubmissionData): QuizWrongAnswerDetail[] => {
+    if (task.task_type !== 'quiz') return []
+    if (!task.content_json || !submission.content_json) return []
+
+    try {
+      const taskContent = JSON.parse(task.content_json) as { questions?: QuizQuestion[] }
+      const submissionContent = JSON.parse(submission.content_json) as { answers?: Array<{ questionIndex: number; selectedIndex: number }> }
+      const questions = taskContent.questions || []
+      const answers = submissionContent.answers || []
+
+      const wrongAnswers: QuizWrongAnswerDetail[] = []
+      for (const answer of answers) {
+        const q = questions[answer.questionIndex]
+        if (!q) continue
+        if (answer.selectedIndex === q.correctIndex) continue
+
+        wrongAnswers.push({
+          questionNumber: answer.questionIndex + 1,
+          question: q.question,
+          selectedAnswer: q.options[answer.selectedIndex] ?? 'Nessuna risposta',
+          correctAnswer: q.options[q.correctIndex] ?? 'N/D',
+        })
+      }
+
+      return wrongAnswers
+    } catch {
+      return []
+    }
+  }
+
   const { data: submissions, isLoading } = useQuery<SubmissionData[]>({
     queryKey: ['task-submissions', sessionId, task.id],
     queryFn: async () => {
@@ -666,6 +711,30 @@ function TaskCard({ task, sessionId, isExpanded, onToggle, onPublish, onDelete }
                       </span>
                     </div>
                   )}
+                  {task.task_type === 'quiz' && (() => {
+                    const wrongAnswers = getWrongQuizAnswers(sub)
+                    if (wrongAnswers.length === 0) return null
+                    return (
+                      <div className="mt-3 bg-red-50 rounded-lg border border-red-200 p-2 space-y-2">
+                        <p className="text-xs font-medium text-red-700">
+                          Errori: {wrongAnswers.length}
+                        </p>
+                        {wrongAnswers.map((wa) => (
+                          <div key={`${sub.id}-wrong-${wa.questionNumber}`} className="text-xs bg-white border border-red-100 rounded p-2">
+                            <p className="font-medium text-slate-800">
+                              {wa.questionNumber}. {wa.question}
+                            </p>
+                            <p className="text-red-700">
+                              Risposta studente: {wa.selectedAnswer}
+                            </p>
+                            <p className="text-emerald-700">
+                              Corretta: {wa.correctAnswer}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    )
+                  })()}
                 </div>
               ))}
             </div>

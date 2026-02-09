@@ -1104,6 +1104,7 @@ async def get_task_submissions(
             "student_id": str(sub.student_id),
             "student_nickname": student.nickname,
             "content": sub.content,
+            "content_json": sub.content_json,
             "submitted_at": sub.submitted_at.isoformat(),
             "score": sub.score,
             "feedback": sub.feedback,

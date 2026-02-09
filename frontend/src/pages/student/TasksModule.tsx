@@ -95,6 +95,13 @@ interface TaskData {
   } | null
 }
 
+interface QuizWrongAnswerDetail {
+  questionNumber: number
+  question: string
+  selectedAnswer: string
+  correctAnswer: string
+}
+
 interface TasksModuleProps {
   openTaskId?: string | null
 }
@@ -297,7 +304,39 @@ export default function TasksModule({ openTaskId }: TasksModuleProps) {
   )
 }
 
+function getQuizWrongAnswers(task: TaskData): QuizWrongAnswerDetail[] {
+  if (task.task_type !== 'quiz') return []
+  if (!task.content_json || !task.submission?.content_json) return []
+
+  try {
+    const taskContent = JSON.parse(task.content_json) as TaskContent
+    const submissionContent = JSON.parse(task.submission.content_json) as { answers?: Array<{ questionIndex: number; selectedIndex: number }> }
+
+    if (!taskContent.questions || !submissionContent.answers) return []
+
+    const wrongAnswers: QuizWrongAnswerDetail[] = []
+    for (const answer of submissionContent.answers) {
+      const q = taskContent.questions[answer.questionIndex]
+      if (!q) continue
+      const selectedIndex = answer.selectedIndex
+      if (selectedIndex === q.correctIndex) continue
+
+      wrongAnswers.push({
+        questionNumber: answer.questionIndex + 1,
+        question: q.question,
+        selectedAnswer: q.options[selectedIndex] ?? 'Nessuna risposta',
+        correctAnswer: q.options[q.correctIndex] ?? 'N/D',
+      })
+    }
+    return wrongAnswers
+  } catch {
+    return []
+  }
+}
+
 function SubmissionView({ task }: { task: TaskData }) {
+  const wrongAnswers = getQuizWrongAnswers(task)
+
   return (
     <div className="space-y-3">
       <div className="bg-white p-3 rounded-lg border">
@@ -316,6 +355,27 @@ function SubmissionView({ task }: { task: TaskData }) {
           {task.submission.feedback && (
             <p className="text-sm text-blue-600 mt-1">{task.submission.feedback}</p>
           )}
+        </div>
+      )}
+
+      {wrongAnswers.length > 0 && (
+        <div className="bg-red-50 p-3 rounded-lg border border-red-200 space-y-2">
+          <p className="text-sm font-medium text-red-700">
+            Risposte da rivedere ({wrongAnswers.length})
+          </p>
+          {wrongAnswers.map((wa) => (
+            <div key={`${task.id}-wrong-${wa.questionNumber}`} className="text-sm bg-white rounded border border-red-100 p-2">
+              <p className="font-medium text-slate-800">
+                {wa.questionNumber}. {wa.question}
+              </p>
+              <p className="text-red-700">
+                La tua risposta: {wa.selectedAnswer}
+              </p>
+              <p className="text-emerald-700">
+                Corretta: {wa.correctAnswer}
+              </p>
+            </div>
+          ))}
         </div>
       )}
     </div>

@@ -334,6 +334,7 @@ async def get_student_tasks(
             submissions[str(sub.task_id)] = {
                 "id": str(sub.id),
                 "content": sub.content,
+                "content_json": sub.content_json,
                 "submitted_at": sub.submitted_at.isoformat(),
                 "score": sub.score,
                 "feedback": sub.feedback,
