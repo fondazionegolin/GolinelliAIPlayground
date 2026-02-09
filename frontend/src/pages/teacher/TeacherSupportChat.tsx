@@ -22,6 +22,7 @@ const FALLBACK_MODELS = [
   { id: 'gpt-5-mini', name: 'GPT-5 Mini', provider: 'openai' },
   { id: 'gpt-5-nano', name: 'GPT-5 Nano', provider: 'openai' },
   { id: 'claude-haiku-4-5-20251001', name: 'Claude Haiku 4.5', provider: 'anthropic' },
+  { id: 'deepseek-chat', name: 'DeepSeek Chat (V3.2)', provider: 'deepseek' },
   { id: 'mistral-nemo', name: 'Mistral Nemo', provider: 'ollama' },
   { id: 'deepseek-r1:8b', name: 'DeepSeek R1', provider: 'ollama' },
 ]
@@ -343,6 +344,9 @@ export default function TeacherSupportChat() {
           <path d="M17.4224 18.2526H19.7618L13.7844 4H10.1983L4.22095 18.2526H6.57762L7.90076 14.8687H16.082L17.4224 18.2526ZM8.79093 12.6378L11.973 4.54897L15.1913 12.6378H8.79093Z" fill="currentColor" />
         </svg>
       )
+    }
+    if (provider === 'deepseek') {
+      return <img src="/icons/deepseek.png" alt="DeepSeek" className={className} />
     }
     if (provider === 'ollama') { // Generic or Mistral/DeepSeek if specific provider key matches
       return (

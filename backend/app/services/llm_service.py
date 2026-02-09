@@ -28,12 +28,19 @@ class LLMService:
     def __init__(self):
         self.openai_client = None
         self.anthropic_client = None
+        self.deepseek_client = None
         
         if settings.OPENAI_API_KEY:
             self.openai_client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
         
         if settings.ANTHROPIC_API_KEY:
             self.anthropic_client = AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
+
+        if settings.DEEPSEEK_API_KEY:
+            self.deepseek_client = AsyncOpenAI(
+                api_key=settings.DEEPSEEK_API_KEY,
+                base_url=settings.DEEPSEEK_BASE_URL,
+            )
     
     async def generate(
         self,
@@ -51,6 +58,8 @@ class LLMService:
             return await self._generate_openai(messages, system_prompt, model, temperature, max_tokens)
         elif provider == "anthropic":
             return await self._generate_anthropic(messages, system_prompt, model, temperature, max_tokens)
+        elif provider == "deepseek":
+            return await self._generate_deepseek(messages, system_prompt, model, temperature, max_tokens)
         elif provider == "ollama":
             return await self._generate_ollama(messages, system_prompt, model, temperature, max_tokens)
         else:
@@ -162,6 +171,38 @@ class LLMService:
             completion_tokens=data.get("eval_count", 0),
         )
 
+    async def _generate_deepseek(
+        self,
+        messages: list[dict],
+        system_prompt: Optional[str],
+        model: str,
+        temperature: float,
+        max_tokens: int,
+    ) -> LLMResponse:
+        if not self.deepseek_client:
+            raise RuntimeError("DeepSeek client not configured")
+
+        formatted_messages = []
+        if system_prompt:
+            formatted_messages.append({"role": "system", "content": system_prompt})
+        formatted_messages.extend(messages)
+
+        response = await self.deepseek_client.chat.completions.create(
+            model=model,
+            messages=formatted_messages,
+            temperature=temperature,
+            max_tokens=max_tokens,
+        )
+
+        usage = response.usage
+        return LLMResponse(
+            content=response.choices[0].message.content,
+            provider="deepseek",
+            model=model,
+            prompt_tokens=usage.prompt_tokens if usage else 0,
+            completion_tokens=usage.completion_tokens if usage else 0,
+        )
+
     async def _resolve_ollama_model_name(self, model: str) -> str:
         """Resolve short model aliases (e.g. mistral-nemo) to installed Ollama tags."""
         try:
@@ -210,6 +251,9 @@ class LLMService:
                 yield chunk
         elif provider == "anthropic":
             async for chunk in self._stream_anthropic(messages, system_prompt, model, temperature, max_tokens):
+                yield chunk
+        elif provider == "deepseek":
+            async for chunk in self._stream_deepseek(messages, system_prompt, model, temperature, max_tokens):
                 yield chunk
         else:
             response = await self.generate(messages, system_prompt, provider, model, temperature, max_tokens)
@@ -272,6 +316,34 @@ class LLMService:
         ) as stream:
             async for text in stream.text_stream:
                 yield text
+
+    async def _stream_deepseek(
+        self,
+        messages: list[dict],
+        system_prompt: Optional[str],
+        model: str,
+        temperature: float,
+        max_tokens: int,
+    ) -> AsyncGenerator[str, None]:
+        if not self.deepseek_client:
+            raise RuntimeError("DeepSeek client not configured")
+
+        formatted_messages = []
+        if system_prompt:
+            formatted_messages.append({"role": "system", "content": system_prompt})
+        formatted_messages.extend(messages)
+
+        stream = await self.deepseek_client.chat.completions.create(
+            model=model,
+            messages=formatted_messages,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            stream=True,
+        )
+
+        async for chunk in stream:
+            if chunk.choices and chunk.choices[0].delta and chunk.choices[0].delta.content:
+                yield chunk.choices[0].delta.content
     
     async def compute_embeddings(self, texts: list[str]) -> list[list[float]]:
         if not self.openai_client:

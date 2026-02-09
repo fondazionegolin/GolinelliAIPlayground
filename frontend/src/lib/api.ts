@@ -93,9 +93,9 @@ export const adminApi = {
 
 export const teacherApi = {
   getClasses: () => api.get('/teacher/classes'),
-  createClass: (name: string) => api.post('/teacher/classes', { name }),
-  updateClass: (id: string, name: string) =>
-    api.patch(`/teacher/classes/${id}`, { name }),
+  createClass: (data: { name: string; school_grade?: string }) => api.post('/teacher/classes', data),
+  updateClass: (id: string, data: { name: string; school_grade?: string }) =>
+    api.patch(`/teacher/classes/${id}`, data),
   getSessions: (classId: string) =>
     api.get(`/teacher/classes/${classId}/sessions`),
   createSession: (classId: string, data: { title: string; is_persistent?: boolean }) =>

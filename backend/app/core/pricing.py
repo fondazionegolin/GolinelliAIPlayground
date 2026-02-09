@@ -29,6 +29,10 @@ PRICING_CATALOG: Dict[str, ModelPricing] = {
     "claude-3-5-sonnet-20241022": ModelPricing(3.00, 15.00),
     "claude-3-haiku-20240307": ModelPricing(0.25, 1.25),
     "claude-3-opus-20240229": ModelPricing(15.00, 75.00),
+
+    # DeepSeek
+    "deepseek-chat": ModelPricing(0.0, 0.0),
+    "deepseek-reasoner": ModelPricing(0.0, 0.0),
     
     # Ollama (Self-hosted = 0 cost usually, unless we want to attribute server cost)
     "mistral": ModelPricing(0.0, 0.0),

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { teacherApi } from '@/lib/api'
@@ -29,6 +29,7 @@ import {
 interface ClassData {
   id: string
   name: string
+  school_grade?: string | null
   created_at: string
   session_count?: number
   role?: 'owner' | 'invited'
@@ -43,10 +44,19 @@ interface SessionData {
   active_students_count?: number
 }
 
+const SCHOOL_GRADE_OPTIONS = [
+  'II ciclo primaria',
+  'Secondaria I grado',
+  'Biennio Secondaria II grado',
+  'Triennio Secondaria II grado',
+  'Università',
+] as const
+
 export default function ClassesPage() {
   const queryClient = useQueryClient()
   const { toast } = useToast()
   const [newClassName, setNewClassName] = useState('')
+  const [newClassGrade, setNewClassGrade] = useState<string>(SCHOOL_GRADE_OPTIONS[1])
   const [showNewForm, setShowNewForm] = useState(false)
 
   const { data: classes, isLoading } = useQuery<ClassData[]>({
@@ -58,10 +68,11 @@ export default function ClassesPage() {
   })
 
   const createMutation = useMutation({
-    mutationFn: (name: string) => teacherApi.createClass(name),
+    mutationFn: (data: { name: string; school_grade?: string }) => teacherApi.createClass(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['classes'] })
       setNewClassName('')
+      setNewClassGrade(SCHOOL_GRADE_OPTIONS[1])
       setShowNewForm(false)
       toast({ title: 'Classe creata con successo!' })
     },
@@ -73,7 +84,10 @@ export default function ClassesPage() {
   const handleCreate = (e: React.FormEvent) => {
     e.preventDefault()
     if (newClassName.trim()) {
-      createMutation.mutate(newClassName.trim())
+      createMutation.mutate({
+        name: newClassName.trim(),
+        school_grade: newClassGrade,
+      })
     }
   }
 
@@ -115,6 +129,18 @@ export default function ClassesPage() {
                     autoFocus
                     className="bg-slate-50 border-slate-200 focus-visible:ring-violet-500 text-lg h-12"
                   />
+                </div>
+                <div className="w-64">
+                  <label className="text-sm font-semibold text-violet-900 mb-2 block">Grado scolastico</label>
+                  <select
+                    value={newClassGrade}
+                    onChange={(e) => setNewClassGrade(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 focus-visible:ring-violet-500 rounded-md text-sm h-12 px-3"
+                  >
+                    {SCHOOL_GRADE_OPTIONS.map((grade) => (
+                      <option key={grade} value={grade}>{grade}</option>
+                    ))}
+                  </select>
                 </div>
                 <Button type="submit" disabled={createMutation.isPending} size="lg" className="bg-violet-600 h-12 px-8">
                   Crea Classe
@@ -164,10 +190,16 @@ function ClassContainer({ classData }: { classData: ClassData }) {
   const { toast } = useToast()
   const [isEditing, setIsEditing] = useState(false)
   const [editName, setEditName] = useState(classData.name)
+  const [editSchoolGrade, setEditSchoolGrade] = useState(classData.school_grade || SCHOOL_GRADE_OPTIONS[1])
   const [isCreatingSession, setIsCreatingSession] = useState(false)
   const [showTeachersModal, setShowTeachersModal] = useState(false)
 
   const isShared = classData.role === 'invited'
+
+  useEffect(() => {
+    setEditName(classData.name)
+    setEditSchoolGrade(classData.school_grade || SCHOOL_GRADE_OPTIONS[1])
+  }, [classData.name, classData.school_grade])
 
   // Fetch active sessions for this class
   const { data: sessionsResponse } = useQuery({
@@ -188,7 +220,7 @@ function ClassContainer({ classData }: { classData: ClassData }) {
   });
 
   const updateMutation = useMutation({
-    mutationFn: (name: string) => teacherApi.updateClass(classData.id, name),
+    mutationFn: (data: { name: string; school_grade?: string }) => teacherApi.updateClass(classData.id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['classes'] })
       setIsEditing(false)
@@ -219,8 +251,12 @@ function ClassContainer({ classData }: { classData: ClassData }) {
   })
 
   const handleSaveEdit = () => {
-    if (editName.trim() && editName !== classData.name) {
-      updateMutation.mutate(editName.trim())
+    const hasChanges = editName !== classData.name || editSchoolGrade !== (classData.school_grade || SCHOOL_GRADE_OPTIONS[1])
+    if (editName.trim() && hasChanges) {
+      updateMutation.mutate({
+        name: editName.trim(),
+        school_grade: editSchoolGrade,
+      })
     } else {
       setIsEditing(false)
     }
@@ -263,22 +299,39 @@ function ClassContainer({ classData }: { classData: ClassData }) {
               </div>
 
               {isEditing ? (
-                <div className="flex gap-2 items-center mb-2">
-                  <Input
-                    value={editName}
-                    onChange={(e) => setEditName(e.target.value)}
-                    autoFocus
-                    className="h-9 text-lg font-bold bg-white"
-                  />
-                  <Button size="sm" onClick={handleSaveEdit} className="h-9 w-9 p-0 bg-green-600 hover:bg-green-700">
-                    <Check className="h-4 w-4" />
-                  </Button>
-                  <Button size="sm" variant="ghost" onClick={() => setIsEditing(false)} className="h-9 w-9 p-0">
-                    <X className="h-4 w-4" />
-                  </Button>
+                <div className="space-y-2 mb-2">
+                  <div className="flex gap-2 items-center">
+                    <Input
+                      value={editName}
+                      onChange={(e) => setEditName(e.target.value)}
+                      autoFocus
+                      className="h-9 text-lg font-bold bg-white"
+                    />
+                    <Button size="sm" onClick={handleSaveEdit} className="h-9 w-9 p-0 bg-green-600 hover:bg-green-700">
+                      <Check className="h-4 w-4" />
+                    </Button>
+                    <Button size="sm" variant="ghost" onClick={() => setIsEditing(false)} className="h-9 w-9 p-0">
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+                  <select
+                    value={editSchoolGrade}
+                    onChange={(e) => setEditSchoolGrade(e.target.value)}
+                    className="w-full h-9 px-2 text-sm rounded-md border border-slate-200 bg-white"
+                  >
+                    {SCHOOL_GRADE_OPTIONS.map((grade) => (
+                      <option key={grade} value={grade}>{grade}</option>
+                    ))}
+                  </select>
                 </div>
               ) : (
                 <h2 className="text-2xl font-bold text-slate-800 mb-2">{classData.name}</h2>
+              )}
+
+              {!isEditing && classData.school_grade && (
+                <span className="inline-flex items-center text-xs font-medium px-2.5 py-1 rounded-full bg-violet-50 text-violet-700 border border-violet-200 mb-3">
+                  {classData.school_grade}
+                </span>
               )}
 
               <div className="flex items-center gap-3 text-sm text-slate-500 mb-6">

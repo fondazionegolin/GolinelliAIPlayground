@@ -6,6 +6,7 @@ from datetime import datetime
 
 class ClassCreate(BaseModel):
     name: str
+    school_grade: Optional[str] = None
 
 
 class ClassResponse(BaseModel):
@@ -13,6 +14,7 @@ class ClassResponse(BaseModel):
     tenant_id: UUID
     teacher_id: UUID
     name: str
+    school_grade: Optional[str] = None
     created_at: datetime
 
     class Config:

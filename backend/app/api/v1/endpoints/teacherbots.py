@@ -29,6 +29,7 @@ from app.schemas.teacherbot import (
 )
 from app.services.llm_service import llm_service
 from app.services.credit_service import credit_service
+from app.services.education_level import get_school_grade_instruction
 from app.realtime.gateway import sio
 
 router = APIRouter()
@@ -240,9 +241,10 @@ async def test_teacherbot(
     messages.append({"role": "user", "content": request.content})
 
     # Call LLM with teacherbot's system prompt
+    grade_instruction = get_school_grade_instruction(class_obj.school_grade)
     llm_response = await llm_service.generate(
         messages=messages,
-        system_prompt=bot.system_prompt,
+        system_prompt=bot.system_prompt + grade_instruction,
         provider=bot.llm_provider,
         model=bot.llm_model,
         temperature=bot.temperature,
@@ -942,7 +944,12 @@ async def send_teacherbot_message_with_files(
     messages.append({"role": "user", "content": full_content})
 
     # Update system prompt to handle files
-    system_prompt = bot.system_prompt + "\n\nQuando l'utente allega documenti, analizzali attentamente e rispondi in base al loro contenuto."
+    grade_instruction = get_school_grade_instruction(class_obj.school_grade)
+    system_prompt = (
+        bot.system_prompt
+        + grade_instruction
+        + "\n\nQuando l'utente allega documenti, analizzali attentamente e rispondi in base al loro contenuto."
+    )
 
     # Generate response
     llm_response = await llm_service.generate(

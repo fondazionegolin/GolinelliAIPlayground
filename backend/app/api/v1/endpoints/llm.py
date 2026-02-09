@@ -24,6 +24,7 @@ from app.schemas.llm import (
 from app.services.llm_service import llm_service
 from app.services.credit_service import credit_service
 from app.services.chatbot_profiles import get_profile, get_all_profiles, CHATBOT_PROFILES
+from app.services.education_level import get_school_grade_instruction
 
 logger = logging.getLogger(__name__)
 
@@ -86,6 +87,13 @@ async def list_available_models():
     if settings.ANTHROPIC_API_KEY:
         models.extend([
             {"provider": "anthropic", "model": "claude-haiku-4-5-20251001", "name": "Claude Haiku 4.5", "description": "Veloce e leggero", "icon": "anthropic"},
+        ])
+
+    # DeepSeek models
+    if settings.DEEPSEEK_API_KEY:
+        models.extend([
+            {"provider": "deepseek", "model": "deepseek-chat", "name": "DeepSeek Chat (V3.2)", "description": "Bilanciato, conversazione e produzione testo", "icon": "deepseek"},
+            {"provider": "deepseek", "model": "deepseek-reasoner", "name": "DeepSeek Reasoner (V3.2)", "description": "Ragionamento avanzato", "icon": "deepseek"},
         ])
     
     # Ollama models - fetch dynamically from Ollama API
@@ -495,7 +503,8 @@ async def send_message(
     else:
         # Get chatbot profile for system prompt
         profile = get_profile(conversation.profile_key)
-        system_prompt = profile["system_prompt"]
+        grade_instruction = get_school_grade_instruction(class_obj.school_grade)
+        system_prompt = profile["system_prompt"] + grade_instruction
         
         # Add verbose mode instruction
         if request.verbose_mode:
@@ -841,7 +850,12 @@ async def send_message_with_files(
     
     # Get chatbot profile
     profile = get_profile(conversation.profile_key)
-    system_prompt = profile["system_prompt"] + "\n\nQuando l'utente allega documenti, analizzali attentamente e rispondi in base al loro contenuto."
+    grade_instruction = get_school_grade_instruction(class_obj.school_grade)
+    system_prompt = (
+        profile["system_prompt"]
+        + grade_instruction
+        + "\n\nQuando l'utente allega documenti, analizzali attentamente e rispondi in base al loro contenuto."
+    )
     temperature = profile.get("temperature", 0.7)
     
     provider = "none"
@@ -921,7 +935,8 @@ async def load_teacher_context(db: AsyncSession, teacher: User) -> str:
     if classes:
         context_parts.append("## LE TUE CLASSI:")
         for cls in classes:
-            context_parts.append(f"- **{cls.name}** (ID: {cls.id})")
+            grade_label = f", grado: {cls.school_grade}" if getattr(cls, "school_grade", None) else ""
+            context_parts.append(f"- **{cls.name}** (ID: {cls.id}{grade_label})")
             
             # Get sessions for this class
             sessions_result = await db.execute(

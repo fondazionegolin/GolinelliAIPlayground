@@ -45,9 +45,11 @@ from app.schemas.invitation import (
     InvitationsListResponse,
     TeacherBasicInfo,
 )
+from app.services.education_level import SCHOOL_GRADE_OPTIONS
 
 router = APIRouter()
 TEACHER_ACCENTS = {"red", "indigo", "gray", "green", "slateblue"}
+SCHOOL_GRADES = set(SCHOOL_GRADE_OPTIONS)
 
 
 # Profile schemas
@@ -124,6 +126,7 @@ class ClassWithRoleResponse(BaseModel):
     tenant_id: UUID
     teacher_id: UUID
     name: str
+    school_grade: Optional[str] = None
     created_at: datetime
     role: str  # 'owner' or 'invited'
     owner_name: Optional[str] = None
@@ -154,6 +157,7 @@ async def list_classes(
             "tenant_id": cls.tenant_id,
             "teacher_id": cls.teacher_id,
             "name": cls.name,
+            "school_grade": cls.school_grade,
             "created_at": cls.created_at,
             "role": "owner",
             "owner_name": None,
@@ -175,6 +179,7 @@ async def list_classes(
             "tenant_id": cls.tenant_id,
             "teacher_id": cls.teacher_id,
             "name": cls.name,
+            "school_grade": cls.school_grade,
             "created_at": cls.created_at,
             "role": "invited",
             "owner_name": owner_name,
@@ -192,10 +197,14 @@ async def create_class(
     db: Annotated[AsyncSession, Depends(get_db)],
     teacher: Annotated[User, Depends(get_current_teacher)],
 ):
+    if request.school_grade and request.school_grade not in SCHOOL_GRADES:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid school_grade")
+
     class_ = Class(
         tenant_id=teacher.tenant_id,
         teacher_id=teacher.id,
         name=request.name,
+        school_grade=request.school_grade,
     )
     db.add(class_)
     await db.commit()
@@ -215,7 +224,11 @@ async def update_class(
     if not class_:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Class not found")
 
+    if request.school_grade and request.school_grade not in SCHOOL_GRADES:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid school_grade")
+
     class_.name = request.name
+    class_.school_grade = request.school_grade
     await db.commit()
     await db.refresh(class_)
     return class_
