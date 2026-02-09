@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useMemo } from 'react'
+import { useState, useRef, useEffect, useMemo, type CSSProperties } from 'react'
 import { Button } from '@/components/ui/button'
 import {
   Send, Bot, Paperclip, X, Trash2, Plus, File, Image as ImageIcon, Loader2,
@@ -15,6 +15,7 @@ import rehypeKatex from 'rehype-katex'
 import 'katex/dist/katex.min.css'
 import { ContentEditorModal } from '@/components/ContentEditorModal'
 import TeacherbotsPanel from '@/components/teacher/TeacherbotsPanel'
+import { DEFAULT_TEACHER_ACCENT, getTeacherAccentTheme } from '@/lib/teacherAccent'
 
 // Constants
 const FALLBACK_MODELS = [
@@ -252,6 +253,11 @@ export default function TeacherSupportChat() {
     queryFn: () => llmApi.getAvailableModels(),
     staleTime: 60_000,
   })
+  const { data: teacherProfileResponse } = useQuery({
+    queryKey: ['teacher-profile-chat-accent'],
+    queryFn: () => teacherApi.getProfile(),
+    staleTime: 60_000,
+  })
   const availableModels = useMemo<AvailableModel[]>(() => {
     const modelsFromApi = (availableModelsResponse?.data?.models || [])
       .filter((m: { model?: string; name?: string; provider?: string }) => m?.model && m?.provider)
@@ -264,6 +270,26 @@ export default function TeacherSupportChat() {
     if (modelsFromApi.length > 0) return modelsFromApi
     return FALLBACK_MODELS
   }, [availableModelsResponse])
+  const accentTheme = useMemo(
+    () => getTeacherAccentTheme(teacherProfileResponse?.data?.ui_accent || DEFAULT_TEACHER_ACCENT),
+    [teacherProfileResponse]
+  )
+  const accentVars = useMemo(() => ({
+    '--teacher-accent': accentTheme.accent,
+    '--teacher-accent-text': accentTheme.text,
+    '--teacher-accent-soft': accentTheme.soft,
+    '--teacher-accent-soft-strong': accentTheme.softStrong,
+    '--teacher-accent-border': accentTheme.border,
+  }) as CSSProperties, [accentTheme])
+  const selectedSoftStyle = useMemo(() => ({
+    backgroundColor: accentTheme.soft,
+    color: accentTheme.text,
+    borderColor: accentTheme.border,
+  }) as CSSProperties, [accentTheme])
+  const selectedSolidStyle = useMemo(() => ({
+    backgroundColor: accentTheme.accent,
+    color: '#ffffff',
+  }) as CSSProperties, [accentTheme])
 
   useEffect(() => {
     if (!availableModels.length) return
@@ -1618,7 +1644,7 @@ REGOLE IMPORTANTI:
   return (
     <>
 
-      <div className="h-full flex flex-col p-0">
+      <div className="h-full flex flex-col p-0" style={accentVars}>
         <div className="flex-1 flex h-full">
           <div
             className="flex flex-col h-full bg-slate-50 font-sans w-full overflow-hidden"
@@ -1629,20 +1655,22 @@ REGOLE IMPORTANTI:
             <div className="flex items-center gap-1 px-4 pt-4 pb-2 bg-white border-b border-slate-100">
               <button
                 onClick={() => setActiveTab('chat')}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${activeTab === 'chat'
-                  ? 'bg-red-100 text-red-700'
-                  : 'text-slate-500 hover:bg-slate-100'
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all border ${activeTab === 'chat'
+                  ? ''
+                  : 'text-slate-500 border-transparent hover:bg-slate-100'
                   }`}
+                style={activeTab === 'chat' ? selectedSoftStyle : undefined}
               >
                 <MessageCircle className="h-4 w-4" />
                 Chat AI
               </button>
               <button
                 onClick={() => setActiveTab('teacherbots')}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${activeTab === 'teacherbots'
-                  ? 'bg-red-100 text-red-700'
-                  : 'text-slate-500 hover:bg-slate-100'
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all border ${activeTab === 'teacherbots'
+                  ? ''
+                  : 'text-slate-500 border-transparent hover:bg-slate-100'
                   }`}
+                style={activeTab === 'teacherbots' ? selectedSoftStyle : undefined}
               >
                 <Sparkles className="h-4 w-4" />
                 Teacherbots
@@ -1686,16 +1714,18 @@ REGOLE IMPORTANTI:
                         <button
                           key={conv.id}
                           onClick={() => { setCurrentConversationId(conv.id); }}
-                          className={`w-full text-left p-3 rounded-lg text-sm transition-all group ${currentConversationId === conv.id
-                            ? 'bg-red-50 text-red-600 font-medium'
-                            : 'text-slate-600 hover:bg-slate-50'
+                          className={`w-full text-left p-3 rounded-lg text-sm transition-all group border ${currentConversationId === conv.id
+                            ? 'font-medium'
+                            : 'text-slate-600 border-transparent hover:bg-slate-50'
                             }`}
+                          style={currentConversationId === conv.id ? selectedSoftStyle : undefined}
                         >
                           <div className="truncate">{conv.title}</div>
                           <div className="flex items-center justify-between mt-1">
                             <span className="text-xs text-slate-400">{conv.createdAt.toLocaleDateString()}</span>
                             <button
-                              className="text-slate-300 opacity-0 group-hover:opacity-100 hover:text-red-500 transition-opacity p-1"
+                              className="text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity p-1"
+                              style={{ color: currentConversationId === conv.id ? accentTheme.text : undefined }}
                               onClick={async (e) => {
                                 e.stopPropagation()
                                 if (confirm('Eliminare questa conversazione?')) {
@@ -1724,12 +1754,13 @@ REGOLE IMPORTANTI:
                     ) : (
                       <div className="flex flex-col gap-2 items-center">
                         <Button variant="ghost" size="icon" onClick={handleNewChat} title="Nuova chat" className="p-0">
-                          <Plus className="h-5 w-5 text-red-500" />
+                          <Plus className="h-5 w-5" style={{ color: accentTheme.text }} />
                         </Button>
                         {conversations.map(conv => (
                           <div
                             key={conv.id}
-                            className={`w-2 h-2 rounded-full cursor-pointer ${currentConversationId === conv.id ? 'bg-red-500' : 'bg-slate-300'}`}
+                            className={`w-2 h-2 rounded-full cursor-pointer ${currentConversationId === conv.id ? '' : 'bg-slate-300'}`}
+                            style={currentConversationId === conv.id ? { backgroundColor: accentTheme.accent } : undefined}
                             title={conv.title}
                             onClick={() => { setCurrentConversationId(conv.id); }}
                           />
@@ -1745,9 +1776,9 @@ REGOLE IMPORTANTI:
                   style={chatBg ? { backgroundColor: chatBg } : undefined}
                 >
 
-                  <header className="px-3 py-2 md:px-4 md:py-3 border-b border-red-100/60 bg-white/80 backdrop-blur-sm sticky top-0 z-10 flex items-center justify-between shrink-0">
+                  <header className="px-3 py-2 md:px-4 md:py-3 border-b border-slate-200 bg-white/80 backdrop-blur-sm sticky top-0 z-10 flex items-center justify-between shrink-0">
                     <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-full flex items-center justify-center shadow-md bg-red-500">
+                      <div className="w-8 h-8 rounded-full flex items-center justify-center shadow-md" style={{ backgroundColor: accentTheme.accent }}>
                         <Bot className="h-4 w-4 text-white translate-y-[1px]" />
                       </div>
                       <div>
@@ -1769,18 +1800,20 @@ REGOLE IMPORTANTI:
                               <button
                                 onClick={() => setImageProvider('flux-schnell')}
                                 className={`px-3 py-1 text-xs rounded-full transition-all flex items-center gap-1 ${imageProvider === 'flux-schnell'
-                                  ? 'bg-white shadow-sm text-red-500 font-bold'
+                                  ? 'bg-white shadow-sm font-bold'
                                   : 'text-slate-500 hover:text-slate-700'
                                   }`}
+                                style={imageProvider === 'flux-schnell' ? { color: accentTheme.text } : undefined}
                               >
                                 ⚡ Flux
                               </button>
                               <button
                                 onClick={() => setImageProvider('dall-e')}
                                 className={`px-3 py-1 text-xs rounded-full transition-all flex items-center gap-1 ${imageProvider === 'dall-e'
-                                  ? 'bg-white shadow-sm text-red-500 font-bold'
+                                  ? 'bg-white shadow-sm font-bold'
                                   : 'text-slate-500 hover:text-slate-700'
                                   }`}
+                                style={imageProvider === 'dall-e' ? { color: accentTheme.text } : undefined}
                               >
                                 🎨 DALL-E
                               </button>
@@ -1791,7 +1824,8 @@ REGOLE IMPORTANTI:
                               <select
                                 value={imageSize}
                                 onChange={(e) => setImageSize(e.target.value)}
-                                className="text-xs bg-slate-100/80 border border-slate-200 rounded-full px-3 py-1.5 text-slate-600 focus:ring-2 focus:ring-red-500 focus:border-transparent cursor-pointer hover:bg-slate-50 outline-none appearance-none pr-8"
+                                className="text-xs bg-slate-100/80 border border-slate-200 rounded-full px-3 py-1.5 text-slate-600 focus:ring-2 focus:border-transparent cursor-pointer hover:bg-slate-50 outline-none appearance-none pr-8"
+                                style={{ ['--tw-ring-color' as string]: accentTheme.border }}
                               >
                                 <option value="1024x1024">1:1 Quadrato</option>
                                 <option value="1024x768">4:3 Orizzontale</option>
@@ -1806,7 +1840,7 @@ REGOLE IMPORTANTI:
 
 
                         {(agentMode === 'quiz' || agentMode === 'dataset' || agentMode === 'web_search' || agentMode === 'report') ? (
-                          <div className="text-xs bg-purple-100 text-purple-700 rounded-full px-3 py-1.5 font-medium border border-purple-200">
+                          <div className="text-xs rounded-full px-3 py-1.5 font-medium border bg-slate-100 text-slate-700 border-slate-200">
                             Claude Haiku (fisso)
                           </div>
                         ) : (
@@ -1814,13 +1848,14 @@ REGOLE IMPORTANTI:
                             <div className="relative" ref={modelMenuRef}>
                               <button
                                 onClick={() => setShowModelMenu(!showModelMenu)}
-                                className="flex items-center gap-2 px-4 py-2 bg-red-500 hover:bg-red-600 rounded-full text-xs font-bold text-white transition-all shadow-md shadow-red-200 group"
+                                className="flex items-center gap-2 px-4 py-2 rounded-full text-xs font-bold transition-all shadow-sm group hover:opacity-90"
+                                style={selectedSolidStyle}
                               >
                                 <div className="p-0.5 bg-white/20 rounded-md">
                                   <ModelIcon provider={availableModels.find(m => m.id === selectedModel)?.provider || ''} modelId={selectedModel} className="h-3 w-3" />
                                 </div>
                                 <span>{availableModels.find(m => m.id === selectedModel)?.name}</span>
-                                <ChevronDown className={`h-3 w-3 text-red-200 transition-transform ${showModelMenu ? 'rotate-180' : ''}`} />
+                                <ChevronDown className={`h-3 w-3 text-white/70 transition-transform ${showModelMenu ? 'rotate-180' : ''}`} />
                               </button>
 
                               {/* Dropdown */}
@@ -1833,18 +1868,24 @@ REGOLE IMPORTANTI:
                                   {availableModels.map(m => (
                                     <div
                                       key={m.id}
-                                      className={`flex items-center justify-between px-3 py-2.5 mx-1 rounded-lg hover:bg-slate-50 transition-colors cursor-pointer group ${selectedModel === m.id ? 'bg-red-50' : ''}`}
+                                      className={`flex items-center justify-between px-3 py-2.5 mx-1 rounded-lg hover:bg-slate-50 transition-colors cursor-pointer group border ${selectedModel === m.id ? '' : 'border-transparent'}`}
+                                      style={selectedModel === m.id ? selectedSoftStyle : undefined}
                                       onClick={() => {
                                         setSelectedModel(m.id)
                                         setShowModelMenu(false)
                                       }}
                                     >
                                       <div className="flex items-center gap-3">
-                                        <div className={`p-2 rounded-lg ${selectedModel === m.id ? 'bg-red-100 ring-1 ring-red-200' : 'bg-slate-100 group-hover:bg-red-50 group-hover:text-red-500 transition-colors'}`}>
+                                        <div
+                                          className={`p-2 rounded-lg ${selectedModel === m.id ? 'ring-1' : 'bg-slate-100 transition-colors'}`}
+                                          style={selectedModel === m.id
+                                            ? { backgroundColor: accentTheme.softStrong, borderColor: accentTheme.border, color: accentTheme.text }
+                                            : undefined}
+                                        >
                                           <ModelIcon provider={m.provider} modelId={m.id} className="h-5 w-5" />
                                         </div>
                                         <div className="flex flex-col">
-                                          <span className={`text-sm font-bold ${selectedModel === m.id ? 'text-red-900' : 'text-slate-700'}`}>
+                                          <span className={`text-sm font-bold ${selectedModel === m.id ? '' : 'text-slate-700'}`} style={selectedModel === m.id ? { color: accentTheme.text } : undefined}>
                                             {m.name}
                                           </span>
                                           <span className="text-[10px] text-slate-400 capitalize font-medium">{m.provider}</span>
@@ -1857,10 +1898,13 @@ REGOLE IMPORTANTI:
                                         onClick={(e) => handleSetDefaultModel(m.id, e)}
                                         title="Imposta come default"
                                       >
-                                        <div className={`w-4 h-4 rounded border flex items-center justify-center transition-all duration-200 ${defaultModel === m.id
-                                          ? 'bg-red-500 border-red-500 shadow-sm'
-                                          : 'border-slate-300 text-transparent hover:border-red-400 mx-auto'
-                                          }`}>
+                                        <div
+                                          className={`w-4 h-4 rounded border flex items-center justify-center transition-all duration-200 ${defaultModel === m.id
+                                            ? 'shadow-sm'
+                                            : 'border-slate-300 text-transparent mx-auto'
+                                            }`}
+                                          style={defaultModel === m.id ? selectedSolidStyle : undefined}
+                                        >
                                           {defaultModel === m.id && <Check className="h-2.5 w-2.5 text-white" strokeWidth={3} />}
                                         </div>
                                       </div>
@@ -1880,8 +1924,8 @@ REGOLE IMPORTANTI:
                               key={swatch.label}
                               onClick={() => setChatBg(swatch.color)}
                               title={swatch.label}
-                              className={`h-5 w-5 rounded-full shadow-sm transition-transform hover:scale-105 ${chatBg === swatch.color ? 'ring-2 ring-red-500 ring-offset-2' : ''}`}
-                              style={{ backgroundColor: swatch.color }}
+                              className={`h-5 w-5 rounded-full shadow-sm transition-transform hover:scale-105 ${chatBg === swatch.color ? 'ring-2 ring-offset-2' : ''}`}
+                              style={chatBg === swatch.color ? { backgroundColor: swatch.color, boxShadow: `0 0 0 2px ${accentTheme.accent}` } : { backgroundColor: swatch.color }}
                             />
                           ))}
                         </div>
@@ -2160,10 +2204,11 @@ REGOLE IMPORTANTI:
                             <button
                               key={m.id}
                               onClick={() => handleChangeAgentMode(m.id)}
-                              className={`text-xs px-4 py-1.5 rounded-full font-medium transition-all flex items-center gap-1.5 ${agentMode === m.id
-                                ? 'bg-red-500 text-white shadow-md shadow-red-200'
-                                : 'text-slate-500 hover:bg-slate-100'
+                              className={`text-xs px-4 py-1.5 rounded-full font-medium transition-all flex items-center gap-1.5 border ${agentMode === m.id
+                                ? 'shadow-sm'
+                                : 'text-slate-500 border-transparent hover:bg-slate-100'
                                 }`}
+                              style={agentMode === m.id ? selectedSolidStyle : undefined}
                             >
                               {icon}
                               {m.label}
