@@ -5,10 +5,13 @@ import base64
 import uuid
 import aiofiles
 from pathlib import Path
+import logging
 from openai import AsyncOpenAI
 from anthropic import AsyncAnthropic
 
 from app.core.config import settings
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -131,12 +134,14 @@ class LLMService:
         if system_prompt:
             formatted_messages.append({"role": "system", "content": system_prompt})
         formatted_messages.extend(messages)
+
+        resolved_model = await self._resolve_ollama_model_name(model)
         
         async with httpx.AsyncClient() as client:
             response = await client.post(
                 f"{settings.OLLAMA_BASE_URL}/api/chat",
                 json={
-                    "model": model,
+                    "model": resolved_model,
                     "messages": formatted_messages,
                     "options": {
                         "temperature": temperature,
@@ -152,10 +157,41 @@ class LLMService:
         return LLMResponse(
             content=data["message"]["content"],
             provider="ollama",
-            model=model,
+            model=resolved_model,
             prompt_tokens=data.get("prompt_eval_count", 0),
             completion_tokens=data.get("eval_count", 0),
         )
+
+    async def _resolve_ollama_model_name(self, model: str) -> str:
+        """Resolve short model aliases (e.g. mistral-nemo) to installed Ollama tags."""
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.get(
+                    f"{settings.OLLAMA_BASE_URL}/api/tags",
+                    timeout=10.0,
+                )
+                response.raise_for_status()
+                data = response.json()
+        except Exception as exc:
+            logger.warning("Ollama model resolution skipped for '%s': %s", model, exc)
+            return model
+
+        installed = [m.get("name", "") for m in data.get("models", []) if m.get("name")]
+        if not installed:
+            return model
+
+        if model in installed:
+            return model
+
+        if ":" not in model:
+            latest_candidate = f"{model}:latest"
+            if latest_candidate in installed:
+                return latest_candidate
+            for installed_model in installed:
+                if installed_model.startswith(f"{model}:"):
+                    return installed_model
+
+        return model
     
     async def generate_stream(
         self,

@@ -99,11 +99,11 @@ async def list_available_models():
                     
                     # Add configured Ollama models if available
                     if "mistral-nemo" in available_ollama or "mistral-nemo:latest" in [m["name"] for m in ollama_data.get("models", [])]:
-                        models.append({"provider": "ollama", "model": "mistral-nemo", "name": "Mistral Nemo", "description": "12B locale, veloce", "icon": "mistral"})
+                        models.append({"provider": "ollama", "model": available_ollama.get("mistral-nemo", "mistral-nemo"), "name": "Mistral Nemo", "description": "12B locale, veloce", "icon": "mistral"})
                     if "deepseek-r1" in available_ollama:
-                        models.append({"provider": "ollama", "model": "deepseek-r1:8b", "name": "DeepSeek R1 8B", "description": "Ragionamento avanzato", "icon": "deepseek"})
+                        models.append({"provider": "ollama", "model": available_ollama.get("deepseek-r1", "deepseek-r1:8b"), "name": "DeepSeek R1 8B", "description": "Ragionamento avanzato", "icon": "deepseek"})
                     if "mistral" in available_ollama:
-                        models.append({"provider": "ollama", "model": "mistral", "name": "Mistral 7B", "description": "Modello locale efficiente", "icon": "mistral"})
+                        models.append({"provider": "ollama", "model": available_ollama.get("mistral", "mistral"), "name": "Mistral 7B", "description": "Modello locale efficiente", "icon": "mistral"})
         except Exception:
             pass  # Ollama not available, skip
     

@@ -17,7 +17,7 @@ import { ContentEditorModal } from '@/components/ContentEditorModal'
 import TeacherbotsPanel from '@/components/teacher/TeacherbotsPanel'
 
 // Constants
-const AVAILABLE_MODELS = [
+const FALLBACK_MODELS = [
   { id: 'gpt-5-mini', name: 'GPT-5 Mini', provider: 'openai' },
   { id: 'gpt-5-nano', name: 'GPT-5 Nano', provider: 'openai' },
   { id: 'claude-haiku-4-5-20251001', name: 'Claude Haiku 4.5', provider: 'anthropic' },
@@ -39,6 +39,12 @@ type AgentMode = typeof AGENT_MODES[number]['id'] | 'web_search'
 // Width below which the chat history sidebar auto-collapses.
 // Increase this value if you want earlier collapse.
 const CHAT_HISTORY_COLLAPSE_BREAKPOINT = 1360
+
+interface AvailableModel {
+  id: string
+  name: string
+  provider: string
+}
 
 interface QuizQuestion {
   question: string
@@ -209,8 +215,8 @@ export default function TeacherSupportChat() {
   const [messages, setMessages] = useState<Message[]>([])
   const [inputText, setInputText] = useState('')
   const [isLoading, setIsLoading] = useState(false)
-  const [defaultModel, setDefaultModel] = useState(localStorage.getItem('default_model') || AVAILABLE_MODELS[0].id)
-  const [selectedModel, setSelectedModel] = useState(localStorage.getItem('default_model') || AVAILABLE_MODELS[0].id)
+  const [defaultModel, setDefaultModel] = useState(localStorage.getItem('default_model') || FALLBACK_MODELS[0].id)
+  const [selectedModel, setSelectedModel] = useState(localStorage.getItem('default_model') || FALLBACK_MODELS[0].id)
   const [showModelMenu, setShowModelMenu] = useState(false)
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [currentConversationId, setCurrentConversationId] = useState<string | null>(null)
@@ -241,6 +247,38 @@ export default function TeacherSupportChat() {
     answers: {},
   })
   const modelMenuRef = useRef<HTMLDivElement>(null)
+  const { data: availableModelsResponse } = useQuery({
+    queryKey: ['llm-available-models'],
+    queryFn: () => llmApi.getAvailableModels(),
+    staleTime: 60_000,
+  })
+  const availableModels = useMemo<AvailableModel[]>(() => {
+    const modelsFromApi = (availableModelsResponse?.data?.models || [])
+      .filter((m: { model?: string; name?: string; provider?: string }) => m?.model && m?.provider)
+      .map((m: { model: string; name?: string; provider: string }) => ({
+        id: m.model,
+        name: m.name || m.model,
+        provider: m.provider,
+      }))
+
+    if (modelsFromApi.length > 0) return modelsFromApi
+    return FALLBACK_MODELS
+  }, [availableModelsResponse])
+
+  useEffect(() => {
+    if (!availableModels.length) return
+    const hasSelected = availableModels.some(m => m.id === selectedModel)
+    const hasDefault = availableModels.some(m => m.id === defaultModel)
+    const firstModel = availableModels[0].id
+
+    if (!hasSelected) {
+      setSelectedModel(firstModel)
+    }
+    if (!hasDefault) {
+      setDefaultModel(firstModel)
+      localStorage.setItem('default_model', firstModel)
+    }
+  }, [availableModels, selectedModel, defaultModel])
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -260,7 +298,7 @@ export default function TeacherSupportChat() {
     localStorage.setItem('default_model', id)
     toast({
       title: "Modello predefinito aggiornato",
-      description: `Il modello predefinito è ora ${AVAILABLE_MODELS.find(m => m.id === id)?.name}`
+      description: `Il modello predefinito è ora ${availableModels.find(m => m.id === id)?.name}`
     })
   }
 
@@ -1424,7 +1462,7 @@ REGOLE IMPORTANTI:
       } else {
         // STANDARD CHAT FLOW
         const history = messages.map(m => ({ role: m.role, content: m.content }))
-        const modelInfo = AVAILABLE_MODELS.find(m => m.id === selectedModel)
+        const modelInfo = availableModels.find(m => m.id === selectedModel)
 
         let response;
         if (currentFiles.length > 0) {
@@ -1717,7 +1755,7 @@ REGOLE IMPORTANTI:
                         <p className="text-xs text-slate-500">
                           {(agentMode === 'quiz' || agentMode === 'dataset' || agentMode === 'web_search' || agentMode === 'report')
                             ? 'Claude Haiku'
-                            : AVAILABLE_MODELS.find(m => m.id === selectedModel)?.name}
+                            : availableModels.find(m => m.id === selectedModel)?.name}
                         </p>
                       </div>
                     </div>
@@ -1779,9 +1817,9 @@ REGOLE IMPORTANTI:
                                 className="flex items-center gap-2 px-4 py-2 bg-red-500 hover:bg-red-600 rounded-full text-xs font-bold text-white transition-all shadow-md shadow-red-200 group"
                               >
                                 <div className="p-0.5 bg-white/20 rounded-md">
-                                  <ModelIcon provider={AVAILABLE_MODELS.find(m => m.id === selectedModel)?.provider || ''} modelId={selectedModel} className="h-3 w-3" />
+                                  <ModelIcon provider={availableModels.find(m => m.id === selectedModel)?.provider || ''} modelId={selectedModel} className="h-3 w-3" />
                                 </div>
-                                <span>{AVAILABLE_MODELS.find(m => m.id === selectedModel)?.name}</span>
+                                <span>{availableModels.find(m => m.id === selectedModel)?.name}</span>
                                 <ChevronDown className={`h-3 w-3 text-red-200 transition-transform ${showModelMenu ? 'rotate-180' : ''}`} />
                               </button>
 
@@ -1792,7 +1830,7 @@ REGOLE IMPORTANTI:
                                     <span>Seleziona Modello</span>
                                     <span className="text-[9px] font-normal text-slate-400">Default</span>
                                   </div>
-                                  {AVAILABLE_MODELS.map(m => (
+                                  {availableModels.map(m => (
                                     <div
                                       key={m.id}
                                       className={`flex items-center justify-between px-3 py-2.5 mx-1 rounded-lg hover:bg-slate-50 transition-colors cursor-pointer group ${selectedModel === m.id ? 'bg-red-50' : ''}`}
