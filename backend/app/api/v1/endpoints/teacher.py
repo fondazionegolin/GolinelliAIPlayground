@@ -409,10 +409,12 @@ async def get_session_live(
     return {
         "session": {
             "id": str(session.id),
+            "class_id": str(class_.id),
             "title": session.title,
             "join_code": session.join_code,
             "status": session.status.value,
             "class_name": class_.name,
+            "class_school_grade": class_.school_grade,
             "default_llm_provider": session.default_llm_provider,
             "default_llm_model": session.default_llm_model,
         },
@@ -967,6 +969,7 @@ async def update_task(
     new_status: str = None,
     due_at: datetime = None,
     points: str = None,
+    content_json: str = None,
 ):
     """Update a task"""
     # Verify session access
@@ -996,6 +999,8 @@ async def update_task(
         task.due_at = due_at
     if points is not None:
         task.points = points
+    if content_json is not None:
+        task.content_json = content_json
     
     await db.commit()
     await db.refresh(task)
@@ -1061,6 +1066,7 @@ async def update_task(
         "status": task.status.value,
         "due_at": task.due_at.isoformat() if task.due_at else None,
         "points": task.points,
+        "content_json": task.content_json,
     }
 
 
@@ -1925,6 +1931,28 @@ async def delete_teacher_conversation(
     await db.commit()
     
     return {"message": "Conversation deleted"}
+
+
+@router.delete("/conversations")
+async def delete_all_teacher_conversations(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    teacher: Annotated[User, Depends(get_current_teacher)],
+):
+    """Delete all AI chat conversations for current teacher"""
+    from app.models import TeacherConversation
+
+    result = await db.execute(
+        select(TeacherConversation).where(TeacherConversation.teacher_id == teacher.id)
+    )
+    conversations = result.scalars().all()
+
+    deleted = 0
+    for conv in conversations:
+        await db.delete(conv)
+        deleted += 1
+
+    await db.commit()
+    return {"message": "All conversations deleted", "deleted_count": deleted}
 
 
 @router.patch("/conversations/{conversation_id}")

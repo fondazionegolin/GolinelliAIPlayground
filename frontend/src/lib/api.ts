@@ -128,7 +128,7 @@ export const teacherApi = {
     api.get(`/teacher/sessions/${sessionId}/tasks`),
   createTask: (sessionId: string, data: { title: string; description?: string; task_type?: string; points?: string; content_json?: string }) =>
     api.post(`/teacher/sessions/${sessionId}/tasks`, data),
-  updateTask: (sessionId: string, taskId: string, data: { title?: string; description?: string; new_status?: string; points?: string }) =>
+  updateTask: (sessionId: string, taskId: string, data: { title?: string; description?: string; new_status?: string; points?: string; content_json?: string }) =>
     api.patch(`/teacher/sessions/${sessionId}/tasks/${taskId}`, null, { params: data }),
   deleteTask: (sessionId: string, taskId: string) =>
     api.delete(`/teacher/sessions/${sessionId}/tasks/${taskId}`),
@@ -168,6 +168,8 @@ export const teacherApi = {
     api.get(`/teacher/conversations/${conversationId}`),
   deleteConversation: (conversationId: string) =>
     api.delete(`/teacher/conversations/${conversationId}`),
+  deleteAllConversations: () =>
+    api.delete('/teacher/conversations'),
   updateConversation: (conversationId: string, data: { title?: string; agent_mode?: string }) =>
     api.patch(`/teacher/conversations/${conversationId}`, data),
   addMessage: (conversationId: string, data: { role: string; content: string; provider?: string; model?: string }) =>

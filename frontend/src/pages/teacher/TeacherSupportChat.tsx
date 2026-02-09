@@ -211,6 +211,40 @@ interface ReportInterviewState {
   answers: Partial<ReportInterviewAnswers>
 }
 
+type QuizInterviewStepKey = 'topic' | 'questionCount' | 'optionsPerQuestion' | 'highlights'
+
+interface QuizInterviewAnswers {
+  topic: string
+  questionCount: number
+  optionsPerQuestion: number
+  highlights: string
+}
+
+const QUIZ_INTERVIEW_STEPS: Array<{ key: QuizInterviewStepKey; question: string }> = [
+  {
+    key: 'topic',
+    question: 'Modalita quiz attiva. Ti faccio una breve intervista guidata.\n\n1) Quale argomento vuoi trattare nel quiz?',
+  },
+  {
+    key: 'questionCount',
+    question: '2) Quante domande vuoi nel quiz? (inserisci un numero)',
+  },
+  {
+    key: 'optionsPerQuestion',
+    question: '3) Quante possibili risposte per domanda? (inserisci un numero)',
+  },
+  {
+    key: 'highlights',
+    question: '4) Vuoi aggiungere highlights? Se si, scrivili (altrimenti rispondi "no").',
+  },
+]
+
+interface QuizInterviewState {
+  active: boolean
+  stepIndex: number
+  answers: Partial<QuizInterviewAnswers>
+}
+
 export default function TeacherSupportChat() {
   const { toast } = useToast()
   const [activeTab, setActiveTab] = useState<'chat' | 'teacherbots'>('chat')
@@ -244,6 +278,11 @@ export default function TeacherSupportChat() {
     answers: {},
   })
   const [reportInterview, setReportInterview] = useState<ReportInterviewState>({
+    active: false,
+    stepIndex: 0,
+    answers: {},
+  })
+  const [quizInterview, setQuizInterview] = useState<QuizInterviewState>({
     active: false,
     stepIndex: 0,
     answers: {},
@@ -369,22 +408,24 @@ export default function TeacherSupportChat() {
   } | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
-  const baseBgSwatches = [
-    { label: 'Slate scuro', color: '#0f172a' },
-    { label: 'Grigio scuro', color: '#1f2937' },
-    { label: 'Viola scuro', color: '#2e1065' },
-    { label: 'Giallo', color: '#facc15' },
-  ]
-
-  const paletteColors = useMemo(() => {
-    const colors: string[] = []
-    for (let i = 0; i < 256; i += 1) {
-      const hue = (i % 16) * (360 / 16)
-      const light = 20 + Math.floor(i / 16) * (60 / 15)
-      colors.push(`hsl(${hue}, 55%, ${light}%)`)
-    }
-    return colors
-  }, [])
+  const paletteGroups = useMemo(() => ([
+    {
+      label: 'Toni di grigio',
+      colors: ['#f8fafc', '#f1f5f9', '#e2e8f0', '#cbd5e1', '#94a3b8'],
+    },
+    {
+      label: 'Toni di azzurro',
+      colors: ['#eff6ff', '#dbeafe', '#bfdbfe', '#93c5fd', '#60a5fa'],
+    },
+    {
+      label: 'Toni di verde',
+      colors: ['#ecfdf5', '#d1fae5', '#a7f3d0', '#6ee7b7', '#34d399'],
+    },
+    {
+      label: 'Toni di viola',
+      colors: ['#f5f3ff', '#ede9fe', '#ddd6fe', '#c4b5fd', '#a78bfa'],
+    },
+  ]), [])
 
   const isDarkColor = (color: string) => {
     if (!color) return false
@@ -463,6 +504,7 @@ export default function TeacherSupportChat() {
     type: 'quiz',
     data: null
   })
+  const [publishMode, setPublishMode] = useState<'published' | 'draft'>('published')
 
   // Editor Modal State (for editing quiz before publishing)
   const [editorModal, setEditorModal] = useState<{ isOpen: boolean, type: 'quiz' | 'dataset', data: any }>({
@@ -561,6 +603,7 @@ export default function TeacherSupportChat() {
     setDatasetInterview({ active: false, stepIndex: 0, answers: {} })
     setImageInterview({ active: false, stepIndex: 0, answers: {} })
     setReportInterview({ active: false, stepIndex: 0, answers: {} })
+    setQuizInterview({ active: false, stepIndex: 0, answers: {} })
   }, [currentConversationId])
 
   // Load messages when selecting a conversation
@@ -874,6 +917,10 @@ export default function TeacherSupportChat() {
     setReportInterview({ active: false, stepIndex: 0, answers: {} })
   }
 
+  const resetQuizInterview = () => {
+    setQuizInterview({ active: false, stepIndex: 0, answers: {} })
+  }
+
   const startDatasetInterview = () => {
     setDatasetInterview({ active: true, stepIndex: 0, answers: {} })
     setMessages(prev => [
@@ -908,6 +955,19 @@ export default function TeacherSupportChat() {
         id: `rep-q-${Date.now()}`,
         role: 'assistant',
         content: REPORT_INTERVIEW_STEPS[0].question,
+        timestamp: new Date()
+      }
+    ])
+  }
+
+  const startQuizInterview = () => {
+    setQuizInterview({ active: true, stepIndex: 0, answers: {} })
+    setMessages(prev => [
+      ...prev,
+      {
+        id: `quiz-q-${Date.now()}`,
+        role: 'assistant',
+        content: QUIZ_INTERVIEW_STEPS[0].question,
         timestamp: new Date()
       }
     ])
@@ -985,6 +1045,36 @@ Requisiti:
 2) Analisi puntuale in base alle informazioni richieste.
 3) Se l'ambito riguarda studenti specifici, separa chiaramente i risultati per studente.
 4) Concludi con osservazioni operative e prossimi passi didattici.`
+  }
+
+  const buildQuizSummary = (answers: QuizInterviewAnswers) => {
+    return [
+      'Riepilogo specifiche quiz:',
+      `- Argomento: ${answers.topic}`,
+      `- Numero domande: ${answers.questionCount}`,
+      `- Risposte per domanda: ${answers.optionsPerQuestion}`,
+      `- Highlights: ${answers.highlights}`,
+      '',
+      'Procedo ora con la generazione del quiz.'
+    ].join('\n')
+  }
+
+  const buildQuizGenerationPrompt = (answers: QuizInterviewAnswers) => {
+    const highlightInstruction = answers.highlights && answers.highlights.toLowerCase() !== 'no'
+      ? `Includi questi highlights didattici: ${answers.highlights}.`
+      : 'Non includere highlights extra.'
+
+    return `GENERA QUIZ: Crea un quiz a scelta multipla con queste specifiche:
+- Argomento: ${answers.topic}
+- Numero domande: ${answers.questionCount}
+- Opzioni per domanda: ${answers.optionsPerQuestion}
+- ${highlightInstruction}
+
+Requisiti:
+1) Ogni domanda deve avere una sola risposta corretta.
+2) Fornisci anche una breve spiegazione della risposta corretta.
+3) Usa linguaggio chiaro e didattico.
+4) Restituisci il risultato in formato strutturato, pronto per la pubblicazione come quiz in piattaforma.`
   }
 
   const handleSend = async () => {
@@ -1375,6 +1465,121 @@ REGOLE IMPORTANTI:
       return
     }
 
+    if (agentMode === 'quiz' && quizInterview.active) {
+      if (!userInput) return
+      const convId = await ensureConversation('Generazione quiz guidata')
+      const userMessage: Message = {
+        id: `msg-${Date.now()}`,
+        role: 'user',
+        content: userInput,
+        timestamp: new Date()
+      }
+      setMessages(prev => [...prev, userMessage])
+      setInputText('')
+
+      const currentStep = QUIZ_INTERVIEW_STEPS[quizInterview.stepIndex]
+      if (!currentStep) return
+
+      const nextAnswers = { ...quizInterview.answers }
+      let followUp: string | null = null
+
+      if (!userInput.trim()) {
+        followUp = 'Risposta vuota. Inserisci un testo breve per continuare.'
+      } else if (currentStep.key === 'topic') {
+        nextAnswers.topic = userInput
+      } else if (currentStep.key === 'questionCount') {
+        const parsed = Number.parseInt(userInput, 10)
+        if (Number.isNaN(parsed) || parsed < 1 || parsed > 30) {
+          followUp = 'Inserisci un numero valido di domande (tra 1 e 30).'
+        } else {
+          nextAnswers.questionCount = parsed
+        }
+      } else if (currentStep.key === 'optionsPerQuestion') {
+        const parsed = Number.parseInt(userInput, 10)
+        if (Number.isNaN(parsed) || parsed < 2 || parsed > 8) {
+          followUp = 'Inserisci un numero valido di opzioni per domanda (tra 2 e 8).'
+        } else {
+          nextAnswers.optionsPerQuestion = parsed
+        }
+      } else if (currentStep.key === 'highlights') {
+        nextAnswers.highlights = userInput
+      }
+
+      if (followUp) {
+        const assistantMessage: Message = {
+          id: `resp-${Date.now()}`,
+          role: 'assistant',
+          content: followUp,
+          timestamp: new Date()
+        }
+        setMessages(prev => [...prev, assistantMessage])
+        await saveMessageToServer(convId, userMessage, assistantMessage, 'claude-haiku-4-5-20251001')
+        return
+      }
+
+      const isLastStep = quizInterview.stepIndex === QUIZ_INTERVIEW_STEPS.length - 1
+      if (!isLastStep) {
+        const nextStepIndex = quizInterview.stepIndex + 1
+        setQuizInterview({
+          active: true,
+          stepIndex: nextStepIndex,
+          answers: nextAnswers
+        })
+        const assistantMessage: Message = {
+          id: `resp-${Date.now()}`,
+          role: 'assistant',
+          content: QUIZ_INTERVIEW_STEPS[nextStepIndex].question,
+          timestamp: new Date()
+        }
+        setMessages(prev => [...prev, assistantMessage])
+        await saveMessageToServer(convId, userMessage, assistantMessage, 'claude-haiku-4-5-20251001')
+        return
+      }
+
+      const finalAnswers = nextAnswers as QuizInterviewAnswers
+      const summaryMessage: Message = {
+        id: `resp-${Date.now()}`,
+        role: 'assistant',
+        content: buildQuizSummary(finalAnswers),
+        timestamp: new Date()
+      }
+      setMessages(prev => [...prev, summaryMessage])
+      await saveMessageToServer(convId, userMessage, summaryMessage, 'claude-haiku-4-5-20251001')
+
+      setQuizInterview({
+        active: false,
+        stepIndex: QUIZ_INTERVIEW_STEPS.length,
+        answers: finalAnswers
+      })
+
+      const generationPrompt = buildQuizGenerationPrompt(finalAnswers)
+      setIsLoading(true)
+      try {
+        const finalContent = await runStreamingRequest(generationPrompt, [...messages, userMessage, summaryMessage])
+        const assistantMessage: Message = {
+          id: `resp-${Date.now()}`,
+          role: 'assistant',
+          content: finalContent,
+          timestamp: new Date()
+        }
+        setMessages(prev => [...prev, assistantMessage])
+        await saveSingleMessageToServer(convId, assistantMessage, 'claude-haiku-4-5-20251001')
+      } catch (e) {
+        console.error(e)
+        toast({ title: "Errore", description: "Impossibile generare il quiz.", variant: "destructive" })
+        const errorMsg: Message = {
+          id: `err-${Date.now()}`,
+          role: 'assistant',
+          content: "Si è verificato un errore durante la generazione del quiz. Riprova.",
+          timestamp: new Date()
+        }
+        setMessages(prev => [...prev, errorMsg])
+      } finally {
+        setIsLoading(false)
+      }
+      return
+    }
+
     const filesInfo = attachedFiles.length > 0 ? ` [Allegati: ${attachedFiles.map(f => f.file.name).join(', ')}]` : ''
     let messageContent = userInput || 'Analizza questi documenti'
 
@@ -1554,6 +1759,25 @@ REGOLE IMPORTANTI:
     resetDatasetInterview()
     resetImageInterview()
     resetReportInterview()
+    resetQuizInterview()
+  }
+
+  const handleClearAllConversations = async () => {
+    if (!confirm('Eliminare tutta la cronologia del chatbot docente?')) return
+    try {
+      await teacherApi.deleteAllConversations()
+      setConversations([])
+      setMessages([])
+      setCurrentConversationId(null)
+      setConversationCache({})
+      conversationCacheRef.current = {}
+      localStorage.removeItem('teacher_support_messages_cache')
+      localStorage.removeItem('teacher_support_current_conversation_id')
+      toast({ title: 'Cronologia eliminata', description: 'Tutte le conversazioni del docente sono state rimosse.' })
+    } catch (e) {
+      console.error(e)
+      toast({ title: 'Errore', description: 'Impossibile eliminare la cronologia completa.', variant: 'destructive' })
+    }
   }
 
   const handleChangeAgentMode = (mode: AgentMode) => {
@@ -1564,22 +1788,26 @@ REGOLE IMPORTANTI:
         startImageInterview()
       } else if (mode === 'report' && !reportInterview.active) {
         startReportInterview()
+      } else if (mode === 'quiz' && !quizInterview.active) {
+        startQuizInterview()
       }
       return
     }
 
     setAgentMode(mode)
-    if (mode === 'dataset' || mode === 'image' || mode === 'report') {
+    if (mode === 'dataset' || mode === 'image' || mode === 'report' || mode === 'quiz') {
       setAttachedFiles([])
       setInputText('')
     }
     resetDatasetInterview()
     resetImageInterview()
     resetReportInterview()
+    resetQuizInterview()
 
     if (mode === 'dataset') startDatasetInterview()
     if (mode === 'image') startImageInterview()
     if (mode === 'report') startReportInterview()
+    if (mode === 'quiz') startQuizInterview()
   }
 
   const handlePublish = async (sessionId: string) => {
@@ -1613,27 +1841,37 @@ REGOLE IMPORTANTI:
         title = "Analisi Dataset CSV"
       }
 
-      // Create the task
-      await teacherApi.createTask(sessionId, {
+      const taskRes = await teacherApi.createTask(sessionId, {
         title,
         description: `Compito creato da AI Support (${publishModal.type})`,
         task_type: taskType,
         content_json: contentJson
       })
+      const createdTaskId = taskRes?.data?.id as string | undefined
 
-      // Send notification to class chat
-      const notificationMessage = publishModal.type === 'quiz'
-        ? `**Nuovo Quiz Pubblicato!**\n\n**${title}**\n${numQuestions} domande\n\nVai alla sezione **Compiti** per completarlo!`
-        : `**Nuovo Compito Pubblicato!**\n\n**${title}**\n\nVai alla sezione **Compiti** per completarlo!`
-
-      try {
-        await teacherApi.sendClassMessage(sessionId, notificationMessage)
-      } catch (chatErr) {
-        console.warn("Could not send chat notification:", chatErr)
+      if (publishMode === 'published' && createdTaskId) {
+        await teacherApi.updateTask(sessionId, createdTaskId, { new_status: 'published' })
       }
 
-      toast({ title: "Compito pubblicato!", description: "Notifica inviata agli studenti", className: "bg-green-500 text-white" })
+      if (publishMode === 'published') {
+        const notificationMessage = publishModal.type === 'quiz'
+          ? `**Nuovo Quiz Pubblicato!**\n\n**${title}**\n${numQuestions} domande\n\nVai alla sezione **Compiti** per completarlo!`
+          : `**Nuovo Compito Pubblicato!**\n\n**${title}**\n\nVai alla sezione **Compiti** per completarlo!`
+
+        try {
+          await teacherApi.sendClassMessage(sessionId, notificationMessage)
+        } catch (chatErr) {
+          console.warn("Could not send chat notification:", chatErr)
+        }
+      }
+
+      toast({
+        title: publishMode === 'published' ? "Compito pubblicato!" : "Compito salvato in bozza",
+        description: publishMode === 'published' ? "Notifica inviata agli studenti" : "Puoi pubblicarlo in seguito dal pannello sessione",
+        className: "bg-green-500 text-white"
+      })
       setPublishModal({ isOpen: false, type: 'quiz', data: null })
+      setPublishMode('published')
     } catch (e) {
       console.error(e)
       toast({ title: "Errore pubblicazione", variant: "destructive" })
@@ -1643,7 +1881,8 @@ REGOLE IMPORTANTI:
   const hasActiveInterview =
     (agentMode === 'dataset' && datasetInterview.active) ||
     (agentMode === 'image' && imageInterview.active) ||
-    (agentMode === 'report' && reportInterview.active)
+    (agentMode === 'report' && reportInterview.active) ||
+    (agentMode === 'quiz' && quizInterview.active)
 
   return (
     <>
@@ -1698,6 +1937,11 @@ REGOLE IMPORTANTI:
                       {!isSidebarCollapsed && (
                         <Button variant="ghost" size="sm" onClick={handleNewChat} className="h-8 w-8 p-0 hover:bg-slate-100" title="Nuova chat">
                           <Plus className="h-4 w-4 text-slate-600" />
+                        </Button>
+                      )}
+                      {!isSidebarCollapsed && (
+                        <Button variant="ghost" size="sm" onClick={handleClearAllConversations} className="h-8 w-8 p-0 hover:bg-slate-100" title="Pulisci cronologia">
+                          <Trash2 className="h-4 w-4 text-slate-600" />
                         </Button>
                       )}
                       <Button
@@ -1922,17 +2166,6 @@ REGOLE IMPORTANTI:
                       </div>
 
                       <div className="hidden lg:flex items-center gap-2 relative">
-                        <div className="flex items-center gap-1">
-                          {baseBgSwatches.map((swatch) => (
-                            <button
-                              key={swatch.label}
-                              onClick={() => setChatBg(swatch.color)}
-                              title={swatch.label}
-                              className={`h-5 w-5 rounded-full shadow-sm transition-transform hover:scale-105 ${chatBg === swatch.color ? 'ring-2 ring-offset-2' : ''}`}
-                              style={chatBg === swatch.color ? { backgroundColor: swatch.color, boxShadow: `0 0 0 2px ${accentTheme.accent}` } : { backgroundColor: swatch.color }}
-                            />
-                          ))}
-                        </div>
                         <div className="relative">
                           <Button
                             variant="ghost"
@@ -1944,23 +2177,30 @@ REGOLE IMPORTANTI:
                             <Palette className="h-4 w-4" />
                           </Button>
                           {showBgPalette && (
-                            <div className="absolute right-0 top-10 z-30 w-56 rounded-xl border border-slate-200 bg-white p-2 shadow-xl">
-                              <div className="grid grid-cols-8 gap-1">
-                                {paletteColors.map((color, idx) => (
-                                  <button
-                                    key={`${color}-${idx}`}
-                                    onClick={() => {
-                                      setChatBg(color)
-                                      setShowBgPalette(false)
-                                    }}
-                                    className="h-5 w-5 rounded hover:scale-110 transition-transform"
-                                    style={{ backgroundColor: color }}
-                                    title={color}
-                                  />
+                            <div className="absolute right-0 top-10 z-30 w-64 rounded-xl border border-slate-200 bg-white p-3 shadow-xl">
+                              <div className="space-y-3">
+                                {paletteGroups.map((group) => (
+                                  <div key={group.label}>
+                                    <div className="text-[10px] text-slate-400 mb-1">{group.label}</div>
+                                    <div className="grid grid-cols-5 gap-1">
+                                      {group.colors.map((color) => (
+                                        <button
+                                          key={`${group.label}-${color}`}
+                                          onClick={() => {
+                                            setChatBg(color)
+                                            setShowBgPalette(false)
+                                          }}
+                                          className={`h-6 w-6 rounded-md border transition-transform hover:scale-105 ${chatBg === color ? 'ring-2 ring-offset-1' : ''}`}
+                                          style={chatBg === color ? { backgroundColor: color, boxShadow: `0 0 0 2px ${accentTheme.accent}` } : { backgroundColor: color }}
+                                          title={color}
+                                        />
+                                      ))}
+                                    </div>
+                                  </div>
                                 ))}
                               </div>
                               <div className="mt-2 flex items-center justify-between text-[10px] text-slate-400">
-                                <span>Jolly 256</span>
+                                <span>Palette ridotta</span>
                                 <div className="flex items-center gap-2">
                                   <button
                                     onClick={() => chatBg && handleSetDefaultChatBg(chatBg)}
@@ -2023,7 +2263,10 @@ REGOLE IMPORTANTI:
                               {msg.role === 'assistant' ? (
                                 <MessageContent
                                   content={msg.content}
-                                  onPublish={(type, data) => setPublishModal({ isOpen: true, type, data })}
+                                  onPublish={(type, data) => {
+                                    setPublishMode('published')
+                                    setPublishModal({ isOpen: true, type, data })
+                                  }}
                                   onEdit={(type, data) => setEditorModal({ isOpen: true, type, data })}
                                   toast={toast}
                                   darkMode={chatBgIsDark}
@@ -2295,8 +2538,28 @@ REGOLE IMPORTANTI:
               </div>
 
               <p className="text-sm text-slate-600 mb-6">
-                Scegli la sessione in cui pubblicare questo {publishModal.type === 'quiz' ? 'quiz' : 'dataset'} come attività per gli studenti.
+                Scegli la sessione e la modalita di pubblicazione per questo {publishModal.type === 'quiz' ? 'quiz' : 'dataset'}.
               </p>
+
+              <div className="mb-5 rounded-lg border border-slate-200 p-3">
+                <div className="text-xs font-semibold text-slate-700 mb-2">Modalita pubblicazione</div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setPublishMode('published')}
+                    className={`text-xs px-3 py-1.5 rounded-full border ${publishMode === 'published' ? 'font-semibold' : 'text-slate-600 border-slate-200 hover:bg-slate-50'}`}
+                    style={publishMode === 'published' ? selectedSoftStyle : undefined}
+                  >
+                    Pubblica subito
+                  </button>
+                  <button
+                    onClick={() => setPublishMode('draft')}
+                    className={`text-xs px-3 py-1.5 rounded-full border ${publishMode === 'draft' ? 'font-semibold' : 'text-slate-600 border-slate-200 hover:bg-slate-50'}`}
+                    style={publishMode === 'draft' ? selectedSoftStyle : undefined}
+                  >
+                    Tieni in bozza
+                  </button>
+                </div>
+              </div>
 
               <div className="space-y-3 mb-6 max-h-60 overflow-y-auto">
                 {classesData?.map((session: any) => (
@@ -2334,6 +2597,7 @@ REGOLE IMPORTANTI:
             onSave={(editedData) => {
               // After editing, open publish modal with edited data
               setEditorModal({ isOpen: false, type: 'quiz', data: null })
+              setPublishMode('published')
               setPublishModal({ isOpen: true, type: editorModal.type, data: editedData })
             }}
             onCancel={() => setEditorModal({ isOpen: false, type: 'quiz', data: null })}

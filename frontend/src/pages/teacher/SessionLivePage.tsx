@@ -41,10 +41,12 @@ interface TaskData {
 interface SessionLiveData {
   session: {
     id: string
+    class_id: string
     title: string
     join_code: string
     status: string
     class_name: string
+    class_school_grade?: string | null
   }
   students: StudentData[]
   modules: {
@@ -205,13 +207,20 @@ export default function SessionLivePage() {
             <div className="flex items-center justify-between gap-4">
               {/* Left: Back + Session Info */}
               <div className="flex items-center gap-4 min-w-0">
-                <Link to="/teacher/sessions" className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white/10 hover:bg-white/20 transition-colors">
+                <Link to="/teacher/classes" className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white/10 hover:bg-white/20 transition-colors">
                   <ArrowLeft className="h-4 w-4" />
                   <span className="hidden sm:inline text-sm font-medium">Indietro</span>
                 </Link>
                 <div className="min-w-0">
                   <h1 className="text-lg md:text-xl font-bold truncate">{session.title}</h1>
-                  <p className="text-sm text-white/80 truncate">{session.class_name}</p>
+                  <div className="flex items-center gap-2">
+                    <p className="text-sm text-white/80 truncate">{session.class_name}</p>
+                    {session.class_school_grade && (
+                      <span className="text-[11px] px-2 py-0.5 rounded-full bg-white/20 border border-white/30">
+                        {session.class_school_grade}
+                      </span>
+                    )}
+                  </div>
                 </div>
               </div>
 
@@ -607,6 +616,13 @@ interface QuizWrongAnswerDetail {
 }
 
 function TaskCard({ task, sessionId, isExpanded, onToggle, onPublish, onDelete }: TaskCardProps) {
+  const queryClient = useQueryClient()
+  const { toast } = useToast()
+  const [isEditingDraft, setIsEditingDraft] = useState(false)
+  const [editTitle, setEditTitle] = useState(task.title)
+  const [editDescription, setEditDescription] = useState(task.description || '')
+  const [editContentJson, setEditContentJson] = useState(task.content_json || '')
+
   const getWrongQuizAnswers = (submission: SubmissionData): QuizWrongAnswerDetail[] => {
     if (task.task_type !== 'quiz') return []
     if (!task.content_json || !submission.content_json) return []
@@ -646,6 +662,19 @@ function TaskCard({ task, sessionId, isExpanded, onToggle, onPublish, onDelete }
     enabled: isExpanded && task.status === 'published',
   })
 
+  const updateTaskMutation = useMutation({
+    mutationFn: (payload: { title?: string; description?: string; content_json?: string }) =>
+      teacherApi.updateTask(sessionId, task.id, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['session-tasks', sessionId] })
+      setIsEditingDraft(false)
+      toast({ title: 'Bozza aggiornata' })
+    },
+    onError: () => {
+      toast({ title: 'Errore aggiornamento bozza', variant: 'destructive' })
+    },
+  })
+
   return (
     <div className={`rounded-lg border ${task.status === 'published' ? 'bg-green-50 border-green-200' : 'bg-gray-50 border-gray-200'}`}>
       <div className="flex items-center justify-between p-4">
@@ -665,12 +694,10 @@ function TaskCard({ task, sessionId, isExpanded, onToggle, onPublish, onDelete }
           )}
         </div>
         <div className="flex gap-2">
-          {task.status === 'published' && (
-            <Button size="sm" variant="outline" onClick={onToggle}>
-              {isExpanded ? <ChevronUp className="h-4 w-4 mr-1" /> : <ChevronDown className="h-4 w-4 mr-1" />}
-              {isExpanded ? 'Chiudi' : 'Risposte'}
-            </Button>
-          )}
+          <Button size="sm" variant="outline" onClick={onToggle}>
+            {isExpanded ? <ChevronUp className="h-4 w-4 mr-1" /> : <ChevronDown className="h-4 w-4 mr-1" />}
+            {isExpanded ? 'Chiudi' : (task.status === 'published' ? 'Dettagli / Risposte' : 'Dettagli')}
+          </Button>
           {task.status === 'draft' && (
             <Button size="sm" variant="outline" onClick={onPublish}>
               <Check className="h-4 w-4 mr-1" />
@@ -683,60 +710,128 @@ function TaskCard({ task, sessionId, isExpanded, onToggle, onPublish, onDelete }
         </div>
       </div>
 
-      {isExpanded && task.status === 'published' && (
+      {isExpanded && (
         <div className="border-t p-4 bg-white rounded-b-lg">
           <h4 className="font-medium mb-3 flex items-center gap-2">
             <Eye className="h-4 w-4" />
-            Risposte degli studenti
+            Dettagli Compito
           </h4>
-          {isLoading ? (
-            <p className="text-sm text-muted-foreground">Caricamento...</p>
-          ) : !submissions || submissions.length === 0 ? (
-            <p className="text-sm text-muted-foreground">Nessuna risposta ancora.</p>
+          {task.status === 'draft' && (
+            <div className="mb-4 flex items-center justify-between">
+              <p className="text-sm text-slate-600">Questa attività è in bozza: puoi modificarla prima della pubblicazione.</p>
+              <Button size="sm" variant="outline" onClick={() => setIsEditingDraft(v => !v)}>
+                {isEditingDraft ? 'Annulla Modifica' : 'Modifica Bozza'}
+              </Button>
+            </div>
+          )}
+
+          {isEditingDraft ? (
+            <div className="space-y-3 border rounded-lg p-3 bg-slate-50">
+              <div>
+                <label className="text-xs font-medium text-slate-600">Titolo</label>
+                <input
+                  value={editTitle}
+                  onChange={(e) => setEditTitle(e.target.value)}
+                  className="mt-1 w-full rounded border border-slate-300 px-2 py-1.5 text-sm"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-slate-600">Descrizione</label>
+                <textarea
+                  value={editDescription}
+                  onChange={(e) => setEditDescription(e.target.value)}
+                  className="mt-1 w-full rounded border border-slate-300 px-2 py-1.5 text-sm min-h-[70px]"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-slate-600">Contenuto (JSON)</label>
+                <textarea
+                  value={editContentJson}
+                  onChange={(e) => setEditContentJson(e.target.value)}
+                  className="mt-1 w-full rounded border border-slate-300 px-2 py-1.5 text-xs font-mono min-h-[180px]"
+                />
+              </div>
+              <div className="flex justify-end">
+                <Button
+                  size="sm"
+                  onClick={() => updateTaskMutation.mutate({
+                    title: editTitle,
+                    description: editDescription,
+                    content_json: editContentJson,
+                  })}
+                  disabled={updateTaskMutation.isPending}
+                >
+                  Salva Bozza
+                </Button>
+              </div>
+            </div>
           ) : (
             <div className="space-y-3">
-              {submissions.map((sub) => (
-                <div key={sub.id} className="p-3 bg-gray-50 rounded-lg border">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="font-medium text-sm">{sub.student_nickname}</span>
-                    <span className="text-xs text-muted-foreground">
-                      {new Date(sub.submitted_at).toLocaleString('it-IT')}
-                    </span>
-                  </div>
-                  <p className="text-sm mb-2">{sub.content}</p>
-                  {sub.score && (
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-medium bg-emerald-100 text-emerald-700 px-2 py-1 rounded">
-                        Punteggio: {sub.score}
-                      </span>
-                    </div>
-                  )}
-                  {task.task_type === 'quiz' && (() => {
-                    const wrongAnswers = getWrongQuizAnswers(sub)
-                    if (wrongAnswers.length === 0) return null
-                    return (
-                      <div className="mt-3 bg-red-50 rounded-lg border border-red-200 p-2 space-y-2">
-                        <p className="text-xs font-medium text-red-700">
-                          Errori: {wrongAnswers.length}
-                        </p>
-                        {wrongAnswers.map((wa) => (
-                          <div key={`${sub.id}-wrong-${wa.questionNumber}`} className="text-xs bg-white border border-red-100 rounded p-2">
-                            <p className="font-medium text-slate-800">
-                              {wa.questionNumber}. {wa.question}
-                            </p>
-                            <p className="text-red-700">
-                              Risposta studente: {wa.selectedAnswer}
-                            </p>
-                            <p className="text-emerald-700">
-                              Corretta: {wa.correctAnswer}
-                            </p>
-                          </div>
-                        ))}
+              {task.description && (
+                <p className="text-sm text-slate-700"><span className="font-medium">Descrizione:</span> {task.description}</p>
+              )}
+              {task.content_json && (
+                <details className="border rounded-lg bg-slate-50">
+                  <summary className="cursor-pointer px-3 py-2 text-sm font-medium text-slate-700">Apri contenuto del compito</summary>
+                  <pre className="text-xs p-3 overflow-x-auto whitespace-pre-wrap break-all">{task.content_json}</pre>
+                </details>
+              )}
+            </div>
+          )}
+
+          {task.status === 'published' && (
+            <div className="mt-6">
+              <h5 className="font-medium mb-3 text-sm">Risposte degli studenti</h5>
+              {isLoading ? (
+                <p className="text-sm text-muted-foreground">Caricamento...</p>
+              ) : !submissions || submissions.length === 0 ? (
+                <p className="text-sm text-muted-foreground">Nessuna risposta ancora.</p>
+              ) : (
+                <div className="space-y-3">
+                  {submissions.map((sub) => (
+                    <div key={sub.id} className="p-3 bg-gray-50 rounded-lg border">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="font-medium text-sm">{sub.student_nickname}</span>
+                        <span className="text-xs text-muted-foreground">
+                          {new Date(sub.submitted_at).toLocaleString('it-IT')}
+                        </span>
                       </div>
-                    )
-                  })()}
+                      <p className="text-sm mb-2">{sub.content}</p>
+                      {sub.score && (
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-medium bg-emerald-100 text-emerald-700 px-2 py-1 rounded">
+                            Punteggio: {sub.score}
+                          </span>
+                        </div>
+                      )}
+                      {task.task_type === 'quiz' && (() => {
+                        const wrongAnswers = getWrongQuizAnswers(sub)
+                        if (wrongAnswers.length === 0) return null
+                        return (
+                          <div className="mt-3 bg-red-50 rounded-lg border border-red-200 p-2 space-y-2">
+                            <p className="text-xs font-medium text-red-700">
+                              Errori: {wrongAnswers.length}
+                            </p>
+                            {wrongAnswers.map((wa) => (
+                              <div key={`${sub.id}-wrong-${wa.questionNumber}`} className="text-xs bg-white border border-red-100 rounded p-2">
+                                <p className="font-medium text-slate-800">
+                                  {wa.questionNumber}. {wa.question}
+                                </p>
+                                <p className="text-red-700">
+                                  Risposta studente: {wa.selectedAnswer}
+                                </p>
+                                <p className="text-emerald-700">
+                                  Corretta: {wa.correctAnswer}
+                                </p>
+                              </div>
+                            ))}
+                          </div>
+                        )
+                      })()}
+                    </div>
+                  ))}
                 </div>
-              ))}
+              )}
             </div>
           )}
         </div>
