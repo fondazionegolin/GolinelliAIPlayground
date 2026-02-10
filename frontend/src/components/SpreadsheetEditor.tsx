@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Download, FileUp, Plus, Trash2, Sigma, Wand2 } from 'lucide-react'
+import { Download, FileUp, Loader2, Plus, Trash2, Sigma, Wand2 } from 'lucide-react'
 import { HyperFormula } from 'hyperformula'
 import * as XLSX from 'xlsx'
+import { llmApi } from '@/lib/api'
+import { useToast } from '@/components/ui/use-toast'
 import {
   Bar,
   BarChart,
@@ -134,7 +136,9 @@ export function SpreadsheetEditor({
   chartConfig,
   onChartConfigChange,
 }: SpreadsheetEditorProps) {
+  const { toast } = useToast()
   const fileInputRef = useRef<HTMLInputElement | null>(null)
+  const cellInputRefs = useRef<Record<string, HTMLInputElement | null>>({})
   const normalizedData = useMemo(() => normalizeGrid(data), [data])
 
   const [selectedCell, setSelectedCell] = useState<CellPos | null>({ row: 0, col: 0 })
@@ -144,6 +148,7 @@ export function SpreadsheetEditor({
   const [activeContextMenu, setActiveContextMenu] = useState<'none' | 'chart' | 'fill'>('none')
   const [fillInstruction, setFillInstruction] = useState('')
   const [useFirstRowAsHeader, setUseFirstRowAsHeader] = useState(true)
+  const [aiFillLoading, setAiFillLoading] = useState(false)
 
   useEffect(() => {
     const onMouseUp = () => {
@@ -194,6 +199,19 @@ export function SpreadsheetEditor({
     onDataChange(next)
   }
 
+  const moveToCell = (row: number, col: number) => {
+    const maxRow = normalizedData.length - 1
+    const maxCol = (normalizedData[0]?.length || 1) - 1
+    const nextRow = Math.max(0, Math.min(maxRow, row))
+    const nextCol = Math.max(0, Math.min(maxCol, col))
+    setSelectedCell({ row: nextRow, col: nextCol })
+    setSelectionRange({ startRow: nextRow, endRow: nextRow, startCol: nextCol, endCol: nextCol })
+    setTimeout(() => {
+      const key = `${nextRow}-${nextCol}`
+      cellInputRefs.current[key]?.focus()
+    }, 0)
+  }
+
   const applyNaturalFill = () => {
     if (!normalizedSelection || !fillInstruction.trim()) return
     const instruction = fillInstruction.trim().toLowerCase()
@@ -229,6 +247,61 @@ export function SpreadsheetEditor({
     const valueMatch = fillInstruction.match(/(?:con|valore)\s+(.+)$/i)
     const constant = valueMatch ? valueMatch[1].trim() : fillInstruction
     applyToSelection(normalizedSelection, () => constant)
+  }
+
+  const applyAIFill = async () => {
+    if (!normalizedSelection || !fillInstruction.trim()) return
+    setAiFillLoading(true)
+    try {
+      const matrix: string[][] = []
+      for (let r = normalizedSelection.startRow; r <= normalizedSelection.endRow; r += 1) {
+        const row: string[] = []
+        for (let c = normalizedSelection.startCol; c <= normalizedSelection.endCol; c += 1) {
+          row.push(normalizedData[r]?.[c] ?? '')
+        }
+        matrix.push(row)
+      }
+
+      const prompt = `Sei un assistente per fogli di calcolo.
+Devi riempire/modificare SOLO la selezione indicata in base all'istruzione utente.
+Istruzione: "${fillInstruction.trim()}"
+Intervallo: ${rangeToA1(normalizedSelection)}
+Dimensioni: ${matrix.length} righe x ${matrix[0]?.length || 0} colonne
+Valori correnti (JSON): ${JSON.stringify(matrix)}
+
+Rispondi SOLO con JSON valido in questo formato:
+{"values":[["..."]]}
+Dove values deve avere esattamente le stesse dimensioni della selezione.
+Puoi inserire numeri, testo o formule (es. "=A2*2").`
+
+      const response = await llmApi.teacherChat(prompt, [], 'teacher_support')
+      const raw = response.data?.response || response.data?.content || ''
+      const jsonBlock = raw.match(/\{[\s\S]*\}/)
+      if (!jsonBlock) throw new Error('Nessun JSON in risposta')
+      const parsed = JSON.parse(jsonBlock[0])
+      const values = parsed?.values
+      if (!Array.isArray(values) || values.length !== matrix.length) throw new Error('Dimensioni risposta non valide')
+      for (let i = 0; i < values.length; i += 1) {
+        if (!Array.isArray(values[i]) || values[i].length !== matrix[i].length) {
+          throw new Error('Dimensioni risposta non valide')
+        }
+      }
+
+      const next = normalizedData.map(r => [...r])
+      for (let r = normalizedSelection.startRow; r <= normalizedSelection.endRow; r += 1) {
+        for (let c = normalizedSelection.startCol; c <= normalizedSelection.endCol; c += 1) {
+          next[r][c] = String(values[r - normalizedSelection.startRow][c - normalizedSelection.startCol] ?? '')
+        }
+      }
+      onDataChange(next)
+      toast({ title: 'Riempimento AI completato' })
+    } catch (error) {
+      console.error('AI fill failed', error)
+      applyNaturalFill()
+      toast({ title: 'Fallback locale applicato', description: 'Risposta AI non disponibile, ho usato il riempimento guidato.' })
+    } finally {
+      setAiFillLoading(false)
+    }
   }
 
   const addRow = () => {
@@ -432,7 +505,7 @@ export function SpreadsheetEditor({
             <FileUp className="mr-2 h-4 w-4" />
             Importa CSV/XLSX
           </Button>
-          <input
+                          <input
             ref={fileInputRef}
             type="file"
             className="hidden"
@@ -525,10 +598,23 @@ export function SpreadsheetEditor({
                         onMouseEnter={() => handleCellMouseEnter(rowIdx, colIdx)}
                       >
                         <input
+                          ref={(el) => { cellInputRefs.current[`${rowIdx}-${colIdx}`] = el }}
+                          onMouseDown={(e) => {
+                            handleCellMouseDown(rowIdx, colIdx, e)
+                            e.preventDefault()
+                            ;(e.currentTarget as HTMLInputElement).focus()
+                          }}
+                          onMouseEnter={() => handleCellMouseEnter(rowIdx, colIdx)}
                           value={normalizedData[rowIdx][colIdx]}
                           onFocus={() => {
                             setSelectedCell({ row: rowIdx, col: colIdx })
                             setSelectionRange({ startRow: rowIdx, endRow: rowIdx, startCol: colIdx, endCol: colIdx })
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault()
+                              moveToCell(rowIdx + 1, colIdx)
+                            }
                           }}
                           onChange={(e) => setCellValue(rowIdx, colIdx, e.target.value)}
                           className="h-9 w-full border-0 bg-transparent px-2 text-sm text-slate-800 focus:outline-none"
@@ -595,7 +681,10 @@ export function SpreadsheetEditor({
                   placeholder="Descrivi come riempire l'intervallo"
                   className="bg-slate-800 text-slate-100 border-slate-600 placeholder:text-slate-400"
                 />
-                <Button onClick={applyNaturalFill} className="bg-blue-600 hover:bg-blue-500 text-white">Applica</Button>
+                <Button onClick={applyNaturalFill} variant="outline" className="border-slate-500 bg-transparent text-white hover:bg-slate-700">Guidato</Button>
+                <Button onClick={applyAIFill} className="bg-blue-600 hover:bg-blue-500 text-white" disabled={aiFillLoading}>
+                  {aiFillLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'AI'}
+                </Button>
               </div>
             </div>
           )}
