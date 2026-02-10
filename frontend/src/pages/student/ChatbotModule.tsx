@@ -3,7 +3,6 @@ import { useMutation, useQuery } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
 import { llmApi, studentApi, teacherbotsApi } from '@/lib/api'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import {
   Send, Bot, User, GraduationCap,
   Lightbulb, ClipboardCheck, ArrowLeft, Sparkles,
@@ -75,12 +74,12 @@ const PROFILE_ICONS: Record<string, React.ReactNode> = {
 }
 
 const PROFILE_COLORS: Record<string, string> = {
-  'tutor': 'bg-slate-100 text-slate-700 border-slate-200',
-  'quiz': 'bg-slate-100 text-slate-700 border-slate-200',
-  'interview': 'bg-slate-100 text-slate-700 border-slate-200',
-  'oral_exam': 'bg-slate-100 text-slate-700 border-slate-200',
-  'dataset_generator': 'bg-slate-100 text-slate-700 border-slate-200',
-  'math_coach': 'bg-slate-100 text-slate-700 border-slate-200',
+  'tutor': 'bg-emerald-50 text-emerald-600 border-emerald-200',
+  'quiz': 'bg-rose-50 text-rose-600 border-rose-200',
+  'interview': 'bg-violet-50 text-violet-600 border-violet-200',
+  'oral_exam': 'bg-amber-50 text-amber-600 border-amber-200',
+  'dataset_generator': 'bg-sky-50 text-sky-600 border-sky-200',
+  'math_coach': 'bg-cyan-50 text-cyan-600 border-cyan-200',
 }
 
 const FALLBACK_PROFILES: ChatbotProfile[] = [
@@ -161,7 +160,7 @@ export default function ChatbotModule({ sessionId, initialTeacherbotId, onInputF
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [conversationId, setConversationId] = useState<string | null>(null)
-  const [showHistory, setShowHistory] = useState(true)
+  const [showHistory, setShowHistory] = useState(false)
   const [mobileHistoryOpen, setMobileHistoryOpen] = useState(false)
   const [selectedProfile, setSelectedProfile] = useState<string | null>(null)
   const [selectedModel, setSelectedModel] = useState<LLMModel | null>(null)
@@ -945,19 +944,19 @@ export default function ChatbotModule({ sessionId, initialTeacherbotId, onInputF
     return (
       <div className="h-full overflow-y-auto p-4 pb-20">
         <h2 className="text-lg font-bold text-slate-800 mb-4">Scegli un assistente AI</h2>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-2 gap-2.5">
           {profiles.map((profile) => (
             <motion.button
               key={profile.key}
               whileTap={{ scale: 0.97 }}
               onClick={() => handleSelectProfile(profile.key)}
-              className={`text-left p-4 rounded-xl border-2 ${PROFILE_COLORS[profile.key] || 'border-gray-200'} bg-white shadow-sm active:shadow-none transition-all`}
+              className={`text-left p-3 rounded-xl border ${PROFILE_COLORS[profile.key] || 'border-gray-200'} bg-white shadow-sm active:shadow-none transition-all`}
             >
-              <div className={`inline-flex items-center justify-center w-10 h-10 rounded-lg mb-2 ${PROFILE_COLORS[profile.key]?.split(' ').slice(0, 2).join(' ') || 'bg-gray-100'}`}>
-                {PROFILE_ICONS[profile.key] || <Bot className="h-5 w-5" />}
+              <div className={`inline-flex items-center justify-center w-8 h-8 rounded-lg mb-1.5 ${PROFILE_COLORS[profile.key]?.split(' ').slice(0, 2).join(' ') || 'bg-gray-100'}`}>
+                {PROFILE_ICONS[profile.key] || <Bot className="h-4 w-4" />}
               </div>
               <h3 className="font-semibold text-sm text-slate-800">{profile.name}</h3>
-              <p className="text-xs text-slate-500 line-clamp-2 mt-1">{profile.description}</p>
+              <p className="text-xs text-slate-500 line-clamp-1 mt-0.5">{profile.description}</p>
             </motion.button>
           ))}
         </div>
@@ -969,19 +968,19 @@ export default function ChatbotModule({ sessionId, initialTeacherbotId, onInputF
               <Wand2 className="h-4 w-4 text-indigo-600" />
               Teacherbots del Docente
             </h3>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-2 gap-2.5">
               {availableTeacherbots.map((bot) => (
                 <motion.button
                   key={bot.id}
                   whileTap={{ scale: 0.97 }}
                   onClick={() => handleSelectTeacherbot(bot)}
-                  className="text-left p-4 rounded-xl border-2 border-indigo-200 bg-white shadow-sm active:shadow-none transition-all"
+                  className="text-left p-3 rounded-xl border border-indigo-200 bg-white shadow-sm active:shadow-none transition-all"
                 >
-                  <div className={`inline-flex items-center justify-center w-10 h-10 rounded-lg mb-2 ${getTeacherbotColorClass(bot.color)}`}>
-                    <Wand2 className="h-5 w-5 text-white" />
+                  <div className={`inline-flex items-center justify-center w-8 h-8 rounded-lg mb-1.5 ${getTeacherbotColorClass(bot.color)}`}>
+                    <Wand2 className="h-4 w-4 text-white" />
                   </div>
                   <h3 className="font-semibold text-sm text-slate-800">{bot.name}</h3>
-                  <p className="text-xs text-slate-500 line-clamp-2 mt-1">{bot.synopsis}</p>
+                  <p className="text-xs text-slate-500 line-clamp-1 mt-0.5">{bot.synopsis}</p>
                 </motion.button>
               ))}
             </div>
@@ -1060,30 +1059,20 @@ export default function ChatbotModule({ sessionId, initialTeacherbotId, onInputF
   if (!selectedProfile && !selectedTeacherbot) {
     return (
       <div className="h-full overflow-y-auto p-6 scrollbar-thin scrollbar-thumb-indigo-200 scrollbar-track-transparent">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
           {profiles.map((profile) => (
-            <Card
+            <motion.button
               key={profile.key}
-              className={`cursor-pointer transition-all hover:shadow-lg hover:scale-[1.02] border-2 ${PROFILE_COLORS[profile.key] || 'border-gray-200'}`}
+              whileTap={{ scale: 0.98 }}
+              className={`text-left p-3 rounded-xl border bg-white shadow-sm hover:shadow-md transition-all ${PROFILE_COLORS[profile.key] || 'border-gray-200'}`}
               onClick={() => handleSelectProfile(profile.key)}
             >
-              <CardHeader className="pb-2">
-                <div className={`inline-flex items-center justify-center w-12 h-12 rounded-lg mb-2 ${PROFILE_COLORS[profile.key]?.split(' ').slice(0, 2).join(' ') || 'bg-gray-100'}`}>
-                  {PROFILE_ICONS[profile.key] || <Bot className="h-6 w-6" />}
-                </div>
-                <CardTitle className="text-lg">{profile.name}</CardTitle>
-                <CardDescription>{profile.description}</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="flex flex-wrap gap-1">
-                  {profile.suggested_prompts.slice(0, 2).map((prompt, i) => (
-                    <span key={i} className="text-xs px-2 py-1 bg-white/50 rounded-full">
-                      {prompt}
-                    </span>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
+              <div className={`inline-flex items-center justify-center w-9 h-9 rounded-lg mb-1.5 ${PROFILE_COLORS[profile.key]?.split(' ').slice(0, 2).join(' ') || 'bg-gray-100'}`}>
+                {PROFILE_ICONS[profile.key] || <Bot className="h-4.5 w-4.5" />}
+              </div>
+              <div className="text-sm font-semibold text-slate-800 leading-tight">{profile.name}</div>
+              <div className="text-xs text-slate-500 line-clamp-2 mt-0.5">{profile.description}</div>
+            </motion.button>
           ))}
         </div>
 
@@ -1094,24 +1083,20 @@ export default function ChatbotModule({ sessionId, initialTeacherbotId, onInputF
               <Wand2 className="h-5 w-5 text-indigo-600" />
               Teacherbots del Docente
             </h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
               {availableTeacherbots.map((bot) => (
-                <Card
+                <motion.button
                   key={bot.id}
-                  className="cursor-pointer transition-all hover:shadow-lg hover:scale-[1.02] border-2 border-indigo-200 hover:border-indigo-400"
+                  whileTap={{ scale: 0.98 }}
+                  className="text-left p-3 rounded-xl border border-indigo-200 bg-white shadow-sm hover:shadow-md transition-all"
                   onClick={() => handleSelectTeacherbot(bot)}
                 >
-                  <CardHeader className="pb-2">
-                    <div className={`inline-flex items-center justify-center w-12 h-12 rounded-lg mb-2 ${getTeacherbotColorClass(bot.color)}`}>
-                      <Wand2 className="h-6 w-6 text-white" />
-                    </div>
-                    <CardTitle className="text-lg">{bot.name}</CardTitle>
-                    <CardDescription>{bot.synopsis}</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <p className="text-xs text-slate-500 line-clamp-2">{bot.description}</p>
-                  </CardContent>
-                </Card>
+                  <div className={`inline-flex items-center justify-center w-9 h-9 rounded-lg mb-1.5 ${getTeacherbotColorClass(bot.color)}`}>
+                    <Wand2 className="h-4.5 w-4.5 text-white" />
+                  </div>
+                  <div className="text-sm font-semibold text-slate-800 leading-tight">{bot.name}</div>
+                  <div className="text-xs text-slate-500 line-clamp-2 mt-0.5">{bot.synopsis || bot.description}</div>
+                </motion.button>
               ))}
             </div>
           </div>

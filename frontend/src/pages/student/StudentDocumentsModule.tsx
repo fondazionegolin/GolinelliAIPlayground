@@ -79,7 +79,7 @@ export default function StudentDocumentsModule({ sessionId: _sessionId }: Studen
   })
 
   // Sidebar State
-  const [showSidebar, setShowSidebar] = useState(true)
+  const [showSidebar, setShowSidebar] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [submitted, setSubmitted] = useState(false)
   const [draftDocuments, setDraftDocuments] = useState<DraftDocument[]>([])

@@ -124,7 +124,7 @@ export default function StudentDashboard() {
   const [lastDocument] = useState<string | null>(null)
   const [sidebarWidth, setSidebarWidth] = useState(380)
   const [selectedTeacherbotId, setSelectedTeacherbotId] = useState<string | null>(null)
-  const [showSidebar, setShowSidebar] = useState(true)
+  const [showSidebar, setShowSidebar] = useState(false)
   const [studentAccent, setStudentAccent] = useState<StudentAccentId>(loadStudentAccent())
 
   const { isMobile } = useMobile()

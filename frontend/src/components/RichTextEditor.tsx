@@ -60,6 +60,7 @@ export function RichTextEditor({
   onMissingSelectionForAI
 }: RichTextEditorProps) {
   const [selection, setSelection] = useState<SelectionState | null>(null)
+  const [lastValidSelection, setLastValidSelection] = useState<SelectionState | null>(null)
 
   const editor = useEditor({
     extensions: [
@@ -101,12 +102,14 @@ export function RichTextEditor({
 
       if (selectedText && selectedText.trim().length > 3) {
         const fallbackPosition = { x: 20, y: 80 }
-        setSelection({
+        const nextSelection = {
           from,
           to,
           text: selectedText.trim(),
           position: aiPanelAnchor || fallbackPosition
-        })
+        }
+        setSelection(nextSelection)
+        setLastValidSelection(nextSelection)
       } else {
         setSelection(null)
       }
@@ -118,17 +121,29 @@ export function RichTextEditor({
     if (!editor || readOnly || aiOpenRequestId === 0) return
     const { from, to } = editor.state.selection
     const selectedText = editor.state.doc.textBetween(from, to, ' ').trim()
-    if (!selectedText || selectedText.length < 1) {
-      onMissingSelectionForAI?.()
+
+    if (selectedText && selectedText.length > 0) {
+      const nextSelection = {
+        from,
+        to,
+        text: selectedText,
+        position: aiPanelAnchor || { x: 20, y: 80 }
+      }
+      setSelection(nextSelection)
+      setLastValidSelection(nextSelection)
       return
     }
-    setSelection({
-      from,
-      to,
-      text: selectedText,
-      position: aiPanelAnchor || { x: 20, y: 80 }
-    })
-  }, [aiOpenRequestId, editor, readOnly, aiPanelAnchor, onMissingSelectionForAI])
+
+    if (lastValidSelection && lastValidSelection.text.trim().length > 0) {
+      setSelection({
+        ...lastValidSelection,
+        position: aiPanelAnchor || lastValidSelection.position
+      })
+      return
+    }
+
+    onMissingSelectionForAI?.()
+  }, [aiOpenRequestId, editor, readOnly, aiPanelAnchor, onMissingSelectionForAI, lastValidSelection])
 
   // Close panel when clicking elsewhere or when selection changes
   const handleMouseDown = useCallback(() => {
@@ -158,6 +173,7 @@ export function RichTextEditor({
     const nextContent = looksLikeMarkdown(newText) ? renderMarkdownToHtml(newText) : newText
     editor.chain().focus().deleteRange({ from, to }).insertContent(nextContent).run()
     setSelection(null)
+    setLastValidSelection(null)
   }, [editor, selection])
 
   if (!editor) {

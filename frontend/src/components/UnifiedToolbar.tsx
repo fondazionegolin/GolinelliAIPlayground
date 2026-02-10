@@ -51,6 +51,12 @@ export function UnifiedToolbar({
 }: UnifiedToolbarProps) {
   const [showImageModal, setShowImageModal] = useState(false)
   const aiAssistButtonRef = useRef<HTMLButtonElement | null>(null)
+  const toolbarRef = useRef<HTMLDivElement | null>(null)
+  const [isCompactLayout, setIsCompactLayout] = useState(false)
+  const stackVertical = mode === 'document' && isCompactLayout
+  const groupClass = stackVertical
+    ? 'flex items-center gap-0.5 w-full border-b border-slate-200 pb-1 mb-1'
+    : 'flex items-center gap-0.5 border-r pr-2 mr-1 border-slate-300'
 
   const handleImageGenerated = (imageUrl: string) => {
     if (mode === 'document' && editor) {
@@ -91,11 +97,25 @@ export function UnifiedToolbar({
     return () => window.removeEventListener('resize', emitAnchor)
   }, [mode, onAIAssistAnchorChange])
 
+  useEffect(() => {
+    if (!toolbarRef.current) return
+    const node = toolbarRef.current
+    const observer = new ResizeObserver((entries) => {
+      const width = entries[0]?.contentRect.width || window.innerWidth
+      setIsCompactLayout(width < 980)
+    })
+    observer.observe(node)
+    return () => observer.disconnect()
+  }, [])
+
   return (
-    <div className="flex items-center gap-1 p-2 border-b border-slate-200 bg-white flex-wrap sticky top-0 z-20 h-14 shadow-sm">
+    <div
+      ref={toolbarRef}
+      className={`flex gap-1 p-2 border-b border-slate-200 bg-white sticky top-0 z-20 shadow-sm ${stackVertical ? 'flex-col items-stretch h-auto' : 'items-center flex-wrap h-14'}`}
+    >
       
       {/* History Group */}
-      <div className="flex items-center gap-0.5 border-r pr-2 mr-1 border-slate-300">
+      <div className={groupClass}>
         <Button size="icon" variant="ghost" className="h-8 w-8" 
           onClick={() => mode === 'document' ? editor?.chain().focus().undo().run() : null} 
           disabled={mode === 'document' ? !editor?.can().undo() : true} // TODO: Implement slide undo
@@ -114,7 +134,7 @@ export function UnifiedToolbar({
       {mode === 'document' && editor && (
         <>
           {/* Font Selector */}
-          <div className="flex items-center gap-0.5 border-r pr-2 mr-1 border-slate-300">
+          <div className={groupClass}>
             <select
               className="h-8 text-xs border rounded px-2 w-28"
               onChange={(e) => editor.chain().focus().setFontFamily(e.target.value).run()}
@@ -124,7 +144,7 @@ export function UnifiedToolbar({
           </div>
 
           {/* Text Style Group */}
-          <div className="flex items-center gap-0.5 border-r pr-2 mr-1 border-slate-300">
+          <div className={groupClass}>
             <Button size="icon" variant="ghost" className={`h-8 w-8 ${editor.isActive('bold') ? 'bg-slate-200 text-black' : ''}`} onClick={() => editor.chain().focus().toggleBold().run()}>
               <Bold className="h-4 w-4" />
             </Button>
@@ -147,7 +167,7 @@ export function UnifiedToolbar({
           </div>
 
           {/* Alignment Group */}
-          <div className="flex items-center gap-0.5 border-r pr-2 mr-1 border-slate-300">
+          <div className={groupClass}>
             <Button size="icon" variant="ghost" className={`h-8 w-8 ${editor.isActive({ textAlign: 'left' }) ? 'bg-slate-200' : ''}`} onClick={() => editor.chain().focus().setTextAlign('left').run()}>
               <AlignLeft className="h-4 w-4" />
             </Button>
@@ -163,7 +183,7 @@ export function UnifiedToolbar({
           </div>
 
           {/* Formatting Group */}
-          <div className="flex items-center gap-0.5 border-r pr-2 mr-1 border-slate-300">
+          <div className={groupClass}>
             <Button size="icon" variant="ghost" className={`h-8 w-8 ${editor.isActive('heading', { level: 1 }) ? 'bg-slate-200' : ''}`} onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}>
               <Heading1 className="h-4 w-4" />
             </Button>
@@ -176,7 +196,7 @@ export function UnifiedToolbar({
           </div>
 
           {/* Lists & Media */}
-          <div className="flex items-center gap-0.5">
+          <div className={stackVertical ? 'flex items-center gap-0.5 w-full border-b border-slate-200 pb-1 mb-1' : 'flex items-center gap-0.5'}>
             <Button size="icon" variant="ghost" className={`h-8 w-8 ${editor.isActive('bulletList') ? 'bg-slate-200' : ''}`} onClick={() => editor.chain().focus().toggleBulletList().run()}>
               <List className="h-4 w-4" />
             </Button>
@@ -209,7 +229,7 @@ export function UnifiedToolbar({
           </div>
 
           {/* Document Zoom */}
-          <div className="flex items-center gap-0.5 border-l pl-2 ml-1 border-slate-300">
+          <div className={stackVertical ? 'flex items-center gap-0.5 w-full' : 'flex items-center gap-0.5 border-l pl-2 ml-1 border-slate-300'}>
             <Button
               size="icon"
               variant="ghost"
