@@ -3,7 +3,7 @@ import {
   Bold, Italic, Underline, Strikethrough,
   AlignLeft, AlignCenter, AlignRight, AlignJustify,
   List, ListOrdered, Undo, Redo, Image as ImageIcon, Link as LinkIcon,
-  Heading1, Heading2, Pilcrow, Type, Plus, Minus, ZoomIn, ZoomOut, Sparkles, Rows3
+  Heading1, Heading2, Pilcrow, Type, Plus, Minus, ZoomIn, ZoomOut, Sparkles, Rows3, MoreHorizontal
 } from 'lucide-react'
 import { Button } from './ui/button'
 import { Editor } from '@tiptap/react'
@@ -50,13 +50,12 @@ export function UnifiedToolbar({
   onToggleRuledLines
 }: UnifiedToolbarProps) {
   const [showImageModal, setShowImageModal] = useState(false)
+  const [showOverflowMenu, setShowOverflowMenu] = useState(false)
   const aiAssistButtonRef = useRef<HTMLButtonElement | null>(null)
+  const overflowMenuRef = useRef<HTMLDivElement | null>(null)
   const toolbarRef = useRef<HTMLDivElement | null>(null)
   const [isCompactLayout, setIsCompactLayout] = useState(false)
-  const stackVertical = mode === 'document' && isCompactLayout
-  const groupClass = stackVertical
-    ? 'flex items-center gap-0.5 w-full border-b border-slate-200 pb-1 mb-1'
-    : 'flex items-center gap-0.5 border-r pr-2 mr-1 border-slate-300'
+  const groupClass = 'flex items-center gap-0.5 border-r pr-2 mr-1 border-slate-300'
 
   const handleImageGenerated = (imageUrl: string) => {
     if (mode === 'document' && editor) {
@@ -108,10 +107,21 @@ export function UnifiedToolbar({
     return () => observer.disconnect()
   }, [])
 
+  useEffect(() => {
+    const onClickOutside = (event: MouseEvent) => {
+      if (!overflowMenuRef.current) return
+      if (!overflowMenuRef.current.contains(event.target as Node)) {
+        setShowOverflowMenu(false)
+      }
+    }
+    document.addEventListener('mousedown', onClickOutside)
+    return () => document.removeEventListener('mousedown', onClickOutside)
+  }, [])
+
   return (
     <div
       ref={toolbarRef}
-      className={`flex gap-1 p-2 border-b border-slate-200 bg-white sticky top-0 z-20 shadow-sm ${stackVertical ? 'flex-col items-stretch h-auto' : 'items-center flex-wrap h-14'}`}
+      className="flex items-center gap-1 p-2 border-b border-slate-200 bg-white sticky top-0 z-20 shadow-sm h-14 overflow-x-auto"
     >
       
       {/* History Group */}
@@ -134,6 +144,7 @@ export function UnifiedToolbar({
       {mode === 'document' && editor && (
         <>
           {/* Font Selector */}
+          {!isCompactLayout && (
           <div className={groupClass}>
             <select
               className="h-8 text-xs border rounded px-2 w-28"
@@ -142,6 +153,7 @@ export function UnifiedToolbar({
               {FONTS.map(f => <option key={f} value={f}>{f}</option>)}
             </select>
           </div>
+          )}
 
           {/* Text Style Group */}
           <div className={groupClass}>
@@ -154,6 +166,8 @@ export function UnifiedToolbar({
             <Button size="icon" variant="ghost" className={`h-8 w-8 ${editor.isActive('underline') ? 'bg-slate-200 text-black' : ''}`} onClick={() => editor.chain().focus().toggleUnderline().run()}>
               <Underline className="h-4 w-4" />
             </Button>
+            {!isCompactLayout && (
+              <>
             <Button size="icon" variant="ghost" className={`h-8 w-8 ${editor.isActive('strike') ? 'bg-slate-200 text-black' : ''}`} onClick={() => editor.chain().focus().toggleStrike().run()}>
               <Strikethrough className="h-4 w-4" />
             </Button>
@@ -164,9 +178,12 @@ export function UnifiedToolbar({
               className="h-8 w-8 p-0 border-0 rounded cursor-pointer ml-1"
               title="Colore testo"
             />
+              </>
+            )}
           </div>
 
           {/* Alignment Group */}
+          {!isCompactLayout && (
           <div className={groupClass}>
             <Button size="icon" variant="ghost" className={`h-8 w-8 ${editor.isActive({ textAlign: 'left' }) ? 'bg-slate-200' : ''}`} onClick={() => editor.chain().focus().setTextAlign('left').run()}>
               <AlignLeft className="h-4 w-4" />
@@ -181,8 +198,10 @@ export function UnifiedToolbar({
               <AlignJustify className="h-4 w-4" />
             </Button>
           </div>
+          )}
 
           {/* Formatting Group */}
+          {!isCompactLayout && (
           <div className={groupClass}>
             <Button size="icon" variant="ghost" className={`h-8 w-8 ${editor.isActive('heading', { level: 1 }) ? 'bg-slate-200' : ''}`} onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}>
               <Heading1 className="h-4 w-4" />
@@ -194,9 +213,12 @@ export function UnifiedToolbar({
               <Pilcrow className="h-4 w-4" />
             </Button>
           </div>
+          )}
 
           {/* Lists & Media */}
-          <div className={stackVertical ? 'flex items-center gap-0.5 w-full border-b border-slate-200 pb-1 mb-1' : 'flex items-center gap-0.5'}>
+          <div className="flex items-center gap-0.5">
+            {!isCompactLayout && (
+              <>
             <Button size="icon" variant="ghost" className={`h-8 w-8 ${editor.isActive('bulletList') ? 'bg-slate-200' : ''}`} onClick={() => editor.chain().focus().toggleBulletList().run()}>
               <List className="h-4 w-4" />
             </Button>
@@ -209,6 +231,8 @@ export function UnifiedToolbar({
             <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => setShowImageModal(true)} title="Inserisci immagine">
               <ImageIcon className="h-4 w-4" />
             </Button>
+              </>
+            )}
             <Button
               ref={aiAssistButtonRef}
               size="icon"
@@ -226,19 +250,82 @@ export function UnifiedToolbar({
             >
               <Sparkles className="h-4 w-4" />
             </Button>
+            {isCompactLayout && (
+              <div className="relative" ref={overflowMenuRef}>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="h-8 w-8"
+                  onClick={() => setShowOverflowMenu((v) => !v)}
+                  title="Altri strumenti"
+                >
+                  <MoreHorizontal className="h-4 w-4" />
+                </Button>
+                {showOverflowMenu && (
+                  <div className="absolute right-0 top-10 z-30 w-64 rounded-xl border border-slate-200 bg-white p-2 shadow-xl space-y-1">
+                    <div className="flex items-center gap-2 pb-1 mb-1 border-b border-slate-100">
+                      <select
+                        className="h-8 text-xs border rounded px-2 w-full"
+                        onChange={(e) => editor.chain().focus().setFontFamily(e.target.value).run()}
+                      >
+                        {FONTS.map(f => <option key={f} value={f}>{f}</option>)}
+                      </select>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <Button size="icon" variant="ghost" className={`h-8 w-8 ${editor.isActive('strike') ? 'bg-slate-200 text-black' : ''}`} onClick={() => editor.chain().focus().toggleStrike().run()}>
+                        <Strikethrough className="h-4 w-4" />
+                      </Button>
+                      <input
+                        type="color"
+                        onInput={event => editor.chain().focus().setColor((event.target as HTMLInputElement).value).run()}
+                        value={editor.getAttributes('textStyle').color || '#000000'}
+                        className="h-8 w-8 p-0 border-0 rounded cursor-pointer"
+                        title="Colore testo"
+                      />
+                      <Button size="icon" variant="ghost" className={`h-8 w-8 ${editor.isActive({ textAlign: 'left' }) ? 'bg-slate-200' : ''}`} onClick={() => editor.chain().focus().setTextAlign('left').run()}><AlignLeft className="h-4 w-4" /></Button>
+                      <Button size="icon" variant="ghost" className={`h-8 w-8 ${editor.isActive({ textAlign: 'center' }) ? 'bg-slate-200' : ''}`} onClick={() => editor.chain().focus().setTextAlign('center').run()}><AlignCenter className="h-4 w-4" /></Button>
+                      <Button size="icon" variant="ghost" className={`h-8 w-8 ${editor.isActive({ textAlign: 'right' }) ? 'bg-slate-200' : ''}`} onClick={() => editor.chain().focus().setTextAlign('right').run()}><AlignRight className="h-4 w-4" /></Button>
+                      <Button size="icon" variant="ghost" className={`h-8 w-8 ${editor.isActive({ textAlign: 'justify' }) ? 'bg-slate-200' : ''}`} onClick={() => editor.chain().focus().setTextAlign('justify').run()}><AlignJustify className="h-4 w-4" /></Button>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <Button size="icon" variant="ghost" className={`h-8 w-8 ${editor.isActive('heading', { level: 1 }) ? 'bg-slate-200' : ''}`} onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}><Heading1 className="h-4 w-4" /></Button>
+                      <Button size="icon" variant="ghost" className={`h-8 w-8 ${editor.isActive('heading', { level: 2 }) ? 'bg-slate-200' : ''}`} onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}><Heading2 className="h-4 w-4" /></Button>
+                      <Button size="icon" variant="ghost" className={`h-8 w-8 ${editor.isActive('paragraph') ? 'bg-slate-200' : ''}`} onClick={() => editor.chain().focus().setParagraph().run()}><Pilcrow className="h-4 w-4" /></Button>
+                      <Button size="icon" variant="ghost" className={`h-8 w-8 ${editor.isActive('bulletList') ? 'bg-slate-200' : ''}`} onClick={() => editor.chain().focus().toggleBulletList().run()}><List className="h-4 w-4" /></Button>
+                      <Button size="icon" variant="ghost" className={`h-8 w-8 ${editor.isActive('orderedList') ? 'bg-slate-200' : ''}`} onClick={() => editor.chain().focus().toggleOrderedList().run()}><ListOrdered className="h-4 w-4" /></Button>
+                    </div>
+                    <div className="flex items-center gap-1 pt-1 border-t border-slate-100">
+                      <Button size="icon" variant="ghost" className="h-8 w-8" onClick={setLink}><LinkIcon className="h-4 w-4" /></Button>
+                      <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => setShowImageModal(true)} title="Inserisci immagine"><ImageIcon className="h-4 w-4" /></Button>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className={`h-8 w-8 ${showRuledLines ? 'bg-slate-200 text-slate-900' : 'text-slate-500'}`}
+                        onClick={onToggleRuledLines}
+                        title="Mostra/Nascondi righe del foglio"
+                      >
+                        <Rows3 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Document Zoom */}
-          <div className={stackVertical ? 'flex items-center gap-0.5 w-full' : 'flex items-center gap-0.5 border-l pl-2 ml-1 border-slate-300'}>
-            <Button
-              size="icon"
-              variant="ghost"
-              className={`h-8 w-8 ${showRuledLines ? 'bg-slate-200 text-slate-900' : 'text-slate-500'}`}
-              onClick={onToggleRuledLines}
-              title="Mostra/Nascondi righe del foglio"
-            >
-              <Rows3 className="h-4 w-4" />
-            </Button>
+          <div className="flex items-center gap-0.5 border-l pl-2 ml-1 border-slate-300">
+            {!isCompactLayout && (
+              <Button
+                size="icon"
+                variant="ghost"
+                className={`h-8 w-8 ${showRuledLines ? 'bg-slate-200 text-slate-900' : 'text-slate-500'}`}
+                onClick={onToggleRuledLines}
+                title="Mostra/Nascondi righe del foglio"
+              >
+                <Rows3 className="h-4 w-4" />
+              </Button>
+            )}
             <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => setDocScale?.(Math.max(0.5, docScale - 0.1))}>
               <ZoomOut className="h-4 w-4" />
             </Button>

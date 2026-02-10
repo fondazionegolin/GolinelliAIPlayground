@@ -92,29 +92,29 @@ export function RichTextEditor({
   })
 
   // Handle text selection for AI assist
-  const handleMouseUp = useCallback(() => {
+  const updateSelectionFromEditor = useCallback(() => {
     if (!editor || readOnly) return
-
-    // Small delay to ensure selection is complete
-    setTimeout(() => {
-      const { from, to } = editor.state.selection
-      const selectedText = editor.state.doc.textBetween(from, to, ' ')
-
-      if (selectedText && selectedText.trim().length > 3) {
-        const fallbackPosition = { x: 20, y: 80 }
-        const nextSelection = {
-          from,
-          to,
-          text: selectedText.trim(),
-          position: aiPanelAnchor || fallbackPosition
-        }
-        setSelection(nextSelection)
-        setLastValidSelection(nextSelection)
-      } else {
-        setSelection(null)
+    const { from, to } = editor.state.selection
+    const selectedText = editor.state.doc.textBetween(from, to, ' ')
+    if (selectedText && selectedText.trim().length > 0) {
+      const fallbackPosition = { x: 20, y: 80 }
+      const nextSelection = {
+        from,
+        to,
+        text: selectedText.trim(),
+        position: aiPanelAnchor || fallbackPosition
       }
-    }, 10)
+      setSelection(nextSelection)
+      setLastValidSelection(nextSelection)
+    } else {
+      setSelection(null)
+    }
   }, [editor, readOnly, aiPanelAnchor])
+
+  const handleMouseUp = useCallback(() => {
+    // Small delay to ensure browser selection is finalized before reading editor selection.
+    setTimeout(() => updateSelectionFromEditor(), 10)
+  }, [updateSelectionFromEditor])
 
   // Open AI panel explicitly from toolbar button, anchored under toolbar icon.
   useEffect(() => {
@@ -155,6 +155,15 @@ export function RichTextEditor({
       }
     }
   }, [selection])
+
+  useEffect(() => {
+    if (!editor || readOnly) return
+    const onSelectionUpdate = () => updateSelectionFromEditor()
+    editor.on('selectionUpdate', onSelectionUpdate)
+    return () => {
+      editor.off('selectionUpdate', onSelectionUpdate)
+    }
+  }, [editor, readOnly, updateSelectionFromEditor])
 
   // Sync content updates from parent
   useEffect(() => {

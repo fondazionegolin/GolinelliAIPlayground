@@ -91,7 +91,7 @@ export default function TeacherDocumentsPage() {
   })
   
   // Sidebar State
-  const [showSidebar, setShowSidebar] = useState(true)
+  const [showSidebar, setShowSidebar] = useState(false)
   const [storedDocuments, setStoredDocuments] = useState<StoredDocument[]>([])
   const [isLoadingDocs, setIsLoadingDocs] = useState(false)
   const [draftDocuments, setDraftDocuments] = useState<DraftDocument[]>([])

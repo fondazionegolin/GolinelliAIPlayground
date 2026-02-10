@@ -21,7 +21,7 @@ export default function TeacherDashboard() {
   // Sidebar State - always visible and pinned
   const [teacherProfile, setTeacherProfile] = useState<{ id: string, name: string } | null>(null)
   const [sidebarWidth, setSidebarWidth] = useState(380)
-  const [showSidebar, setShowSidebar] = useState(true)
+  const [showSidebar, setShowSidebar] = useState(false)
 
   // Load persisted session from localStorage
   const getPersistedSession = (): { id: string, name: string, className: string } | null => {

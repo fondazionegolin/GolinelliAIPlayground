@@ -265,7 +265,7 @@ export default function TeacherSupportChat() {
   const [chatBg, setChatBg] = useState<string>('')
   const [chatBgDefault, setChatBgDefault] = useState<string>('')
   const [showBgPalette, setShowBgPalette] = useState(false)
-  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(true)
   const [webSearchProgress, setWebSearchProgress] = useState<WebSearchProgress | null>(null)
   const [datasetInterview, setDatasetInterview] = useState<DatasetInterviewState>({
     active: false,
