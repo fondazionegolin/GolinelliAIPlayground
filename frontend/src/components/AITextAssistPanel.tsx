@@ -174,15 +174,124 @@ ${/converti in formula|formula|latex/i.test(customInstruction)
     }
   }
 
+  if (variant === 'docked') {
+    return (
+      <div
+        ref={panelRef}
+        className="absolute left-0 right-0 bottom-0 z-[60] overflow-hidden border-t border-slate-700 bg-slate-900 shadow-2xl"
+      >
+        <div className="flex items-center justify-between gap-3 px-4 py-3">
+          <div className="min-w-0">
+            <p className="text-xs font-medium text-slate-300">Assistente AI</p>
+            <p className="truncate text-sm text-slate-100">
+              {selectedText.length > 140 ? `${selectedText.substring(0, 140)}...` : selectedText}
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            {!isLoading && !result && (
+              <>
+                <button
+                  onClick={() => handleAction('expand')}
+                  className="rounded-md bg-white/10 px-2.5 py-1.5 text-xs text-white transition-colors hover:bg-white/20"
+                >
+                  Espandi
+                </button>
+                <button
+                  onClick={() => handleAction('reformat')}
+                  className="rounded-md bg-white/10 px-2.5 py-1.5 text-xs text-white transition-colors hover:bg-white/20"
+                >
+                  Riformatta
+                </button>
+                <button
+                  onClick={() => handleAction('generate')}
+                  className="rounded-md bg-white/10 px-2.5 py-1.5 text-xs text-white transition-colors hover:bg-white/20"
+                >
+                  Genera
+                </button>
+                <button
+                  onClick={() => setActiveAction(activeAction === 'custom' ? null : 'custom')}
+                  className="rounded-md bg-white/10 px-2.5 py-1.5 text-xs text-white transition-colors hover:bg-white/20"
+                >
+                  Personalizza
+                </button>
+              </>
+            )}
+            <button
+              onClick={onClose}
+              className="rounded-md p-1 text-slate-300 transition-colors hover:bg-white/10 hover:text-white"
+              disabled={isLoading}
+              aria-label="Chiudi assistente AI"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+
+        {activeAction === 'custom' && !isLoading && !result && (
+          <div className="border-t border-slate-700 px-4 py-3">
+            <textarea
+              value={customInstruction}
+              onChange={(e) => setCustomInstruction(e.target.value)}
+              placeholder="Inserisci istruzione..."
+              className="mb-2 h-20 w-full resize-none rounded-md border border-slate-600 bg-slate-800 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-400 focus:border-slate-500 focus:outline-none"
+            />
+            <button
+              onClick={() => handleAction('custom')}
+              disabled={!customInstruction.trim()}
+              className="rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Applica istruzione
+            </button>
+          </div>
+        )}
+
+        {isLoading && (
+          <div className="flex items-center gap-2 border-t border-slate-700 px-4 py-3 text-sm text-slate-200">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            <span>Elaborazione in corso...</span>
+          </div>
+        )}
+
+        {error && (
+          <div className="border-t border-slate-700 px-4 py-3">
+            <p className="text-sm text-rose-300">{error}</p>
+          </div>
+        )}
+
+        {result && !isLoading && (
+          <div className="border-t border-slate-700 px-4 py-3">
+            <div className="max-h-48 overflow-y-auto rounded-md border border-slate-700 bg-slate-800 p-3 text-sm text-slate-100">
+              {result}
+            </div>
+            <div className="mt-3 flex justify-end gap-2">
+              <button
+                onClick={() => {
+                  setResult(null)
+                  setActiveAction(null)
+                  setError(null)
+                }}
+                className="rounded-md border border-slate-600 px-3 py-1.5 text-xs text-slate-200 transition-colors hover:bg-white/10"
+              >
+                Annulla
+              </button>
+              <button
+                onClick={handleApplyResult}
+                className="rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-emerald-500"
+              >
+                Applica al testo
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    )
+  }
+
   return (
     <div
       ref={panelRef}
-      className={variant === 'docked'
-        ? 'absolute left-0 right-0 bottom-0 z-[60] bg-white border-t border-slate-200 shadow-2xl overflow-hidden'
-        : 'fixed z-[9999] bg-white rounded-xl shadow-2xl border border-slate-200 overflow-hidden'}
-      style={variant === 'docked'
-        ? undefined
-        : {
+      className='fixed z-[9999] bg-white rounded-xl shadow-2xl border border-slate-200 overflow-hidden'
+      style={{
           left: adjustedPosition.x,
           top: adjustedPosition.y,
           minWidth: 280,
@@ -190,7 +299,7 @@ ${/converti in formula|formula|latex/i.test(customInstruction)
         }}
     >
       {/* Header */}
-      <div className={`${variant === 'docked' ? 'bg-slate-900' : 'bg-gradient-to-r from-violet-500 to-indigo-500'} px-4 py-2 flex items-center justify-between`}>
+      <div className='bg-gradient-to-r from-violet-500 to-indigo-500 px-4 py-2 flex items-center justify-between'>
         <div className="flex items-center gap-2 text-white">
           <Sparkles className="h-4 w-4" />
           <span className="font-medium text-sm">Assistente AI</span>
