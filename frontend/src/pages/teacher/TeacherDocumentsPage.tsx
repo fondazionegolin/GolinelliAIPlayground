@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { 
-  Plus, Trash2, Upload, Monitor, FileText, ChevronLeft, ChevronRight
+  Plus, Trash2, Upload, Monitor, FileText, ChevronLeft, ChevronRight, FileSpreadsheet
 } from 'lucide-react'
 import { teacherApi } from '@/lib/api'
 import { useToast } from '@/components/ui/use-toast'
@@ -10,11 +10,12 @@ import { useQuery } from '@tanstack/react-query'
 import { SlideEditor, SlideBlock } from '@/components/SlideEditor'
 import { RichTextEditor } from '@/components/RichTextEditor'
 import { UnifiedToolbar } from '@/components/UnifiedToolbar'
+import { SheetChartConfig, SpreadsheetEditor } from '@/components/SpreadsheetEditor'
 import { Editor } from '@tiptap/react'
 
 // Types
 type Format = 'a4' | '16:9' | '4:3'
-type EditorMode = 'slides' | 'document'
+type EditorMode = 'slides' | 'document' | 'sheet'
 
 // Reuse SlideBlock type
 type Block = SlideBlock
@@ -39,13 +40,15 @@ interface Document {
   slides: Slide[]
   textContent?: string
   header?: DocumentHeader
+  sheetData?: string[][]
+  sheetChart?: SheetChartConfig
 }
 
 // Stored Document Metadata for Sidebar
 interface StoredDocument {
   id: string
   title: string
-  type: 'presentation' | 'document'
+  type: 'presentation' | 'document' | 'sheet'
   updatedAt: string
   sessionId: string
   sessionName: string
@@ -55,7 +58,7 @@ interface StoredDocument {
 interface DraftDocument {
   id: string
   title: string
-  type: 'presentation' | 'document'
+  type: 'presentation' | 'document' | 'sheet'
   updatedAt: string
   contentJson: string
 }
@@ -69,6 +72,14 @@ const FORMAT_DIMENSIONS = {
 
 const DOC_PAGE_GAP = 28
 const EMPTY_DOC_HTML = '<p></p>'
+const DEFAULT_SHEET_DATA = Array.from({ length: 20 }, () => Array.from({ length: 8 }, () => ''))
+const DEFAULT_SHEET_CHART: SheetChartConfig = {
+  type: 'line',
+  title: 'Grafico foglio',
+  xCol: 0,
+  yCol: 1,
+  showRegression: true,
+}
 
 export default function TeacherDocumentsPage() {
   const { toast } = useToast()
@@ -87,7 +98,9 @@ export default function TeacherDocumentsPage() {
       { id: crypto.randomUUID(), title: 'Slide 1', blocks: [] }
     ],
     textContent: EMPTY_DOC_HTML,
-    header: { title: '', subtitle: '', logoUrl: '' }
+    header: { title: '', subtitle: '', logoUrl: '' },
+    sheetData: DEFAULT_SHEET_DATA,
+    sheetChart: DEFAULT_SHEET_CHART,
   })
   
   // Sidebar State
@@ -115,6 +128,7 @@ export default function TeacherDocumentsPage() {
   // UI State
   const [showPublishModal, setShowPublishModal] = useState(false)
   const [selectedSessionId, setSelectedSessionId] = useState('')
+  const [publishMode, setPublishMode] = useState<'published' | 'draft'>('published')
   const [showNewModal, setShowNewModal] = useState(false)
   const [draftSaveState, setDraftSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
   const [aiPanelAnchor, setAiPanelAnchor] = useState<{ x: number; y: number } | null>(null)
@@ -132,7 +146,9 @@ export default function TeacherDocumentsPage() {
       format: 'a4',
       slides: [],
       textContent: EMPTY_DOC_HTML,
-      header: { title: '', subtitle: '', logoUrl: '' }
+      header: { title: '', subtitle: '', logoUrl: '' },
+      sheetData: DEFAULT_SHEET_DATA,
+      sheetChart: DEFAULT_SHEET_CHART,
     })
     setMode('document')
     setCurrentSlideIndex(0)
@@ -149,6 +165,8 @@ export default function TeacherDocumentsPage() {
       format: '16:9',
       slides: [{ id: crypto.randomUUID(), title: 'Slide 1', blocks: [] }],
       textContent: '',
+      sheetData: DEFAULT_SHEET_DATA,
+      sheetChart: DEFAULT_SHEET_CHART,
     })
     setMode('slides')
     setCurrentSlideIndex(0)
@@ -157,12 +175,32 @@ export default function TeacherDocumentsPage() {
     draftIdRef.current = null
   }
 
+  const createNewSheet = () => {
+    const newDocId = crypto.randomUUID()
+    setDocument({
+      id: newDocId,
+      title: 'Nuovo Foglio',
+      format: 'a4',
+      slides: [],
+      textContent: '',
+      sheetData: DEFAULT_SHEET_DATA,
+      sheetChart: DEFAULT_SHEET_CHART,
+    })
+    setMode('sheet')
+    setCurrentSlideIndex(0)
+    setSelectedBlockId(null)
+    setDraftId(null)
+    draftIdRef.current = null
+  }
+
   const buildDraftPayload = () => {
-    const type = mode === 'slides' ? 'presentation' : 'document'
+    const type = mode === 'slides' ? 'presentation' : mode === 'sheet' ? 'sheet' : 'document'
     const contentJson = JSON.stringify(
       mode === 'slides'
         ? { type: 'presentation_v2', format: document.format, slides: document.slides }
-        : { type: 'document_v1', htmlContent: document.textContent || '', header: document.header, margins: docMargins }
+        : mode === 'sheet'
+          ? { type: 'sheet_v1', data: document.sheetData || DEFAULT_SHEET_DATA, chart: document.sheetChart || DEFAULT_SHEET_CHART }
+          : { type: 'document_v1', htmlContent: document.textContent || '', header: document.header, margins: docMargins }
     )
     return {
       title: document.title || 'Senza titolo',
@@ -279,13 +317,15 @@ export default function TeacherDocumentsPage() {
             if (t.content_json) {
               try {
                 const content = JSON.parse(t.content_json)
-                if (content.type === 'document_v1' || content.type === 'presentation_v2' || 
+                if (content.type === 'document_v1' || content.type === 'presentation_v2' || content.type === 'sheet_v1' ||
                     t.task_type === 'presentation' || (t.task_type === 'lesson' && content.sections)) {
                   
                   docs.push({
                     id: t.id,
                     title: t.title,
-                    type: (content.type === 'presentation_v2' || t.task_type === 'presentation') ? 'presentation' : 'document',
+                    type: (content.type === 'presentation_v2' || t.task_type === 'presentation')
+                      ? 'presentation'
+                      : (content.type === 'sheet_v1' ? 'sheet' : 'document'),
                     updatedAt: t.created_at,
                     sessionId: session.id,
                     sessionName: session.name,
@@ -344,6 +384,19 @@ export default function TeacherDocumentsPage() {
         })
         setCurrentSlideIndex(0)
         setSelectedBlockId(null)
+      } else if (doc.type === 'sheet' || content.type === 'sheet_v1' || content.data) {
+        setMode('sheet')
+        setDraftId(null)
+        draftIdRef.current = null
+        setDocument({
+          id: doc.id,
+          title: doc.title,
+          format: 'a4',
+          slides: [],
+          textContent: '',
+          sheetData: Array.isArray(content.data) ? content.data : DEFAULT_SHEET_DATA,
+          sheetChart: content.chart || DEFAULT_SHEET_CHART,
+        })
       } else {
         setMode('document')
         setDraftId(null)
@@ -360,7 +413,9 @@ export default function TeacherDocumentsPage() {
           format: 'a4',
           slides: [],
           textContent: content.htmlContent || content.content || EMPTY_DOC_HTML,
-          header: content.header || { title: '', subtitle: '', logoUrl: '' }
+          header: content.header || { title: '', subtitle: '', logoUrl: '' },
+          sheetData: DEFAULT_SHEET_DATA,
+          sheetChart: DEFAULT_SHEET_CHART,
         })
       }
       
@@ -395,6 +450,19 @@ export default function TeacherDocumentsPage() {
         })
         setCurrentSlideIndex(0)
         setSelectedBlockId(null)
+      } else if (doc.type === 'sheet' || content.type === 'sheet_v1' || content.data) {
+        setMode('sheet')
+        setDraftId(doc.id)
+        draftIdRef.current = doc.id
+        setDocument({
+          id: doc.id,
+          title: doc.title,
+          format: 'a4',
+          slides: [],
+          textContent: '',
+          sheetData: Array.isArray(content.data) ? content.data : DEFAULT_SHEET_DATA,
+          sheetChart: content.chart || DEFAULT_SHEET_CHART,
+        })
       } else {
         setMode('document')
         setDraftId(doc.id)
@@ -411,7 +479,9 @@ export default function TeacherDocumentsPage() {
           format: 'a4',
           slides: [],
           textContent: content.htmlContent || content.content || '',
-          header: content.header || { title: '', subtitle: '', logoUrl: '' }
+          header: content.header || { title: '', subtitle: '', logoUrl: '' },
+          sheetData: DEFAULT_SHEET_DATA,
+          sheetChart: DEFAULT_SHEET_CHART,
         })
       }
     } catch (e) {
@@ -529,6 +599,14 @@ export default function TeacherDocumentsPage() {
           }))
         })
         taskType = 'presentation'
+      } else if (mode === 'sheet') {
+        contentJson = JSON.stringify({
+          type: 'sheet_v1',
+          title: document.title,
+          data: document.sheetData || DEFAULT_SHEET_DATA,
+          chart: document.sheetChart || DEFAULT_SHEET_CHART,
+        })
+        taskType = 'lesson'
       } else {
         contentJson = JSON.stringify({
           type: 'document_v1',
@@ -542,14 +620,18 @@ export default function TeacherDocumentsPage() {
 
       const response = await teacherApi.createTask(selectedSessionId, {
         title: document.title,
-        description: `Documento creato con Golinelli AI Editor (${mode === 'slides' ? 'Presentazione' : 'Testo'})`,
+        description: `Documento creato con Golinelli AI Editor (${mode === 'slides' ? 'Presentazione' : mode === 'sheet' ? 'Foglio' : 'Testo'})`,
         task_type: taskType,
         content_json: contentJson
       })
 
-      // Emit socket event to notify students
       const taskId = response.data?.id
-      if (taskId && window.socket) {
+      if (publishMode === 'published' && taskId) {
+        await teacherApi.updateTask(selectedSessionId, taskId, { new_status: 'published' })
+      }
+
+      // Emit socket event only for published content
+      if (publishMode === 'published' && taskId && window.socket) {
         window.socket.emit('teacher_publish_task', {
           session_id: selectedSessionId,
           task_id: taskId,
@@ -559,7 +641,10 @@ export default function TeacherDocumentsPage() {
       }
 
       setShowPublishModal(false)
-      toast({ title: "Documento pubblicato!", className: "bg-green-500 text-white" })
+      toast({
+        title: publishMode === 'published' ? "Documento pubblicato!" : "Documento salvato in bozza",
+        className: publishMode === 'published' ? "bg-green-500 text-white" : undefined,
+      })
     } catch (e) {
       console.error('Publish error:', e)
       toast({ title: "Errore pubblicazione", variant: "destructive" })
@@ -667,6 +752,7 @@ export default function TeacherDocumentsPage() {
         </div>
 
         {/* Unified Toolbar */}
+        {mode !== 'sheet' && (
         <div ref={toolbarHostRef}>
           <UnifiedToolbar
             mode={mode}
@@ -700,6 +786,7 @@ export default function TeacherDocumentsPage() {
             }}
           />
         </div>
+        )}
 
         <div className="flex-1 flex overflow-hidden"> 
           
@@ -751,8 +838,8 @@ export default function TeacherDocumentsPage() {
                     onClick={() => loadDraft(doc)}
                     className="group flex items-start gap-3 p-2 rounded-lg hover:bg-slate-100 cursor-pointer transition-colors border border-transparent hover:border-slate-200 mb-1"
                   >
-                    <div className={`p-1.5 rounded-md ${doc.type === 'presentation' ? 'bg-indigo-100 text-indigo-600' : 'bg-emerald-100 text-emerald-600'}`}>
-                      {doc.type === 'presentation' ? <Monitor className="h-3 w-3" /> : <FileText className="h-3 w-3" />}
+                    <div className={`p-1.5 rounded-md ${doc.type === 'presentation' ? 'bg-indigo-100 text-indigo-600' : doc.type === 'sheet' ? 'bg-sky-100 text-sky-700' : 'bg-emerald-100 text-emerald-600'}`}>
+                      {doc.type === 'presentation' ? <Monitor className="h-3 w-3" /> : doc.type === 'sheet' ? <FileSpreadsheet className="h-3 w-3" /> : <FileText className="h-3 w-3" />}
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-xs font-medium text-slate-700 truncate">{doc.title}</p>
@@ -773,8 +860,8 @@ export default function TeacherDocumentsPage() {
                     onClick={() => loadDocument(doc)}
                     className="group flex items-start gap-3 p-2 rounded-lg hover:bg-slate-100 cursor-pointer transition-colors border border-transparent hover:border-slate-200 mb-1"
                   >
-                    <div className={`p-1.5 rounded-md ${doc.type === 'presentation' ? 'bg-indigo-100 text-indigo-600' : 'bg-emerald-100 text-emerald-600'}`}>
-                      {doc.type === 'presentation' ? <Monitor className="h-3 w-3" /> : <FileText className="h-3 w-3" />}
+                    <div className={`p-1.5 rounded-md ${doc.type === 'presentation' ? 'bg-indigo-100 text-indigo-600' : doc.type === 'sheet' ? 'bg-sky-100 text-sky-700' : 'bg-emerald-100 text-emerald-600'}`}>
+                      {doc.type === 'presentation' ? <Monitor className="h-3 w-3" /> : doc.type === 'sheet' ? <FileSpreadsheet className="h-3 w-3" /> : <FileText className="h-3 w-3" />}
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-xs font-medium text-slate-700 truncate">{doc.title}</p>
@@ -919,6 +1006,17 @@ export default function TeacherDocumentsPage() {
                </div>
              )}
 
+             {mode === 'sheet' && (
+               <div className="w-full max-w-[1400px] p-2">
+                 <SpreadsheetEditor
+                   data={document.sheetData || DEFAULT_SHEET_DATA}
+                   onDataChange={(next) => setDocument(d => ({ ...d, sheetData: next }))}
+                   chartConfig={document.sheetChart || DEFAULT_SHEET_CHART}
+                   onChartConfigChange={(next) => setDocument(d => ({ ...d, sheetChart: next }))}
+                 />
+               </div>
+             )}
+
           </div>
         </div>
 
@@ -928,7 +1026,7 @@ export default function TeacherDocumentsPage() {
             <div className="bg-white rounded-lg p-6 w-full max-w-md mx-4 shadow-xl">
               <h3 className="text-lg font-semibold mb-2">Crea nuovo</h3>
               <p className="text-sm text-gray-600 mb-4">
-                Scegli se creare un nuovo documento o una nuova presentazione.
+                Scegli se creare un nuovo documento, una nuova presentazione o un nuovo foglio.
               </p>
               <div className="flex flex-col gap-3">
                 <Button
@@ -951,6 +1049,16 @@ export default function TeacherDocumentsPage() {
                   <Monitor className="h-4 w-4 mr-2" />
                   Nuova presentazione
                 </Button>
+                <Button
+                  className="w-full justify-center bg-red-500 hover:bg-red-600 text-white"
+                  onClick={() => {
+                    createNewSheet()
+                    setShowNewModal(false)
+                  }}
+                >
+                  <FileSpreadsheet className="h-4 w-4 mr-2" />
+                  Nuovo foglio
+                </Button>
               </div>
               <div className="flex justify-end mt-4">
                 <Button variant="outline" onClick={() => setShowNewModal(false)}>Annulla</Button>
@@ -963,7 +1071,7 @@ export default function TeacherDocumentsPage() {
         {showPublishModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg p-6 w-full max-w-md mx-4 shadow-xl">
-            <h3 className="text-lg font-semibold mb-4">Pubblica {mode === 'slides' ? 'Presentazione' : 'Documento'}</h3>
+            <h3 className="text-lg font-semibold mb-4">Pubblica {mode === 'slides' ? 'Presentazione' : mode === 'sheet' ? 'Foglio' : 'Documento'}</h3>
             <p className="text-sm text-gray-600 mb-4">
               Salva questo contenuto come compito/materiale per una classe.
             </p>
@@ -982,10 +1090,27 @@ export default function TeacherDocumentsPage() {
                 ))}
               </select>
             </div>
+            <div className="mb-4">
+              <label className="block text-sm font-medium mb-2">Modalità:</label>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setPublishMode('published')}
+                  className={`text-xs px-3 py-1.5 rounded-full border ${publishMode === 'published' ? 'bg-violet-100 text-violet-700 border-violet-200 font-semibold' : 'text-slate-600 border-slate-200 hover:bg-slate-50'}`}
+                >
+                  Pubblica ora
+                </button>
+                <button
+                  onClick={() => setPublishMode('draft')}
+                  className={`text-xs px-3 py-1.5 rounded-full border ${publishMode === 'draft' ? 'bg-violet-100 text-violet-700 border-violet-200 font-semibold' : 'text-slate-600 border-slate-200 hover:bg-slate-50'}`}
+                >
+                  Salva bozza
+                </button>
+              </div>
+            </div>
             <div className="flex justify-end gap-2">
               <Button variant="outline" onClick={() => setShowPublishModal(false)}>Annulla</Button>
               <Button onClick={handlePublish} disabled={!selectedSessionId} className="bg-violet-600 text-white">
-                Pubblica Ora
+                {publishMode === 'published' ? 'Pubblica ora' : 'Salva bozza'}
               </Button>
             </div>
           </div>

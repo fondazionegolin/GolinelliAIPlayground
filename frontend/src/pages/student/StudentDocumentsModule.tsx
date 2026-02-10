@@ -2,18 +2,19 @@ import { useState, useRef, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
-  Plus, Trash2, Monitor, FileText, ChevronLeft, ChevronRight, Send, CheckCircle
+  Plus, Trash2, Monitor, FileText, ChevronLeft, ChevronRight, Send, CheckCircle, FileSpreadsheet
 } from 'lucide-react'
 import { studentApi } from '@/lib/api'
 import { useToast } from '@/components/ui/use-toast'
 import { SlideEditor, SlideBlock } from '@/components/SlideEditor'
 import { RichTextEditor } from '@/components/RichTextEditor'
 import { UnifiedToolbar } from '@/components/UnifiedToolbar'
+import { SheetChartConfig, SpreadsheetEditor } from '@/components/SpreadsheetEditor'
 import { Editor } from '@tiptap/react'
 
 // Types
 type Format = 'a4' | '16:9' | '4:3'
-type EditorMode = 'slides' | 'document'
+type EditorMode = 'slides' | 'document' | 'sheet'
 type Block = SlideBlock
 
 interface Slide {
@@ -36,12 +37,14 @@ interface Document {
   slides: Slide[]
   textContent?: string
   header?: DocumentHeader
+  sheetData?: string[][]
+  sheetChart?: SheetChartConfig
 }
 
 interface DraftDocument {
   id: string
   title: string
-  type: 'presentation' | 'document'
+  type: 'presentation' | 'document' | 'sheet'
   updatedAt: string
   contentJson: string
 }
@@ -55,6 +58,14 @@ const FORMAT_DIMENSIONS = {
 
 const DOC_PAGE_GAP = 28
 const EMPTY_DOC_HTML = '<p></p>'
+const DEFAULT_SHEET_DATA = Array.from({ length: 20 }, () => Array.from({ length: 8 }, () => ''))
+const DEFAULT_SHEET_CHART: SheetChartConfig = {
+  type: 'line',
+  title: 'Grafico foglio',
+  xCol: 0,
+  yCol: 1,
+  showRegression: true,
+}
 
 interface StudentDocumentsModuleProps {
   sessionId: string
@@ -75,7 +86,9 @@ export default function StudentDocumentsModule({ sessionId: _sessionId }: Studen
       { id: crypto.randomUUID(), title: 'Slide 1', blocks: [] }
     ],
     textContent: EMPTY_DOC_HTML,
-    header: { title: '', subtitle: '', logoUrl: '' }
+    header: { title: '', subtitle: '', logoUrl: '' },
+    sheetData: DEFAULT_SHEET_DATA,
+    sheetChart: DEFAULT_SHEET_CHART,
   })
 
   // Sidebar State
@@ -119,7 +132,9 @@ export default function StudentDocumentsModule({ sessionId: _sessionId }: Studen
       format: 'a4',
       slides: [],
       textContent: EMPTY_DOC_HTML,
-      header: { title: '', subtitle: '', logoUrl: '' }
+      header: { title: '', subtitle: '', logoUrl: '' },
+      sheetData: DEFAULT_SHEET_DATA,
+      sheetChart: DEFAULT_SHEET_CHART,
     })
     setMode('document')
     setSubmitted(false)
@@ -135,7 +150,9 @@ export default function StudentDocumentsModule({ sessionId: _sessionId }: Studen
       title: 'La mia presentazione',
       format: '16:9',
       slides: [{ id: crypto.randomUUID(), title: 'Slide 1', blocks: [] }],
-      textContent: ''
+      textContent: '',
+      sheetData: DEFAULT_SHEET_DATA,
+      sheetChart: DEFAULT_SHEET_CHART,
     })
     setMode('slides')
     setSubmitted(false)
@@ -144,12 +161,32 @@ export default function StudentDocumentsModule({ sessionId: _sessionId }: Studen
     setDraftId(null)
   }
 
+  const createNewSheet = () => {
+    const newDocId = crypto.randomUUID()
+    setDocument({
+      id: newDocId,
+      title: 'Il mio foglio',
+      format: 'a4',
+      slides: [],
+      textContent: '',
+      sheetData: DEFAULT_SHEET_DATA,
+      sheetChart: DEFAULT_SHEET_CHART,
+    })
+    setMode('sheet')
+    setSubmitted(false)
+    setCurrentSlideIndex(0)
+    setSelectedBlockId(null)
+    setDraftId(null)
+  }
+
   const upsertDraft = async (titleOverride?: string) => {
-    const type = mode === 'slides' ? 'presentation' : 'document'
+    const type = mode === 'slides' ? 'presentation' : mode === 'sheet' ? 'sheet' : 'document'
     const contentJson = JSON.stringify(
       mode === 'slides'
         ? { type: 'presentation_v2', format: document.format, slides: document.slides }
-        : { type: 'document_v1', htmlContent: document.textContent || '', header: document.header, margins: docMargins }
+        : mode === 'sheet'
+          ? { type: 'sheet_v1', data: document.sheetData || DEFAULT_SHEET_DATA, chart: document.sheetChart || DEFAULT_SHEET_CHART }
+          : { type: 'document_v1', htmlContent: document.textContent || '', header: document.header, margins: docMargins }
     )
     try {
       if (draftId) {
@@ -242,6 +279,18 @@ export default function StudentDocumentsModule({ sessionId: _sessionId }: Studen
         })
         setCurrentSlideIndex(0)
         setSelectedBlockId(null)
+      } else if (doc.type === 'sheet' || content.type === 'sheet_v1' || content.data) {
+        setMode('sheet')
+        setDraftId(doc.id)
+        setDocument({
+          id: doc.id,
+          title: doc.title,
+          format: 'a4',
+          slides: [],
+          textContent: '',
+          sheetData: Array.isArray(content.data) ? content.data : DEFAULT_SHEET_DATA,
+          sheetChart: content.chart || DEFAULT_SHEET_CHART,
+        })
       } else {
         setMode('document')
         setDraftId(doc.id)
@@ -257,7 +306,9 @@ export default function StudentDocumentsModule({ sessionId: _sessionId }: Studen
           format: 'a4',
           slides: [],
           textContent: content.htmlContent || content.content || EMPTY_DOC_HTML,
-          header: content.header || { title: '', subtitle: '', logoUrl: '' }
+          header: content.header || { title: '', subtitle: '', logoUrl: '' },
+          sheetData: DEFAULT_SHEET_DATA,
+          sheetChart: DEFAULT_SHEET_CHART,
         })
       }
     } catch (e) {
@@ -373,6 +424,13 @@ export default function StudentDocumentsModule({ sessionId: _sessionId }: Studen
             blocks: s.blocks
           }))
         })
+      } else if (mode === 'sheet') {
+        contentJson = JSON.stringify({
+          type: 'student_sheet',
+          title: document.title,
+          data: document.sheetData || DEFAULT_SHEET_DATA,
+          chart: document.sheetChart || DEFAULT_SHEET_CHART,
+        })
       } else {
         contentJson = JSON.stringify({
           type: 'student_document',
@@ -386,7 +444,7 @@ export default function StudentDocumentsModule({ sessionId: _sessionId }: Studen
       // Submit as a student work/task submission
       await studentApi.submitDocument({
         title: document.title,
-        content_type: mode === 'slides' ? 'presentation' : 'document',
+        content_type: mode === 'slides' ? 'presentation' : mode === 'sheet' ? 'sheet' : 'document',
         content_json: contentJson
       })
 
@@ -506,6 +564,7 @@ export default function StudentDocumentsModule({ sessionId: _sessionId }: Studen
         </div>
 
         {/* Unified Toolbar */}
+        {mode !== 'sheet' && (
         <div ref={toolbarHostRef}>
           <UnifiedToolbar
             mode={mode}
@@ -539,6 +598,7 @@ export default function StudentDocumentsModule({ sessionId: _sessionId }: Studen
             }}
           />
         </div>
+        )}
 
         <div className="flex-1 flex overflow-hidden">
 
@@ -590,8 +650,8 @@ export default function StudentDocumentsModule({ sessionId: _sessionId }: Studen
                     onClick={() => loadDraft(doc)}
                     className="group flex items-start gap-3 p-2 rounded-lg hover:bg-slate-100 cursor-pointer transition-colors border border-transparent hover:border-slate-200 mb-1"
                   >
-                    <div className={`p-1.5 rounded-md ${doc.type === 'presentation' ? 'bg-indigo-100 text-indigo-600' : 'bg-emerald-100 text-emerald-600'}`}>
-                      {doc.type === 'presentation' ? <Monitor className="h-3 w-3" /> : <FileText className="h-3 w-3" />}
+                    <div className={`p-1.5 rounded-md ${doc.type === 'presentation' ? 'bg-indigo-100 text-indigo-600' : doc.type === 'sheet' ? 'bg-sky-100 text-sky-700' : 'bg-emerald-100 text-emerald-600'}`}>
+                      {doc.type === 'presentation' ? <Monitor className="h-3 w-3" /> : doc.type === 'sheet' ? <FileSpreadsheet className="h-3 w-3" /> : <FileText className="h-3 w-3" />}
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-xs font-medium text-slate-700 truncate">{doc.title}</p>
@@ -746,6 +806,17 @@ export default function StudentDocumentsModule({ sessionId: _sessionId }: Studen
                </div>
              )}
 
+             {mode === 'sheet' && (
+               <div className="w-full max-w-[1400px] p-2">
+                 <SpreadsheetEditor
+                   data={document.sheetData || DEFAULT_SHEET_DATA}
+                   onDataChange={(next) => setDocument(d => ({ ...d, sheetData: next }))}
+                   chartConfig={document.sheetChart || DEFAULT_SHEET_CHART}
+                   onChartConfigChange={(next) => setDocument(d => ({ ...d, sheetChart: next }))}
+                 />
+               </div>
+             )}
+
           </div>
         </div>
 
@@ -755,7 +826,7 @@ export default function StudentDocumentsModule({ sessionId: _sessionId }: Studen
             <div className="bg-white rounded-lg p-6 w-full max-w-md mx-4 shadow-xl">
               <h3 className="text-lg font-semibold mb-2">Crea nuovo</h3>
               <p className="text-sm text-gray-600 mb-4">
-                Scegli se creare un nuovo documento o una nuova presentazione.
+                Scegli se creare un nuovo documento, una nuova presentazione o un nuovo foglio.
               </p>
               <div className="flex flex-col gap-3">
                 <Button
@@ -778,6 +849,16 @@ export default function StudentDocumentsModule({ sessionId: _sessionId }: Studen
                   <Monitor className="h-4 w-4 mr-2" />
                   Nuova presentazione
                 </Button>
+                <Button
+                  className="w-full justify-center bg-sky-700 hover:bg-sky-800 text-white"
+                  onClick={() => {
+                    createNewSheet()
+                    setShowNewModal(false)
+                  }}
+                >
+                  <FileSpreadsheet className="h-4 w-4 mr-2" />
+                  Nuovo foglio
+                </Button>
               </div>
               <div className="flex justify-end mt-4">
                 <Button variant="outline" onClick={() => setShowNewModal(false)}>Annulla</Button>
@@ -792,7 +873,7 @@ export default function StudentDocumentsModule({ sessionId: _sessionId }: Studen
           <div className="bg-white rounded-xl p-6 w-full max-w-md mx-4 shadow-xl">
             <h3 className="text-lg font-bold mb-2">Invia al Docente</h3>
             <p className="text-sm text-gray-600 mb-4">
-              Il tuo {mode === 'slides' ? 'presentazione' : 'documento'} "<strong>{document.title}</strong>" verrà inviato al docente per la revisione.
+              Il tuo {mode === 'slides' ? 'presentazione' : mode === 'sheet' ? 'foglio' : 'documento'} "<strong>{document.title}</strong>" verrà inviato al docente per la revisione.
             </p>
             <div className="bg-indigo-50 border border-indigo-100 rounded-lg p-4 mb-4">
               <p className="text-sm text-indigo-700">
