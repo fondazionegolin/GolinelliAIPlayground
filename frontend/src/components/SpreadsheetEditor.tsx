@@ -1,13 +1,15 @@
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Download, FileUp, Plus, Trash2, BarChart3, Sigma } from 'lucide-react'
+import { Download, FileUp, Plus, Trash2, Sigma, Wand2 } from 'lucide-react'
 import { HyperFormula } from 'hyperformula'
 import * as XLSX from 'xlsx'
 import {
   Bar,
   BarChart,
   CartesianGrid,
+  Cell,
+  Legend,
   Line,
   LineChart,
   Pie,
@@ -18,8 +20,6 @@ import {
   Tooltip,
   XAxis,
   YAxis,
-  Cell,
-  Legend,
 } from 'recharts'
 
 export type SheetChartType = 'line' | 'bar' | 'scatter' | 'pie'
@@ -39,6 +39,9 @@ interface SpreadsheetEditorProps {
   onChartConfigChange: (next: SheetChartConfig) => void
 }
 
+type CellPos = { row: number; col: number }
+type SelectionRange = { startRow: number; endRow: number; startCol: number; endCol: number }
+
 const MIN_ROWS = 20
 const MIN_COLS = 8
 const MAX_ROWS = 200
@@ -47,10 +50,9 @@ const MAX_COLS = 50
 function normalizeGrid(input: string[][], minRows = MIN_ROWS, minCols = MIN_COLS): string[][] {
   const rows = Math.max(minRows, input.length)
   const cols = Math.max(minCols, input.reduce((acc, row) => Math.max(acc, row.length), 0))
-  const out: string[][] = Array.from({ length: rows }, (_, rIdx) =>
+  return Array.from({ length: rows }, (_, rIdx) =>
     Array.from({ length: cols }, (_, cIdx) => input[rIdx]?.[cIdx] ?? '')
   )
-  return out
 }
 
 function columnName(index: number): string {
@@ -76,8 +78,23 @@ function toDisplayValue(value: unknown): string {
 }
 
 function toNumber(value: string): number | null {
-  const parsed = Number(value)
+  const parsed = Number(String(value).replace(',', '.'))
   return Number.isFinite(parsed) ? parsed : null
+}
+
+function normalizeRange(range: SelectionRange): SelectionRange {
+  return {
+    startRow: Math.min(range.startRow, range.endRow),
+    endRow: Math.max(range.startRow, range.endRow),
+    startCol: Math.min(range.startCol, range.endCol),
+    endCol: Math.max(range.startCol, range.endCol),
+  }
+}
+
+function rangeToA1(range: SelectionRange): string {
+  const a = `${columnName(range.startCol)}${range.startRow + 1}`
+  const b = `${columnName(range.endCol)}${range.endRow + 1}`
+  return `${a}:${b}`
 }
 
 function computeRegression(points: Array<{ x: number; y: number }>) {
@@ -90,30 +107,25 @@ function computeRegression(points: Array<{ x: number; y: number }>) {
   const denominator = n * sumXX - sumX * sumX
   if (denominator === 0) return null
 
-  const m = (n * sumXY - sumX * sumY) / denominator
-  const q = (sumY - m * sumX) / n
-
+  const slope = (n * sumXY - sumX * sumY) / denominator
+  const intercept = (sumY - slope * sumX) / n
   const meanY = sumY / n
   const ssTot = points.reduce((acc, p) => acc + (p.y - meanY) ** 2, 0)
-  const ssRes = points.reduce((acc, p) => acc + (p.y - (m * p.x + q)) ** 2, 0)
+  const ssRes = points.reduce((acc, p) => acc + (p.y - (slope * p.x + intercept)) ** 2, 0)
   const r2 = ssTot === 0 ? 1 : 1 - ssRes / ssTot
 
   const minX = Math.min(...points.map(p => p.x))
   const maxX = Math.max(...points.map(p => p.x))
 
   return {
-    slope: m,
-    intercept: q,
+    slope,
+    intercept,
     r2,
     line: [
-      { x: minX, y: m * minX + q },
-      { x: maxX, y: m * maxX + q },
+      { x: minX, y: slope * minX + intercept },
+      { x: maxX, y: slope * maxX + intercept },
     ],
   }
-}
-
-function defaultHeaders(cols: number): string[] {
-  return Array.from({ length: cols }, (_, idx) => `Colonna ${columnName(idx)}`)
 }
 
 export function SpreadsheetEditor({
@@ -124,7 +136,23 @@ export function SpreadsheetEditor({
 }: SpreadsheetEditorProps) {
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const normalizedData = useMemo(() => normalizeGrid(data), [data])
-  const [selectedCell, setSelectedCell] = useState<{ row: number; col: number } | null>({ row: 0, col: 0 })
+
+  const [selectedCell, setSelectedCell] = useState<CellPos | null>({ row: 0, col: 0 })
+  const [selectionRange, setSelectionRange] = useState<SelectionRange | null>({ startRow: 0, endRow: 0, startCol: 0, endCol: 0 })
+  const [selectionAnchor, setSelectionAnchor] = useState<CellPos | null>(null)
+  const [isSelecting, setIsSelecting] = useState(false)
+  const [activeContextMenu, setActiveContextMenu] = useState<'none' | 'chart' | 'fill'>('none')
+  const [fillInstruction, setFillInstruction] = useState('')
+  const [useFirstRowAsHeader, setUseFirstRowAsHeader] = useState(true)
+
+  useEffect(() => {
+    const onMouseUp = () => {
+      setIsSelecting(false)
+      setSelectionAnchor(null)
+    }
+    window.addEventListener('mouseup', onMouseUp)
+    return () => window.removeEventListener('mouseup', onMouseUp)
+  }, [])
 
   const evaluatedData = useMemo(() => {
     try {
@@ -137,23 +165,70 @@ export function SpreadsheetEditor({
     }
   }, [normalizedData])
 
-  const headers = useMemo(() => {
-    const headerRow = evaluatedData[0] || []
-    return headerRow.map((h, idx) => h || `Colonna ${columnName(idx)}`)
-  }, [evaluatedData])
+  const normalizedSelection = useMemo(() => (selectionRange ? normalizeRange(selectionRange) : null), [selectionRange])
 
-  const columnOptions = useMemo(() => {
-    const labels = headers.length > 0 ? headers : defaultHeaders(normalizedData[0]?.length || MIN_COLS)
-    return labels.map((label, index) => ({
-      index,
-      label: `${columnName(index)} - ${label}`,
-    }))
-  }, [headers, normalizedData])
+  const selectedRangeLabel = useMemo(() => {
+    if (!normalizedSelection) return '-'
+    return rangeToA1(normalizedSelection)
+  }, [normalizedSelection])
 
   const setCellValue = (row: number, col: number, value: string) => {
     const next = normalizedData.map(r => [...r])
     next[row][col] = value
     onDataChange(next)
+  }
+
+  const applyToSelection = (range: SelectionRange, computeValue: (row: number, col: number, idx: number, total: number) => string) => {
+    const next = normalizedData.map(r => [...r])
+    const normalized = normalizeRange(range)
+    const cells: Array<{ row: number; col: number }> = []
+    for (let row = normalized.startRow; row <= normalized.endRow; row += 1) {
+      for (let col = normalized.startCol; col <= normalized.endCol; col += 1) {
+        cells.push({ row, col })
+      }
+    }
+    const total = cells.length
+    cells.forEach((cell, idx) => {
+      next[cell.row][cell.col] = computeValue(cell.row, cell.col, idx, total)
+    })
+    onDataChange(next)
+  }
+
+  const applyNaturalFill = () => {
+    if (!normalizedSelection || !fillInstruction.trim()) return
+    const instruction = fillInstruction.trim().toLowerCase()
+
+    const rangeMatch = instruction.match(/da\s+(-?\d+(?:[\.,]\d+)?)\s+a\s+(-?\d+(?:[\.,]\d+)?)/)
+    if (rangeMatch) {
+      const from = Number(rangeMatch[1].replace(',', '.'))
+      const to = Number(rangeMatch[2].replace(',', '.'))
+      applyToSelection(normalizedSelection, (_row, _col, idx, total) => {
+        if (total <= 1) return String(from)
+        const value = from + ((to - from) * idx) / (total - 1)
+        return Number.isInteger(value) ? String(Math.round(value)) : value.toFixed(2)
+      })
+      return
+    }
+
+    const randomMatch = instruction.match(/casual|random/)
+    if (randomMatch) {
+      const bounds = instruction.match(/tra\s+(-?\d+)\s+e\s+(-?\d+)/)
+      const min = bounds ? Number(bounds[1]) : 1
+      const max = bounds ? Number(bounds[2]) : 100
+      applyToSelection(normalizedSelection, () => String(Math.floor(Math.random() * (max - min + 1)) + min))
+      return
+    }
+
+    const formulaMatch = fillInstruction.match(/formula\s*:\s*(.+)$/i)
+    if (formulaMatch) {
+      const formula = formulaMatch[1].trim()
+      applyToSelection(normalizedSelection, (row) => formula.replace(/\{row\}/gi, String(row + 1)))
+      return
+    }
+
+    const valueMatch = fillInstruction.match(/(?:con|valore)\s+(.+)$/i)
+    const constant = valueMatch ? valueMatch[1].trim() : fillInstruction
+    applyToSelection(normalizedSelection, () => constant)
   }
 
   const addRow = () => {
@@ -169,8 +244,7 @@ export function SpreadsheetEditor({
   }
 
   const removeSelectedRow = () => {
-    if (!selectedCell) return
-    if (normalizedData.length <= 1) return
+    if (!selectedCell || normalizedData.length <= 1) return
     onDataChange(normalizedData.filter((_, idx) => idx !== selectedCell.row))
     setSelectedCell({ row: Math.max(0, selectedCell.row - 1), col: selectedCell.col })
   }
@@ -186,6 +260,7 @@ export function SpreadsheetEditor({
   const clearSheet = () => {
     onDataChange(normalizeGrid([]))
     setSelectedCell({ row: 0, col: 0 })
+    setSelectionRange({ startRow: 0, endRow: 0, startCol: 0, endCol: 0 })
   }
 
   const importSheet = async (file: File) => {
@@ -196,6 +271,7 @@ export function SpreadsheetEditor({
     const asString = aoa.map(row => row.map(cell => (cell ?? '').toString()))
     onDataChange(normalizeGrid(asString))
     setSelectedCell({ row: 0, col: 0 })
+    setSelectionRange({ startRow: 0, endRow: 0, startCol: 0, endCol: 0 })
   }
 
   const exportCsv = () => {
@@ -212,34 +288,108 @@ export function SpreadsheetEditor({
     XLSX.writeFile(wb, 'foglio.xlsx')
   }
 
+  const handleCellMouseDown = (row: number, col: number, event: ReactMouseEvent) => {
+    if (event.button !== 0) return
+    setIsSelecting(true)
+    setSelectionAnchor({ row, col })
+    setSelectedCell({ row, col })
+    setSelectionRange({ startRow: row, endRow: row, startCol: col, endCol: col })
+  }
+
+  const handleCellMouseEnter = (row: number, col: number) => {
+    if (!isSelecting || !selectionAnchor) return
+    setSelectionRange({
+      startRow: selectionAnchor.row,
+      startCol: selectionAnchor.col,
+      endRow: row,
+      endCol: col,
+    })
+  }
+
+  const isCellInSelection = (row: number, col: number) => {
+    if (!normalizedSelection) return false
+    return row >= normalizedSelection.startRow && row <= normalizedSelection.endRow && col >= normalizedSelection.startCol && col <= normalizedSelection.endCol
+  }
+
   const selectedRawValue = selectedCell ? normalizedData[selectedCell.row]?.[selectedCell.col] ?? '' : ''
 
-  const chartRows = useMemo(() => {
-    const rows = evaluatedData.slice(1)
+  const setFormulaInSelectedCell = (formula: string) => {
+    if (!selectedCell) return
+    setCellValue(selectedCell.row, selectedCell.col, formula)
+  }
+
+  const insertFunctionFormula = (fnName: 'SUM' | 'AVERAGE' | 'MIN' | 'MAX' | 'COUNT' | 'ROUND' | 'CONCAT') => {
+    if (!selectedCell) return
+    const reference = normalizedSelection ? rangeToA1(normalizedSelection) : `${columnName(selectedCell.col)}${selectedCell.row + 1}`
+    if (fnName === 'ROUND') {
+      setFormulaInSelectedCell(`=ROUND(${reference.split(':')[0]},2)`)
+      return
+    }
+    if (fnName === 'CONCAT') {
+      setFormulaInSelectedCell(`=CONCAT(${reference.split(':')[0]})`)
+      return
+    }
+    setFormulaInSelectedCell(`=${fnName}(${reference})`)
+  }
+
+  const selectedRowsForCharts = useMemo(() => {
+    if (!normalizedSelection) return [] as string[][]
+    const rows: string[][] = []
+    for (let row = normalizedSelection.startRow; row <= normalizedSelection.endRow; row += 1) {
+      rows.push(evaluatedData[row] || [])
+    }
     return rows
-      .map(row => {
-        const xValue = row[chartConfig.xCol] ?? ''
-        const yValue = row[chartConfig.yCol] ?? ''
-        return { x: xValue, y: yValue }
-      })
+  }, [normalizedSelection, evaluatedData])
+
+  const effectiveRows = useMemo(() => {
+    if (!selectedRowsForCharts.length) return [] as string[][]
+    if (!useFirstRowAsHeader) return selectedRowsForCharts
+    return selectedRowsForCharts.slice(1)
+  }, [selectedRowsForCharts, useFirstRowAsHeader])
+
+  const selectedHeaderRow = useMemo(() => {
+    if (!normalizedSelection) return [] as string[]
+    if (useFirstRowAsHeader && selectedRowsForCharts.length > 0) {
+      return selectedRowsForCharts[0].slice(normalizedSelection.startCol, normalizedSelection.endCol + 1)
+    }
+    return Array.from({ length: normalizedSelection.endCol - normalizedSelection.startCol + 1 }, (_, idx) => `Colonna ${columnName(normalizedSelection.startCol + idx)}`)
+  }, [normalizedSelection, selectedRowsForCharts, useFirstRowAsHeader])
+
+  const selectedColumnOptions = useMemo(() => {
+    if (!normalizedSelection) return [] as Array<{ index: number; label: string }>
+    const out: Array<{ index: number; label: string }> = []
+    for (let col = normalizedSelection.startCol; col <= normalizedSelection.endCol; col += 1) {
+      const rel = col - normalizedSelection.startCol
+      const header = selectedHeaderRow[rel] || `Colonna ${columnName(col)}`
+      out.push({ index: col, label: `${columnName(col)} - ${header}` })
+    }
+    return out
+  }, [normalizedSelection, selectedHeaderRow])
+
+  const chartRows = useMemo(() => {
+    return effectiveRows
+      .map(row => ({
+        x: row[chartConfig.xCol] ?? '',
+        y: row[chartConfig.yCol] ?? '',
+      }))
       .filter(r => r.x !== '' && r.y !== '')
-  }, [evaluatedData, chartConfig.xCol, chartConfig.yCol])
+  }, [effectiveRows, chartConfig.xCol, chartConfig.yCol])
 
   const lineBarData = useMemo(() => {
     return chartRows
-      .map(r => ({ x: r.x, y: toNumber(r.y) }))
+      .map(r => ({ x: String(r.x), y: toNumber(String(r.y)) }))
       .filter(r => r.y !== null) as Array<{ x: string; y: number }>
   }, [chartRows])
 
   const pieData = useMemo(() => {
     return chartRows
-      .map(r => ({ name: String(r.x), value: toNumber(r.y) }))
+      .map(r => ({ name: String(r.x), value: toNumber(String(r.y)) }))
       .filter(r => r.value !== null) as Array<{ name: string; value: number }>
   }, [chartRows])
 
   const scatterData = useMemo(() => {
     return chartRows
-      .map(r => ({ x: toNumber(r.x), y: toNumber(r.y) }))
+      .map(r => ({ x: toNumber(String(r.x)), y: toNumber(String(r.y)) }))
       .filter(r => r.x !== null && r.y !== null) as Array<{ x: number; y: number }>
   }, [chartRows])
 
@@ -247,9 +397,7 @@ export function SpreadsheetEditor({
 
   const summary = useMemo(() => {
     const numeric = lineBarData.map(r => r.y)
-    if (numeric.length === 0) {
-      return { count: 0, sum: 0, avg: 0, min: 0, max: 0 }
-    }
+    if (numeric.length === 0) return { count: 0, sum: 0, avg: 0, min: 0, max: 0 }
     const sum = numeric.reduce((acc, n) => acc + n, 0)
     return {
       count: numeric.length,
@@ -259,6 +407,22 @@ export function SpreadsheetEditor({
       max: Math.max(...numeric),
     }
   }, [lineBarData])
+
+  const openChartFromSelection = (scatterWithRegression = false) => {
+    if (!normalizedSelection) return
+    const startCol = normalizedSelection.startCol
+    const xCol = startCol
+    const yCol = Math.min(startCol + 1, normalizedSelection.endCol)
+    onChartConfigChange({
+      ...chartConfig,
+      xCol,
+      yCol,
+      type: scatterWithRegression ? 'scatter' : chartConfig.type,
+      showRegression: scatterWithRegression ? true : chartConfig.showRegression,
+      title: chartConfig.title || `Grafico ${selectedRangeLabel}`,
+    })
+    setActiveContextMenu('chart')
+  }
 
   return (
     <div className="flex h-full min-h-[640px] flex-col gap-3">
@@ -291,31 +455,20 @@ export function SpreadsheetEditor({
 
           <div className="mx-1 h-5 w-px bg-slate-200" />
 
-          <Button variant="outline" size="sm" onClick={addRow}>
-            <Plus className="mr-2 h-4 w-4" />
-            Riga
-          </Button>
-          <Button variant="outline" size="sm" onClick={addColumn}>
-            <Plus className="mr-2 h-4 w-4" />
-            Colonna
-          </Button>
-          <Button variant="outline" size="sm" onClick={removeSelectedRow} disabled={!selectedCell}>
-            <Trash2 className="mr-2 h-4 w-4" />
-            Elimina riga
-          </Button>
-          <Button variant="outline" size="sm" onClick={removeSelectedColumn} disabled={!selectedCell}>
-            <Trash2 className="mr-2 h-4 w-4" />
-            Elimina colonna
-          </Button>
-          <Button variant="outline" size="sm" onClick={clearSheet}>
-            Pulisci foglio
-          </Button>
+          <Button variant="outline" size="sm" onClick={addRow}><Plus className="mr-2 h-4 w-4" />Riga</Button>
+          <Button variant="outline" size="sm" onClick={addColumn}><Plus className="mr-2 h-4 w-4" />Colonna</Button>
+          <Button variant="outline" size="sm" onClick={removeSelectedRow} disabled={!selectedCell}><Trash2 className="mr-2 h-4 w-4" />Elimina riga</Button>
+          <Button variant="outline" size="sm" onClick={removeSelectedColumn} disabled={!selectedCell}><Trash2 className="mr-2 h-4 w-4" />Elimina colonna</Button>
+          <Button variant="outline" size="sm" onClick={clearSheet}>Pulisci foglio</Button>
         </div>
 
         <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-2">
-          <div className="mb-1 text-xs font-medium text-slate-600">Barra formula</div>
+          <div className="mb-1 flex items-center justify-between text-xs">
+            <span className="font-medium text-slate-700">Barra formula (cella attiva)</span>
+            <span className="text-slate-500">Selezione: {selectedRangeLabel}</span>
+          </div>
           <div className="flex items-center gap-2">
-            <div className="w-16 rounded border bg-white px-2 py-1 text-xs text-slate-600">
+            <div className="w-20 rounded border bg-white px-2 py-1 text-xs text-slate-600">
               {selectedCell ? `${columnName(selectedCell.col)}${selectedCell.row + 1}` : '-'}
             </div>
             <Input
@@ -324,203 +477,268 @@ export function SpreadsheetEditor({
                 if (!selectedCell) return
                 setCellValue(selectedCell.row, selectedCell.col, e.target.value)
               }}
-              placeholder="Inserisci valore o formula (es. =SUM(A2:A10))"
+              placeholder="Valore o formula (es. =SUM(A2:A10))"
             />
           </div>
+          <div className="mt-2 flex flex-wrap items-center gap-1.5">
+            {(['SUM', 'AVERAGE', 'MIN', 'MAX', 'COUNT', 'ROUND', 'CONCAT'] as const).map(fn => (
+              <button
+                key={fn}
+                onClick={() => insertFunctionFormula(fn)}
+                className="rounded border border-slate-200 bg-white px-2 py-1 text-[11px] text-slate-700 hover:bg-slate-100"
+              >
+                {fn}
+              </button>
+            ))}
+          </div>
           <p className="mt-2 text-[11px] text-slate-500">
-            Formule supportate (HyperFormula): SUM, AVERAGE, MIN, MAX, COUNT, IF, ROUND, CONCAT.
+            La barra formula modifica il contenuto grezzo della cella selezionata. Se selezioni più celle, i pulsanti funzione usano l'intervallo.
           </p>
         </div>
       </div>
 
-      <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 xl:grid-cols-[1.35fr,1fr]">
-        <div className="min-h-0 rounded-xl border border-slate-200 bg-white shadow-sm">
-          <div className="max-h-[68vh] overflow-auto">
-            <table className="w-full border-collapse text-sm">
-              <thead className="sticky top-0 z-10 bg-slate-100">
-                <tr>
-                  <th className="w-12 border border-slate-200 px-2 py-1.5 text-xs text-slate-500">#</th>
-                  {normalizedData[0]?.map((_, colIdx) => (
-                    <th key={colIdx} className="min-w-[120px] border border-slate-200 px-2 py-1.5 text-xs font-semibold text-slate-700">
-                      {columnName(colIdx)}
-                    </th>
-                  ))}
+      <div className="min-h-0 flex-1 rounded-xl border border-slate-200 bg-white shadow-sm">
+        <div className="max-h-[68vh] overflow-auto select-none">
+          <table className="w-full border-collapse text-sm">
+            <thead className="sticky top-0 z-10 bg-slate-100">
+              <tr>
+                <th className="w-12 border border-slate-200 px-2 py-1.5 text-xs text-slate-500">#</th>
+                {normalizedData[0]?.map((_, colIdx) => (
+                  <th key={colIdx} className="min-w-[120px] border border-slate-200 px-2 py-1.5 text-xs font-semibold text-slate-700">
+                    {columnName(colIdx)}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {normalizedData.map((row, rowIdx) => (
+                <tr key={rowIdx}>
+                  <td className="border border-slate-200 bg-slate-50 px-2 text-xs text-slate-500">{rowIdx + 1}</td>
+                  {row.map((_cell, colIdx) => {
+                    const selected = isCellInSelection(rowIdx, colIdx)
+                    const display = evaluatedData[rowIdx]?.[colIdx] ?? ''
+                    return (
+                      <td
+                        key={colIdx}
+                        className={`border border-slate-200 p-0 ${selected ? 'bg-indigo-50 ring-1 ring-inset ring-indigo-500' : ''}`}
+                        onMouseDown={(e) => handleCellMouseDown(rowIdx, colIdx, e)}
+                        onMouseEnter={() => handleCellMouseEnter(rowIdx, colIdx)}
+                      >
+                        <input
+                          value={normalizedData[rowIdx][colIdx]}
+                          onFocus={() => {
+                            setSelectedCell({ row: rowIdx, col: colIdx })
+                            setSelectionRange({ startRow: rowIdx, endRow: rowIdx, startCol: colIdx, endCol: colIdx })
+                          }}
+                          onChange={(e) => setCellValue(rowIdx, colIdx, e.target.value)}
+                          className="h-9 w-full border-0 bg-transparent px-2 text-sm text-slate-800 focus:outline-none"
+                          title={normalizedData[rowIdx][colIdx].startsWith('=') ? `Risultato: ${display}` : ''}
+                        />
+                      </td>
+                    )
+                  })}
                 </tr>
-              </thead>
-              <tbody>
-                {normalizedData.map((row, rowIdx) => (
-                  <tr key={rowIdx}>
-                    <td className="border border-slate-200 bg-slate-50 px-2 text-xs text-slate-500">{rowIdx + 1}</td>
-                    {row.map((_, colIdx) => {
-                      const isSelected = selectedCell?.row === rowIdx && selectedCell?.col === colIdx
-                      const display = evaluatedData[rowIdx]?.[colIdx] ?? ''
-                      return (
-                        <td
-                          key={colIdx}
-                          className={`border border-slate-200 p-0 ${isSelected ? 'ring-2 ring-indigo-500 ring-inset' : ''}`}
-                          onClick={() => setSelectedCell({ row: rowIdx, col: colIdx })}
-                        >
-                          <input
-                            value={normalizedData[rowIdx][colIdx]}
-                            onChange={(e) => setCellValue(rowIdx, colIdx, e.target.value)}
-                            className="h-9 w-full border-0 bg-transparent px-2 text-sm text-slate-800 focus:outline-none"
-                            title={normalizedData[rowIdx][colIdx].startsWith('=') ? `Risultato: ${display}` : ''}
-                          />
-                        </td>
-                      )
-                    })}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        <div className="min-h-0 overflow-auto rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
-          <div className="mb-3 flex items-center gap-2">
-            <BarChart3 className="h-4 w-4 text-slate-600" />
-            <h3 className="text-sm font-semibold text-slate-800">Grafici e analisi</h3>
-          </div>
-
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <label className="mb-1 block text-xs text-slate-600">Tipo grafico</label>
-              <select
-                className="h-9 w-full rounded border border-slate-300 bg-white px-2 text-sm"
-                value={chartConfig.type}
-                onChange={(e) => onChartConfigChange({ ...chartConfig, type: e.target.value as SheetChartType })}
-              >
-                <option value="line">Linea</option>
-                <option value="bar">Barre</option>
-                <option value="scatter">Scatter</option>
-                <option value="pie">Torta</option>
-              </select>
-            </div>
-            <div>
-              <label className="mb-1 block text-xs text-slate-600">Titolo</label>
-              <Input
-                value={chartConfig.title}
-                onChange={(e) => onChartConfigChange({ ...chartConfig, title: e.target.value })}
-                placeholder="Titolo grafico"
-              />
-            </div>
-            <div>
-              <label className="mb-1 block text-xs text-slate-600">Asse X</label>
-              <select
-                className="h-9 w-full rounded border border-slate-300 bg-white px-2 text-sm"
-                value={chartConfig.xCol}
-                onChange={(e) => onChartConfigChange({ ...chartConfig, xCol: Number(e.target.value) })}
-              >
-                {columnOptions.map(opt => (
-                  <option key={opt.index} value={opt.index}>{opt.label}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="mb-1 block text-xs text-slate-600">Asse Y</label>
-              <select
-                className="h-9 w-full rounded border border-slate-300 bg-white px-2 text-sm"
-                value={chartConfig.yCol}
-                onChange={(e) => onChartConfigChange({ ...chartConfig, yCol: Number(e.target.value) })}
-              >
-                {columnOptions.map(opt => (
-                  <option key={opt.index} value={opt.index}>{opt.label}</option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          {chartConfig.type === 'scatter' && (
-            <label className="mt-3 flex items-center gap-2 text-xs text-slate-700">
-              <input
-                type="checkbox"
-                checked={chartConfig.showRegression}
-                onChange={(e) => onChartConfigChange({ ...chartConfig, showRegression: e.target.checked })}
-              />
-              Mostra retta di regressione lineare
-            </label>
-          )}
-
-          <div className="mt-4 h-72 rounded-lg border border-slate-200 bg-slate-50 p-2">
-            <ResponsiveContainer width="100%" height="100%">
-              {chartConfig.type === 'line' ? (
-                <LineChart data={lineBarData}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="x" />
-                  <YAxis />
-                  <Tooltip />
-                  <Legend />
-                  <Line type="monotone" dataKey="y" stroke="#334155" dot={false} />
-                </LineChart>
-              ) : chartConfig.type === 'bar' ? (
-                <BarChart data={lineBarData}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="x" />
-                  <YAxis />
-                  <Tooltip />
-                  <Legend />
-                  <Bar dataKey="y" fill="#475569" />
-                </BarChart>
-              ) : chartConfig.type === 'pie' ? (
-                <PieChart>
-                  <Tooltip />
-                  <Legend />
-                  <Pie data={pieData} dataKey="value" nameKey="name" outerRadius={95}>
-                    {pieData.map((entry, idx) => (
-                      <Cell key={`${entry.name}-${idx}`} fill={['#334155', '#0f766e', '#2563eb', '#7c3aed', '#be123c'][idx % 5]} />
-                    ))}
-                  </Pie>
-                </PieChart>
-              ) : (
-                <ScatterChart>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="x" type="number" />
-                  <YAxis dataKey="y" type="number" />
-                  <Tooltip cursor={{ strokeDasharray: '3 3' }} />
-                  <Legend />
-                  <Scatter name="Dati" data={scatterData} fill="#334155" />
-                  {chartConfig.showRegression && regression && (
-                    <Line
-                      name="Regressione"
-                      data={regression.line}
-                      dataKey="y"
-                      type="linear"
-                      stroke="#dc2626"
-                      dot={false}
-                      legendType="line"
-                    />
-                  )}
-                </ScatterChart>
-              )}
-            </ResponsiveContainer>
-          </div>
-
-          {chartConfig.title && (
-            <p className="mt-2 text-xs font-medium text-slate-700">{chartConfig.title}</p>
-          )}
-
-          <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3">
-            <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-600">
-              <Sigma className="h-3.5 w-3.5" />
-              Operazioni colonna Y
-            </div>
-            <div className="grid grid-cols-2 gap-2 text-xs text-slate-700">
-              <div>COUNT: <span className="font-semibold">{summary.count}</span></div>
-              <div>SUM: <span className="font-semibold">{summary.sum.toFixed(2)}</span></div>
-              <div>AVERAGE: <span className="font-semibold">{summary.avg.toFixed(2)}</span></div>
-              <div>MIN: <span className="font-semibold">{summary.min.toFixed(2)}</span></div>
-              <div>MAX: <span className="font-semibold">{summary.max.toFixed(2)}</span></div>
-            </div>
-
-            {chartConfig.type === 'scatter' && chartConfig.showRegression && regression && (
-              <div className="mt-3 rounded border border-rose-200 bg-rose-50 p-2 text-xs text-rose-800">
-                Regressione: <strong>y = {regression.slope.toFixed(4)}x + {regression.intercept.toFixed(4)}</strong><br />
-                R²: <strong>{regression.r2.toFixed(4)}</strong>
-              </div>
-            )}
-          </div>
+              ))}
+            </tbody>
+          </table>
         </div>
       </div>
+
+      {normalizedSelection && (
+        <div className="rounded-xl border border-slate-700 bg-slate-900 p-3 text-white shadow-xl">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <p className="text-xs text-slate-300">Azioni contestuali</p>
+              <p className="text-sm">Selezione: <span className="font-semibold">{selectedRangeLabel}</span></p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                onClick={() => openChartFromSelection(false)}
+                className="rounded-md bg-white/10 px-2.5 py-1.5 text-left text-white transition-colors hover:bg-white/20"
+              >
+                <span className="block text-xs font-medium leading-tight">Grafico</span>
+                <span className="block text-[10px] leading-tight text-slate-300">Crea da selezione</span>
+              </button>
+              <button
+                onClick={() => openChartFromSelection(true)}
+                className="rounded-md bg-white/10 px-2.5 py-1.5 text-left text-white transition-colors hover:bg-white/20"
+              >
+                <span className="block text-xs font-medium leading-tight">Regressione</span>
+                <span className="block text-[10px] leading-tight text-slate-300">Linea + formula</span>
+              </button>
+              <button
+                onClick={() => setActiveContextMenu('fill')}
+                className="rounded-md bg-white/10 px-2.5 py-1.5 text-left text-white transition-colors hover:bg-white/20"
+              >
+                <span className="block text-xs font-medium leading-tight">Riempi celle</span>
+                <span className="block text-[10px] leading-tight text-slate-300">Linguaggio naturale</span>
+              </button>
+              <button
+                onClick={() => setActiveContextMenu('none')}
+                className="rounded-md px-2 py-1 text-xs text-slate-300 hover:bg-white/10"
+              >
+                Chiudi
+              </button>
+            </div>
+          </div>
+
+          {activeContextMenu === 'fill' && (
+            <div className="mt-3 border-t border-slate-700 pt-3">
+              <div className="mb-2 flex items-center gap-2 text-xs text-slate-300">
+                <Wand2 className="h-3.5 w-3.5" />
+                Suggerimenti: "Riempi con presente", "Da 1 a 100", "Valori casuali tra 10 e 50", "Formula: =A{'{row}'}*2"
+              </div>
+              <div className="flex gap-2">
+                <Input
+                  value={fillInstruction}
+                  onChange={(e) => setFillInstruction(e.target.value)}
+                  placeholder="Descrivi come riempire l'intervallo"
+                  className="bg-slate-800 text-slate-100 border-slate-600 placeholder:text-slate-400"
+                />
+                <Button onClick={applyNaturalFill} className="bg-blue-600 hover:bg-blue-500 text-white">Applica</Button>
+              </div>
+            </div>
+          )}
+
+          {activeContextMenu === 'chart' && (
+            <div className="mt-3 border-t border-slate-700 pt-3">
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-4">
+                <div>
+                  <label className="mb-1 block text-xs text-slate-300">Tipo grafico</label>
+                  <select
+                    className="h-9 w-full rounded border border-slate-600 bg-slate-800 px-2 text-sm text-slate-100"
+                    value={chartConfig.type}
+                    onChange={(e) => onChartConfigChange({ ...chartConfig, type: e.target.value as SheetChartType })}
+                  >
+                    <option value="line">Linea</option>
+                    <option value="bar">Barre</option>
+                    <option value="scatter">Scatter</option>
+                    <option value="pie">Torta</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs text-slate-300">Asse X</label>
+                  <select
+                    className="h-9 w-full rounded border border-slate-600 bg-slate-800 px-2 text-sm text-slate-100"
+                    value={chartConfig.xCol}
+                    onChange={(e) => onChartConfigChange({ ...chartConfig, xCol: Number(e.target.value) })}
+                  >
+                    {selectedColumnOptions.map(opt => (
+                      <option key={opt.index} value={opt.index}>{opt.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs text-slate-300">Asse Y</label>
+                  <select
+                    className="h-9 w-full rounded border border-slate-600 bg-slate-800 px-2 text-sm text-slate-100"
+                    value={chartConfig.yCol}
+                    onChange={(e) => onChartConfigChange({ ...chartConfig, yCol: Number(e.target.value) })}
+                  >
+                    {selectedColumnOptions.map(opt => (
+                      <option key={opt.index} value={opt.index}>{opt.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs text-slate-300">Titolo</label>
+                  <Input
+                    value={chartConfig.title}
+                    onChange={(e) => onChartConfigChange({ ...chartConfig, title: e.target.value })}
+                    className="bg-slate-800 text-slate-100 border-slate-600"
+                  />
+                </div>
+              </div>
+
+              <div className="mt-2 flex items-center gap-3 text-xs text-slate-300">
+                <label className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={useFirstRowAsHeader}
+                    onChange={(e) => setUseFirstRowAsHeader(e.target.checked)}
+                  />
+                  Usa prima riga come intestazione
+                </label>
+                {chartConfig.type === 'scatter' && (
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={chartConfig.showRegression}
+                      onChange={(e) => onChartConfigChange({ ...chartConfig, showRegression: e.target.checked })}
+                    />
+                    Mostra regressione lineare
+                  </label>
+                )}
+              </div>
+
+              <div className="mt-3 h-72 rounded-lg border border-slate-700 bg-slate-950 p-2">
+                <ResponsiveContainer width="100%" height="100%">
+                  {chartConfig.type === 'line' ? (
+                    <LineChart data={lineBarData}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="x" />
+                      <YAxis />
+                      <Tooltip />
+                      <Legend />
+                      <Line type="monotone" dataKey="y" stroke="#93c5fd" dot={false} />
+                    </LineChart>
+                  ) : chartConfig.type === 'bar' ? (
+                    <BarChart data={lineBarData}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="x" />
+                      <YAxis />
+                      <Tooltip />
+                      <Legend />
+                      <Bar dataKey="y" fill="#60a5fa" />
+                    </BarChart>
+                  ) : chartConfig.type === 'pie' ? (
+                    <PieChart>
+                      <Tooltip />
+                      <Legend />
+                      <Pie data={pieData} dataKey="value" nameKey="name" outerRadius={95}>
+                        {pieData.map((entry, idx) => (
+                          <Cell key={`${entry.name}-${idx}`} fill={['#93c5fd', '#86efac', '#fca5a5', '#d8b4fe', '#fde68a'][idx % 5]} />
+                        ))}
+                      </Pie>
+                    </PieChart>
+                  ) : (
+                    <ScatterChart>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="x" type="number" />
+                      <YAxis dataKey="y" type="number" />
+                      <Tooltip cursor={{ strokeDasharray: '3 3' }} />
+                      <Legend />
+                      <Scatter name="Dati" data={scatterData} fill="#93c5fd" />
+                      {chartConfig.showRegression && regression && (
+                        <Line name="Regressione" data={regression.line} dataKey="y" type="linear" stroke="#f87171" dot={false} legendType="line" />
+                      )}
+                    </ScatterChart>
+                  )}
+                </ResponsiveContainer>
+              </div>
+
+              <div className="mt-3 rounded border border-slate-700 bg-slate-800 p-2 text-xs text-slate-200">
+                <div className="mb-1 flex items-center gap-2 font-semibold">
+                  <Sigma className="h-3.5 w-3.5" />
+                  Operazioni su Y
+                </div>
+                <div className="grid grid-cols-2 gap-1">
+                  <div>COUNT: <strong>{summary.count}</strong></div>
+                  <div>SUM: <strong>{summary.sum.toFixed(2)}</strong></div>
+                  <div>AVERAGE: <strong>{summary.avg.toFixed(2)}</strong></div>
+                  <div>MIN: <strong>{summary.min.toFixed(2)}</strong></div>
+                  <div>MAX: <strong>{summary.max.toFixed(2)}</strong></div>
+                </div>
+                {chartConfig.type === 'scatter' && chartConfig.showRegression && regression && (
+                  <div className="mt-2 rounded border border-rose-300/40 bg-rose-500/10 p-2">
+                    y = {regression.slope.toFixed(4)}x + {regression.intercept.toFixed(4)} | R² = {regression.r2.toFixed(4)}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }
