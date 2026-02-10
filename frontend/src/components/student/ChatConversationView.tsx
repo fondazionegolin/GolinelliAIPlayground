@@ -41,7 +41,7 @@ export function ChatConversationView({
   profileKey: _profileKey,
   profileName,
   profileIcon,
-  profileColor = 'bg-gradient-to-br from-sky-500 to-blue-600',
+  profileColor = 'bg-slate-700',
   messages,
   onSend,
   onBack,
@@ -142,7 +142,7 @@ export function ChatConversationView({
         <div className="flex-1 min-w-0">
           <h3 className="font-semibold text-slate-800 text-sm truncate">{profileName}</h3>
           {isLoading && (
-            <p className="text-xs text-sky-500">Sta scrivendo...</p>
+            <p className="text-xs text-slate-500">Sta scrivendo...</p>
           )}
         </div>
       </div>
@@ -214,9 +214,9 @@ export function ChatConversationView({
             <div className="bg-white border border-slate-100 shadow-sm rounded-2xl rounded-bl-md px-4 py-3">
               <div className="flex items-center gap-2">
                 <div className="flex gap-1">
-                  <span className="w-2 h-2 bg-sky-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                  <span className="w-2 h-2 bg-sky-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                  <span className="w-2 h-2 bg-sky-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                  <span className="w-2 h-2 bg-slate-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                  <span className="w-2 h-2 bg-slate-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                  <span className="w-2 h-2 bg-slate-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
                 </div>
                 <span className="text-sm text-slate-400">Sto pensando...</span>
               </div>

@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
+import { useState, useRef, useEffect, useCallback, useMemo, type CSSProperties } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
 import { llmApi, studentApi, teacherbotsApi } from '@/lib/api'
@@ -7,8 +7,8 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import {
   Send, Bot, User, GraduationCap,
   Lightbulb, ClipboardCheck, ArrowLeft, Sparkles,
-  Settings2, RefreshCw, Paperclip, X, File, Database, Download, Loader2,
-  Trash2, ChevronLeft, ChevronRight, Menu, Wand2, Palette
+  Paperclip, X, File, Database, Download, Loader2,
+  Trash2, ChevronLeft, ChevronRight, Menu, Wand2, Palette, ChevronDown, Check
 } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -19,6 +19,7 @@ import { useMobile } from '@/hooks/useMobile'
 import { triggerHaptic } from '@/lib/haptics'
 import ChatConversationList from '@/components/student/ChatConversationList'
 import ChatConversationView from '@/components/student/ChatConversationView'
+import { DEFAULT_STUDENT_ACCENT, getStudentAccentTheme, loadStudentAccent } from '@/lib/studentAccent'
 
 interface Message {
   id: string
@@ -74,22 +75,60 @@ const PROFILE_ICONS: Record<string, React.ReactNode> = {
 }
 
 const PROFILE_COLORS: Record<string, string> = {
-  'tutor': 'bg-emerald-50 text-emerald-600 border-emerald-200',
-  'quiz': 'bg-rose-50 text-rose-600 border-rose-200',
-  'interview': 'bg-violet-50 text-violet-600 border-violet-200',
-  'oral_exam': 'bg-amber-50 text-amber-600 border-amber-200',
-  'dataset_generator': 'bg-fuchsia-50 text-fuchsia-600 border-fuchsia-200',
-  'math_coach': 'bg-sky-50 text-fuchsia-600 border-fuchsia-200',
+  'tutor': 'bg-slate-100 text-slate-700 border-slate-200',
+  'quiz': 'bg-slate-100 text-slate-700 border-slate-200',
+  'interview': 'bg-slate-100 text-slate-700 border-slate-200',
+  'oral_exam': 'bg-slate-100 text-slate-700 border-slate-200',
+  'dataset_generator': 'bg-slate-100 text-slate-700 border-slate-200',
+  'math_coach': 'bg-slate-100 text-slate-700 border-slate-200',
 }
 
 const FALLBACK_PROFILES: ChatbotProfile[] = [
-  { key: 'tutor', name: 'Tutor AI', description: 'Un tutor paziente che spiega concetti in modo chiaro', icon: 'graduation-cap', suggested_prompts: ['Spiegami questo concetto', 'Fammi un esempio'] },
-  { key: 'quiz', name: 'Quiz Master', description: 'Crea quiz e verifica comprensione', icon: 'clipboard-check', suggested_prompts: ['Fammi un quiz', 'Verifica se ho capito'] },
-  { key: 'interview', name: 'Intervista', description: 'Simula un personaggio storico', icon: 'mic', suggested_prompts: ['Voglio intervistare...', 'Sei Leonardo da Vinci'] },
-  { key: 'oral_exam', name: 'Interrogazione', description: 'Simula un\'interrogazione scolastica', icon: 'user-check', suggested_prompts: ['Interrogami su...', 'Verifica la mia preparazione'] },
-  { key: 'dataset_generator', name: 'Generatore Dataset', description: 'Genera dataset sintetici CSV', icon: 'database', suggested_prompts: ['Genera dataset sentiment', 'Crea CSV anagrafici'] },
-  { key: 'math_coach', name: 'Math Coach', description: 'Mentor matematico con metodo Polya', icon: 'calculator', suggested_prompts: ['Ho un problema di matematica...', 'Puoi verificare se è giusto?'] },
+  { key: 'tutor', name: 'Tutor AI', description: 'Spiega argomenti passo passo con esempi semplici e mirati al tuo livello.', icon: 'graduation-cap', suggested_prompts: ['Spiegami questo concetto', 'Fammi un esempio pratico'] },
+  { key: 'quiz', name: 'Quiz Master', description: 'Costruisce quiz personalizzati e ti aiuta a ripassare in modo attivo.', icon: 'clipboard-check', suggested_prompts: ['Voglio un quiz guidato', 'Allenami su questo argomento'] },
+  { key: 'interview', name: 'Intervista', description: 'Simula dialoghi con personaggi storici o scientifici per capire meglio il contesto.', icon: 'mic', suggested_prompts: ['Voglio intervistare un personaggio', 'Suggeriscimi chi intervistare'] },
+  { key: 'oral_exam', name: 'Interrogazione', description: 'Simula un orale realistico con domande progressive e feedback su chiarezza e completezza.', icon: 'user-check', suggested_prompts: ['Interrogami su un argomento', 'Fammi una simulazione orale'] },
+  { key: 'dataset_generator', name: 'Generatore Dataset', description: 'Crea dataset CSV coerenti con scenario, variabili e difficoltà richiesti.', icon: 'database', suggested_prompts: ['Guidami a creare un dataset', 'Genera un CSV per analisi'] },
+  { key: 'math_coach', name: 'Math Coach', description: 'Ti guida nella risoluzione dei problemi con metodo, passaggi chiari e controllo errori.', icon: 'calculator', suggested_prompts: ['Guidami su un problema', 'Verifica il mio procedimento'] },
 ]
+
+type InterviewStep = { key: string; question: string }
+type ProactiveProfileKey = 'quiz' | 'interview' | 'oral_exam' | 'dataset_generator' | 'math_coach'
+
+const PROACTIVE_PROFILE_KEYS: ProactiveProfileKey[] = ['quiz', 'interview', 'oral_exam', 'dataset_generator', 'math_coach']
+
+const PROFILE_INTERVIEWS: Record<ProactiveProfileKey, InterviewStep[]> = {
+  quiz: [
+    { key: 'topic', question: 'Modalita Quiz guidata attiva.\n\n1) Quale argomento vuoi allenare?' },
+    { key: 'questionCount', question: '2) Quante domande vuoi? (numero)' },
+    { key: 'difficulty', question: '3) Che livello desideri? (base, intermedio, avanzato)' },
+    { key: 'focus', question: '4) Vuoi focus su teoria, applicazioni o entrambi?' },
+  ],
+  interview: [
+    { key: 'character', question: 'Modalita Intervista guidata attiva.\n\n1) Quale personaggio ti piacerebbe intervistare? Se non hai un idea precisa, posso suggerirti qualcuno in base al periodo storico o all\'argomento.' },
+    { key: 'period_or_topic', question: '2) Quale periodo storico o tema vuoi trattare?' },
+    { key: 'tone', question: '3) Preferisci tono formale, divulgativo o creativo?' },
+    { key: 'goal', question: '4) Obiettivo dell\'intervista: ripasso, approfondimento o preparazione verifica?' },
+  ],
+  oral_exam: [
+    { key: 'subject', question: 'Modalita Interrogazione guidata attiva.\n\n1) Materia e argomento principale?' },
+    { key: 'scope', question: '2) Quali sotto-argomenti vuoi includere?' },
+    { key: 'difficulty', question: '3) Livello atteso: base, intermedio o avanzato?' },
+    { key: 'feedback', question: '4) Vuoi feedback rapido o dettagliato dopo ogni risposta?' },
+  ],
+  dataset_generator: [
+    { key: 'context', question: 'Modalita Dataset guidata attiva.\n\n1) In quale contesto vuoi usare il dataset?' },
+    { key: 'columns', question: '2) Quali colonne principali vuoi avere?' },
+    { key: 'rows', question: '3) Quante righe desideri? (numero)' },
+    { key: 'constraints', question: '4) Vuoi vincoli specifici (range, correlazioni, categorie)?' },
+  ],
+  math_coach: [
+    { key: 'topic', question: 'Modalita Math Coach guidata attiva.\n\n1) Su quale tema matematico vuoi lavorare?' },
+    { key: 'goal', question: '2) Obiettivo: capire teoria, risolvere esercizi o preparare verifica?' },
+    { key: 'level', question: '3) Livello attuale percepito: base, intermedio o avanzato?' },
+    { key: 'style', question: '4) Preferisci spiegazioni sintetiche o dettagliate passo-passo?' },
+  ],
+}
 
 interface ConversationHistory {
   id: string
@@ -126,19 +165,57 @@ export default function ChatbotModule({ sessionId, initialTeacherbotId, onInputF
   const [mobileHistoryOpen, setMobileHistoryOpen] = useState(false)
   const [selectedProfile, setSelectedProfile] = useState<string | null>(null)
   const [selectedModel, setSelectedModel] = useState<LLMModel | null>(null)
-  const [showModelSelector, setShowModelSelector] = useState(false)
+  const [showModelMenu, setShowModelMenu] = useState(false)
   const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([])
   const [imageProvider, setImageProvider] = useState<'dall-e' | 'flux-schnell'>('flux-schnell')
   const [imageSize, setImageSize] = useState<string>('1024x1024')
-  const [verboseMode, setVerboseMode] = useState(false)
+  const [verboseMode] = useState(false)
   const [chatBg, setChatBg] = useState<string>('')
   const [chatBgDefault, setChatBgDefault] = useState<string>('')
   const [showBgPalette, setShowBgPalette] = useState(false)
+  const [profileInterview, setProfileInterview] = useState<{
+    active: boolean
+    profileKey: ProactiveProfileKey | null
+    stepIndex: number
+    answers: Record<string, string>
+  }>({
+    active: false,
+    profileKey: null,
+    stepIndex: 0,
+    answers: {},
+  })
+  const [activeMasterPrompt, setActiveMasterPrompt] = useState<string | null>(null)
+  const [isMasterPromptApplied, setIsMasterPromptApplied] = useState(false)
+  const [defaultModelKey, setDefaultModelKey] = useState(localStorage.getItem('student_default_model') || '')
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const modelMenuRef = useRef<HTMLDivElement>(null)
   const isGeneratingRef = useRef(false)
   const inputRef = useRef<HTMLInputElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [isInputFocused, setIsInputFocused] = useState(false)
+  const [studentAccent, setStudentAccent] = useState(DEFAULT_STUDENT_ACCENT)
+
+  useEffect(() => {
+    setStudentAccent(loadStudentAccent())
+  }, [])
+
+  const accentTheme = useMemo(() => getStudentAccentTheme(studentAccent), [studentAccent])
+  const accentVars = useMemo(() => ({
+    '--student-accent': accentTheme.accent,
+    '--student-accent-text': accentTheme.text,
+    '--student-accent-soft': accentTheme.soft,
+    '--student-accent-soft-strong': accentTheme.softStrong,
+    '--student-accent-border': accentTheme.border,
+  }) as CSSProperties, [accentTheme])
+  const selectedSoftStyle = useMemo(() => ({
+    backgroundColor: accentTheme.soft,
+    color: accentTheme.text,
+    borderColor: accentTheme.border,
+  }) as CSSProperties, [accentTheme])
+  const selectedSolidStyle = useMemo(() => ({
+    backgroundColor: accentTheme.accent,
+    color: '#ffffff',
+  }) as CSSProperties, [accentTheme])
 
   const isDarkColor = (color: string) => {
     const hex = color.replace('#', '')
@@ -208,22 +285,27 @@ export default function ChatbotModule({ sessionId, initialTeacherbotId, onInputF
 
   const chatBgIsDark = chatBg ? isDarkColor(chatBg) : false
 
-  const baseBgSwatches = [
-    { label: 'Slate scuro', color: '#0f172a' },
-    { label: 'Grigio scuro', color: '#1f2937' },
-    { label: 'Viola scuro', color: '#2e1065' },
-    { label: 'Giallo', color: '#facc15' },
-  ]
+  const paletteGroups = useMemo(() => ([
+    {
+      label: 'Toni di grigio',
+      colors: ['#f8fafc', '#f1f5f9', '#e2e8f0', '#cbd5e1', '#94a3b8'],
+    },
+    {
+      label: 'Toni di azzurro',
+      colors: ['#eff6ff', '#dbeafe', '#bfdbfe', '#93c5fd', '#60a5fa'],
+    },
+    {
+      label: 'Toni di verde',
+      colors: ['#ecfdf5', '#d1fae5', '#a7f3d0', '#6ee7b7', '#34d399'],
+    },
+    {
+      label: 'Toni di viola',
+      colors: ['#f5f3ff', '#ede9fe', '#ddd6fe', '#c4b5fd', '#a78bfa'],
+    },
+  ]), [])
 
-  const paletteColors = useMemo(() => {
-    const colors: string[] = []
-    for (let i = 0; i < 256; i += 1) {
-      const hue = (i % 16) * (360 / 16)
-      const light = 20 + Math.floor(i / 16) * (60 / 15)
-      colors.push(`hsl(${hue}, 55%, ${light}%)`)
-    }
-    return colors
-  }, [])
+  const modelKey = (m: Pick<LLMModel, 'provider' | 'model'> | null) =>
+    m ? `${m.provider}:${m.model}` : ''
 
   // Mobile state
   const { isMobile } = useMobile()
@@ -331,9 +413,19 @@ export default function ChatbotModule({ sessionId, initialTeacherbotId, onInputF
     staleTime: 1000 * 60 * 2,
   })
 
-  const profiles: ChatbotProfile[] = profilesData
-    ? Object.values(profilesData)
-    : FALLBACK_PROFILES
+  const profiles: ChatbotProfile[] = useMemo(() => {
+    const sourceProfiles = profilesData ? Object.values(profilesData) : FALLBACK_PROFILES
+    const fallbackMap = new Map(FALLBACK_PROFILES.map((p) => [p.key, p]))
+    return sourceProfiles.map((profile) => {
+      const fallback = fallbackMap.get(profile.key)
+      if (!fallback) return profile
+      return {
+        ...profile,
+        description: fallback.description,
+        suggested_prompts: fallback.suggested_prompts,
+      }
+    })
+  }, [profilesData])
 
   const typewriterEffect = (fullContent: string, messageId: string) => {
     let currentIndex = 0
@@ -357,6 +449,46 @@ export default function ChatbotModule({ sessionId, initialTeacherbotId, onInputF
   }
 
   const currentProfile = profiles.find(p => p.key === selectedProfile)
+  const buildMasterPrompt = useCallback((profileKey: ProactiveProfileKey, answers: Record<string, string>) => {
+    const payload = Object.entries(answers)
+      .map(([k, v]) => `- ${k}: ${v}`)
+      .join('\n')
+    return [
+      `Profilo attivo: ${profileKey}`,
+      'Istruzioni operative:',
+      '- Adatta tono, difficoltà e formato alle specifiche raccolte.',
+      '- Rimani focalizzato sul compito didattico del profilo attivo.',
+      '- Mantieni risposte chiare, progressive e adatte a studenti.',
+      '- Quando utile, proponi il prossimo passo in modo proattivo.',
+      '',
+      'Specifiche raccolte:',
+      payload,
+    ].join('\n')
+  }, [])
+
+  const resetProfileInterview = useCallback(() => {
+    setProfileInterview({ active: false, profileKey: null, stepIndex: 0, answers: {} })
+  }, [])
+
+  const startProfileInterview = useCallback((profileKey: ProactiveProfileKey) => {
+    const steps = PROFILE_INTERVIEWS[profileKey]
+    setProfileInterview({
+      active: true,
+      profileKey,
+      stepIndex: 0,
+      answers: {},
+    })
+    setMessages([
+      {
+        id: `proactive-${Date.now()}`,
+        role: 'assistant',
+        content: steps[0].question,
+        timestamp: new Date(),
+      },
+    ])
+    setActiveMasterPrompt(null)
+    setIsMasterPromptApplied(false)
+  }, [])
 
   const scrollToBottom = () => {
     if (!isGeneratingRef.current) {
@@ -396,8 +528,8 @@ export default function ChatbotModule({ sessionId, initialTeacherbotId, onInputF
       // STANDARD PROFILE MODE
       let convId = conversationId
       if (!convId) {
-        const modelProvider = selectedModel?.provider || sessionData?.session?.default_llm_provider
-        const modelName = selectedModel?.model || sessionData?.session?.default_llm_model
+        const modelProvider = effectiveSelectedModel?.provider || sessionData?.session?.default_llm_provider
+        const modelName = effectiveSelectedModel?.model || sessionData?.session?.default_llm_model
         const convRes = await llmApi.createConversation(
           sessionId,
           selectedProfile || 'tutor',
@@ -469,25 +601,99 @@ export default function ChatbotModule({ sessionId, initialTeacherbotId, onInputF
 
     if ((!messageContent.trim() && messageFiles.length === 0) || sendMessageMutation.isPending) return
 
+    if (profileInterview.active && profileInterview.profileKey) {
+      const steps = PROFILE_INTERVIEWS[profileInterview.profileKey]
+      const currentStep = steps[profileInterview.stepIndex]
+      if (!currentStep) return
+
+      const value = messageContent.trim()
+      if (!value) return
+
+      const userMessage: Message = {
+        id: Date.now().toString(),
+        role: 'user',
+        content: value,
+        timestamp: new Date(),
+      }
+      setMessages((prev) => [...prev, userMessage])
+
+      const nextAnswers = { ...profileInterview.answers, [currentStep.key]: value }
+      const isLast = profileInterview.stepIndex >= steps.length - 1
+      if (!isLast) {
+        const nextStepIndex = profileInterview.stepIndex + 1
+        setProfileInterview({
+          active: true,
+          profileKey: profileInterview.profileKey,
+          stepIndex: nextStepIndex,
+          answers: nextAnswers,
+        })
+        const assistantMessage: Message = {
+          id: `proactive-next-${Date.now()}`,
+          role: 'assistant',
+          content: steps[nextStepIndex].question,
+          timestamp: new Date(),
+        }
+        setMessages((prev) => [...prev, assistantMessage])
+      } else {
+        const masterPrompt = buildMasterPrompt(profileInterview.profileKey, nextAnswers)
+        setActiveMasterPrompt(masterPrompt)
+        setIsMasterPromptApplied(false)
+        setProfileInterview({
+          active: false,
+          profileKey: profileInterview.profileKey,
+          stepIndex: steps.length,
+          answers: nextAnswers,
+        })
+        const assistantMessage: Message = {
+          id: `proactive-done-${Date.now()}`,
+          role: 'assistant',
+          content: 'Perfetto, ho raccolto le informazioni principali. Da ora usero queste indicazioni per guidare il chatbot in modo personalizzato. Scrivi la tua prima richiesta quando vuoi.',
+          timestamp: new Date(),
+        }
+        setMessages((prev) => [...prev, assistantMessage])
+      }
+
+      setInput('')
+      return
+    }
+
     const filesInfo = messageFiles.length > 0
       ? ` [Allegati: ${messageFiles.map(f => f.name).join(', ')}]`
       : ''
 
+    const rawUserContent = messageContent.trim()
+    let contentForApi = rawUserContent
+    if (!selectedTeacherbot && activeMasterPrompt && !isMasterPromptApplied && rawUserContent) {
+      contentForApi = `CONTESTO DIDATTICO DA APPLICARE:\n${activeMasterPrompt}\n\nRichiesta studente:\n${rawUserContent}`
+      setIsMasterPromptApplied(true)
+    }
+
     const userMessage: Message = {
       id: Date.now().toString(),
       role: 'user',
-      content: (messageContent.trim() || 'Analizza questi documenti') + filesInfo,
+      content: (rawUserContent || 'Analizza questi documenti') + filesInfo,
       timestamp: new Date(),
     }
     setMessages((prev) => [...prev, userMessage])
     sendMessageMutation.mutate({
-      content: messageContent.trim(),
+      content: contentForApi,
       files: messageFiles,
       existingHistory: !conversationId && messages.length > 0 ? messages : undefined
     })
     setInput('')
     setAttachedFiles([])
-  }, [input, attachedFiles, sendMessageMutation, conversationId, messages])
+  }, [
+    input,
+    attachedFiles,
+    sendMessageMutation,
+    conversationId,
+    messages,
+    profileInterview,
+    buildMasterPrompt,
+    selectedTeacherbot,
+    activeMasterPrompt,
+    isMasterPromptApplied,
+  ])
 
   const handleNewChat = useCallback(async () => {
     triggerHaptic('light')
@@ -507,11 +713,14 @@ export default function ChatbotModule({ sessionId, initialTeacherbotId, onInputF
     setSelectedModel(null)
     setSelectedTeacherbot(null)
     setTeacherbotConversationId(null)
+    setActiveMasterPrompt(null)
+    setIsMasterPromptApplied(false)
+    resetProfileInterview()
     setMobileHistoryOpen(false)
     if (isMobile) {
       setMobileView('profiles')
     }
-  }, [isMobile, teacherbotConversationId])
+  }, [isMobile, teacherbotConversationId, resetProfileInterview])
 
   const handleSelectProfile = useCallback(async (profileKey: string) => {
     triggerHaptic('selection')
@@ -530,25 +739,37 @@ export default function ChatbotModule({ sessionId, initialTeacherbotId, onInputF
     setTeacherbotConversationId(null)
     setMessages([])
     setConversationId(null)
+    setActiveMasterPrompt(null)
+    setIsMasterPromptApplied(false)
+    resetProfileInterview()
     if (isMobile) {
       setMobileView('conversations')
     }
-  }, [isMobile, teacherbotConversationId])
+    if (PROACTIVE_PROFILE_KEYS.includes(profileKey as ProactiveProfileKey)) {
+      startProfileInterview(profileKey as ProactiveProfileKey)
+      if (isMobile) {
+        setMobileView('chat')
+      }
+    }
+  }, [isMobile, teacherbotConversationId, resetProfileInterview, startProfileInterview])
 
   const handleStartNewConversation = useCallback(() => {
     triggerHaptic('light')
     setMessages([])
     setConversationId(null)
     setTeacherbotConversationId(null)
+    setActiveMasterPrompt(null)
+    setIsMasterPromptApplied(false)
+    resetProfileInterview()
     if (isMobile) {
       setMobileView('chat')
     }
-  }, [isMobile])
+  }, [isMobile, resetProfileInterview])
 
   const handleChangeModel = (model: LLMModel | null) => {
     setSelectedModel(model)
     setConversationId(null)
-    setShowModelSelector(false)
+    setShowModelMenu(false)
   }
 
   const loadConversation = async (convId: string, isTeacherbotMsg = false) => {
@@ -630,6 +851,9 @@ export default function ChatbotModule({ sessionId, initialTeacherbotId, onInputF
     setTeacherbotConversationId(null)
     setSelectedProfile(null)
     setConversationId(null)
+    setActiveMasterPrompt(null)
+    setIsMasterPromptApplied(false)
+    resetProfileInterview()
 
     // If proactive, show initial message
     if (teacherbot.is_proactive && teacherbot.proactive_message) {
@@ -646,7 +870,7 @@ export default function ChatbotModule({ sessionId, initialTeacherbotId, onInputF
     if (isMobile) {
       setMobileView('conversations')
     }
-  }, [isMobile, teacherbotConversationId])
+  }, [isMobile, teacherbotConversationId, resetProfileInterview])
 
   const conversations = [
     ...(conversationsData || []),
@@ -658,8 +882,36 @@ export default function ChatbotModule({ sessionId, initialTeacherbotId, onInputF
     }))
   ].sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
   const availableModels = modelsData?.models || []
+  const teacherDefaultModel = useMemo(
+    () => availableModels.find((m) =>
+      m.provider === sessionData?.session?.default_llm_provider &&
+      m.model === sessionData?.session?.default_llm_model),
+    [availableModels, sessionData]
+  )
+  const savedDefaultModel = useMemo(
+    () => availableModels.find((m) => modelKey(m) === defaultModelKey),
+    [availableModels, defaultModelKey]
+  )
+  const effectiveSelectedModel = selectedModel || savedDefaultModel || teacherDefaultModel || null
   const availableTeacherbots = teacherbotsData || []
   const lastAppliedTeacherbotIdRef = useRef<string | null>(null)
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (modelMenuRef.current && !modelMenuRef.current.contains(event.target as Node)) {
+        setShowModelMenu(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
+  const handleSetDefaultModel = (model: LLMModel, e: React.MouseEvent) => {
+    e.stopPropagation()
+    const key = modelKey(model)
+    localStorage.setItem('student_default_model', key)
+    setDefaultModelKey(key)
+  }
 
   const getTeacherbotColorClass = (color: string) => {
     const colorMap: Record<string, string> = {
@@ -873,7 +1125,10 @@ export default function ChatbotModule({ sessionId, initialTeacherbotId, onInputF
 
   // Desktop Chat interface
   return (
-    <div className="flex h-full md:h-[calc(100vh-7.2rem)] md:max-h-[920px] md:min-h-[500px] flex-col md:flex-row bg-slate-50 md:bg-gradient-to-b md:from-indigo-50/30 md:to-white md:rounded-2xl overflow-hidden md:shadow-lg md:shadow-indigo-100/50 md:border md:border-indigo-100 relative md:my-1.5 md:mb-5">
+    <div
+      className="flex h-full md:h-[calc(100vh-7.2rem)] md:max-h-[920px] md:min-h-[500px] flex-col md:flex-row bg-slate-50 md:bg-white md:rounded-2xl overflow-hidden md:shadow-lg md:border md:border-slate-200 relative md:my-1.5 md:mb-5"
+      style={accentVars}
+    >
       {/* Mobile Header - Fixed height */}
       <div className="flex md:hidden items-center gap-2 px-3 py-1.5 bg-white border-b flex-shrink-0">
         <Button
@@ -884,7 +1139,7 @@ export default function ChatbotModule({ sessionId, initialTeacherbotId, onInputF
         >
           <Menu className="h-4 w-4" />
         </Button>
-        <div className="w-7 h-7 rounded-xl bg-gradient-to-br from-[#4f46e5] to-[#818cf8] flex items-center justify-center shadow-md">
+        <div className="w-7 h-7 rounded-xl flex items-center justify-center shadow-md" style={selectedSolidStyle}>
           {selectedProfile && PROFILE_ICONS[selectedProfile] ? (
             <div className="text-white scale-90">{PROFILE_ICONS[selectedProfile]}</div>
           ) : (
@@ -916,7 +1171,8 @@ export default function ChatbotModule({ sessionId, initialTeacherbotId, onInputF
             <div className="flex-1 overflow-y-auto p-2 space-y-1">
               <button
                 onClick={handleNewChat}
-                className="w-full text-left px-3 py-2 rounded-lg text-sm bg-fuchsia-100 text-fuchsia-700 hover:bg-fuchsia-200 transition-colors flex items-center gap-2"
+                className="w-full text-left px-3 py-2 rounded-lg text-sm transition-colors flex items-center gap-2 border"
+                style={selectedSoftStyle}
               >
                 <Sparkles className="h-4 w-4" />
                 Nuova chat
@@ -926,10 +1182,11 @@ export default function ChatbotModule({ sessionId, initialTeacherbotId, onInputF
                 .map((conv) => (
                   <div
                     key={conv.id}
-                    className={`group relative w-full text-left px-3 py-2 rounded-lg text-sm transition-colors cursor-pointer ${conversationId === conv.id
-                      ? 'bg-slate-200 text-slate-800'
+                    className={`group relative w-full text-left px-3 py-2 rounded-lg text-sm transition-colors cursor-pointer border ${conversationId === conv.id
+                      ? ''
                       : 'hover:bg-slate-100 text-slate-600'
                       }`}
+                    style={conversationId === conv.id ? selectedSoftStyle : undefined}
                     onClick={() => { loadConversation(conv.id); setMobileHistoryOpen(false); }}
                   >
                     <div className="truncate font-medium pr-6">{conv.title || 'Conversazione'}</div>
@@ -978,7 +1235,8 @@ export default function ChatbotModule({ sessionId, initialTeacherbotId, onInputF
             <div className="flex-1 overflow-y-auto p-2 space-y-1">
               <button
                 onClick={handleNewChat}
-                className="w-full text-left px-3 py-2 rounded-lg text-sm bg-indigo-50 text-indigo-700 hover:bg-indigo-100 transition-colors flex items-center gap-2"
+                className="w-full text-left px-3 py-2 rounded-lg text-sm transition-colors flex items-center gap-2 border"
+                style={selectedSoftStyle}
               >
                 <Sparkles className="h-4 w-4" />
                 Nuova chat
@@ -990,10 +1248,11 @@ export default function ChatbotModule({ sessionId, initialTeacherbotId, onInputF
                 .map((conv) => (
                   <div
                     key={conv.id}
-                    className={`group relative w-full text-left px-3 py-2 rounded-lg text-sm transition-colors cursor-pointer ${conversationId === conv.id
-                      ? 'bg-slate-200 text-slate-800'
+                    className={`group relative w-full text-left px-3 py-2 rounded-lg text-sm transition-colors cursor-pointer border ${conversationId === conv.id
+                      ? ''
                       : 'hover:bg-slate-100 text-slate-600'
                       }`}
+                    style={conversationId === conv.id ? selectedSoftStyle : undefined}
                     onClick={() => loadConversation(conv.id)}
                   >
                     <div className="truncate font-medium pr-6">{conv.title || 'Conversazione'}</div>
@@ -1056,14 +1315,14 @@ export default function ChatbotModule({ sessionId, initialTeacherbotId, onInputF
         style={chatBg ? { backgroundColor: chatBg } : undefined}
         onDragOver={(e) => {
           e.preventDefault()
-          e.currentTarget.classList.add('ring-2', 'ring-[#4f46e5]', 'ring-inset')
+          e.currentTarget.classList.add('ring-2', 'ring-inset')
         }}
         onDragLeave={(e) => {
-          e.currentTarget.classList.remove('ring-2', 'ring-[#48cae4]', 'ring-inset')
+          e.currentTarget.classList.remove('ring-2', 'ring-inset')
         }}
         onDrop={(e) => {
           e.preventDefault()
-          e.currentTarget.classList.remove('ring-2', 'ring-[#48cae4]', 'ring-inset')
+          e.currentTarget.classList.remove('ring-2', 'ring-inset')
 
           const sessionFileData = e.dataTransfer.getData('application/x-session-file')
           if (sessionFileData) {
@@ -1162,9 +1421,9 @@ export default function ChatbotModule({ sessionId, initialTeacherbotId, onInputF
           >
             <ArrowLeft className="h-4 w-4" />
           </Button>
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#4f46e5] to-[#818cf8] flex items-center justify-center shadow-md">
+          <div className="w-10 h-10 rounded-xl flex items-center justify-center shadow-md" style={selectedSolidStyle}>
             {selectedTeacherbot ? (
-              <div className={`text-white scale-90 w-full h-full flex items-center justify-center`}>
+              <div className="text-white scale-90 w-full h-full flex items-center justify-center">
                 <Wand2 className="h-5 w-5" />
               </div>
             ) : selectedProfile && PROFILE_ICONS[selectedProfile] ? (
@@ -1178,28 +1437,11 @@ export default function ChatbotModule({ sessionId, initialTeacherbotId, onInputF
               {selectedTeacherbot ? selectedTeacherbot.name : currentProfile?.name}
             </h3>
             <p className="text-xs text-slate-500 truncate hidden lg:block">
-              {selectedTeacherbot
-                ? ''
-                : (selectedModel
-                  ? selectedModel.name
-                  : (sessionData?.session?.default_llm_provider && sessionData?.session?.default_llm_model
-                    ? modelsData?.models?.find(m => m.provider === sessionData.session.default_llm_provider && m.model === sessionData.session.default_llm_model)?.name
-                    : modelsData?.models?.find(m => m.provider === modelsData?.default_provider && m.model === modelsData?.default_model)?.name) || 'Modello AI')
-              }
+              {selectedTeacherbot ? '' : (effectiveSelectedModel?.name || 'Modello AI')}
             </p>
           </div>
+
           <div className="hidden lg:flex items-center gap-2 relative">
-            <div className="flex items-center gap-1">
-              {baseBgSwatches.map((swatch) => (
-                <button
-                  key={swatch.label}
-                  onClick={() => setChatBg(swatch.color)}
-                  title={swatch.label}
-                  className={`h-5 w-5 rounded-full shadow-sm transition-transform hover:scale-105 ${chatBg === swatch.color ? 'ring-2 ring-indigo-500 ring-offset-2' : ''}`}
-                  style={{ backgroundColor: swatch.color }}
-                />
-              ))}
-            </div>
             <div className="relative">
               <Button
                 variant="ghost"
@@ -1211,118 +1453,123 @@ export default function ChatbotModule({ sessionId, initialTeacherbotId, onInputF
                 <Palette className="h-4 w-4" />
               </Button>
               {showBgPalette && (
-                <div className="absolute right-0 top-10 z-30 w-56 rounded-xl border border-slate-200 bg-white p-2 shadow-xl">
-                  <div className="grid grid-cols-8 gap-1">
-                    {paletteColors.map((color, idx) => (
+                <div className="absolute right-0 top-10 z-30 w-64 rounded-xl border border-slate-200 bg-white p-3 shadow-xl">
+                  <div className="space-y-3">
+                    {paletteGroups.map((group) => (
+                      <div key={group.label}>
+                        <div className="text-[10px] text-slate-400 mb-1">{group.label}</div>
+                        <div className="grid grid-cols-5 gap-1">
+                          {group.colors.map((color) => (
+                            <button
+                              key={`${group.label}-${color}`}
+                              onClick={() => {
+                                setChatBg(color)
+                                setShowBgPalette(false)
+                              }}
+                              className={`h-6 w-6 rounded-md border transition-transform hover:scale-105 ${chatBg === color ? 'ring-2 ring-offset-1' : ''}`}
+                              style={chatBg === color ? { backgroundColor: color, boxShadow: `0 0 0 2px ${accentTheme.accent}` } : { backgroundColor: color }}
+                              title={color}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="mt-2 flex items-center justify-between text-[10px] text-slate-400">
+                    <span>Palette ridotta</span>
+                    <div className="flex items-center gap-2">
                       <button
-                        key={`${color}-${idx}`}
-                        onClick={() => {
-                          setChatBg(color)
-                          setShowBgPalette(false)
-                        }}
-                      className="h-5 w-5 rounded hover:scale-110 transition-transform"
-                      style={{ backgroundColor: color }}
-                      title={color}
-                    />
-                  ))}
-                </div>
-                <div className="mt-2 flex items-center justify-between text-[10px] text-slate-400">
-                  <span>Jolly 256</span>
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => chatBg && handleSetDefaultChatBg(chatBg)}
-                      className={`text-slate-500 hover:text-slate-700 ${chatBg ? '' : 'opacity-40 cursor-not-allowed'}`}
-                      disabled={!chatBg}
-                    >
-                      Imposta default
-                    </button>
-                    {chatBgDefault && (
+                        onClick={() => chatBg && handleSetDefaultChatBg(chatBg)}
+                        className={`text-slate-500 hover:text-slate-700 ${chatBg ? '' : 'opacity-40 cursor-not-allowed'}`}
+                        disabled={!chatBg}
+                      >
+                        Imposta default
+                      </button>
+                      {chatBgDefault && (
+                        <button
+                          onClick={() => {
+                            setChatBg(chatBgDefault)
+                            setShowBgPalette(false)
+                          }}
+                          className="text-slate-500 hover:text-slate-700"
+                        >
+                          Usa default
+                        </button>
+                      )}
                       <button
                         onClick={() => {
-                          setChatBg(chatBgDefault)
+                          setChatBg('')
                           setShowBgPalette(false)
                         }}
                         className="text-slate-500 hover:text-slate-700"
                       >
-                        Usa default
+                        Reset
                       </button>
-                    )}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {!selectedTeacherbot && (
+            <div className="hidden lg:block relative" ref={modelMenuRef}>
+              <button
+                onClick={() => setShowModelMenu(!showModelMenu)}
+                className="flex items-center gap-2 px-4 py-2 rounded-full text-xs font-semibold transition-all shadow-sm hover:opacity-90"
+                style={selectedSolidStyle}
+              >
+                <Bot className="h-3.5 w-3.5 text-white/90" />
+                <span>{effectiveSelectedModel?.name || 'Modello AI'}</span>
+                <ChevronDown className={`h-3 w-3 text-white/80 transition-transform ${showModelMenu ? 'rotate-180' : ''}`} />
+              </button>
+              {showModelMenu && (
+                <div className="absolute right-0 top-full mt-2 w-72 rounded-xl border border-slate-200 bg-white shadow-xl z-40 py-1">
+                  <div className="px-4 py-2 text-[10px] font-semibold text-slate-400 uppercase tracking-wide border-b border-slate-100">Seleziona modello</div>
+                  {availableModels.map((m) => {
+                    const selected = modelKey(effectiveSelectedModel) === modelKey(m)
+                    const isDefault = defaultModelKey === modelKey(m)
+                    return (
+                      <div
+                        key={modelKey(m)}
+                        className={`mx-1 my-0.5 px-3 py-2 rounded-lg border cursor-pointer flex items-center justify-between ${selected ? '' : 'border-transparent hover:bg-slate-50'}`}
+                        style={selected ? selectedSoftStyle : undefined}
+                        onClick={() => handleChangeModel(m)}
+                      >
+                        <div className="min-w-0">
+                          <div className="text-sm font-semibold truncate">{m.name}</div>
+                          <div className="text-[10px] text-slate-400">{m.provider}</div>
+                        </div>
+                        <button
+                          className={`w-4 h-4 rounded border flex items-center justify-center ${isDefault ? '' : 'border-slate-300'}`}
+                          style={isDefault ? selectedSolidStyle : undefined}
+                          onClick={(e) => handleSetDefaultModel(m, e)}
+                          title="Imposta come default"
+                        >
+                          {isDefault && <Check className="h-3 w-3 text-white" />}
+                        </button>
+                      </div>
+                    )
+                  })}
+                  <div className="px-3 pb-2 pt-1 border-t border-slate-100">
                     <button
-                      onClick={() => {
-                        setChatBg('')
-                        setShowBgPalette(false)
-                      }}
-                      className="text-slate-500 hover:text-slate-700"
+                      onClick={() => handleChangeModel(null)}
+                      className="text-xs text-slate-500 hover:text-slate-700"
                     >
-                      Reset
+                      Usa modello predefinito sessione
                     </button>
                   </div>
                 </div>
-              </div>
-            )}
-          </div>
-          </div>
-          <Button
-            variant="ghost"
-            size="sm"
-            disabled={!!selectedTeacherbot}
-            onClick={() => setShowModelSelector(!showModelSelector)}
-            className={`hidden lg:flex text-slate-500 hover:text-slate-700 ${!!selectedTeacherbot ? 'opacity-0' : 'opacity-100'}`}
-          >
-            <Settings2 className="h-4 w-4" />
-          </Button>
-        </div>
-
-        {/* Model Selector Dropdown - Desktop only */}
-        {showModelSelector && (
-          <div className="hidden lg:block px-4 py-3 bg-slate-50 border-b">
-            <label className="text-xs font-medium text-slate-600 mb-2 block">Cambia modello AI</label>
-            <select
-              value={selectedModel ? `${selectedModel.provider}:${selectedModel.model}` : ''}
-              onChange={(e) => {
-                if (!e.target.value) {
-                  handleChangeModel(null)
-                } else {
-                  const [provider, model] = e.target.value.split(':')
-                  const found = availableModels.find(m => m.provider === provider && m.model === model)
-                  handleChangeModel(found || null)
-                }
-              }}
-              className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-[#4f46e5] focus:border-transparent"
-            >
-              <option value="">Modello predefinito</option>
-              {availableModels.map((m) => (
-                <option key={`${m.provider}:${m.model}`} value={`${m.provider}:${m.model}`}>
-                  {m.name} ({m.provider})
-                </option>
-              ))}
-            </select>
-            {messages.length > 0 && (
-              <p className="text-xs text-amber-600 mt-2 flex items-center gap-1">
-                <RefreshCw className="h-3 w-3" />
-                La cronologia verrà mantenuta come contesto
-              </p>
-            )}
-            <div className="flex items-center justify-between mt-3 pt-3 border-t border-slate-200">
-              <span className="text-xs text-slate-600">Risposte esaustive</span>
-              <button
-                onClick={() => setVerboseMode(!verboseMode)}
-                className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${verboseMode ? 'bg-[#4f46e5]' : 'bg-slate-300'}`}
-              >
-                <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${verboseMode ? 'translate-x-5' : 'translate-x-1'}`} />
-              </button>
+              )}
             </div>
-            <p className="text-xs text-slate-400 mt-1">
-              {verboseMode ? 'Risposte dettagliate e approfondite' : 'Risposte brevi e concise'}
-            </p>
-          </div>
-        )}
+          )}
+        </div>
 
         {/* Messages area */}
         <div className={`flex-1 overflow-y-auto overflow-x-hidden px-3 py-3 md:px-4 md:py-6 space-y-3 md:space-y-6 ${chatBgIsDark ? 'text-white' : ''}`} style={{ WebkitOverflowScrolling: 'touch', scrollBehavior: 'smooth' }}>
           {messages.length === 0 ? (
             <div className="text-center py-12">
-              <div className={`inline-flex items-center justify-center w-20 h-20 rounded-2xl ${selectedTeacherbot ? getTeacherbotColorClass(selectedTeacherbot.color) : 'bg-gradient-to-br from-[#4f46e5] to-[#818cf8]'} mb-6 shadow-lg`}>
+              <div className={`inline-flex items-center justify-center w-20 h-20 rounded-2xl mb-6 shadow-lg ${selectedTeacherbot ? getTeacherbotColorClass(selectedTeacherbot.color) : ''}`} style={selectedTeacherbot ? undefined : selectedSolidStyle}>
                 {selectedTeacherbot ? (
                   <Wand2 className="h-10 w-10 text-white" />
                 ) : selectedProfile && PROFILE_ICONS[selectedProfile] ? (
@@ -1349,7 +1596,7 @@ export default function ChatbotModule({ sessionId, initialTeacherbotId, onInputF
             messages.map((message) => (
               <div key={message.id} className={`flex gap-3 ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                 {message.role === 'assistant' && (
-                  <div className={`w-9 h-9 rounded-xl ${selectedTeacherbot ? getTeacherbotColorClass(selectedTeacherbot.color) : 'bg-gradient-to-br from-[#4f46e5] to-[#818cf8]'} flex items-center justify-center flex-shrink-0 shadow-md`}>
+                  <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 shadow-md ${selectedTeacherbot ? getTeacherbotColorClass(selectedTeacherbot.color) : ''}`} style={selectedTeacherbot ? undefined : selectedSolidStyle}>
                     {selectedTeacherbot ? (
                       <Wand2 className="h-5 w-5 text-white" />
                     ) : selectedProfile && PROFILE_ICONS[selectedProfile] ? (
@@ -1360,9 +1607,11 @@ export default function ChatbotModule({ sessionId, initialTeacherbotId, onInputF
                   </div>
                 )}
                 <div className={`max-w-[80%] rounded-2xl px-4 py-3 ${message.role === 'user'
-                  ? 'bg-gradient-to-br from-[#4f46e5] to-[#818cf8] text-white rounded-br-md shadow-md'
+                  ? 'text-white rounded-br-md shadow-md'
                   : `${chatBgIsDark ? 'bg-white/10 text-white border border-white/15' : 'bg-white border border-slate-100'} shadow-sm rounded-bl-md`
-                  }`}>
+                  }`}
+                  style={message.role === 'user' ? selectedSolidStyle : undefined}
+                >
                   {message.role === 'assistant' ? (
                     <MessageContent content={message.content} onQuizSubmit={(answers) => setInput(answers)} darkMode={chatBgIsDark} />
                   ) : (
@@ -1379,7 +1628,7 @@ export default function ChatbotModule({ sessionId, initialTeacherbotId, onInputF
           )}
           {sendMessageMutation.isPending && (
             <div className="flex gap-3">
-              <div className={`w-9 h-9 rounded-xl ${selectedTeacherbot ? getTeacherbotColorClass(selectedTeacherbot.color) : 'bg-gradient-to-br from-[#4f46e5] to-[#818cf8]'} flex items-center justify-center shadow-md`}>
+              <div className={`w-9 h-9 rounded-xl flex items-center justify-center shadow-md ${selectedTeacherbot ? getTeacherbotColorClass(selectedTeacherbot.color) : ''}`} style={selectedTeacherbot ? undefined : selectedSolidStyle}>
                 {selectedTeacherbot ? (
                   <Wand2 className="h-5 w-5 text-white" />
                 ) : selectedProfile && PROFILE_ICONS[selectedProfile] ? (
@@ -1391,9 +1640,9 @@ export default function ChatbotModule({ sessionId, initialTeacherbotId, onInputF
               <div className={`${chatBgIsDark ? 'bg-white/10 border border-white/15' : 'bg-white border border-slate-100'} shadow-sm rounded-2xl rounded-bl-md px-4 py-3`}>
                 <div className="flex items-center gap-2">
                   <div className="flex gap-1">
-                    <span className={`w-2 h-2 ${chatBgIsDark ? 'bg-white' : 'bg-[#4f46e5]'} rounded-full animate-bounce`} style={{ animationDelay: '0ms' }}></span>
-                    <span className={`w-2 h-2 ${chatBgIsDark ? 'bg-white' : 'bg-[#4f46e5]'} rounded-full animate-bounce`} style={{ animationDelay: '150ms' }}></span>
-                    <span className={`w-2 h-2 ${chatBgIsDark ? 'bg-white' : 'bg-[#4f46e5]'} rounded-full animate-bounce`} style={{ animationDelay: '300ms' }}></span>
+                    <span className="w-2 h-2 rounded-full animate-bounce" style={{ animationDelay: '0ms', backgroundColor: chatBgIsDark ? '#ffffff' : accentTheme.accent }}></span>
+                    <span className="w-2 h-2 rounded-full animate-bounce" style={{ animationDelay: '150ms', backgroundColor: chatBgIsDark ? '#ffffff' : accentTheme.accent }}></span>
+                    <span className="w-2 h-2 rounded-full animate-bounce" style={{ animationDelay: '300ms', backgroundColor: chatBgIsDark ? '#ffffff' : accentTheme.accent }}></span>
                   </div>
                   <span className={`text-sm ${chatBgIsDark ? 'text-white/70' : 'text-slate-400'}`}>Sto pensando...</span>
                 </div>
@@ -1429,7 +1678,10 @@ export default function ChatbotModule({ sessionId, initialTeacherbotId, onInputF
           )}
 
           <div className="p-2 md:p-3 bg-white/95 backdrop-blur-sm md:bg-transparent">
-            <div className="relative flex items-end gap-2 bg-white border-2 border-[#4f46e5]/40 rounded-[2rem] p-1.5 pl-3 focus-within:border-[#4f46e5] focus-within:ring-4 focus-within:ring-[#4f46e5]/10 transition-all shadow-sm">
+            <div
+              className="relative flex items-end gap-2 bg-white border-2 rounded-[2rem] p-1.5 pl-3 transition-all shadow-sm"
+              style={{ borderColor: accentTheme.border, boxShadow: `0 0 0 0 ${accentTheme.accent}` }}
+            >
               <input type="file" ref={fileInputRef} className="hidden" multiple onChange={(e) => {
                 const files = Array.from(e.target.files || [])
                 files.forEach(file => {
@@ -1451,7 +1703,8 @@ export default function ChatbotModule({ sessionId, initialTeacherbotId, onInputF
               />
 
               <Button
-                variant="ghost" size="icon" className="h-9 w-9 text-slate-400 hover:text-[#4f46e5] hover:bg-indigo-50 rounded-full flex-shrink-0"
+                variant="ghost" size="icon" className="h-9 w-9 text-slate-400 hover:bg-slate-100 rounded-full flex-shrink-0"
+                style={{ color: 'inherit' }}
                 onClick={() => fileInputRef.current?.click()}
               >
                 <Paperclip className="h-5 w-5" />
@@ -1478,7 +1731,7 @@ export default function ChatbotModule({ sessionId, initialTeacherbotId, onInputF
                       handleSend()
                     }
                   }}
-                  placeholder={attachedFiles.length > 0 ? "Descrivi..." : "Scrivi un messaggio..."}
+                  placeholder={profileInterview.active ? "Rispondi alla domanda guidata..." : (attachedFiles.length > 0 ? "Descrivi..." : "Scrivi un messaggio...")}
                   disabled={sendMessageMutation.isPending}
                   className="w-full py-2.5 bg-transparent border-none text-sm focus:ring-0 focus:outline-none outline-none placeholder:text-slate-400"
                 />
@@ -1490,8 +1743,9 @@ export default function ChatbotModule({ sessionId, initialTeacherbotId, onInputF
                 size="icon"
                 className={`h-9 w-9 rounded-full transition-all flex-shrink-0 ${(!input.trim() && attachedFiles.length === 0)
                   ? 'bg-slate-200 text-slate-400'
-                  : 'bg-gradient-to-br from-[#4f46e5] to-[#4338ca] hover:shadow-indigo-200/50 hover:scale-105 shadow-md text-white'
+                  : 'hover:scale-105 shadow-md text-white'
                   }`}
+                style={(!input.trim() && attachedFiles.length === 0) ? undefined : selectedSolidStyle}
               >
                 <Send className="h-4 w-4 ml-0.5" />
               </Button>
