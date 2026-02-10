@@ -192,27 +192,31 @@ ${/converti in formula|formula|latex/i.test(customInstruction)
               <>
                 <button
                   onClick={() => handleAction('expand')}
-                  className="rounded-md bg-white/10 px-2.5 py-1.5 text-xs text-white transition-colors hover:bg-white/20"
+                  className="rounded-md bg-white/10 px-2.5 py-1.5 text-left text-white transition-colors hover:bg-white/20"
                 >
-                  Espandi
+                  <span className="block text-xs font-medium leading-tight">Espandi</span>
+                  <span className="block text-[10px] leading-tight text-slate-300">Più dettagli</span>
                 </button>
                 <button
                   onClick={() => handleAction('reformat')}
-                  className="rounded-md bg-white/10 px-2.5 py-1.5 text-xs text-white transition-colors hover:bg-white/20"
+                  className="rounded-md bg-white/10 px-2.5 py-1.5 text-left text-white transition-colors hover:bg-white/20"
                 >
-                  Riformatta
+                  <span className="block text-xs font-medium leading-tight">Riformatta</span>
+                  <span className="block text-[10px] leading-tight text-slate-300">Più chiaro</span>
                 </button>
                 <button
                   onClick={() => handleAction('generate')}
-                  className="rounded-md bg-white/10 px-2.5 py-1.5 text-xs text-white transition-colors hover:bg-white/20"
+                  className="rounded-md bg-white/10 px-2.5 py-1.5 text-left text-white transition-colors hover:bg-white/20"
                 >
-                  Genera
+                  <span className="block text-xs font-medium leading-tight">Genera</span>
+                  <span className="block text-[10px] leading-tight text-slate-300">Nuovo testo</span>
                 </button>
                 <button
                   onClick={() => setActiveAction(activeAction === 'custom' ? null : 'custom')}
-                  className="rounded-md bg-white/10 px-2.5 py-1.5 text-xs text-white transition-colors hover:bg-white/20"
+                  className="rounded-md bg-white/10 px-2.5 py-1.5 text-left text-white transition-colors hover:bg-white/20"
                 >
-                  Personalizza
+                  <span className="block text-xs font-medium leading-tight">Personalizza</span>
+                  <span className="block text-[10px] leading-tight text-slate-300">Istruzione libera</span>
                 </button>
               </>
             )}
