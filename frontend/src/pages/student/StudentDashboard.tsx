@@ -253,8 +253,8 @@ export default function StudentDashboard() {
           sessionTitle={sessionInfo.session.title}
           joinCode={sessionInfo.session.join_code}
           sessionId={sessionInfo.session.id}
-          showChatToggle={!showSidebar}
-          onShowChatSidebar={() => setShowSidebar(true)}
+          chatSidebarOpen={showSidebar}
+          onToggleChatSidebar={() => setShowSidebar(v => !v)}
           accent={studentAccent}
           onAccentChange={setStudentAccent}
         />

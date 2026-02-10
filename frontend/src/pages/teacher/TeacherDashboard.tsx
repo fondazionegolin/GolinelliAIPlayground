@@ -95,7 +95,9 @@ export default function TeacherDashboard() {
 
   useEffect(() => {
     const handleResize = () => {
-      setShowSidebar(window.innerWidth >= CHATBAR_AUTO_HIDE_BREAKPOINT)
+      setShowSidebar(prev => (
+        window.innerWidth < CHATBAR_AUTO_HIDE_BREAKPOINT ? false : prev
+      ))
     }
     handleResize()
     window.addEventListener('resize', handleResize)
@@ -112,8 +114,8 @@ export default function TeacherDashboard() {
           // Persist session selection
           localStorage.setItem('teacher_selected_session', JSON.stringify(session))
         }}
-        showChatToggle={!showSidebar}
-        onShowChatSidebar={() => setShowSidebar(true)}
+        chatSidebarOpen={showSidebar}
+        onToggleChatSidebar={() => setShowSidebar(v => !v)}
       />
 
       <div className="flex-1 flex overflow-hidden pt-16">

@@ -4,6 +4,7 @@ type LogoMarkProps = {
 }
 
 export function LogoMark({ className, bubbleColor }: LogoMarkProps) {
+  void bubbleColor
   return (
     <svg
       width="601"
@@ -22,7 +23,6 @@ export function LogoMark({ className, bubbleColor }: LogoMarkProps) {
           strokeWidth="40"
           strokeLinecap="round"
         />
-        <circle cx="392" cy="110" r="24" fill={bubbleColor} />
       </g>
       <defs>
         <clipPath id="clip0_21_2">

@@ -20,8 +20,8 @@ interface StudentNavbarProps {
   sessionTitle?: string
   joinCode?: string
   sessionId?: string
-  showChatToggle?: boolean
-  onShowChatSidebar?: () => void
+  chatSidebarOpen?: boolean
+  onToggleChatSidebar?: () => void
   accent?: StudentAccentId
   onAccentChange?: (accent: StudentAccentId) => void
 }
@@ -31,8 +31,8 @@ export function StudentNavbar({
   onNavigate,
   sessionTitle,
   joinCode,
-  showChatToggle = false,
-  onShowChatSidebar,
+  chatSidebarOpen = false,
+  onToggleChatSidebar,
   accent = DEFAULT_STUDENT_ACCENT,
   onAccentChange
 }: StudentNavbarProps) {
@@ -192,18 +192,19 @@ export function StudentNavbar({
                       <span className="text-xs font-semibold text-slate-500 bg-white/60 px-2 py-0.5 rounded">{joinCode}</span>
                     </div>
                   </div>
-                  {showChatToggle && (
-                    <button
-                      className="ml-2 h-8 w-8 rounded-full border bg-white transition"
-                      style={{ borderColor: accentTheme.border, color: accentTheme.text }}
-                      onClick={onShowChatSidebar}
-                      title="Apri chat di classe"
-                    >
-                      <MessageSquare className="h-4 w-4 mx-auto" />
-                    </button>
-                  )}
                 </div>
               )}
+
+              <button
+                className={`hidden lg:flex items-center justify-center h-11 w-11 rounded-full border transition shadow-sm ${chatSidebarOpen ? 'text-white' : 'bg-white hover:bg-slate-50'}`}
+                style={chatSidebarOpen
+                  ? { backgroundColor: accentTheme.accent, borderColor: accentTheme.accent }
+                  : { borderColor: accentTheme.border, color: accentTheme.text }}
+                onClick={onToggleChatSidebar}
+                title={chatSidebarOpen ? 'Nascondi chat di classe' : 'Mostra chat di classe'}
+              >
+                <MessageSquare className="h-4 w-4" />
+              </button>
 
               {/* Avatar Dropdown */}
               <div className="relative" ref={dropdownRef}>

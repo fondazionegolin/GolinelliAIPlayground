@@ -33,11 +33,11 @@ interface ActiveSession {
 interface TeacherNavbarProps {
   currentSession?: SessionInfo | null
   onSessionChange?: (session: SessionInfo) => void
-  showChatToggle?: boolean
-  onShowChatSidebar?: () => void
+  chatSidebarOpen?: boolean
+  onToggleChatSidebar?: () => void
 }
 
-export function TeacherNavbar({ currentSession, onSessionChange, showChatToggle = false, onShowChatSidebar }: TeacherNavbarProps) {
+export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen = false, onToggleChatSidebar }: TeacherNavbarProps) {
   const location = useLocation()
   const navigate = useNavigate()
 
@@ -322,15 +322,14 @@ export function TeacherNavbar({ currentSession, onSessionChange, showChatToggle 
                   </div>
                   <ChevronDown className={`h-3 w-3 ml-1 text-slate-400 transition-transform flex-shrink-0 ${showSessionsMenu ? 'rotate-180' : ''}`} />
                 </button>
-                {showChatToggle && (
-                  <button
-                    className="hidden lg:flex items-center justify-center h-11 w-11 rounded-full border border-slate-200 bg-white text-[var(--teacher-accent-text)] hover:bg-slate-50 transition shadow-sm"
-                    onClick={onShowChatSidebar}
-                    title="Apri chat di classe"
-                  >
-                    <MessageSquare className="h-5 w-5" />
-                  </button>
-                )}
+                <button
+                  className={`hidden lg:flex items-center justify-center h-11 w-11 rounded-full border transition shadow-sm ${chatSidebarOpen ? 'text-white' : 'bg-white text-[var(--teacher-accent-text)] border-slate-200 hover:bg-slate-50'}`}
+                  style={chatSidebarOpen ? { backgroundColor: accentTheme.accent, borderColor: accentTheme.accent } : undefined}
+                  onClick={onToggleChatSidebar}
+                  title={chatSidebarOpen ? 'Nascondi chat di classe' : 'Mostra chat di classe'}
+                >
+                  <MessageSquare className="h-5 w-5" />
+                </button>
 
                 {/* Sessions Dropdown Menu */}
                 {showSessionsMenu && (

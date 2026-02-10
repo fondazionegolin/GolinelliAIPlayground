@@ -254,6 +254,7 @@ export default function TeacherSupportChat() {
   const [defaultModel, setDefaultModel] = useState(localStorage.getItem('default_model') || FALLBACK_MODELS[0].id)
   const [selectedModel, setSelectedModel] = useState(localStorage.getItem('default_model') || FALLBACK_MODELS[0].id)
   const [showModelMenu, setShowModelMenu] = useState(false)
+  const [showModeMenu, setShowModeMenu] = useState(false)
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [currentConversationId, setCurrentConversationId] = useState<string | null>(null)
   const [, setConversationCache] = useState<Record<string, Message[]>>({})
@@ -288,6 +289,7 @@ export default function TeacherSupportChat() {
     answers: {},
   })
   const modelMenuRef = useRef<HTMLDivElement>(null)
+  const modeMenuRef = useRef<HTMLDivElement>(null)
   const { data: availableModelsResponse } = useQuery({
     queryKey: ['llm-available-models'],
     queryFn: () => llmApi.getAvailableModels(),
@@ -330,6 +332,10 @@ export default function TeacherSupportChat() {
     backgroundColor: accentTheme.accent,
     color: '#ffffff',
   }) as CSSProperties, [accentTheme])
+  const selectedModeMeta = useMemo(
+    () => AGENT_MODES.find(m => m.id === agentMode) || AGENT_MODES[0],
+    [agentMode]
+  )
 
   useEffect(() => {
     if (!availableModels.length) return
@@ -350,6 +356,9 @@ export default function TeacherSupportChat() {
     function handleClickOutside(event: MouseEvent) {
       if (modelMenuRef.current && !modelMenuRef.current.contains(event.target as Node)) {
         setShowModelMenu(false)
+      }
+      if (modeMenuRef.current && !modeMenuRef.current.contains(event.target as Node)) {
+        setShowModeMenu(false)
       }
     }
     document.addEventListener('mousedown', handleClickOutside)
@@ -1784,6 +1793,7 @@ REGOLE IMPORTANTI:
   }
 
   const handleChangeAgentMode = (mode: AgentMode) => {
+    setShowModeMenu(false)
     if (mode === agentMode) {
       if (mode === 'dataset' && !datasetInterview.active) {
         startDatasetInterview()
@@ -2438,35 +2448,6 @@ REGOLE IMPORTANTI:
                   <div className="p-4 bg-white border-t border-slate-200">
                     <div className="max-w-4xl mx-auto">
 
-                      <div className="flex gap-2 mb-3 flex-wrap">
-                        {AGENT_MODES.map(m => {
-                          const icon = m.id === 'default'
-                            ? <MessageSquare className="h-3.5 w-3.5" />
-                            : m.id === 'report'
-                              ? <FileText className="h-3.5 w-3.5" />
-                              : m.id === 'quiz'
-                                ? <CheckSquare className="h-3.5 w-3.5" />
-                                : m.id === 'image'
-                                  ? <ImageIcon className="h-3.5 w-3.5" />
-                                  : <Database className="h-3.5 w-3.5" />
-
-                          return (
-                            <button
-                              key={m.id}
-                              onClick={() => handleChangeAgentMode(m.id)}
-                              className={`text-xs px-4 py-1.5 rounded-full font-medium transition-all flex items-center gap-1.5 border ${agentMode === m.id
-                                ? 'shadow-sm'
-                                : 'text-slate-500 border-transparent hover:bg-slate-100'
-                                }`}
-                              style={agentMode === m.id ? selectedSolidStyle : undefined}
-                            >
-                              {icon}
-                              {m.label}
-                            </button>
-                          )
-                        })}
-                      </div>
-
                       {attachedFiles.length > 0 && (
                         <div className="flex flex-wrap gap-2 mb-2">
                           {attachedFiles.map((f, i) => (
@@ -2484,6 +2465,45 @@ REGOLE IMPORTANTI:
                       {/* Input Pill Container */}
                       <div className="relative flex items-end gap-2 bg-white border-2 border-red-500/40 rounded-[2rem] p-1.5 pl-3 focus-within:border-red-500 focus-within:ring-4 focus-within:ring-red-500/10 transition-all shadow-sm">
                         <input type="file" ref={fileInputRef} className="hidden" multiple onChange={handleFileSelect} />
+
+                        <div className="relative flex-shrink-0" ref={modeMenuRef}>
+                          <Button
+                            variant="ghost"
+                            className="h-9 rounded-full px-3 text-slate-500 hover:text-red-500 hover:bg-red-50 gap-1.5"
+                            onClick={() => setShowModeMenu(v => !v)}
+                          >
+                            <Sparkles className="h-4 w-4" />
+                            <span className="text-xs font-semibold">Modalità</span>
+                            <ChevronDown className={`h-3.5 w-3.5 transition-transform ${showModeMenu ? 'rotate-180' : ''}`} />
+                          </Button>
+                          {showModeMenu && (
+                            <div className="absolute bottom-11 left-0 z-40 w-56 rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl">
+                              {AGENT_MODES.map(m => {
+                                const icon = m.id === 'default'
+                                  ? <MessageSquare className="h-3.5 w-3.5" />
+                                  : m.id === 'report'
+                                    ? <FileText className="h-3.5 w-3.5" />
+                                    : m.id === 'quiz'
+                                      ? <CheckSquare className="h-3.5 w-3.5" />
+                                      : m.id === 'image'
+                                        ? <ImageIcon className="h-3.5 w-3.5" />
+                                        : <Database className="h-3.5 w-3.5" />
+                                const isSelected = agentMode === m.id
+                                return (
+                                  <button
+                                    key={m.id}
+                                    onClick={() => handleChangeAgentMode(m.id)}
+                                    className={`w-full flex items-center gap-2 rounded-lg px-2.5 py-2 text-xs font-medium transition-colors ${isSelected ? '' : 'text-slate-600 hover:bg-slate-100'}`}
+                                    style={isSelected ? selectedSoftStyle : undefined}
+                                  >
+                                    {icon}
+                                    {m.label}
+                                  </button>
+                                )
+                              })}
+                            </div>
+                          )}
+                        </div>
 
                         <Button
                           variant="ghost" size="icon" className="h-9 w-9 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-full flex-shrink-0"
@@ -2506,6 +2526,10 @@ REGOLE IMPORTANTI:
                             target.style.height = `${Math.min(target.scrollHeight, 128)}px`;
                           }}
                         />
+
+                        <div className="flex items-center self-center rounded-full border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] font-semibold text-slate-600">
+                          {selectedModeMeta.label}
+                        </div>
 
                         <Button
                           onClick={handleSend}
