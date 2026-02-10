@@ -481,7 +481,10 @@ export default function TeacherSupportChat() {
 
   useEffect(() => {
     const handleResize = () => {
-      setIsSidebarCollapsed(window.innerWidth < CHAT_HISTORY_COLLAPSE_BREAKPOINT)
+      // Keep collapsed by default on desktop; force collapsed on narrower layouts.
+      setIsSidebarCollapsed((prev) =>
+        window.innerWidth < CHAT_HISTORY_COLLAPSE_BREAKPOINT ? true : prev
+      )
     }
     handleResize()
     window.addEventListener('resize', handleResize)

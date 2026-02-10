@@ -4,10 +4,11 @@ import { llmApi } from '@/lib/api'
 
 interface AITextAssistPanelProps {
   selectedText: string
-  position: { x: number; y: number }
+  position?: { x: number; y: number }
   onClose: () => void
   onApply: (newText: string) => void
   context?: string // Optional context about the document
+  variant?: 'floating' | 'docked'
 }
 
 type AssistAction = 'expand' | 'reformat' | 'generate' | 'custom'
@@ -17,7 +18,8 @@ export function AITextAssistPanel({
   position,
   onClose,
   onApply,
-  context
+  context,
+  variant = 'floating'
 }: AITextAssistPanelProps) {
   const [isLoading, setIsLoading] = useState(false)
   const [result, setResult] = useState<string | null>(null)
@@ -27,9 +29,11 @@ export function AITextAssistPanel({
   const panelRef = useRef<HTMLDivElement>(null)
 
   // Adjust position to stay within viewport
-  const [adjustedPosition, setAdjustedPosition] = useState(position)
+  const [adjustedPosition, setAdjustedPosition] = useState(position || { x: 20, y: 80 })
 
   useEffect(() => {
+    if (variant !== 'floating') return
+    if (!position) return
     if (panelRef.current) {
       const rect = panelRef.current.getBoundingClientRect()
       const viewportWidth = window.innerWidth
@@ -52,10 +56,11 @@ export function AITextAssistPanel({
 
       setAdjustedPosition({ x: newX, y: newY })
     }
-  }, [position])
+  }, [position, variant])
 
   // Close on outside click
   useEffect(() => {
+    if (variant !== 'floating') return
     const handleClickOutside = (e: MouseEvent) => {
       if (panelRef.current && !panelRef.current.contains(e.target as Node)) {
         if (!isLoading) {
@@ -65,7 +70,7 @@ export function AITextAssistPanel({
     }
     document.addEventListener('mousedown', handleClickOutside)
     return () => document.removeEventListener('mousedown', handleClickOutside)
-  }, [onClose, isLoading])
+  }, [onClose, isLoading, variant])
 
   // Close on Escape
   useEffect(() => {
@@ -172,16 +177,20 @@ ${/converti in formula|formula|latex/i.test(customInstruction)
   return (
     <div
       ref={panelRef}
-      className="fixed z-[9999] bg-white rounded-xl shadow-2xl border border-slate-200 overflow-hidden"
-      style={{
-        left: adjustedPosition.x,
-        top: adjustedPosition.y,
-        minWidth: 280,
-        maxWidth: 400,
-      }}
+      className={variant === 'docked'
+        ? 'absolute left-0 right-0 bottom-0 z-[60] bg-white border-t border-slate-200 shadow-2xl overflow-hidden'
+        : 'fixed z-[9999] bg-white rounded-xl shadow-2xl border border-slate-200 overflow-hidden'}
+      style={variant === 'docked'
+        ? undefined
+        : {
+          left: adjustedPosition.x,
+          top: adjustedPosition.y,
+          minWidth: 280,
+          maxWidth: 400,
+        }}
     >
       {/* Header */}
-      <div className="bg-gradient-to-r from-violet-500 to-indigo-500 px-4 py-2 flex items-center justify-between">
+      <div className={`${variant === 'docked' ? 'bg-slate-900' : 'bg-gradient-to-r from-violet-500 to-indigo-500'} px-4 py-2 flex items-center justify-between`}>
         <div className="flex items-center gap-2 text-white">
           <Sparkles className="h-4 w-4" />
           <span className="font-medium text-sm">Assistente AI</span>

@@ -193,7 +193,7 @@ export function RichTextEditor({
     <div className="flex flex-col min-h-full bg-transparent relative">
       <EditorContent
         editor={editor}
-        className={contentClassName || "flex-1 p-8 prose max-w-none focus:outline-none min-h-[500px]"}
+        className={`${contentClassName || "flex-1 p-8 prose max-w-none focus:outline-none min-h-[500px]"} ${selection && !readOnly ? 'pb-64' : ''}`}
         onMouseUp={handleMouseUp}
         onMouseDown={handleMouseDown}
       />
@@ -203,6 +203,7 @@ export function RichTextEditor({
         <AITextAssistPanel
           selectedText={selection.text}
           position={aiPanelAnchor || selection.position}
+          variant="docked"
           onClose={() => setSelection(null)}
           onApply={handleApplyAIText}
           context="Documento didattico"
