@@ -5,10 +5,10 @@ import { Input } from '@/components/ui/input'
 import { 
   Camera, Type, Database, Play, Square, Trash2, Plus, 
   Upload, Loader2, CheckCircle, XCircle, BarChart3, Info,
-  TrendingUp, Tags, AlertCircle, Lightbulb, Box, Grid2X2
+  TrendingUp, Tags, AlertCircle, Lightbulb
 } from 'lucide-react'
 import * as tf from '@tensorflow/tfjs'
-import { ScatterChart, Scatter, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
+import { ScatterChart, Scatter, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, BarChart, Bar, Legend } from 'recharts'
 
 // Lazy load Plotly for 3D charts
 const Plot = lazy(() => import('react-plotly.js'))
@@ -959,9 +959,10 @@ function DataClassification() {
   const [suggestedTask, setSuggestedTask] = useState<TaskType>(null)
   const [taskExplanation, setTaskExplanation] = useState<string>('')
   const [xAxis, setXAxis] = useState<string | null>(null)
-  const [yAxis, setYAxis] = useState<string | null>(null)
+  const [yAxis, setYAxis] = useState<string | null>(null) // backward compatibility for prediction explanation flow
+  const [selectedYAxes, setSelectedYAxes] = useState<string[]>([])
+  const [chartType, setChartType] = useState<'scatter' | 'line' | 'bar' | 'scatter3d'>('scatter')
   const [zAxis, setZAxis] = useState<string | null>(null)
-  const [is3D, setIs3D] = useState(false)
   const [model, setModel] = useState<tf.LayersModel | null>(null)
   const [isTraining, setIsTraining] = useState(false)
   const [prediction, setPrediction] = useState<{ value: string | number; confidence: number; explanation: string } | null>(null)
@@ -969,6 +970,7 @@ function DataClassification() {
   const [labelEncoder, setLabelEncoder] = useState<Map<string, number>>(new Map())
   const [featureScalers, setFeatureScalers] = useState<{ min: number[]; max: number[] }>({ min: [], max: [] })
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const SERIES_COLORS = ['#7c3aed', '#0ea5e9', '#10b981', '#f59e0b', '#ef4444', '#6366f1', '#14b8a6']
 
   const analyzeColumn = (values: (string | number)[]): ColumnInfo => {
     const uniqueValues = new Set(values)
@@ -983,6 +985,62 @@ function DataClassification() {
     }
   }
 
+  const parseCsvText = (text: string) => {
+    const lines = text.split('\n').filter(l => l.trim())
+    if (lines.length < 2) return null
+    const separator = lines[0].includes(';') ? ';' : ','
+    const headers = lines[0].split(separator).map(h => h.trim().replace(/"/g, ''))
+    const parsedData: DataRow[] = []
+
+    for (let i = 1; i < lines.length; i++) {
+      const values = lines[i].split(separator).map(v => v.trim().replace(/"/g, ''))
+      if (values.length !== headers.length) continue
+      const row: DataRow = {}
+      headers.forEach((h, idx) => {
+        const val = values[idx]
+        row[h] = isNaN(Number(val)) || val === '' ? val : Number(val)
+      })
+      parsedData.push(row)
+    }
+    if (parsedData.length === 0) return null
+
+    const columnInfos: ColumnInfo[] = headers.map(header => {
+      const values = parsedData.map(row => row[header])
+      const info = analyzeColumn(values)
+      info.name = header
+      return info
+    })
+    return { parsedData, columnInfos }
+  }
+
+  const applyParsedDataset = (parsedData: DataRow[], columnInfos: ColumnInfo[]) => {
+    setData(parsedData)
+    setColumns(columnInfos)
+    setTargetColumn(null)
+    setSuggestedTask(null)
+    setModel(null)
+    setPrediction(null)
+    setInputValues({})
+
+    const numericCols = columnInfos.filter(c => c.type === 'numeric').map(c => c.name)
+    const allCols = columnInfos.map(c => c.name)
+    if (allCols.length > 0) setXAxis(allCols[0])
+    if (numericCols.length > 0) {
+      setYAxis(numericCols[0])
+      setSelectedYAxes(numericCols.slice(0, Math.min(3, numericCols.length)))
+    } else {
+      setYAxis(allCols[1] || allCols[0] || null)
+      setSelectedYAxes([])
+    }
+    if (numericCols.length >= 3) {
+      setZAxis(numericCols[2])
+      setChartType('scatter3d')
+    } else {
+      setZAxis(numericCols[0] || null)
+      setChartType('scatter')
+    }
+  }
+
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
@@ -990,51 +1048,9 @@ function DataClassification() {
     const reader = new FileReader()
     reader.onload = (event) => {
       const text = event.target?.result as string
-      const lines = text.split('\n').filter(l => l.trim())
-      if (lines.length < 2) return
-
-      // Parse header
-      const separator = lines[0].includes(';') ? ';' : ','
-      const headers = lines[0].split(separator).map(h => h.trim().replace(/"/g, ''))
-      
-      // Parse data
-      const parsedData: DataRow[] = []
-      for (let i = 1; i < lines.length; i++) {
-        const values = lines[i].split(separator).map(v => v.trim().replace(/"/g, ''))
-        if (values.length === headers.length) {
-          const row: DataRow = {}
-          headers.forEach((h, idx) => {
-            const val = values[idx]
-            row[h] = isNaN(Number(val)) || val === '' ? val : Number(val)
-          })
-          parsedData.push(row)
-        }
-      }
-
-      // Analyze columns
-      const columnInfos: ColumnInfo[] = headers.map(header => {
-        const values = parsedData.map(row => row[header])
-        const info = analyzeColumn(values)
-        info.name = header
-        return info
-      })
-
-      setData(parsedData)
-      setColumns(columnInfos)
-      setTargetColumn(null)
-      setSuggestedTask(null)
-      setModel(null)
-      setPrediction(null)
-      
-      // Auto-select axes for visualization
-      const numericCols = columnInfos.filter(c => c.type === 'numeric')
-      if (numericCols.length >= 2) {
-        setXAxis(numericCols[0].name)
-        setYAxis(numericCols[1].name)
-        if (numericCols.length >= 3) {
-          setZAxis(numericCols[2].name)
-        }
-      }
+      const parsed = parseCsvText(text)
+      if (!parsed) return
+      applyParsedDataset(parsed.parsedData, parsed.columnInfos)
     }
     reader.readAsText(file)
   }
@@ -1257,10 +1273,42 @@ function DataClassification() {
   }
 
   const numericColumns = columns.filter(c => c.type === 'numeric')
-  const chartData = data.slice(0, 200).map(row => ({
-    x: xAxis ? Number(row[xAxis]) : 0,
-    y: yAxis ? Number(row[yAxis]) : 0,
-    label: targetColumn ? String(row[targetColumn]) : ''
+  const numericColumnNames = numericColumns.map(c => c.name)
+  const columnNames = columns.map(c => c.name)
+  const previewRows = data.slice(0, 300)
+  const safeX = xAxis || columnNames[0] || null
+  const safeScatterX = safeX && numericColumnNames.includes(safeX)
+    ? safeX
+    : (numericColumnNames[0] || null)
+  const effectiveYAxes = selectedYAxes.length > 0
+    ? selectedYAxes
+    : (yAxis ? [yAxis] : (numericColumns[0] ? [numericColumns[0].name] : []))
+  const safeZ = zAxis && numericColumnNames.includes(zAxis)
+    ? zAxis
+    : (numericColumnNames[2] || numericColumnNames[1] || numericColumnNames[0] || null)
+
+  const lineBarData = previewRows.map((row, idx) => {
+    const point: Record<string, string | number> = {
+      x: safeX ? String(row[safeX]) : String(idx + 1),
+      index: idx + 1,
+      label: targetColumn ? String(row[targetColumn]) : '',
+    }
+    effectiveYAxes.forEach((col) => {
+      const n = Number(row[col])
+      point[col] = Number.isFinite(n) ? n : 0
+    })
+    return point
+  })
+
+  const scatterSeries = effectiveYAxes.map((col) => ({
+    key: col,
+    data: previewRows
+      .map((row) => ({
+        x: safeScatterX ? Number(row[safeScatterX]) : NaN,
+        y: Number(row[col]),
+        label: targetColumn ? String(row[targetColumn]) : '',
+      }))
+      .filter((p) => Number.isFinite(p.x) && Number.isFinite(p.y)),
   }))
 
   return (
@@ -1305,28 +1353,8 @@ function DataClassification() {
                     const reader = new FileReader()
                     reader.onload = (event) => {
                       const text = event.target?.result as string
-                      const lines = text.split('\n').filter((l: string) => l.trim())
-                      if (lines.length > 1) {
-                        const headers = lines[0].split(',').map((h: string) => h.trim().replace(/"/g, ''))
-                        const rows = lines.slice(1).map((line: string) => {
-                          const values = line.split(',').map((v: string) => v.trim().replace(/"/g, ''))
-                          const row: DataRow = {}
-                          headers.forEach((h: string, i: number) => { row[h] = values[i] || '' })
-                          return row
-                        })
-                        setData(rows)
-                        const cols: ColumnInfo[] = headers.map((h: string) => {
-                          const isNumeric = rows.every((r: DataRow) => !isNaN(parseFloat(r[h] as string)))
-                          const uniqueVals = new Set(rows.map((r: DataRow) => r[h]))
-                          return { 
-                            name: h, 
-                            type: isNumeric ? 'numeric' : 'categorical',
-                            uniqueValues: uniqueVals.size,
-                            sampleValues: Array.from(uniqueVals).slice(0, 5) as (string | number)[]
-                          }
-                        })
-                        setColumns(cols)
-                      }
+                      const parsed = parseCsvText(text)
+                      if (parsed) applyParsedDataset(parsed.parsedData, parsed.columnInfos)
                     }
                     reader.readAsText(fileObj)
                   }
@@ -1338,28 +1366,8 @@ function DataClassification() {
               // Handle dropped CSV from chatbot
               const csvData = e.dataTransfer.getData('application/x-chatbot-csv')
               if (csvData) {
-                const lines = csvData.split('\n').filter((l: string) => l.trim())
-                if (lines.length > 1) {
-                  const headers = lines[0].split(',').map((h: string) => h.trim().replace(/"/g, ''))
-                  const rows = lines.slice(1).map((line: string) => {
-                    const values = line.split(',').map((v: string) => v.trim().replace(/"/g, ''))
-                    const row: DataRow = {}
-                    headers.forEach((h: string, i: number) => { row[h] = values[i] || '' })
-                    return row
-                  })
-                  setData(rows)
-                  const cols: ColumnInfo[] = headers.map((h: string) => {
-                    const isNumeric = rows.every((r: DataRow) => !isNaN(parseFloat(r[h] as string)))
-                    const uniqueVals = new Set(rows.map((r: DataRow) => r[h]))
-                    return { 
-                      name: h, 
-                      type: isNumeric ? 'numeric' : 'categorical',
-                      uniqueValues: uniqueVals.size,
-                      sampleValues: Array.from(uniqueVals).slice(0, 5) as (string | number)[]
-                    }
-                  })
-                  setColumns(cols)
-                }
+                const parsed = parseCsvText(csvData)
+                if (parsed) applyParsedDataset(parsed.parsedData, parsed.columnInfos)
               } else {
                 // Handle dropped files from file manager
                 const files = e.dataTransfer.files
@@ -1369,28 +1377,8 @@ function DataClassification() {
                     const reader = new FileReader()
                     reader.onload = (event) => {
                       const text = event.target?.result as string
-                      const lines = text.split('\n').filter((l: string) => l.trim())
-                      if (lines.length > 1) {
-                        const headers = lines[0].split(',').map((h: string) => h.trim().replace(/"/g, ''))
-                        const rows = lines.slice(1).map((line: string) => {
-                          const values = line.split(',').map((v: string) => v.trim().replace(/"/g, ''))
-                          const row: DataRow = {}
-                          headers.forEach((h: string, i: number) => { row[h] = values[i] || '' })
-                          return row
-                        })
-                        setData(rows)
-                        const cols: ColumnInfo[] = headers.map((h: string) => {
-                          const isNumeric = rows.every((r: DataRow) => !isNaN(parseFloat(r[h] as string)))
-                          const uniqueVals = new Set(rows.map((r: DataRow) => r[h]))
-                          return { 
-                            name: h, 
-                            type: isNumeric ? 'numeric' : 'categorical',
-                            uniqueValues: uniqueVals.size,
-                            sampleValues: Array.from(uniqueVals).slice(0, 5) as (string | number)[]
-                          }
-                        })
-                        setColumns(cols)
-                      }
+                      const parsed = parseCsvText(text)
+                      if (parsed) applyParsedDataset(parsed.parsedData, parsed.columnInfos)
                     }
                     reader.readAsText(file)
                   }
@@ -1439,121 +1427,200 @@ function DataClassification() {
       </Card>
 
       {/* Visualization Panel */}
-      {data.length > 0 && numericColumns.length >= 2 && (
+      {data.length > 0 && columnNames.length >= 2 && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-base flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <BarChart3 className="h-5 w-5" />
-                Visualizzazione Dati
-              </div>
-              {numericColumns.length >= 3 && (
-                <div className="flex items-center gap-2">
-                  <Button
-                    variant={!is3D ? 'default' : 'outline'}
-                    size="sm"
-                    onClick={() => setIs3D(false)}
-                  >
-                    <Grid2X2 className="h-4 w-4 mr-1" />
-                    2D
-                  </Button>
-                  <Button
-                    variant={is3D ? 'default' : 'outline'}
-                    size="sm"
-                    onClick={() => setIs3D(true)}
-                  >
-                    <Box className="h-4 w-4 mr-1" />
-                    3D
-                  </Button>
-                </div>
-              )}
+            <CardTitle className="text-base flex items-center gap-2">
+              <BarChart3 className="h-5 w-5" />
+              Visualizzazione Dati
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className={`flex gap-4 mb-4 ${is3D ? 'flex-wrap' : ''}`}>
-              <div className="flex-1 min-w-[100px]">
-                <label className="text-sm font-medium">Asse X</label>
-                <select 
+            <div className="mb-4 p-3 border rounded-lg bg-muted/20">
+              <p className="text-sm font-medium">Workflow guidato</p>
+              <p className="text-xs text-muted-foreground mt-1">
+                1) scegli tipo grafico, 2) scegli asse X, 3) seleziona una o piu serie Y. Lo Scatter 3D e disponibile quando ci sono almeno 3 colonne numeriche.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+              <div>
+                <label className="text-sm font-medium">Tipo grafico</label>
+                <select
                   className="w-full mt-1 p-2 border rounded"
-                  value={xAxis || ''}
+                  value={chartType}
+                  onChange={(e) => setChartType(e.target.value as 'scatter' | 'line' | 'bar' | 'scatter3d')}
+                >
+                  <option value="scatter">Scatter 2D</option>
+                  <option value="line">Linee multi-serie</option>
+                  <option value="bar">Barre multi-serie</option>
+                  {numericColumnNames.length >= 3 && <option value="scatter3d">Scatter 3D</option>}
+                </select>
+              </div>
+              <div>
+                <label className="text-sm font-medium">Asse X</label>
+                <select
+                  className="w-full mt-1 p-2 border rounded"
+                  value={safeX || ''}
                   onChange={(e) => setXAxis(e.target.value)}
                 >
-                  {numericColumns.map(col => (
-                    <option key={col.name} value={col.name}>{col.name}</option>
+                  {columnNames.map((name) => (
+                    <option key={name} value={name}>{name}</option>
                   ))}
                 </select>
               </div>
-              <div className="flex-1 min-w-[100px]">
-                <label className="text-sm font-medium">Asse Y</label>
-                <select 
-                  className="w-full mt-1 p-2 border rounded"
-                  value={yAxis || ''}
-                  onChange={(e) => setYAxis(e.target.value)}
-                >
-                  {numericColumns.map(col => (
-                    <option key={col.name} value={col.name}>{col.name}</option>
-                  ))}
-                </select>
-              </div>
-              {is3D && (
-                <div className="flex-1 min-w-[100px]">
-                  <label className="text-sm font-medium">Asse Z</label>
-                  <select 
+              {chartType === 'scatter3d' && (
+                <div>
+                  <label className="text-sm font-medium">Asse Z (numerico)</label>
+                  <select
                     className="w-full mt-1 p-2 border rounded"
-                    value={zAxis || ''}
+                    value={safeZ || ''}
                     onChange={(e) => setZAxis(e.target.value)}
                   >
-                    {numericColumns.map(col => (
-                      <option key={col.name} value={col.name}>{col.name}</option>
+                    {numericColumnNames.map((name) => (
+                      <option key={name} value={name}>{name}</option>
                     ))}
                   </select>
                 </div>
               )}
             </div>
-            
-            {!is3D ? (
+
+            <div className="mb-4">
+              <label className="text-sm font-medium">Serie Y (numeriche)</label>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {numericColumnNames.map((name) => {
+                  const checked = effectiveYAxes.includes(name)
+                  return (
+                    <Button
+                      key={name}
+                      type="button"
+                      size="sm"
+                      variant={checked ? 'default' : 'outline'}
+                      onClick={() => {
+                        const next = checked
+                          ? effectiveYAxes.filter((c) => c !== name)
+                          : [...effectiveYAxes, name]
+                        setSelectedYAxes(next)
+                        setYAxis(next[0] || null)
+                      }}
+                    >
+                      {name}
+                    </Button>
+                  )
+                })}
+              </div>
+            </div>
+
+            {chartType === 'scatter3d' ? (
+              <div className="h-80">
+                {numericColumnNames.length < 3 || !safeX || !safeZ || effectiveYAxes.length === 0 ? (
+                  <div className="h-full flex items-center justify-center text-sm text-muted-foreground border rounded-lg">
+                    Servono almeno 3 colonne numeriche e una serie Y selezionata per lo scatter 3D.
+                  </div>
+                ) : (
+                  <Suspense fallback={<div className="flex items-center justify-center h-full"><Loader2 className="h-8 w-8 animate-spin" /></div>}>
+                    <Plot
+                      data={[{
+                        x: previewRows.map(row => Number(row[safeX])),
+                        y: previewRows.map(row => Number(row[effectiveYAxes[0]])),
+                        z: previewRows.map(row => Number(row[safeZ])),
+                        mode: 'markers',
+                        type: 'scatter3d',
+                        marker: {
+                          size: 5,
+                          color: previewRows.map((_, i) => i),
+                          colorscale: 'Viridis',
+                          opacity: 0.8
+                        }
+                      }]}
+                      layout={{
+                        autosize: true,
+                        margin: { l: 0, r: 0, b: 0, t: 0 },
+                        scene: {
+                          xaxis: { title: { text: safeX } },
+                          yaxis: { title: { text: effectiveYAxes[0] } },
+                          zaxis: { title: { text: safeZ } }
+                        }
+                      }}
+                      config={{ responsive: true, displayModeBar: false }}
+                      style={{ width: '100%', height: '100%' }}
+                    />
+                  </Suspense>
+                )}
+              </div>
+            ) : chartType === 'scatter' ? (
+              <div className="h-64">
+                {!safeScatterX || effectiveYAxes.length === 0 ? (
+                  <div className="h-full flex items-center justify-center text-sm text-muted-foreground border rounded-lg">
+                    Seleziona almeno una colonna numerica per X e una per Y.
+                  </div>
+                ) : (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <ScatterChart margin={{ top: 10, right: 10, bottom: 20, left: 20 }}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="x" name={safeScatterX} type="number" fontSize={12} />
+                      <YAxis dataKey="y" name="Y" type="number" fontSize={12} />
+                      <Tooltip cursor={{ strokeDasharray: '3 3' }} />
+                      <Legend />
+                      {scatterSeries.map((series, idx) => (
+                        <Scatter
+                          key={series.key}
+                          name={series.key}
+                          data={series.data}
+                          fill={SERIES_COLORS[idx % SERIES_COLORS.length]}
+                        />
+                      ))}
+                    </ScatterChart>
+                  </ResponsiveContainer>
+                )}
+              </div>
+            ) : chartType === 'line' ? (
               <div className="h-64">
                 <ResponsiveContainer width="100%" height="100%">
-                  <ScatterChart margin={{ top: 10, right: 10, bottom: 20, left: 20 }}>
+                  <LineChart data={lineBarData} margin={{ top: 10, right: 10, bottom: 20, left: 20 }}>
                     <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="x" name={xAxis || ''} type="number" fontSize={12} />
-                    <YAxis dataKey="y" name={yAxis || ''} type="number" fontSize={12} />
-                    <Tooltip cursor={{ strokeDasharray: '3 3' }} />
-                    <Scatter name="Dati" data={chartData} fill="#8884d8" />
-                  </ScatterChart>
+                    <XAxis dataKey="x" fontSize={12} />
+                    <YAxis fontSize={12} />
+                    <Tooltip />
+                    <Legend />
+                    {effectiveYAxes.map((series, idx) => (
+                      <Line
+                        key={series}
+                        type="monotone"
+                        dataKey={series}
+                        stroke={SERIES_COLORS[idx % SERIES_COLORS.length]}
+                        dot={false}
+                        strokeWidth={2}
+                      />
+                    ))}
+                  </LineChart>
                 </ResponsiveContainer>
               </div>
             ) : (
-              <div className="h-80">
-                <Suspense fallback={<div className="flex items-center justify-center h-full"><Loader2 className="h-8 w-8 animate-spin" /></div>}>
-                  <Plot
-                    data={[{
-                      x: data.slice(0, 200).map(row => xAxis ? Number(row[xAxis]) : 0),
-                      y: data.slice(0, 200).map(row => yAxis ? Number(row[yAxis]) : 0),
-                      z: data.slice(0, 200).map(row => zAxis ? Number(row[zAxis]) : 0),
-                      mode: 'markers',
-                      type: 'scatter3d',
-                      marker: {
-                        size: 5,
-                        color: data.slice(0, 200).map((_, i) => i),
-                        colorscale: 'Viridis',
-                        opacity: 0.8
-                      }
-                    }]}
-                    layout={{
-                      autosize: true,
-                      margin: { l: 0, r: 0, b: 0, t: 0 },
-                      scene: {
-                        xaxis: { title: { text: xAxis || 'X' } },
-                        yaxis: { title: { text: yAxis || 'Y' } },
-                        zaxis: { title: { text: zAxis || 'Z' } }
-                      }
-                    }}
-                    config={{ responsive: true, displayModeBar: false }}
-                    style={{ width: '100%', height: '100%' }}
-                  />
-                </Suspense>
+              <div className="h-64">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={lineBarData} margin={{ top: 10, right: 10, bottom: 20, left: 20 }}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="x" fontSize={12} />
+                    <YAxis fontSize={12} />
+                    <Tooltip />
+                    <Legend />
+                    {effectiveYAxes.map((series, idx) => (
+                      <Bar
+                        key={series}
+                        dataKey={series}
+                        fill={SERIES_COLORS[idx % SERIES_COLORS.length]}
+                      />
+                    ))}
+                  </BarChart>
+                </ResponsiveContainer>
               </div>
+            )}
+
+            {chartType === 'scatter' && safeX && !numericColumnNames.includes(safeX) && (
+              <p className="text-xs text-amber-600 mt-3">
+                Nota: nello scatter 2D l'asse X deve essere numerico. Uso automaticamente "{safeScatterX}".
+              </p>
             )}
           </CardContent>
         </Card>
