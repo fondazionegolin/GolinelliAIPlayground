@@ -328,10 +328,15 @@ function ClassContainer({ classData }: { classData: ClassData }) {
                 <h2 className="text-2xl font-bold text-slate-800 mb-2">{classData.name}</h2>
               )}
 
-              {!isEditing && classData.school_grade && (
-                <span className="inline-flex items-center text-xs font-medium px-2.5 py-1 rounded-full bg-violet-50 text-violet-700 border border-violet-200 mb-3">
-                  {classData.school_grade}
-                </span>
+              {!isEditing && (
+                <div className="mb-3">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-1">
+                    Grado scolastico
+                  </p>
+                  <span className="inline-flex items-center text-xs font-medium px-2.5 py-1 rounded-full bg-violet-50 text-violet-700 border border-violet-200">
+                    {classData.school_grade || 'Non impostato'}
+                  </span>
+                </div>
               )}
 
               <div className="flex items-center gap-3 text-sm text-slate-500 mb-6">

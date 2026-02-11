@@ -120,6 +120,7 @@ export default function StudentDashboard() {
   const [loading, setLoading] = useState(true)
   const [activeModule, setActiveModule] = useState<string | null>(null)
   const [openTaskId, setOpenTaskId] = useState<string | null>(null)
+  const [openDocumentTaskId, setOpenDocumentTaskId] = useState<string | null>(null)
   const [pendingTasksCount, setPendingTasksCount] = useState(0)
   const [lastDocument] = useState<string | null>(null)
   const [sidebarWidth, setSidebarWidth] = useState(380)
@@ -149,6 +150,12 @@ export default function StudentDashboard() {
         setOpenTaskId(taskId)
         setActiveModule('self_assessment')
         navigate({ search: `?taskId=${taskId}` }, { replace: false })
+        return
+      }
+
+      if ((notifType === 'lesson' || notifType === 'presentation') && taskId) {
+        setOpenDocumentTaskId(taskId)
+        setActiveModule('documents')
         return
       }
 
@@ -341,6 +348,7 @@ export default function StudentDashboard() {
                     onTeacherbotNotificationClick={handleNotificationClick}
                     selectedTeacherbotId={selectedTeacherbotId}
                     studentAccent={studentAccent}
+                    openDocumentTaskId={openDocumentTaskId}
                   />
                 </div>
               )}
@@ -578,7 +586,7 @@ function HomeView({
   )
 }
 
-function ModuleView({ moduleKey, sessionId, openTaskId, studentId, studentName, onTeacherbotNotificationClick, selectedTeacherbotId, studentAccent }: {
+function ModuleView({ moduleKey, sessionId, openTaskId, studentId, studentName, onTeacherbotNotificationClick, selectedTeacherbotId, studentAccent, openDocumentTaskId }: {
   moduleKey: string;
   sessionId: string;
   openTaskId?: string | null;
@@ -587,6 +595,7 @@ function ModuleView({ moduleKey, sessionId, openTaskId, studentId, studentName, 
   onTeacherbotNotificationClick?: (notification: any) => void;
   selectedTeacherbotId?: string | null;
   studentAccent: StudentAccentId;
+  openDocumentTaskId?: string | null;
 }) {
   // Class chat module - full screen ChatSidebar
   if (moduleKey === 'classe' || moduleKey === 'chat') {
@@ -638,7 +647,7 @@ function ModuleView({ moduleKey, sessionId, openTaskId, studentId, studentName, 
   if (moduleKey === 'documents') {
     return (
       <div className="h-[calc(100dvh-7rem)] md:h-full">
-        <StudentDocumentsModule sessionId={sessionId} />
+        <StudentDocumentsModule sessionId={sessionId} openLessonTaskId={openDocumentTaskId} />
       </div>
     )
   }

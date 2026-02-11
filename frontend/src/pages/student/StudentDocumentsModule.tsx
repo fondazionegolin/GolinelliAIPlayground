@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
-  Plus, Trash2, Monitor, FileText, ChevronLeft, ChevronRight, Send, CheckCircle, FileSpreadsheet
+  Plus, Trash2, Monitor, FileText, ChevronLeft, ChevronRight, Send, CheckCircle, FileSpreadsheet, BookOpen
 } from 'lucide-react'
 import { studentApi } from '@/lib/api'
 import { useToast } from '@/components/ui/use-toast'
@@ -49,6 +49,23 @@ interface DraftDocument {
   contentJson: string
 }
 
+interface LessonDocument {
+  id: string
+  taskId: string
+  title: string
+  type: 'presentation' | 'document'
+  updatedAt: string
+  contentJson: string
+}
+
+interface StudentTask {
+  id: string
+  title: string
+  task_type: string
+  content_json: string | null
+  created_at: string
+}
+
 // Format dimensions
 const FORMAT_DIMENSIONS = {
   '16:9': { width: 960, height: 540, label: '16:9 (Presentazione)' },
@@ -69,9 +86,10 @@ const DEFAULT_SHEET_CHART: SheetChartConfig = {
 
 interface StudentDocumentsModuleProps {
   sessionId: string
+  openLessonTaskId?: string | null
 }
 
-export default function StudentDocumentsModule({ sessionId: _sessionId }: StudentDocumentsModuleProps) {
+export default function StudentDocumentsModule({ sessionId: _sessionId, openLessonTaskId }: StudentDocumentsModuleProps) {
   // sessionId is available for future use (e.g., if we need session-specific features)
   void _sessionId
   const { toast } = useToast()
@@ -96,7 +114,10 @@ export default function StudentDocumentsModule({ sessionId: _sessionId }: Studen
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [submitted, setSubmitted] = useState(false)
   const [draftDocuments, setDraftDocuments] = useState<DraftDocument[]>([])
+  const [lessonDocuments, setLessonDocuments] = useState<LessonDocument[]>([])
   const [draftId, setDraftId] = useState<string | null>(null)
+  const [isReadOnlyLesson, setIsReadOnlyLesson] = useState(false)
+  const [activeLessonTaskId, setActiveLessonTaskId] = useState<string | null>(null)
 
   // Editor State
   const [editor, setEditor] = useState<Editor | null>(null)
@@ -141,6 +162,8 @@ export default function StudentDocumentsModule({ sessionId: _sessionId }: Studen
     setCurrentSlideIndex(0)
     setSelectedBlockId(null)
     setDraftId(null)
+    setIsReadOnlyLesson(false)
+    setActiveLessonTaskId(null)
   }
 
   const createNewPresentation = () => {
@@ -159,6 +182,8 @@ export default function StudentDocumentsModule({ sessionId: _sessionId }: Studen
     setCurrentSlideIndex(0)
     setSelectedBlockId(null)
     setDraftId(null)
+    setIsReadOnlyLesson(false)
+    setActiveLessonTaskId(null)
   }
 
   const upsertDraft = async (titleOverride?: string) => {
@@ -207,15 +232,20 @@ export default function StudentDocumentsModule({ sessionId: _sessionId }: Studen
   }
 
   const handleTitleChange = (value: string) => {
+    if (isReadOnlyLesson) return
     setDocument(d => ({ ...d, title: value }))
     upsertDraft(value)
   }
 
   useEffect(() => {
-    const fetchDrafts = async () => {
+    const fetchSidebarDocuments = async () => {
       try {
-        const res = await studentApi.listDocumentDrafts()
-        const drafts: DraftDocument[] = (res.data || []).map((d: any) => ({
+        const [draftsRes, tasksRes] = await Promise.all([
+          studentApi.listDocumentDrafts(),
+          studentApi.getTasks(),
+        ])
+
+        const drafts: DraftDocument[] = (draftsRes.data || []).map((d: any) => ({
           id: d.id,
           title: d.title,
           type: d.doc_type,
@@ -223,27 +253,62 @@ export default function StudentDocumentsModule({ sessionId: _sessionId }: Studen
           contentJson: d.content_json
         }))
         setDraftDocuments(drafts)
+
+        const lessons: LessonDocument[] = ((tasksRes.data || []) as StudentTask[])
+          .filter((task) => task.task_type === 'lesson' || task.task_type === 'presentation')
+          .map((task) => {
+            if (!task.content_json) return null
+            try {
+              const parsed = JSON.parse(task.content_json)
+              const type: 'presentation' | 'document' | null =
+                parsed?.type === 'presentation_v2'
+                  ? 'presentation'
+                  : (parsed?.type === 'document_v1' ? 'document' : null)
+              if (!type) return null
+              return {
+                id: `lesson-${task.id}`,
+                taskId: task.id,
+                title: task.title,
+                type,
+                updatedAt: task.created_at,
+                contentJson: task.content_json,
+              }
+            } catch {
+              return null
+            }
+          })
+          .filter((item): item is LessonDocument => item !== null)
+          .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
+
+        setLessonDocuments(lessons)
       } catch (e) {
-        console.error('Failed to load drafts', e)
+        console.error('Failed to load document sidebar data', e)
       }
     }
-    fetchDrafts()
+    fetchSidebarDocuments()
   }, [])
 
   useEffect(() => {
+    if (isReadOnlyLesson) return
     const timer = setTimeout(() => {
       upsertDraft()
     }, 400)
     return () => clearTimeout(timer)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [document, mode, docMargins])
+  }, [document, mode, docMargins, isReadOnlyLesson])
 
-  const loadDraft = (doc: DraftDocument) => {
+  const loadDocumentFromJson = (
+    doc: { id: string; title: string; type: 'presentation' | 'document' | 'sheet'; contentJson: string },
+    options?: { readOnlyLesson?: boolean; lessonTaskId?: string | null }
+  ) => {
     try {
       const content = JSON.parse(doc.contentJson)
+      setIsReadOnlyLesson(Boolean(options?.readOnlyLesson))
+      setActiveLessonTaskId(options?.lessonTaskId || null)
+
       if (doc.type === 'presentation' || content.type === 'presentation_v2' || content.slides) {
         setMode('slides')
-        setDraftId(doc.id)
+        setDraftId(options?.readOnlyLesson ? null : doc.id)
         const safeSlides = (content.slides && Array.isArray(content.slides) && content.slides.length > 0)
           ? content.slides.map((s: any) => ({
               id: s.id || crypto.randomUUID(),
@@ -263,7 +328,7 @@ export default function StudentDocumentsModule({ sessionId: _sessionId }: Studen
         setSelectedBlockId(null)
       } else if (doc.type === 'sheet' || content.type === 'sheet_v1' || content.data) {
         setMode('sheet')
-        setDraftId(doc.id)
+        setDraftId(options?.readOnlyLesson ? null : doc.id)
         setDocument({
           id: doc.id,
           title: doc.title,
@@ -275,7 +340,7 @@ export default function StudentDocumentsModule({ sessionId: _sessionId }: Studen
         })
       } else {
         setMode('document')
-        setDraftId(doc.id)
+        setDraftId(options?.readOnlyLesson ? null : doc.id)
         if (content.margins) {
           setDocMargins({
             vertical: content.margins.vertical ?? content.margins.top ?? 56,
@@ -297,6 +362,31 @@ export default function StudentDocumentsModule({ sessionId: _sessionId }: Studen
       console.error(e)
     }
   }
+
+  const loadDraft = (doc: DraftDocument) => {
+    loadDocumentFromJson(doc, { readOnlyLesson: false, lessonTaskId: null })
+  }
+
+  const loadLesson = (doc: LessonDocument) => {
+    loadDocumentFromJson(
+      {
+        id: doc.id,
+        title: doc.title,
+        type: doc.type,
+        contentJson: doc.contentJson,
+      },
+      { readOnlyLesson: true, lessonTaskId: doc.taskId }
+    )
+  }
+
+  useEffect(() => {
+    if (!openLessonTaskId) return
+    const target = lessonDocuments.find((doc) => doc.taskId === openLessonTaskId)
+    if (target) {
+      setShowSidebar(true)
+      loadLesson(target)
+    }
+  }, [openLessonTaskId, lessonDocuments])
 
   // Fit canvas
   useEffect(() => {
@@ -391,6 +481,7 @@ export default function StudentDocumentsModule({ sessionId: _sessionId }: Studen
 
   // Submit document to teacher
   const handleSubmit = async () => {
+    if (isReadOnlyLesson) return
     setIsSubmitting(true)
     try {
       let contentJson = ""
@@ -522,13 +613,24 @@ export default function StudentDocumentsModule({ sessionId: _sessionId }: Studen
              <Input
                value={document.title}
                onChange={(e) => handleTitleChange(e.target.value)}
+               disabled={isReadOnlyLesson}
                className="font-bold border-transparent hover:border-slate-200 focus:border-indigo-500 w-64 text-lg"
                placeholder="Nome file..."
              />
+             {isReadOnlyLesson && (
+               <span className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">
+                 Lesson
+               </span>
+             )}
           </div>
 
           <div className="flex gap-2">
-             {submitted ? (
+             {isReadOnlyLesson ? (
+               <Button variant="outline" disabled>
+                 <BookOpen className="h-4 w-4 mr-2" />
+                 Contenuto del docente (sola lettura)
+               </Button>
+             ) : submitted ? (
                <Button variant="outline" onClick={resetDocument}>
                  <Plus className="h-4 w-4 mr-2" />
                  Nuovo documento
@@ -546,7 +648,7 @@ export default function StudentDocumentsModule({ sessionId: _sessionId }: Studen
         </div>
 
         {/* Unified Toolbar */}
-        {mode !== 'sheet' && (
+        {!isReadOnlyLesson && mode !== 'sheet' && (
         <div ref={toolbarHostRef}>
           <UnifiedToolbar
             mode={mode}
@@ -638,6 +740,41 @@ export default function StudentDocumentsModule({ sessionId: _sessionId }: Studen
                     <div className="flex-1 min-w-0">
                       <p className="text-xs font-medium text-slate-700 truncate">{doc.title}</p>
                       <p className="text-[10px] text-slate-400 truncate">{new Date(doc.updatedAt).toLocaleDateString()}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="border-t">
+              <div className="p-3 border-b bg-slate-50">
+                <h3 className="font-semibold text-xs uppercase text-slate-500">Lezioni del docente</h3>
+              </div>
+              <div className="max-h-44 overflow-y-auto p-2">
+                {lessonDocuments.length === 0 && (
+                  <p className="text-xs text-center text-slate-400 py-2">Nessuna lesson pubblicata</p>
+                )}
+                {lessonDocuments.map((doc) => (
+                  <div
+                    key={doc.id}
+                    onClick={() => loadLesson(doc)}
+                    className={`group flex items-start gap-3 p-2 rounded-lg cursor-pointer transition-colors border mb-1 ${
+                      activeLessonTaskId === doc.taskId
+                        ? 'bg-emerald-50 border-emerald-200'
+                        : 'hover:bg-slate-100 border-transparent hover:border-slate-200'
+                    }`}
+                  >
+                    <div className={`p-1.5 rounded-md ${doc.type === 'presentation' ? 'bg-indigo-100 text-indigo-600' : 'bg-emerald-100 text-emerald-700'}`}>
+                      {doc.type === 'presentation' ? <Monitor className="h-3 w-3" /> : <BookOpen className="h-3 w-3" />}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-medium text-slate-700 truncate">{doc.title}</p>
+                      <div className="mt-0.5 flex items-center gap-2">
+                        <span className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 text-[9px] font-semibold uppercase text-emerald-700">
+                          Lesson
+                        </span>
+                        <p className="text-[10px] text-slate-400 truncate">{new Date(doc.updatedAt).toLocaleDateString()}</p>
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -736,6 +873,7 @@ export default function StudentDocumentsModule({ sessionId: _sessionId }: Studen
                       content={document.textContent || ''}
                       onChange={(html) => setDocument(d => ({ ...d, textContent: html }))}
                       onEditorReady={setEditor}
+                      readOnly={isReadOnlyLesson}
                       contentClassName="h-full min-h-full max-w-none focus:outline-none p-0 cursor-text [&_.ProseMirror]:min-h-full [&_.ProseMirror]:h-full [&_.ProseMirror]:text-[16px] [&_.ProseMirror]:leading-7 [&_.ProseMirror_p]:m-0 [&_.ProseMirror_h1]:m-0 [&_.ProseMirror_h2]:m-0 [&_.ProseMirror_h3]:m-0 [&_.ProseMirror_ul]:my-0 [&_.ProseMirror_ol]:my-0"
                       aiPanelAnchor={aiPanelAnchor}
                       aiOpenRequestId={aiOpenRequestId}
@@ -771,6 +909,7 @@ export default function StudentDocumentsModule({ sessionId: _sessionId }: Studen
                          newSlides[currentSlideIndex].title = e.target.value
                          setDocument(d => ({ ...d, slides: newSlides }))
                        }}
+                       disabled={isReadOnlyLesson}
                        className="text-4xl font-bold bg-transparent border-none focus:outline-none w-full placeholder-slate-300 pointer-events-auto"
                        placeholder="Titolo Slide"
                      />
@@ -783,6 +922,7 @@ export default function StudentDocumentsModule({ sessionId: _sessionId }: Studen
                       selectedBlockId={selectedBlockId}
                       onSelectBlock={setSelectedBlockId}
                       scale={scale}
+                      readOnly={isReadOnlyLesson}
                     />
                   </div>
                </div>

@@ -11,6 +11,7 @@ import { Plus, Play, Square, Users, Clock, Copy, Eye, Trash2 } from 'lucide-reac
 interface ClassData {
   id: string
   name: string
+  school_grade?: string | null
 }
 
 interface SessionData {
@@ -112,6 +113,8 @@ export default function SessionsPage() {
     )
   }
 
+  const selectedClassData = classes?.find((cls) => cls.id === selectedClass)
+
   return (
     <div className="p-6">
       <div className="max-w-7xl mx-auto space-y-6">
@@ -135,10 +138,15 @@ export default function SessionsPage() {
           <option value="">-- Seleziona una classe --</option>
           {classes?.map((cls) => (
             <option key={cls.id} value={cls.id}>
-              {cls.name}
+              {cls.name}{cls.school_grade ? ` • ${cls.school_grade}` : ''}
             </option>
           ))}
         </select>
+        {selectedClassData && (
+          <p className="mt-2 text-xs text-slate-600">
+            Grado scolastico classe: <span className="font-semibold">{selectedClassData.school_grade || 'Non impostato'}</span>
+          </p>
+        )}
       </div>
 
       {!selectedClass ? (
