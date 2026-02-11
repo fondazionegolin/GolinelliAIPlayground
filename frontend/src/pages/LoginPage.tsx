@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { motion } from 'framer-motion'
+import { AnimatePresence, motion } from 'framer-motion'
 import {
   BrainCircuit,
   Eye,
@@ -29,8 +29,7 @@ type LandingTile = {
   body: string
   colorClass: string
   icon: React.ComponentType<{ className?: string }>
-  initialSize: TileSize
-  allowedSizes: TileSize[]
+  size: TileSize
 }
 
 const TILES: LandingTile[] = [
@@ -41,8 +40,7 @@ const TILES: LandingTile[] = [
     body: 'Ambiente unico per progettare, condurre e monitorare la didattica assistita da AI.',
     icon: BrainCircuit,
     colorClass: 'from-sky-500 to-cyan-400 text-white',
-    initialSize: '2x2',
-    allowedSizes: ['2x2', '1x2'],
+    size: '2x2',
   },
   {
     id: 'teacher-loop',
@@ -51,8 +49,7 @@ const TILES: LandingTile[] = [
     body: 'Il docente decide workflow, contenuti e pubblicazione delle attivita.',
     icon: Workflow,
     colorClass: 'from-emerald-500 to-lime-400 text-white',
-    initialSize: '1x2',
-    allowedSizes: ['1x1', '1x2'],
+    size: '1x2',
   },
   {
     id: 'privacy-design',
@@ -61,8 +58,7 @@ const TILES: LandingTile[] = [
     body: 'Minimizzazione dei dati e protezione delle identita come scelta strutturale.',
     icon: Lock,
     colorClass: 'from-indigo-500 to-blue-500 text-white',
-    initialSize: '1x1',
-    allowedSizes: ['1x1', '1x2'],
+    size: '1x2',
   },
   {
     id: 'ai-act',
@@ -71,8 +67,7 @@ const TILES: LandingTile[] = [
     body: 'Nessun uso per scoring o valutazioni automatiche degli studenti.',
     icon: ShieldCheck,
     colorClass: 'from-fuchsia-500 to-rose-400 text-white',
-    initialSize: '1x2',
-    allowedSizes: ['1x1', '1x2', '2x2'],
+    size: '2x2',
   },
   {
     id: 'explainability',
@@ -81,8 +76,7 @@ const TILES: LandingTile[] = [
     body: 'Risposte AI interpretabili e verificabili nel contesto didattico.',
     icon: Eye,
     colorClass: 'from-violet-500 to-purple-400 text-white',
-    initialSize: '1x1',
-    allowedSizes: ['1x1', '2x2'],
+    size: '1x2',
   },
   {
     id: 'multimodal',
@@ -91,8 +85,7 @@ const TILES: LandingTile[] = [
     body: 'Chat, immagini, documenti e report in un unico ecosistema.',
     icon: Sparkles,
     colorClass: 'from-amber-500 to-orange-400 text-slate-900',
-    initialSize: '2x2',
-    allowedSizes: ['1x2', '2x2'],
+    size: '2x2',
   },
   {
     id: 'labs',
@@ -101,8 +94,7 @@ const TILES: LandingTile[] = [
     body: 'Esperienze pratiche su dataset, visualizzazioni e modelli.',
     icon: FlaskConical,
     colorClass: 'from-teal-500 to-emerald-400 text-white',
-    initialSize: '1x2',
-    allowedSizes: ['1x1', '1x2', '2x2'],
+    size: '1x2',
   },
   {
     id: 'student',
@@ -111,8 +103,7 @@ const TILES: LandingTile[] = [
     body: 'Ingresso rapido con codice classe per collaborare in tempo reale.',
     icon: Users,
     colorClass: 'from-pink-500 to-fuchsia-400 text-white',
-    initialSize: '1x1',
-    allowedSizes: ['1x1', '1x2'],
+    size: '1x2',
   },
 ]
 
@@ -122,48 +113,15 @@ const sizeClassMap: Record<TileSize, string> = {
   '2x2': 'col-span-2 row-span-2',
 }
 
-const pickNextSize = (allowed: TileSize[], current: TileSize): TileSize => {
-  const candidates = allowed.filter((size) => size !== current)
-  if (candidates.length === 0) return current
-  return candidates[Math.floor(Math.random() * candidates.length)]
-}
-
 export default function LoginPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
-  const [tileSizes, setTileSizes] = useState<Record<string, TileSize>>(() =>
-    TILES.reduce<Record<string, TileSize>>((acc, tile) => {
-      acc[tile.id] = tile.initialSize
-      return acc
-    }, {})
-  )
+  const [loginOpen, setLoginOpen] = useState(false)
 
   const navigate = useNavigate()
   const { setUser } = useAuthStore()
   const { toast } = useToast()
-
-  useEffect(() => {
-    const timer = window.setInterval(() => {
-      setTileSizes((prev) => {
-        const next = { ...prev }
-        const randomizedTiles = [...TILES].sort(() => Math.random() - 0.5).slice(0, 3)
-        randomizedTiles.forEach((tile) => {
-          next[tile.id] = pickNextSize(tile.allowedSizes, prev[tile.id] ?? tile.initialSize)
-        })
-        return next
-      })
-    }, 3000)
-
-    return () => window.clearInterval(timer)
-  }, [])
-
-  const orderedTiles = useMemo(() => {
-    return [...TILES].sort((a, b) => {
-      const score = { '2x2': 3, '1x2': 2, '1x1': 1 }
-      return score[(tileSizes[b.id] ?? b.initialSize)] - score[(tileSizes[a.id] ?? a.initialSize)]
-    })
-  }, [tileSizes])
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -199,118 +157,131 @@ export default function LoginPage() {
 
   return (
     <AppBackground className="min-h-screen bg-white px-4 py-5 md:px-8 md:py-6">
-      <div className="mx-auto max-w-[1680px]">
-        <div className="mb-4 text-center lg:pr-[390px]">
-          <h1
-            className="text-3xl font-black text-slate-900 md:text-5xl"
-            style={{ fontFamily: 'Space Grotesk, Sora, Manrope, sans-serif' }}
-          >
-            Golinelli AI Playground
-          </h1>
-          <p className="mx-auto mt-2 max-w-3xl text-sm font-medium text-slate-600 md:text-base">
-            Piattaforma per fare lezione con l\'AI: strumenti multimodali, compliance normativa e laboratori data-driven.
-          </p>
-        </div>
+      <div className="mx-auto max-w-[1700px]">
+        <div className="relative mb-5">
+          <div className="flex justify-end">
+            <Button
+              type="button"
+              onClick={() => setLoginOpen((prev) => !prev)}
+              className="h-10 rounded-xl bg-slate-900 px-4 text-sm font-semibold hover:bg-slate-800"
+            >
+              {loginOpen ? 'Chiudi Login' : 'Apri Login'}
+            </Button>
+          </div>
 
-        <div className="grid gap-4 lg:grid-cols-[1fr_360px] lg:items-start">
-          <motion.section
-            layout
-            className="grid min-h-[calc(100vh-150px)] auto-rows-[96px] grid-cols-4 gap-3 [grid-auto-flow:dense] sm:grid-cols-6 xl:grid-cols-8 2xl:grid-cols-10"
-          >
-            {orderedTiles.map((tile, index) => {
-              const activeSize = tileSizes[tile.id] ?? tile.initialSize
-              return (
-                <motion.article
-                  key={tile.id}
-                  layout
-                  initial={{ opacity: 0, y: 12 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{
-                    layout: { duration: 0.65, ease: 'easeInOut' },
-                    delay: index * 0.03,
-                  }}
-                  whileHover={{ scale: 1.02, y: -2 }}
-                  className={`${sizeClassMap[activeSize]} rounded-3xl bg-gradient-to-br p-4 shadow-[0_10px_24px_rgba(15,23,42,0.14)] ${tile.colorClass}`}
-                >
-                  <div className="flex h-full flex-col">
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <p className="text-[11px] font-semibold uppercase tracking-wide opacity-80">{tile.subtitle}</p>
-                        <h2 className="mt-1 text-sm font-extrabold md:text-base">{tile.title}</h2>
+          <AnimatePresence>
+            {loginOpen && (
+              <motion.div
+                initial={{ opacity: 0, y: -8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -8 }}
+                transition={{ duration: 0.22, ease: 'easeOut' }}
+                className="absolute right-0 top-12 z-20 w-full max-w-sm"
+              >
+                <Card className="border-slate-200 bg-white/95 shadow-[0_14px_36px_rgba(15,23,42,0.12)]">
+                  <CardHeader>
+                    <CardTitle className="text-slate-900">Login Docente / Admin</CardTitle>
+                    <CardDescription>Accedi al tuo spazio classe AI</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <form onSubmit={handleLogin} className="space-y-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="email">Email</Label>
+                        <Input
+                          id="email"
+                          type="email"
+                          placeholder="docente@scuola.it"
+                          value={email}
+                          onChange={(e) => setEmail(e.target.value)}
+                          required
+                          className="h-11"
+                        />
                       </div>
-                      <tile.icon className="h-5 w-5 opacity-90" />
+                      <div className="space-y-2">
+                        <Label htmlFor="password">Password</Label>
+                        <Input
+                          id="password"
+                          type="password"
+                          value={password}
+                          onChange={(e) => setPassword(e.target.value)}
+                          required
+                          className="h-11"
+                        />
+                      </div>
+                      <Button type="submit" className="h-11 w-full bg-slate-900 hover:bg-slate-800" disabled={loading}>
+                        {loading ? 'Accesso in corso...' : 'Accedi'}
+                      </Button>
+                    </form>
+
+                    <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3">
+                      <p className="text-xs text-slate-600">
+                        Accesso beta docenti:{' '}
+                        <Link to="/teacher-request" className="font-semibold text-slate-900 hover:underline">
+                          REGISTRATI QUI
+                        </Link>
+                      </p>
                     </div>
-                    <p className="mt-2 line-clamp-4 text-xs leading-relaxed opacity-95">{tile.body}</p>
-                    {tile.id === 'lezione-ai' && (
-                      <div className="mt-auto pt-3">
-                        <Link to="/teacher-request">
-                          <Button className="h-8 rounded-xl bg-white/90 px-3 text-xs font-bold text-slate-900 hover:bg-white">
-                            REGISTRATI QUI
-                          </Button>
-                        </Link>
-                      </div>
-                    )}
-                    {tile.id === 'student' && (
-                      <div className="mt-auto pt-3">
-                        <Link to="/join">
-                          <Button className="h-8 rounded-xl bg-white/90 px-3 text-xs font-bold text-slate-900 hover:bg-white">
-                            Entra come studente
-                          </Button>
-                        </Link>
-                      </div>
-                    )}
-                  </div>
-                </motion.article>
-              )
-            })}
-          </motion.section>
+                  </CardContent>
+                </Card>
+              </motion.div>
+            )}
+          </AnimatePresence>
 
-          <Card className="sticky top-4 border-slate-200 bg-white/95 shadow-[0_14px_36px_rgba(15,23,42,0.12)]">
-            <CardHeader>
-              <CardTitle className="text-slate-900">Login Docente / Admin</CardTitle>
-              <CardDescription>Accedi al tuo spazio classe AI</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <form onSubmit={handleLogin} className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="email">Email</Label>
-                  <Input
-                    id="email"
-                    type="email"
-                    placeholder="docente@scuola.it"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    required
-                    className="h-11"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="password">Password</Label>
-                  <Input
-                    id="password"
-                    type="password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    required
-                    className="h-11"
-                  />
-                </div>
-                <Button type="submit" className="h-11 w-full bg-slate-900 hover:bg-slate-800" disabled={loading}>
-                  {loading ? 'Accesso in corso...' : 'Accedi'}
-                </Button>
-              </form>
-
-              <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3">
-                <p className="text-xs text-slate-600">
-                  Accesso beta docenti:{' '}
-                  <Link to="/teacher-request" className="font-semibold text-slate-900 hover:underline">
-                    REGISTRATI QUI
-                  </Link>
-                </p>
-              </div>
-            </CardContent>
-          </Card>
+          <div className="mt-2 text-center">
+            <h1
+              className="text-3xl font-black text-slate-900 md:text-5xl"
+              style={{ fontFamily: 'Space Grotesk, Sora, Manrope, sans-serif' }}
+            >
+              Golinelli AI Playground
+            </h1>
+            <p className="mx-auto mt-2 max-w-3xl text-sm font-medium text-slate-600 md:text-base">
+              Piattaforma per fare lezione con l\'AI: strumenti multimodali, compliance normativa e laboratori data-driven.
+            </p>
+          </div>
         </div>
+
+        <section className="mx-auto grid min-h-[calc(100vh-210px)] w-full max-w-6xl auto-rows-[160px] grid-cols-2 content-center gap-4 [grid-auto-flow:dense] md:grid-cols-4">
+          {TILES.map((tile, index) => (
+            <motion.article
+              key={tile.id}
+              initial={{ opacity: 0, y: 14 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: index * 0.04, duration: 0.4, ease: 'easeOut' }}
+              whileHover={{ scale: 1.02, y: -2 }}
+              className={`${sizeClassMap[tile.size]} rounded-3xl bg-gradient-to-br p-5 shadow-[0_10px_24px_rgba(15,23,42,0.14)] ${tile.colorClass}`}
+            >
+              <div className="flex h-full flex-col">
+                <div className="flex items-start justify-between">
+                  <div>
+                    <p className="text-[11px] font-semibold uppercase tracking-wide opacity-80">{tile.subtitle}</p>
+                    <h2 className="mt-1 text-base font-extrabold md:text-lg">{tile.title}</h2>
+                  </div>
+                  <tile.icon className="h-5 w-5 opacity-90" />
+                </div>
+                <p className="mt-3 text-sm leading-relaxed opacity-95">{tile.body}</p>
+
+                {tile.id === 'lezione-ai' && (
+                  <div className="mt-auto pt-4">
+                    <Link to="/teacher-request">
+                      <Button className="h-9 rounded-xl bg-white/90 px-3 text-xs font-bold text-slate-900 hover:bg-white">
+                        REGISTRATI QUI
+                      </Button>
+                    </Link>
+                  </div>
+                )}
+                {tile.id === 'student' && (
+                  <div className="mt-auto pt-4">
+                    <Link to="/join">
+                      <Button className="h-9 rounded-xl bg-white/90 px-3 text-xs font-bold text-slate-900 hover:bg-white">
+                        Entra come studente
+                      </Button>
+                    </Link>
+                  </div>
+                )}
+              </div>
+            </motion.article>
+          ))}
+        </section>
       </div>
     </AppBackground>
   )
