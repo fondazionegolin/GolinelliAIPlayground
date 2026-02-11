@@ -32,6 +32,7 @@ interface UnifiedToolbarProps {
 const FONTS = [
   'Arial', 'Helvetica', 'Times New Roman', 'Courier New', 'Georgia', 'Verdana', 'Impact', 'Comic Sans MS', 'Trebuchet MS', 'Arial Black'
 ]
+const FONT_SIZES = [10, 12, 14, 16, 18, 20, 24, 28, 32, 40, 48]
 
 export function UnifiedToolbar({
   mode,
@@ -118,6 +119,16 @@ export function UnifiedToolbar({
     return () => document.removeEventListener('mousedown', onClickOutside)
   }, [])
 
+  const activeFontSizeAttr = editor?.getAttributes('textStyle')?.fontSize
+  const activeFontSize = Number.parseInt(String(activeFontSizeAttr || '16').replace('px', ''), 10) || 16
+  const applyFontSize = (size: number) => {
+    if (mode !== 'document' || !editor) return
+    const next = Math.max(10, Math.min(72, Math.round(size)))
+    editor.chain().focus().setMark('textStyle', { fontSize: `${next}px` }).run()
+  }
+  const decreaseFontSize = () => applyFontSize(activeFontSize - 1)
+  const increaseFontSize = () => applyFontSize(activeFontSize + 1)
+
   return (
     <div
       ref={toolbarRef}
@@ -152,6 +163,24 @@ export function UnifiedToolbar({
             >
               {FONTS.map(f => <option key={f} value={f}>{f}</option>)}
             </select>
+            <div className="flex items-center gap-0.5 ml-1">
+              <Button size="icon" variant="ghost" className="h-8 w-8" onClick={decreaseFontSize} title="Riduci font">
+                <Minus className="h-4 w-4" />
+              </Button>
+              <select
+                className="h-8 text-xs border rounded px-2 w-16"
+                value={String(activeFontSize)}
+                onChange={(e) => applyFontSize(Number(e.target.value))}
+                title="Dimensione font"
+              >
+                {FONT_SIZES.map((size) => (
+                  <option key={size} value={size}>{size}</option>
+                ))}
+              </select>
+              <Button size="icon" variant="ghost" className="h-8 w-8" onClick={increaseFontSize} title="Aumenta font">
+                <Plus className="h-4 w-4" />
+              </Button>
+            </div>
           </div>
           )}
 
@@ -270,6 +299,24 @@ export function UnifiedToolbar({
                       >
                         {FONTS.map(f => <option key={f} value={f}>{f}</option>)}
                       </select>
+                    </div>
+                    <div className="flex items-center gap-1 pb-1 mb-1 border-b border-slate-100">
+                      <Button size="icon" variant="ghost" className="h-8 w-8" onClick={decreaseFontSize} title="Riduci font">
+                        <Minus className="h-4 w-4" />
+                      </Button>
+                      <select
+                        className="h-8 text-xs border rounded px-2 flex-1"
+                        value={String(activeFontSize)}
+                        onChange={(e) => applyFontSize(Number(e.target.value))}
+                        title="Dimensione font"
+                      >
+                        {FONT_SIZES.map((size) => (
+                          <option key={size} value={size}>{size}px</option>
+                        ))}
+                      </select>
+                      <Button size="icon" variant="ghost" className="h-8 w-8" onClick={increaseFontSize} title="Aumenta font">
+                        <Plus className="h-4 w-4" />
+                      </Button>
                     </div>
                     <div className="flex items-center gap-1">
                       <Button size="icon" variant="ghost" className={`h-8 w-8 ${editor.isActive('strike') ? 'bg-slate-200 text-black' : ''}`} onClick={() => editor.chain().focus().toggleStrike().run()}>

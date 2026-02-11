@@ -161,24 +161,6 @@ export default function StudentDocumentsModule({ sessionId: _sessionId }: Studen
     setDraftId(null)
   }
 
-  const createNewSheet = () => {
-    const newDocId = crypto.randomUUID()
-    setDocument({
-      id: newDocId,
-      title: 'Il mio foglio',
-      format: 'a4',
-      slides: [],
-      textContent: '',
-      sheetData: DEFAULT_SHEET_DATA,
-      sheetChart: DEFAULT_SHEET_CHART,
-    })
-    setMode('sheet')
-    setSubmitted(false)
-    setCurrentSlideIndex(0)
-    setSelectedBlockId(null)
-    setDraftId(null)
-  }
-
   const upsertDraft = async (titleOverride?: string) => {
     const type = mode === 'slides' ? 'presentation' : mode === 'sheet' ? 'sheet' : 'document'
     const contentJson = JSON.stringify(
@@ -826,7 +808,7 @@ export default function StudentDocumentsModule({ sessionId: _sessionId }: Studen
             <div className="bg-white rounded-lg p-6 w-full max-w-md mx-4 shadow-xl">
               <h3 className="text-lg font-semibold mb-2">Crea nuovo</h3>
               <p className="text-sm text-gray-600 mb-4">
-                Scegli se creare un nuovo documento, una nuova presentazione o un nuovo foglio.
+                Scegli se creare un nuovo documento o una nuova presentazione.
               </p>
               <div className="flex flex-col gap-3">
                 <Button
@@ -848,16 +830,6 @@ export default function StudentDocumentsModule({ sessionId: _sessionId }: Studen
                 >
                   <Monitor className="h-4 w-4 mr-2" />
                   Nuova presentazione
-                </Button>
-                <Button
-                  className="w-full justify-center bg-sky-700 hover:bg-sky-800 text-white"
-                  onClick={() => {
-                    createNewSheet()
-                    setShowNewModal(false)
-                  }}
-                >
-                  <FileSpreadsheet className="h-4 w-4 mr-2" />
-                  Nuovo foglio
                 </Button>
               </div>
               <div className="flex justify-end mt-4">

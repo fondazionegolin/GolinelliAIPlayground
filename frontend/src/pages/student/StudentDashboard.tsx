@@ -137,20 +137,35 @@ export default function StudentDashboard() {
     }
   }, [activeModule])
 
-  const handleTeacherbotNotificationClick = useCallback((notification: any) => {
+  const handleNotificationClick = useCallback((notification: any) => {
     try {
       const data = typeof notification.notification_data === 'string'
         ? JSON.parse(notification.notification_data)
         : notification.notification_data
+
+      const notifType = notification.notification_type
+      const taskId = data?.task_id
+      if ((notifType === 'task' || notifType === 'quiz' || notifType === 'exercise') && taskId) {
+        setOpenTaskId(taskId)
+        setActiveModule('self_assessment')
+        navigate({ search: `?taskId=${taskId}` }, { replace: false })
+        return
+      }
+
+      if (notifType === 'document') {
+        setActiveModule('documents')
+        return
+      }
+
       const teacherbotId = data?.teacherbot_id
-      if (teacherbotId) {
+      if (notifType === 'teacherbot_published' && teacherbotId) {
         setSelectedTeacherbotId(teacherbotId)
         setActiveModule('chatbot')
       }
     } catch {
       // Ignore malformed notification data
     }
-  }, [])
+  }, [navigate])
 
   const swipeState = useSwipeBack({
     onSwipeBack: handleSwipeBack,
@@ -323,7 +338,7 @@ export default function StudentDashboard() {
                     openTaskId={openTaskId}
                     studentId={sessionInfo.student.id}
                     studentName={sessionInfo.student.nickname}
-                    onTeacherbotNotificationClick={handleTeacherbotNotificationClick}
+                    onTeacherbotNotificationClick={handleNotificationClick}
                     selectedTeacherbotId={selectedTeacherbotId}
                     studentAccent={studentAccent}
                   />
@@ -350,7 +365,7 @@ export default function StudentDashboard() {
               onWidthChange={setSidebarWidth}
               initialWidth={sidebarWidth}
               className="h-full w-full"
-              onNotificationClick={handleTeacherbotNotificationClick}
+              onNotificationClick={handleNotificationClick}
             />
           </div>
         ) : null}

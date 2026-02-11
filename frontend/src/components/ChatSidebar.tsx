@@ -623,9 +623,17 @@ export default function ChatSidebar({
     const customImageData = e.dataTransfer.getData('application/x-chatbot-image')
     if (customImageData) {
       try {
-        const data = JSON.parse(customImageData)
+        let data: { url?: string; filename?: string } = {}
+        try {
+          data = JSON.parse(customImageData)
+        } catch {
+          data = { url: customImageData }
+        }
         // Convert base64/URL to File
-        const res = await fetch(data.url)
+        const fallbackUrl = e.dataTransfer.getData('text/plain')
+        const sourceUrl = data.url || fallbackUrl
+        if (!sourceUrl) throw new Error('Missing image URL in drag payload')
+        const res = await fetch(sourceUrl)
         const blob = await res.blob()
         const filename = data.filename || 'chatbot-image.png'
         const fileType = blob.type || 'image/png'

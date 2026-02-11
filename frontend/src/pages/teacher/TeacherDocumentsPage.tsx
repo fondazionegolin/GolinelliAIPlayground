@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { 
+import {
   Plus, Trash2, Upload, Monitor, FileText, ChevronLeft, ChevronRight, FileSpreadsheet
 } from 'lucide-react'
 import { teacherApi } from '@/lib/api'
@@ -169,24 +169,6 @@ export default function TeacherDocumentsPage() {
       sheetChart: DEFAULT_SHEET_CHART,
     })
     setMode('slides')
-    setCurrentSlideIndex(0)
-    setSelectedBlockId(null)
-    setDraftId(null)
-    draftIdRef.current = null
-  }
-
-  const createNewSheet = () => {
-    const newDocId = crypto.randomUUID()
-    setDocument({
-      id: newDocId,
-      title: 'Nuovo Foglio',
-      format: 'a4',
-      slides: [],
-      textContent: '',
-      sheetData: DEFAULT_SHEET_DATA,
-      sheetChart: DEFAULT_SHEET_CHART,
-    })
-    setMode('sheet')
     setCurrentSlideIndex(0)
     setSelectedBlockId(null)
     setDraftId(null)
@@ -1026,7 +1008,7 @@ export default function TeacherDocumentsPage() {
             <div className="bg-white rounded-lg p-6 w-full max-w-md mx-4 shadow-xl">
               <h3 className="text-lg font-semibold mb-2">Crea nuovo</h3>
               <p className="text-sm text-gray-600 mb-4">
-                Scegli se creare un nuovo documento, una nuova presentazione o un nuovo foglio.
+                Scegli se creare un nuovo documento o una nuova presentazione.
               </p>
               <div className="flex flex-col gap-3">
                 <Button
@@ -1048,16 +1030,6 @@ export default function TeacherDocumentsPage() {
                 >
                   <Monitor className="h-4 w-4 mr-2" />
                   Nuova presentazione
-                </Button>
-                <Button
-                  className="w-full justify-center bg-red-500 hover:bg-red-600 text-white"
-                  onClick={() => {
-                    createNewSheet()
-                    setShowNewModal(false)
-                  }}
-                >
-                  <FileSpreadsheet className="h-4 w-4 mr-2" />
-                  Nuovo foglio
                 </Button>
               </div>
               <div className="flex justify-end mt-4">

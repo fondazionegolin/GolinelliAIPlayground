@@ -1353,14 +1353,23 @@ export default function ChatbotModule({ sessionId, initialTeacherbotId, onInputF
 
           const imageData = e.dataTransfer.getData('application/x-chatbot-image')
           if (imageData) {
-            fetch(imageData)
+            let imageUrl = imageData
+            let imageFilename = `immagine_${Date.now()}.png`
+            try {
+              const parsed = JSON.parse(imageData)
+              if (parsed?.url) imageUrl = parsed.url
+              if (parsed?.filename) imageFilename = parsed.filename
+            } catch {
+              // Drag payload may be a raw URL/data URI.
+            }
+            fetch(imageUrl)
               .then(res => res.blob())
               .then(blob => {
-                const fileObj = Object.assign(blob, {
-                  name: `immagine_${Date.now()}.png`,
+                const fileObj = new globalThis.File([blob], imageFilename, {
+                  type: blob.type || 'image/png',
                   lastModified: Date.now()
-                }) as File
-                setAttachedFiles(prev => [...prev, { file: fileObj, type: 'image' as const, preview: imageData }])
+                })
+                setAttachedFiles(prev => [...prev, { file: fileObj, type: 'image' as const, preview: imageUrl }])
               })
             return
           }
@@ -1871,6 +1880,48 @@ function MessageContent({ content, onQuizSubmit, darkMode = false }: { content: 
             h2: ({ children }) => <h2 className={`text-base font-bold mb-2 ${darkMode ? 'text-white' : 'text-slate-800'}`}>{children}</h2>,
             h3: ({ children }) => <h3 className={`text-sm font-bold mb-1 ${darkMode ? 'text-white' : 'text-slate-800'}`}>{children}</h3>,
             blockquote: ({ children }) => <blockquote className={`border-l-4 ${darkMode ? 'border-white/30 text-white/80' : 'border-fuchsia-300 text-slate-600'} pl-3 italic my-2`}>{children}</blockquote>,
+            img: ({ src, alt, ...props }) => (
+              <div
+                className="relative group cursor-grab active:cursor-grabbing my-3 inline-block"
+                draggable
+                onDragStart={(e) => {
+                  const imageData = JSON.stringify({
+                    url: src,
+                    filename: `chatbot-image-${Date.now()}.png`,
+                    type: 'image/png'
+                  })
+                  e.dataTransfer.setData('text/plain', src || '')
+                  e.dataTransfer.setData('application/x-chatbot-image', imageData)
+                  e.dataTransfer.effectAllowed = 'copy'
+                }}
+              >
+                <img
+                  src={src}
+                  alt={alt || 'Immagine generata'}
+                  className="max-w-full h-auto rounded-lg shadow-md"
+                  {...props}
+                />
+                <div className="absolute bottom-2 left-2 bg-fuchsia-500/90 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+                  Trascina nella chat di classe
+                </div>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    if (!src) return
+                    const link = document.createElement('a')
+                    link.href = src
+                    link.download = `immagine_${Date.now()}.png`
+                    document.body.appendChild(link)
+                    link.click()
+                    document.body.removeChild(link)
+                  }}
+                  className="absolute top-2 right-2 bg-white/90 hover:bg-white p-2 rounded-lg shadow-md opacity-0 group-hover:opacity-100 transition-opacity"
+                  title="Scarica immagine"
+                >
+                  <Download className="h-4 w-4 text-slate-700" />
+                </button>
+              </div>
+            ),
           }}
         >
           {cleanContent}
