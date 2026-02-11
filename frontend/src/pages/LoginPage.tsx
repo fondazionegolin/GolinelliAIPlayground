@@ -16,6 +16,7 @@ export default function LoginPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
+  const [heroTilt, setHeroTilt] = useState({ x: 0, y: 0 })
   const navigate = useNavigate()
   const { setUser } = useAuthStore()
   const { toast } = useToast()
@@ -89,8 +90,37 @@ export default function LoginPage() {
         transition={{ duration: 0.55, ease: 'easeOut' }}
         className="relative z-10 w-full max-w-7xl"
       >
+        <motion.div
+          initial={{ opacity: 0, y: -8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.1, duration: 0.45 }}
+          className="mb-4 flex items-center justify-center"
+        >
+          <div className="inline-flex items-center gap-1 rounded-full border border-slate-200/80 bg-white/85 px-2 py-1 shadow-sm backdrop-blur">
+            {['Piattaforma', 'Compliance', 'Laboratori AI', 'Beta Access'].map((item) => (
+              <a
+                key={item}
+                href="#"
+                onClick={(e) => e.preventDefault()}
+                className="rounded-full px-3 py-1 text-xs font-semibold text-slate-600 transition hover:bg-slate-900 hover:text-white"
+              >
+                {item}
+              </a>
+            ))}
+          </div>
+        </motion.div>
+
         <div className="grid gap-6 lg:grid-cols-[1.18fr_0.82fr]">
-          <section className="rounded-[2rem] border border-slate-200/70 bg-white/78 p-6 md:p-8 shadow-[0_20px_70px_rgba(46,74,174,0.15)] backdrop-blur-xl">
+          <section
+            className="rounded-[2rem] border border-slate-200/70 bg-white/78 p-6 md:p-8 shadow-[0_20px_70px_rgba(46,74,174,0.15)] backdrop-blur-xl"
+            onMouseMove={(e) => {
+              const rect = e.currentTarget.getBoundingClientRect()
+              const x = (e.clientX - rect.left) / rect.width - 0.5
+              const y = (e.clientY - rect.top) / rect.height - 0.5
+              setHeroTilt({ x, y })
+            }}
+            onMouseLeave={() => setHeroTilt({ x: 0, y: 0 })}
+          >
             <div className="flex items-center gap-4">
               <LogoMark className="h-14 w-14" bubbleColor="#111827" />
               <div>
@@ -116,6 +146,41 @@ export default function LoginPage() {
                   Entra come studente
                 </Button>
               </Link>
+            </div>
+
+            <div className="mt-7 grid gap-4 lg:grid-cols-[1fr_0.9fr]">
+              <div className="rounded-2xl border border-slate-200/80 bg-white/80 p-4">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Dashboard Preview</p>
+                <h3 className="mt-1 text-lg font-bold text-slate-900">Orchestrazione lezioni AI in tempo reale</h3>
+                <p className="mt-2 text-sm text-slate-600">Sessioni, chatbot, documenti e compiti in un flusso unico per il docente.</p>
+              </div>
+              <motion.div
+                className="relative rounded-2xl border border-slate-200/80 bg-gradient-to-br from-slate-900 to-indigo-950 p-3 shadow-xl"
+                animate={{ rotateX: -heroTilt.y * 10, rotateY: heroTilt.x * 12 }}
+                transition={{ type: 'spring', stiffness: 120, damping: 16, mass: 0.4 }}
+                style={{ transformPerspective: 1200 }}
+              >
+                <div className="rounded-xl bg-white p-3">
+                  <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                    <span className="text-xs font-semibold text-slate-500">Sessione Classe</span>
+                    <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">LIVE</span>
+                  </div>
+                  <div className="mt-3 grid grid-cols-2 gap-2">
+                    <div className="rounded-lg bg-violet-50 p-2">
+                      <p className="text-[10px] font-semibold text-violet-700">Teacher in the Loop</p>
+                    </div>
+                    <div className="rounded-lg bg-cyan-50 p-2">
+                      <p className="text-[10px] font-semibold text-cyan-700">Privacy by Design</p>
+                    </div>
+                    <div className="rounded-lg bg-emerald-50 p-2">
+                      <p className="text-[10px] font-semibold text-emerald-700">AI Explainability</p>
+                    </div>
+                    <div className="rounded-lg bg-amber-50 p-2">
+                      <p className="text-[10px] font-semibold text-amber-700">ML/Data Science</p>
+                    </div>
+                  </div>
+                </div>
+              </motion.div>
             </div>
 
             <motion.div
@@ -165,6 +230,8 @@ export default function LoginPage() {
                 <motion.div
                   key={item.title}
                   variants={{ hidden: { opacity: 0, y: 10 }, show: { opacity: 1, y: 0 } }}
+                  whileHover={{ y: -4, scale: 1.015 }}
+                  transition={{ type: 'spring', stiffness: 220, damping: 16 }}
                   className={`rounded-2xl border bg-gradient-to-br p-4 shadow-sm ${item.cls}`}
                 >
                   <div className="flex items-center gap-2 text-sm font-semibold">
