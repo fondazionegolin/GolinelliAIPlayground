@@ -8,6 +8,7 @@ from app.core.config import settings
 from app.core.database import AsyncSessionLocal
 from sqlalchemy import select
 from app.models.session import SessionStudent, Session, Class
+from app.models.invitation import ClassTeacher, SessionTeacher
 from app.models.user import User
 
 sio = socketio.AsyncServer(
@@ -54,6 +55,50 @@ async def get_session_teacher_id(session_id: str) -> Optional[str]:
         print(f"[Gateway] Error fetching teacher for session {session_id}: {e}")
         
     return None
+
+
+async def can_user_access_session(user: dict, session_id: str) -> bool:
+    try:
+        async with AsyncSessionLocal() as db:
+            if user.get("type") == "student":
+                return str(user.get("session_id") or "") == str(session_id)
+
+            teacher_id = user.get("id")
+            tenant_id = user.get("tenant_id")
+            if not teacher_id or not tenant_id:
+                return False
+
+            result = await db.execute(
+                select(Session, Class)
+                .join(Class, Session.class_id == Class.id)
+                .where(Session.id == session_id)
+                .where(Session.tenant_id == tenant_id)
+            )
+            row = result.first()
+            if not row:
+                return False
+
+            session_obj, class_obj = row
+            if str(class_obj.teacher_id) == str(teacher_id):
+                return True
+
+            class_member = await db.execute(
+                select(ClassTeacher)
+                .where(ClassTeacher.class_id == class_obj.id)
+                .where(ClassTeacher.teacher_id == teacher_id)
+            )
+            if class_member.scalar_one_or_none():
+                return True
+
+            session_member = await db.execute(
+                select(SessionTeacher)
+                .where(SessionTeacher.session_id == session_obj.id)
+                .where(SessionTeacher.teacher_id == teacher_id)
+            )
+            return session_member.scalar_one_or_none() is not None
+    except Exception as e:
+        print(f"[Gateway] can_user_access_session error for user {user.get('id')} session {session_id}: {e}")
+        return False
 
 # Helper to send teacher notification
 async def notify_session_teacher(session_id: str, notification_data: dict):
@@ -239,10 +284,17 @@ async def join_session(sid, data):
         print(f"[Gateway] join_session failed: sid {sid} not authenticated")
         return {"error": "Not authenticated"}
 
-    session_id = data.get("session_id") or user.get("session_id")
+    requested_session_id = data.get("session_id")
+    session_id = user.get("session_id") if user.get("type") == "student" else requested_session_id
+    if user.get("type") == "teacher" and not session_id:
+        session_id = user.get("session_id")
     if not session_id:
         print(f"[Gateway] join_session failed: no session_id for user {user.get('id')}")
         return {"error": "Session ID required"}
+
+    if not await can_user_access_session(user, session_id):
+        print(f"[Gateway] join_session denied: user {user.get('id')} cannot access session {session_id}")
+        return {"error": "Forbidden"}
 
     print(f"[Gateway] User {user.get('id')} ({user.get('type')}) joining session {session_id}")
     await sio.enter_room(sid, f"session:{session_id}")
@@ -743,6 +795,9 @@ async def canvas_item_lock(sid, data):
     if not session_id or not item_id:
         return {"error": "session_id and item_id required"}
 
+    if not await can_user_access_session(user, session_id):
+        return {"error": "Forbidden"}
+
     await sio.emit(
         "canvas_item_lock",
         {
@@ -766,6 +821,9 @@ async def canvas_item_unlock(sid, data):
     item_id = data.get("item_id")
     if not session_id or not item_id:
         return {"error": "session_id and item_id required"}
+
+    if not await can_user_access_session(user, session_id):
+        return {"error": "Forbidden"}
 
     await sio.emit(
         "canvas_item_unlock",

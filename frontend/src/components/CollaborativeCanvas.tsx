@@ -1272,12 +1272,12 @@ export function CollaborativeCanvas({
                       const isHoverTarget = connectorDrag?.hoverTarget?.id === item.id && connectorDrag.hoverTarget.anchor === anchor
                       const pointStyle: React.CSSProperties =
                         anchor === 'top'
-                          ? { left: '50%', top: '-7px', transform: 'translateX(-50%)' }
+                          ? { left: '50%', top: '0', transform: 'translate(-50%, -50%)' }
                           : anchor === 'right'
-                            ? { right: '-7px', top: '50%', transform: 'translateY(-50%)' }
+                            ? { right: '0', top: '50%', transform: 'translate(50%, -50%)' }
                             : anchor === 'bottom'
-                              ? { left: '50%', bottom: '-7px', transform: 'translateX(-50%)' }
-                              : { left: '-7px', top: '50%', transform: 'translateY(-50%)' }
+                              ? { left: '50%', bottom: '0', transform: 'translate(-50%, 50%)' }
+                              : { left: '0', top: '50%', transform: 'translate(-50%, -50%)' }
 
                       return (
                         <button
