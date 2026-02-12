@@ -128,15 +128,6 @@ const getAnchorPoint = (item: Exclude<CanvasItem, { type: 'path' | 'connector' }
   return { x: item.x, y: item.y + item.h / 2 }
 }
 
-const nearestAnchorForPoint = (item: Exclude<CanvasItem, { type: 'path' | 'connector' }>, localX: number, localY: number): Anchor => {
-  const cx = item.w / 2
-  const cy = item.h / 2
-  const dx = localX - cx
-  const dy = localY - cy
-  if (Math.abs(dx) > Math.abs(dy)) return dx >= 0 ? 'right' : 'left'
-  return dy >= 0 ? 'bottom' : 'top'
-}
-
 const anchorDirection = (anchor: Anchor): Point => {
   if (anchor === 'top') return { x: 0, y: -1 }
   if (anchor === 'right') return { x: 1, y: 0 }
@@ -235,6 +226,7 @@ export function CollaborativeCanvas({
 }: CollaborativeCanvasProps) {
   const canvasRef = useRef<HTMLDivElement>(null)
   const draggingRef = useRef<{ id: string; offsetX: number; offsetY: number } | null>(null)
+  const pendingDragRef = useRef<{ id: string; offsetX: number; offsetY: number; startX: number; startY: number } | null>(null)
   const resizingRef = useRef<{ id: string; startX: number; startY: number; startW: number; startH: number } | null>(null)
   const drawingRef = useRef<{ points: Point[] } | null>(null)
   const saveTimerRef = useRef<number | null>(null)
@@ -254,7 +246,12 @@ export function CollaborativeCanvas({
   const [canvasDoc, setCanvasDoc] = useState<CanvasDoc>(() => parseCanvasDoc(initialContent))
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
-  const [connectorDraft, setConnectorDraft] = useState<{ fromId: string; fromAnchor: Anchor } | null>(null)
+  const [connectorDrag, setConnectorDrag] = useState<{
+    fromId: string
+    fromAnchor: Anchor
+    toPoint: Point
+    hoverTarget?: { id: string; anchor: Anchor }
+  } | null>(null)
   const [isDropActive, setIsDropActive] = useState(false)
   const [version, setVersion] = useState(0)
   const [previewPoints, setPreviewPoints] = useState<Point[]>([])
@@ -526,10 +523,7 @@ export function CollaborativeCanvas({
       return
     }
     if (tool === 'pen') return
-    if (tool === 'connector') {
-      setConnectorDraft(null)
-      return
-    }
+    if (tool === 'connector') return
 
     const rect = e.currentTarget.getBoundingClientRect()
     const x = e.clientX - rect.left - 80
@@ -549,53 +543,29 @@ export function CollaborativeCanvas({
   const onMouseDownItem = (e: React.MouseEvent, item: CanvasItem) => {
     e.stopPropagation()
     setSelectedId(item.id)
-    if (tool === 'connector') {
-      if (!canEdit || !isShape(item)) return
-      const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
-      const localX = e.clientX - rect.left
-      const localY = e.clientY - rect.top
-      const anchor = nearestAnchorForPoint(item, localX, localY)
-      if (!connectorDraft || connectorDraft.fromId === item.id) {
-        setConnectorDraft({ fromId: item.id, fromAnchor: anchor })
-        return
-      }
-
-      beginInteraction()
-      const connector: CanvasItem = {
-        id: crypto.randomUUID(),
-        type: 'connector',
-        fromId: connectorDraft.fromId,
-        fromAnchor: connectorDraft.fromAnchor,
-        toId: item.id,
-        toAnchor: anchor,
-        color: '#334155',
-        width: 2,
-      }
-      setCanvasDoc((prev) => ({ ...prev, items: [...prev.items, connector] }))
-      setSelectedId(connector.id)
-      setConnectorDraft(null)
-      endInteraction()
+    if (isTextEditable(item) && e.detail >= 2) {
+      setEditingId(item.id)
       return
     }
-
-    if (isTextEditable(item) && e.detail >= 2) return
     const tag = (e.target as HTMLElement).tagName
     const isInteractiveTarget = tag === 'TEXTAREA' || tag === 'INPUT' || tag === 'SELECT' || tag === 'BUTTON'
     if (isTextEditable(item) && editingId === item.id && isInteractiveTarget) return
-    if (isTextEditable(item) && editingId !== item.id) e.preventDefault()
+    if (isTextEditable(item) && editingId !== item.id) {
+      e.preventDefault()
+      setEditingId(null)
+    }
     if (!canEdit) return
     if (isPath(item)) return
     if (isConnector(item)) return
     if (isLockedByOther(item.id)) return
 
-    beginInteraction()
-    emitLock(item.id)
-
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
-    draggingRef.current = {
+    pendingDragRef.current = {
       id: item.id,
       offsetX: e.clientX - rect.left,
       offsetY: e.clientY - rect.top,
+      startX: e.clientX,
+      startY: e.clientY,
     }
   }
 
@@ -611,9 +581,15 @@ export function CollaborativeCanvas({
 
   const onMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
     const rect = e.currentTarget.getBoundingClientRect()
+    const point = { x: e.clientX - rect.left, y: e.clientY - rect.top }
+
+    if (connectorDrag) {
+      setConnectorDrag((prev) => (prev ? { ...prev, toPoint: point } : prev))
+      return
+    }
 
     if (drawingRef.current && tool === 'pen' && canEdit) {
-      drawingRef.current.points.push({ x: e.clientX - rect.left, y: e.clientY - rect.top })
+      drawingRef.current.points.push(point)
       if (!rafDrawRef.current) {
         rafDrawRef.current = window.requestAnimationFrame(() => {
           rafDrawRef.current = null
@@ -621,6 +597,21 @@ export function CollaborativeCanvas({
         })
       }
       return
+    }
+
+    if (!draggingRef.current && pendingDragRef.current && canEdit) {
+      const candidate = pendingDragRef.current
+      const moved = Math.hypot(e.clientX - candidate.startX, e.clientY - candidate.startY)
+      if (moved > 4) {
+        beginInteraction()
+        emitLock(candidate.id)
+        draggingRef.current = {
+          id: candidate.id,
+          offsetX: candidate.offsetX,
+          offsetY: candidate.offsetY,
+        }
+        pendingDragRef.current = null
+      }
     }
 
     if (resizingRef.current && canEdit) {
@@ -682,12 +673,38 @@ export function CollaborativeCanvas({
   }
 
   const onMouseUp = () => {
+    if (connectorDrag) {
+      if (connectorDrag.hoverTarget && connectorDrag.hoverTarget.id !== connectorDrag.fromId) {
+        beginInteraction()
+        const connector: CanvasItem = {
+          id: crypto.randomUUID(),
+          type: 'connector',
+          fromId: connectorDrag.fromId,
+          fromAnchor: connectorDrag.fromAnchor,
+          toId: connectorDrag.hoverTarget.id,
+          toAnchor: connectorDrag.hoverTarget.anchor,
+          color: '#334155',
+          width: 2,
+        }
+        setCanvasDoc((prev) => ({ ...prev, items: [...prev.items, connector] }))
+        setSelectedId(connector.id)
+        endInteraction()
+      }
+      setConnectorDrag(null)
+      pendingDragRef.current = null
+      return
+    }
+
     const dragId = draggingRef.current?.id
     const resizedId = resizingRef.current?.id
+    const hadPendingDrag = Boolean(pendingDragRef.current)
     draggingRef.current = null
     resizingRef.current = null
+    pendingDragRef.current = null
 
+    let didMutate = false
     if (drawingRef.current && canEdit && drawingRef.current.points.length > 1) {
+      didMutate = true
       const path: CanvasItem = {
         id: crypto.randomUUID(),
         type: 'path',
@@ -713,10 +730,17 @@ export function CollaborativeCanvas({
       rafDrawRef.current = null
     }
 
-    if (dragId) emitUnlock(dragId)
-    if (resizedId && resizedId !== dragId) emitUnlock(resizedId)
+    if (dragId) {
+      emitUnlock(dragId)
+      didMutate = true
+    }
+    if (resizedId && resizedId !== dragId) {
+      emitUnlock(resizedId)
+      didMutate = true
+    }
 
-    endInteraction()
+    if (didMutate) endInteraction()
+    if (hadPendingDrag) setEditingId(null)
   }
 
   const deleteSelected = () => {
@@ -881,32 +905,29 @@ export function CollaborativeCanvas({
     )
   }
 
-  const connectFromAnchor = (shapeId: string, anchor: Anchor) => {
-    if (!canEdit) return
-    if (!connectorDraft) {
-      setTool('connector')
-      setConnectorDraft({ fromId: shapeId, fromAnchor: anchor })
-      return
-    }
-    if (connectorDraft.fromId === shapeId && connectorDraft.fromAnchor === anchor) {
-      setConnectorDraft(null)
-      return
-    }
-    beginInteraction()
-    const connector: CanvasItem = {
-      id: crypto.randomUUID(),
-      type: 'connector',
-      fromId: connectorDraft.fromId,
-      fromAnchor: connectorDraft.fromAnchor,
-      toId: shapeId,
-      toAnchor: anchor,
-      color: '#334155',
-      width: 2,
-    }
-    setCanvasDoc((prev) => ({ ...prev, items: [...prev.items, connector] }))
-    setSelectedId(connector.id)
-    setConnectorDraft(null)
-    endInteraction()
+  const renderConnectorPreview = () => {
+    if (!connectorDrag) return null
+    const from = canvasDoc.items.find((candidate) => candidate.id === connectorDrag.fromId)
+    if (!from || !isPositioned(from)) return null
+    const p1 = getAnchorPoint(from, connectorDrag.fromAnchor)
+    const p2 = connectorDrag.hoverTarget
+      ? (() => {
+          const toItem = canvasDoc.items.find((candidate) => candidate.id === connectorDrag.hoverTarget?.id)
+          if (!toItem || !isPositioned(toItem)) return connectorDrag.toPoint
+          return getAnchorPoint(toItem, connectorDrag.hoverTarget.anchor)
+        })()
+      : connectorDrag.toPoint
+    const d1 = anchorDirection(connectorDrag.fromAnchor)
+    const targetAnchor: Anchor =
+      connectorDrag.hoverTarget?.anchor ||
+      (Math.abs(p2.x - p1.x) > Math.abs(p2.y - p1.y) ? (p2.x >= p1.x ? 'left' : 'right') : p2.y >= p1.y ? 'top' : 'bottom')
+    const d2 = anchorDirection(targetAnchor)
+    const distance = Math.hypot(p2.x - p1.x, p2.y - p1.y)
+    const curve = Math.max(36, Math.min(180, distance * 0.35))
+    const c1 = { x: p1.x + d1.x * curve, y: p1.y + d1.y * curve }
+    const c2 = { x: p2.x + d2.x * curve, y: p2.y + d2.y * curve }
+    const d = `M ${p1.x} ${p1.y} C ${c1.x} ${c1.y}, ${c2.x} ${c2.y}, ${p2.x} ${p2.y}`
+    return <path d={d} stroke="#3b82f6" strokeWidth={2.5} strokeDasharray="6 4" fill="none" markerEnd="url(#canvas-arrow)" />
   }
 
   return (
@@ -971,7 +992,7 @@ export function CollaborativeCanvas({
           </div>
           {tool === 'connector' && (
             <span className="text-xs text-slate-600">
-              {connectorDraft ? 'Seleziona la forma di arrivo' : 'Seleziona forma di partenza'}
+              {connectorDrag ? 'Trascina verso un punto di connessione' : 'Trascina da un punto della forma'}
             </span>
           )}
         </div>
@@ -1127,6 +1148,7 @@ export function CollaborativeCanvas({
           </defs>
           {canvasDoc.items.filter((item) => item.type === 'connector').map((item) => renderConnector(item as Extract<CanvasItem, { type: 'connector' }>))}
           {canvasDoc.items.filter((item) => item.type === 'path').map((item) => renderPath(item as Extract<CanvasItem, { type: 'path' }>))}
+          {renderConnectorPreview()}
           {previewPoints.length > 1 && (
             <path
               d={previewPoints.map((p, idx) => `${idx === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ')}
@@ -1246,7 +1268,8 @@ export function CollaborativeCanvas({
                       )}
                     </svg>
                     {canEdit && ANCHORS.map((anchor) => {
-                      const isSource = connectorDraft?.fromId === item.id && connectorDraft.fromAnchor === anchor
+                      const isSource = connectorDrag?.fromId === item.id && connectorDrag.fromAnchor === anchor
+                      const isHoverTarget = connectorDrag?.hoverTarget?.id === item.id && connectorDrag.hoverTarget.anchor === anchor
                       const pointStyle: React.CSSProperties =
                         anchor === 'top'
                           ? { left: '50%', top: '-7px', transform: 'translateX(-50%)' }
@@ -1260,11 +1283,32 @@ export function CollaborativeCanvas({
                         <button
                           key={`${item.id}-${anchor}`}
                           type="button"
-                          className={`absolute h-3.5 w-3.5 rounded-full border shadow-sm ${isSource ? 'border-blue-600 bg-blue-500' : 'border-slate-500 bg-white'}`}
+                          className={`absolute h-3.5 w-3.5 rounded-full border shadow-sm ${isSource ? 'border-blue-600 bg-blue-500' : isHoverTarget ? 'border-blue-500 bg-blue-100' : 'border-slate-500 bg-white'}`}
                           style={pointStyle}
                           onMouseDown={(e) => {
                             e.stopPropagation()
-                            connectFromAnchor(item.id, anchor)
+                            if (!canEdit) return
+                            if (tool !== 'connector') setTool('connector')
+                            const point = getAnchorPoint(item, anchor)
+                            setConnectorDrag({
+                              fromId: item.id,
+                              fromAnchor: anchor,
+                              toPoint: point,
+                            })
+                          }}
+                          onMouseEnter={() => {
+                            setConnectorDrag((prev) => {
+                              if (!prev) return prev
+                              if (prev.fromId === item.id && prev.fromAnchor === anchor) return prev
+                              return { ...prev, hoverTarget: { id: item.id, anchor } }
+                            })
+                          }}
+                          onMouseLeave={() => {
+                            setConnectorDrag((prev) => {
+                              if (!prev?.hoverTarget) return prev
+                              if (prev.hoverTarget.id !== item.id || prev.hoverTarget.anchor !== anchor) return prev
+                              return { ...prev, hoverTarget: undefined }
+                            })
                           }}
                           title={`Collega: ${anchor}`}
                         />
