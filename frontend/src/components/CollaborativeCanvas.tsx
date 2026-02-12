@@ -3,12 +3,13 @@ import * as XLSX from 'xlsx'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { chatApi, teacherApi, studentApi } from '@/lib/api'
-import { Eraser, Square, StickyNote, Type, ImagePlus, Table, Pencil, Frame } from 'lucide-react'
+import { Eraser, Square, StickyNote, Type, ImagePlus, Table, Pencil, Frame, MoveRight, RectangleHorizontal, Triangle } from 'lucide-react'
 
 type CanvasRole = 'teacher' | 'student'
-type Tool = 'select' | 'postit' | 'frame' | 'text' | 'pen'
+type Tool = 'select' | 'postit' | 'frame' | 'text' | 'pen' | 'roundedRect' | 'triangle' | 'parallelogram' | 'connector'
 
 type Point = { x: number; y: number }
+type Anchor = 'top' | 'right' | 'bottom' | 'left'
 
 type LockInfo = {
   userId: string
@@ -38,6 +39,8 @@ type CanvasItem =
   | (CanvasPositionedItemBase & { type: 'postit'; text: string; color: string; textStyle?: CanvasTextStyle })
   | (CanvasPositionedItemBase & { type: 'frame'; text: string; color: string; textStyle?: CanvasTextStyle })
   | (CanvasPositionedItemBase & { type: 'text'; text: string; color: string; textStyle?: CanvasTextStyle })
+  | (CanvasPositionedItemBase & { type: 'shape'; shape: 'rounded-rect' | 'triangle' | 'parallelogram'; fill: string; stroke: string })
+  | (CanvasItemBase & { type: 'connector'; fromId: string; fromAnchor: Anchor; toId: string; toAnchor: Anchor; color: string; width: number })
   | (CanvasPositionedItemBase & { type: 'image'; src: string })
   | (CanvasPositionedItemBase & { type: 'table'; data: string[][] })
   | (CanvasItemBase & { type: 'path'; points: Point[]; color: string; width: number; parentFrameId?: string })
@@ -109,8 +112,38 @@ const toCsvTable = (rows: Array<Array<string | number | boolean | null>>): strin
 
 const isFrame = (item: CanvasItem): item is Extract<CanvasItem, { type: 'frame' }> => item.type === 'frame'
 const isPath = (item: CanvasItem): item is Extract<CanvasItem, { type: 'path' }> => item.type === 'path'
+const isConnector = (item: CanvasItem): item is Extract<CanvasItem, { type: 'connector' }> => item.type === 'connector'
+const isShape = (item: CanvasItem): item is Extract<CanvasItem, { type: 'shape' }> => item.type === 'shape'
 
-const isPositioned = (item: CanvasItem): item is Exclude<CanvasItem, { type: 'path' }> => !isPath(item)
+const isPositioned = (item: CanvasItem): item is Exclude<CanvasItem, { type: 'path' | 'connector' }> => !isPath(item) && !isConnector(item)
+
+const getAnchorPoint = (item: Exclude<CanvasItem, { type: 'path' | 'connector' }>, anchor: Anchor): Point => {
+  if (anchor === 'top') return { x: item.x + item.w / 2, y: item.y }
+  if (anchor === 'right') return { x: item.x + item.w, y: item.y + item.h / 2 }
+  if (anchor === 'bottom') return { x: item.x + item.w / 2, y: item.y + item.h }
+  return { x: item.x, y: item.y + item.h / 2 }
+}
+
+const nearestAnchorForPoint = (item: Exclude<CanvasItem, { type: 'path' | 'connector' }>, localX: number, localY: number): Anchor => {
+  const cx = item.w / 2
+  const cy = item.h / 2
+  const dx = localX - cx
+  const dy = localY - cy
+  if (Math.abs(dx) > Math.abs(dy)) return dx >= 0 ? 'right' : 'left'
+  return dy >= 0 ? 'bottom' : 'top'
+}
+
+const extractImageUrlsFromHtml = (html: string): string[] => {
+  const matches = [...html.matchAll(/<img[^>]+src=["']([^"']+)["']/gi)]
+  return matches.map((m) => String(m[1] || '').trim()).filter(Boolean)
+}
+
+const looksLikeImageUrl = (value: string) => {
+  if (!value) return false
+  if (value.startsWith('data:image/')) return true
+  if (value.startsWith('blob:')) return true
+  return /\.(png|jpe?g|gif|webp|bmp|svg)(\?|#|$)/i.test(value)
+}
 
 const isContainedInFrame = (
   candidate: { x: number; y: number; w: number; h: number },
@@ -173,6 +206,7 @@ const moveFrameWithChildren = (
           points: item.points.map((p) => ({ x: p.x + dx, y: p.y + dy })),
         }
       }
+      if (!isPositioned(item)) return item
       return { ...item, x: item.x + dx, y: item.y + dy }
     }
     return item
@@ -204,8 +238,13 @@ export function CollaborativeCanvas({
   const [strokeColor, setStrokeColor] = useState('#2563eb')
   const [strokeWidth, setStrokeWidth] = useState(3)
   const [newPostitColor, setNewPostitColor] = useState('#fef08a')
+  const [newShapeFill, setNewShapeFill] = useState('#bae6fd')
+  const [newShapeStroke, setNewShapeStroke] = useState('#0369a1')
   const [canvasDoc, setCanvasDoc] = useState<CanvasDoc>(() => parseCanvasDoc(initialContent))
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [connectorDraft, setConnectorDraft] = useState<{ fromId: string; fromAnchor: Anchor } | null>(null)
+  const [isDropActive, setIsDropActive] = useState(false)
   const [version, setVersion] = useState(0)
   const [previewPoints, setPreviewPoints] = useState<Point[]>([])
   const [locks, setLocks] = useState<Record<string, LockInfo>>({})
@@ -441,6 +480,15 @@ export function CollaborativeCanvas({
     if (type === 'text') {
       return { id, type: 'text', x, y, w: 280, h: 130, text: 'Testo', color: '#0f172a', textStyle: DEFAULT_TEXT_STYLE }
     }
+    if (type === 'roundedRect') {
+      return { id, type: 'shape', shape: 'rounded-rect', x, y, w: 220, h: 140, fill: newShapeFill, stroke: newShapeStroke }
+    }
+    if (type === 'triangle') {
+      return { id, type: 'shape', shape: 'triangle', x, y, w: 220, h: 160, fill: newShapeFill, stroke: newShapeStroke }
+    }
+    if (type === 'parallelogram') {
+      return { id, type: 'shape', shape: 'parallelogram', x, y, w: 230, h: 140, fill: newShapeFill, stroke: newShapeStroke }
+    }
     return null
   }
 
@@ -461,7 +509,16 @@ export function CollaborativeCanvas({
 
   const onCanvasClick = (e: React.MouseEvent<HTMLDivElement>) => {
     if (!canEdit) return
-    if (tool === 'select' || tool === 'pen') return
+    if (tool === 'select') {
+      setSelectedId(null)
+      setEditingId(null)
+      return
+    }
+    if (tool === 'pen') return
+    if (tool === 'connector') {
+      setConnectorDraft(null)
+      return
+    }
 
     const rect = e.currentTarget.getBoundingClientRect()
     const x = e.clientX - rect.left - 80
@@ -474,16 +531,48 @@ export function CollaborativeCanvas({
       return { ...prev, items: [...prev.items, { ...item, parentFrameId }] }
     })
     setSelectedId(item.id)
+    setEditingId(null)
     setTool('select')
   }
 
   const onMouseDownItem = (e: React.MouseEvent, item: CanvasItem) => {
     e.stopPropagation()
     setSelectedId(item.id)
+    if (tool === 'connector') {
+      if (!canEdit || !isShape(item)) return
+      const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+      const localX = e.clientX - rect.left
+      const localY = e.clientY - rect.top
+      const anchor = nearestAnchorForPoint(item, localX, localY)
+      if (!connectorDraft || connectorDraft.fromId === item.id) {
+        setConnectorDraft({ fromId: item.id, fromAnchor: anchor })
+        return
+      }
+
+      beginInteraction()
+      const connector: CanvasItem = {
+        id: crypto.randomUUID(),
+        type: 'connector',
+        fromId: connectorDraft.fromId,
+        fromAnchor: connectorDraft.fromAnchor,
+        toId: item.id,
+        toAnchor: anchor,
+        color: '#334155',
+        width: 2,
+      }
+      setCanvasDoc((prev) => ({ ...prev, items: [...prev.items, connector] }))
+      setSelectedId(connector.id)
+      setConnectorDraft(null)
+      endInteraction()
+      return
+    }
+
     const tag = (e.target as HTMLElement).tagName
     if (tag === 'TEXTAREA' || tag === 'INPUT' || tag === 'SELECT' || tag === 'BUTTON') return
     if (!canEdit) return
     if (isPath(item)) return
+    if (isConnector(item)) return
+    if (editingId === item.id) return
     if (isLockedByOther(item.id)) return
 
     beginInteraction()
@@ -624,16 +713,26 @@ export function CollaborativeCanvas({
 
     setCanvasDoc((prev) => {
       const selected = prev.items.find((item) => item.id === selectedId)
+      const removedIds = new Set<string>()
       if (selected && isFrame(selected)) {
         const descendants = new Set(collectFrameDescendants(prev.items, selected.id))
         descendants.add(selected.id)
-        return { ...prev, items: prev.items.filter((item) => !descendants.has(item.id)) }
+        descendants.forEach((id) => removedIds.add(id))
+      } else if (selected) {
+        removedIds.add(selected.id)
       }
-      return { ...prev, items: prev.items.filter((item) => item.id !== selectedId) }
+
+      const remaining = prev.items.filter((item) => !removedIds.has(item.id))
+      const withoutOrphanConnectors = remaining.filter((item) => {
+        if (!isConnector(item)) return true
+        return !removedIds.has(item.fromId) && !removedIds.has(item.toId)
+      })
+      return { ...prev, items: withoutOrphanConnectors }
     })
 
     emitUnlock(selectedId)
     setSelectedId(null)
+    setEditingId(null)
     endInteraction()
   }
 
@@ -650,8 +749,18 @@ export function CollaborativeCanvas({
   const handleDropFiles = async (e: React.DragEvent<HTMLDivElement>) => {
     if (!canEdit) return
     e.preventDefault()
+    setIsDropActive(false)
     const files = Array.from(e.dataTransfer.files || [])
-    if (files.length === 0) return
+
+    const uriListRaw = e.dataTransfer.getData('text/uri-list') || e.dataTransfer.getData('text/plain')
+    const uriCandidates = uriListRaw
+      .split(/\s+/)
+      .map((p) => p.trim())
+      .filter((p) => p && !p.startsWith('#') && (p.startsWith('http://') || p.startsWith('https://') || p.startsWith('data:image/') || p.startsWith('blob:')))
+    const htmlRaw = e.dataTransfer.getData('text/html')
+    const htmlCandidates = htmlRaw ? extractImageUrlsFromHtml(htmlRaw) : []
+    const droppedImageUrls = Array.from(new Set([...uriCandidates, ...htmlCandidates])).filter(looksLikeImageUrl)
+    if (files.length === 0 && droppedImageUrls.length === 0) return
 
     beginInteraction()
 
@@ -707,12 +816,49 @@ export function CollaborativeCanvas({
       }
     }
 
+    for (const src of droppedImageUrls) {
+      const imageItem: CanvasItem = {
+        id: crypto.randomUUID(),
+        type: 'image',
+        x,
+        y,
+        w: 320,
+        h: 220,
+        src,
+      }
+      setCanvasDoc((prev) => {
+        const parentFrameId = getParentFrameId(imageItem, prev.items)
+        return { ...prev, items: [...prev.items, { ...imageItem, parentFrameId }] }
+      })
+      y += 30
+    }
+
     endInteraction()
   }
 
   const renderPath = (item: Extract<CanvasItem, { type: 'path' }>) => {
     const d = item.points.map((p, idx) => `${idx === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ')
     return <path key={item.id} d={d} stroke={item.color} strokeWidth={item.width} fill="none" strokeLinecap="round" strokeLinejoin="round" />
+  }
+
+  const renderConnector = (item: Extract<CanvasItem, { type: 'connector' }>) => {
+    const from = canvasDoc.items.find((candidate) => candidate.id === item.fromId)
+    const to = canvasDoc.items.find((candidate) => candidate.id === item.toId)
+    if (!from || !to || !isPositioned(from) || !isPositioned(to)) return null
+    const p1 = getAnchorPoint(from, item.fromAnchor)
+    const p2 = getAnchorPoint(to, item.toAnchor)
+    return (
+      <line
+        key={item.id}
+        x1={p1.x}
+        y1={p1.y}
+        x2={p2.x}
+        y2={p2.y}
+        stroke={item.color}
+        strokeWidth={item.width}
+        markerEnd="url(#canvas-arrow)"
+      />
+    )
   }
 
   return (
@@ -733,6 +879,10 @@ export function CollaborativeCanvas({
           <Button size="sm" variant={tool === 'postit' ? 'default' : 'outline'} onClick={() => setTool('postit')}><StickyNote className="h-4 w-4" /></Button>
           <Button size="sm" variant={tool === 'frame' ? 'default' : 'outline'} onClick={() => setTool('frame')}><Frame className="h-4 w-4" /></Button>
           <Button size="sm" variant={tool === 'text' ? 'default' : 'outline'} onClick={() => setTool('text')}><Type className="h-4 w-4" /></Button>
+          <Button size="sm" variant={tool === 'roundedRect' ? 'default' : 'outline'} onClick={() => setTool('roundedRect')}><RectangleHorizontal className="h-4 w-4" /></Button>
+          <Button size="sm" variant={tool === 'triangle' ? 'default' : 'outline'} onClick={() => setTool('triangle')}><Triangle className="h-4 w-4" /></Button>
+          <Button size="sm" variant={tool === 'parallelogram' ? 'default' : 'outline'} onClick={() => setTool('parallelogram')}>▱</Button>
+          <Button size="sm" variant={tool === 'connector' ? 'default' : 'outline'} onClick={() => setTool('connector')}><MoveRight className="h-4 w-4" /></Button>
           <Button size="sm" variant={tool === 'pen' ? 'default' : 'outline'} onClick={() => setTool('pen')}><Pencil className="h-4 w-4" /></Button>
           <Button size="sm" variant="outline" onClick={deleteSelected} disabled={!selectedId || !canEdit}><Eraser className="h-4 w-4" /></Button>
         </div>
@@ -746,6 +896,11 @@ export function CollaborativeCanvas({
               className="h-7 w-9 cursor-pointer p-1"
               title="Colore nuovo post-it"
             />
+          </div>
+          <div className="flex items-center gap-1 rounded-md border border-slate-200 px-2 py-1 text-xs">
+            <span className="text-slate-500">Forma</span>
+            <Input type="color" value={newShapeFill} onChange={(e) => setNewShapeFill(e.target.value)} className="h-7 w-9 cursor-pointer p-1" title="Riempimento forma" />
+            <Input type="color" value={newShapeStroke} onChange={(e) => setNewShapeStroke(e.target.value)} className="h-7 w-9 cursor-pointer p-1" title="Bordo forma" />
           </div>
           <Input
             type="color"
@@ -766,8 +921,59 @@ export function CollaborativeCanvas({
             <Table className="h-4 w-4" />
             <span>Drop</span>
           </div>
+          {tool === 'connector' && (
+            <span className="text-xs text-slate-600">
+              {connectorDraft ? 'Seleziona la forma di arrivo' : 'Seleziona forma di partenza'}
+            </span>
+          )}
         </div>
       </div>
+      {selectedItem && isShape(selectedItem) && (
+        <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 bg-slate-50 px-3 py-2 text-xs">
+          <span className="text-slate-600">Forma</span>
+          <div className="flex items-center gap-1 rounded border border-slate-200 bg-white px-2 py-1">
+            <span className="text-slate-500">Fill</span>
+            <Input
+              type="color"
+              value={selectedItem.fill}
+              onChange={(e) => updateItem(selectedItem.id, { fill: e.target.value })}
+              className="h-7 w-9 cursor-pointer p-1"
+              disabled={!canEdit || isLockedByOther(selectedItem.id)}
+            />
+          </div>
+          <div className="flex items-center gap-1 rounded border border-slate-200 bg-white px-2 py-1">
+            <span className="text-slate-500">Stroke</span>
+            <Input
+              type="color"
+              value={selectedItem.stroke}
+              onChange={(e) => updateItem(selectedItem.id, { stroke: e.target.value })}
+              className="h-7 w-9 cursor-pointer p-1"
+              disabled={!canEdit || isLockedByOther(selectedItem.id)}
+            />
+          </div>
+        </div>
+      )}
+      {selectedItem && isConnector(selectedItem) && (
+        <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 bg-slate-50 px-3 py-2 text-xs">
+          <span className="text-slate-600">Connettore</span>
+          <Input
+            type="color"
+            value={selectedItem.color}
+            onChange={(e) => updateItem(selectedItem.id, { color: e.target.value })}
+            className="h-8 w-10 p-1"
+            disabled={!canEdit}
+          />
+          <Input
+            type="number"
+            min={1}
+            max={8}
+            value={selectedItem.width}
+            onChange={(e) => updateItem(selectedItem.id, { width: Math.max(1, Math.min(8, Number(e.target.value || 2))) })}
+            className="h-8 w-14 px-2"
+            disabled={!canEdit}
+          />
+        </div>
+      )}
       {selectedItem && selectedTextStyle && (
         <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 bg-slate-50 px-3 py-2 text-xs">
           <span className="text-slate-600">Testo</span>
@@ -849,10 +1055,29 @@ export function CollaborativeCanvas({
         onMouseUp={onMouseUp}
         onMouseLeave={onMouseUp}
         onMouseDown={onMouseDownDraw}
-        onDragOver={(e) => e.preventDefault()}
+        onDragEnter={(e) => {
+          e.preventDefault()
+          if (canEdit) setIsDropActive(true)
+        }}
+        onDragLeave={(e) => {
+          if (!e.currentTarget.contains(e.relatedTarget as Node)) setIsDropActive(false)
+        }}
+        onDragOver={(e) => {
+          e.preventDefault()
+          if (canEdit) {
+            e.dataTransfer.dropEffect = 'copy'
+            setIsDropActive(true)
+          }
+        }}
         onDrop={handleDropFiles}
       >
         <svg className="pointer-events-none absolute inset-0 h-full w-full">
+          <defs>
+            <marker id="canvas-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+              <path d="M 0 0 L 10 5 L 0 10 z" fill="#334155" />
+            </marker>
+          </defs>
+          {canvasDoc.items.filter((item) => item.type === 'connector').map((item) => renderConnector(item as Extract<CanvasItem, { type: 'connector' }>))}
           {canvasDoc.items.filter((item) => item.type === 'path').map((item) => renderPath(item as Extract<CanvasItem, { type: 'path' }>))}
           {previewPoints.length > 1 && (
             <path
@@ -865,11 +1090,17 @@ export function CollaborativeCanvas({
             />
           )}
         </svg>
+        {isDropActive && canEdit && (
+          <div className="pointer-events-none absolute inset-4 z-20 rounded-xl border-2 border-dashed border-blue-400 bg-blue-50/70">
+            <div className="flex h-full items-center justify-center text-sm font-medium text-blue-700">Rilascia qui immagini o file</div>
+          </div>
+        )}
 
         {canvasDoc.items
-          .filter((item) => item.type !== 'path')
+          .filter((item) => item.type !== 'path' && item.type !== 'connector')
           .map((item) => {
             const lockedByOther = isLockedByOther(item.id)
+            const isEditing = editingId === item.id
             return (
               <div
                 key={item.id}
@@ -881,6 +1112,13 @@ export function CollaborativeCanvas({
                   height: isPositioned(item) ? item.h : 0,
                 }}
                 onMouseDown={(e) => onMouseDownItem(e, item)}
+                onDoubleClick={() => {
+                  if (!canEdit || lockedByOther) return
+                  if (item.type === 'postit' || item.type === 'frame' || item.type === 'text') {
+                    setEditingId(item.id)
+                    setSelectedId(item.id)
+                  }
+                }}
               >
                 {item.type === 'postit' && (
                   <textarea
@@ -897,6 +1135,9 @@ export function CollaborativeCanvas({
                       fontStyle: item.textStyle?.fontStyle || DEFAULT_TEXT_STYLE.fontStyle,
                     }}
                     disabled={!canEdit || lockedByOther}
+                    readOnly={!isEditing}
+                    autoFocus={isEditing}
+                    onBlurCapture={() => setEditingId((prev) => (prev === item.id ? null : prev))}
                   />
                 )}
 
@@ -915,6 +1156,9 @@ export function CollaborativeCanvas({
                       fontStyle: item.textStyle?.fontStyle || DEFAULT_TEXT_STYLE.fontStyle,
                     }}
                     disabled={!canEdit || lockedByOther}
+                    readOnly={!isEditing}
+                    autoFocus={isEditing}
+                    onBlurCapture={() => setEditingId((prev) => (prev === item.id ? null : prev))}
                   />
                 </div>
                 )}
@@ -934,7 +1178,24 @@ export function CollaborativeCanvas({
                       fontStyle: item.textStyle?.fontStyle || DEFAULT_TEXT_STYLE.fontStyle,
                     }}
                     disabled={!canEdit || lockedByOther}
+                    readOnly={!isEditing}
+                    autoFocus={isEditing}
+                    onBlurCapture={() => setEditingId((prev) => (prev === item.id ? null : prev))}
                   />
+                )}
+
+                {item.type === 'shape' && (
+                  <svg className="h-full w-full overflow-visible rounded-md" viewBox={`0 0 ${item.w} ${item.h}`}>
+                    {item.shape === 'rounded-rect' && (
+                      <rect x="3" y="3" width={Math.max(item.w - 6, 1)} height={Math.max(item.h - 6, 1)} rx="18" ry="18" fill={item.fill} stroke={item.stroke} strokeWidth="2.5" />
+                    )}
+                    {item.shape === 'triangle' && (
+                      <polygon points={`${item.w / 2},4 ${item.w - 4},${item.h - 4} 4,${item.h - 4}`} fill={item.fill} stroke={item.stroke} strokeWidth="2.5" />
+                    )}
+                    {item.shape === 'parallelogram' && (
+                      <polygon points={`24,4 ${item.w - 4},4 ${item.w - 24},${item.h - 4} 4,${item.h - 4}`} fill={item.fill} stroke={item.stroke} strokeWidth="2.5" />
+                    )}
+                  </svg>
                 )}
 
                 {item.type === 'image' && (
@@ -958,7 +1219,7 @@ export function CollaborativeCanvas({
                     </table>
                   </div>
                 )}
-                {canEdit && (item.type === 'postit' || item.type === 'frame' || item.type === 'text') && !lockedByOther && (
+                {canEdit && (item.type === 'postit' || item.type === 'frame' || item.type === 'text' || item.type === 'shape' || item.type === 'image') && !lockedByOther && (
                   <button
                     type="button"
                     className="absolute bottom-1 right-1 h-3 w-3 cursor-se-resize rounded-sm border border-slate-500 bg-white/90 shadow-sm"
