@@ -41,6 +41,18 @@ export interface PrivateChat {
   unreadCount: number
 }
 
+type PublicChatCache = {
+  messages: ChatMessage[]
+  nextCursor: string | null
+  hasMore: boolean
+  updatedAt: number
+}
+
+const PUBLIC_CHAT_CACHE = new Map<string, PublicChatCache>()
+const CACHE_TTL_MS = 2 * 60 * 1000
+const DEFAULT_CHUNK_SIZE = 30
+const MAX_IN_MEMORY_MESSAGES = 300
+
 interface UseSocketReturn {
   socket: Socket | null
   connected: boolean
@@ -54,6 +66,20 @@ interface UseSocketReturn {
   notifications: ChatMessage[]
   clearNotification: (id: string) => void
   currentUserId: string | null
+  loadOlderPublicMessages: () => Promise<void>
+  hasMorePublicMessages: boolean
+  loadingOlderPublicMessages: boolean
+}
+
+const dedupeById = (messages: ChatMessage[]): ChatMessage[] => {
+  const seen = new Set<string>()
+  const result: ChatMessage[] = []
+  for (const msg of messages) {
+    if (!msg?.id || seen.has(msg.id)) continue
+    seen.add(msg.id)
+    result.push(msg)
+  }
+  return result
 }
 
 export function useSocket(sessionId?: string): UseSocketReturn {
@@ -64,16 +90,18 @@ export function useSocket(sessionId?: string): UseSocketReturn {
   const [privateChats, setPrivateChats] = useState<Record<string, PrivateChat>>({})
   const [notifications, setNotifications] = useState<ChatMessage[]>([])
   const [currentUserId, setCurrentUserId] = useState<string | null>(null)
+  const [hasMorePublicMessages, setHasMorePublicMessages] = useState(true)
+  const [loadingOlderPublicMessages, setLoadingOlderPublicMessages] = useState(false)
 
-  // Refs for socket listeners to avoid closure issues
   const currentUserIdRef = useRef<string | null>(null)
   const onlineUsersRef = useRef<OnlineUser[]>([])
+  const nextCursorRef = useRef<string | null>(null)
+  const hasMoreRef = useRef(true)
 
   const { accessToken } = useAuthStore()
   const studentToken = typeof window !== 'undefined' ? localStorage.getItem('student_token') : null
   const authToken = accessToken || studentToken
 
-  // Sync refs with state
   useEffect(() => {
     currentUserIdRef.current = currentUserId
   }, [currentUserId])
@@ -82,7 +110,10 @@ export function useSocket(sessionId?: string): UseSocketReturn {
     onlineUsersRef.current = onlineUsers
   }, [onlineUsers])
 
-  // Parse current user ID from token
+  useEffect(() => {
+    hasMoreRef.current = hasMorePublicMessages
+  }, [hasMorePublicMessages])
+
   useEffect(() => {
     if (authToken) {
       try {
@@ -94,29 +125,85 @@ export function useSocket(sessionId?: string): UseSocketReturn {
     }
   }, [authToken])
 
-  // Load messages from database on mount
-  useEffect(() => {
+  const updatePublicCache = useCallback((nextMessages: ChatMessage[], nextCursor: string | null, nextHasMore: boolean) => {
     if (!sessionId) return
-    
-    const loadMessages = async () => {
-      try {
-        const res = await chatApi.getSessionMessages(sessionId)
-        if (res.data?.messages) {
-          setMessages(res.data.messages)
-        }
-      } catch (err) {
-        console.error('Failed to load chat messages:', err)
-      }
-    }
-    
-    loadMessages()
+    PUBLIC_CHAT_CACHE.set(sessionId, {
+      messages: nextMessages,
+      nextCursor,
+      hasMore: nextHasMore,
+      updatedAt: Date.now(),
+    })
   }, [sessionId])
 
-  // Function to refresh online users list
+  const loadInitialPublicMessages = useCallback(async () => {
+    if (!sessionId) return
+
+    const cached = PUBLIC_CHAT_CACHE.get(sessionId)
+    if (cached && Date.now() - cached.updatedAt < CACHE_TTL_MS) {
+      setMessages(cached.messages)
+      nextCursorRef.current = cached.nextCursor
+      setHasMorePublicMessages(cached.hasMore)
+      return
+    }
+
+    try {
+      const res = await chatApi.getSessionMessages(sessionId, { limit: DEFAULT_CHUNK_SIZE })
+      const list = Array.isArray(res.data?.messages) ? res.data.messages : []
+      const hasMore = Boolean(res.data?.has_more)
+      const nextCursor = (res.data?.next_cursor as string | null) || (list[0]?.created_at ?? null)
+      setMessages(list)
+      nextCursorRef.current = nextCursor
+      setHasMorePublicMessages(hasMore)
+      updatePublicCache(list, nextCursor, hasMore)
+    } catch (err) {
+      console.error('Failed to load chat messages:', err)
+    }
+  }, [sessionId, updatePublicCache])
+
+  const loadOlderPublicMessages = useCallback(async () => {
+    if (!sessionId || loadingOlderPublicMessages || !hasMorePublicMessages) return
+    const cursor = nextCursorRef.current
+    if (!cursor) {
+      setHasMorePublicMessages(false)
+      return
+    }
+
+    setLoadingOlderPublicMessages(true)
+    try {
+      const res = await chatApi.getSessionMessages(sessionId, {
+        limit: DEFAULT_CHUNK_SIZE,
+        before_created_at: cursor,
+      })
+      const older = Array.isArray(res.data?.messages) ? res.data.messages : []
+      const hasMore = Boolean(res.data?.has_more)
+      const nextCursor = (res.data?.next_cursor as string | null) || (older[0]?.created_at ?? null)
+
+      setMessages((prev) => {
+        const merged = dedupeById([...older, ...prev])
+        const trimmed = merged.slice(-MAX_IN_MEMORY_MESSAGES)
+        updatePublicCache(trimmed, nextCursor, hasMore)
+        return trimmed
+      })
+
+      nextCursorRef.current = nextCursor
+      setHasMorePublicMessages(hasMore)
+    } catch (err) {
+      console.error('Failed to load older chat messages:', err)
+    } finally {
+      setLoadingOlderPublicMessages(false)
+    }
+  }, [hasMorePublicMessages, loadingOlderPublicMessages, sessionId, updatePublicCache])
+
+  useEffect(() => {
+    if (!sessionId) return
+    nextCursorRef.current = null
+    setHasMorePublicMessages(true)
+    void loadInitialPublicMessages()
+  }, [sessionId, loadInitialPublicMessages])
+
   const refreshOnlineUsers = useCallback((socket: Socket, session: string) => {
     socket.emit('join_session', { session_id: session }, (response: { online_students?: OnlineUser[] }) => {
       if (response?.online_students) {
-        console.log('[Socket] Refreshed online users:', response.online_students.length)
         setOnlineUsers(response.online_students)
       }
     })
@@ -137,49 +224,36 @@ export function useSocket(sessionId?: string): UseSocketReturn {
     })
 
     socketRef.current = socket
-    // Expose socket globally for components that need to emit events
     ;(window as any).socket = socket
 
-    // Periodic refresh of online users (every 30 seconds)
     let refreshInterval: NodeJS.Timeout | null = null
 
     socket.on('connect', () => {
-      console.log('[Socket] Connected, socket id:', socket.id)
       setConnected(true)
       if (sessionId) {
-        // Initial join and get online users
         refreshOnlineUsers(socket, sessionId)
-
-        // Set up periodic refresh
         refreshInterval = setInterval(() => {
           if (socket.connected && sessionId) {
             refreshOnlineUsers(socket, sessionId)
           }
-        }, 30000) // Refresh every 30 seconds
+        }, 30000)
       }
     })
 
-    socket.on('disconnect', (reason) => {
-      console.log('[Socket] Disconnected:', reason)
+    socket.on('disconnect', () => {
       setConnected(false)
-      // Clear online users on disconnect - they'll be repopulated on reconnect
       setOnlineUsers([])
-      // Clear refresh interval
       if (refreshInterval) {
         clearInterval(refreshInterval)
         refreshInterval = null
       }
     })
 
-    socket.on('connect_error', (error) => {
-      console.error('[Socket] Connection error:', error.message)
+    socket.on('connect_error', () => {
       setConnected(false)
     })
 
-    // Handle reconnection
-    socket.on('reconnect', (attemptNumber) => {
-      console.log('[Socket] Reconnected after', attemptNumber, 'attempts')
-      // Re-join session and refresh users on reconnect
+    socket.on('reconnect', () => {
       if (sessionId) {
         refreshOnlineUsers(socket, sessionId)
       }
@@ -195,25 +269,20 @@ export function useSocket(sessionId?: string): UseSocketReturn {
       }
 
       if (data.room_type === 'DM') {
-        // Handle private message - determine the other person in the conversation
         const senderId = msg.sender_id
         const targetId = data.target_id || msg.target_id
         const myId = currentUserIdRef.current
 
-        // Get current user ID to determine who the peer is
         let peerId: string
         let peerName: string
         let peerAvatarUrl: string | undefined
 
         if (senderId === myId) {
-          // I sent this message, peer is the target
           peerId = targetId || 'unknown'
-          // Try to find target info in online users
           const targetUser = onlineUsersRef.current.find(u => u.student_id === peerId)
           peerName = targetUser?.nickname || 'Destinatario'
           peerAvatarUrl = targetUser?.avatar_url
         } else {
-          // Someone sent me this message, peer is the sender
           peerId = senderId
           peerName = msg.sender_name || 'Utente'
           peerAvatarUrl = msg.sender_avatar_url
@@ -222,7 +291,6 @@ export function useSocket(sessionId?: string): UseSocketReturn {
         setPrivateChats(prev => {
           const existingChat = prev[peerId]
           if (existingChat) {
-            // Check for duplicates
             if (existingChat.messages.find(m => m.id === msg.id)) return prev
             return {
               ...prev,
@@ -232,25 +300,24 @@ export function useSocket(sessionId?: string): UseSocketReturn {
                 unreadCount: existingChat.unreadCount + (senderId !== myId ? 1 : 0),
               }
             }
-          } else {
-            // Create new private chat
-            return {
-              ...prev,
-              [peerId]: {
-                oderId: peerId,
-                peerName: peerName,
-                peerAvatarUrl: peerAvatarUrl,
-                messages: [msg],
-                unreadCount: senderId !== myId ? 1 : 0,
-              }
+          }
+          return {
+            ...prev,
+            [peerId]: {
+              oderId: peerId,
+              peerName,
+              peerAvatarUrl,
+              messages: [msg],
+              unreadCount: senderId !== myId ? 1 : 0,
             }
           }
         })
       } else {
-        // Public message - avoid duplicates
         setMessages(prev => {
-          if (prev.find(m => m.id === msg.id)) return prev
-          return [...prev, msg]
+          const merged = dedupeById([...prev, msg])
+          const trimmed = merged.slice(-MAX_IN_MEMORY_MESSAGES)
+          updatePublicCache(trimmed, nextCursorRef.current, hasMoreRef.current)
+          return trimmed
         })
       }
     })
@@ -260,7 +327,6 @@ export function useSocket(sessionId?: string): UseSocketReturn {
         setOnlineUsers(prev => {
           const existing = prev.find(u => u.student_id === data.student_id)
           if (existing) {
-            // Update existing user info
             return prev.map(u => u.student_id === data.student_id
               ? { ...u, nickname: data.nickname || u.nickname, avatar_url: data.avatar_url || u.avatar_url }
               : u
@@ -274,8 +340,8 @@ export function useSocket(sessionId?: string): UseSocketReturn {
     })
 
     socket.on('activity_update', (data: { student_id: string; module_key?: string; step?: string }) => {
-      setOnlineUsers(prev => prev.map(u => 
-        u.student_id === data.student_id 
+      setOnlineUsers(prev => prev.map(u =>
+        u.student_id === data.student_id
           ? { ...u, activity: { module_key: data.module_key, step: data.step } }
           : u
       ))
@@ -343,7 +409,6 @@ export function useSocket(sessionId?: string): UseSocketReturn {
       setNotifications(prev => [...prev, notification])
     })
 
-    // Teacher notifications for student activity
     socket.on('teacher_notification', (data: { type: string; nickname: string; message: string; preview?: string; timestamp: string }) => {
       const notification: ChatMessage = {
         id: `teacher-notif-${Date.now()}-${Math.random()}`,
@@ -367,13 +432,12 @@ export function useSocket(sessionId?: string): UseSocketReturn {
       socketRef.current = null
       ;(window as any).socket = null
     }
-  }, [authToken, sessionId, refreshOnlineUsers])
+  }, [authToken, sessionId, refreshOnlineUsers, updatePublicCache])
 
   const sendPublicMessage = useCallback(async (text: string, attachmentUrls: string[] = []) => {
     if (!sessionId || (!text.trim() && attachmentUrls.length === 0)) return
-    
+
     try {
-      // Helper to determine file type from URL
       const getFileType = (url: string): string => {
         const ext = url.split('.').pop()?.toLowerCase() || ''
         if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp'].includes(ext)) return 'image'
@@ -384,17 +448,14 @@ export function useSocket(sessionId?: string): UseSocketReturn {
         return 'file'
       }
 
-      // Build attachments array
       const attachments = attachmentUrls.map(url => ({
         type: getFileType(url),
         url,
         filename: url.split('/').pop() || 'file'
       }))
 
-      // Save to database via API
       await chatApi.sendSessionMessage(sessionId, text.trim(), attachments)
-      
-      // Emit via Socket.IO for real-time delivery (backend will broadcast to all including sender)
+
       if (socketRef.current) {
         socketRef.current.emit('chat_public_message', {
           session_id: sessionId,
@@ -409,7 +470,6 @@ export function useSocket(sessionId?: string): UseSocketReturn {
 
   const sendPrivateMessage = useCallback((targetId: string, text: string, attachmentUrls: string[] = []) => {
     if (socketRef.current && (text.trim() || attachmentUrls.length > 0)) {
-      // Helper to determine file type from URL
       const getFileType = (url: string): string => {
         const ext = url.split('.').pop()?.toLowerCase() || ''
         if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp'].includes(ext)) return 'image'
@@ -437,10 +497,8 @@ export function useSocket(sessionId?: string): UseSocketReturn {
   const startPrivateChat = useCallback((user: OnlineUser) => {
     setPrivateChats(prev => {
       if (prev[user.student_id]) {
-        // Chat already exists, just return
         return prev
       }
-      // Create new empty private chat
       return {
         ...prev,
         [user.student_id]: {
@@ -484,5 +542,8 @@ export function useSocket(sessionId?: string): UseSocketReturn {
     notifications,
     clearNotification,
     currentUserId,
+    loadOlderPublicMessages,
+    hasMorePublicMessages,
+    loadingOlderPublicMessages,
   }
 }

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, Dispatch, SetStateAction, useCallback } from 'react'
-import { chatApi, filesApi } from '@/lib/api'
+import { filesApi } from '@/lib/api'
 import { useSocket, ChatMessage, OnlineUser } from '@/hooks/useSocket'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -261,6 +261,15 @@ interface SessionFile {
   owner_type: 'student' | 'teacher'
 }
 
+type SessionFilesCache = {
+  files: SessionFile[]
+  updatedAt: number
+}
+
+const SESSION_FILES_CACHE = new Map<string, SessionFilesCache>()
+const RESOLVED_FILE_URL_CACHE = new Map<string, string>()
+const SESSION_FILES_CACHE_TTL = 60 * 1000
+
 interface ChatSidebarProps {
   sessionId: string
   userType: 'teacher' | 'student'
@@ -293,7 +302,6 @@ export default function ChatSidebar({
 }: ChatSidebarProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [inputText, setInputText] = useState('')
-  const [isLoading, setIsLoading] = useState(false)
   const [dragActive, setDragActive] = useState(false)
   const [attachedFiles, setAttachedFiles] = useState<File[]>([])
   const [chatWidth, setChatWidth] = useState(initialWidth)
@@ -311,12 +319,13 @@ export default function ChatSidebar({
   const [tagInputs, setTagInputs] = useState<Record<string, string>>({})
   const [filesViewMode, setFilesViewMode] = useState<'grid' | 'list'>('grid')
   const [filesIconScale, setFilesIconScale] = useState(1)
-  const [loadMessagesBlocked, setLoadMessagesBlocked] = useState(false)
   const studentAccentTheme = getStudentAccentTheme(studentAccent)
   const scrollRef = useRef<HTMLDivElement>(null)
+  const prependScrollHeightRef = useRef<number | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const libraryFileInputRef = useRef<HTMLInputElement>(null)
   const dragCounter = useRef(0)
+  const prevMessagesCountRef = useRef(0)
 
   const {
     connected,
@@ -328,7 +337,10 @@ export default function ChatSidebar({
     startPrivateChat,
     markPrivateChatRead,
     currentUserId: socketCurrentUserId,
-    onlineUsers
+    onlineUsers,
+    loadOlderPublicMessages,
+    hasMorePublicMessages,
+    loadingOlderPublicMessages
   } = useSocket(sessionId)
 
   const getRelativePath = (file: File) => {
@@ -337,6 +349,59 @@ export default function ChatSidebar({
   }
 
   const getDisplayName = (file: File) => getRelativePath(file) || file.name
+
+  const isImageFile = (file: File) => file.type.startsWith('image/')
+
+  const downscaleImage = async (file: File, maxSize = 1280, quality = 0.72): Promise<File> => {
+    if (!isImageFile(file)) return file
+    const imageUrl = URL.createObjectURL(file)
+    try {
+      const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+        const element = new Image()
+        element.onload = () => resolve(element)
+        element.onerror = reject
+        element.src = imageUrl
+      })
+      const ratio = Math.min(1, maxSize / Math.max(img.width, img.height))
+      const targetW = Math.max(1, Math.round(img.width * ratio))
+      const targetH = Math.max(1, Math.round(img.height * ratio))
+      const canvas = document.createElement('canvas')
+      canvas.width = targetW
+      canvas.height = targetH
+      const ctx = canvas.getContext('2d')
+      if (!ctx) return file
+      ctx.drawImage(img, 0, 0, targetW, targetH)
+
+      const blob = await new Promise<Blob | null>((resolve) => {
+        canvas.toBlob(resolve, 'image/webp', quality)
+      })
+      if (!blob) return file
+
+      const targetName = file.name.replace(/\.[^.]+$/, '') + '.webp'
+      return new globalThis.File([blob], targetName, { type: 'image/webp' })
+    } catch {
+      return file
+    } finally {
+      URL.revokeObjectURL(imageUrl)
+    }
+  }
+
+  const optimizeImagesForUpload = async (files: File[]): Promise<File[]> => {
+    return Promise.all(files.map((file) => downscaleImage(file)))
+  }
+
+  const resolveDownloadUrl = async (fileUrl: string): Promise<string> => {
+    if (!fileUrl.includes('/api/v1/files/') || !fileUrl.endsWith('/download-url')) {
+      return fileUrl
+    }
+    const cached = RESOLVED_FILE_URL_CACHE.get(fileUrl)
+    if (cached) return cached
+    const res = await fetch(fileUrl)
+    const json = await res.json()
+    const resolved = json.download_url || json.url || fileUrl
+    RESOLVED_FILE_URL_CACHE.set(fileUrl, resolved)
+    return resolved
+  }
 
   const formatFileSize = (bytes: number) => {
     if (!bytes && bytes !== 0) return ''
@@ -386,12 +451,21 @@ export default function ChatSidebar({
     })
   }
 
-  const loadSessionFiles = useCallback(async () => {
+  const loadSessionFiles = useCallback(async (force = false) => {
+    if (!force) {
+      const cached = SESSION_FILES_CACHE.get(sessionId)
+      if (cached && Date.now() - cached.updatedAt < SESSION_FILES_CACHE_TTL) {
+        setSessionFiles(cached.files)
+        return
+      }
+    }
+
     setIsLoadingFiles(true)
     try {
       const res = await filesApi.listSessionFiles(sessionId)
       const filesData = Array.isArray(res.data) ? res.data : []
       setSessionFiles(filesData)
+      SESSION_FILES_CACHE.set(sessionId, { files: filesData, updatedAt: Date.now() })
     } catch (e) {
       console.error("Failed to load session files", e)
     } finally {
@@ -402,36 +476,6 @@ export default function ChatSidebar({
   useEffect(() => {
     setMessages(socketMessages)
   }, [socketMessages])
-
-  useEffect(() => {
-    setLoadMessagesBlocked(false)
-  }, [sessionId])
-
-  useEffect(() => {
-    if (messages.length === 0 && !isLoading) {
-      if (loadMessagesBlocked) return
-      const loadMessages = async () => {
-        setIsLoading(true)
-        try {
-          const res = await chatApi.getSessionMessages(sessionId)
-          const messageData = res.data?.messages || res.data
-          if (messageData && Array.isArray(messageData)) {
-            setMessages(messageData)
-          }
-        } catch (e: any) {
-          console.error("Failed to load messages", e)
-          const status = e?.response?.status
-          // Avoid infinite retry noise when backend denies access.
-          if (status === 403 || status === 401) {
-            setLoadMessagesBlocked(true)
-          }
-        } finally {
-          setIsLoading(false)
-        }
-      }
-      loadMessages()
-    }
-  }, [sessionId, messages.length, isLoading, loadMessagesBlocked])
 
   useEffect(() => {
     if (activeTab === 'files') {
@@ -459,20 +503,42 @@ export default function ChatSidebar({
   }, [fileTags, sessionId])
 
   useEffect(() => {
-    if (scrollRef.current) {
-      const scrollToBottom = () => {
-        if (scrollRef.current) {
-          scrollRef.current.scrollTo({
-            top: scrollRef.current.scrollHeight,
-            behavior: 'smooth'
-          })
-        }
+    const container = scrollRef.current
+    if (!container) return
+
+    const prevCount = prevMessagesCountRef.current
+    const currentCount = messages.length
+
+    if (prependScrollHeightRef.current !== null) {
+      const previousHeight = prependScrollHeightRef.current
+      prependScrollHeightRef.current = null
+      const delta = container.scrollHeight - previousHeight
+      container.scrollTop = Math.max(0, container.scrollTop + delta)
+    } else if (currentCount > prevCount) {
+      const nearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 120
+      if (nearBottom || prevCount === 0) {
+        container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' })
       }
-      scrollToBottom()
-      const timer = setTimeout(scrollToBottom, 100)
-      return () => clearTimeout(timer)
     }
+
+    prevMessagesCountRef.current = currentCount
   }, [messages, activePrivateChat, privateChats])
+
+  useEffect(() => {
+    if (activeTab !== 'session') return
+    const viewport = scrollRef.current
+    if (!viewport) return
+
+    const onScroll = () => {
+      if (viewport.scrollTop > 120) return
+      if (!hasMorePublicMessages || loadingOlderPublicMessages) return
+      prependScrollHeightRef.current = viewport.scrollHeight
+      void loadOlderPublicMessages()
+    }
+
+    viewport.addEventListener('scroll', onScroll)
+    return () => viewport.removeEventListener('scroll', onScroll)
+  }, [activeTab, hasMorePublicMessages, loadingOlderPublicMessages, loadOlderPublicMessages])
 
   // Mark private chat as read when viewing
   useEffect(() => {
@@ -514,8 +580,9 @@ export default function ChatSidebar({
     let uploadedUrls: string[] = []
     if (attachedFiles.length > 0) {
       try {
+        const optimizedFiles = await optimizeImagesForUpload(attachedFiles)
         const formData = new FormData()
-        attachedFiles.forEach(file => {
+        optimizedFiles.forEach(file => {
           formData.append('files', file, getDisplayName(file))
         })
 
@@ -560,7 +627,7 @@ export default function ChatSidebar({
         }
       }
       if (uploadedUrls.length > 0) {
-        loadSessionFiles()
+        void loadSessionFiles(true)
       }
     } catch (e) {
       console.error("Failed to send", e)
@@ -602,11 +669,7 @@ export default function ChatSidebar({
       try {
         const data = JSON.parse(sessionFileData)
         let fileUrl = data.url as string
-        if (fileUrl.includes('/api/v1/files/') && fileUrl.endsWith('/download-url')) {
-          const res = await fetch(fileUrl)
-          const json = await res.json()
-          fileUrl = json.download_url || json.url || fileUrl
-        }
+        fileUrl = await resolveDownloadUrl(fileUrl)
         const res = await fetch(fileUrl)
         const blob = await res.blob()
         const fileObj = new globalThis.File([blob], data.filename || 'file', {
@@ -677,8 +740,9 @@ export default function ChatSidebar({
   const uploadSessionFiles = async (files: File[]) => {
     if (files.length === 0) return
     try {
+      const optimizedFiles = await optimizeImagesForUpload(files)
       const formData = new FormData()
-      files.forEach(file => {
+      optimizedFiles.forEach(file => {
         formData.append('files', file, getDisplayName(file))
       })
 
@@ -703,7 +767,7 @@ export default function ChatSidebar({
       }
 
       await res.json()
-      await loadSessionFiles()
+      await loadSessionFiles(true)
     } catch (e) {
       console.error("Failed to upload session files", e)
     }
@@ -968,7 +1032,9 @@ export default function ChatSidebar({
                     key={idx}
                     src={att.url}
                     alt={att.filename || 'Allegato'}
-                    className="rounded-lg max-w-full max-h-64 object-contain cursor-pointer hover:opacity-90 transition-opacity"
+                    loading="lazy"
+                    decoding="async"
+                    className="rounded-lg w-auto max-w-[180px] max-h-28 object-cover cursor-pointer hover:opacity-90 transition-opacity"
                     onClick={() => setViewingFile({ url: att.url, filename: att.filename || 'image.png', type: att.type })}
                   />
                 ))}
@@ -1097,8 +1163,17 @@ export default function ChatSidebar({
 
   const renderSessionChat = () => {
     return (
-      <div className="flex-1 overflow-y-auto p-4 space-y-6 bg-slate-50/30 scroll-smooth overscroll-contain" ref={scrollRef}>
-        {messages.length === 0 && !isLoading && (
+      <div
+        className="flex-1 overflow-y-auto p-4 space-y-6 bg-slate-50/30 scroll-smooth overscroll-contain"
+        ref={scrollRef}
+      >
+        {loadingOlderPublicMessages && (
+          <div className="text-center text-[10px] text-slate-400 uppercase tracking-wider">Caricamento cronologia...</div>
+        )}
+        {!hasMorePublicMessages && messages.length > 0 && (
+          <div className="text-center text-[10px] text-slate-300 uppercase tracking-wider">Inizio chat</div>
+        )}
+        {messages.length === 0 && (
           <div className="h-full flex flex-col items-center justify-center text-slate-300 opacity-50">
             <MessageSquare className="h-8 w-8 mb-2" />
             <p className="text-[10px] font-medium uppercase">Nessun messaggio</p>

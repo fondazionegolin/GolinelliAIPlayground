@@ -147,14 +147,16 @@ export default function StudentDashboard() {
       const notifType = notification.notification_type
       const taskId = data?.task_id
       if ((notifType === 'task' || notifType === 'quiz' || notifType === 'exercise') && taskId) {
-        setOpenTaskId(taskId)
+        setOpenTaskId(null)
+        requestAnimationFrame(() => setOpenTaskId(taskId))
         setActiveModule('self_assessment')
-        navigate({ search: `?taskId=${taskId}` }, { replace: false })
+        navigate({ search: `?taskId=${taskId}&jump=${Date.now()}` }, { replace: false })
         return
       }
 
       if ((notifType === 'lesson' || notifType === 'presentation') && taskId) {
-        setOpenDocumentTaskId(taskId)
+        setOpenDocumentTaskId(null)
+        requestAnimationFrame(() => setOpenDocumentTaskId(taskId))
         setActiveModule('documents')
         return
       }

@@ -45,7 +45,8 @@ async def get_session_messages(
     session_id: UUID,
     db: Annotated[AsyncSession, Depends(get_db)],
     auth: Annotated[StudentOrTeacher, Depends(get_student_or_teacher)],
-    limit: int = Query(100, le=200),
+    limit: int = Query(30, ge=1, le=100),
+    before_created_at: Optional[str] = Query(None),
 ):
     """Get public chat messages for a session"""
     # Verify access
@@ -61,14 +62,22 @@ async def get_session_messages(
     # Get or create public room
     room = await get_or_create_public_room(db, session_id, tenant_id)
     
-    # Get messages with sender info
+    query = select(ChatMessage).where(ChatMessage.room_id == room.id)
+    if before_created_at:
+        try:
+            before_dt = datetime.fromisoformat(before_created_at.replace("Z", "+00:00"))
+            query = query.where(ChatMessage.created_at < before_dt)
+        except ValueError:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid before_created_at")
+
+    # Request one extra row to determine whether there are older messages
     result = await db.execute(
-        select(ChatMessage)
-        .where(ChatMessage.room_id == room.id)
-        .order_by(ChatMessage.created_at.desc())
-        .limit(limit)
+        query.order_by(ChatMessage.created_at.desc()).limit(limit + 1)
     )
     messages = result.scalars().all()
+    has_more = len(messages) > limit
+    if has_more:
+        messages = messages[:limit]
     
     # Get sender metadata (student + teacher)
     student_ids = [m.sender_student_id for m in messages if m.sender_student_id]
@@ -131,9 +140,13 @@ async def get_session_messages(
             "notification_data": notif_data,
         })
 
+    next_cursor = formatted_messages[0]["created_at"] if formatted_messages else None
+
     return {
         "room_id": str(room.id),
-        "messages": formatted_messages
+        "messages": formatted_messages,
+        "has_more": has_more,
+        "next_cursor": next_cursor,
     }
 
 

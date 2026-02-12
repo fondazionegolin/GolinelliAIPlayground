@@ -200,8 +200,8 @@ export const chatApi = {
     api.get(`/chat/rooms/${roomId}/messages`, { params: { cursor } }),
   sendMessage: (roomId: string, message_text: string, attachments: unknown[] = []) =>
     api.post(`/chat/rooms/${roomId}/messages`, { message_text, attachments }),
-  getSessionMessages: (sessionId: string) =>
-    api.get(`/chat/session/${sessionId}/messages`),
+  getSessionMessages: (sessionId: string, params?: { limit?: number; before_created_at?: string }) =>
+    api.get(`/chat/session/${sessionId}/messages`, { params }),
   sendSessionMessage: (sessionId: string, text: string, attachments: unknown[] = []) =>
     api.post(`/chat/session/${sessionId}/messages`, { text, attachments }),
   clearSessionMessages: (sessionId: string) =>
