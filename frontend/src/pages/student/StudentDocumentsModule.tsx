@@ -296,6 +296,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId }: 
 
   useEffect(() => {
     if (isReadOnlyLesson) return
+    if (mode === 'canvas') return
     const timer = setTimeout(() => {
       upsertDraft()
     }, 400)
@@ -346,6 +347,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId }: 
           canvasContent: DEFAULT_CANVAS_CONTENT,
         })
       } else if (doc.type === 'canvas' || content.type === 'canvas_v1' || content.items) {
+        setIsReadOnlyLesson(false)
         setMode('canvas')
         setDraftId(options?.readOnlyLesson ? null : doc.id)
         setDocument({
@@ -972,11 +974,11 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId }: 
                    sessionId={sessionId}
                    title={document.title}
                    onTitleChange={(nextTitle) => {
-                     if (!isReadOnlyLesson) handleTitleChange(nextTitle)
+                     handleTitleChange(nextTitle)
                    }}
                    initialContent={document.canvasContent || DEFAULT_CANVAS_CONTENT}
                    onContentChange={(contentJson) => setDocument((d) => ({ ...d, canvasContent: contentJson }))}
-                   readOnly={isReadOnlyLesson}
+                   readOnly={false}
                  />
                </div>
              )}
