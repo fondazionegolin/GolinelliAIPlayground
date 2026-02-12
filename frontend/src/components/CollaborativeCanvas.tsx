@@ -10,6 +10,7 @@ type Tool = 'select' | 'postit' | 'frame' | 'text' | 'pen' | 'roundedRect' | 'tr
 
 type Point = { x: number; y: number }
 type Anchor = 'top' | 'right' | 'bottom' | 'left'
+const ANCHORS: Anchor[] = ['top', 'right', 'bottom', 'left']
 
 type LockInfo = {
   userId: string
@@ -114,6 +115,9 @@ const isFrame = (item: CanvasItem): item is Extract<CanvasItem, { type: 'frame' 
 const isPath = (item: CanvasItem): item is Extract<CanvasItem, { type: 'path' }> => item.type === 'path'
 const isConnector = (item: CanvasItem): item is Extract<CanvasItem, { type: 'connector' }> => item.type === 'connector'
 const isShape = (item: CanvasItem): item is Extract<CanvasItem, { type: 'shape' }> => item.type === 'shape'
+const isTextEditable = (
+  item: CanvasItem
+): item is Extract<CanvasItem, { type: 'postit' | 'frame' | 'text' }> => item.type === 'postit' || item.type === 'frame' || item.type === 'text'
 
 const isPositioned = (item: CanvasItem): item is Exclude<CanvasItem, { type: 'path' | 'connector' }> => !isPath(item) && !isConnector(item)
 
@@ -131,6 +135,13 @@ const nearestAnchorForPoint = (item: Exclude<CanvasItem, { type: 'path' | 'conne
   const dy = localY - cy
   if (Math.abs(dx) > Math.abs(dy)) return dx >= 0 ? 'right' : 'left'
   return dy >= 0 ? 'bottom' : 'top'
+}
+
+const anchorDirection = (anchor: Anchor): Point => {
+  if (anchor === 'top') return { x: 0, y: -1 }
+  if (anchor === 'right') return { x: 1, y: 0 }
+  if (anchor === 'bottom') return { x: 0, y: 1 }
+  return { x: -1, y: 0 }
 }
 
 const extractImageUrlsFromHtml = (html: string): string[] => {
@@ -567,12 +578,14 @@ export function CollaborativeCanvas({
       return
     }
 
+    if (isTextEditable(item) && e.detail >= 2) return
     const tag = (e.target as HTMLElement).tagName
-    if (tag === 'TEXTAREA' || tag === 'INPUT' || tag === 'SELECT' || tag === 'BUTTON') return
+    const isInteractiveTarget = tag === 'TEXTAREA' || tag === 'INPUT' || tag === 'SELECT' || tag === 'BUTTON'
+    if (isTextEditable(item) && editingId === item.id && isInteractiveTarget) return
+    if (isTextEditable(item) && editingId !== item.id) e.preventDefault()
     if (!canEdit) return
     if (isPath(item)) return
     if (isConnector(item)) return
-    if (editingId === item.id) return
     if (isLockedByOther(item.id)) return
 
     beginInteraction()
@@ -847,18 +860,53 @@ export function CollaborativeCanvas({
     if (!from || !to || !isPositioned(from) || !isPositioned(to)) return null
     const p1 = getAnchorPoint(from, item.fromAnchor)
     const p2 = getAnchorPoint(to, item.toAnchor)
+    const d1 = anchorDirection(item.fromAnchor)
+    const d2 = anchorDirection(item.toAnchor)
+    const distance = Math.hypot(p2.x - p1.x, p2.y - p1.y)
+    const curve = Math.max(36, Math.min(180, distance * 0.35))
+    const c1 = { x: p1.x + d1.x * curve, y: p1.y + d1.y * curve }
+    const c2 = { x: p2.x + d2.x * curve, y: p2.y + d2.y * curve }
+    const pathD = `M ${p1.x} ${p1.y} C ${c1.x} ${c1.y}, ${c2.x} ${c2.y}, ${p2.x} ${p2.y}`
     return (
-      <line
+      <path
         key={item.id}
-        x1={p1.x}
-        y1={p1.y}
-        x2={p2.x}
-        y2={p2.y}
+        d={pathD}
         stroke={item.color}
         strokeWidth={item.width}
+        fill="none"
+        strokeLinecap="round"
+        strokeLinejoin="round"
         markerEnd="url(#canvas-arrow)"
       />
     )
+  }
+
+  const connectFromAnchor = (shapeId: string, anchor: Anchor) => {
+    if (!canEdit) return
+    if (!connectorDraft) {
+      setTool('connector')
+      setConnectorDraft({ fromId: shapeId, fromAnchor: anchor })
+      return
+    }
+    if (connectorDraft.fromId === shapeId && connectorDraft.fromAnchor === anchor) {
+      setConnectorDraft(null)
+      return
+    }
+    beginInteraction()
+    const connector: CanvasItem = {
+      id: crypto.randomUUID(),
+      type: 'connector',
+      fromId: connectorDraft.fromId,
+      fromAnchor: connectorDraft.fromAnchor,
+      toId: shapeId,
+      toAnchor: anchor,
+      color: '#334155',
+      width: 2,
+    }
+    setCanvasDoc((prev) => ({ ...prev, items: [...prev.items, connector] }))
+    setSelectedId(connector.id)
+    setConnectorDraft(null)
+    endInteraction()
   }
 
   return (
@@ -1074,7 +1122,7 @@ export function CollaborativeCanvas({
         <svg className="pointer-events-none absolute inset-0 h-full w-full">
           <defs>
             <marker id="canvas-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
-              <path d="M 0 0 L 10 5 L 0 10 z" fill="#334155" />
+              <path d="M 0 0 L 10 5 L 0 10 z" fill="context-stroke" />
             </marker>
           </defs>
           {canvasDoc.items.filter((item) => item.type === 'connector').map((item) => renderConnector(item as Extract<CanvasItem, { type: 'connector' }>))}
@@ -1185,17 +1233,44 @@ export function CollaborativeCanvas({
                 )}
 
                 {item.type === 'shape' && (
-                  <svg className="h-full w-full overflow-visible rounded-md" viewBox={`0 0 ${item.w} ${item.h}`}>
-                    {item.shape === 'rounded-rect' && (
-                      <rect x="3" y="3" width={Math.max(item.w - 6, 1)} height={Math.max(item.h - 6, 1)} rx="18" ry="18" fill={item.fill} stroke={item.stroke} strokeWidth="2.5" />
-                    )}
-                    {item.shape === 'triangle' && (
-                      <polygon points={`${item.w / 2},4 ${item.w - 4},${item.h - 4} 4,${item.h - 4}`} fill={item.fill} stroke={item.stroke} strokeWidth="2.5" />
-                    )}
-                    {item.shape === 'parallelogram' && (
-                      <polygon points={`24,4 ${item.w - 4},4 ${item.w - 24},${item.h - 4} 4,${item.h - 4}`} fill={item.fill} stroke={item.stroke} strokeWidth="2.5" />
-                    )}
-                  </svg>
+                  <>
+                    <svg className="h-full w-full overflow-visible rounded-md" viewBox={`0 0 ${item.w} ${item.h}`}>
+                      {item.shape === 'rounded-rect' && (
+                        <rect x="3" y="3" width={Math.max(item.w - 6, 1)} height={Math.max(item.h - 6, 1)} rx="18" ry="18" fill={item.fill} stroke={item.stroke} strokeWidth="2.5" />
+                      )}
+                      {item.shape === 'triangle' && (
+                        <polygon points={`${item.w / 2},4 ${item.w - 4},${item.h - 4} 4,${item.h - 4}`} fill={item.fill} stroke={item.stroke} strokeWidth="2.5" />
+                      )}
+                      {item.shape === 'parallelogram' && (
+                        <polygon points={`24,4 ${item.w - 4},4 ${item.w - 24},${item.h - 4} 4,${item.h - 4}`} fill={item.fill} stroke={item.stroke} strokeWidth="2.5" />
+                      )}
+                    </svg>
+                    {canEdit && ANCHORS.map((anchor) => {
+                      const isSource = connectorDraft?.fromId === item.id && connectorDraft.fromAnchor === anchor
+                      const pointStyle: React.CSSProperties =
+                        anchor === 'top'
+                          ? { left: '50%', top: '-7px', transform: 'translateX(-50%)' }
+                          : anchor === 'right'
+                            ? { right: '-7px', top: '50%', transform: 'translateY(-50%)' }
+                            : anchor === 'bottom'
+                              ? { left: '50%', bottom: '-7px', transform: 'translateX(-50%)' }
+                              : { left: '-7px', top: '50%', transform: 'translateY(-50%)' }
+
+                      return (
+                        <button
+                          key={`${item.id}-${anchor}`}
+                          type="button"
+                          className={`absolute h-3.5 w-3.5 rounded-full border shadow-sm ${isSource ? 'border-blue-600 bg-blue-500' : 'border-slate-500 bg-white'}`}
+                          style={pointStyle}
+                          onMouseDown={(e) => {
+                            e.stopPropagation()
+                            connectFromAnchor(item.id, anchor)
+                          }}
+                          title={`Collega: ${anchor}`}
+                        />
+                      )
+                    })}
+                  </>
                 )}
 
                 {item.type === 'image' && (
