@@ -976,7 +976,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId }: 
                    }}
                    initialContent={document.canvasContent || DEFAULT_CANVAS_CONTENT}
                    onContentChange={(contentJson) => setDocument((d) => ({ ...d, canvasContent: contentJson }))}
-                   readOnly={false}
+                   readOnly={isReadOnlyLesson}
                  />
                </div>
              )}

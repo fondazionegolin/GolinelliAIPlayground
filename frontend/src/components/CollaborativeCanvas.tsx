@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import * as XLSX from 'xlsx'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { teacherApi, studentApi } from '@/lib/api'
+import { chatApi, teacherApi, studentApi } from '@/lib/api'
 import { Eraser, Square, StickyNote, Type, ImagePlus, Table, Pencil, Frame } from 'lucide-react'
 
 type CanvasRole = 'teacher' | 'student'
@@ -10,13 +10,30 @@ type Tool = 'select' | 'postit' | 'frame' | 'text' | 'pen'
 
 type Point = { x: number; y: number }
 
+type LockInfo = {
+  userId: string
+  userType: string
+}
+
+type CanvasItemBase = {
+  id: string
+  parentFrameId?: string
+}
+
+type CanvasPositionedItemBase = CanvasItemBase & {
+  x: number
+  y: number
+  w: number
+  h: number
+}
+
 type CanvasItem =
-  | { id: string; type: 'postit'; x: number; y: number; w: number; h: number; text: string; color: string }
-  | { id: string; type: 'frame'; x: number; y: number; w: number; h: number; text: string; color: string }
-  | { id: string; type: 'text'; x: number; y: number; w: number; h: number; text: string; color: string }
-  | { id: string; type: 'image'; x: number; y: number; w: number; h: number; src: string }
-  | { id: string; type: 'table'; x: number; y: number; w: number; h: number; data: string[][] }
-  | { id: string; type: 'path'; points: Point[]; color: string; width: number }
+  | (CanvasPositionedItemBase & { type: 'postit'; text: string; color: string })
+  | (CanvasPositionedItemBase & { type: 'frame'; text: string; color: string })
+  | (CanvasPositionedItemBase & { type: 'text'; text: string; color: string })
+  | (CanvasPositionedItemBase & { type: 'image'; src: string })
+  | (CanvasPositionedItemBase & { type: 'table'; data: string[][] })
+  | (CanvasItemBase & { type: 'path'; points: Point[]; color: string; width: number; parentFrameId?: string })
 
 type CanvasDoc = {
   type: 'canvas_v1'
@@ -37,8 +54,6 @@ const EMPTY_CANVAS: CanvasDoc = {
   type: 'canvas_v1',
   items: [],
 }
-
-const COLORS = ['#0f172a', '#2563eb', '#059669', '#9333ea', '#dc2626', '#d97706']
 
 const apiByRole = {
   teacher: {
@@ -67,6 +82,78 @@ const parseCanvasDoc = (raw: string | null | undefined): CanvasDoc => {
 const toCsvTable = (rows: Array<Array<string | number | boolean | null>>): string[][] =>
   rows.map((row) => row.map((cell) => (cell == null ? '' : String(cell))))
 
+const isFrame = (item: CanvasItem): item is Extract<CanvasItem, { type: 'frame' }> => item.type === 'frame'
+const isPath = (item: CanvasItem): item is Extract<CanvasItem, { type: 'path' }> => item.type === 'path'
+
+const isPositioned = (item: CanvasItem): item is Exclude<CanvasItem, { type: 'path' }> => !isPath(item)
+
+const isContainedInFrame = (
+  candidate: { x: number; y: number; w: number; h: number },
+  frame: Extract<CanvasItem, { type: 'frame' }>
+) =>
+  candidate.x >= frame.x &&
+  candidate.y >= frame.y &&
+  candidate.x + candidate.w <= frame.x + frame.w &&
+  candidate.y + candidate.h <= frame.y + frame.h
+
+const getParentFrameId = (
+  item: CanvasItem,
+  items: CanvasItem[],
+  skipFrameId?: string
+): string | undefined => {
+  if (!isPositioned(item)) return item.parentFrameId
+  const frames = items.filter(isFrame).filter((f) => f.id !== item.id && f.id !== skipFrameId)
+  const containers = frames.filter((f) => isContainedInFrame(item, f))
+  if (containers.length === 0) return undefined
+  containers.sort((a, b) => a.w * a.h - b.w * b.h)
+  return containers[0].id
+}
+
+const collectFrameDescendants = (items: CanvasItem[], frameId: string): string[] => {
+  const descendants = new Set<string>()
+  const queue = [frameId]
+  while (queue.length > 0) {
+    const current = queue.shift() as string
+    items.forEach((item) => {
+      if (item.parentFrameId === current && !descendants.has(item.id)) {
+        descendants.add(item.id)
+        if (isFrame(item)) queue.push(item.id)
+      }
+    })
+  }
+  return Array.from(descendants)
+}
+
+const moveFrameWithChildren = (
+  items: CanvasItem[],
+  frameId: string,
+  newX: number,
+  newY: number
+): CanvasItem[] => {
+  const frame = items.find((item) => item.id === frameId)
+  if (!frame || !isFrame(frame)) return items
+
+  const dx = newX - frame.x
+  const dy = newY - frame.y
+  const descendants = new Set(collectFrameDescendants(items, frameId))
+
+  return items.map((item) => {
+    if (item.id === frameId) {
+      return { ...item, x: newX, y: newY }
+    }
+    if (descendants.has(item.id)) {
+      if (isPath(item)) {
+        return {
+          ...item,
+          points: item.points.map((p) => ({ x: p.x + dx, y: p.y + dy })),
+        }
+      }
+      return { ...item, x: item.x + dx, y: item.y + dy }
+    }
+    return item
+  })
+}
+
 export function CollaborativeCanvas({
   sessionId,
   role,
@@ -82,6 +169,10 @@ export function CollaborativeCanvas({
   const saveTimerRef = useRef<number | null>(null)
   const pollTimerRef = useRef<number | null>(null)
   const lastSerializedRef = useRef<string>('')
+  const isInteractingRef = useRef(false)
+  const latestSerializedRef = useRef('')
+  const remoteWhileInteractingRef = useRef<string | null>(null)
+  const rafDrawRef = useRef<number | null>(null)
 
   const [tool, setTool] = useState<Tool>('select')
   const [strokeColor, setStrokeColor] = useState('#2563eb')
@@ -89,10 +180,28 @@ export function CollaborativeCanvas({
   const [canvasDoc, setCanvasDoc] = useState<CanvasDoc>(() => parseCanvasDoc(initialContent))
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [version, setVersion] = useState(0)
+  const [previewPoints, setPreviewPoints] = useState<Point[]>([])
+  const [locks, setLocks] = useState<Record<string, LockInfo>>({})
+  const [socketConnected, setSocketConnected] = useState(false)
 
   const canEdit = !readOnly
 
   const serializedDoc = useMemo(() => JSON.stringify(canvasDoc), [canvasDoc])
+
+  useEffect(() => {
+    latestSerializedRef.current = serializedDoc
+  }, [serializedDoc])
+
+  const currentUserId = useMemo(() => {
+    const raw = role === 'student' ? localStorage.getItem('student_token') : localStorage.getItem('access_token')
+    if (!raw) return ''
+    try {
+      const payload = JSON.parse(atob(raw.split('.')[1]))
+      return String(payload?.sub || '')
+    } catch {
+      return ''
+    }
+  }, [role])
 
   useEffect(() => {
     const parsed = parseCanvasDoc(initialContent)
@@ -106,6 +215,8 @@ export function CollaborativeCanvas({
 
   const fetchRemoteCanvas = useCallback(async () => {
     if (!sessionId) return
+    if (isInteractingRef.current) return
+
     try {
       const res = await apiByRole[role].getCanvas(sessionId)
       const remote = parseCanvasDoc(res.data?.content_json)
@@ -146,15 +257,41 @@ export function CollaborativeCanvas({
   useEffect(() => {
     if (!sessionId) return
     void fetchRemoteCanvas()
+  }, [fetchRemoteCanvas, sessionId])
 
-    pollTimerRef.current = window.setInterval(() => {
-      void fetchRemoteCanvas()
-    }, 1200)
+  useEffect(() => {
+    if (!sessionId) return
+    if (pollTimerRef.current) {
+      window.clearInterval(pollTimerRef.current)
+      pollTimerRef.current = null
+    }
+
+    if (!socketConnected) {
+      pollTimerRef.current = window.setInterval(() => {
+        if (!isInteractingRef.current) void fetchRemoteCanvas()
+      }, 5000)
+    }
 
     return () => {
       if (pollTimerRef.current) window.clearInterval(pollTimerRef.current)
     }
-  }, [fetchRemoteCanvas, sessionId])
+  }, [fetchRemoteCanvas, sessionId, socketConnected])
+
+  useEffect(() => {
+    const socket = (window as any).socket
+    if (!socket) return
+
+    const onConnect = () => setSocketConnected(true)
+    const onDisconnect = () => setSocketConnected(false)
+    setSocketConnected(Boolean(socket.connected))
+
+    socket.on('connect', onConnect)
+    socket.on('disconnect', onDisconnect)
+    return () => {
+      socket.off('connect', onConnect)
+      socket.off('disconnect', onDisconnect)
+    }
+  }, [])
 
   useEffect(() => {
     const socket = (window as any).socket
@@ -164,6 +301,12 @@ export function CollaborativeCanvas({
       if (payload?.session_id !== sessionId) return
       const incomingVersion = Number(payload?.version || 0)
       if (incomingVersion <= version) return
+
+      if (isInteractingRef.current) {
+        remoteWhileInteractingRef.current = String(payload?.content_json || '')
+        return
+      }
+
       const remote = parseCanvasDoc(payload?.content_json)
       const remoteSerialized = JSON.stringify(remote)
       setVersion(incomingVersion)
@@ -173,24 +316,81 @@ export function CollaborativeCanvas({
       }
     }
 
+    const onItemLock = (payload: any) => {
+      if (payload?.session_id !== sessionId) return
+      const itemId = String(payload?.item_id || '')
+      const userId = String(payload?.user_id || '')
+      const userType = String(payload?.user_type || '')
+      if (!itemId || !userId) return
+      setLocks((prev) => ({ ...prev, [itemId]: { userId, userType } }))
+    }
+
+    const onItemUnlock = (payload: any) => {
+      if (payload?.session_id !== sessionId) return
+      const itemId = String(payload?.item_id || '')
+      if (!itemId) return
+      setLocks((prev) => {
+        const next = { ...prev }
+        delete next[itemId]
+        return next
+      })
+    }
+
     socket.on('canvas_updated', onCanvasUpdated)
-    return () => socket.off('canvas_updated', onCanvasUpdated)
+    socket.on('canvas_item_lock', onItemLock)
+    socket.on('canvas_item_unlock', onItemUnlock)
+    return () => {
+      socket.off('canvas_updated', onCanvasUpdated)
+      socket.off('canvas_item_lock', onItemLock)
+      socket.off('canvas_item_unlock', onItemUnlock)
+    }
   }, [sessionId, version])
 
   useEffect(() => {
     onContentChange?.(serializedDoc)
     if (!canEdit) return
     if (serializedDoc === lastSerializedRef.current) return
+    if (isInteractingRef.current) return
 
     if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current)
     saveTimerRef.current = window.setTimeout(() => {
       void pushRemoteCanvas(serializedDoc)
-    }, 260)
+    }, 300)
 
     return () => {
       if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current)
     }
   }, [serializedDoc, canEdit, onContentChange, pushRemoteCanvas])
+
+  const emitLock = (itemId: string) => {
+    const socket = (window as any).socket
+    if (!socket || !sessionId) return
+    socket.emit('canvas_item_lock', { session_id: sessionId, item_id: itemId })
+  }
+
+  const emitUnlock = (itemId: string) => {
+    const socket = (window as any).socket
+    if (!socket || !sessionId) return
+    socket.emit('canvas_item_unlock', { session_id: sessionId, item_id: itemId })
+  }
+
+  const beginInteraction = () => {
+    isInteractingRef.current = true
+  }
+
+  const endInteraction = () => {
+    isInteractingRef.current = false
+    void pushRemoteCanvas(latestSerializedRef.current)
+    if (remoteWhileInteractingRef.current) {
+      remoteWhileInteractingRef.current = null
+      void fetchRemoteCanvas()
+    }
+  }
+
+  const isLockedByOther = (itemId: string) => {
+    const lock = locks[itemId]
+    return Boolean(lock && lock.userId && lock.userId !== currentUserId)
+  }
 
   const createItem = (type: Tool, x: number, y: number): CanvasItem | null => {
     const id = crypto.randomUUID()
@@ -198,7 +398,7 @@ export function CollaborativeCanvas({
       return { id, type: 'postit', x, y, w: 200, h: 180, text: 'Nuovo post-it', color: '#fef08a' }
     }
     if (type === 'frame') {
-      return { id, type: 'frame', x, y, w: 300, h: 220, text: 'Frame', color: '#3b82f6' }
+      return { id, type: 'frame', x, y, w: 340, h: 250, text: 'Frame', color: '#3b82f6' }
     }
     if (type === 'text') {
       return { id, type: 'text', x, y, w: 260, h: 120, text: 'Testo', color: '#0f172a' }
@@ -207,10 +407,18 @@ export function CollaborativeCanvas({
   }
 
   const updateItem = (id: string, patch: Partial<CanvasItem>) => {
-    setCanvasDoc((prev) => ({
-      ...prev,
-      items: prev.items.map((item) => (item.id === id ? ({ ...item, ...patch } as CanvasItem) : item)),
-    }))
+    if (isLockedByOther(id)) return
+    setCanvasDoc((prev) => {
+      const items = prev.items.map((item) => (item.id === id ? ({ ...item, ...patch } as CanvasItem) : item))
+      const nextItems = items.map((item) => {
+        if (item.id !== id || !isPositioned(item)) return item
+        return {
+          ...item,
+          parentFrameId: getParentFrameId(item, items),
+        } as CanvasItem
+      })
+      return { ...prev, items: nextItems }
+    })
   }
 
   const onCanvasClick = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -222,7 +430,11 @@ export function CollaborativeCanvas({
     const y = e.clientY - rect.top - 50
     const item = createItem(tool, Math.max(20, x), Math.max(20, y))
     if (!item) return
-    setCanvasDoc((prev) => ({ ...prev, items: [...prev.items, item] }))
+
+    setCanvasDoc((prev) => {
+      const parentFrameId = getParentFrameId(item, prev.items)
+      return { ...prev, items: [...prev.items, { ...item, parentFrameId }] }
+    })
     setSelectedId(item.id)
     setTool('select')
   }
@@ -231,7 +443,11 @@ export function CollaborativeCanvas({
     e.stopPropagation()
     setSelectedId(item.id)
     if (!canEdit) return
-    if (item.type === 'path') return
+    if (isPath(item)) return
+    if (isLockedByOther(item.id)) return
+
+    beginInteraction()
+    emitLock(item.id)
 
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
     draggingRef.current = {
@@ -243,10 +459,12 @@ export function CollaborativeCanvas({
 
   const onMouseDownDraw = (e: React.MouseEvent<HTMLDivElement>) => {
     if (!canEdit || tool !== 'pen') return
+    beginInteraction()
     const rect = e.currentTarget.getBoundingClientRect()
     drawingRef.current = {
       points: [{ x: e.clientX - rect.left, y: e.clientY - rect.top }],
     }
+    setPreviewPoints(drawingRef.current.points)
   }
 
   const onMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -254,27 +472,56 @@ export function CollaborativeCanvas({
 
     if (drawingRef.current && tool === 'pen' && canEdit) {
       drawingRef.current.points.push({ x: e.clientX - rect.left, y: e.clientY - rect.top })
+      if (!rafDrawRef.current) {
+        rafDrawRef.current = window.requestAnimationFrame(() => {
+          rafDrawRef.current = null
+          setPreviewPoints([...(drawingRef.current?.points || [])])
+        })
+      }
       return
     }
 
     if (!draggingRef.current || !canEdit) return
     const drag = draggingRef.current
 
-    setCanvasDoc((prev) => ({
-      ...prev,
-      items: prev.items.map((item) => {
-        if (item.id !== drag.id || item.type === 'path') return item
-        return {
-          ...item,
-          x: Math.max(0, e.clientX - rect.left - drag.offsetX),
-          y: Math.max(0, e.clientY - rect.top - drag.offsetY),
-        } as CanvasItem
-      }),
-    }))
+    setCanvasDoc((prev) => {
+      const target = prev.items.find((item) => item.id === drag.id)
+      if (!target || !isPositioned(target)) return prev
+      const nextX = Math.max(0, e.clientX - rect.left - drag.offsetX)
+      const nextY = Math.max(0, e.clientY - rect.top - drag.offsetY)
+
+      let moved = prev.items
+      if (isFrame(target)) {
+        moved = moveFrameWithChildren(prev.items, target.id, nextX, nextY)
+      } else {
+        moved = prev.items.map((item) => {
+          if (item.id !== drag.id || !isPositioned(item)) return item
+          return {
+            ...item,
+            x: nextX,
+            y: nextY,
+          } as CanvasItem
+        })
+      }
+
+      const normalized = moved.map((item) => {
+        if (!isPositioned(item)) return item
+        if (item.id === drag.id) {
+          return {
+            ...item,
+            parentFrameId: getParentFrameId(item, moved, isFrame(item) ? item.id : undefined),
+          } as CanvasItem
+        }
+        return item
+      })
+      return { ...prev, items: normalized }
+    })
   }
 
   const onMouseUp = () => {
+    const dragId = draggingRef.current?.id
     draggingRef.current = null
+
     if (drawingRef.current && canEdit && drawingRef.current.points.length > 1) {
       const path: CanvasItem = {
         id: crypto.randomUUID(),
@@ -283,15 +530,57 @@ export function CollaborativeCanvas({
         color: strokeColor,
         width: strokeWidth,
       }
-      setCanvasDoc((prev) => ({ ...prev, items: [...prev.items, path] }))
+      setCanvasDoc((prev) => {
+        const parentFrame = prev.items.filter(isFrame).find((frame) => {
+          const points = path.points
+          if (points.length === 0) return false
+          return points.every((p) => p.x >= frame.x && p.x <= frame.x + frame.w && p.y >= frame.y && p.y <= frame.y + frame.h)
+        })
+        const withParent = parentFrame ? { ...path, parentFrameId: parentFrame.id } : path
+        return { ...prev, items: [...prev.items, withParent] }
+      })
     }
+
     drawingRef.current = null
+    setPreviewPoints([])
+    if (rafDrawRef.current) {
+      window.cancelAnimationFrame(rafDrawRef.current)
+      rafDrawRef.current = null
+    }
+
+    if (dragId) emitUnlock(dragId)
+
+    endInteraction()
   }
 
   const deleteSelected = () => {
     if (!selectedId || !canEdit) return
-    setCanvasDoc((prev) => ({ ...prev, items: prev.items.filter((item) => item.id !== selectedId) }))
+    if (isLockedByOther(selectedId)) return
+    beginInteraction()
+
+    setCanvasDoc((prev) => {
+      const selected = prev.items.find((item) => item.id === selectedId)
+      if (selected && isFrame(selected)) {
+        const descendants = new Set(collectFrameDescendants(prev.items, selected.id))
+        descendants.add(selected.id)
+        return { ...prev, items: prev.items.filter((item) => !descendants.has(item.id)) }
+      }
+      return { ...prev, items: prev.items.filter((item) => item.id !== selectedId) }
+    })
+
+    emitUnlock(selectedId)
     setSelectedId(null)
+    endInteraction()
+  }
+
+  const uploadImage = async (file: File) => {
+    if (!sessionId) {
+      throw new Error('Per caricare immagini su lavagna serve una sessione selezionata.')
+    }
+    const res = await chatApi.uploadFiles(sessionId, [file])
+    const url = res.data?.urls?.[0]
+    if (!url) throw new Error('Upload immagine non riuscito')
+    return url as string
   }
 
   const handleDropFiles = async (e: React.DragEvent<HTMLDivElement>) => {
@@ -300,29 +589,33 @@ export function CollaborativeCanvas({
     const files = Array.from(e.dataTransfer.files || [])
     if (files.length === 0) return
 
+    beginInteraction()
+
     const rect = e.currentTarget.getBoundingClientRect()
     let x = Math.max(20, e.clientX - rect.left)
     let y = Math.max(20, e.clientY - rect.top)
 
     for (const file of files) {
       if (file.type.startsWith('image/')) {
-        const imageBase64 = await new Promise<string>((resolve, reject) => {
-          const reader = new FileReader()
-          reader.onload = () => resolve(String(reader.result || ''))
-          reader.onerror = reject
-          reader.readAsDataURL(file)
-        })
-        const imageItem: CanvasItem = {
-          id: crypto.randomUUID(),
-          type: 'image',
-          x,
-          y,
-          w: 320,
-          h: 220,
-          src: imageBase64,
+        try {
+          const imageUrl = await uploadImage(file)
+          const imageItem: CanvasItem = {
+            id: crypto.randomUUID(),
+            type: 'image',
+            x,
+            y,
+            w: 320,
+            h: 220,
+            src: imageUrl,
+          }
+          setCanvasDoc((prev) => {
+            const parentFrameId = getParentFrameId(imageItem, prev.items)
+            return { ...prev, items: [...prev.items, { ...imageItem, parentFrameId }] }
+          })
+          y += 30
+        } catch (error) {
+          console.error(error)
         }
-        setCanvasDoc((prev) => ({ ...prev, items: [...prev.items, imageItem] }))
-        y += 30
         continue
       }
 
@@ -342,10 +635,15 @@ export function CollaborativeCanvas({
           h: 280,
           data: normalized.length ? normalized : [['']],
         }
-        setCanvasDoc((prev) => ({ ...prev, items: [...prev.items, tableItem] }))
+        setCanvasDoc((prev) => {
+          const parentFrameId = getParentFrameId(tableItem, prev.items)
+          return { ...prev, items: [...prev.items, { ...tableItem, parentFrameId }] }
+        })
         y += 34
       }
     }
+
+    endInteraction()
   }
 
   const renderPath = (item: Extract<CanvasItem, { type: 'path' }>) => {
@@ -375,18 +673,12 @@ export function CollaborativeCanvas({
           <Button size="sm" variant="outline" onClick={deleteSelected} disabled={!selectedId || !canEdit}><Eraser className="h-4 w-4" /></Button>
         </div>
         <div className="flex items-center gap-2">
-          <div className="flex gap-1">
-            {COLORS.map((c) => (
-              <button
-                key={c}
-                type="button"
-                onClick={() => setStrokeColor(c)}
-                className={`h-5 w-5 rounded-full border ${strokeColor === c ? 'ring-2 ring-slate-400' : ''}`}
-                style={{ backgroundColor: c }}
-                aria-label={`colore ${c}`}
-              />
-            ))}
-          </div>
+          <Input
+            type="color"
+            value={strokeColor}
+            onChange={(e) => setStrokeColor(e.target.value)}
+            className="h-8 w-10 p-1"
+          />
           <Input
             type="number"
             min={1}
@@ -419,76 +711,97 @@ export function CollaborativeCanvas({
         onDragOver={(e) => e.preventDefault()}
         onDrop={handleDropFiles}
       >
-        <svg className="pointer-events-none absolute inset-0 h-full w-full">{canvasDoc.items.filter((item) => item.type === 'path').map((item) => renderPath(item as Extract<CanvasItem, { type: 'path' }>))}</svg>
+        <svg className="pointer-events-none absolute inset-0 h-full w-full">
+          {canvasDoc.items.filter((item) => item.type === 'path').map((item) => renderPath(item as Extract<CanvasItem, { type: 'path' }>))}
+          {previewPoints.length > 1 && (
+            <path
+              d={previewPoints.map((p, idx) => `${idx === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ')}
+              stroke={strokeColor}
+              strokeWidth={strokeWidth}
+              fill="none"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          )}
+        </svg>
 
         {canvasDoc.items
           .filter((item) => item.type !== 'path')
-          .map((item) => (
-            <div
-              key={item.id}
-              className={`absolute ${selectedId === item.id ? 'ring-2 ring-blue-500' : ''}`}
-              style={{
-                left: (item as any).x,
-                top: (item as any).y,
-                width: (item as any).w,
-                height: (item as any).h,
-              }}
-              onMouseDown={(e) => onMouseDownItem(e, item)}
-            >
-              {item.type === 'postit' && (
-                <textarea
-                  value={item.text}
-                  onChange={(e) => updateItem(item.id, { text: e.target.value })}
-                  className="h-full w-full resize-none rounded-md border-0 p-2 text-sm shadow"
-                  style={{ background: item.color }}
-                  disabled={!canEdit}
-                />
-              )}
-
-              {item.type === 'frame' && (
-                <div className="flex h-full w-full flex-col rounded-md border-2 border-dashed bg-white/75" style={{ borderColor: item.color }}>
-                  <input
+          .map((item) => {
+            const lockedByOther = isLockedByOther(item.id)
+            return (
+              <div
+                key={item.id}
+                className={`absolute ${selectedId === item.id ? 'ring-2 ring-blue-500' : ''} ${lockedByOther ? 'opacity-70' : ''}`}
+                style={{
+                  left: isPositioned(item) ? item.x : 0,
+                  top: isPositioned(item) ? item.y : 0,
+                  width: isPositioned(item) ? item.w : 0,
+                  height: isPositioned(item) ? item.h : 0,
+                }}
+                onMouseDown={(e) => onMouseDownItem(e, item)}
+              >
+                {item.type === 'postit' && (
+                  <textarea
                     value={item.text}
+                    onFocus={() => emitLock(item.id)}
+                    onBlur={() => emitUnlock(item.id)}
                     onChange={(e) => updateItem(item.id, { text: e.target.value })}
-                    className="w-full border-b border-dashed bg-transparent px-2 py-1 text-xs font-semibold"
-                    disabled={!canEdit}
+                    className="h-full w-full resize-none rounded-md border-0 p-2 text-sm shadow"
+                    style={{ background: item.color }}
+                    disabled={!canEdit || lockedByOther}
                   />
-                </div>
-              )}
+                )}
 
-              {item.type === 'text' && (
-                <textarea
-                  value={item.text}
-                  onChange={(e) => updateItem(item.id, { text: e.target.value })}
-                  className="h-full w-full resize-none rounded-md border border-slate-300 bg-white p-2 text-sm"
-                  style={{ color: item.color }}
-                  disabled={!canEdit}
-                />
-              )}
+                {item.type === 'frame' && (
+                  <div className="flex h-full w-full flex-col rounded-md border-2 border-dashed bg-white/75" style={{ borderColor: item.color }}>
+                    <input
+                      value={item.text}
+                      onFocus={() => emitLock(item.id)}
+                      onBlur={() => emitUnlock(item.id)}
+                      onChange={(e) => updateItem(item.id, { text: e.target.value })}
+                      className="w-full border-b border-dashed bg-transparent px-2 py-1 text-xs font-semibold"
+                      disabled={!canEdit || lockedByOther}
+                    />
+                  </div>
+                )}
 
-              {item.type === 'image' && (
-                <img src={item.src} alt="canvas" className="h-full w-full rounded-md object-cover shadow" draggable={false} />
-              )}
+                {item.type === 'text' && (
+                  <textarea
+                    value={item.text}
+                    onFocus={() => emitLock(item.id)}
+                    onBlur={() => emitUnlock(item.id)}
+                    onChange={(e) => updateItem(item.id, { text: e.target.value })}
+                    className="h-full w-full resize-none rounded-md border border-slate-300 bg-white p-2 text-sm"
+                    style={{ color: item.color }}
+                    disabled={!canEdit || lockedByOther}
+                  />
+                )}
 
-              {item.type === 'table' && (
-                <div className="h-full w-full overflow-auto rounded-md border bg-white">
-                  <table className="min-w-full border-collapse text-xs">
-                    <tbody>
-                      {item.data.map((row, rowIdx) => (
-                        <tr key={`${item.id}-r-${rowIdx}`}>
-                          {row.map((cell, colIdx) => (
-                            <td key={`${item.id}-c-${rowIdx}-${colIdx}`} className="border px-1 py-0.5">
-                              {cell}
-                            </td>
-                          ))}
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
-          ))}
+                {item.type === 'image' && (
+                  <img src={item.src} alt="canvas" className="h-full w-full rounded-md object-cover shadow" draggable={false} />
+                )}
+
+                {item.type === 'table' && (
+                  <div className="h-full w-full overflow-auto rounded-md border bg-white">
+                    <table className="min-w-full border-collapse text-xs">
+                      <tbody>
+                        {item.data.map((row, rowIdx) => (
+                          <tr key={`${item.id}-r-${rowIdx}`}>
+                            {row.map((cell, colIdx) => (
+                              <td key={`${item.id}-c-${rowIdx}-${colIdx}`} className="border px-1 py-0.5">
+                                {cell}
+                              </td>
+                            ))}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            )
+          })}
       </div>
     </div>
   )

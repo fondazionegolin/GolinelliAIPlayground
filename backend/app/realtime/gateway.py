@@ -732,6 +732,54 @@ async def teacher_broadcast_message(sid, data):
     return {"success": True}
 
 
+@sio.event
+async def canvas_item_lock(sid, data):
+    user = connected_users.get(sid)
+    if not user:
+        return {"error": "Not authenticated"}
+
+    session_id = data.get("session_id")
+    item_id = data.get("item_id")
+    if not session_id or not item_id:
+        return {"error": "session_id and item_id required"}
+
+    await sio.emit(
+        "canvas_item_lock",
+        {
+            "session_id": session_id,
+            "item_id": item_id,
+            "user_id": user.get("id"),
+            "user_type": user.get("type"),
+        },
+        room=f"session:{session_id}",
+    )
+    return {"success": True}
+
+
+@sio.event
+async def canvas_item_unlock(sid, data):
+    user = connected_users.get(sid)
+    if not user:
+        return {"error": "Not authenticated"}
+
+    session_id = data.get("session_id")
+    item_id = data.get("item_id")
+    if not session_id or not item_id:
+        return {"error": "session_id and item_id required"}
+
+    await sio.emit(
+        "canvas_item_unlock",
+        {
+            "session_id": session_id,
+            "item_id": item_id,
+            "user_id": user.get("id"),
+            "user_type": user.get("type"),
+        },
+        room=f"session:{session_id}",
+    )
+    return {"success": True}
+
+
 # Helper function to broadcast from API endpoints
 async def broadcast_to_session(session_id: str, event: str, data: dict):
     """Broadcast an event to all users in a session"""
