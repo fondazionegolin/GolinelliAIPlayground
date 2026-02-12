@@ -1028,15 +1028,24 @@ export default function ChatSidebar({
             {imageAttachments.length > 0 && (
               <div className="mt-2 space-y-2">
                 {imageAttachments.map((att: any, idx: number) => (
-                  <img
+                  <button
                     key={idx}
-                    src={att.url}
-                    alt={att.filename || 'Allegato'}
-                    loading="lazy"
-                    decoding="async"
-                    className="rounded-lg w-auto max-w-[180px] max-h-28 object-cover cursor-pointer hover:opacity-90 transition-opacity"
+                    type="button"
+                    className={`w-full rounded-lg border px-2 py-1.5 text-left text-xs transition-colors ${
+                      isMe
+                        ? messageAccentTheme
+                          ? 'hover:brightness-95'
+                          : 'bg-gray-200 hover:bg-gray-300 text-gray-700'
+                        : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
+                    }`}
+                    style={messageAccentTheme ? { backgroundColor: messageAccentTheme.softStrong, color: messageAccentTheme.text } : undefined}
                     onClick={() => setViewingFile({ url: att.url, filename: att.filename || 'image.png', type: att.type })}
-                  />
+                  >
+                    <div className="flex items-center gap-2">
+                      <ImageIcon className="h-3.5 w-3.5 flex-shrink-0" />
+                      <span className="truncate">{att.filename || 'Immagine'}</span>
+                    </div>
+                  </button>
                 ))}
               </div>
             )}

@@ -52,6 +52,9 @@ const PUBLIC_CHAT_CACHE = new Map<string, PublicChatCache>()
 const CACHE_TTL_MS = 2 * 60 * 1000
 const DEFAULT_CHUNK_SIZE = 30
 const MAX_IN_MEMORY_MESSAGES = 300
+const PERSISTED_CACHE_TTL_MS = 10 * 60 * 1000
+
+const getPersistedCacheKey = (sessionId: string) => `chat:session:${sessionId}:v2`
 
 interface UseSocketReturn {
   socket: Socket | null
@@ -127,12 +130,18 @@ export function useSocket(sessionId?: string): UseSocketReturn {
 
   const updatePublicCache = useCallback((nextMessages: ChatMessage[], nextCursor: string | null, nextHasMore: boolean) => {
     if (!sessionId) return
-    PUBLIC_CHAT_CACHE.set(sessionId, {
+    const payload: PublicChatCache = {
       messages: nextMessages,
       nextCursor,
       hasMore: nextHasMore,
       updatedAt: Date.now(),
-    })
+    }
+    PUBLIC_CHAT_CACHE.set(sessionId, payload)
+    try {
+      localStorage.setItem(getPersistedCacheKey(sessionId), JSON.stringify(payload))
+    } catch {
+      // ignore storage failures
+    }
   }, [sessionId])
 
   const loadInitialPublicMessages = useCallback(async () => {
@@ -144,6 +153,20 @@ export function useSocket(sessionId?: string): UseSocketReturn {
       nextCursorRef.current = cached.nextCursor
       setHasMorePublicMessages(cached.hasMore)
       return
+    }
+
+    try {
+      const raw = localStorage.getItem(getPersistedCacheKey(sessionId))
+      if (raw) {
+        const parsed = JSON.parse(raw) as PublicChatCache
+        if (Array.isArray(parsed?.messages) && Date.now() - Number(parsed?.updatedAt || 0) < PERSISTED_CACHE_TTL_MS) {
+          setMessages(parsed.messages)
+          nextCursorRef.current = parsed.nextCursor || null
+          setHasMorePublicMessages(Boolean(parsed.hasMore))
+        }
+      }
+    } catch {
+      // ignore malformed cache
     }
 
     try {
@@ -200,6 +223,24 @@ export function useSocket(sessionId?: string): UseSocketReturn {
     setHasMorePublicMessages(true)
     void loadInitialPublicMessages()
   }, [sessionId, loadInitialPublicMessages])
+
+  useEffect(() => {
+    if (!sessionId) return
+    const timer = window.setTimeout(() => {
+      try {
+        const payload: PublicChatCache = {
+          messages,
+          nextCursor: nextCursorRef.current,
+          hasMore: hasMoreRef.current,
+          updatedAt: Date.now(),
+        }
+        localStorage.setItem(getPersistedCacheKey(sessionId), JSON.stringify(payload))
+      } catch {
+        // ignore storage failures
+      }
+    }, 200)
+    return () => window.clearTimeout(timer)
+  }, [messages, sessionId])
 
   const refreshOnlineUsers = useCallback((socket: Socket, session: string) => {
     socket.emit('join_session', { session_id: session }, (response: { online_students?: OnlineUser[] }) => {
