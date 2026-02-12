@@ -20,6 +20,13 @@ type CanvasItemBase = {
   parentFrameId?: string
 }
 
+type CanvasTextStyle = {
+  fontFamily: string
+  fontSize: number
+  fontWeight: 'normal' | '600'
+  fontStyle: 'normal' | 'italic'
+}
+
 type CanvasPositionedItemBase = CanvasItemBase & {
   x: number
   y: number
@@ -28,9 +35,9 @@ type CanvasPositionedItemBase = CanvasItemBase & {
 }
 
 type CanvasItem =
-  | (CanvasPositionedItemBase & { type: 'postit'; text: string; color: string })
-  | (CanvasPositionedItemBase & { type: 'frame'; text: string; color: string })
-  | (CanvasPositionedItemBase & { type: 'text'; text: string; color: string })
+  | (CanvasPositionedItemBase & { type: 'postit'; text: string; color: string; textStyle?: CanvasTextStyle })
+  | (CanvasPositionedItemBase & { type: 'frame'; text: string; color: string; textStyle?: CanvasTextStyle })
+  | (CanvasPositionedItemBase & { type: 'text'; text: string; color: string; textStyle?: CanvasTextStyle })
   | (CanvasPositionedItemBase & { type: 'image'; src: string })
   | (CanvasPositionedItemBase & { type: 'table'; data: string[][] })
   | (CanvasItemBase & { type: 'path'; points: Point[]; color: string; width: number; parentFrameId?: string })
@@ -55,6 +62,24 @@ const EMPTY_CANVAS: CanvasDoc = {
   items: [],
 }
 
+const DEFAULT_TEXT_STYLE: CanvasTextStyle = {
+  fontFamily: 'Inter, system-ui, sans-serif',
+  fontSize: 14,
+  fontWeight: 'normal',
+  fontStyle: 'normal',
+}
+
+const ensureTextStyle = (item: CanvasItem) => {
+  if (item.type !== 'postit' && item.type !== 'frame' && item.type !== 'text') return item
+  return {
+    ...item,
+    textStyle: {
+      ...DEFAULT_TEXT_STYLE,
+      ...(item.textStyle || {}),
+    },
+  } as CanvasItem
+}
+
 const apiByRole = {
   teacher: {
     getCanvas: teacherApi.getCanvas,
@@ -71,7 +96,7 @@ const parseCanvasDoc = (raw: string | null | undefined): CanvasDoc => {
   try {
     const parsed = JSON.parse(raw)
     if (parsed?.type === 'canvas_v1' && Array.isArray(parsed.items)) {
-      return { type: 'canvas_v1', items: parsed.items }
+      return { type: 'canvas_v1', items: parsed.items.map((item: CanvasItem) => ensureTextStyle(item)) }
     }
   } catch {
     // no-op
@@ -165,6 +190,7 @@ export function CollaborativeCanvas({
 }: CollaborativeCanvasProps) {
   const canvasRef = useRef<HTMLDivElement>(null)
   const draggingRef = useRef<{ id: string; offsetX: number; offsetY: number } | null>(null)
+  const resizingRef = useRef<{ id: string; startX: number; startY: number; startW: number; startH: number } | null>(null)
   const drawingRef = useRef<{ points: Point[] } | null>(null)
   const saveTimerRef = useRef<number | null>(null)
   const pollTimerRef = useRef<number | null>(null)
@@ -177,6 +203,7 @@ export function CollaborativeCanvas({
   const [tool, setTool] = useState<Tool>('select')
   const [strokeColor, setStrokeColor] = useState('#2563eb')
   const [strokeWidth, setStrokeWidth] = useState(3)
+  const [newPostitColor, setNewPostitColor] = useState('#fef08a')
   const [canvasDoc, setCanvasDoc] = useState<CanvasDoc>(() => parseCanvasDoc(initialContent))
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [version, setVersion] = useState(0)
@@ -185,6 +212,17 @@ export function CollaborativeCanvas({
   const [socketConnected, setSocketConnected] = useState(false)
 
   const canEdit = !readOnly
+  const selectedItem = useMemo(
+    () => (selectedId ? canvasDoc.items.find((item) => item.id === selectedId) || null : null),
+    [canvasDoc.items, selectedId]
+  )
+  const selectedTextStyle = useMemo(() => {
+    if (!selectedItem || (selectedItem.type !== 'postit' && selectedItem.type !== 'frame' && selectedItem.type !== 'text')) return null
+    return {
+      ...DEFAULT_TEXT_STYLE,
+      ...(selectedItem.textStyle || {}),
+    }
+  }, [selectedItem])
 
   const serializedDoc = useMemo(() => JSON.stringify(canvasDoc), [canvasDoc])
 
@@ -395,13 +433,13 @@ export function CollaborativeCanvas({
   const createItem = (type: Tool, x: number, y: number): CanvasItem | null => {
     const id = crypto.randomUUID()
     if (type === 'postit') {
-      return { id, type: 'postit', x, y, w: 200, h: 180, text: 'Nuovo post-it', color: '#fef08a' }
+      return { id, type: 'postit', x, y, w: 220, h: 180, text: 'Nuovo post-it', color: newPostitColor, textStyle: DEFAULT_TEXT_STYLE }
     }
     if (type === 'frame') {
-      return { id, type: 'frame', x, y, w: 340, h: 250, text: 'Frame', color: '#3b82f6' }
+      return { id, type: 'frame', x, y, w: 340, h: 250, text: 'Frame', color: '#3b82f6', textStyle: DEFAULT_TEXT_STYLE }
     }
     if (type === 'text') {
-      return { id, type: 'text', x, y, w: 260, h: 120, text: 'Testo', color: '#0f172a' }
+      return { id, type: 'text', x, y, w: 280, h: 130, text: 'Testo', color: '#0f172a', textStyle: DEFAULT_TEXT_STYLE }
     }
     return null
   }
@@ -442,6 +480,8 @@ export function CollaborativeCanvas({
   const onMouseDownItem = (e: React.MouseEvent, item: CanvasItem) => {
     e.stopPropagation()
     setSelectedId(item.id)
+    const tag = (e.target as HTMLElement).tagName
+    if (tag === 'TEXTAREA' || tag === 'INPUT' || tag === 'SELECT' || tag === 'BUTTON') return
     if (!canEdit) return
     if (isPath(item)) return
     if (isLockedByOther(item.id)) return
@@ -478,6 +518,27 @@ export function CollaborativeCanvas({
           setPreviewPoints([...(drawingRef.current?.points || [])])
         })
       }
+      return
+    }
+
+    if (resizingRef.current && canEdit) {
+      const resize = resizingRef.current
+      const minW = 140
+      const minH = 90
+      const nextW = Math.max(minW, resize.startW + (e.clientX - resize.startX))
+      const nextH = Math.max(minH, resize.startH + (e.clientY - resize.startY))
+
+      setCanvasDoc((prev) => {
+        const resized = prev.items.map((item) => {
+          if (item.id !== resize.id || !isPositioned(item)) return item
+          return {
+            ...item,
+            w: nextW,
+            h: nextH,
+          } as CanvasItem
+        })
+        return { ...prev, items: resized }
+      })
       return
     }
 
@@ -520,7 +581,9 @@ export function CollaborativeCanvas({
 
   const onMouseUp = () => {
     const dragId = draggingRef.current?.id
+    const resizedId = resizingRef.current?.id
     draggingRef.current = null
+    resizingRef.current = null
 
     if (drawingRef.current && canEdit && drawingRef.current.points.length > 1) {
       const path: CanvasItem = {
@@ -549,6 +612,7 @@ export function CollaborativeCanvas({
     }
 
     if (dragId) emitUnlock(dragId)
+    if (resizedId && resizedId !== dragId) emitUnlock(resizedId)
 
     endInteraction()
   }
@@ -673,6 +737,16 @@ export function CollaborativeCanvas({
           <Button size="sm" variant="outline" onClick={deleteSelected} disabled={!selectedId || !canEdit}><Eraser className="h-4 w-4" /></Button>
         </div>
         <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1 rounded-md border border-slate-200 px-2 py-1 text-xs">
+            <span className="text-slate-500">Post-it</span>
+            <Input
+              type="color"
+              value={newPostitColor}
+              onChange={(e) => setNewPostitColor(e.target.value)}
+              className="h-7 w-9 cursor-pointer p-1"
+              title="Colore nuovo post-it"
+            />
+          </div>
           <Input
             type="color"
             value={strokeColor}
@@ -694,6 +768,73 @@ export function CollaborativeCanvas({
           </div>
         </div>
       </div>
+      {selectedItem && selectedTextStyle && (
+        <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 bg-slate-50 px-3 py-2 text-xs">
+          <span className="text-slate-600">Testo</span>
+          <select
+            className="h-8 rounded border border-slate-300 px-2 text-xs"
+            value={selectedTextStyle.fontFamily}
+            onChange={(e) => updateItem(selectedItem.id, { textStyle: { ...selectedTextStyle, fontFamily: e.target.value } })}
+            disabled={!canEdit || isLockedByOther(selectedItem.id)}
+          >
+            <option value="Inter, system-ui, sans-serif">Inter</option>
+            <option value="Arial, sans-serif">Arial</option>
+            <option value="Georgia, serif">Georgia</option>
+            <option value="'Courier New', monospace">Courier</option>
+          </select>
+          <Input
+            type="number"
+            min={10}
+            max={48}
+            className="h-8 w-16 px-2 text-xs"
+            value={selectedTextStyle.fontSize}
+            onChange={(e) =>
+              updateItem(selectedItem.id, {
+                textStyle: { ...selectedTextStyle, fontSize: Math.max(10, Math.min(48, Number(e.target.value || 14))) },
+              })
+            }
+            disabled={!canEdit || isLockedByOther(selectedItem.id)}
+          />
+          <Button
+            size="sm"
+            variant={selectedTextStyle.fontWeight === '600' ? 'default' : 'outline'}
+            onClick={() =>
+              updateItem(selectedItem.id, {
+                textStyle: { ...selectedTextStyle, fontWeight: selectedTextStyle.fontWeight === '600' ? 'normal' : '600' },
+              })
+            }
+            disabled={!canEdit || isLockedByOther(selectedItem.id)}
+            className="h-8 px-2 text-xs"
+          >
+            B
+          </Button>
+          <Button
+            size="sm"
+            variant={selectedTextStyle.fontStyle === 'italic' ? 'default' : 'outline'}
+            onClick={() =>
+              updateItem(selectedItem.id, {
+                textStyle: { ...selectedTextStyle, fontStyle: selectedTextStyle.fontStyle === 'italic' ? 'normal' : 'italic' },
+              })
+            }
+            disabled={!canEdit || isLockedByOther(selectedItem.id)}
+            className="h-8 px-2 text-xs italic"
+          >
+            I
+          </Button>
+          {selectedItem.type === 'postit' && (
+            <div className="flex items-center gap-1 rounded border border-slate-200 bg-white px-2 py-1">
+              <span className="text-slate-500">Sfondo</span>
+              <Input
+                type="color"
+                value={selectedItem.color}
+                onChange={(e) => updateItem(selectedItem.id, { color: e.target.value })}
+                className="h-7 w-9 cursor-pointer p-1"
+                disabled={!canEdit || isLockedByOther(selectedItem.id)}
+              />
+            </div>
+          )}
+        </div>
+      )}
 
       <div
         ref={canvasRef}
@@ -748,7 +889,13 @@ export function CollaborativeCanvas({
                     onBlur={() => emitUnlock(item.id)}
                     onChange={(e) => updateItem(item.id, { text: e.target.value })}
                     className="h-full w-full resize-none rounded-md border-0 p-2 text-sm shadow"
-                    style={{ background: item.color }}
+                    style={{
+                      background: item.color,
+                      fontFamily: item.textStyle?.fontFamily || DEFAULT_TEXT_STYLE.fontFamily,
+                      fontSize: `${item.textStyle?.fontSize || DEFAULT_TEXT_STYLE.fontSize}px`,
+                      fontWeight: item.textStyle?.fontWeight || DEFAULT_TEXT_STYLE.fontWeight,
+                      fontStyle: item.textStyle?.fontStyle || DEFAULT_TEXT_STYLE.fontStyle,
+                    }}
                     disabled={!canEdit || lockedByOther}
                   />
                 )}
@@ -758,12 +905,18 @@ export function CollaborativeCanvas({
                     <input
                       value={item.text}
                       onFocus={() => emitLock(item.id)}
-                      onBlur={() => emitUnlock(item.id)}
-                      onChange={(e) => updateItem(item.id, { text: e.target.value })}
-                      className="w-full border-b border-dashed bg-transparent px-2 py-1 text-xs font-semibold"
-                      disabled={!canEdit || lockedByOther}
-                    />
-                  </div>
+                    onBlur={() => emitUnlock(item.id)}
+                    onChange={(e) => updateItem(item.id, { text: e.target.value })}
+                    className="w-full border-b border-dashed bg-transparent px-2 py-1 text-xs"
+                    style={{
+                      fontFamily: item.textStyle?.fontFamily || DEFAULT_TEXT_STYLE.fontFamily,
+                      fontSize: `${item.textStyle?.fontSize || 12}px`,
+                      fontWeight: item.textStyle?.fontWeight || DEFAULT_TEXT_STYLE.fontWeight,
+                      fontStyle: item.textStyle?.fontStyle || DEFAULT_TEXT_STYLE.fontStyle,
+                    }}
+                    disabled={!canEdit || lockedByOther}
+                  />
+                </div>
                 )}
 
                 {item.type === 'text' && (
@@ -773,7 +926,13 @@ export function CollaborativeCanvas({
                     onBlur={() => emitUnlock(item.id)}
                     onChange={(e) => updateItem(item.id, { text: e.target.value })}
                     className="h-full w-full resize-none rounded-md border border-slate-300 bg-white p-2 text-sm"
-                    style={{ color: item.color }}
+                    style={{
+                      color: item.color,
+                      fontFamily: item.textStyle?.fontFamily || DEFAULT_TEXT_STYLE.fontFamily,
+                      fontSize: `${item.textStyle?.fontSize || DEFAULT_TEXT_STYLE.fontSize}px`,
+                      fontWeight: item.textStyle?.fontWeight || DEFAULT_TEXT_STYLE.fontWeight,
+                      fontStyle: item.textStyle?.fontStyle || DEFAULT_TEXT_STYLE.fontStyle,
+                    }}
                     disabled={!canEdit || lockedByOther}
                   />
                 )}
@@ -798,6 +957,28 @@ export function CollaborativeCanvas({
                       </tbody>
                     </table>
                   </div>
+                )}
+                {canEdit && (item.type === 'postit' || item.type === 'frame' || item.type === 'text') && !lockedByOther && (
+                  <button
+                    type="button"
+                    className="absolute bottom-1 right-1 h-3 w-3 cursor-se-resize rounded-sm border border-slate-500 bg-white/90 shadow-sm"
+                    onMouseDown={(e) => {
+                      e.stopPropagation()
+                      if (!isPositioned(item)) return
+                      if (isLockedByOther(item.id)) return
+                      beginInteraction()
+                      emitLock(item.id)
+                      draggingRef.current = null
+                      resizingRef.current = {
+                        id: item.id,
+                        startX: e.clientX,
+                        startY: e.clientY,
+                        startW: item.w,
+                        startH: item.h,
+                      }
+                    }}
+                    title="Ridimensiona"
+                  />
                 )}
               </div>
             )
