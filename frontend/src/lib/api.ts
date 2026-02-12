@@ -65,6 +65,10 @@ export const studentApi = {
     api.patch(`/student/documents/drafts/${draftId}`, data),
   deleteDocumentDraft: (draftId: string) =>
     api.delete(`/student/documents/drafts/${draftId}`),
+  getCanvas: (sessionId: string) =>
+    api.get(`/student/sessions/${sessionId}/canvas`),
+  updateCanvas: (sessionId: string, data: { title?: string; content_json: string; base_version?: number }) =>
+    api.put(`/student/sessions/${sessionId}/canvas`, data),
   getProfile: () => api.get('/student/profile'),
   updateProfile: (data: { avatar_url?: string; ui_accent?: string }) =>
     api.patch('/student/profile', data),
@@ -181,6 +185,10 @@ export const teacherApi = {
     api.patch(`/teacher/documents/drafts/${draftId}`, data),
   deleteDocumentDraft: (draftId: string) =>
     api.delete(`/teacher/documents/drafts/${draftId}`),
+  getCanvas: (sessionId: string) =>
+    api.get(`/teacher/sessions/${sessionId}/canvas`),
+  updateCanvas: (sessionId: string, data: { title?: string; content_json: string; base_version?: number }) =>
+    api.put(`/teacher/sessions/${sessionId}/canvas`, data),
 }
 
 export const chatApi = {

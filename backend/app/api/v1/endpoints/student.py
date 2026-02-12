@@ -12,6 +12,7 @@ from app.api.deps import get_current_student
 from app.models.session import Session, SessionStudent, SessionModule
 from app.models.task import Task, TaskSubmission, TaskStatus
 from app.models.document_draft import DocumentDraft
+from app.models.session_canvas import SessionCanvas
 from app.schemas.document_draft import DocumentDraftCreate, DocumentDraftUpdate
 from app.models.enums import SessionStatus
 from app.schemas.auth import StudentJoinRequest, StudentJoinResponse
@@ -32,6 +33,12 @@ class SubmitDocumentRequest(BaseModel):
     title: str
     content_type: str  # 'document' or 'presentation'
     content_json: str
+
+
+class CanvasUpsertRequest(BaseModel):
+    title: str | None = None
+    content_json: str
+    base_version: int | None = None
 
 
 @router.post("/join", response_model=StudentJoinResponse)
@@ -305,6 +312,93 @@ async def delete_document_draft(
     await db.delete(draft)
     await db.commit()
     return {"status": "deleted"}
+
+
+@router.get("/sessions/{session_id}/canvas")
+async def get_session_canvas(
+    session_id: UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    student: Annotated[SessionStudent, Depends(get_current_student)],
+):
+    if session_id != student.session_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
+
+    result = await db.execute(
+        select(SessionCanvas).where(SessionCanvas.session_id == session_id)
+    )
+    canvas = result.scalar_one_or_none()
+    if not canvas:
+        return {
+            "session_id": str(session_id),
+            "title": "Lavagna collaborativa",
+            "content_json": '{"type":"canvas_v1","items":[]}',
+            "version": 0,
+            "updated_at": None,
+        }
+
+    return {
+        "session_id": str(canvas.session_id),
+        "title": canvas.title,
+        "content_json": canvas.content_json,
+        "version": canvas.version,
+        "updated_at": canvas.updated_at.isoformat() if canvas.updated_at else None,
+    }
+
+
+@router.put("/sessions/{session_id}/canvas")
+async def upsert_session_canvas(
+    session_id: UUID,
+    request: CanvasUpsertRequest,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    student: Annotated[SessionStudent, Depends(get_current_student)],
+):
+    if session_id != student.session_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
+
+    result = await db.execute(
+        select(SessionCanvas).where(SessionCanvas.session_id == session_id)
+    )
+    canvas = result.scalar_one_or_none()
+
+    if canvas and request.base_version is not None and request.base_version != canvas.version:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "message": "Canvas version conflict",
+                "current_version": canvas.version,
+            },
+        )
+
+    if not canvas:
+        canvas = SessionCanvas(
+            tenant_id=student.tenant_id,
+            session_id=session_id,
+            title=request.title or "Lavagna collaborativa",
+            content_json=request.content_json,
+            version=1,
+            updated_by_student_id=student.id,
+        )
+        db.add(canvas)
+    else:
+        canvas.title = request.title or canvas.title
+        canvas.content_json = request.content_json
+        canvas.version = (canvas.version or 0) + 1
+        canvas.updated_by_student_id = student.id
+        canvas.updated_by_teacher_id = None
+
+    await db.commit()
+    await db.refresh(canvas)
+
+    payload = {
+        "session_id": str(canvas.session_id),
+        "title": canvas.title,
+        "content_json": canvas.content_json,
+        "version": canvas.version,
+        "updated_at": canvas.updated_at.isoformat() if canvas.updated_at else None,
+        "updated_by": {"type": "student", "id": str(student.id)},
+    }
+    await sio.emit("canvas_updated", payload, room=f"session:{session_id}")
+    return payload
 
 
 @router.get("/tasks")

@@ -11,6 +11,7 @@ from app.models.task import Task, TaskSubmission, TaskStatus, TaskType
 from app.models.invitation import ClassTeacher, ClassInvitation, SessionTeacher, SessionInvitation
 from app.models.teacherbot import Teacherbot, TeacherbotStatus, TeacherbotPublication, TeacherbotConversation, TeacherbotMessage
 from app.models.document_draft import DocumentDraft
+from app.models.session_canvas import SessionCanvas
 
 __all__ = [
     "Tenant",
@@ -54,4 +55,5 @@ __all__ = [
     "TeacherbotConversation",
     "TeacherbotMessage",
     "DocumentDraft",
+    "SessionCanvas",
 ]

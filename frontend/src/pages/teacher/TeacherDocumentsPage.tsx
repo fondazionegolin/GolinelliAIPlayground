@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
-  Plus, Trash2, Upload, Monitor, FileText, ChevronLeft, ChevronRight, FileSpreadsheet
+  Plus, Trash2, Upload, Monitor, FileText, ChevronLeft, ChevronRight, FileSpreadsheet, PenTool
 } from 'lucide-react'
 import { teacherApi } from '@/lib/api'
 import { useToast } from '@/components/ui/use-toast'
@@ -11,11 +11,12 @@ import { SlideEditor, SlideBlock } from '@/components/SlideEditor'
 import { RichTextEditor } from '@/components/RichTextEditor'
 import { UnifiedToolbar } from '@/components/UnifiedToolbar'
 import { SheetChartConfig, SpreadsheetEditor } from '@/components/SpreadsheetEditor'
+import { CollaborativeCanvas } from '@/components/CollaborativeCanvas'
 import { Editor } from '@tiptap/react'
 
 // Types
 type Format = 'a4' | '16:9' | '4:3'
-type EditorMode = 'slides' | 'document' | 'sheet'
+type EditorMode = 'slides' | 'document' | 'sheet' | 'canvas'
 
 // Reuse SlideBlock type
 type Block = SlideBlock
@@ -42,13 +43,14 @@ interface Document {
   header?: DocumentHeader
   sheetData?: string[][]
   sheetChart?: SheetChartConfig
+  canvasContent?: string
 }
 
 // Stored Document Metadata for Sidebar
 interface StoredDocument {
   id: string
   title: string
-  type: 'presentation' | 'document' | 'sheet'
+  type: 'presentation' | 'document' | 'sheet' | 'canvas'
   updatedAt: string
   sessionId: string
   sessionName: string
@@ -58,7 +60,7 @@ interface StoredDocument {
 interface DraftDocument {
   id: string
   title: string
-  type: 'presentation' | 'document' | 'sheet'
+  type: 'presentation' | 'document' | 'sheet' | 'canvas'
   updatedAt: string
   contentJson: string
 }
@@ -79,6 +81,17 @@ const DEFAULT_SHEET_CHART: SheetChartConfig = {
   xCol: 0,
   yCol: 1,
   showRegression: true,
+}
+const DEFAULT_CANVAS_CONTENT = JSON.stringify({ type: 'canvas_v1', items: [] })
+const parseCanvasContent = (raw?: string) => {
+  if (!raw) return { type: 'canvas_v1', items: [] as any[] }
+  try {
+    const parsed = JSON.parse(raw)
+    if (parsed?.type === 'canvas_v1' && Array.isArray(parsed.items)) return parsed
+  } catch {
+    // no-op
+  }
+  return { type: 'canvas_v1', items: [] as any[] }
 }
 
 export default function TeacherDocumentsPage() {
@@ -101,6 +114,7 @@ export default function TeacherDocumentsPage() {
     header: { title: '', subtitle: '', logoUrl: '' },
     sheetData: DEFAULT_SHEET_DATA,
     sheetChart: DEFAULT_SHEET_CHART,
+    canvasContent: DEFAULT_CANVAS_CONTENT,
   })
   
   // Sidebar State
@@ -149,6 +163,7 @@ export default function TeacherDocumentsPage() {
       header: { title: '', subtitle: '', logoUrl: '' },
       sheetData: DEFAULT_SHEET_DATA,
       sheetChart: DEFAULT_SHEET_CHART,
+      canvasContent: DEFAULT_CANVAS_CONTENT,
     })
     setMode('document')
     setCurrentSlideIndex(0)
@@ -167,6 +182,7 @@ export default function TeacherDocumentsPage() {
       textContent: '',
       sheetData: DEFAULT_SHEET_DATA,
       sheetChart: DEFAULT_SHEET_CHART,
+      canvasContent: DEFAULT_CANVAS_CONTENT,
     })
     setMode('slides')
     setCurrentSlideIndex(0)
@@ -175,13 +191,34 @@ export default function TeacherDocumentsPage() {
     draftIdRef.current = null
   }
 
+  const createNewCanvas = () => {
+    const newDocId = crypto.randomUUID()
+    setDocument({
+      id: newDocId,
+      title: 'Nuova Lavagna',
+      format: 'a4',
+      slides: [],
+      textContent: '',
+      sheetData: DEFAULT_SHEET_DATA,
+      sheetChart: DEFAULT_SHEET_CHART,
+      canvasContent: DEFAULT_CANVAS_CONTENT,
+    })
+    setMode('canvas')
+    setCurrentSlideIndex(0)
+    setSelectedBlockId(null)
+    setDraftId(null)
+    draftIdRef.current = null
+  }
+
   const buildDraftPayload = () => {
-    const type = mode === 'slides' ? 'presentation' : mode === 'sheet' ? 'sheet' : 'document'
+    const type = mode === 'slides' ? 'presentation' : mode === 'sheet' ? 'sheet' : mode === 'canvas' ? 'canvas' : 'document'
     const contentJson = JSON.stringify(
       mode === 'slides'
         ? { type: 'presentation_v2', format: document.format, slides: document.slides }
         : mode === 'sheet'
           ? { type: 'sheet_v1', data: document.sheetData || DEFAULT_SHEET_DATA, chart: document.sheetChart || DEFAULT_SHEET_CHART }
+          : mode === 'canvas'
+            ? parseCanvasContent(document.canvasContent)
           : { type: 'document_v1', htmlContent: document.textContent || '', header: document.header, margins: docMargins }
     )
     return {
@@ -299,7 +336,7 @@ export default function TeacherDocumentsPage() {
             if (t.content_json) {
               try {
                 const content = JSON.parse(t.content_json)
-                if (content.type === 'document_v1' || content.type === 'presentation_v2' || content.type === 'sheet_v1' ||
+                if (content.type === 'document_v1' || content.type === 'presentation_v2' || content.type === 'sheet_v1' || content.type === 'canvas_v1' ||
                     t.task_type === 'presentation' || (t.task_type === 'lesson' && content.sections)) {
                   
                   docs.push({
@@ -307,7 +344,7 @@ export default function TeacherDocumentsPage() {
                     title: t.title,
                     type: (content.type === 'presentation_v2' || t.task_type === 'presentation')
                       ? 'presentation'
-                      : (content.type === 'sheet_v1' ? 'sheet' : 'document'),
+                      : (content.type === 'sheet_v1' ? 'sheet' : content.type === 'canvas_v1' ? 'canvas' : 'document'),
                     updatedAt: t.created_at,
                     sessionId: session.id,
                     sessionName: session.name,
@@ -378,6 +415,21 @@ export default function TeacherDocumentsPage() {
           textContent: '',
           sheetData: Array.isArray(content.data) ? content.data : DEFAULT_SHEET_DATA,
           sheetChart: content.chart || DEFAULT_SHEET_CHART,
+          canvasContent: DEFAULT_CANVAS_CONTENT,
+        })
+      } else if (doc.type === 'canvas' || content.type === 'canvas_v1' || content.items) {
+        setMode('canvas')
+        setDraftId(null)
+        draftIdRef.current = null
+        setDocument({
+          id: doc.id,
+          title: doc.title,
+          format: 'a4',
+          slides: [],
+          textContent: '',
+          sheetData: DEFAULT_SHEET_DATA,
+          sheetChart: DEFAULT_SHEET_CHART,
+          canvasContent: JSON.stringify({ type: 'canvas_v1', items: Array.isArray(content.items) ? content.items : [] }),
         })
       } else {
         setMode('document')
@@ -398,6 +450,7 @@ export default function TeacherDocumentsPage() {
           header: content.header || { title: '', subtitle: '', logoUrl: '' },
           sheetData: DEFAULT_SHEET_DATA,
           sheetChart: DEFAULT_SHEET_CHART,
+          canvasContent: DEFAULT_CANVAS_CONTENT,
         })
       }
       
@@ -444,6 +497,21 @@ export default function TeacherDocumentsPage() {
           textContent: '',
           sheetData: Array.isArray(content.data) ? content.data : DEFAULT_SHEET_DATA,
           sheetChart: content.chart || DEFAULT_SHEET_CHART,
+          canvasContent: DEFAULT_CANVAS_CONTENT,
+        })
+      } else if (doc.type === 'canvas' || content.type === 'canvas_v1' || content.items) {
+        setMode('canvas')
+        setDraftId(doc.id)
+        draftIdRef.current = doc.id
+        setDocument({
+          id: doc.id,
+          title: doc.title,
+          format: 'a4',
+          slides: [],
+          textContent: '',
+          sheetData: DEFAULT_SHEET_DATA,
+          sheetChart: DEFAULT_SHEET_CHART,
+          canvasContent: JSON.stringify({ type: 'canvas_v1', items: Array.isArray(content.items) ? content.items : [] }),
         })
       } else {
         setMode('document')
@@ -464,6 +532,7 @@ export default function TeacherDocumentsPage() {
           header: content.header || { title: '', subtitle: '', logoUrl: '' },
           sheetData: DEFAULT_SHEET_DATA,
           sheetChart: DEFAULT_SHEET_CHART,
+          canvasContent: DEFAULT_CANVAS_CONTENT,
         })
       }
     } catch (e) {
@@ -589,6 +658,9 @@ export default function TeacherDocumentsPage() {
           chart: document.sheetChart || DEFAULT_SHEET_CHART,
         })
         taskType = 'lesson'
+      } else if (mode === 'canvas') {
+        contentJson = JSON.stringify(parseCanvasContent(document.canvasContent))
+        taskType = 'lesson'
       } else {
         contentJson = JSON.stringify({
           type: 'document_v1',
@@ -602,7 +674,7 @@ export default function TeacherDocumentsPage() {
 
       const response = await teacherApi.createTask(selectedSessionId, {
         title: document.title,
-        description: `Documento creato con Golinelli AI Editor (${mode === 'slides' ? 'Presentazione' : mode === 'sheet' ? 'Foglio' : 'Testo'})`,
+        description: `Documento creato con Golinelli AI Editor (${mode === 'slides' ? 'Presentazione' : mode === 'sheet' ? 'Foglio' : mode === 'canvas' ? 'Lavagna' : 'Testo'})`,
         task_type: taskType,
         content_json: contentJson
       })
@@ -734,7 +806,7 @@ export default function TeacherDocumentsPage() {
         </div>
 
         {/* Unified Toolbar */}
-        {mode !== 'sheet' && (
+        {mode !== 'sheet' && mode !== 'canvas' && (
         <div ref={toolbarHostRef}>
           <UnifiedToolbar
             mode={mode}
@@ -820,8 +892,8 @@ export default function TeacherDocumentsPage() {
                     onClick={() => loadDraft(doc)}
                     className="group flex items-start gap-3 p-2 rounded-lg hover:bg-slate-100 cursor-pointer transition-colors border border-transparent hover:border-slate-200 mb-1"
                   >
-                    <div className={`p-1.5 rounded-md ${doc.type === 'presentation' ? 'bg-indigo-100 text-indigo-600' : doc.type === 'sheet' ? 'bg-sky-100 text-sky-700' : 'bg-emerald-100 text-emerald-600'}`}>
-                      {doc.type === 'presentation' ? <Monitor className="h-3 w-3" /> : doc.type === 'sheet' ? <FileSpreadsheet className="h-3 w-3" /> : <FileText className="h-3 w-3" />}
+                    <div className={`p-1.5 rounded-md ${doc.type === 'presentation' ? 'bg-indigo-100 text-indigo-600' : doc.type === 'sheet' ? 'bg-sky-100 text-sky-700' : doc.type === 'canvas' ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-600'}`}>
+                      {doc.type === 'presentation' ? <Monitor className="h-3 w-3" /> : doc.type === 'sheet' ? <FileSpreadsheet className="h-3 w-3" /> : doc.type === 'canvas' ? <PenTool className="h-3 w-3" /> : <FileText className="h-3 w-3" />}
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-xs font-medium text-slate-700 truncate">{doc.title}</p>
@@ -842,8 +914,8 @@ export default function TeacherDocumentsPage() {
                     onClick={() => loadDocument(doc)}
                     className="group flex items-start gap-3 p-2 rounded-lg hover:bg-slate-100 cursor-pointer transition-colors border border-transparent hover:border-slate-200 mb-1"
                   >
-                    <div className={`p-1.5 rounded-md ${doc.type === 'presentation' ? 'bg-indigo-100 text-indigo-600' : doc.type === 'sheet' ? 'bg-sky-100 text-sky-700' : 'bg-emerald-100 text-emerald-600'}`}>
-                      {doc.type === 'presentation' ? <Monitor className="h-3 w-3" /> : doc.type === 'sheet' ? <FileSpreadsheet className="h-3 w-3" /> : <FileText className="h-3 w-3" />}
+                    <div className={`p-1.5 rounded-md ${doc.type === 'presentation' ? 'bg-indigo-100 text-indigo-600' : doc.type === 'sheet' ? 'bg-sky-100 text-sky-700' : doc.type === 'canvas' ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-600'}`}>
+                      {doc.type === 'presentation' ? <Monitor className="h-3 w-3" /> : doc.type === 'sheet' ? <FileSpreadsheet className="h-3 w-3" /> : doc.type === 'canvas' ? <PenTool className="h-3 w-3" /> : <FileText className="h-3 w-3" />}
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-xs font-medium text-slate-700 truncate">{doc.title}</p>
@@ -998,6 +1070,18 @@ export default function TeacherDocumentsPage() {
                  />
                </div>
              )}
+             {mode === 'canvas' && (
+               <div className="w-full max-w-[1700px] p-2">
+                 <CollaborativeCanvas
+                   role="teacher"
+                   sessionId={selectedSessionId || undefined}
+                   title={document.title}
+                   onTitleChange={handleTitleChange}
+                   initialContent={document.canvasContent || DEFAULT_CANVAS_CONTENT}
+                   onContentChange={(contentJson) => setDocument((d) => ({ ...d, canvasContent: contentJson }))}
+                 />
+               </div>
+             )}
 
           </div>
         </div>
@@ -1008,7 +1092,7 @@ export default function TeacherDocumentsPage() {
             <div className="bg-white rounded-lg p-6 w-full max-w-md mx-4 shadow-xl">
               <h3 className="text-lg font-semibold mb-2">Crea nuovo</h3>
               <p className="text-sm text-gray-600 mb-4">
-                Scegli se creare un nuovo documento o una nuova presentazione.
+                Scegli il tipo di contenuto da creare.
               </p>
               <div className="flex flex-col gap-3">
                 <Button
@@ -1031,6 +1115,16 @@ export default function TeacherDocumentsPage() {
                   <Monitor className="h-4 w-4 mr-2" />
                   Nuova presentazione
                 </Button>
+                <Button
+                  className="w-full justify-center bg-red-500 hover:bg-red-600 text-white"
+                  onClick={() => {
+                    createNewCanvas()
+                    setShowNewModal(false)
+                  }}
+                >
+                  <PenTool className="h-4 w-4 mr-2" />
+                  Nuova lavagna
+                </Button>
               </div>
               <div className="flex justify-end mt-4">
                 <Button variant="outline" onClick={() => setShowNewModal(false)}>Annulla</Button>
@@ -1043,7 +1137,7 @@ export default function TeacherDocumentsPage() {
         {showPublishModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg p-6 w-full max-w-md mx-4 shadow-xl">
-            <h3 className="text-lg font-semibold mb-4">Pubblica {mode === 'slides' ? 'Presentazione' : mode === 'sheet' ? 'Foglio' : 'Documento'}</h3>
+            <h3 className="text-lg font-semibold mb-4">Pubblica {mode === 'slides' ? 'Presentazione' : mode === 'sheet' ? 'Foglio' : mode === 'canvas' ? 'Lavagna' : 'Documento'}</h3>
             <p className="text-sm text-gray-600 mb-4">
               Salva questo contenuto come compito/materiale per una classe.
             </p>

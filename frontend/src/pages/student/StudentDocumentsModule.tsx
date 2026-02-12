@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
-  Plus, Trash2, Monitor, FileText, ChevronLeft, ChevronRight, Send, CheckCircle, FileSpreadsheet, BookOpen
+  Plus, Trash2, Monitor, FileText, ChevronLeft, ChevronRight, Send, CheckCircle, FileSpreadsheet, BookOpen, PenTool
 } from 'lucide-react'
 import { studentApi } from '@/lib/api'
 import { useToast } from '@/components/ui/use-toast'
@@ -10,11 +10,12 @@ import { SlideEditor, SlideBlock } from '@/components/SlideEditor'
 import { RichTextEditor } from '@/components/RichTextEditor'
 import { UnifiedToolbar } from '@/components/UnifiedToolbar'
 import { SheetChartConfig, SpreadsheetEditor } from '@/components/SpreadsheetEditor'
+import { CollaborativeCanvas } from '@/components/CollaborativeCanvas'
 import { Editor } from '@tiptap/react'
 
 // Types
 type Format = 'a4' | '16:9' | '4:3'
-type EditorMode = 'slides' | 'document' | 'sheet'
+type EditorMode = 'slides' | 'document' | 'sheet' | 'canvas'
 type Block = SlideBlock
 
 interface Slide {
@@ -39,12 +40,13 @@ interface Document {
   header?: DocumentHeader
   sheetData?: string[][]
   sheetChart?: SheetChartConfig
+  canvasContent?: string
 }
 
 interface DraftDocument {
   id: string
   title: string
-  type: 'presentation' | 'document' | 'sheet'
+  type: 'presentation' | 'document' | 'sheet' | 'canvas'
   updatedAt: string
   contentJson: string
 }
@@ -53,7 +55,7 @@ interface LessonDocument {
   id: string
   taskId: string
   title: string
-  type: 'presentation' | 'document'
+  type: 'presentation' | 'document' | 'canvas'
   updatedAt: string
   contentJson: string
 }
@@ -83,15 +85,14 @@ const DEFAULT_SHEET_CHART: SheetChartConfig = {
   yCol: 1,
   showRegression: true,
 }
+const DEFAULT_CANVAS_CONTENT = JSON.stringify({ type: 'canvas_v1', items: [] })
 
 interface StudentDocumentsModuleProps {
   sessionId: string
   openLessonTaskId?: string | null
 }
 
-export default function StudentDocumentsModule({ sessionId: _sessionId, openLessonTaskId }: StudentDocumentsModuleProps) {
-  // sessionId is available for future use (e.g., if we need session-specific features)
-  void _sessionId
+export default function StudentDocumentsModule({ sessionId, openLessonTaskId }: StudentDocumentsModuleProps) {
   const { toast } = useToast()
 
   // State
@@ -107,6 +108,7 @@ export default function StudentDocumentsModule({ sessionId: _sessionId, openLess
     header: { title: '', subtitle: '', logoUrl: '' },
     sheetData: DEFAULT_SHEET_DATA,
     sheetChart: DEFAULT_SHEET_CHART,
+    canvasContent: DEFAULT_CANVAS_CONTENT,
   })
 
   // Sidebar State
@@ -156,6 +158,7 @@ export default function StudentDocumentsModule({ sessionId: _sessionId, openLess
       header: { title: '', subtitle: '', logoUrl: '' },
       sheetData: DEFAULT_SHEET_DATA,
       sheetChart: DEFAULT_SHEET_CHART,
+      canvasContent: DEFAULT_CANVAS_CONTENT,
     })
     setMode('document')
     setSubmitted(false)
@@ -176,6 +179,7 @@ export default function StudentDocumentsModule({ sessionId: _sessionId, openLess
       textContent: '',
       sheetData: DEFAULT_SHEET_DATA,
       sheetChart: DEFAULT_SHEET_CHART,
+      canvasContent: DEFAULT_CANVAS_CONTENT,
     })
     setMode('slides')
     setSubmitted(false)
@@ -187,12 +191,14 @@ export default function StudentDocumentsModule({ sessionId: _sessionId, openLess
   }
 
   const upsertDraft = async (titleOverride?: string) => {
-    const type = mode === 'slides' ? 'presentation' : mode === 'sheet' ? 'sheet' : 'document'
+    const type = mode === 'slides' ? 'presentation' : mode === 'sheet' ? 'sheet' : mode === 'canvas' ? 'canvas' : 'document'
     const contentJson = JSON.stringify(
       mode === 'slides'
         ? { type: 'presentation_v2', format: document.format, slides: document.slides }
         : mode === 'sheet'
           ? { type: 'sheet_v1', data: document.sheetData || DEFAULT_SHEET_DATA, chart: document.sheetChart || DEFAULT_SHEET_CHART }
+          : mode === 'canvas'
+            ? JSON.parse(document.canvasContent || DEFAULT_CANVAS_CONTENT)
           : { type: 'document_v1', htmlContent: document.textContent || '', header: document.header, margins: docMargins }
     )
     try {
@@ -260,10 +266,10 @@ export default function StudentDocumentsModule({ sessionId: _sessionId, openLess
             if (!task.content_json) return null
             try {
               const parsed = JSON.parse(task.content_json)
-              const type: 'presentation' | 'document' | null =
+              const type: 'presentation' | 'document' | 'canvas' | null =
                 parsed?.type === 'presentation_v2'
                   ? 'presentation'
-                  : (parsed?.type === 'document_v1' ? 'document' : null)
+                  : (parsed?.type === 'document_v1' ? 'document' : parsed?.type === 'canvas_v1' ? 'canvas' : null)
               if (!type) return null
               return {
                 id: `lesson-${task.id}`,
@@ -298,7 +304,7 @@ export default function StudentDocumentsModule({ sessionId: _sessionId, openLess
   }, [document, mode, docMargins, isReadOnlyLesson])
 
   const loadDocumentFromJson = (
-    doc: { id: string; title: string; type: 'presentation' | 'document' | 'sheet'; contentJson: string },
+    doc: { id: string; title: string; type: 'presentation' | 'document' | 'sheet' | 'canvas'; contentJson: string },
     options?: { readOnlyLesson?: boolean; lessonTaskId?: string | null }
   ) => {
     try {
@@ -337,6 +343,20 @@ export default function StudentDocumentsModule({ sessionId: _sessionId, openLess
           textContent: '',
           sheetData: Array.isArray(content.data) ? content.data : DEFAULT_SHEET_DATA,
           sheetChart: content.chart || DEFAULT_SHEET_CHART,
+          canvasContent: DEFAULT_CANVAS_CONTENT,
+        })
+      } else if (doc.type === 'canvas' || content.type === 'canvas_v1' || content.items) {
+        setMode('canvas')
+        setDraftId(options?.readOnlyLesson ? null : doc.id)
+        setDocument({
+          id: doc.id,
+          title: doc.title,
+          format: 'a4',
+          slides: [],
+          textContent: '',
+          sheetData: DEFAULT_SHEET_DATA,
+          sheetChart: DEFAULT_SHEET_CHART,
+          canvasContent: JSON.stringify({ type: 'canvas_v1', items: Array.isArray(content.items) ? content.items : [] }),
         })
       } else {
         setMode('document')
@@ -356,6 +376,7 @@ export default function StudentDocumentsModule({ sessionId: _sessionId, openLess
           header: content.header || { title: '', subtitle: '', logoUrl: '' },
           sheetData: DEFAULT_SHEET_DATA,
           sheetChart: DEFAULT_SHEET_CHART,
+          canvasContent: DEFAULT_CANVAS_CONTENT,
         })
       }
     } catch (e) {
@@ -504,6 +525,12 @@ export default function StudentDocumentsModule({ sessionId: _sessionId, openLess
           data: document.sheetData || DEFAULT_SHEET_DATA,
           chart: document.sheetChart || DEFAULT_SHEET_CHART,
         })
+      } else if (mode === 'canvas') {
+        contentJson = JSON.stringify({
+          type: 'student_canvas',
+          title: document.title,
+          ...JSON.parse(document.canvasContent || DEFAULT_CANVAS_CONTENT),
+        })
       } else {
         contentJson = JSON.stringify({
           type: 'student_document',
@@ -517,7 +544,7 @@ export default function StudentDocumentsModule({ sessionId: _sessionId, openLess
       // Submit as a student work/task submission
       await studentApi.submitDocument({
         title: document.title,
-        content_type: mode === 'slides' ? 'presentation' : mode === 'sheet' ? 'sheet' : 'document',
+        content_type: mode === 'slides' ? 'presentation' : mode === 'sheet' ? 'sheet' : mode === 'canvas' ? 'canvas' : 'document',
         content_json: contentJson
       })
 
@@ -648,7 +675,7 @@ export default function StudentDocumentsModule({ sessionId: _sessionId, openLess
         </div>
 
         {/* Unified Toolbar */}
-        {!isReadOnlyLesson && mode !== 'sheet' && (
+        {!isReadOnlyLesson && mode !== 'sheet' && mode !== 'canvas' && (
         <div ref={toolbarHostRef}>
           <UnifiedToolbar
             mode={mode}
@@ -734,8 +761,8 @@ export default function StudentDocumentsModule({ sessionId: _sessionId, openLess
                     onClick={() => loadDraft(doc)}
                     className="group flex items-start gap-3 p-2 rounded-lg hover:bg-slate-100 cursor-pointer transition-colors border border-transparent hover:border-slate-200 mb-1"
                   >
-                    <div className={`p-1.5 rounded-md ${doc.type === 'presentation' ? 'bg-indigo-100 text-indigo-600' : doc.type === 'sheet' ? 'bg-sky-100 text-sky-700' : 'bg-emerald-100 text-emerald-600'}`}>
-                      {doc.type === 'presentation' ? <Monitor className="h-3 w-3" /> : doc.type === 'sheet' ? <FileSpreadsheet className="h-3 w-3" /> : <FileText className="h-3 w-3" />}
+                    <div className={`p-1.5 rounded-md ${doc.type === 'presentation' ? 'bg-indigo-100 text-indigo-600' : doc.type === 'sheet' ? 'bg-sky-100 text-sky-700' : doc.type === 'canvas' ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-600'}`}>
+                      {doc.type === 'presentation' ? <Monitor className="h-3 w-3" /> : doc.type === 'sheet' ? <FileSpreadsheet className="h-3 w-3" /> : doc.type === 'canvas' ? <PenTool className="h-3 w-3" /> : <FileText className="h-3 w-3" />}
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-xs font-medium text-slate-700 truncate">{doc.title}</p>
@@ -764,8 +791,8 @@ export default function StudentDocumentsModule({ sessionId: _sessionId, openLess
                         : 'hover:bg-slate-100 border-transparent hover:border-slate-200'
                     }`}
                   >
-                    <div className={`p-1.5 rounded-md ${doc.type === 'presentation' ? 'bg-indigo-100 text-indigo-600' : 'bg-emerald-100 text-emerald-700'}`}>
-                      {doc.type === 'presentation' ? <Monitor className="h-3 w-3" /> : <BookOpen className="h-3 w-3" />}
+                    <div className={`p-1.5 rounded-md ${doc.type === 'presentation' ? 'bg-indigo-100 text-indigo-600' : doc.type === 'canvas' ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'}`}>
+                      {doc.type === 'presentation' ? <Monitor className="h-3 w-3" /> : doc.type === 'canvas' ? <PenTool className="h-3 w-3" /> : <BookOpen className="h-3 w-3" />}
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-xs font-medium text-slate-700 truncate">{doc.title}</p>
@@ -938,6 +965,21 @@ export default function StudentDocumentsModule({ sessionId: _sessionId, openLess
                  />
                </div>
              )}
+             {mode === 'canvas' && (
+               <div className="w-full max-w-[1700px] p-2">
+                 <CollaborativeCanvas
+                   role="student"
+                   sessionId={sessionId}
+                   title={document.title}
+                   onTitleChange={(nextTitle) => {
+                     if (!isReadOnlyLesson) handleTitleChange(nextTitle)
+                   }}
+                   initialContent={document.canvasContent || DEFAULT_CANVAS_CONTENT}
+                   onContentChange={(contentJson) => setDocument((d) => ({ ...d, canvasContent: contentJson }))}
+                   readOnly={false}
+                 />
+               </div>
+             )}
 
           </div>
         </div>
@@ -985,7 +1027,7 @@ export default function StudentDocumentsModule({ sessionId: _sessionId, openLess
           <div className="bg-white rounded-xl p-6 w-full max-w-md mx-4 shadow-xl">
             <h3 className="text-lg font-bold mb-2">Invia al Docente</h3>
             <p className="text-sm text-gray-600 mb-4">
-              Il tuo {mode === 'slides' ? 'presentazione' : mode === 'sheet' ? 'foglio' : 'documento'} "<strong>{document.title}</strong>" verrà inviato al docente per la revisione.
+              Il tuo {mode === 'slides' ? 'presentazione' : mode === 'sheet' ? 'foglio' : mode === 'canvas' ? 'lavagna' : 'documento'} "<strong>{document.title}</strong>" verrà inviato al docente per la revisione.
             </p>
             <div className="bg-indigo-50 border border-indigo-100 rounded-lg p-4 mb-4">
               <p className="text-sm text-indigo-700">

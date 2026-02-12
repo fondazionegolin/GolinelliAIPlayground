@@ -26,6 +26,7 @@ from app.models.chat import ChatRoom, ChatMessage
 from app.models.enums import SessionStatus, ChatRoomType, SenderType, InvitationStatus, UserRole
 from app.models.task import Task, TaskSubmission, TaskStatus, TaskType
 from app.models.document_draft import DocumentDraft
+from app.models.session_canvas import SessionCanvas
 from app.schemas.document_draft import DocumentDraftCreate, DocumentDraftUpdate
 from app.realtime.gateway import sio
 from app.schemas.session import (
@@ -68,6 +69,12 @@ class ProfileUpdate(BaseModel):
     institution: str | None = None
     avatar_url: str | None = None
     ui_accent: str | None = None
+
+
+class CanvasUpsertRequest(BaseModel):
+    title: str | None = None
+    content_json: str
+    base_version: int | None = None
 
 
 # Profile endpoints
@@ -805,6 +812,95 @@ async def delete_document_draft(
     await db.delete(draft)
     await db.commit()
     return {"status": "deleted"}
+
+
+@router.get("/sessions/{session_id}/canvas")
+async def get_session_canvas(
+    session_id: UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    teacher: Annotated[User, Depends(get_current_teacher)],
+):
+    if not await teacher_can_access_session(db, teacher, session_id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
+
+    result = await db.execute(
+        select(SessionCanvas).where(SessionCanvas.session_id == session_id)
+    )
+    canvas = result.scalar_one_or_none()
+    if not canvas:
+        return {
+            "session_id": str(session_id),
+            "title": "Lavagna collaborativa",
+            "content_json": '{"type":"canvas_v1","items":[]}',
+            "version": 0,
+            "updated_at": None,
+        }
+
+    return {
+        "session_id": str(canvas.session_id),
+        "title": canvas.title,
+        "content_json": canvas.content_json,
+        "version": canvas.version,
+        "updated_at": canvas.updated_at.isoformat() if canvas.updated_at else None,
+    }
+
+
+@router.put("/sessions/{session_id}/canvas")
+async def upsert_session_canvas(
+    session_id: UUID,
+    request: CanvasUpsertRequest,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    teacher: Annotated[User, Depends(get_current_teacher)],
+):
+    session_data = await get_session_with_access_check(db, teacher, session_id)
+    if not session_data:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
+    session, _ = session_data
+
+    result = await db.execute(
+        select(SessionCanvas).where(SessionCanvas.session_id == session_id)
+    )
+    canvas = result.scalar_one_or_none()
+
+    if canvas and request.base_version is not None and request.base_version != canvas.version:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "message": "Canvas version conflict",
+                "current_version": canvas.version,
+            },
+        )
+
+    if not canvas:
+        canvas = SessionCanvas(
+            tenant_id=session.tenant_id,
+            session_id=session_id,
+            title=request.title or "Lavagna collaborativa",
+            content_json=request.content_json,
+            version=1,
+            updated_by_teacher_id=teacher.id,
+        )
+        db.add(canvas)
+    else:
+        canvas.title = request.title or canvas.title
+        canvas.content_json = request.content_json
+        canvas.version = (canvas.version or 0) + 1
+        canvas.updated_by_teacher_id = teacher.id
+        canvas.updated_by_student_id = None
+
+    await db.commit()
+    await db.refresh(canvas)
+
+    payload = {
+        "session_id": str(canvas.session_id),
+        "title": canvas.title,
+        "content_json": canvas.content_json,
+        "version": canvas.version,
+        "updated_at": canvas.updated_at.isoformat() if canvas.updated_at else None,
+        "updated_by": {"type": "teacher", "id": str(teacher.id)},
+    }
+    await sio.emit("canvas_updated", payload, room=f"session:{session_id}")
+    return payload
 
 @router.get("/sessions/{session_id}/tasks")
 async def list_tasks(
