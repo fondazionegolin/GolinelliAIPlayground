@@ -2,15 +2,20 @@ from fastapi import APIRouter, Depends, HTTPException, status, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from typing import Annotated
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from pydantic import BaseModel
+import secrets
+import re
+import unicodedata
 
 from app.core.database import get_db
 from app.core.security import verify_password, create_access_token, get_password_hash
+from app.core.config import settings
 from app.models.user import User, TeacherRequest, ActivationToken
 from app.models.tenant import Tenant
 from app.models.enums import UserRole, TeacherRequestStatus
 from app.schemas.auth import LoginRequest, LoginResponse, TeacherRequestCreate, TeacherRequestResponse
+from app.services.email_service import email_service
 
 
 class ActivationInfoResponse(BaseModel):
@@ -25,6 +30,18 @@ class ChangePasswordRequest(BaseModel):
     new_password: str
 
 router = APIRouter()
+
+
+def _normalize_text(value: str) -> str:
+    normalized = unicodedata.normalize("NFKD", value).encode("ascii", "ignore").decode("ascii")
+    normalized = normalized.strip().lower()
+    return re.sub(r"\s+", " ", normalized)
+
+
+def _slugify_text(value: str) -> str:
+    normalized = _normalize_text(value)
+    slug = re.sub(r"[^a-z0-9]+", "-", normalized).strip("-")
+    return re.sub(r"-{2,}", "-", slug)
 
 
 @router.post("/login", response_model=LoginResponse)
@@ -86,8 +103,8 @@ async def request_teacher_account(
     request: TeacherRequestCreate,
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
-    # Find tenant by slug if provided
-    tenant_id = None
+    # Resolve tenant by explicit slug, school name, or default.
+    tenant = None
     if request.tenant_slug:
         result = await db.execute(
             select(Tenant).where(Tenant.slug == request.tenant_slug)
@@ -98,7 +115,22 @@ async def request_teacher_account(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Tenant not found",
             )
-        tenant_id = tenant.id
+    elif request.school_name:
+        normalized_school = _normalize_text(request.school_name)
+        school_slug_guess = _slugify_text(request.school_name)
+        tenants = (await db.execute(select(Tenant))).scalars().all()
+        tenant = next(
+            (
+                t for t in tenants
+                if _normalize_text(t.name) == normalized_school or _normalize_text(t.slug) == school_slug_guess
+            ),
+            None,
+        )
+        if not tenant:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Nessun istituto trovato per il nome scuola indicato",
+            )
     else:
         # Get first active tenant as default (for demo)
         result = await db.execute(select(Tenant).limit(1))
@@ -108,7 +140,7 @@ async def request_teacher_account(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="No tenant available",
             )
-        tenant_id = tenant.id
+    tenant_id = tenant.id
     
     # Check if request already exists
     result = await db.execute(
@@ -134,15 +166,60 @@ async def request_teacher_account(
             detail="A user with this email already exists",
         )
     
+    # Auto-approve only when provided school name matches resolved tenant.
+    school_matches_tenant = bool(
+        request.school_name
+        and (
+            _normalize_text(tenant.name) == _normalize_text(request.school_name)
+            or _normalize_text(tenant.slug) == _slugify_text(request.school_name)
+        )
+    )
+    is_auto_approved = school_matches_tenant
     teacher_request = TeacherRequest(
         tenant_id=tenant_id,
         email=request.email,
         first_name=request.first_name,
         last_name=request.last_name,
+        status=TeacherRequestStatus.APPROVED if is_auto_approved else TeacherRequestStatus.PENDING,
+        reviewed_at=datetime.now(timezone.utc) if is_auto_approved else None,
     )
     db.add(teacher_request)
+
+    if is_auto_approved:
+        temp_password = secrets.token_urlsafe(12)
+        user = User(
+            tenant_id=tenant_id,
+            email=request.email,
+            password_hash=get_password_hash(temp_password),
+            role=UserRole.TEACHER,
+            first_name=request.first_name,
+            last_name=request.last_name,
+            institution=tenant.name,
+            is_verified=True,
+        )
+        db.add(user)
+        await db.flush()
+
+        activation_token = secrets.token_urlsafe(48)
+        token_record = ActivationToken(
+            user_id=user.id,
+            token=activation_token,
+            temporary_password=temp_password,
+            expires_at=datetime.now(timezone.utc) + timedelta(hours=settings.ACTIVATION_TOKEN_EXPIRE_HOURS),
+        )
+        db.add(token_record)
+
     await db.commit()
     await db.refresh(teacher_request)
+
+    if is_auto_approved:
+        activation_link = f"{settings.FRONTEND_URL}/activate/{activation_token}"
+        await email_service.send_teacher_activation_email(
+            to_email=request.email,
+            first_name=request.first_name,
+            last_name=request.last_name,
+            activation_link=activation_link,
+        )
     
     return TeacherRequestResponse(
         id=teacher_request.id,

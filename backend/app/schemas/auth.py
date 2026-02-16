@@ -21,6 +21,7 @@ class TeacherRequestCreate(BaseModel):
     first_name: str
     last_name: str
     tenant_slug: Optional[str] = None
+    school_name: Optional[str] = None
 
 
 class TeacherRequestResponse(BaseModel):

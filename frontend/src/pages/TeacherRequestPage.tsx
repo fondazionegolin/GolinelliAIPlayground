@@ -14,6 +14,7 @@ export default function TeacherRequestPage() {
   const [firstName, setFirstName] = useState('')
   const [lastName, setLastName] = useState('')
   const [tenantSlug, setTenantSlug] = useState('')
+  const [schoolName, setSchoolName] = useState('')
   const [loading, setLoading] = useState(false)
   const [submitted, setSubmitted] = useState(false)
   const { toast } = useToast()
@@ -29,6 +30,7 @@ export default function TeacherRequestPage() {
         first_name: firstName,
         last_name: lastName,
         tenant_slug: tenantSlug || undefined,
+        school_name: schoolName || undefined,
       })
       setSubmitted(true)
     } catch (error: unknown) {
@@ -124,6 +126,19 @@ export default function TeacherRequestPage() {
                   onChange={(e) => setEmail(e.target.value)}
                   required
                 />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="schoolName">Scuola / Istituto</Label>
+                <Input
+                  id="schoolName"
+                  type="text"
+                  placeholder="I.I.S. Galileo Galilei"
+                  value={schoolName}
+                  onChange={(e) => setSchoolName(e.target.value)}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Se il nome corrisponde a un istituto registrato, l'account viene approvato automaticamente.
+                </p>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="tenantSlug">Codice Scuola (opzionale)</Label>

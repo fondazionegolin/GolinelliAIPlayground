@@ -44,7 +44,7 @@ export const authApi = {
   login: (email: string, password: string) =>
     api.post('/auth/login', { email, password }),
   logout: () => api.post('/auth/logout'),
-  requestTeacher: (data: { email: string; first_name: string; last_name: string; tenant_slug?: string }) =>
+  requestTeacher: (data: { email: string; first_name: string; last_name: string; tenant_slug?: string; school_name?: string }) =>
     api.post('/auth/teachers/request', data),
 }
 

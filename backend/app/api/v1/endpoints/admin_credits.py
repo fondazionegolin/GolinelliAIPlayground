@@ -236,7 +236,7 @@ async def invite_teacher(
         raise HTTPException(status_code=400, detail="User with this email already exists")
     
     # Check if invitation already exists
-    stmt = select(PlatformInvitation).where(PlatformInvitation.email == invitation.email, PlatformInvitation.status == InvitationStatus.PENDING)
+    stmt = select(PlatformInvitation).where(PlatformInvitation.email == invitation.email, PlatformInvitation.status == "pending")
     existing_inv = (await db.execute(stmt)).scalar_one_or_none()
     if existing_inv:
         raise HTTPException(status_code=400, detail="Invitation already pending")
@@ -274,7 +274,7 @@ async def invite_teacher(
         school=invitation.school,
         role="TEACHER",
         token=token,
-        status=InvitationStatus.PENDING,
+        status="pending",
         invited_by_id=admin.id,
         expires_at=datetime.utcnow() + timedelta(days=7)
     )
@@ -348,7 +348,7 @@ async def bulk_invite_teachers(
             school=row.get("school"),
             role="TEACHER",
             token=token,
-            status=InvitationStatus.PENDING,
+            status="pending",
             invited_by_id=admin.id,
             expires_at=datetime.utcnow() + timedelta(days=7)
         )
