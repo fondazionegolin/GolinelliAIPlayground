@@ -1,5 +1,5 @@
 from sqlalchemy import Column, String, Enum, DateTime, func
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
 import uuid
 
@@ -14,6 +14,7 @@ class Tenant(Base):
     name = Column(String, nullable=False)
     slug = Column(String, unique=True, nullable=False, index=True)
     status = Column(Enum(TenantStatus), default=TenantStatus.ACTIVE, nullable=False)
+    email_templates_json = Column(JSONB, default=dict, nullable=False, server_default='{}')
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
     # Relationships

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from typing import Annotated, Optional
@@ -9,6 +9,7 @@ import secrets
 from app.core.database import get_db
 from app.core.security import get_password_hash
 from app.core.config import settings
+from app.core.url_utils import resolve_frontend_url
 from app.api.deps import get_current_admin
 from app.models.user import User, TeacherRequest, ActivationToken
 from app.models.tenant import Tenant
@@ -22,6 +23,16 @@ from app.schemas.auth import TeacherRequestResponse
 from app.services.email_service import email_service
 
 router = APIRouter()
+
+
+def _tenant_activation_templates(tenant: Tenant) -> dict:
+    templates = tenant.email_templates_json or {}
+    activation = templates.get("teacher_activation") or {}
+    return {
+        "subject_template": activation.get("subject"),
+        "html_template": activation.get("html"),
+        "text_template": activation.get("text"),
+    }
 
 
 @router.get("/tenants", response_model=list[TenantResponse])
@@ -107,6 +118,7 @@ async def list_teacher_requests(
 @router.post("/teacher-requests/{request_id}/approve")
 async def approve_teacher_request(
     request_id: UUID,
+    request: Request,
     db: Annotated[AsyncSession, Depends(get_db)],
     admin: Annotated[User, Depends(get_current_admin)],
 ):
@@ -153,13 +165,17 @@ async def approve_teacher_request(
     
     await db.commit()
     
-    # Send activation email
-    activation_link = f"{settings.FRONTEND_URL}/activate/{activation_token}"
+    tenant = (await db.execute(select(Tenant).where(Tenant.id == teacher_request.tenant_id))).scalar_one_or_none()
+    templates = _tenant_activation_templates(tenant) if tenant else {}
+    activation_link = f"{resolve_frontend_url(request.headers.get('origin'))}/activate/{activation_token}"
     email_sent = await email_service.send_teacher_activation_email(
         to_email=teacher_request.email,
         first_name=teacher_request.first_name,
         last_name=teacher_request.last_name,
         activation_link=activation_link,
+        subject_template=templates.get("subject_template"),
+        html_template=templates.get("html_template"),
+        text_template=templates.get("text_template"),
     )
     
     return {
@@ -620,6 +636,56 @@ async def get_realtime_status(
         )
     ).scalar() or 0
 
+    teacher_ids = {UUID(tid) for tid in online_teacher_ids if tid}
+    teacher_lookup: dict[str, User] = {}
+    if teacher_ids:
+        teacher_rows = (
+            await db.execute(
+                select(User).where(
+                    User.tenant_id == admin.tenant_id,
+                    User.id.in_(teacher_ids),
+                )
+            )
+        ).scalars().all()
+        teacher_lookup = {str(t.id): t for t in teacher_rows}
+
+    online_users = []
+    for sid, user in connected_users.items():
+        if user.get("type") == "teacher":
+            uid = str(user.get("id") or "")
+            if uid not in online_teacher_ids:
+                continue
+            teacher = teacher_lookup.get(uid)
+            online_users.append(
+                {
+                    "sid": sid,
+                    "type": "teacher",
+                    "id": uid,
+                    "name": (
+                        " ".join(
+                            [p for p in [(teacher.first_name if teacher else None), (teacher.last_name if teacher else None)] if p]
+                        ).strip()
+                        or (teacher.email if teacher else uid)
+                    ),
+                    "email": teacher.email if teacher else None,
+                    "session_id": str(user.get("session_id") or ""),
+                }
+            )
+        elif user.get("type") == "student":
+            sid_session = str(user.get("session_id") or "")
+            if sid_session not in allowed_session_ids:
+                continue
+            online_users.append(
+                {
+                    "sid": sid,
+                    "type": "student",
+                    "id": str(user.get("id") or ""),
+                    "name": user.get("nickname") or "Studente",
+                    "email": None,
+                    "session_id": sid_session,
+                }
+            )
+
     return {
         "online_students": len(online_student_ids),
         "online_teachers": len(online_teacher_ids),
@@ -627,5 +693,56 @@ async def get_realtime_status(
         "recent_students_2m": int(recent_students_count),
         "recent_active_teachers_10m": int(max(teachers_by_cost, teachers_by_chat, len(online_teacher_ids))),
         "sessions_active": sorted(sessions, key=lambda s: s["online_students"], reverse=True),
+        "users_online": online_users,
         "generated_at": now.isoformat(),
+    }
+
+
+@router.get("/email-templates")
+async def get_email_templates(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    admin: Annotated[User, Depends(get_current_admin)],
+):
+    tenant = (await db.execute(select(Tenant).where(Tenant.id == admin.tenant_id))).scalar_one_or_none()
+    if not tenant:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tenant not found")
+    templates = tenant.email_templates_json or {}
+    activation = templates.get("teacher_activation") or {}
+    return {
+        "teacher_activation": {
+            "subject": activation.get("subject") or "🎓 Il tuo account EduAI è stato approvato!",
+            "html": activation.get("html") or "",
+            "text": activation.get("text") or "",
+        }
+    }
+
+
+@router.put("/email-templates")
+async def update_email_templates(
+    payload: dict,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    admin: Annotated[User, Depends(get_current_admin)],
+):
+    tenant = (await db.execute(select(Tenant).where(Tenant.id == admin.tenant_id))).scalar_one_or_none()
+    if not tenant:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tenant not found")
+
+    incoming_activation = (payload.get("teacher_activation") or {}) if isinstance(payload, dict) else {}
+    subject = str(incoming_activation.get("subject") or "").strip()
+    html = str(incoming_activation.get("html") or "")
+    text = str(incoming_activation.get("text") or "")
+    if not subject:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Subject is required")
+
+    templates = tenant.email_templates_json or {}
+    templates["teacher_activation"] = {
+        "subject": subject,
+        "html": html,
+        "text": text,
+    }
+    tenant.email_templates_json = templates
+    await db.commit()
+
+    return {
+        "teacher_activation": templates["teacher_activation"]
     }

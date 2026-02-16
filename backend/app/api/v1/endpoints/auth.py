@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Response
+from fastapi import APIRouter, Depends, HTTPException, status, Response, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from typing import Annotated
@@ -11,6 +11,7 @@ import unicodedata
 from app.core.database import get_db
 from app.core.security import verify_password, create_access_token, get_password_hash
 from app.core.config import settings
+from app.core.url_utils import resolve_frontend_url
 from app.models.user import User, TeacherRequest, ActivationToken
 from app.models.tenant import Tenant
 from app.models.enums import UserRole, TeacherRequestStatus
@@ -101,6 +102,7 @@ async def logout(response: Response):
 @router.post("/teachers/request", response_model=TeacherRequestResponse)
 async def request_teacher_account(
     request: TeacherRequestCreate,
+    http_request: Request,
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
     # Resolve tenant by explicit slug, school name, or default.
@@ -213,12 +215,16 @@ async def request_teacher_account(
     await db.refresh(teacher_request)
 
     if is_auto_approved:
-        activation_link = f"{settings.FRONTEND_URL}/activate/{activation_token}"
+        templates = (tenant.email_templates_json or {}).get("teacher_activation", {})
+        activation_link = f"{resolve_frontend_url(http_request.headers.get('origin'))}/activate/{activation_token}"
         await email_service.send_teacher_activation_email(
             to_email=request.email,
             first_name=request.first_name,
             last_name=request.last_name,
             activation_link=activation_link,
+            subject_template=templates.get("subject"),
+            html_template=templates.get("html"),
+            text_template=templates.get("text"),
         )
     
     return TeacherRequestResponse(

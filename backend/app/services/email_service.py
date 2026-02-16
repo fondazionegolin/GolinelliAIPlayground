@@ -64,11 +64,22 @@ class EmailService:
         first_name: str,
         last_name: str,
         activation_link: str,
+        subject_template: Optional[str] = None,
+        html_template: Optional[str] = None,
+        text_template: Optional[str] = None,
     ) -> bool:
         """Send activation email to approved teacher"""
-        subject = "🎓 Il tuo account EduAI è stato approvato!"
-        
-        html_content = f"""
+        context = {
+            "first_name": first_name or "",
+            "last_name": last_name or "",
+            "activation_link": activation_link,
+        }
+        subject = self._render_template(
+            subject_template or "🎓 Il tuo account EduAI è stato approvato!",
+            context,
+        )
+
+        default_html = """
 <!DOCTYPE html>
 <html>
 <head>
@@ -111,8 +122,7 @@ class EmailService:
 </body>
 </html>
 """
-        
-        text_content = f"""
+        default_text = """
 Benvenuto/a, {first_name}!
 
 Siamo lieti di informarti che la tua richiesta di account docente è stata APPROVATA.
@@ -129,8 +139,19 @@ Una volta attivato l'account, ti consigliamo di cambiare la password temporanea 
 Questa email è stata inviata automaticamente da EduAI Platform.
 Se non hai richiesto questo account, puoi ignorare questa email.
 """
-        
+
+        html_content = self._render_template(html_template or default_html, context)
+        text_content = self._render_template(text_template or default_text, context)
+
         return await self.send_email(to_email, subject, html_content, text_content)
+
+    @staticmethod
+    def _render_template(template: str, context: dict) -> str:
+        class _SafeDict(dict):
+            def __missing__(self, key):
+                return "{" + key + "}"
+
+        return template.format_map(_SafeDict(**context))
 
     async def send_invitation_email(
         self,

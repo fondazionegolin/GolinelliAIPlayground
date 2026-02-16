@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, desc, or_, and_
 from typing import Annotated, List, Optional
@@ -10,10 +10,12 @@ import secrets
 
 from app.core.database import get_db
 from app.core.config import settings
+from app.core.url_utils import resolve_frontend_url
 from app.core.security import get_password_hash
 from app.api.deps import get_current_admin
 from app.services.email_service import email_service
 from app.models.user import User, ActivationToken
+from app.models.tenant import Tenant
 from app.models.invitation import PlatformInvitation
 from app.models.credits import CreditLimit, CreditTransaction, CreditRequest
 from app.models.enums import LimitLevel, CreditRequestStatus, InvitationStatus, CreditTransactionType, UserRole
@@ -25,6 +27,18 @@ from app.schemas.credits import (
 )
 
 router = APIRouter()
+
+
+def _tenant_activation_templates(tenant: Tenant | None) -> dict:
+    if not tenant:
+        return {}
+    templates = tenant.email_templates_json or {}
+    activation = templates.get("teacher_activation") or {}
+    return {
+        "subject_template": activation.get("subject"),
+        "html_template": activation.get("html"),
+        "text_template": activation.get("text"),
+    }
 
 # ==================== ANALYTICS ====================
 
@@ -225,6 +239,7 @@ async def review_credit_request(
 @router.post("/invitations", response_model=PlatformInvitationResponse)
 async def invite_teacher(
     invitation: PlatformInvitationCreate,
+    request: Request,
     db: Annotated[AsyncSession, Depends(get_db)],
     admin: Annotated[User, Depends(get_current_admin)],
 ):
@@ -282,18 +297,24 @@ async def invite_teacher(
     await db.commit()
     await db.refresh(inv)
 
-    activation_link = f"{settings.FRONTEND_URL}/activate/{activation_token}"
+    tenant = (await db.execute(select(Tenant).where(Tenant.id == admin.tenant_id))).scalar_one_or_none()
+    templates = _tenant_activation_templates(tenant)
+    activation_link = f"{resolve_frontend_url(request.headers.get('origin'))}/activate/{activation_token}"
     await email_service.send_teacher_activation_email(
         to_email=invitation.email,
         first_name=invitation.first_name or "Docente",
         last_name=invitation.last_name or "",
         activation_link=activation_link,
+        subject_template=templates.get("subject_template"),
+        html_template=templates.get("html_template"),
+        text_template=templates.get("text_template"),
     )
     
     return inv
 
 @router.post("/invitations/bulk", response_model=List[PlatformInvitationResponse])
 async def bulk_invite_teachers(
+    request: Request,
     db: Annotated[AsyncSession, Depends(get_db)],
     admin: Annotated[User, Depends(get_current_admin)],
     file: UploadFile = File(...),
@@ -357,15 +378,21 @@ async def bulk_invite_teachers(
     
     if invitations:
         await db.commit()
+        tenant = (await db.execute(select(Tenant).where(Tenant.id == admin.tenant_id))).scalar_one_or_none()
+        templates = _tenant_activation_templates(tenant)
+        base_frontend = resolve_frontend_url(request.headers.get("origin"))
         for inv, activation_token in invitations:
             await db.refresh(inv)
             try:
-                activation_link = f"{settings.FRONTEND_URL}/activate/{activation_token}"
+                activation_link = f"{base_frontend}/activate/{activation_token}"
                 await email_service.send_teacher_activation_email(
                     to_email=inv.email,
                     first_name=inv.first_name or "Docente",
                     last_name=inv.last_name or "",
                     activation_link=activation_link,
+                    subject_template=templates.get("subject_template"),
+                    html_template=templates.get("html_template"),
+                    text_template=templates.get("text_template"),
                 )
             except Exception as e:
                 # logger.error(f"Failed to send email to {inv.email}: {e}")

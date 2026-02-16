@@ -1,12 +1,15 @@
 import type { ComponentType } from 'react'
-import { useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useEffect, useState } from 'react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { adminApi } from '@/lib/api'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Textarea } from '@/components/ui/textarea'
+import { useToast } from '@/components/ui/use-toast'
 import {
   ResponsiveContainer,
   LineChart,
@@ -63,7 +66,16 @@ type RealtimeStatus = {
   recent_students_2m: number
   recent_active_teachers_10m: number
   sessions_active: Array<{ session_id: string; online_students: number }>
+  users_online: Array<{ sid: string; type: 'teacher' | 'student'; id: string; name: string; email?: string | null; session_id?: string }>
   generated_at: string
+}
+
+type EmailTemplatesPayload = {
+  teacher_activation: {
+    subject: string
+    html: string
+    text: string
+  }
 }
 
 const formatCurrency = (value: number) => `€ ${Number(value || 0).toFixed(2)}`
@@ -78,6 +90,8 @@ const formatDateTime = (raw?: string | null) => {
 export default function AdminControlCenterPage() {
   const [days, setDays] = useState(30)
   const [activeTab, setActiveTab] = useState('dashboard')
+  const queryClient = useQueryClient()
+  const { toast } = useToast()
 
   const { data: overview } = useQuery<OverviewData>({
     queryKey: ['admin-dashboard-overview', days],
@@ -99,6 +113,44 @@ export default function AdminControlCenterPage() {
     queryFn: async () => (await adminApi.getRealtimeStatus()).data,
     refetchInterval: 3000,
   })
+
+  const { data: emailTemplates } = useQuery<EmailTemplatesPayload>({
+    queryKey: ['admin-email-templates'],
+    queryFn: async () => (await adminApi.getEmailTemplates()).data,
+  })
+
+  const [emailSubject, setEmailSubject] = useState('')
+  const [emailHtml, setEmailHtml] = useState('')
+  const [emailText, setEmailText] = useState('')
+
+  const saveTemplatesMutation = useMutation({
+    mutationFn: async () =>
+      adminApi.updateEmailTemplates({
+        teacher_activation: {
+          subject: emailSubject,
+          html: emailHtml,
+          text: emailText,
+        },
+      }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['admin-email-templates'] })
+      toast({ title: 'Template email aggiornati' })
+    },
+    onError: (error: any) => {
+      toast({
+        variant: 'destructive',
+        title: 'Errore salvataggio template',
+        description: error?.response?.data?.detail || 'Impossibile salvare',
+      })
+    },
+  })
+
+  useEffect(() => {
+    if (!emailTemplates) return
+    setEmailSubject(emailTemplates.teacher_activation.subject || '')
+    setEmailHtml(emailTemplates.teacher_activation.html || '')
+    setEmailText(emailTemplates.teacher_activation.text || '')
+  }, [emailTemplates])
 
   const summary = overview?.summary
   const dailyHistory = overview?.daily_history || []
@@ -132,10 +184,11 @@ export default function AdminControlCenterPage() {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-        <TabsList className="grid h-auto grid-cols-1 gap-2 bg-transparent p-0 md:grid-cols-3">
+        <TabsList className="grid h-auto grid-cols-1 gap-2 bg-transparent p-0 md:grid-cols-4">
           <TabsTrigger value="dashboard" className="border border-slate-300 bg-white data-[state=active]:bg-slate-900 data-[state=active]:text-white">Cruscotto</TabsTrigger>
           <TabsTrigger value="teachers" className="border border-slate-300 bg-white data-[state=active]:bg-slate-900 data-[state=active]:text-white">Docenti</TabsTrigger>
           <TabsTrigger value="costs" className="border border-slate-300 bg-white data-[state=active]:bg-slate-900 data-[state=active]:text-white">Costi & Consumi</TabsTrigger>
+          <TabsTrigger value="emails" className="border border-slate-300 bg-white data-[state=active]:bg-slate-900 data-[state=active]:text-white">Email</TabsTrigger>
         </TabsList>
 
         <TabsContent value="dashboard" className="space-y-4">
@@ -183,6 +236,43 @@ export default function AdminControlCenterPage() {
               </CardContent>
             </Card>
           </div>
+
+          <Card className="border-slate-300">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base">Utenti connessi in realtime</CardTitle>
+              <CardDescription className="text-xs">Elenco live socket (docenti e studenti)</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[900px] text-sm">
+                  <thead className="text-left text-xs uppercase text-slate-600">
+                    <tr>
+                      <th className="pb-2">Tipo</th>
+                      <th className="pb-2">Nome</th>
+                      <th className="pb-2">Email</th>
+                      <th className="pb-2">Sessione</th>
+                      <th className="pb-2">Socket ID</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(realtime?.users_online || []).map((u) => (
+                      <tr key={u.sid} className="border-t border-slate-200">
+                        <td className="py-2">
+                          <Badge variant={u.type === 'teacher' ? 'default' : 'secondary'}>
+                            {u.type === 'teacher' ? 'docente' : 'studente'}
+                          </Badge>
+                        </td>
+                        <td className="py-2">{u.name}</td>
+                        <td className="py-2 text-xs text-slate-600">{u.email || 'N/D'}</td>
+                        <td className="py-2 font-mono text-xs">{u.session_id || 'N/D'}</td>
+                        <td className="py-2 font-mono text-xs">{u.sid.slice(0, 12)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </CardContent>
+          </Card>
         </TabsContent>
 
         <TabsContent value="teachers">
@@ -289,6 +379,36 @@ export default function AdminControlCenterPage() {
                     ))}
                   </tbody>
                 </table>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="emails" className="space-y-4">
+          <Card className="border-slate-300">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base">Template Email Automatiche</CardTitle>
+              <CardDescription className="text-xs">
+                Modifica contenuti di invio account. Variabili disponibili: {'{first_name}'}, {'{last_name}'}, {'{activation_link}'}.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="space-y-1.5">
+                <Label>Oggetto</Label>
+                <Input value={emailSubject} onChange={(e) => setEmailSubject(e.target.value)} />
+              </div>
+              <div className="space-y-1.5">
+                <Label>HTML (supporta CSS inline e blocchi style)</Label>
+                <Textarea className="min-h-[260px] font-mono text-xs" value={emailHtml} onChange={(e) => setEmailHtml(e.target.value)} />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Testo piano (fallback)</Label>
+                <Textarea className="min-h-[140px] font-mono text-xs" value={emailText} onChange={(e) => setEmailText(e.target.value)} />
+              </div>
+              <div className="flex justify-end">
+                <Button onClick={() => saveTemplatesMutation.mutate()} disabled={saveTemplatesMutation.isPending || !emailSubject.trim()}>
+                  {saveTemplatesMutation.isPending ? 'Salvataggio...' : 'Salva Template'}
+                </Button>
               </div>
             </CardContent>
           </Card>

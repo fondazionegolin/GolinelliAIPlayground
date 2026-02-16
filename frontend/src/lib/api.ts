@@ -101,6 +101,10 @@ export const adminApi = {
     api.get('/admin/teachers/status', { params: { days } }),
   getRealtimeStatus: () =>
     api.get('/admin/realtime/status'),
+  getEmailTemplates: () =>
+    api.get('/admin/email-templates'),
+  updateEmailTemplates: (data: { teacher_activation: { subject: string; html: string; text: string } }) =>
+    api.put('/admin/email-templates', data),
 }
 
 export const teacherApi = {
