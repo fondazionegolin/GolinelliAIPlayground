@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
+from sqlalchemy import select, func, desc
 from typing import Annotated, Optional
 from datetime import datetime, timedelta, timezone
 from uuid import UUID
@@ -13,6 +13,7 @@ from app.core.url_utils import resolve_frontend_url
 from app.api.deps import get_current_admin
 from app.models.user import User, TeacherRequest, ActivationToken
 from app.models.tenant import Tenant
+from app.models.template_version import TenantTemplateVersion
 from app.models.session import Session, SessionStudent
 from app.models.llm import ConversationMessage, TeacherConversation, TeacherConversationMessage
 from app.models.credits import CreditTransaction
@@ -89,6 +90,36 @@ def _template_args(catalog: dict, template_key: str) -> dict:
         "html_template": template.get("html"),
         "text_template": template.get("text"),
     }
+
+
+async def _save_template_version(
+    db: AsyncSession,
+    tenant_id: UUID,
+    template_key: str,
+    subject: str,
+    html: str,
+    text: str,
+    updated_by_id: UUID | None,
+) -> None:
+    max_version = (
+        await db.execute(
+            select(func.coalesce(func.max(TenantTemplateVersion.version), 0)).where(
+                TenantTemplateVersion.tenant_id == tenant_id,
+                TenantTemplateVersion.template_key == template_key,
+            )
+        )
+    ).scalar() or 0
+    db.add(
+        TenantTemplateVersion(
+            tenant_id=tenant_id,
+            template_key=template_key,
+            version=int(max_version) + 1,
+            subject=subject,
+            html=html,
+            text=text,
+            updated_by_id=updated_by_id,
+        )
+    )
 
 
 @router.get("/tenants", response_model=list[TenantResponse])
@@ -806,6 +837,21 @@ async def update_email_templates(
         text = str(incoming.get("text", defaults.get("text", "")))
         if key != "beta_disclaimer" and not subject:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Subject is required for {key}")
+        current = templates.get(key) or {}
+        if (
+            str(current.get("subject", "")) != subject
+            or str(current.get("html", "")) != html
+            or str(current.get("text", "")) != text
+        ):
+            await _save_template_version(
+                db=db,
+                tenant_id=tenant.id,
+                template_key=key,
+                subject=subject,
+                html=html,
+                text=text,
+                updated_by_id=admin.id,
+            )
         templates[key] = {"subject": subject, "html": html, "text": text}
 
     tenant.email_templates_json = templates
@@ -813,3 +859,86 @@ async def update_email_templates(
 
     await db.refresh(tenant)
     return _catalog_with_tenant_values(tenant)
+
+
+@router.post("/email-templates/{template_key}/reset-default")
+async def reset_email_template_to_default(
+    template_key: str,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    admin: Annotated[User, Depends(get_current_admin)],
+):
+    if template_key not in DEFAULT_TEMPLATE_CATALOG:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Template not found")
+
+    tenant = (await db.execute(select(Tenant).where(Tenant.id == admin.tenant_id))).scalar_one_or_none()
+    if not tenant:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tenant not found")
+
+    defaults = DEFAULT_TEMPLATE_CATALOG[template_key]
+    subject = str(defaults.get("subject", ""))
+    html = str(defaults.get("html", ""))
+    text = str(defaults.get("text", ""))
+
+    templates = tenant.email_templates_json or {}
+    await _save_template_version(
+        db=db,
+        tenant_id=tenant.id,
+        template_key=template_key,
+        subject=subject,
+        html=html,
+        text=text,
+        updated_by_id=admin.id,
+    )
+    templates[template_key] = {"subject": subject, "html": html, "text": text}
+    tenant.email_templates_json = templates
+    await db.commit()
+    await db.refresh(tenant)
+    return _catalog_with_tenant_values(tenant)
+
+
+@router.get("/email-templates/history")
+async def list_email_template_history(
+    template_key: str,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    admin: Annotated[User, Depends(get_current_admin)],
+    limit: int = Query(20, ge=1, le=200),
+):
+    if template_key not in DEFAULT_TEMPLATE_CATALOG:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Template not found")
+
+    rows = (
+        await db.execute(
+            select(TenantTemplateVersion, User)
+            .outerjoin(User, User.id == TenantTemplateVersion.updated_by_id)
+            .where(
+                TenantTemplateVersion.tenant_id == admin.tenant_id,
+                TenantTemplateVersion.template_key == template_key,
+            )
+            .order_by(desc(TenantTemplateVersion.version))
+            .limit(limit)
+        )
+    ).all()
+
+    return {
+        "template_key": template_key,
+        "items": [
+            {
+                "id": str(version.id),
+                "version": int(version.version),
+                "subject": version.subject or "",
+                "html": version.html or "",
+                "text": version.text or "",
+                "created_at": version.created_at.isoformat() if version.created_at else None,
+                "updated_by": {
+                    "id": str(user.id) if user else None,
+                    "email": user.email if user else None,
+                    "name": (
+                        " ".join([p for p in [user.first_name if user else None, user.last_name if user else None] if p]).strip()
+                        if user
+                        else None
+                    ),
+                },
+            }
+            for version, user in rows
+        ],
+    }

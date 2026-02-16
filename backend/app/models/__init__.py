@@ -12,6 +12,7 @@ from app.models.invitation import ClassTeacher, ClassInvitation, SessionTeacher,
 from app.models.teacherbot import Teacherbot, TeacherbotStatus, TeacherbotPublication, TeacherbotConversation, TeacherbotMessage
 from app.models.document_draft import DocumentDraft
 from app.models.session_canvas import SessionCanvas
+from app.models.template_version import TenantTemplateVersion
 
 __all__ = [
     "Tenant",
@@ -56,4 +57,5 @@ __all__ = [
     "TeacherbotMessage",
     "DocumentDraft",
     "SessionCanvas",
+    "TenantTemplateVersion",
 ]

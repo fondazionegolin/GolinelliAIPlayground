@@ -107,6 +107,10 @@ export const adminApi = {
     api.get('/admin/email-templates'),
   updateEmailTemplates: (data: Record<string, { subject: string; html: string; text: string }>) =>
     api.put('/admin/email-templates', data),
+  resetEmailTemplate: (templateKey: string) =>
+    api.post(`/admin/email-templates/${templateKey}/reset-default`),
+  getEmailTemplateHistory: (templateKey: string, limit = 20) =>
+    api.get('/admin/email-templates/history', { params: { template_key: templateKey, limit } }),
 }
 
 export const teacherApi = {

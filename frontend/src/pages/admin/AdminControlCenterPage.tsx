@@ -80,6 +80,18 @@ type TemplateEntry = {
 }
 
 type EmailTemplatesPayload = Record<string, TemplateEntry>
+type TemplateHistoryResponse = {
+  template_key: string
+  items: Array<{
+    id: string
+    version: number
+    subject: string
+    html: string
+    text: string
+    created_at?: string | null
+    updated_by?: { id?: string | null; email?: string | null; name?: string | null }
+  }>
+}
 
 const formatCurrency = (value: number) => `€ ${Number(value || 0).toFixed(2)}`
 
@@ -124,12 +136,18 @@ export default function AdminControlCenterPage() {
 
   const [templateKey, setTemplateKey] = useState('teacher_activation')
   const [templateDrafts, setTemplateDrafts] = useState<EmailTemplatesPayload>({})
+  const { data: templateHistory } = useQuery<TemplateHistoryResponse>({
+    queryKey: ['admin-email-templates-history', templateKey],
+    queryFn: async () => (await adminApi.getEmailTemplateHistory(templateKey, 15)).data,
+    enabled: Boolean(templateKey),
+  })
 
   const saveTemplatesMutation = useMutation({
     mutationFn: async () =>
       adminApi.updateEmailTemplates(templateDrafts as any),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['admin-email-templates'] })
+      await queryClient.invalidateQueries({ queryKey: ['admin-email-templates-history', templateKey] })
       toast({ title: 'Template email aggiornati' })
     },
     onError: (error: any) => {
@@ -137,6 +155,21 @@ export default function AdminControlCenterPage() {
         variant: 'destructive',
         title: 'Errore salvataggio template',
         description: error?.response?.data?.detail || 'Impossibile salvare',
+      })
+    },
+  })
+  const resetTemplateMutation = useMutation({
+    mutationFn: async () => adminApi.resetEmailTemplate(templateKey),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['admin-email-templates'] })
+      await queryClient.invalidateQueries({ queryKey: ['admin-email-templates-history', templateKey] })
+      toast({ title: 'Template ripristinato ai valori predefiniti' })
+    },
+    onError: (error: any) => {
+      toast({
+        variant: 'destructive',
+        title: 'Errore ripristino',
+        description: error?.response?.data?.detail || 'Impossibile ripristinare',
       })
     },
   })
@@ -426,27 +459,63 @@ export default function AdminControlCenterPage() {
                   </p>
                 ) : null}
               </div>
-              <div className="space-y-1.5">
-                <Label>Oggetto</Label>
-                <Input value={selectedTemplate?.subject || ''} onChange={(e) => updateSelectedTemplate({ subject: e.target.value })} />
+              <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+                <div className="space-y-3">
+                  <div className="space-y-1.5">
+                    <Label>Oggetto</Label>
+                    <Input value={selectedTemplate?.subject || ''} onChange={(e) => updateSelectedTemplate({ subject: e.target.value })} />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>HTML (supporta CSS inline e blocchi style)</Label>
+                    <Textarea
+                      className="min-h-[260px] font-mono text-xs"
+                      value={selectedTemplate?.html || ''}
+                      onChange={(e) => updateSelectedTemplate({ html: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Testo piano (fallback)</Label>
+                    <Textarea
+                      className="min-h-[140px] font-mono text-xs"
+                      value={selectedTemplate?.text || ''}
+                      onChange={(e) => updateSelectedTemplate({ text: e.target.value })}
+                    />
+                  </div>
+                </div>
+                <div className="space-y-3">
+                  <div className="rounded-md border border-slate-300 bg-white">
+                    <div className="border-b border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700">Anteprima live</div>
+                    <div className="max-h-[420px] overflow-auto p-3">
+                      <div
+                        className="prose prose-sm max-w-none"
+                        dangerouslySetInnerHTML={{ __html: selectedTemplate?.html || '<p>Nessun contenuto HTML</p>' }}
+                      />
+                    </div>
+                  </div>
+                  <div className="rounded-md border border-slate-300 bg-slate-50 p-3">
+                    <p className="mb-2 text-xs font-semibold text-slate-700">Storico versioni</p>
+                    <div className="max-h-[240px] space-y-1.5 overflow-auto">
+                      {(templateHistory?.items || []).map((item) => (
+                        <div key={item.id} className="rounded border border-slate-200 bg-white px-2 py-1.5">
+                          <div className="flex items-center justify-between text-xs">
+                            <span className="font-semibold">v{item.version}</span>
+                            <span className="text-slate-500">{formatDateTime(item.created_at)}</span>
+                          </div>
+                          <p className="truncate text-[11px] text-slate-600">{item.updated_by?.email || item.updated_by?.name || 'sistema'}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
               </div>
-              <div className="space-y-1.5">
-                <Label>HTML (supporta CSS inline e blocchi style)</Label>
-                <Textarea
-                  className="min-h-[260px] font-mono text-xs"
-                  value={selectedTemplate?.html || ''}
-                  onChange={(e) => updateSelectedTemplate({ html: e.target.value })}
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label>Testo piano (fallback)</Label>
-                <Textarea
-                  className="min-h-[140px] font-mono text-xs"
-                  value={selectedTemplate?.text || ''}
-                  onChange={(e) => updateSelectedTemplate({ text: e.target.value })}
-                />
-              </div>
-              <div className="flex justify-end">
+              <div className="flex justify-between gap-2">
+                <Button
+                  variant="outline"
+                  onClick={() => resetTemplateMutation.mutate()}
+                  disabled={resetTemplateMutation.isPending}
+                >
+                  {resetTemplateMutation.isPending ? 'Ripristino...' : 'Ripristina Default'}
+                </Button>
                 <Button
                   onClick={() => saveTemplatesMutation.mutate()}
                   disabled={saveTemplatesMutation.isPending || (templateKey !== 'beta_disclaimer' && !selectedTemplate?.subject?.trim())}

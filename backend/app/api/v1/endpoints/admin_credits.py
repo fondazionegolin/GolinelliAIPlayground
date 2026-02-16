@@ -29,11 +29,11 @@ from app.schemas.credits import (
 router = APIRouter()
 
 
-def _tenant_activation_templates(tenant: Tenant | None) -> dict:
+def _tenant_template_args(tenant: Tenant | None, template_key: str) -> dict:
     if not tenant:
         return {}
     templates = tenant.email_templates_json or {}
-    activation = templates.get("teacher_activation") or {}
+    activation = templates.get(template_key) or {}
     return {
         "subject_template": activation.get("subject"),
         "html_template": activation.get("html"),
@@ -298,13 +298,12 @@ async def invite_teacher(
     await db.refresh(inv)
 
     tenant = (await db.execute(select(Tenant).where(Tenant.id == admin.tenant_id))).scalar_one_or_none()
-    templates = _tenant_activation_templates(tenant)
+    templates = _tenant_template_args(tenant, "teacher_invitation")
     activation_link = f"{resolve_frontend_url(request.headers.get('origin'))}/activate/{activation_token}"
-    await email_service.send_teacher_activation_email(
+    await email_service.send_invitation_email(
         to_email=invitation.email,
         first_name=invitation.first_name or "Docente",
-        last_name=invitation.last_name or "",
-        activation_link=activation_link,
+        link=activation_link,
         subject_template=templates.get("subject_template"),
         html_template=templates.get("html_template"),
         text_template=templates.get("text_template"),
@@ -379,17 +378,16 @@ async def bulk_invite_teachers(
     if invitations:
         await db.commit()
         tenant = (await db.execute(select(Tenant).where(Tenant.id == admin.tenant_id))).scalar_one_or_none()
-        templates = _tenant_activation_templates(tenant)
+        templates = _tenant_template_args(tenant, "teacher_invitation")
         base_frontend = resolve_frontend_url(request.headers.get("origin"))
         for inv, activation_token in invitations:
             await db.refresh(inv)
             try:
                 activation_link = f"{base_frontend}/activate/{activation_token}"
-                await email_service.send_teacher_activation_email(
+                await email_service.send_invitation_email(
                     to_email=inv.email,
                     first_name=inv.first_name or "Docente",
-                    last_name=inv.last_name or "",
-                    activation_link=activation_link,
+                    link=activation_link,
                     subject_template=templates.get("subject_template"),
                     html_template=templates.get("html_template"),
                     text_template=templates.get("text_template"),
