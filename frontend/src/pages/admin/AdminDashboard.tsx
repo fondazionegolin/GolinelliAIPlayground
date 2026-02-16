@@ -2,23 +2,21 @@ import { Routes, Route, Link, useLocation } from 'react-router-dom'
 import { useAuthStore } from '@/stores/auth'
 import { Button } from '@/components/ui/button'
 import {
-  Building2, Users, BarChart3, LogOut,
-  LayoutDashboard, UserCheck, UserCog
+  Building2, LogOut,
+  LayoutDashboard, UserCheck, UserCog, Gauge
 } from 'lucide-react'
 import TenantsPage from './TenantsPage'
 import TeacherRequestsPage from './TeacherRequestsPage'
 import UsersPage from './UsersPage'
-import UsagePage from './UsagePage'
-import CreditsPage from './CreditsPage'
+import AdminControlCenterPage from './AdminControlCenterPage'
 import { AppBackground } from '@/components/ui/AppBackground'
 
 const navItems = [
-  { path: '/admin', label: 'Dashboard', icon: LayoutDashboard, exact: true },
-  { path: '/admin/tenants', label: 'Tenant', icon: Building2 },
+  { path: '/admin', label: 'Cruscotto', icon: Gauge, exact: true },
+  { path: '/admin/overview', label: 'Osservabilita', icon: LayoutDashboard },
   { path: '/admin/teacher-requests', label: 'Richieste Docenti', icon: UserCheck },
   { path: '/admin/users', label: 'Utenti', icon: UserCog },
-  { path: '/admin/usage', label: 'Utilizzo', icon: BarChart3 },
-  { path: '/admin/credits', label: 'Crediti & Costi', icon: BarChart3 }, // Reusing icon or better 'Coins' if available
+  { path: '/admin/tenants', label: 'Tenant', icon: Building2 },
 ]
 
 export default function AdminDashboard() {
@@ -61,45 +59,15 @@ export default function AdminDashboard() {
 
       <main className="flex-1 p-8">
         <Routes>
-          <Route index element={<AdminHome />} />
+          <Route index element={<AdminControlCenterPage />} />
+          <Route path="overview" element={<AdminControlCenterPage />} />
           <Route path="tenants" element={<TenantsPage />} />
           <Route path="teacher-requests" element={<TeacherRequestsPage />} />
           <Route path="users" element={<UsersPage />} />
-          <Route path="usage" element={<UsagePage />} />
-          <Route path="credits" element={<CreditsPage />} />
+          <Route path="usage" element={<AdminControlCenterPage />} />
+          <Route path="credits" element={<AdminControlCenterPage />} />
         </Routes>
       </main>
     </AppBackground>
-  )
-}
-
-function AdminHome() {
-  return (
-    <div>
-      <h2 className="text-2xl font-bold mb-6">Dashboard Admin</h2>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <Link to="/admin/tenants">
-          <div className="bg-white p-6 rounded-lg border hover:shadow-md transition-shadow">
-            <Building2 className="h-8 w-8 text-primary mb-3" />
-            <h3 className="font-semibold">Gestione Tenant</h3>
-            <p className="text-sm text-muted-foreground">Crea e gestisci le scuole</p>
-          </div>
-        </Link>
-        <Link to="/admin/teacher-requests">
-          <div className="bg-white p-6 rounded-lg border hover:shadow-md transition-shadow">
-            <Users className="h-8 w-8 text-primary mb-3" />
-            <h3 className="font-semibold">Richieste Docenti</h3>
-            <p className="text-sm text-muted-foreground">Approva nuovi docenti</p>
-          </div>
-        </Link>
-        <Link to="/admin/usage">
-          <div className="bg-white p-6 rounded-lg border hover:shadow-md transition-shadow">
-            <BarChart3 className="h-8 w-8 text-primary mb-3" />
-            <h3 className="font-semibold">Statistiche</h3>
-            <p className="text-sm text-muted-foreground">Monitora l'utilizzo</p>
-          </div>
-        </Link>
-      </div>
-    </div>
   )
 }

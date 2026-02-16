@@ -14,6 +14,8 @@ from app.models.user import User, TeacherRequest, ActivationToken
 from app.models.tenant import Tenant
 from app.models.session import Session, SessionStudent
 from app.models.llm import ConversationMessage
+from app.models.credits import CreditTransaction
+from app.models.invitation import PlatformInvitation
 from app.models.enums import UserRole, TeacherRequestStatus, TenantStatus
 from app.schemas.tenant import TenantCreate, TenantUpdate, TenantResponse
 from app.schemas.auth import TeacherRequestResponse
@@ -308,4 +310,285 @@ async def get_usage_stats(
         "total_sessions": total_sessions,
         "total_students": total_students,
         "total_llm_messages": total_messages,
+    }
+
+
+@router.get("/dashboard/overview")
+async def get_dashboard_overview(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    admin: Annotated[User, Depends(get_current_admin)],
+    days: int = Query(30, ge=1, le=180),
+):
+    start_at = datetime.now(timezone.utc) - timedelta(days=days)
+
+    sessions_result = await db.execute(
+        select(func.count(Session.id)).where(Session.tenant_id == admin.tenant_id)
+    )
+    students_result = await db.execute(
+        select(func.count(SessionStudent.id)).where(SessionStudent.tenant_id == admin.tenant_id)
+    )
+    messages_result = await db.execute(
+        select(func.count(ConversationMessage.id)).where(
+            ConversationMessage.tenant_id == admin.tenant_id,
+            ConversationMessage.created_at >= start_at,
+        )
+    )
+
+    costs_result = await db.execute(
+        select(
+            func.coalesce(func.sum(CreditTransaction.cost), 0.0),
+            func.count(CreditTransaction.id),
+        ).where(
+            CreditTransaction.tenant_id == admin.tenant_id,
+            CreditTransaction.timestamp >= start_at,
+        )
+    )
+    total_cost, total_api_calls = costs_result.one()
+
+    provider_rows = (
+        await db.execute(
+            select(
+                CreditTransaction.provider,
+                func.coalesce(func.sum(CreditTransaction.cost), 0.0),
+            )
+            .where(
+                CreditTransaction.tenant_id == admin.tenant_id,
+                CreditTransaction.timestamp >= start_at,
+            )
+            .group_by(CreditTransaction.provider)
+            .order_by(func.coalesce(func.sum(CreditTransaction.cost), 0.0).desc())
+        )
+    ).all()
+    model_rows = (
+        await db.execute(
+            select(
+                CreditTransaction.model,
+                func.coalesce(func.sum(CreditTransaction.cost), 0.0),
+            )
+            .where(
+                CreditTransaction.tenant_id == admin.tenant_id,
+                CreditTransaction.timestamp >= start_at,
+            )
+            .group_by(CreditTransaction.model)
+            .order_by(func.coalesce(func.sum(CreditTransaction.cost), 0.0).desc())
+        )
+    ).all()
+
+    daily_rows = (
+        await db.execute(
+            select(
+                func.date_trunc("day", CreditTransaction.timestamp).label("day"),
+                func.coalesce(func.sum(CreditTransaction.cost), 0.0).label("cost"),
+                func.count(CreditTransaction.id).label("calls"),
+            )
+            .where(
+                CreditTransaction.tenant_id == admin.tenant_id,
+                CreditTransaction.timestamp >= start_at,
+            )
+            .group_by("day")
+            .order_by("day")
+        )
+    ).all()
+
+    active_teachers_result = await db.execute(
+        select(func.count(func.distinct(CreditTransaction.teacher_id))).where(
+            CreditTransaction.tenant_id == admin.tenant_id,
+            CreditTransaction.timestamp >= start_at,
+            CreditTransaction.teacher_id.is_not(None),
+        )
+    )
+    pending_invites_result = await db.execute(
+        select(func.count(PlatformInvitation.id)).where(
+            PlatformInvitation.tenant_id == admin.tenant_id,
+            PlatformInvitation.status == "pending",
+        )
+    )
+
+    return {
+        "summary": {
+            "total_sessions": sessions_result.scalar() or 0,
+            "total_students": students_result.scalar() or 0,
+            "llm_messages_period": messages_result.scalar() or 0,
+            "total_cost_period": float(total_cost or 0.0),
+            "total_api_calls_period": int(total_api_calls or 0),
+            "active_teachers_period": int(active_teachers_result.scalar() or 0),
+            "pending_invites": int(pending_invites_result.scalar() or 0),
+            "period_days": days,
+        },
+        "provider_breakdown": [
+            {"provider": provider or "unknown", "cost": float(cost or 0.0)}
+            for provider, cost in provider_rows
+        ],
+        "model_breakdown": [
+            {"model": model or "unknown", "cost": float(cost or 0.0)}
+            for model, cost in model_rows
+        ],
+        "daily_history": [
+            {
+                "date": day.date().isoformat() if day else None,
+                "cost": float(cost or 0.0),
+                "calls": int(calls or 0),
+            }
+            for day, cost, calls in daily_rows
+        ],
+    }
+
+
+@router.get("/dashboard/top-consumers")
+async def get_top_consumers(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    admin: Annotated[User, Depends(get_current_admin)],
+    days: int = Query(30, ge=1, le=180),
+    limit: int = Query(25, ge=1, le=100),
+):
+    start_at = datetime.now(timezone.utc) - timedelta(days=days)
+
+    rows = (
+        await db.execute(
+            select(
+                User.id,
+                User.first_name,
+                User.last_name,
+                User.email,
+                User.institution,
+                func.coalesce(func.sum(CreditTransaction.cost), 0.0).label("cost"),
+                func.count(CreditTransaction.id).label("calls"),
+            )
+            .join(CreditTransaction, CreditTransaction.teacher_id == User.id)
+            .where(
+                User.tenant_id == admin.tenant_id,
+                User.role == UserRole.TEACHER,
+                CreditTransaction.timestamp >= start_at,
+            )
+            .group_by(User.id, User.first_name, User.last_name, User.email, User.institution)
+            .order_by(func.coalesce(func.sum(CreditTransaction.cost), 0.0).desc())
+            .limit(limit)
+        )
+    ).all()
+
+    return {
+        "items": [
+            {
+                "teacher_id": str(teacher_id),
+                "name": " ".join([p for p in [first_name, last_name] if p]).strip() or email,
+                "email": email,
+                "institution": institution,
+                "cost": float(cost or 0.0),
+                "calls": int(calls or 0),
+            }
+            for teacher_id, first_name, last_name, email, institution, cost, calls in rows
+        ]
+    }
+
+
+@router.get("/teachers/status")
+async def get_teachers_status(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    admin: Annotated[User, Depends(get_current_admin)],
+    days: int = Query(30, ge=1, le=180),
+):
+    start_at = datetime.now(timezone.utc) - timedelta(days=days)
+    teachers = (
+        await db.execute(
+            select(User).where(
+                User.tenant_id == admin.tenant_id,
+                User.role == UserRole.TEACHER,
+            ).order_by(User.created_at.desc())
+        )
+    ).scalars().all()
+
+    aggregates = (
+        await db.execute(
+            select(
+                CreditTransaction.teacher_id,
+                func.coalesce(func.sum(CreditTransaction.cost), 0.0),
+                func.count(CreditTransaction.id),
+            )
+            .where(
+                CreditTransaction.tenant_id == admin.tenant_id,
+                CreditTransaction.timestamp >= start_at,
+                CreditTransaction.teacher_id.is_not(None),
+            )
+            .group_by(CreditTransaction.teacher_id)
+        )
+    ).all()
+    by_teacher = {
+        str(teacher_id): {"cost": float(cost or 0.0), "calls": int(calls or 0)}
+        for teacher_id, cost, calls in aggregates
+    }
+
+    return {
+        "items": [
+            {
+                "id": str(t.id),
+                "first_name": t.first_name,
+                "last_name": t.last_name,
+                "email": t.email,
+                "institution": t.institution,
+                "is_verified": bool(t.is_verified),
+                "created_at": t.created_at.isoformat() if t.created_at else None,
+                "last_login_at": t.last_login_at.isoformat() if t.last_login_at else None,
+                "period_cost": by_teacher.get(str(t.id), {}).get("cost", 0.0),
+                "period_calls": by_teacher.get(str(t.id), {}).get("calls", 0),
+            }
+            for t in teachers
+        ]
+    }
+
+
+@router.get("/realtime/status")
+async def get_realtime_status(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    admin: Annotated[User, Depends(get_current_admin)],
+):
+    from app.realtime.gateway import connected_users, session_presence
+
+    session_ids = list(session_presence.keys())
+    session_ids_uuid: list[UUID] = []
+    for sid in session_ids:
+        try:
+            session_ids_uuid.append(UUID(str(sid)))
+        except Exception:
+            continue
+    allowed_session_ids: set[str] = set()
+    if session_ids_uuid:
+        result = await db.execute(
+            select(Session.id).where(
+                Session.tenant_id == admin.tenant_id,
+                Session.id.in_(session_ids_uuid),
+            )
+        )
+        allowed_session_ids = {str(session_id) for session_id in result.scalars().all()}
+
+    online_student_ids: set[str] = set()
+    sessions = []
+    for session_id, sids in session_presence.items():
+        sid_str = str(session_id)
+        if sid_str not in allowed_session_ids:
+            continue
+        session_student_ids: set[str] = set()
+        for sid in sids:
+            user = connected_users.get(sid)
+            if not user or user.get("type") != "student":
+                continue
+            student_id = str(user.get("id"))
+            session_student_ids.add(student_id)
+            online_student_ids.add(student_id)
+        sessions.append({
+            "session_id": sid_str,
+            "online_students": len(session_student_ids),
+        })
+
+    online_teacher_ids = {
+        str(user.get("id"))
+        for user in connected_users.values()
+        if user.get("type") == "teacher" and str(user.get("tenant_id")) == str(admin.tenant_id)
+    }
+
+    return {
+        "online_students": len(online_student_ids),
+        "online_teachers": len(online_teacher_ids),
+        "online_total": len(online_student_ids) + len(online_teacher_ids),
+        "sessions_active": sorted(sessions, key=lambda s: s["online_students"], reverse=True),
+        "generated_at": datetime.now(timezone.utc).isoformat(),
     }

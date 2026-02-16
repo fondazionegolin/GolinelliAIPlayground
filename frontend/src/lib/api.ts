@@ -93,6 +93,14 @@ export const adminApi = {
   deleteUser: (userId: string) =>
     api.delete(`/admin/users/${userId}`),
   getUsage: () => api.get('/admin/usage'),
+  getDashboardOverview: (days = 30) =>
+    api.get('/admin/dashboard/overview', { params: { days } }),
+  getTopConsumers: (days = 30, limit = 25) =>
+    api.get('/admin/dashboard/top-consumers', { params: { days, limit } }),
+  getTeachersStatus: (days = 30) =>
+    api.get('/admin/teachers/status', { params: { days } }),
+  getRealtimeStatus: () =>
+    api.get('/admin/realtime/status'),
 }
 
 export const teacherApi = {
