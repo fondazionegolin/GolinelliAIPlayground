@@ -44,6 +44,8 @@ export const authApi = {
   login: (email: string, password: string) =>
     api.post('/auth/login', { email, password }),
   logout: () => api.post('/auth/logout'),
+  getPublicSettings: (tenantSlug?: string) =>
+    api.get('/auth/public-settings', { params: { tenant_slug: tenantSlug } }),
   requestTeacher: (data: { email: string; first_name: string; last_name: string; tenant_slug?: string; school_name?: string }) =>
     api.post('/auth/teachers/request', data),
 }
@@ -103,7 +105,7 @@ export const adminApi = {
     api.get('/admin/realtime/status'),
   getEmailTemplates: () =>
     api.get('/admin/email-templates'),
-  updateEmailTemplates: (data: { teacher_activation: { subject: string; html: string; text: string } }) =>
+  updateEmailTemplates: (data: Record<string, { subject: string; html: string; text: string }>) =>
     api.put('/admin/email-templates', data),
 }
 

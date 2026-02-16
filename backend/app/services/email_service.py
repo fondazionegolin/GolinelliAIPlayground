@@ -156,15 +156,24 @@ Se non hai richiesto questo account, puoi ignorare questa email.
     async def send_invitation_email(
         self,
         to_email: str,
-        token: str,
+        link: str,
         first_name: Optional[str] = None,
+        subject_template: Optional[str] = None,
+        html_template: Optional[str] = None,
+        text_template: Optional[str] = None,
     ) -> bool:
         """Send platform invitation email"""
-        link = f"{settings.FRONTEND_URL}/invite?token={token}"
         name = first_name or "Docente"
-        subject = "👋 Sei stato invitato su EduAI Platform"
-        
-        html_content = f"""
+        context = {
+            "first_name": name,
+            "invitation_link": link,
+        }
+        subject = self._render_template(
+            subject_template or "👋 Sei stato invitato su EduAI Platform",
+            context,
+        )
+
+        default_html = """
 <!DOCTYPE html>
 <html>
 <head>
@@ -176,14 +185,14 @@ Se non hai richiesto questo account, puoi ignorare questa email.
     </div>
     
     <div style="background: #ffffff; padding: 30px; border: 1px solid #e0e0e0; border-top: none; border-radius: 0 0 10px 10px;">
-        <h2 style="color: #333; margin-top: 0;">Ciao, {name}!</h2>
+        <h2 style="color: #333; margin-top: 0;">Ciao, {first_name}!</h2>
         
         <p>Sei stato invitato a unirti alla piattaforma <strong>EduAI</strong> come docente.</p>
         
         <p>Per accettare l'invito e configurare il tuo account, clicca sul pulsante qui sotto:</p>
         
         <div style="text-align: center; margin: 30px 0;">
-            <a href="{link}" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 15px 30px; text-decoration: none; border-radius: 8px; font-weight: bold; display: inline-block; font-size: 16px;">
+            <a href="{invitation_link}" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 15px 30px; text-decoration: none; border-radius: 8px; font-weight: bold; display: inline-block; font-size: 16px;">
                 Accetta invito
             </a>
         </div>
@@ -199,8 +208,54 @@ Se non hai richiesto questo account, puoi ignorare questa email.
 </body>
 </html>
 """
-        text_content = f"Ciao {name},\n\nSei stato invitato su EduAI Platform.\nPer accettare, visita: {link}\n\nIl link scade tra 7 giorni."
-        
+        default_text = "Ciao {first_name},\n\nSei stato invitato su EduAI Platform.\nPer accettare, visita: {invitation_link}\n\nIl link scade tra 7 giorni."
+        html_content = self._render_template(html_template or default_html, context)
+        text_content = self._render_template(text_template or default_text, context)
+
+        return await self.send_email(to_email, subject, html_content, text_content)
+
+    async def send_password_reset_email(
+        self,
+        to_email: str,
+        first_name: str,
+        last_name: str,
+        temporary_password: str,
+        login_url: str,
+        subject_template: Optional[str] = None,
+        html_template: Optional[str] = None,
+        text_template: Optional[str] = None,
+    ) -> bool:
+        context = {
+            "first_name": first_name or "",
+            "last_name": last_name or "",
+            "temporary_password": temporary_password,
+            "login_url": login_url,
+        }
+        subject = self._render_template(
+            subject_template or "🔐 Reset password account EduAI",
+            context,
+        )
+        default_html = """
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="font-family: Arial, sans-serif; line-height: 1.5; color: #1f2937;">
+  <h2>Password aggiornata per {first_name} {last_name}</h2>
+  <p>Un amministratore ha impostato una nuova password temporanea per il tuo account.</p>
+  <p><strong>Password temporanea:</strong> <code>{temporary_password}</code></p>
+  <p>Accedi da qui: <a href="{login_url}">{login_url}</a></p>
+  <p>Per sicurezza, cambiala subito dopo il login.</p>
+</body>
+</html>
+"""
+        default_text = (
+            "Password aggiornata per {first_name} {last_name}\n\n"
+            "Password temporanea: {temporary_password}\n"
+            "Accedi da: {login_url}\n"
+            "Per sicurezza, cambiala subito dopo il login."
+        )
+        html_content = self._render_template(html_template or default_html, context)
+        text_content = self._render_template(text_template or default_text, context)
         return await self.send_email(to_email, subject, html_content, text_content)
 
 

@@ -25,13 +25,69 @@ from app.services.email_service import email_service
 router = APIRouter()
 
 
-def _tenant_activation_templates(tenant: Tenant) -> dict:
-    templates = tenant.email_templates_json or {}
-    activation = templates.get("teacher_activation") or {}
+DEFAULT_TEMPLATE_CATALOG = {
+    "teacher_activation": {
+        "label": "Messaggio di conferma utente",
+        "description": "Invio automatico quando un docente viene approvato e deve attivare l'account.",
+        "subject": "🎓 Il tuo account EduAI è stato approvato!",
+        "html": "",
+        "text": "",
+        "placeholders": ["{first_name}", "{last_name}", "{activation_link}"],
+    },
+    "teacher_invitation": {
+        "label": "Messaggio invito docente",
+        "description": "Invio automatico quando un docente riceve un invito diretto alla piattaforma.",
+        "subject": "👋 Sei stato invitato su EduAI Platform",
+        "html": "",
+        "text": "",
+        "placeholders": ["{first_name}", "{invitation_link}"],
+    },
+    "password_reset": {
+        "label": "Messaggio cambio password",
+        "description": "Invio automatico quando un admin resetta la password di un utente.",
+        "subject": "🔐 Reset password account EduAI",
+        "html": "",
+        "text": "",
+        "placeholders": ["{first_name}", "{last_name}", "{temporary_password}", "{login_url}"],
+    },
+    "beta_disclaimer": {
+        "label": "Disclaimer beta login",
+        "description": "Messaggio mostrato nella landing/login (privacy, AI Act, limiti beta, bug noti).",
+        "subject": "",
+        "html": (
+            "<p><strong>Versione beta.</strong> La piattaforma è in evoluzione continua. "
+            "Per uso scolastico con approccio Teacher-in-the-loop, senza scoring o valutazioni automatiche.</p>"
+            "<p>I dati inviati ai provider LLM sono configurati con policy di minimizzazione e retention ridotta/zero, "
+            "in base ai contratti attivi. Possono verificarsi bug o comportamenti inattesi.</p>"
+        ),
+        "text": "",
+        "placeholders": [],
+    },
+}
+
+
+def _catalog_with_tenant_values(tenant: Tenant) -> dict:
+    current = tenant.email_templates_json or {}
+    merged: dict = {}
+    for key, default_meta in DEFAULT_TEMPLATE_CATALOG.items():
+        saved = current.get(key) or {}
+        merged[key] = {
+            "label": default_meta["label"],
+            "description": default_meta["description"],
+            "placeholders": default_meta["placeholders"],
+            "subject": saved.get("subject", default_meta.get("subject", "")),
+            "html": saved.get("html", default_meta.get("html", "")),
+            "text": saved.get("text", default_meta.get("text", "")),
+        }
+    return merged
+
+
+def _template_args(catalog: dict, template_key: str) -> dict:
+    template = catalog.get(template_key) or {}
     return {
-        "subject_template": activation.get("subject"),
-        "html_template": activation.get("html"),
-        "text_template": activation.get("text"),
+        "subject_template": template.get("subject"),
+        "html_template": template.get("html"),
+        "text_template": template.get("text"),
     }
 
 
@@ -166,16 +222,16 @@ async def approve_teacher_request(
     await db.commit()
     
     tenant = (await db.execute(select(Tenant).where(Tenant.id == teacher_request.tenant_id))).scalar_one_or_none()
-    templates = _tenant_activation_templates(tenant) if tenant else {}
+    template_args = _template_args(_catalog_with_tenant_values(tenant), "teacher_activation") if tenant else {}
     activation_link = f"{resolve_frontend_url(request.headers.get('origin'))}/activate/{activation_token}"
     email_sent = await email_service.send_teacher_activation_email(
         to_email=teacher_request.email,
         first_name=teacher_request.first_name,
         last_name=teacher_request.last_name,
         activation_link=activation_link,
-        subject_template=templates.get("subject_template"),
-        html_template=templates.get("html_template"),
-        text_template=templates.get("text_template"),
+        subject_template=template_args.get("subject_template"),
+        html_template=template_args.get("html_template"),
+        text_template=template_args.get("text_template"),
     )
     
     return {
@@ -214,6 +270,7 @@ async def reject_teacher_request(
 @router.post("/users/{user_id}/reset-password")
 async def reset_user_password(
     user_id: UUID,
+    request: Request,
     db: Annotated[AsyncSession, Depends(get_db)],
     admin: Annotated[User, Depends(get_current_admin)],
 ):
@@ -229,11 +286,26 @@ async def reset_user_password(
     user.password_hash = get_password_hash(temp_password)
     
     await db.commit()
+
+    tenant = (await db.execute(select(Tenant).where(Tenant.id == admin.tenant_id))).scalar_one_or_none()
+    template_args = _template_args(_catalog_with_tenant_values(tenant), "password_reset") if tenant else {}
+    login_url = f"{resolve_frontend_url(request.headers.get('origin'))}/login"
+    email_sent = await email_service.send_password_reset_email(
+        to_email=user.email or "",
+        first_name=user.first_name or "",
+        last_name=user.last_name or "",
+        temporary_password=temp_password,
+        login_url=login_url,
+        subject_template=template_args.get("subject_template"),
+        html_template=template_args.get("html_template"),
+        text_template=template_args.get("text_template"),
+    )
     
     return {
-        "message": "Password reset successful",
+        "message": "Password reset successful" + (" and email sent" if email_sent else " (email not sent)"),
         "email": user.email,
         "temporary_password": temp_password,
+        "email_sent": email_sent,
     }
 
 
@@ -706,15 +778,7 @@ async def get_email_templates(
     tenant = (await db.execute(select(Tenant).where(Tenant.id == admin.tenant_id))).scalar_one_or_none()
     if not tenant:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tenant not found")
-    templates = tenant.email_templates_json or {}
-    activation = templates.get("teacher_activation") or {}
-    return {
-        "teacher_activation": {
-            "subject": activation.get("subject") or "🎓 Il tuo account EduAI è stato approvato!",
-            "html": activation.get("html") or "",
-            "text": activation.get("text") or "",
-        }
-    }
+    return _catalog_with_tenant_values(tenant)
 
 
 @router.put("/email-templates")
@@ -727,22 +791,25 @@ async def update_email_templates(
     if not tenant:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tenant not found")
 
-    incoming_activation = (payload.get("teacher_activation") or {}) if isinstance(payload, dict) else {}
-    subject = str(incoming_activation.get("subject") or "").strip()
-    html = str(incoming_activation.get("html") or "")
-    text = str(incoming_activation.get("text") or "")
-    if not subject:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Subject is required")
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid payload")
 
     templates = tenant.email_templates_json or {}
-    templates["teacher_activation"] = {
-        "subject": subject,
-        "html": html,
-        "text": text,
-    }
+    for key, defaults in DEFAULT_TEMPLATE_CATALOG.items():
+        incoming = payload.get(key)
+        if incoming is None:
+            continue
+        if not isinstance(incoming, dict):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Invalid template block: {key}")
+        subject = str(incoming.get("subject", defaults.get("subject", ""))).strip()
+        html = str(incoming.get("html", defaults.get("html", "")))
+        text = str(incoming.get("text", defaults.get("text", "")))
+        if key != "beta_disclaimer" and not subject:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Subject is required for {key}")
+        templates[key] = {"subject": subject, "html": html, "text": text}
+
     tenant.email_templates_json = templates
     await db.commit()
 
-    return {
-        "teacher_activation": templates["teacher_activation"]
-    }
+    await db.refresh(tenant)
+    return _catalog_with_tenant_values(tenant)

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
+import { useQuery } from '@tanstack/react-query'
 import {
   BrainCircuit,
   Eye,
@@ -122,6 +123,11 @@ export default function LoginPage() {
   const navigate = useNavigate()
   const { setUser } = useAuthStore()
   const { toast } = useToast()
+  const { data: publicSettings } = useQuery<{ beta_disclaimer_html: string }>({
+    queryKey: ['public-settings-login'],
+    queryFn: async () => (await authApi.getPublicSettings()).data,
+    staleTime: 60_000,
+  })
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -237,6 +243,14 @@ export default function LoginPage() {
             <p className="mx-auto mt-2 max-w-3xl text-sm font-medium text-slate-600 md:text-base">
               Piattaforma per fare lezione con l\'AI: strumenti multimodali, compliance normativa e laboratori data-driven.
             </p>
+          </div>
+
+          <div className="mx-auto mt-4 max-w-4xl rounded-xl border border-amber-300 bg-amber-50 p-4 text-left">
+            <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-amber-900">Beta Disclaimer</p>
+            <div
+              className="text-sm text-amber-900 [&_p]:mb-2 [&_a]:underline"
+              dangerouslySetInnerHTML={{ __html: publicSettings?.beta_disclaimer_html || '' }}
+            />
           </div>
         </div>
 

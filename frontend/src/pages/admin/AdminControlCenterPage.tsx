@@ -70,13 +70,16 @@ type RealtimeStatus = {
   generated_at: string
 }
 
-type EmailTemplatesPayload = {
-  teacher_activation: {
-    subject: string
-    html: string
-    text: string
-  }
+type TemplateEntry = {
+  label: string
+  description: string
+  placeholders: string[]
+  subject: string
+  html: string
+  text: string
 }
+
+type EmailTemplatesPayload = Record<string, TemplateEntry>
 
 const formatCurrency = (value: number) => `€ ${Number(value || 0).toFixed(2)}`
 
@@ -119,19 +122,12 @@ export default function AdminControlCenterPage() {
     queryFn: async () => (await adminApi.getEmailTemplates()).data,
   })
 
-  const [emailSubject, setEmailSubject] = useState('')
-  const [emailHtml, setEmailHtml] = useState('')
-  const [emailText, setEmailText] = useState('')
+  const [templateKey, setTemplateKey] = useState('teacher_activation')
+  const [templateDrafts, setTemplateDrafts] = useState<EmailTemplatesPayload>({})
 
   const saveTemplatesMutation = useMutation({
     mutationFn: async () =>
-      adminApi.updateEmailTemplates({
-        teacher_activation: {
-          subject: emailSubject,
-          html: emailHtml,
-          text: emailText,
-        },
-      }),
+      adminApi.updateEmailTemplates(templateDrafts as any),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['admin-email-templates'] })
       toast({ title: 'Template email aggiornati' })
@@ -147,10 +143,25 @@ export default function AdminControlCenterPage() {
 
   useEffect(() => {
     if (!emailTemplates) return
-    setEmailSubject(emailTemplates.teacher_activation.subject || '')
-    setEmailHtml(emailTemplates.teacher_activation.html || '')
-    setEmailText(emailTemplates.teacher_activation.text || '')
+    setTemplateDrafts(emailTemplates)
+    if (!emailTemplates[templateKey]) {
+      const firstKey = Object.keys(emailTemplates)[0]
+      if (firstKey) setTemplateKey(firstKey)
+    }
   }, [emailTemplates])
+
+  const selectedTemplate = templateDrafts[templateKey]
+
+  const updateSelectedTemplate = (patch: Partial<TemplateEntry>) => {
+    if (!selectedTemplate) return
+    setTemplateDrafts((prev) => ({
+      ...prev,
+      [templateKey]: {
+        ...prev[templateKey],
+        ...patch,
+      },
+    }))
+  }
 
   const summary = overview?.summary
   const dailyHistory = overview?.daily_history || []
@@ -387,26 +398,59 @@ export default function AdminControlCenterPage() {
         <TabsContent value="emails" className="space-y-4">
           <Card className="border-slate-300">
             <CardHeader className="pb-2">
-              <CardTitle className="text-base">Template Email Automatiche</CardTitle>
+              <CardTitle className="text-base">Messaggi Automatici & Disclaimer</CardTitle>
               <CardDescription className="text-xs">
-                Modifica contenuti di invio account. Variabili disponibili: {'{first_name}'}, {'{last_name}'}, {'{activation_link}'}.
+                Editor per i casi d'uso automatici: conferma utente, invito, cambio password e disclaimer beta in login.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
               <div className="space-y-1.5">
+                <Label>Caso d'uso</Label>
+                <select
+                  className="h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm"
+                  value={templateKey}
+                  onChange={(e) => setTemplateKey(e.target.value)}
+                >
+                  {Object.entries(templateDrafts).map(([key, tpl]) => (
+                    <option key={key} value={key}>
+                      {tpl.label}
+                    </option>
+                  ))}
+                </select>
+                {selectedTemplate && (
+                  <p className="text-xs text-slate-600">{selectedTemplate.description}</p>
+                )}
+                {selectedTemplate?.placeholders?.length ? (
+                  <p className="text-xs text-slate-600">
+                    Variabili: {selectedTemplate.placeholders.join(', ')}
+                  </p>
+                ) : null}
+              </div>
+              <div className="space-y-1.5">
                 <Label>Oggetto</Label>
-                <Input value={emailSubject} onChange={(e) => setEmailSubject(e.target.value)} />
+                <Input value={selectedTemplate?.subject || ''} onChange={(e) => updateSelectedTemplate({ subject: e.target.value })} />
               </div>
               <div className="space-y-1.5">
                 <Label>HTML (supporta CSS inline e blocchi style)</Label>
-                <Textarea className="min-h-[260px] font-mono text-xs" value={emailHtml} onChange={(e) => setEmailHtml(e.target.value)} />
+                <Textarea
+                  className="min-h-[260px] font-mono text-xs"
+                  value={selectedTemplate?.html || ''}
+                  onChange={(e) => updateSelectedTemplate({ html: e.target.value })}
+                />
               </div>
               <div className="space-y-1.5">
                 <Label>Testo piano (fallback)</Label>
-                <Textarea className="min-h-[140px] font-mono text-xs" value={emailText} onChange={(e) => setEmailText(e.target.value)} />
+                <Textarea
+                  className="min-h-[140px] font-mono text-xs"
+                  value={selectedTemplate?.text || ''}
+                  onChange={(e) => updateSelectedTemplate({ text: e.target.value })}
+                />
               </div>
               <div className="flex justify-end">
-                <Button onClick={() => saveTemplatesMutation.mutate()} disabled={saveTemplatesMutation.isPending || !emailSubject.trim()}>
+                <Button
+                  onClick={() => saveTemplatesMutation.mutate()}
+                  disabled={saveTemplatesMutation.isPending || (templateKey !== 'beta_disclaimer' && !selectedTemplate?.subject?.trim())}
+                >
                   {saveTemplatesMutation.isPending ? 'Salvataggio...' : 'Salva Template'}
                 </Button>
               </div>

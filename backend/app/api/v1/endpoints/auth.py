@@ -31,6 +31,11 @@ class ChangePasswordRequest(BaseModel):
     new_password: str
 
 router = APIRouter()
+DEFAULT_BETA_DISCLAIMER_HTML = (
+    "<p><strong>Beta disclaimer.</strong> Questa piattaforma è in fase beta: possono verificarsi bug e comportamenti non previsti.</p>"
+    "<p>Uso scolastico con supervisione docente (Teacher in the Loop), senza scoring o valutazioni automatiche ai sensi delle policy AI Act adottate.</p>"
+    "<p>Trattamento dati orientato a minimizzazione, privacy-by-design e anonimizzazione ove applicabile.</p>"
+)
 
 
 def _normalize_text(value: str) -> str:
@@ -97,6 +102,26 @@ async def login(
 async def logout(response: Response):
     response.delete_cookie("access_token")
     return {"message": "Logged out successfully"}
+
+
+@router.get("/public-settings")
+async def get_public_settings(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    tenant_slug: str | None = None,
+):
+    query = select(Tenant)
+    if tenant_slug:
+        query = query.where(Tenant.slug == tenant_slug)
+    query = query.order_by(Tenant.created_at.asc()).limit(1)
+    tenant = (await db.execute(query)).scalar_one_or_none()
+    if not tenant:
+        return {"beta_disclaimer_html": DEFAULT_BETA_DISCLAIMER_HTML}
+
+    templates = tenant.email_templates_json or {}
+    disclaimer = templates.get("beta_disclaimer") or {}
+    return {
+        "beta_disclaimer_html": disclaimer.get("html") or DEFAULT_BETA_DISCLAIMER_HTML
+    }
 
 
 @router.post("/teachers/request", response_model=TeacherRequestResponse)
