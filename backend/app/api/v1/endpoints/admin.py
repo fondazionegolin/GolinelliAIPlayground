@@ -13,7 +13,7 @@ from app.api.deps import get_current_admin
 from app.models.user import User, TeacherRequest, ActivationToken
 from app.models.tenant import Tenant
 from app.models.session import Session, SessionStudent
-from app.models.llm import ConversationMessage
+from app.models.llm import ConversationMessage, TeacherConversation, TeacherConversationMessage
 from app.models.credits import CreditTransaction
 from app.models.invitation import PlatformInvitation
 from app.models.enums import UserRole, TeacherRequestStatus, TenantStatus
@@ -560,6 +560,10 @@ async def get_realtime_status(
         )
         allowed_session_ids = {str(session_id) for session_id in result.scalars().all()}
 
+    now = datetime.now(timezone.utc)
+    recent_students_cutoff = now - timedelta(minutes=2)
+    recent_teachers_cutoff = now - timedelta(minutes=10)
+
     online_student_ids: set[str] = set()
     sessions = []
     for session_id, sids in session_presence.items():
@@ -585,10 +589,43 @@ async def get_realtime_status(
         if user.get("type") == "teacher" and str(user.get("tenant_id")) == str(admin.tenant_id)
     }
 
+    recent_students_count = (
+        await db.execute(
+            select(func.count(SessionStudent.id)).where(
+                SessionStudent.tenant_id == admin.tenant_id,
+                SessionStudent.last_seen_at.is_not(None),
+                SessionStudent.last_seen_at >= recent_students_cutoff,
+            )
+        )
+    ).scalar() or 0
+
+    teachers_by_cost = (
+        await db.execute(
+            select(func.count(func.distinct(CreditTransaction.teacher_id))).where(
+                CreditTransaction.tenant_id == admin.tenant_id,
+                CreditTransaction.teacher_id.is_not(None),
+                CreditTransaction.timestamp >= recent_teachers_cutoff,
+            )
+        )
+    ).scalar() or 0
+
+    teachers_by_chat = (
+        await db.execute(
+            select(func.count(func.distinct(TeacherConversation.teacher_id)))
+            .join(TeacherConversationMessage, TeacherConversationMessage.conversation_id == TeacherConversation.id)
+            .where(
+                TeacherConversation.tenant_id == admin.tenant_id,
+                TeacherConversationMessage.created_at >= recent_teachers_cutoff,
+            )
+        )
+    ).scalar() or 0
+
     return {
         "online_students": len(online_student_ids),
         "online_teachers": len(online_teacher_ids),
         "online_total": len(online_student_ids) + len(online_teacher_ids),
+        "recent_students_2m": int(recent_students_count),
+        "recent_active_teachers_10m": int(max(teachers_by_cost, teachers_by_chat, len(online_teacher_ids))),
         "sessions_active": sorted(sessions, key=lambda s: s["online_students"], reverse=True),
-        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "generated_at": now.isoformat(),
     }

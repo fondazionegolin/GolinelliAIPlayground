@@ -1,10 +1,12 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { adminApi } from '@/lib/api'
+import { adminApi, creditsApi } from '@/lib/api'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { useToast } from '@/components/ui/use-toast'
-import { User, Key, Copy, X, Shield, GraduationCap, Trash2 } from 'lucide-react'
+import { User, Key, Copy, X, Shield, GraduationCap, Trash2, Mail, UserPlus } from 'lucide-react'
 
 interface UserData {
   id: string
@@ -27,6 +29,11 @@ export default function UsersPage() {
   const { toast } = useToast()
   const [resetResult, setResetResult] = useState<ResetResult | null>(null)
   const [roleFilter, setRoleFilter] = useState<string>('')
+  const [inviteEmail, setInviteEmail] = useState('')
+  const [inviteFirstName, setInviteFirstName] = useState('')
+  const [inviteLastName, setInviteLastName] = useState('')
+  const [inviteSchool, setInviteSchool] = useState('')
+  const [bulkInviteText, setBulkInviteText] = useState('')
 
   const { data: users, isLoading } = useQuery<UserData[]>({
     queryKey: ['users', roleFilter],
@@ -34,6 +41,11 @@ export default function UsersPage() {
       const res = await adminApi.getUsers(roleFilter || undefined)
       return res.data
     },
+  })
+
+  const { data: invitations } = useQuery<any[]>({
+    queryKey: ['admin-platform-invitations-users-page'],
+    queryFn: async () => (await creditsApi.getInvitations()).data,
   })
 
   const resetMutation = useMutation({
@@ -62,6 +74,44 @@ export default function UsersPage() {
         title: 'Errore', 
         description: error.response?.data?.detail || 'Impossibile eliminare l\'utente' 
       })
+    },
+  })
+
+  const inviteMutation = useMutation({
+    mutationFn: (payload: { email: string; firstName?: string; lastName?: string; school?: string }) =>
+      creditsApi.inviteTeacher(payload.email, payload.firstName, payload.lastName, payload.school),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin-platform-invitations-users-page'] })
+      queryClient.invalidateQueries({ queryKey: ['users'] })
+      toast({ title: 'Invito inviato', description: 'Il docente ricevera una email per completare la registrazione.' })
+    },
+    onError: (error: Error & { response?: { data?: { detail?: string } } }) => {
+      toast({
+        variant: 'destructive',
+        title: 'Invito fallito',
+        description: error.response?.data?.detail || 'Impossibile inviare l\'invito',
+      })
+    },
+  })
+
+  const bulkInviteMutation = useMutation({
+    mutationFn: async (rows: Array<{ email: string; firstName?: string; lastName?: string; school?: string }>) => {
+      const results = await Promise.allSettled(
+        rows.map((row) => creditsApi.inviteTeacher(row.email, row.firstName, row.lastName, row.school))
+      )
+      const failed = results.filter((r) => r.status === 'rejected').length
+      return { total: rows.length, failed, success: rows.length - failed }
+    },
+    onSuccess: ({ total, success, failed }) => {
+      queryClient.invalidateQueries({ queryKey: ['admin-platform-invitations-users-page'] })
+      queryClient.invalidateQueries({ queryKey: ['users'] })
+      toast({
+        title: 'Inviti multipli completati',
+        description: `Totale ${total}, inviati ${success}, falliti ${failed}`,
+      })
+    },
+    onError: () => {
+      toast({ variant: 'destructive', title: 'Inviti multipli falliti' })
     },
   })
 
@@ -94,6 +144,21 @@ export default function UsersPage() {
     }
     return colors[role] || 'bg-gray-100 text-gray-800'
   }
+
+  const parsedBulkRows = bulkInviteText
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const parts = line.split(/[;,]/).map((part) => part.trim())
+      return {
+        email: parts[0] || '',
+        firstName: parts[1] || undefined,
+        lastName: parts[2] || undefined,
+        school: parts[3] || undefined,
+      }
+    })
+    .filter((row) => row.email.includes('@'))
 
   return (
     <div>
@@ -162,6 +227,108 @@ export default function UsersPage() {
           </CardContent>
         </Card>
       )}
+
+      <div className="grid gap-4 mb-6 md:grid-cols-3">
+        <Card className="md:col-span-1 border-sky-200 bg-sky-50/70">
+          <CardContent className="p-4 space-y-3">
+            <div className="flex items-center gap-2 text-sky-900 font-semibold">
+              <Mail className="h-4 w-4" />
+              Invita docente
+            </div>
+            <div className="space-y-1">
+              <Label>Email</Label>
+              <Input value={inviteEmail} onChange={(e) => setInviteEmail(e.target.value)} placeholder="docente@scuola.it" />
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-1">
+                <Label>Nome</Label>
+                <Input value={inviteFirstName} onChange={(e) => setInviteFirstName(e.target.value)} />
+              </div>
+              <div className="space-y-1">
+                <Label>Cognome</Label>
+                <Input value={inviteLastName} onChange={(e) => setInviteLastName(e.target.value)} />
+              </div>
+            </div>
+            <div className="space-y-1">
+              <Label>Scuola</Label>
+              <Input value={inviteSchool} onChange={(e) => setInviteSchool(e.target.value)} placeholder="Istituto..." />
+            </div>
+            <Button
+              className="w-full"
+              disabled={!inviteEmail || inviteMutation.isPending}
+              onClick={() => {
+                inviteMutation.mutate({
+                  email: inviteEmail.trim(),
+                  firstName: inviteFirstName.trim() || undefined,
+                  lastName: inviteLastName.trim() || undefined,
+                  school: inviteSchool.trim() || undefined,
+                })
+                setInviteEmail('')
+                setInviteFirstName('')
+                setInviteLastName('')
+                setInviteSchool('')
+              }}
+            >
+              <UserPlus className="h-4 w-4 mr-2" />
+              Invia invito
+            </Button>
+          </CardContent>
+        </Card>
+
+        <Card className="md:col-span-2 border-violet-200 bg-violet-50/70">
+          <CardContent className="p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <h3 className="font-semibold text-violet-900">Invito multiplo rapido</h3>
+              <span className="text-xs text-violet-700">{parsedBulkRows.length} validi</span>
+            </div>
+            <textarea
+              value={bulkInviteText}
+              onChange={(e) => setBulkInviteText(e.target.value)}
+              className="w-full min-h-32 rounded-md border border-violet-200 p-3 text-sm bg-white"
+              placeholder={'email;nome;cognome;scuola\nmaria@scuola.it;Maria;Rossi;Liceo Galilei'}
+            />
+            <div className="flex justify-end">
+              <Button
+                disabled={parsedBulkRows.length === 0 || bulkInviteMutation.isPending}
+                onClick={() => {
+                  bulkInviteMutation.mutate(parsedBulkRows)
+                  setBulkInviteText('')
+                }}
+              >
+                Invia inviti multipli
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      <Card className="mb-6">
+        <CardContent className="p-4">
+          <h3 className="font-semibold mb-3">Storico inviti docenti</h3>
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[760px] text-sm">
+              <thead className="text-left text-xs uppercase text-muted-foreground">
+                <tr>
+                  <th className="pb-2">Email</th>
+                  <th className="pb-2">Stato</th>
+                  <th className="pb-2">Creato</th>
+                  <th className="pb-2">Scadenza</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(invitations || []).map((inv: any) => (
+                  <tr key={inv.id} className="border-t">
+                    <td className="py-2">{inv.email}</td>
+                    <td className="py-2">{inv.status}</td>
+                    <td className="py-2">{inv.created_at ? new Date(inv.created_at).toLocaleString('it-IT') : 'N/D'}</td>
+                    <td className="py-2">{inv.expires_at ? new Date(inv.expires_at).toLocaleString('it-IT') : 'N/D'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </CardContent>
+      </Card>
 
       {isLoading ? (
         <p>Caricamento...</p>

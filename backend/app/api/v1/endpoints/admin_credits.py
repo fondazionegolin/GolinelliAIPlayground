@@ -9,9 +9,11 @@ import io
 import secrets
 
 from app.core.database import get_db
+from app.core.config import settings
+from app.core.security import get_password_hash
 from app.api.deps import get_current_admin
 from app.services.email_service import email_service
-from app.models.user import User
+from app.models.user import User, ActivationToken
 from app.models.invitation import PlatformInvitation
 from app.models.credits import CreditLimit, CreditTransaction, CreditRequest
 from app.models.enums import LimitLevel, CreditRequestStatus, InvitationStatus, CreditTransactionType, UserRole
@@ -240,6 +242,30 @@ async def invite_teacher(
         raise HTTPException(status_code=400, detail="Invitation already pending")
     
     token = secrets.token_urlsafe(32)
+    temp_password = secrets.token_urlsafe(12)
+    activation_token = secrets.token_urlsafe(48)
+
+    user = User(
+        tenant_id=admin.tenant_id,
+        email=invitation.email,
+        password_hash=get_password_hash(temp_password),
+        role=UserRole.TEACHER,
+        first_name=invitation.first_name,
+        last_name=invitation.last_name,
+        institution=invitation.school,
+        is_verified=True,
+    )
+    db.add(user)
+    await db.flush()
+
+    activation = ActivationToken(
+        user_id=user.id,
+        token=activation_token,
+        temporary_password=temp_password,
+        expires_at=datetime.utcnow() + timedelta(hours=72),
+    )
+    db.add(activation)
+
     inv = PlatformInvitation(
         tenant_id=admin.tenant_id,
         email=invitation.email,
@@ -255,8 +281,14 @@ async def invite_teacher(
     db.add(inv)
     await db.commit()
     await db.refresh(inv)
-    
-    await email_service.send_invitation_email(invitation.email, token, invitation.first_name)
+
+    activation_link = f"{settings.FRONTEND_URL}/activate/{activation_token}"
+    await email_service.send_teacher_activation_email(
+        to_email=invitation.email,
+        first_name=invitation.first_name or "Docente",
+        last_name=invitation.last_name or "",
+        activation_link=activation_link,
+    )
     
     return inv
 
@@ -284,6 +316,30 @@ async def bulk_invite_teachers(
             continue # Skip existing
             
         token = secrets.token_urlsafe(32)
+        temp_password = secrets.token_urlsafe(12)
+        activation_token = secrets.token_urlsafe(48)
+
+        user = User(
+            tenant_id=admin.tenant_id,
+            email=email,
+            password_hash=get_password_hash(temp_password),
+            role=UserRole.TEACHER,
+            first_name=row.get("first_name"),
+            last_name=row.get("last_name"),
+            institution=row.get("school"),
+            is_verified=True,
+        )
+        db.add(user)
+        await db.flush()
+
+        activation = ActivationToken(
+            user_id=user.id,
+            token=activation_token,
+            temporary_password=temp_password,
+            expires_at=datetime.utcnow() + timedelta(hours=72),
+        )
+        db.add(activation)
+
         inv = PlatformInvitation(
             tenant_id=admin.tenant_id,
             email=email,
@@ -297,19 +353,25 @@ async def bulk_invite_teachers(
             expires_at=datetime.utcnow() + timedelta(days=7)
         )
         db.add(inv)
-        invitations.append(inv)
+        invitations.append((inv, activation_token))
     
     if invitations:
         await db.commit()
-        for inv in invitations:
+        for inv, activation_token in invitations:
             await db.refresh(inv)
             try:
-                await email_service.send_invitation_email(inv.email, inv.token, inv.first_name)
+                activation_link = f"{settings.FRONTEND_URL}/activate/{activation_token}"
+                await email_service.send_teacher_activation_email(
+                    to_email=inv.email,
+                    first_name=inv.first_name or "Docente",
+                    last_name=inv.last_name or "",
+                    activation_link=activation_link,
+                )
             except Exception as e:
                 # logger.error(f"Failed to send email to {inv.email}: {e}")
                 pass
-            
-    return invitations
+
+    return [inv for inv, _activation_token in invitations]
 
 @router.get("/invitations", response_model=List[PlatformInvitationResponse])
 async def list_invitations(
