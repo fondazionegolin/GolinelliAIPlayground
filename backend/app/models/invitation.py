@@ -112,7 +112,9 @@ class PlatformInvitation(Base):
     
     token = Column(String, unique=True, nullable=False, index=True)
     
-    status = Column(Enum(InvitationStatus), default=InvitationStatus.PENDING, nullable=False)
+    # Kept as plain string for compatibility with legacy DB schema where this
+    # column is VARCHAR (not PostgreSQL ENUM).
+    status = Column(String, default=InvitationStatus.PENDING.value, nullable=False)
     
     invited_by_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     
