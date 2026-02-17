@@ -84,10 +84,10 @@ export default function TeacherbotsPanel() {
 
   const getStatusBadge = (status: string) => {
     const styles: Record<string, string> = {
-      draft: 'bg-slate-100 text-slate-600',
-      testing: 'bg-amber-100 text-amber-700',
-      published: 'bg-green-100 text-green-700',
-      archived: 'bg-gray-100 text-gray-500',
+      draft: 'bg-slate-100/50 text-slate-600 border-slate-200',
+      testing: 'bg-amber-100/50 text-amber-700 border-amber-200',
+      published: 'bg-green-100/50 text-green-700 border-green-200',
+      archived: 'bg-gray-100/50 text-gray-500 border-gray-200',
     }
     const labels: Record<string, string> = {
       draft: 'Bozza',
@@ -96,7 +96,7 @@ export default function TeacherbotsPanel() {
       archived: 'Archiviato',
     }
     return (
-      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${styles[status] || styles.draft}`}>
+      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide border backdrop-blur-sm ${styles[status] || styles.draft}`}>
         {labels[status] || status}
       </span>
     )

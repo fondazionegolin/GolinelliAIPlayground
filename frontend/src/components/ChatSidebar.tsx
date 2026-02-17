@@ -1007,14 +1007,18 @@ export default function ChatSidebar({
             </span>
           )}
           <div className={`
-            px-3.5 py-2.5 text-sm leading-snug shadow-sm
+            px-3.5 py-2.5 text-sm leading-snug shadow-sm backdrop-blur-md transition-all
             ${isMe
               ? messageAccentTheme
                 ? 'border rounded-2xl rounded-tr-none'
-                : 'bg-gray-100 text-gray-800 border border-gray-200 rounded-2xl rounded-tr-none'
-              : 'bg-gray-50 text-gray-700 border border-gray-200 rounded-2xl rounded-tl-none'}
+                : 'bg-slate-50/60 text-slate-800 border border-slate-200/80 rounded-2xl rounded-tr-none'
+              : 'bg-white/60 text-slate-700 border border-slate-200/80 rounded-2xl rounded-tl-none'}
           `}
-            style={messageAccentTheme ? { backgroundColor: messageAccentTheme.accent, borderColor: messageAccentTheme.accent, color: '#ffffff' } : undefined}
+            style={messageAccentTheme ? { 
+              backgroundColor: `${messageAccentTheme.accent}15`, // 15 is ~8% opacity for ethereal look
+              borderColor: `${messageAccentTheme.accent}40`, // 40 is ~25% opacity for outline
+              color: messageAccentTheme.text 
+            } : undefined}
           >
             {isMe ? linkify(content, messageAccentTheme ? 'text-white/90 hover:text-white underline break-all' : undefined) : (
               // For received messages, basic linkify with darker link color
@@ -1701,7 +1705,7 @@ export default function ChatSidebar({
       </div>
 
       {/* Tabs */}
-      <div className="flex border-b border-slate-100 bg-white">
+      <div className="flex border-b border-slate-100 bg-white/50 backdrop-blur-md">
         <button
           onClick={() => setActiveTab('session')}
           onDragEnter={(e) => {
@@ -1712,7 +1716,7 @@ export default function ChatSidebar({
           }}
           className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 text-[10px] font-bold uppercase tracking-wider transition-all ${activeTab === 'session'
             ? 'text-[#181b1e] border-b-2 border-[#181b1e] bg-[#181b1e]/5'
-            : 'text-slate-400 hover:text-slate-600 hover:bg-slate-50'
+            : 'text-slate-400 hover:text-slate-600 hover:bg-white/50'
             }`}
         >
           <MessageSquare className="h-3.5 w-3.5" />
@@ -1723,7 +1727,7 @@ export default function ChatSidebar({
           onClick={() => setActiveTab('private')}
           className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 text-[10px] font-bold uppercase tracking-wider transition-all relative ${activeTab === 'private'
             ? 'text-[#181b1e] border-b-2 border-[#181b1e] bg-[#181b1e]/5'
-            : 'text-slate-400 hover:text-slate-600 hover:bg-slate-50'
+            : 'text-slate-400 hover:text-slate-600 hover:bg-white/50'
             }`}
         >
           <MessagesSquare className="h-3.5 w-3.5" />
@@ -1739,7 +1743,7 @@ export default function ChatSidebar({
           onClick={() => setActiveTab('files')}
           className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 text-[10px] font-bold uppercase tracking-wider transition-all ${activeTab === 'files'
             ? 'text-[#181b1e] border-b-2 border-[#181b1e] bg-[#181b1e]/5'
-            : 'text-slate-400 hover:text-slate-600 hover:bg-slate-50'
+            : 'text-slate-400 hover:text-slate-600 hover:bg-white/50'
             }`}
         >
           <Folder className="h-3.5 w-3.5" />
@@ -1750,7 +1754,7 @@ export default function ChatSidebar({
           onClick={() => setActiveTab('users')}
           className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 text-[10px] font-bold uppercase tracking-wider transition-all ${activeTab === 'users'
             ? 'text-[#181b1e] border-b-2 border-[#181b1e] bg-[#181b1e]/5'
-            : 'text-slate-400 hover:text-slate-600 hover:bg-slate-50'
+            : 'text-slate-400 hover:text-slate-600 hover:bg-white/50'
             }`}
         >
           <Users className="h-3.5 w-3.5" />
@@ -1807,7 +1811,7 @@ export default function ChatSidebar({
             </div>
           )}
 
-          <div className="relative flex items-center bg-slate-50 rounded-full border border-slate-200 focus-within:border-[#181b1e]/40 focus-within:ring-2 focus-within:ring-[#181b1e]/20 transition-all px-1">
+          <div className="relative flex items-center bg-white border border-slate-200 shadow-sm rounded-[24px] p-1.5 focus-within:ring-2 focus-within:ring-slate-200 focus-within:border-slate-300 transition-all">
             <input
               ref={fileInputRef}
               type="file"
@@ -1820,7 +1824,8 @@ export default function ChatSidebar({
               size="icon"
               variant="ghost"
               onClick={() => fileInputRef.current?.click()}
-              className="w-8 h-8 rounded-full text-slate-500 hover:text-[#181b1e] hover:bg-[#181b1e]/5"
+              className="h-8 w-8 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-full flex-shrink-0"
+              title="Allega file"
             >
               <Paperclip className="h-4 w-4" />
             </Button>
@@ -1829,13 +1834,16 @@ export default function ChatSidebar({
               onChange={(e) => setInputText(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
               placeholder={activeTab === 'private' ? "Messaggio privato..." : "Scrivi un messaggio..."}
-              className="border-none bg-transparent focus-visible:ring-0 rounded-full h-10 text-sm px-2 flex-1"
+              className="border-none bg-transparent focus-visible:ring-0 h-9 text-sm px-2 flex-1 shadow-none"
             />
             <Button
               size="icon"
               onClick={handleSend}
               disabled={!inputText.trim() && attachedFiles.length === 0}
-              className={`w-8 h-8 rounded-full ${(!inputText.trim() && attachedFiles.length === 0) ? 'bg-slate-200 text-slate-400' : 'bg-[#181b1e] text-white shadow-md'}`}
+              className={`h-8 w-8 rounded-full transition-all flex-shrink-0 ${(!inputText.trim() && attachedFiles.length === 0)
+                ? 'bg-slate-100 text-slate-300'
+                : 'bg-slate-900 hover:bg-slate-800 text-white shadow-md'
+                }`}
             >
               <Send className="h-4 w-4" />
             </Button>

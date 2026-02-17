@@ -272,7 +272,7 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
           <div className="flex items-center justify-between h-16">
             {/* Logo/Brand */}
             <div className="flex items-center gap-1 cursor-pointer" onClick={() => navigate('/teacher')}>
-              <LogoMark className="h-9 w-9 mix-blend-multiply" bubbleColor={accentTheme.accent} />
+              <LogoMark className="h-9 w-9" />
               <span className="-ml-1 pb-[1px] text-[11px] font-extrabold leading-[1.15] tracking-[0.2em] text-slate-900">
                 <span className="block bg-gradient-to-r from-rose-500 via-pink-500 to-red-500 bg-clip-text text-transparent">AI</span>
                 <span className="block bg-gradient-to-r from-slate-900 via-slate-700 to-slate-900 bg-clip-text text-transparent">Play</span>
@@ -280,14 +280,13 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
               </span>
             </div>
 
-            {/* Desktop Navigation */}
-            <div className="hidden md:flex items-center gap-1 h-11 bg-white p-1 rounded-xl border border-slate-200 outline outline-1 outline-slate-200/70">
+            <div className="hidden md:flex items-center gap-1 h-11 bg-white/50 backdrop-blur-sm p-1 rounded-xl border border-slate-200 shadow-sm">
               {navItems.map((item) => (
                 <Link key={item.path} to={item.path}>
                   <button
-                    className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-[12px] font-semibold transition-all duration-200 ${isActive(item.path)
-                      ? 'bg-[var(--teacher-accent)] text-white font-bold'
-                      : 'text-slate-600 hover:bg-slate-100 hover:text-[var(--teacher-accent-text)]'
+                    className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-[12px] font-bold transition-all duration-200 ${isActive(item.path)
+                      ? 'bg-[var(--teacher-accent-soft)] text-[var(--teacher-accent-text)] border border-[var(--teacher-accent-border)]/50 shadow-sm backdrop-blur-md'
+                      : 'text-slate-600 hover:bg-slate-100/50 hover:text-[var(--teacher-accent-text)] border border-transparent'
                       }`}
                   >
                     <item.icon className="h-4 w-4" />
@@ -310,21 +309,21 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
               <div className="relative flex items-center gap-2" ref={sessionsMenuRef}>
                 <button
                   onClick={() => setShowSessionsMenu(!showSessionsMenu)}
-                  className="hidden lg:flex items-center gap-3 h-11 px-4 rounded-xl border-2 bg-white border-slate-200 hover:border-slate-300 transition-all cursor-pointer outline outline-1 outline-slate-200/70"
+                  className="hidden lg:flex items-center gap-3 h-11 px-4 rounded-xl border bg-white/60 backdrop-blur-md border-slate-200 hover:bg-white/80 hover:border-slate-300 transition-all cursor-pointer shadow-sm"
                 >
                   <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${currentSession ? 'bg-green-500 animate-pulse shadow-sm shadow-green-300' : 'bg-slate-300'}`} />
                   <div className="text-left min-w-0">
                     <div className="flex items-center gap-2">
                       <span className="text-sm font-bold text-[var(--teacher-accent-text)] truncate max-w-[160px]">{currentSession ? currentSession.name : 'Nessuna sessione'}</span>
                       <span className="text-slate-300">|</span>
-                      <span className="text-xs font-semibold text-slate-500 bg-white/60 px-2 py-0.5 rounded">{currentSession ? currentSession.className : 'Seleziona...'}</span>
+                      <span className="text-xs font-semibold text-slate-500 bg-white/40 px-2 py-0.5 rounded">{currentSession ? currentSession.className : 'Seleziona...'}</span>
                     </div>
                   </div>
                   <ChevronDown className={`h-3 w-3 ml-1 text-slate-400 transition-transform flex-shrink-0 ${showSessionsMenu ? 'rotate-180' : ''}`} />
                 </button>
                 <button
-                  className={`hidden lg:flex items-center justify-center h-11 w-11 rounded-full border transition shadow-sm ${chatSidebarOpen ? 'text-white' : 'bg-white text-[var(--teacher-accent-text)] border-slate-200 hover:bg-slate-50'}`}
-                  style={chatSidebarOpen ? { backgroundColor: accentTheme.accent, borderColor: accentTheme.accent } : undefined}
+                  className={`hidden lg:flex items-center justify-center h-11 w-11 rounded-full border transition-all shadow-sm backdrop-blur-md ${chatSidebarOpen ? '' : 'bg-white/60 text-[var(--teacher-accent-text)] border-slate-200 hover:bg-white/80'}`}
+                  style={chatSidebarOpen ? { backgroundColor: `${accentTheme.accent}15`, borderColor: `${accentTheme.accent}40`, color: accentTheme.text } : undefined}
                   onClick={onToggleChatSidebar}
                   title={chatSidebarOpen ? 'Nascondi chat di classe' : 'Mostra chat di classe'}
                 >
@@ -333,7 +332,7 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
 
                 {/* Sessions Dropdown Menu */}
                 {showSessionsMenu && (
-                  <div className="absolute right-0 mt-2 w-80 bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-150 origin-top-right z-50">
+                  <div className="absolute right-0 mt-2 w-80 bg-white/80 backdrop-blur-lg rounded-2xl shadow-xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-150 origin-top-right z-50">
                     {/* Header */}
                     <div className="px-5 py-4 border-b border-slate-100 bg-slate-50">
                       <h3 className="font-bold text-slate-800">Sessioni Disponibili</h3>
@@ -365,9 +364,9 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
                                   setShowSessionsMenu(false)
                                   navigate(`/teacher/sessions/${session.id}`)
                                 }}
-                                className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-150 text-left group ${isSelected
-                                  ? 'bg-slate-100 border border-slate-300'
-                                  : 'hover:bg-slate-50 border border-transparent'
+                                className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-150 text-left group border ${isSelected
+                                  ? 'bg-[var(--teacher-accent-soft)] border-[var(--teacher-accent-border)]/50 shadow-sm'
+                                  : 'hover:bg-slate-100/50 border-transparent'
                                   }`}
                               >
                                 <div className={`w-3 h-3 rounded-full flex-shrink-0 transition-colors ${isSelected ? 'bg-green-500 shadow-sm shadow-green-300' : 'bg-slate-300 group-hover:bg-slate-400'
@@ -429,7 +428,7 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
 
                 {/* Dropdown Menu - Modern Floating Style */}
                 {showDropdown && (
-                  <div className="absolute right-0 mt-2 w-64 bg-white rounded-xl shadow-xl border border-slate-100 py-2 animate-in fade-in zoom-in-95 duration-100 origin-top-right">
+                  <div className="absolute right-0 mt-2 w-64 bg-white/80 backdrop-blur-lg rounded-xl shadow-xl border border-slate-100 py-2 animate-in fade-in zoom-in-95 duration-100 origin-top-right">
                     <div className="px-4 py-3 border-b border-slate-50 mb-1">
                       <p className="text-sm font-semibold text-slate-900">
                         {profile.firstName} {profile.lastName}

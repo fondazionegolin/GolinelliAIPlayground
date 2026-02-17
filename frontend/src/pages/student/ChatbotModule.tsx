@@ -2038,14 +2038,16 @@ function parseContentBlocks(content: string): { quiz: QuizData | null; csv: stri
   const quizMatch = content.match(/```quiz\s*([\s\S]*?)```/)
   if (quizMatch) {
     try {
-      quiz = JSON.parse(quizMatch[1].trim())
-      textContent = textContent.replace(/```quiz[\s\S]*?```/, '').trim()
-      isGenerating = false
-    } catch {
+      const parsed = JSON.parse(quizMatch[1].trim())
+      if (parsed && Array.isArray(parsed.questions)) {
+        quiz = parsed
+        textContent = textContent.replace(/```quiz[\s\S]*?```/, '').trim()
+        isGenerating = false
+      }
+    } catch (e) {
       if (quizMatch[1].includes('{')) {
         isGenerating = true
         generationType = 'quiz'
-        textContent = textContent.replace(/```quiz[\s\S]*?```/, '').trim()
       }
     }
   }
@@ -2066,6 +2068,10 @@ function InteractiveQuiz({ quiz, onSubmitAnswers }: { quiz: QuizData; onSubmitAn
   const [answers, setAnswers] = useState<Record<number, number>>({})
   const [submitted, setSubmitted] = useState(false)
   const [showExplanations, setShowExplanations] = useState(false)
+
+  if (!quiz || !quiz.questions || !Array.isArray(quiz.questions)) {
+    return null
+  }
 
   const handleSelect = (questionIndex: number, optionIndex: number) => {
     if (submitted) return

@@ -181,7 +181,7 @@ export default function ActivatePage() {
       <div className="w-full max-w-md space-y-6">
         <div className="text-center">
           <div className="flex items-center justify-center gap-3 mb-2">
-            <LogoMark className="h-12 w-12 mix-blend-multiply" bubbleColor="#4f46e5" />
+            <LogoMark className="h-12 w-12" />
             <span className="text-[20px] font-extrabold leading-[1.15] tracking-[0.2em] text-gray-900 text-left pb-[1px]">
               <span className="block bg-gradient-to-r from-rose-500 via-pink-500 to-red-500 bg-clip-text text-transparent">AI</span>
               <span className="block bg-gradient-to-r from-gray-900 via-gray-600 to-gray-900 bg-clip-text text-transparent">Play</span>

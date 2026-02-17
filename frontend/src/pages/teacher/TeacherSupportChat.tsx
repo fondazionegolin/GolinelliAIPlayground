@@ -324,9 +324,10 @@ export default function TeacherSupportChat() {
     '--teacher-accent-border': accentTheme.border,
   }) as CSSProperties, [accentTheme])
   const selectedSoftStyle = useMemo(() => ({
-    backgroundColor: accentTheme.soft,
+    backgroundColor: `${accentTheme.accent}15`,
     color: accentTheme.text,
-    borderColor: accentTheme.border,
+    borderColor: `${accentTheme.accent}40`,
+    backdropFilter: 'blur(8px)',
   }) as CSSProperties, [accentTheme])
   const selectedSolidStyle = useMemo(() => ({
     backgroundColor: accentTheme.accent,
@@ -1608,6 +1609,9 @@ REGOLE IMPORTANTI:
       }
     }
 
+    const convId = await ensureConversation(messageContent)
+    if (!convId) return // Should not happen but safety first
+
     const userMessage: Message = {
       id: `msg-${Date.now()}`,
       role: 'user',
@@ -1615,8 +1619,17 @@ REGOLE IMPORTANTI:
       timestamp: new Date()
     }
 
-    const convId = await ensureConversation(messageContent)
     setMessages(prev => [...prev, userMessage])
+    
+    // Update cache immediately to prevent the useEffect for currentConversationId
+    // from seeing an empty cache and potentially overwriting local state
+    setConversationCache(prev => {
+      const next = { ...prev, [convId]: [userMessage] }
+      conversationCacheRef.current = next
+      localStorage.setItem('teacher_support_messages_cache', JSON.stringify(next))
+      return next
+    })
+
     setInputText('')
     const currentFiles = [...attachedFiles]
     setAttachedFiles([])
@@ -1833,6 +1846,10 @@ REGOLE IMPORTANTI:
       let numQuestions = 0
 
       if (publishModal.type === 'quiz') {
+        if (!publishModal.data?.questions) {
+          toast({ title: "Errore", description: "Quiz non valido", variant: "destructive" })
+          return
+        }
         contentJson = JSON.stringify({
           type: 'quiz',
           questions: publishModal.data.questions.map((q: any) => ({
@@ -1903,17 +1920,17 @@ REGOLE IMPORTANTI:
         
         {/* Top Navigation - Centered Segmented Control */}
         <div className="flex items-center justify-center pt-6 pb-4 shrink-0">
-          <div className="bg-white border border-slate-200 p-1 rounded-full flex gap-1 shadow-sm">
+          <div className="bg-white/50 backdrop-blur-md border border-slate-200 p-1 rounded-full flex gap-1 shadow-sm">
              <button
                onClick={() => setActiveTab('chat')}
-               className={`flex items-center gap-2 px-6 py-2 rounded-full text-xs font-bold transition-all ${activeTab === 'chat' ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-500 hover:text-slate-900 hover:bg-slate-50'}`}
+               className={`flex items-center gap-2 px-6 py-2 rounded-full text-xs font-bold transition-all ${activeTab === 'chat' ? 'bg-[var(--teacher-accent-soft)] text-[var(--teacher-accent-text)] border border-[var(--teacher-accent-border)]/50 shadow-sm backdrop-blur-md' : 'text-slate-500 hover:text-slate-900 hover:bg-white/50'}`}
              >
                <MessageCircle className="h-3.5 w-3.5" />
                Chat AI
              </button>
              <button
                onClick={() => setActiveTab('teacherbots')}
-               className={`flex items-center gap-2 px-6 py-2 rounded-full text-xs font-bold transition-all ${activeTab === 'teacherbots' ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-500 hover:text-slate-900 hover:bg-slate-50'}`}
+               className={`flex items-center gap-2 px-6 py-2 rounded-full text-xs font-bold transition-all ${activeTab === 'teacherbots' ? 'bg-[var(--teacher-accent-soft)] text-[var(--teacher-accent-text)] border border-[var(--teacher-accent-border)]/50 shadow-sm backdrop-blur-md' : 'text-slate-500 hover:text-slate-900 hover:bg-white/50'}`}
              >
                <Sparkles className="h-3.5 w-3.5" />
                Teacherbots
@@ -2093,14 +2110,14 @@ REGOLE IMPORTANTI:
                             <div className="relative" ref={modelMenuRef}>
                               <button
                                 onClick={() => setShowModelMenu(!showModelMenu)}
-                                className="flex items-center gap-2 px-4 py-2 rounded-full text-xs font-bold transition-all shadow-sm group hover:opacity-90"
-                                style={selectedSolidStyle}
+                                className="flex items-center gap-2 px-4 py-2 rounded-full text-xs font-bold transition-all shadow-sm group hover:opacity-90 border"
+                                style={selectedSoftStyle}
                               >
                                 <div className="p-0.5 bg-white/20 rounded-md">
                                   <ModelIcon provider={availableModels.find(m => m.id === selectedModel)?.provider || ''} modelId={selectedModel} className="h-3 w-3" />
                                 </div>
                                 <span>{availableModels.find(m => m.id === selectedModel)?.name}</span>
-                                <ChevronDown className={`h-3 w-3 text-white/70 transition-transform ${showModelMenu ? 'rotate-180' : ''}`} />
+                                <ChevronDown className={`h-3 w-3 transition-transform ${showModelMenu ? 'rotate-180' : ''}`} />
                               </button>
 
                               {/* Dropdown */}
@@ -2254,9 +2271,9 @@ REGOLE IMPORTANTI:
                             </div>
                           )}
                           <div className={`max-w-[75%] space-y-1 ${msg.role === 'user' ? 'items-end flex flex-col' : 'items-start'}`}>
-                            <div className={`px-5 py-3.5 text-sm leading-relaxed shadow-sm ${msg.role === 'user'
-                              ? `${chatBgIsDark ? 'bg-white/20 text-white border border-white/20' : 'bg-red-500 !text-white'} font-medium rounded-2xl rounded-tr-sm`
-                              : `${chatBgIsDark ? 'bg-white/10 text-white border border-white/15' : 'bg-white text-slate-800 border border-slate-200'} rounded-2xl rounded-tl-sm ${chatBgIsDark ? 'prose prose-invert' : ''}`
+                            <div className={`px-5 py-3 text-sm leading-relaxed shadow-sm backdrop-blur-md transition-all ${msg.role === 'user'
+                              ? `${chatBgIsDark ? 'bg-white/20 text-white border border-white/20' : 'bg-red-50/60 text-red-900 border border-red-200/80'} font-medium rounded-2xl rounded-tr-sm`
+                              : `${chatBgIsDark ? 'bg-white/10 text-white border border-white/15' : 'bg-slate-50/60 text-slate-800 border border-slate-200/80'} rounded-2xl rounded-tl-sm ${chatBgIsDark ? 'prose prose-invert' : ''}`
                               }`}>
                               {msg.role === 'assistant' ? (
                                 <MessageContent
@@ -2437,7 +2454,7 @@ REGOLE IMPORTANTI:
                       {attachedFiles.length > 0 && (
                         <div className="flex flex-wrap gap-2 mb-2">
                           {attachedFiles.map((f, i) => (
-                            <div key={i} className="bg-slate-100 px-3 py-1.5 rounded-full text-xs flex items-center gap-2 text-slate-600 border border-slate-200">
+                            <div key={i} className="bg-slate-50/50 backdrop-blur-sm px-3 py-1.5 rounded-full text-xs flex items-center gap-2 text-slate-600 border border-slate-200 shadow-sm transition-all hover:bg-white/80">
                               {f.type === 'image' ? <ImageIcon className="h-3 w-3" /> : <File className="h-3 w-3" />}
                               <span className="max-w-[150px] truncate">{f.file.name}</span>
                               <button onClick={() => removeFile(i)} className="text-slate-400 hover:text-red-500">
@@ -2449,21 +2466,23 @@ REGOLE IMPORTANTI:
                       )}
 
                       {/* Input Pill Container */}
-                      <div className="relative flex items-end gap-2 bg-white border-2 border-red-500/40 rounded-[2rem] p-1.5 pl-3 focus-within:border-red-500 focus-within:ring-4 focus-within:ring-red-500/10 transition-all shadow-sm">
+                      <div className="relative flex items-center gap-2 bg-white border border-slate-200 shadow-sm rounded-[24px] p-2 focus-within:ring-2 focus-within:ring-slate-200 focus-within:border-slate-300 transition-all">
                         <input type="file" ref={fileInputRef} className="hidden" multiple onChange={handleFileSelect} />
 
-                        <div className="relative flex-shrink-0" ref={modeMenuRef}>
+                        {/* Mode Selector - Left */}
+                        <div className="relative flex-shrink-0 mb-0.5" ref={modeMenuRef}>
                           <Button
                             variant="ghost"
-                            className="h-9 rounded-full px-3 text-slate-500 hover:text-red-500 hover:bg-red-50 gap-1.5"
+                            size="sm"
+                            className="h-8 rounded-full px-2 text-slate-500 hover:bg-slate-100 hover:text-slate-900 gap-1.5"
                             onClick={() => setShowModeMenu(v => !v)}
+                            title="Cambia modalità"
                           >
                             <Sparkles className="h-4 w-4" />
-                            <span className="text-xs font-semibold">Modalità</span>
-                            <ChevronDown className={`h-3.5 w-3.5 transition-transform ${showModeMenu ? 'rotate-180' : ''}`} />
+                            <ChevronDown className={`h-3 w-3 transition-transform ${showModeMenu ? 'rotate-180' : ''}`} />
                           </Button>
                           {showModeMenu && (
-                            <div className="absolute bottom-11 left-0 z-40 w-56 rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl">
+                            <div className="absolute bottom-10 left-0 z-40 w-48 rounded-xl border border-slate-200 bg-white/80 backdrop-blur-lg p-1.5 shadow-xl animate-in slide-in-from-bottom-2 fade-in duration-200">
                               {AGENT_MODES.map(m => {
                                 const icon = m.id === 'default'
                                   ? <MessageSquare className="h-3.5 w-3.5" />
@@ -2492,10 +2511,13 @@ REGOLE IMPORTANTI:
                         </div>
 
                         <Button
-                          variant="ghost" size="icon" className="h-9 w-9 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-full flex-shrink-0"
+                          variant="ghost" 
+                          size="icon" 
+                          className="h-8 w-8 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-full flex-shrink-0 mb-0.5"
                           onClick={() => fileInputRef.current?.click()}
+                          title="Allega file"
                         >
-                          <Paperclip className="h-5 w-5" />
+                          <Paperclip className="h-4 w-4" />
                         </Button>
 
                         <textarea
@@ -2503,7 +2525,7 @@ REGOLE IMPORTANTI:
                           onChange={(e) => setInputText(e.target.value)}
                           onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
                           placeholder={hasActiveInterview ? 'Rispondi alla domanda corrente...' : 'Scrivi o trascina file qui...'}
-                          className="flex-1 bg-transparent border-none focus:ring-0 focus:outline-none outline-none resize-none py-2.5 text-sm text-slate-700 placeholder:text-slate-400 max-h-32 min-h-[44px]"
+                          className="flex-1 bg-transparent border-none focus:ring-0 focus:outline-none outline-none resize-none py-2 px-2 text-sm text-slate-800 placeholder:text-slate-400 max-h-32 min-h-[36px] leading-relaxed"
                           rows={1}
                           style={{ overflow: 'hidden' }}
                           onInput={(e) => {
@@ -2513,7 +2535,15 @@ REGOLE IMPORTANTI:
                           }}
                         />
 
-                        <div className="flex items-center self-center rounded-full border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] font-semibold text-slate-600">
+                        {/* Active Mode Tag */}
+                        <div className={`flex items-center self-center mb-1 rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide border backdrop-blur-md ${
+                          selectedModeMeta.id === 'default' ? 'bg-slate-100/50 text-slate-500 border-slate-200' :
+                          selectedModeMeta.id === 'report' ? 'bg-blue-50/50 text-blue-600 border-blue-200' :
+                          selectedModeMeta.id === 'quiz' ? 'bg-amber-50/50 text-amber-600 border-amber-200' :
+                          selectedModeMeta.id === 'image' ? 'bg-purple-50/50 text-purple-600 border-purple-200' :
+                          selectedModeMeta.id === 'dataset' ? 'bg-emerald-50/50 text-emerald-600 border-emerald-200' :
+                          'bg-slate-100/50 text-slate-600 border-slate-200'
+                        }`}>
                           {selectedModeMeta.label}
                         </div>
 
@@ -2521,8 +2551,8 @@ REGOLE IMPORTANTI:
                           onClick={handleSend}
                           disabled={(!inputText.trim() && attachedFiles.length === 0) || isLoading}
                           className={`h-9 w-9 rounded-full transition-all flex-shrink-0 ${(!inputText.trim() && attachedFiles.length === 0)
-                            ? 'bg-slate-200 text-slate-400'
-                            : 'bg-red-500 hover:bg-red-600 text-white shadow-md'
+                            ? 'bg-slate-100 text-slate-300'
+                            : 'bg-slate-900 hover:bg-slate-800 text-white shadow-md'
                             }`}
                           size="icon"
                         >
@@ -2728,9 +2758,12 @@ function parseContentBlocks(content: string): { quiz: QuizData | null; csv: stri
   const quizMatch = content.match(/```quiz\s*([\s\S]*?)```/)
   if (quizMatch) {
     try {
-      quiz = JSON.parse(quizMatch[1].trim())
-      textContent = textContent.replace(/```quiz[\s\S]*?```/, '').trim()
-      isGenerating = false
+      const parsed = JSON.parse(quizMatch[1].trim())
+      if (parsed && Array.isArray(parsed.questions)) {
+        quiz = parsed
+        textContent = textContent.replace(/```quiz[\s\S]*?```/, '').trim()
+        isGenerating = false
+      }
     } catch (e) {
       if (quizMatch[1].includes('{')) {
         isGenerating = true
@@ -2971,6 +3004,10 @@ function InteractiveQuiz({ quiz, onSubmitAnswers }: { quiz: QuizData; onSubmitAn
   const [answers, setAnswers] = useState<Record<number, number>>({})
   const [submitted, setSubmitted] = useState(false)
   const [showExplanations, setShowExplanations] = useState(false)
+
+  if (!quiz || !quiz.questions || !Array.isArray(quiz.questions)) {
+    return null
+  }
 
   const handleSelect = (questionIndex: number, optionIndex: number) => {
     if (submitted) return
