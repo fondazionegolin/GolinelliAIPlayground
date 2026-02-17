@@ -180,9 +180,9 @@ export default function ActivatePage() {
     <AppBackground className="min-h-screen flex items-center justify-center p-4">
       <div className="w-full max-w-md space-y-6">
         <div className="text-center">
-          <div className="flex items-center justify-center gap-3 mb-2">
+          <div className="flex items-center justify-center gap-4 mb-2">
             <LogoMark className="h-12 w-12" />
-            <span className="text-[24px] font-extrabold leading-[1.15] tracking-tight text-gray-900 text-left pb-[1px]">
+            <span className="text-[28px] font-extrabold leading-[1.15] tracking-tight text-gray-900 text-left pb-[1px]">
               <span className="text-gray-700">Golinelli</span>
               <span className="bg-gradient-to-r from-rose-500 to-red-600 bg-clip-text text-transparent">.ai</span>
             </span>

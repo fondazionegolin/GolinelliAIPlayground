@@ -271,9 +271,9 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
         <div className="max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             {/* Logo/Brand */}
-            <div className="flex items-center gap-1 cursor-pointer" onClick={() => navigate('/teacher')}>
+            <div className="flex items-center gap-3 cursor-pointer" onClick={() => navigate('/teacher')}>
               <LogoMark className="h-9 w-9" />
-              <span className="-ml-1 pb-[1px] text-[15px] font-extrabold leading-[1.15] tracking-tight text-slate-900">
+              <span className="pb-[1px] text-[18px] font-extrabold leading-[1.15] tracking-tight text-slate-900">
                 <span className="text-slate-700">Golinelli</span>
                 <span className="bg-gradient-to-r from-rose-500 to-red-600 bg-clip-text text-transparent">.ai</span>
               </span>
