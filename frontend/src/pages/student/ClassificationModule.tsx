@@ -89,13 +89,15 @@ function ModeSelector({ onSelect }: { onSelect: (mode: ClassificationMode) => vo
         {modes.map((m) => (
           <Card 
             key={m.key}
-            className={`cursor-pointer hover:shadow-lg transition-all border-2 ${m.color}`}
+            className={`cursor-pointer hover:shadow-xl transition-all duration-300 border border-slate-200 bg-white/60 backdrop-blur-md group hover:-translate-y-1`}
             onClick={() => onSelect(m.key)}
           >
             <CardContent className="p-6 text-center">
-              <m.icon className="h-12 w-12 mx-auto mb-4" />
-              <h3 className="font-bold text-lg mb-2">{m.title}</h3>
-              <p className="text-sm opacity-80">{m.description}</p>
+              <div className={`w-16 h-16 mx-auto mb-4 rounded-2xl flex items-center justify-center transition-colors ${m.color.split(' ')[0]} ${m.color.split(' ')[1]}`}>
+                <m.icon className="h-8 w-8" />
+              </div>
+              <h3 className="font-bold text-lg mb-2 text-slate-800">{m.title}</h3>
+              <p className="text-sm text-slate-500 leading-relaxed">{m.description}</p>
             </CardContent>
           </Card>
         ))}

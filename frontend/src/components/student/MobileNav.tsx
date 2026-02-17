@@ -1,6 +1,8 @@
+import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import { Home, MessageSquare, Bot, Brain } from 'lucide-react'
 import { triggerHaptic } from '@/lib/haptics'
+import { loadStudentAccent, getStudentAccentTheme } from '@/lib/studentAccent'
 
 interface MobileNavProps {
   activeModule: string | null
@@ -17,6 +19,22 @@ const NAV_ITEMS = [
 ] as const
 
 export function MobileNav({ activeModule, onNavigate, unreadMessages = 0, hidden = false }: MobileNavProps) {
+  const [accentTheme, setAccentTheme] = useState(getStudentAccentTheme(loadStudentAccent()))
+
+  useEffect(() => {
+    // Refresh accent theme when localStorage changes (e.g. from settings modal)
+    const handleStorage = () => {
+      setAccentTheme(getStudentAccentTheme(loadStudentAccent()))
+    }
+    window.addEventListener('storage', handleStorage)
+    // Custom event for same-window updates
+    window.addEventListener('studentAccentChanged', handleStorage)
+    return () => {
+      window.removeEventListener('storage', handleStorage)
+      window.removeEventListener('studentAccentChanged', handleStorage)
+    }
+  }, [])
+
   if (hidden) return null
 
   const activeIndex = NAV_ITEMS.findIndex(item => item.key === activeModule)
@@ -32,16 +50,17 @@ export function MobileNav({ activeModule, onNavigate, unreadMessages = 0, hidden
     <nav
       className="
         md:hidden fixed bottom-0 left-0 right-0 z-50
-        bg-white/95 backdrop-blur-md
-        border-t border-slate-200/80
+        bg-white/80 backdrop-blur-lg
+        border-t border-slate-200/50
         px-2
         pb-[env(safe-area-inset-bottom)]
+        shadow-[0_-4px_12px_rgba(0,0,0,0.03)]
       "
     >
       <div className="relative flex justify-around items-center h-14">
         {/* Animated pill indicator */}
         <motion.div
-          className="absolute top-1 h-12 bg-violet-100 rounded-2xl -z-10"
+          className="absolute top-1.5 h-11 rounded-2xl -z-10 border shadow-sm"
           initial={false}
           animate={{
             x: `calc(${activeIndex * 100}% + ${activeIndex * 0.5}rem)`,
@@ -54,6 +73,8 @@ export function MobileNav({ activeModule, onNavigate, unreadMessages = 0, hidden
           }}
           style={{
             left: '0.25rem',
+            backgroundColor: `${accentTheme.accent}15`,
+            borderColor: `${accentTheme.accent}30`,
           }}
         />
 
@@ -66,13 +87,9 @@ export function MobileNav({ activeModule, onNavigate, unreadMessages = 0, hidden
             <motion.button
               key={item.label}
               onClick={() => handleNavigate(item.key)}
-              className={`
-                flex flex-col items-center justify-center
-                w-full h-14 gap-0.5
-                transition-colors duration-200
-                ${isActive ? 'text-violet-600' : 'text-slate-400'}
-              `}
+              className="flex flex-col items-center justify-center w-full h-14 gap-0.5"
               whileTap={{ scale: 0.9 }}
+              style={{ color: isActive ? accentTheme.text : '#94a3b8' }}
             >
               <div className="relative">
                 <motion.div
@@ -103,11 +120,7 @@ export function MobileNav({ activeModule, onNavigate, unreadMessages = 0, hidden
                 )}
               </div>
 
-              <span
-                className={`text-[10px] font-medium leading-none transition-all duration-200 ${
-                  isActive ? 'text-violet-600' : 'text-slate-400'
-                }`}
-              >
+              <span className="text-[10px] font-bold leading-none tracking-tight">
                 {item.label}
               </span>
             </motion.button>

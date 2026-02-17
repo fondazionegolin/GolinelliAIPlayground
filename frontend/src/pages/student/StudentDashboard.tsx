@@ -54,54 +54,54 @@ const moduleConfig: Record<string, {
     description: 'Il tuo assistente personale intelligente. Chiedi aiuto, genera idee o fatti spiegare concetti complessi.',
     icon: Bot,
     colorClass: 'text-indigo-600',
-    bgClass: 'bg-indigo-50/50 hover:bg-indigo-50',
-    borderClass: 'border-indigo-100 hover:border-indigo-200',
-    shadowClass: 'shadow-indigo-100/50',
+    bgClass: 'bg-indigo-500/5 hover:bg-indigo-500/10',
+    borderClass: 'border-indigo-500/20 hover:border-indigo-500/40',
+    shadowClass: 'shadow-indigo-100/30',
   },
   classification: {
     label: 'ML Lab',
     description: 'Laboratorio di Machine Learning. Addestra modelli per classificare testi e immagini in tempo reale.',
     icon: Brain,
     colorClass: 'text-emerald-600',
-    bgClass: 'bg-emerald-50/50 hover:bg-emerald-50',
-    borderClass: 'border-emerald-100 hover:border-emerald-200',
-    shadowClass: 'shadow-emerald-100/50',
+    bgClass: 'bg-emerald-500/5 hover:bg-emerald-500/10',
+    borderClass: 'border-emerald-500/20 hover:border-emerald-500/40',
+    shadowClass: 'shadow-emerald-100/30',
   },
   documents: {
     label: 'Editor Documenti',
     description: 'Crea documenti e presentazioni. Invia i tuoi lavori al docente per la revisione.',
     icon: FileEdit,
     colorClass: 'text-violet-600',
-    bgClass: 'bg-violet-50/50 hover:bg-violet-50',
-    borderClass: 'border-violet-100 hover:border-violet-200',
-    shadowClass: 'shadow-violet-100/50',
+    bgClass: 'bg-violet-500/5 hover:bg-violet-500/10',
+    borderClass: 'border-violet-500/20 hover:border-violet-500/40',
+    shadowClass: 'shadow-violet-100/30',
   },
   self_assessment: {
     label: 'Quiz & Badge',
     description: 'Mettiti alla prova! Completa quiz, ottieni badge e traccia i tuoi progressi nell\'apprendimento.',
     icon: Award,
     colorClass: 'text-orange-600',
-    bgClass: 'bg-orange-50/50 hover:bg-orange-50',
-    borderClass: 'border-orange-100 hover:border-orange-200',
-    shadowClass: 'shadow-orange-100/50',
+    bgClass: 'bg-orange-500/5 hover:bg-orange-500/10',
+    borderClass: 'border-orange-500/20 hover:border-orange-500/40',
+    shadowClass: 'shadow-orange-100/30',
   },
   chat: {
     label: 'Chat Classe',
     description: 'Comunica con la tua classe.',
     icon: MessageSquare,
     colorClass: 'text-sky-600',
-    bgClass: 'bg-sky-50',
-    borderClass: 'border-sky-200',
-    shadowClass: 'shadow-sky-100',
+    bgClass: 'bg-sky-500/5',
+    borderClass: 'border-sky-500/20',
+    shadowClass: 'shadow-sky-100/30',
   },
   classe: {
     label: 'Chat Classe',
     description: 'Comunica con la tua classe.',
     icon: MessageSquare,
     colorClass: 'text-sky-600',
-    bgClass: 'bg-sky-50',
-    borderClass: 'border-sky-200',
-    shadowClass: 'shadow-sky-100',
+    bgClass: 'bg-sky-500/5',
+    borderClass: 'border-sky-500/20',
+    shadowClass: 'shadow-sky-100/30',
   }
 }
 
@@ -432,9 +432,9 @@ function HomeView({
           <motion.button
             whileTap={{ scale: 0.97 }}
             onClick={() => onNavigate('self_assessment')}
-            className="bg-white rounded-xl p-4 border border-orange-100 shadow-sm text-left group active:bg-orange-50 transition-colors"
+            className="bg-white/60 backdrop-blur-md rounded-xl p-4 border border-orange-500/20 shadow-sm text-left group active:bg-orange-500/10 transition-all"
           >
-            <div className="w-10 h-10 rounded-xl bg-orange-100 flex items-center justify-center mb-3 group-active:bg-orange-200 transition-colors">
+            <div className="w-10 h-10 rounded-xl bg-orange-500/10 flex items-center justify-center mb-3 group-active:bg-orange-500/20 transition-colors">
               <ClipboardList className="h-5 w-5 text-orange-600" />
             </div>
             <h3 className="font-semibold text-slate-800 text-sm">Compiti</h3>
@@ -452,9 +452,9 @@ function HomeView({
           <motion.button
             whileTap={{ scale: 0.97 }}
             onClick={() => onNavigate('documents')}
-            className="bg-white rounded-xl p-4 border border-violet-100 shadow-sm text-left group active:bg-violet-50 transition-colors relative"
+            className="bg-white/60 backdrop-blur-md rounded-xl p-4 border border-violet-500/20 shadow-sm text-left group active:bg-violet-500/10 transition-all relative"
           >
-            <div className="w-10 h-10 rounded-xl bg-violet-100 flex items-center justify-center mb-3 group-active:bg-violet-200 transition-colors">
+            <div className="w-10 h-10 rounded-xl bg-violet-500/10 flex items-center justify-center mb-3 group-active:bg-violet-500/20 transition-colors">
               <FileText className="h-5 w-5 text-violet-600" />
             </div>
             <h3 className="font-semibold text-slate-800 text-sm">Documenti</h3>
@@ -505,13 +505,13 @@ function HomeView({
                 key={moduleKey}
                 whileTap={{ scale: 0.98 }}
                 onClick={() => onNavigate(moduleKey)}
-                className={`w-full flex items-center gap-4 p-4 rounded-xl border-2 ${config.borderClass} ${config.bgClass} text-left active:opacity-80 transition-all`}
+                className={`w-full flex items-center gap-4 p-4 rounded-xl border backdrop-blur-md transition-all shadow-sm active:scale-95 ${config.borderClass} ${config.bgClass} text-left`}
               >
-                <div className={`w-12 h-12 rounded-xl bg-white shadow-sm flex items-center justify-center ${config.colorClass}`}>
+                <div className={`w-12 h-12 rounded-xl bg-white/80 shadow-sm flex items-center justify-center ${config.colorClass}`}>
                   <Icon className="h-6 w-6" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <h4 className={`font-semibold ${config.colorClass}`}>{config.label}</h4>
+                  <h4 className={`font-bold ${config.colorClass}`}>{config.label}</h4>
                   <p className="text-xs text-slate-500 line-clamp-1">{config.description}</p>
                 </div>
                 <ChevronRight className="h-5 w-5 text-slate-300" />
@@ -555,7 +555,7 @@ function HomeView({
           return (
             <Card
               key={moduleKey}
-              className={`cursor-pointer transition-all duration-300 group relative overflow-hidden border-2 ${config.borderClass} ${config.bgClass} hover:shadow-xl ${config.shadowClass}`}
+              className={`cursor-pointer transition-all duration-300 group relative overflow-hidden border-2 backdrop-blur-md ${config.borderClass} ${config.bgClass} hover:shadow-xl ${config.shadowClass}`}
               onClick={() => onNavigate(moduleKey)}
             >
               <div className={`absolute top-0 right-0 p-3 opacity-10 group-hover:opacity-20 transition-opacity ${config.colorClass}`}>

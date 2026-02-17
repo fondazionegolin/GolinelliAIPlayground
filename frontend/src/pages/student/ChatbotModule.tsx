@@ -207,9 +207,10 @@ export default function ChatbotModule({ sessionId, initialTeacherbotId, onInputF
     '--student-accent-border': accentTheme.border,
   }) as CSSProperties, [accentTheme])
   const selectedSoftStyle = useMemo(() => ({
-    backgroundColor: accentTheme.soft,
+    backgroundColor: `${accentTheme.accent}15`,
     color: accentTheme.text,
-    borderColor: accentTheme.border,
+    borderColor: `${accentTheme.accent}40`,
+    backdropFilter: 'blur(8px)',
   }) as CSSProperties, [accentTheme])
   const selectedSolidStyle = useMemo(() => ({
     backgroundColor: accentTheme.accent,
@@ -1510,12 +1511,12 @@ export default function ChatbotModule({ sessionId, initialTeacherbotId, onInputF
             <div className="hidden lg:block relative" ref={modelMenuRef}>
               <button
                 onClick={() => setShowModelMenu(!showModelMenu)}
-                className="flex items-center gap-2 px-4 py-2 rounded-full text-xs font-semibold transition-all shadow-sm hover:opacity-90"
-                style={selectedSolidStyle}
+                className="flex items-center gap-2 px-4 py-2 rounded-full text-xs font-bold transition-all shadow-sm hover:opacity-90 border"
+                style={selectedSoftStyle}
               >
-                <Bot className="h-3.5 w-3.5 text-white/90" />
+                <Bot className="h-3.5 w-3.5" />
                 <span>{effectiveSelectedModel?.name || 'Modello AI'}</span>
-                <ChevronDown className={`h-3 w-3 text-white/80 transition-transform ${showModelMenu ? 'rotate-180' : ''}`} />
+                <ChevronDown className={`h-3 w-3 transition-transform ${showModelMenu ? 'rotate-180' : ''}`} />
               </button>
               {showModelMenu && (
                 <div className="absolute right-0 top-full mt-2 w-72 rounded-xl border border-slate-200 bg-white shadow-xl z-40 py-1">

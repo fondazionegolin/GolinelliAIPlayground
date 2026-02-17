@@ -732,15 +732,17 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId }: 
                      <div
                        key={slide.id}
                        onClick={() => { setCurrentSlideIndex(idx); setSelectedBlockId(null); }}
-                       className={`p-3 rounded-lg border cursor-pointer transition-all group relative ${currentSlideIndex === idx ? 'ring-2 ring-indigo-500 bg-indigo-50' : 'hover:bg-slate-50'}`}
+                       className={`p-3 rounded-xl border transition-all group relative backdrop-blur-md ${currentSlideIndex === idx 
+                         ? 'bg-indigo-500/10 border-indigo-500/40 shadow-sm' 
+                         : 'bg-white hover:bg-slate-50 border-transparent hover:border-slate-200'}`}
                      >
-                       <div className="text-xs font-bold text-slate-500 mb-1">#{idx + 1}</div>
-                       <div className="text-sm truncate font-medium">{slide.title}</div>
+                       <div className="text-[10px] font-bold text-slate-400 uppercase mb-1">Slide {idx + 1}</div>
+                       <div className={`text-sm truncate font-bold ${currentSlideIndex === idx ? 'text-indigo-700' : 'text-slate-700'}`}>{slide.title}</div>
                        <button
                          onClick={(e) => { e.stopPropagation(); deleteSlide(idx); }}
-                         className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-500"
+                         className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-500 transition-opacity"
                        >
-                         <Trash2 className="h-3 w-3" />
+                         <Trash2 className="h-3.5 w-3.5" />
                        </button>
                      </div>
                    ))}
@@ -787,22 +789,22 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId }: 
                   <div
                     key={doc.id}
                     onClick={() => loadLesson(doc)}
-                    className={`group flex items-start gap-3 p-2 rounded-lg cursor-pointer transition-colors border mb-1 ${
+                    className={`group flex items-start gap-3 p-2.5 rounded-xl cursor-pointer transition-all border mb-1 backdrop-blur-md ${
                       activeLessonTaskId === doc.taskId
-                        ? 'bg-emerald-50 border-emerald-200'
+                        ? 'bg-emerald-500/10 border-emerald-500/40 shadow-sm'
                         : 'hover:bg-slate-100 border-transparent hover:border-slate-200'
                     }`}
                   >
-                    <div className={`p-1.5 rounded-md ${doc.type === 'presentation' ? 'bg-indigo-100 text-indigo-600' : doc.type === 'canvas' ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'}`}>
-                      {doc.type === 'presentation' ? <Monitor className="h-3 w-3" /> : doc.type === 'canvas' ? <PenTool className="h-3 w-3" /> : <BookOpen className="h-3 w-3" />}
+                    <div className={`p-2 rounded-lg shadow-sm ${doc.type === 'presentation' ? 'bg-indigo-100 text-indigo-600' : doc.type === 'canvas' ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-600'}`}>
+                      {doc.type === 'presentation' ? <Monitor className="h-3.5 w-3.5" /> : doc.type === 'canvas' ? <PenTool className="h-3.5 w-3.5" /> : <BookOpen className="h-3.5 w-3.5" />}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-xs font-medium text-slate-700 truncate">{doc.title}</p>
-                      <div className="mt-0.5 flex items-center gap-2">
-                        <span className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 text-[9px] font-semibold uppercase text-emerald-700">
+                      <p className={`text-xs font-bold truncate ${activeLessonTaskId === doc.taskId ? 'text-emerald-800' : 'text-slate-700'}`}>{doc.title}</p>
+                      <div className="mt-1 flex items-center gap-2">
+                        <span className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 text-[8px] font-bold uppercase text-emerald-700">
                           Lesson
                         </span>
-                        <p className="text-[10px] text-slate-400 truncate">{new Date(doc.updatedAt).toLocaleDateString()}</p>
+                        <p className="text-[9px] text-slate-400 font-medium truncate">{new Date(doc.updatedAt).toLocaleDateString()}</p>
                       </div>
                     </div>
                   </div>

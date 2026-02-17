@@ -162,14 +162,14 @@ export function StudentNavbar({
 
             {/* Desktop Navigation */}
             {onNavigate && (
-              <div className="hidden md:flex items-center gap-1 h-11 bg-white p-1 rounded-xl border border-slate-200 outline outline-1 outline-slate-200/70">
+              <div className="hidden md:flex items-center gap-1 h-11 bg-white/50 backdrop-blur-sm p-1 rounded-xl border border-slate-200 shadow-sm">
                 {navItems.map((item) => (
                   <button
                     key={item.label}
                     onClick={() => onNavigate(item.key)}
-                    className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-[12px] font-semibold transition-all duration-200 ${activeModule === item.key
-                        ? 'bg-[var(--student-accent)] text-white font-bold'
-                        : 'text-slate-600 hover:bg-[var(--student-accent-soft)] hover:text-[var(--student-accent-text)]'
+                    className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-[12px] font-bold transition-all duration-200 ${activeModule === item.key
+                        ? 'bg-[var(--student-accent-soft)] text-[var(--student-accent-text)] border border-[var(--student-accent-border)]/50 shadow-sm backdrop-blur-md'
+                        : 'text-slate-600 hover:bg-slate-100/50 hover:text-[var(--student-accent-text)] border border-transparent'
                       }`}
                   >
                     <item.icon className="h-4 w-4" />
@@ -303,6 +303,7 @@ export function StudentNavbar({
               setProfile(updated)
               onAccentChange?.(nextAccent)
               saveStudentAccent(nextAccent)
+              window.dispatchEvent(new CustomEvent('studentAccentChanged'))
               setShowSettings(false)
             } catch (err) {
               console.error('Failed to save profile:', err)

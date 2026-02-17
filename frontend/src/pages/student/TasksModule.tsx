@@ -339,41 +339,46 @@ function SubmissionView({ task }: { task: TaskData }) {
 
   return (
     <div className="space-y-3">
-      <div className="bg-white p-3 rounded-lg border">
-        <p className="text-xs text-muted-foreground mb-1">La tua risposta:</p>
-        <p className="text-sm">{task.submission?.content}</p>
-        <p className="text-xs text-muted-foreground mt-2">
-          Inviata: {new Date(task.submission?.submitted_at || '').toLocaleString('it-IT')}
-        </p>
+      <div className="bg-white/60 backdrop-blur-md p-3 rounded-xl border border-slate-200 shadow-sm">
+        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">La tua risposta:</p>
+        <p className="text-sm text-slate-700 leading-relaxed font-medium">{task.submission?.content}</p>
+        <div className="flex items-center gap-1.5 mt-3 text-[10px] text-slate-400">
+          <Clock className="h-3 w-3" />
+          <span>Inviata: {new Date(task.submission?.submitted_at || '').toLocaleString('it-IT', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>
+        </div>
       </div>
       
       {task.submission?.score && (
-        <div className="bg-blue-50 p-3 rounded-lg border border-blue-200">
-          <p className="text-sm font-medium text-blue-700">
+        <div className="bg-blue-500/5 backdrop-blur-md p-3 rounded-xl border border-blue-500/20 shadow-sm">
+          <p className="text-sm font-bold text-blue-700">
             Valutazione: {task.submission.score}
           </p>
           {task.submission.feedback && (
-            <p className="text-sm text-blue-600 mt-1">{task.submission.feedback}</p>
+            <p className="text-sm text-blue-600 mt-1 leading-relaxed">{task.submission.feedback}</p>
           )}
         </div>
       )}
 
       {wrongAnswers.length > 0 && (
-        <div className="bg-red-50 p-3 rounded-lg border border-red-200 space-y-2">
-          <p className="text-sm font-medium text-red-700">
+        <div className="bg-red-500/5 backdrop-blur-md p-3 rounded-xl border border-red-500/20 shadow-sm space-y-2">
+          <p className="text-sm font-bold text-red-700 uppercase tracking-tight">
             Risposte da rivedere ({wrongAnswers.length})
           </p>
           {wrongAnswers.map((wa) => (
-            <div key={`${task.id}-wrong-${wa.questionNumber}`} className="text-sm bg-white rounded border border-red-100 p-2">
-              <p className="font-medium text-slate-800">
+            <div key={`${task.id}-wrong-${wa.questionNumber}`} className="text-sm bg-white/60 rounded-lg border border-red-100/50 p-2 shadow-sm">
+              <p className="font-bold text-slate-800 mb-1">
                 {wa.questionNumber}. {wa.question}
               </p>
-              <p className="text-red-700">
-                La tua risposta: {wa.selectedAnswer}
-              </p>
-              <p className="text-emerald-700">
-                Corretta: {wa.correctAnswer}
-              </p>
+              <div className="space-y-0.5">
+                <p className="text-red-600 flex items-center gap-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
+                  La tua risposta: <span className="font-medium">{wa.selectedAnswer}</span>
+                </p>
+                <p className="text-emerald-600 flex items-center gap-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                  Corretta: <span className="font-medium">{wa.correctAnswer}</span>
+                </p>
+              </div>
             </div>
           ))}
         </div>
@@ -430,21 +435,21 @@ function TaskInputView({
                     ...prev,
                     [task.id]: { ...prev[task.id], [qIndex]: optIndex }
                   }))}
-                  className={`w-full text-left p-3 rounded-lg border transition-colors ${
+                  className={`w-full text-left p-3 rounded-lg border transition-all duration-200 backdrop-blur-md ${
                     answers[qIndex] === optIndex
-                      ? 'bg-emerald-100 border-emerald-500 text-emerald-800'
-                      : 'bg-white hover:bg-gray-100 border-gray-200'
+                      ? 'bg-emerald-500/10 border-emerald-500/40 text-emerald-800 shadow-sm'
+                      : 'bg-white/60 hover:bg-white border-slate-200 text-slate-600'
                   }`}
                 >
                   <span className="flex items-center gap-2">
-                    <span className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
+                    <span className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors ${
                       answers[qIndex] === optIndex
                         ? 'bg-emerald-500 border-emerald-500'
-                        : 'border-gray-300'
+                        : 'border-slate-300'
                     }`}>
                       {answers[qIndex] === optIndex && <Check className="h-3 w-3 text-white" />}
                     </span>
-                    {opt}
+                    <span className={answers[qIndex] === optIndex ? 'font-semibold' : ''}>{opt}</span>
                   </span>
                 </button>
               ))}
