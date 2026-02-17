@@ -2,7 +2,7 @@ import { Routes, Route, Navigate } from 'react-router-dom'
 import { useAuthStore } from '@/stores/auth'
 import { Toaster } from '@/components/ui/toaster'
 
-import LoginPage from '@/pages/LoginPage'
+import LandingPage from '@/pages/LandingPage'
 import StudentJoinPage from '@/pages/StudentJoinPage'
 import TeacherRequestPage from '@/pages/TeacherRequestPage'
 import ActivatePage from '@/pages/ActivatePage'
@@ -25,20 +25,20 @@ function ProtectedRoute({ children, allowedRoles }: { children: React.ReactNode;
 }
 
 function App() {
-  const { user, isAuthenticated, studentSession } = useAuthStore()
+  const { user, studentSession } = useAuthStore()
   
-  const getDefaultRoute = () => {
+  const getDefaultRoute = (): string | null => {
     if (studentSession) return '/student'
-    if (!isAuthenticated || !user) return '/login'
-    if (user.role === 'ADMIN') return '/admin'
-    if (user.role === 'TEACHER') return '/teacher'
-    return '/login'
+    if (user?.role === 'ADMIN') return '/admin'
+    if (user?.role === 'TEACHER') return '/teacher'
+    // If not authenticated, we stay on the landing page
+    return null 
   }
   
   return (
     <>
       <Routes>
-        <Route path="/login" element={<LoginPage />} />
+        <Route path="/login" element={<LandingPage />} />
         <Route path="/join" element={<StudentJoinPage />} />
         <Route path="/teacher-request" element={<TeacherRequestPage />} />
         <Route path="/activate/:token" element={<ActivatePage />} />
@@ -63,8 +63,17 @@ function App() {
         
         <Route path="/student/*" element={<StudentDashboard />} />
         
-        <Route path="/" element={<Navigate to={getDefaultRoute()} replace />} />
-        <Route path="*" element={<Navigate to={getDefaultRoute()} replace />} />
+        <Route 
+          path="/" 
+          element={
+            getDefaultRoute() ? (
+              <Navigate to={getDefaultRoute()!} replace />
+            ) : (
+              <LandingPage />
+            )
+          } 
+        />
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
       <Toaster />
     </>
