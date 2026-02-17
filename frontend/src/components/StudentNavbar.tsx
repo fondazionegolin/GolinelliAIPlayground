@@ -142,10 +142,9 @@ export function StudentNavbar({
             {/* Logo/Brand */}
             <div className="flex items-center gap-1 cursor-pointer" onClick={() => onNavigate?.(null)}>
               <LogoMark className="h-9 w-9" />
-              <span className="-ml-1 pb-[1px] text-[11px] font-extrabold leading-[1.15] tracking-[0.2em] text-slate-900">
-                <span className="block bg-gradient-to-r from-rose-500 via-pink-500 to-red-500 bg-clip-text text-transparent">AI</span>
-                <span className="block bg-gradient-to-r from-slate-900 via-slate-700 to-slate-900 bg-clip-text text-transparent">Play</span>
-                <span className="block bg-gradient-to-r from-slate-900 via-slate-700 to-slate-900 bg-clip-text text-transparent">Ground</span>
+              <span className="-ml-1 pb-[1px] text-[15px] font-extrabold leading-[1.15] tracking-tight text-slate-900">
+                <span className="text-slate-700">Golinelli</span>
+                <span className="bg-gradient-to-r from-rose-500 to-red-600 bg-clip-text text-transparent">.ai</span>
               </span>
             </div>
 

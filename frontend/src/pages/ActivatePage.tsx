@@ -182,10 +182,9 @@ export default function ActivatePage() {
         <div className="text-center">
           <div className="flex items-center justify-center gap-3 mb-2">
             <LogoMark className="h-12 w-12" />
-            <span className="text-[20px] font-extrabold leading-[1.15] tracking-[0.2em] text-gray-900 text-left pb-[1px]">
-              <span className="block bg-gradient-to-r from-rose-500 via-pink-500 to-red-500 bg-clip-text text-transparent">AI</span>
-              <span className="block bg-gradient-to-r from-gray-900 via-gray-600 to-gray-900 bg-clip-text text-transparent">Play</span>
-              <span className="block bg-gradient-to-r from-gray-900 via-gray-600 to-gray-900 bg-clip-text text-transparent">Ground</span>
+            <span className="text-[24px] font-extrabold leading-[1.15] tracking-tight text-gray-900 text-left pb-[1px]">
+              <span className="text-gray-700">Golinelli</span>
+              <span className="bg-gradient-to-r from-rose-500 to-red-600 bg-clip-text text-transparent">.ai</span>
             </span>
           </div>
           <h1 className="text-3xl font-bold text-gray-900">Attivazione Account</h1>
