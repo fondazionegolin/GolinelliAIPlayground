@@ -352,6 +352,10 @@ export default function StudentDashboard() {
                     selectedTeacherbotId={selectedTeacherbotId}
                     studentAccent={studentAccent}
                     openDocumentTaskId={openDocumentTaskId}
+                    onOpenDocument={(taskId) => {
+                      setOpenDocumentTaskId(taskId)
+                      setActiveModule('documents')
+                    }}
                   />
                 </div>
               )}
@@ -589,7 +593,7 @@ function HomeView({
   )
 }
 
-function ModuleView({ moduleKey, sessionId, openTaskId, studentId, studentName, onTeacherbotNotificationClick, selectedTeacherbotId, studentAccent, openDocumentTaskId }: {
+function ModuleView({ moduleKey, sessionId, openTaskId, studentId, studentName, onTeacherbotNotificationClick, selectedTeacherbotId, studentAccent, openDocumentTaskId, onOpenDocument }: {
   moduleKey: string;
   sessionId: string;
   openTaskId?: string | null;
@@ -599,6 +603,7 @@ function ModuleView({ moduleKey, sessionId, openTaskId, studentId, studentName, 
   selectedTeacherbotId?: string | null;
   studentAccent: StudentAccentId;
   openDocumentTaskId?: string | null;
+  onOpenDocument?: (taskId: string) => void;
 }) {
   // Class chat module - full screen ChatSidebar
   if (moduleKey === 'classe' || moduleKey === 'chat') {
@@ -633,7 +638,10 @@ function ModuleView({ moduleKey, sessionId, openTaskId, studentId, studentName, 
     return (
       <Card className="border-0 md:border shadow-none md:shadow-sm h-full">
         <CardContent className="p-0 h-full">
-          <TasksModule openTaskId={openTaskId} />
+          <TasksModule 
+            openTaskId={openTaskId} 
+            onOpenDocument={onOpenDocument}
+          />
         </CardContent>
       </Card>
     )

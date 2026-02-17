@@ -1,19 +1,16 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { motion, AnimatePresence } from 'framer-motion'
 import { studentApi } from '@/lib/api'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { useToast } from '@/components/ui/use-toast'
 import {
-  ClipboardList, Check, Clock, Send, ChevronDown, ChevronUp, Lightbulb,
-  ChevronLeft, ChevronRight, BookOpen, X, Target, Sparkles, ListChecks,
-  BookMarked, ExternalLink
+  ClipboardList, Check, Clock, Send, Lightbulb,
+  ChevronLeft, ChevronRight, X, 
+  Award, ArrowRight, CheckCircle2,
+  Monitor, PenTool, BookOpen
 } from 'lucide-react'
-import ReactMarkdown from 'react-markdown'
-import remarkGfm from 'remark-gfm'
-import remarkMath from 'remark-math'
-import rehypeKatex from 'rehype-katex'
-import 'katex/dist/katex.min.css'
+import { loadStudentAccent, getStudentAccentTheme } from '@/lib/studentAccent'
 
 interface QuizQuestion {
   question: string
@@ -21,59 +18,15 @@ interface QuizQuestion {
   correctIndex: number
 }
 
-interface Block {
-  id: string
-  type: 'text' | 'image'
-  content: string
-  x: number
-  y: number
-  width: number
-  height: number
-  style: {
-    backgroundColor?: string
-    color?: string
-    fontSize?: number
-    fontFamily?: string
-    textAlign?: 'left' | 'center' | 'right'
-    borderRadius?: number
-    padding?: number
-  }
-}
-
-interface PresentationSlide {
-  order?: number // Legacy
-  id?: string
-  title: string
-  content?: string // Legacy markdown content
-  speaker_notes?: string
-  blocks?: Block[] // New format
-}
-
-interface LessonSection {
-  title: string
-  content: string
-}
-
 interface TaskContent {
-  type: 'quiz' | 'exercise' | 'discussion' | 'presentation' | 'lesson' | 'presentation_v2' | 'document_v1'
-  format?: '16:9' | '4:3' | 'a4'
+  type: 'quiz' | 'exercise' | 'discussion' | 'presentation' | 'lesson' | 'presentation_v2' | 'document_v1' | 'student_presentation' | 'student_document' | 'student_sheet' | 'student_canvas'
   questions?: QuizQuestion[]
   text?: string
   hint?: string
-  topic?: string
-  // Presentation fields
   title?: string
   description?: string
-  slides?: PresentationSlide[]
-  // Lesson/Document fields
-  content?: string
-  htmlContent?: string // New field for HTML documents
-  sections?: LessonSection[]
-  learning_objectives?: string[]
-  key_concepts?: string[]
-  summary?: string
-  activities?: string[]
-  resources?: string[]
+  slides?: any[]
+  htmlContent?: string
 }
 
 interface TaskData {
@@ -95,29 +48,17 @@ interface TaskData {
   } | null
 }
 
-interface QuizWrongAnswerDetail {
-  questionNumber: number
-  question: string
-  selectedAnswer: string
-  correctAnswer: string
-}
+type Priority = 'high' | 'medium' | 'low'
 
 interface TasksModuleProps {
   openTaskId?: string | null
+  onOpenDocument?: (taskId: string) => void
 }
 
-export default function TasksModule({ openTaskId }: TasksModuleProps) {
+export default function TasksModule({ openTaskId, onOpenDocument }: TasksModuleProps) {
   const queryClient = useQueryClient()
-  const { toast } = useToast()
-  const [expandedTask, setExpandedTask] = useState<string | null>(openTaskId || null)
-  const [responses, setResponses] = useState<Record<string, string>>({})
-  const [quizAnswers, setQuizAnswers] = useState<Record<string, Record<number, number>>>({})
-
-  useEffect(() => {
-    if (openTaskId) {
-      setExpandedTask(openTaskId)
-    }
-  }, [openTaskId])
+  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(openTaskId || null)
+  const [accentTheme] = useState(getStudentAccentTheme(loadStudentAccent()))
 
   const { data: tasks, isLoading } = useQuery<TaskData[]>({
     queryKey: ['student-tasks'],
@@ -127,872 +68,624 @@ export default function TasksModule({ openTaskId }: TasksModuleProps) {
     },
   })
 
-  const submitMutation = useMutation({
-    mutationFn: ({ taskId, content, content_json }: { taskId: string; content?: string; content_json?: string }) =>
-      studentApi.submitTask(taskId, content, content_json),
-    onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['student-tasks'] })
-      setResponses(prev => ({ ...prev, [variables.taskId]: '' }))
-      setQuizAnswers(prev => ({ ...prev, [variables.taskId]: {} }))
-      toast({ title: 'Risposta inviata!' })
-    },
-    onError: () => {
-      toast({ variant: 'destructive', title: 'Errore nell\'invio' })
-    },
-  })
+  const selectedTask = useMemo(() => 
+    tasks?.find(t => t.id === selectedTaskId), 
+    [tasks, selectedTaskId]
+  )
 
-  const handleSubmitExercise = (taskId: string) => {
-    const content = responses[taskId]
-    if (content?.trim()) {
-      submitMutation.mutate({ taskId, content: content.trim() })
-    }
-  }
-
-  const handleSubmitQuiz = (taskId: string, task: TaskData) => {
-    const answers = quizAnswers[taskId]
-    if (!answers) return
-
-    const content = parseTaskContent(task)
-    if (!content?.questions) return
-
-    const content_json = JSON.stringify({
-      answers: Object.entries(answers).map(([qIndex, aIndex]) => ({
-        questionIndex: parseInt(qIndex),
-        selectedIndex: aIndex,
-      }))
-    })
-
-    // Calculate score
-    let correct = 0
-    content.questions.forEach((q, i) => {
-      if (answers[i] === q.correctIndex) correct++
-    })
-    const scoreText = `${correct}/${content.questions.length}`
-
-    submitMutation.mutate({ taskId, content: scoreText, content_json })
-  }
-
-  const parseTaskContent = (task: TaskData): TaskContent | null => {
-    if (!task.content_json) return null
-    try {
-      return JSON.parse(task.content_json)
-    } catch {
-      return null
-    }
-  }
-
-  const getTaskTypeLabel = (type: string) => {
-    const labels: Record<string, string> = {
-      exercise: 'Esercizio',
-      quiz: 'Quiz',
-      reading: 'Lettura',
-      discussion: 'Discussione',
-      project: 'Progetto',
-      presentation: 'Presentazione',
-      lesson: 'Lezione',
-      document_v1: 'Documento', // Label for new type
-    }
-    return labels[type] || type
-  }
-
-  const getTaskTypeColor = (type: string) => {
-    const colors: Record<string, string> = {
-      exercise: 'bg-blue-100 text-blue-700',
-      quiz: 'bg-purple-100 text-purple-700',
-      reading: 'bg-green-100 text-green-700',
-      discussion: 'bg-orange-100 text-orange-700',
-      project: 'bg-pink-100 text-pink-700',
-      presentation: 'bg-indigo-100 text-indigo-700',
-      lesson: 'bg-emerald-100 text-emerald-700',
-      document_v1: 'bg-slate-100 text-slate-700',
-    }
-    return colors[type] || 'bg-gray-100 text-gray-700'
-  }
+  useEffect(() => {
+    if (openTaskId) setSelectedTaskId(openTaskId)
+  }, [openTaskId])
 
   if (isLoading) {
     return (
-      <div className="p-6 text-center">
-        <p className="text-muted-foreground">Caricamento compiti...</p>
+      <div className="h-full flex items-center justify-center p-12">
+        <motion.div 
+          animate={{ rotate: 360 }}
+          transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+        >
+          <LoaderIcon className="h-8 w-8 text-slate-300" />
+        </motion.div>
       </div>
     )
   }
 
   if (!tasks || tasks.length === 0) {
     return (
-      <div className="p-6 text-center">
-        <ClipboardList className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
-        <h3 className="font-semibold mb-2">Nessun compito</h3>
-        <p className="text-muted-foreground">
-          Il docente non ha ancora assegnato compiti.
+      <div className="h-full flex flex-col items-center justify-center p-12 text-center">
+        <div className="w-20 h-20 rounded-full bg-slate-100 flex items-center justify-center mb-6">
+          <ClipboardList className="h-10 w-10 text-slate-300" />
+        </div>
+        <h3 className="text-xl font-bold text-slate-800 mb-2">Nessun compito assegnato</h3>
+        <p className="text-slate-500 max-w-sm">
+          Il docente non ha ancora pubblicato attività per questa sessione.
         </p>
       </div>
     )
   }
 
   return (
-    <div className="p-4 space-y-4">
-      <div className="flex items-center gap-2 mb-4">
-        <ClipboardList className="h-5 w-5 text-emerald-600" />
-        <h3 className="font-semibold">Compiti Assegnati ({tasks.length})</h3>
+    <div className="h-full flex flex-col relative overflow-hidden">
+      {/* Grid View */}
+      <div className="flex-1 overflow-y-auto p-4 md:p-6 pb-24">
+        <div className="max-w-6xl mx-auto">
+          <div className="flex items-center justify-between mb-8">
+            <div>
+              <h2 className="text-2xl font-bold text-slate-900 tracking-tight">I miei Compiti</h2>
+              <p className="text-slate-500">Gestisci le tue attività e visualizza i feedback</p>
+            </div>
+            <div className="bg-white/50 backdrop-blur-md px-4 py-2 rounded-full border border-slate-200 shadow-sm flex items-center gap-2">
+              <Award className="h-4 w-4 text-amber-500" />
+              <span className="text-sm font-bold text-slate-700">
+                {tasks.filter(t => t.submission).length} / {tasks.length} completati
+              </span>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {tasks.map((task) => (
+              <TaskCard 
+                key={task.id} 
+                task={task} 
+                onClick={() => {
+                  if ((task.task_type === 'lesson' || task.task_type === 'presentation') && onOpenDocument) {
+                    onOpenDocument(task.id)
+                  } else {
+                    setSelectedTaskId(task.id)
+                  }
+                }}
+                accentColor={accentTheme.accent}
+              />
+            ))}
+          </div>
+        </div>
       </div>
 
-      {tasks.map((task) => (
-        <Card key={task.id} className={task.submission ? 'border-green-200 bg-green-50/50' : ''}>
-          <CardHeader className="pb-2">
-            <div className="flex items-start justify-between">
-              <div className="flex-1">
-                <div className="flex items-center gap-2 mb-1">
-                  <CardTitle className="text-base">{task.title}</CardTitle>
-                  <span className={`text-xs px-2 py-0.5 rounded ${getTaskTypeColor(task.task_type)}`}>
-                    {getTaskTypeLabel(task.task_type)}
-                  </span>
-                  {task.submission && (
-                    <span className="text-xs px-2 py-0.5 rounded bg-green-100 text-green-700 flex items-center gap-1">
-                      <Check className="h-3 w-3" />
-                      Completato
-                    </span>
-                  )}
-                </div>
-                {task.due_at && (
-                  <p className="text-xs text-muted-foreground flex items-center gap-1">
-                    <Clock className="h-3 w-3" />
-                    Scadenza: {new Date(task.due_at).toLocaleDateString('it-IT')}
-                  </p>
-                )}
-              </div>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setExpandedTask(expandedTask === task.id ? null : task.id)}
-              >
-                {expandedTask === task.id ? (
-                  <ChevronUp className="h-4 w-4" />
-                ) : (
-                  <ChevronDown className="h-4 w-4" />
-                )}
-              </Button>
-            </div>
-          </CardHeader>
-
-          {expandedTask === task.id && (
-            <CardContent className="pt-2">
-              {task.description && (
-                <p className="text-sm text-muted-foreground mb-4">{task.description}</p>
-              )}
-
-              {task.submission ? (
-                <SubmissionView task={task} />
-              ) : (
-                <TaskInputView
-                  task={task}
-                  responses={responses}
-                  setResponses={setResponses}
-                  quizAnswers={quizAnswers}
-                  setQuizAnswers={setQuizAnswers}
-                  onSubmitExercise={handleSubmitExercise}
-                  onSubmitQuiz={handleSubmitQuiz}
-                  isPending={submitMutation.isPending}
-                  parseTaskContent={parseTaskContent}
-                  onSubmitDocument={() => submitMutation.mutate({ taskId: task.id, content: 'Letto' })}
-                />
-              )}
-            </CardContent>
-          )}
-        </Card>
-      ))}
+      {/* Task Viewer Modal */}
+      <AnimatePresence>
+        {selectedTask && (
+          <TaskViewerOverlay 
+            task={selectedTask} 
+            onClose={() => setSelectedTaskId(null)} 
+            accentTheme={accentTheme}
+            onSuccess={() => queryClient.invalidateQueries({ queryKey: ['student-tasks'] })}
+          />
+        )}
+      </AnimatePresence>
     </div>
   )
 }
 
-function getQuizWrongAnswers(task: TaskData): QuizWrongAnswerDetail[] {
-  if (task.task_type !== 'quiz') return []
-  if (!task.content_json || !task.submission?.content_json) return []
+function TaskCard({ task, onClick, accentColor }: { task: TaskData; onClick: () => void; accentColor: string }) {
+  const isCompleted = !!task.submission
+  
+  // Calculate priority
+  const priority = useMemo((): Priority => {
+    if (isCompleted) return 'low'
+    if (!task.due_at) return 'medium'
+    const dueDate = new Date(task.due_at)
+    const now = new Date()
+    const diff = dueDate.getTime() - now.getTime()
+    const diffHours = diff / (1000 * 60 * 60)
+    
+    if (diffHours < 0) return 'high' // Expired
+    if (diffHours < 24) return 'high'
+    if (diffHours < 72) return 'medium'
+    return 'low'
+  }, [task.due_at, isCompleted])
 
-  try {
-    const taskContent = JSON.parse(task.content_json) as TaskContent
-    const submissionContent = JSON.parse(task.submission.content_json) as { answers?: Array<{ questionIndex: number; selectedIndex: number }> }
-
-    if (!taskContent.questions || !submissionContent.answers) return []
-
-    const wrongAnswers: QuizWrongAnswerDetail[] = []
-    for (const answer of submissionContent.answers) {
-      const q = taskContent.questions[answer.questionIndex]
-      if (!q) continue
-      const selectedIndex = answer.selectedIndex
-      if (selectedIndex === q.correctIndex) continue
-
-      wrongAnswers.push({
-        questionNumber: answer.questionIndex + 1,
-        question: q.question,
-        selectedAnswer: q.options[selectedIndex] ?? 'Nessuna risposta',
-        correctAnswer: q.options[q.correctIndex] ?? 'N/D',
-      })
+  const typeIcon = useMemo(() => {
+    switch (task.task_type) {
+      case 'quiz': return <ListChecksIcon className="h-5 w-5" />
+      case 'lesson': return <BookOpen className="h-5 w-5" />
+      case 'presentation': return <Monitor className="h-5 w-5" />
+      case 'exercise': return <PenTool className="h-5 w-5" />
+      default: return <ClipboardList className="h-5 w-5" />
     }
-    return wrongAnswers
-  } catch {
-    return []
-  }
-}
+  }, [task.task_type])
 
-function SubmissionView({ task }: { task: TaskData }) {
-  const wrongAnswers = getQuizWrongAnswers(task)
+  const priorityStyles = {
+    high: 'bg-red-50 text-red-600 border-red-100',
+    medium: 'bg-amber-50 text-amber-600 border-amber-100',
+    low: 'bg-slate-50 text-slate-500 border-slate-100'
+  }
 
   return (
-    <div className="space-y-3">
-      <div className="bg-white/60 backdrop-blur-md p-3 rounded-xl border border-slate-200 shadow-sm">
-        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">La tua risposta:</p>
-        <p className="text-sm text-slate-700 leading-relaxed font-medium">{task.submission?.content}</p>
-        <div className="flex items-center gap-1.5 mt-3 text-[10px] text-slate-400">
-          <Clock className="h-3 w-3" />
-          <span>Inviata: {new Date(task.submission?.submitted_at || '').toLocaleString('it-IT', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>
+    <motion.div
+      whileHover={{ y: -4, boxShadow: '0 20px 25px -5px rgb(0 0 0 / 0.1)' }}
+      whileTap={{ scale: 0.98 }}
+      onClick={onClick}
+      className={`
+        relative group cursor-pointer bg-white/70 backdrop-blur-md rounded-2xl border transition-all duration-300
+        ${isCompleted ? 'border-emerald-500/30' : 'border-slate-200'}
+      `}
+    >
+      <div className="p-5">
+        {/* Header */}
+        <div className="flex items-start justify-between mb-4">
+          <div className={`p-2.5 rounded-xl shadow-sm ${isCompleted ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-500'}`}>
+            {typeIcon}
+          </div>
+          <div className={`px-2.5 py-1 rounded-full border text-[10px] font-bold uppercase tracking-wider ${priorityStyles[priority]}`}>
+            {priority === 'high' ? (isCompleted ? 'Priorità Bassa' : 'Urgente') : priority === 'medium' ? 'Priorità Media' : 'Priorità Bassa'}
+          </div>
+        </div>
+
+        {/* Title & Desc */}
+        <h3 className={`text-lg font-bold mb-1 line-clamp-1 ${isCompleted ? 'text-emerald-900' : 'text-slate-800'}`}>
+          {task.title}
+        </h3>
+        <p className="text-sm text-slate-500 line-clamp-2 mb-6 min-h-[40px]">
+          {task.description || 'Nessuna descrizione fornita per questo compito.'}
+        </p>
+
+        {/* Footer */}
+        <div className="flex items-center justify-between pt-4 border-t border-slate-100">
+          <div className="flex items-center gap-4">
+            {task.due_at && (
+              <div className="flex items-center gap-1.5 text-xs text-slate-400 font-medium">
+                <Clock className="h-3.5 w-3.5" />
+                {new Date(task.due_at).toLocaleDateString('it-IT')}
+              </div>
+            )}
+            {task.points && (
+              <div className="flex items-center gap-1.5 text-xs text-slate-400 font-medium">
+                <TargetIcon className="h-3.5 w-3.5" />
+                {task.points} pt
+              </div>
+            )}
+          </div>
+          
+          <div className={`flex items-center gap-1.5 text-sm font-bold ${isCompleted ? 'text-emerald-600' : ''}`} style={{ color: !isCompleted ? accentColor : undefined }}>
+            {isCompleted ? (
+              <>
+                <CheckCircle2 className="h-4 w-4" />
+                <span>Fatto</span>
+              </>
+            ) : (
+              <>
+                <span>Inizia</span>
+                <ArrowRight className="h-4 w-4 group-hover:translate-x-1 transition-transform" />
+              </>
+            )}
+          </div>
         </div>
       </div>
-      
-      {task.submission?.score && (
-        <div className="bg-blue-500/5 backdrop-blur-md p-3 rounded-xl border border-blue-500/20 shadow-sm">
-          <p className="text-sm font-bold text-blue-700">
-            Valutazione: {task.submission.score}
-          </p>
-          {task.submission.feedback && (
-            <p className="text-sm text-blue-600 mt-1 leading-relaxed">{task.submission.feedback}</p>
-          )}
-        </div>
-      )}
 
-      {wrongAnswers.length > 0 && (
-        <div className="bg-red-500/5 backdrop-blur-md p-3 rounded-xl border border-red-500/20 shadow-sm space-y-2">
-          <p className="text-sm font-bold text-red-700 uppercase tracking-tight">
-            Risposte da rivedere ({wrongAnswers.length})
-          </p>
-          {wrongAnswers.map((wa) => (
-            <div key={`${task.id}-wrong-${wa.questionNumber}`} className="text-sm bg-white/60 rounded-lg border border-red-100/50 p-2 shadow-sm">
-              <p className="font-bold text-slate-800 mb-1">
-                {wa.questionNumber}. {wa.question}
-              </p>
-              <div className="space-y-0.5">
-                <p className="text-red-600 flex items-center gap-1.5">
-                  <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
-                  La tua risposta: <span className="font-medium">{wa.selectedAnswer}</span>
-                </p>
-                <p className="text-emerald-600 flex items-center gap-1.5">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                  Corretta: <span className="font-medium">{wa.correctAnswer}</span>
-                </p>
-              </div>
-            </div>
-          ))}
+      {/* Completion overlay badge */}
+      {isCompleted && (
+        <div className="absolute top-0 right-0 p-2">
+          <div className="bg-emerald-500 text-white rounded-full p-0.5 shadow-sm">
+            <Check className="h-3 w-3" />
+          </div>
         </div>
       )}
-    </div>
+    </motion.div>
   )
 }
 
-interface TaskInputViewProps {
-  task: TaskData
-  responses: Record<string, string>
-  setResponses: React.Dispatch<React.SetStateAction<Record<string, string>>>
-  quizAnswers: Record<string, Record<number, number>>
-  setQuizAnswers: React.Dispatch<React.SetStateAction<Record<string, Record<number, number>>>>
-  onSubmitExercise: (taskId: string) => void
-  onSubmitQuiz: (taskId: string, task: TaskData) => void
-  onSubmitDocument: (taskId: string) => void
-  isPending: boolean
-  parseTaskContent: (task: TaskData) => TaskContent | null
+function TaskViewerOverlay({ task, onClose, accentTheme, onSuccess }: { task: TaskData; onClose: () => void; accentTheme: any; onSuccess: () => void }) {
+  const { toast } = useToast()
+  const isCompleted = !!task.submission
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [response, setResponse] = useState('')
+
+  const content = useMemo(() => {
+    if (!task.content_json) return null
+    try { return JSON.parse(task.content_json) as TaskContent } catch { return null }
+  }, [task.content_json])
+
+  const submitMutation = useMutation({
+    mutationFn: ({ content, content_json }: { content?: string; content_json?: string }) =>
+      studentApi.submitTask(task.id, content, content_json),
+    onSuccess: () => {
+      onSuccess()
+      toast({ title: 'Ottimo lavoro!', description: 'Il tuo compito è stato inviato correttamente.' })
+      onClose()
+    },
+    onError: () => {
+      toast({ variant: 'destructive', title: 'Errore nell\'invio', description: 'Riprova tra qualche istante.' })
+    },
+    onSettled: () => setIsSubmitting(false)
+  })
+
+  const handleFinalSubmit = (submissionContent: string, submissionJson?: string) => {
+    setIsSubmitting(true)
+    submitMutation.mutate({ content: submissionContent, content_json: submissionJson })
+  }
+
+  return (
+    <motion.div 
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 z-[60] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-0 md:p-4"
+    >
+      <motion.div
+        initial={{ y: 50, scale: 0.95 }}
+        animate={{ y: 0, scale: 1 }}
+        exit={{ y: 50, scale: 0.95 }}
+        className="bg-white w-full h-full md:h-[90vh] md:max-w-4xl md:rounded-3xl shadow-2xl flex flex-col overflow-hidden"
+      >
+        {/* Header */}
+        <div className="px-6 py-4 border-b flex items-center justify-between shrink-0 bg-white/80 backdrop-blur-md sticky top-0 z-10">
+          <div className="flex items-center gap-4">
+            <Button variant="ghost" size="icon" onClick={onClose} className="rounded-full">
+              <X className="h-5 w-5" />
+            </Button>
+            <div>
+              <h2 className="font-bold text-lg text-slate-900 leading-tight line-clamp-1">{task.title}</h2>
+              <div className="flex items-center gap-3 mt-0.5">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                  {task.task_type}
+                </span>
+                {task.due_at && (
+                  <span className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                    <Clock className="h-3 w-3" /> Scadenza: {new Date(task.due_at).toLocaleDateString()}
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+          
+          {isCompleted && (
+            <div className="bg-emerald-50 px-3 py-1.5 rounded-full border border-emerald-100 flex items-center gap-2">
+              <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+              <span className="text-xs font-bold text-emerald-700">Completato</span>
+            </div>
+          )}
+        </div>
+
+        {/* Content Area */}
+        <div className="flex-1 overflow-y-auto bg-slate-50/50">
+          <div className="p-6 md:p-8">
+            {isCompleted ? (
+              <SubmissionSummary task={task} />
+            ) : (
+              <div className="max-w-2xl mx-auto space-y-8">
+                {task.description && (
+                  <div className="prose prose-slate max-w-none">
+                    <p className="text-slate-600 leading-relaxed text-lg">
+                      {task.description}
+                    </p>
+                  </div>
+                )}
+
+                {task.task_type === 'quiz' && content?.questions ? (
+                  <QuizCarousel 
+                    questions={content.questions} 
+                    onSubmit={(answers) => {
+                      let correct = 0
+                      content.questions!.forEach((q, i) => {
+                        if (answers[i] === q.correctIndex) correct++
+                      })
+                      const scoreText = `${correct}/${content.questions!.length}`
+                      const content_json = JSON.stringify({
+                        answers: Object.entries(answers).map(([qIndex, aIndex]) => ({
+                          questionIndex: parseInt(qIndex),
+                          selectedIndex: aIndex,
+                        }))
+                      })
+                      handleFinalSubmit(scoreText, content_json)
+                    }}
+                    accentTheme={accentTheme}
+                    isSubmitting={isSubmitting}
+                  />
+                ) : task.task_type === 'exercise' ? (
+                  <ExerciseViewer 
+                    content={content} 
+                    onSubmit={(text) => handleFinalSubmit(text)}
+                    accentTheme={accentTheme}
+                    isSubmitting={isSubmitting}
+                  />
+                ) : (
+                  <div className="space-y-4">
+                    <textarea
+                      value={response}
+                      onChange={(e) => setResponse(e.target.value)}
+                      placeholder="Scrivi qui la tua risposta..."
+                      className="w-full p-4 rounded-2xl border border-slate-200 bg-white shadow-sm min-h-[200px] focus:ring-2 focus:ring-indigo-500 outline-none"
+                    />
+                    <Button
+                      onClick={() => handleFinalSubmit(response)}
+                      disabled={!response.trim() || isSubmitting}
+                      className="w-full h-12 text-lg rounded-xl"
+                      style={{ backgroundColor: accentTheme.accent }}
+                    >
+                      {isSubmitting ? 'Invio in corso...' : 'Invia Risposta'}
+                    </Button>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      </motion.div>
+    </motion.div>
+  )
 }
 
-function TaskInputView({
-  task,
-  responses,
-  setResponses,
-  quizAnswers,
-  setQuizAnswers,
-  onSubmitExercise,
-  onSubmitQuiz,
-  onSubmitDocument,
-  isPending,
-  parseTaskContent,
-}: TaskInputViewProps) {
-  const content = parseTaskContent(task)
+function QuizCarousel({ questions, onSubmit, accentTheme, isSubmitting }: { 
+  questions: QuizQuestion[]; 
+  onSubmit: (answers: Record<number, number>) => void;
+  accentTheme: any;
+  isSubmitting: boolean;
+}) {
+  const [currentIndex, setCurrentIndex] = useState(0)
+  const [answers, setAnswers] = useState<Record<number, number>>({})
+  
+  const allAnswered = questions.every((_, i) => answers[i] !== undefined)
 
-  // Quiz view
-  if (task.task_type === 'quiz' && content?.questions) {
-    const answers = quizAnswers[task.id] || {}
-    const allAnswered = content.questions.every((_, i) => answers[i] !== undefined)
+  const handleNext = () => {
+    if (currentIndex < questions.length - 1) {
+      setCurrentIndex(currentIndex + 1)
+    }
+  }
 
-    return (
-      <div className="space-y-4">
-        {content.questions.map((q, qIndex) => (
-          <div key={qIndex} className="border rounded-lg p-4 bg-gray-50">
-            <p className="font-medium mb-3">
-              {qIndex + 1}. {q.question}
-            </p>
-            <div className="space-y-2">
-              {q.options.map((opt, optIndex) => (
+  const handlePrev = () => {
+    if (currentIndex > 0) {
+      setCurrentIndex(currentIndex - 1)
+    }
+  }
+
+  return (
+    <div className="space-y-8">
+      {/* Progress */}
+      <div className="flex items-center gap-4">
+        <div className="flex-1 h-2 bg-slate-200 rounded-full overflow-hidden">
+          <motion.div 
+            className="h-full" 
+            style={{ backgroundColor: accentTheme.accent }}
+            animate={{ width: `${((currentIndex + 1) / questions.length) * 100}%` }}
+          />
+        </div>
+        <span className="text-xs font-bold text-slate-400 uppercase">
+          Domanda {currentIndex + 1} di {questions.length}
+        </span>
+      </div>
+
+      <div className="min-h-[300px] relative overflow-hidden">
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={currentIndex}
+            initial={{ x: 50, opacity: 0 }}
+            animate={{ x: 0, opacity: 1 }}
+            exit={{ x: -50, opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className="space-y-6"
+          >
+            <h3 className="text-xl font-bold text-slate-800 leading-snug">
+              {questions[currentIndex].question}
+            </h3>
+
+            <div className="space-y-3">
+              {questions[currentIndex].options.map((opt, optIndex) => (
                 <button
                   key={optIndex}
-                  type="button"
-                  onClick={() => setQuizAnswers(prev => ({
-                    ...prev,
-                    [task.id]: { ...prev[task.id], [qIndex]: optIndex }
-                  }))}
-                  className={`w-full text-left p-3 rounded-lg border transition-all duration-200 backdrop-blur-md ${
-                    answers[qIndex] === optIndex
-                      ? 'bg-emerald-500/10 border-emerald-500/40 text-emerald-800 shadow-sm'
-                      : 'bg-white/60 hover:bg-white border-slate-200 text-slate-600'
-                  }`}
+                  onClick={() => setAnswers(prev => ({ ...prev, [currentIndex]: optIndex }))}
+                  className={`
+                    w-full text-left p-4 rounded-2xl border-2 transition-all flex items-center justify-between group
+                    ${answers[currentIndex] === optIndex 
+                      ? 'bg-white border-indigo-500 shadow-md' 
+                      : 'bg-white border-transparent hover:border-slate-200'}
+                  `}
+                  style={answers[currentIndex] === optIndex ? { borderColor: accentTheme.accent } : {}}
                 >
-                  <span className="flex items-center gap-2">
-                    <span className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors ${
-                      answers[qIndex] === optIndex
-                        ? 'bg-emerald-500 border-emerald-500'
-                        : 'border-slate-300'
-                    }`}>
-                      {answers[qIndex] === optIndex && <Check className="h-3 w-3 text-white" />}
-                    </span>
-                    <span className={answers[qIndex] === optIndex ? 'font-semibold' : ''}>{opt}</span>
+                  <span className={`text-sm font-medium ${answers[currentIndex] === optIndex ? 'text-slate-900' : 'text-slate-600'}`}>
+                    {opt}
                   </span>
+                  <div className={`
+                    w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all
+                    ${answers[currentIndex] === optIndex ? 'bg-indigo-500 border-indigo-500 text-white' : 'border-slate-200'}
+                  `}
+                  style={answers[currentIndex] === optIndex ? { backgroundColor: accentTheme.accent, borderColor: accentTheme.accent } : {}}
+                  >
+                    {answers[currentIndex] === optIndex && <Check className="h-3.5 w-3.5" />}
+                  </div>
                 </button>
               ))}
             </div>
-          </div>
-        ))}
-        <Button
-          onClick={() => onSubmitQuiz(task.id, task)}
-          disabled={!allAnswered || isPending}
-          className="w-full"
-        >
-          <Send className="h-4 w-4 mr-2" />
-          Invia Quiz ({Object.keys(answers).length}/{content.questions.length} risposte)
-        </Button>
+          </motion.div>
+        </AnimatePresence>
       </div>
-    )
-  }
 
-  // Exercise view
-  if (task.task_type === 'exercise' && content?.text) {
-    return (
-      <div className="space-y-4">
-        <div className="bg-amber-50 p-4 rounded-lg border border-amber-200">
-          <p className="text-sm font-medium text-amber-800 mb-2">Esercizio:</p>
-          <p className="text-sm text-amber-900">{content.text}</p>
+      {/* Navigation */}
+      <div className="flex items-center justify-between pt-6 border-t border-slate-100">
+        <Button 
+          variant="ghost" 
+          onClick={handlePrev} 
+          disabled={currentIndex === 0}
+          className="gap-2 rounded-full"
+        >
+          <ChevronLeft className="h-4 w-4" /> Precedente
+        </Button>
+
+        {currentIndex === questions.length - 1 ? (
+          <Button 
+            disabled={!allAnswered || isSubmitting}
+            onClick={() => onSubmit(answers)}
+            className="gap-2 rounded-full px-8 shadow-lg shadow-indigo-100"
+            style={{ backgroundColor: accentTheme.accent }}
+          >
+            {isSubmitting ? 'Invio...' : 'Invia Quiz'} <Send className="h-4 w-4" />
+          </Button>
+        ) : (
+          <Button 
+            onClick={handleNext}
+            disabled={answers[currentIndex] === undefined}
+            className="gap-2 rounded-full px-8"
+            style={{ backgroundColor: accentTheme.accent }}
+          >
+            Avanti <ChevronRight className="h-4 w-4" />
+          </Button>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function ExerciseViewer({ content, onSubmit, accentTheme, isSubmitting }: { 
+  content: TaskContent | null; 
+  onSubmit: (text: string) => void;
+  accentTheme: any;
+  isSubmitting: boolean;
+}) {
+  const [response, setResponse] = useState('')
+
+  return (
+    <div className="space-y-6">
+      {content?.text && (
+        <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
+          <div className="flex items-center gap-2 mb-3">
+            <PenTool className="h-4 w-4" style={{ color: accentTheme.accent }} />
+            <span className="text-xs font-bold uppercase tracking-widest text-slate-400">Esercizio</span>
+          </div>
+          <p className="text-slate-800 font-medium leading-relaxed italic">
+            "{content.text}"
+          </p>
           {content.hint && (
-            <p className="text-xs text-amber-600 mt-2 flex items-center gap-1">
-              <Lightbulb className="h-3 w-3" />
-              Suggerimento: {content.hint}
-            </p>
+            <div className="mt-4 flex items-start gap-2 text-xs text-amber-600 bg-amber-50 p-3 rounded-xl border border-amber-100">
+              <Lightbulb className="h-3.5 w-3.5 shrink-0" />
+              <span>{content.hint}</span>
+            </div>
           )}
         </div>
-        <textarea
-          value={responses[task.id] || ''}
-          onChange={(e) => setResponses(prev => ({ ...prev, [task.id]: e.target.value }))}
-          placeholder="Scrivi la tua risposta..."
-          className="w-full p-3 border rounded-lg text-sm min-h-[100px] resize-none"
-        />
-        <Button
-          onClick={() => onSubmitExercise(task.id)}
-          disabled={!responses[task.id]?.trim() || isPending}
-          className="w-full"
-        >
-          <Send className="h-4 w-4 mr-2" />
-          Invia Risposta
-        </Button>
-      </div>
-    )
-  }
+      )}
 
-  // Presentation view (Legacy and V2)
-  if ((task.task_type === 'presentation' || content?.type === 'presentation_v2') && content?.slides && content.slides.length > 0) {
-    return <PresentationViewer content={content} slides={content.slides} title={content.title || task.title} />
-  }
-
-  // Document/HTML view
-  if (content?.type === 'document_v1' || content?.htmlContent) {
-    return (
-      <div className="space-y-4">
-        <div className="border bg-white rounded-lg shadow-sm p-8 min-h-[400px]">
-          <div className="prose prose-sm max-w-none" dangerouslySetInnerHTML={{ __html: content.htmlContent || '' }} />
-        </div>
-        <Button
-          onClick={() => onSubmitDocument(task.id)}
-          disabled={isPending}
-          className="w-full bg-emerald-600 hover:bg-emerald-700"
-        >
-          <Check className="h-4 w-4 mr-2" />
-          Segna come letto
-        </Button>
-      </div>
-    )
-  }
-
-  // Lesson view
-  if (task.task_type === 'lesson' && content) {
-    return (
-      <LessonViewer
-        content={content}
-        title={content.title || task.title}
-        description={content.description || task.description}
-      />
-    )
-  }
-
-  // Default text response (discussion, etc.)
-  return (
-    <div className="space-y-3">
       <textarea
-        value={responses[task.id] || ''}
-        onChange={(e) => setResponses(prev => ({ ...prev, [task.id]: e.target.value }))}
-        placeholder="Scrivi la tua risposta..."
-        className="w-full p-3 border rounded-lg text-sm min-h-[100px] resize-none"
+        value={response}
+        onChange={(e) => setResponse(e.target.value)}
+        placeholder="Scrivi qui la tua risposta..."
+        className="w-full p-5 rounded-3xl border border-slate-200 bg-white shadow-sm min-h-[250px] focus:ring-2 focus:ring-indigo-500 outline-none text-slate-700"
       />
+
       <Button
-        onClick={() => onSubmitExercise(task.id)}
-        disabled={!responses[task.id]?.trim() || isPending}
-        className="w-full"
+        onClick={() => onSubmit(response)}
+        disabled={!response.trim() || isSubmitting}
+        className="w-full h-14 text-lg rounded-2xl shadow-lg transition-all active:scale-[0.99]"
+        style={{ backgroundColor: accentTheme.accent }}
       >
-        <Send className="h-4 w-4 mr-2" />
-        Invia Risposta
+        {isSubmitting ? 'Invio in corso...' : 'Consegna Risposta'}
       </Button>
     </div>
   )
 }
 
-// Presentation Viewer Component
-function PresentationViewer({ slides, title: _title, content }: { slides: PresentationSlide[]; title: string; content?: TaskContent }) {
-  const [currentSlideIndex, setCurrentSlideIndex] = useState(0)
-  const [scale, setScale] = useState(1)
-  const containerRef = useRef<HTMLDivElement>(null)
-
-  // Sort slides by order if present (legacy), otherwise use array order
-  const sortedSlides = [...slides].sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
-  const slide = sortedSlides[currentSlideIndex]
-  
-  const isV2 = content?.type === 'presentation_v2' || !!slide.blocks
-  const format = content?.format || '16:9'
-
-  // Dimensions reference (must match editor)
-  const FORMAT_DIMENSIONS = {
-    '16:9': { width: 960, height: 540 },
-    '4:3': { width: 800, height: 600 },
-    'a4': { width: 595, height: 842 }
-  }
-  const dims = FORMAT_DIMENSIONS[format] || FORMAT_DIMENSIONS['16:9']
-
-  // Handle auto-scaling
-  useEffect(() => {
-    const handleResize = () => {
-      if (containerRef.current && isV2) {
-        const parentWidth = containerRef.current.clientWidth
-        // Calculate scale to fit width
-        const newScale = Math.min(parentWidth / dims.width, 1) 
-        setScale(newScale)
-      }
-    }
-    
-    window.addEventListener('resize', handleResize)
-    handleResize() // Initial call
-    // Small delay to ensure parent container is rendered
-    setTimeout(handleResize, 100)
-    
-    return () => window.removeEventListener('resize', handleResize)
-  }, [currentSlideIndex, isV2, dims.width])
-
-  const goToPrevious = () => {
-    setCurrentSlideIndex((prev) => Math.max(0, prev - 1))
-  }
-
-  const goToNext = () => {
-    setCurrentSlideIndex((prev) => Math.min(sortedSlides.length - 1, prev + 1))
-  }
+function SubmissionSummary({ task }: { task: TaskData }) {
+  const submission = task.submission
+  if (!submission) return null
 
   return (
-    <div className="space-y-4">
-      {/* Slide Display Area */}
-      <div 
-        className={`rounded-xl bg-slate-100 overflow-hidden relative flex items-center justify-center border shadow-sm ${!isV2 ? 'p-6 min-h-[300px]' : ''}`}
-        ref={containerRef}
-        style={isV2 ? { height: dims.height * scale + 40 } : {}} // Add padding for V2 height
-      >
-        {isV2 ? (
-          /* V2 Block Based Renderer */
-          <div 
-            className="bg-white shadow-lg origin-top transition-transform duration-200 ease-out"
-            style={{
-              width: dims.width,
-              height: dims.height,
-              transform: `scale(${scale})`,
-              marginTop: 20
-            }}
-          >
-             {/* Slide Title */}
-             <div className="absolute top-0 left-0 right-0 p-8 z-10 pointer-events-none">
-                <h2 className="text-4xl font-bold text-slate-900">{slide.title}</h2>
-             </div>
+    <div className="max-w-2xl mx-auto space-y-6">
+      <div className="text-center mb-8">
+        <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-emerald-50 mb-4">
+          <CheckCircle2 className="h-8 w-8 text-emerald-500" />
+        </div>
+        <h3 className="text-2xl font-bold text-slate-900">Ottimo lavoro!</h3>
+        <p className="text-slate-500">Hai completato questa attività il {new Date(submission.submitted_at).toLocaleDateString()}</p>
+      </div>
 
-             {/* Blocks */}
-             {slide.blocks?.map((block, idx) => (
-               <div
-                 key={block.id || idx}
-                 className="absolute"
-                 style={{
-                   left: block.x,
-                   top: block.y,
-                   width: block.width,
-                   height: block.height,
-                   backgroundColor: block.style.backgroundColor,
-                   borderRadius: block.style.borderRadius,
-                 }}
-               >
-                 {block.type === 'text' ? (
-                   <div 
-                     className="w-full h-full p-2 whitespace-pre-wrap break-words"
-                     style={{
-                       color: block.style.color,
-                       fontSize: block.style.fontSize,
-                       fontFamily: block.style.fontFamily,
-                       textAlign: block.style.textAlign
-                     }}
-                   >
-                     {block.content}
-                   </div>
-                 ) : (
-                   <img 
-                     src={block.content} 
-                     className="w-full h-full object-cover rounded-sm" 
-                     alt="content" 
-                   />
-                 )}
-               </div>
-             ))}
+      <div className="grid grid-cols-1 gap-4">
+        {/* Answer Box */}
+        <div className="bg-white/60 backdrop-blur-md p-6 rounded-3xl border border-slate-200 shadow-sm">
+          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3">La tua consegna:</p>
+          <div className="prose prose-slate prose-sm max-w-none">
+            <p className="text-slate-700 leading-relaxed font-medium">
+              {submission.content}
+            </p>
           </div>
-        ) : (
-          /* Legacy Markdown Renderer */
-          <div className="w-full max-w-3xl">
-            <div className="flex justify-between items-start mb-6 border-b pb-2">
-               <h3 className="text-2xl font-bold text-indigo-800 pr-16">{slide?.title}</h3>
-               <span className="px-2 py-1 bg-indigo-100 text-indigo-700 text-xs font-medium rounded-full">
-                 {currentSlideIndex + 1} / {sortedSlides.length}
-               </span>
+        </div>
+
+        {/* Feedback / Score Box */}
+        {(submission.score || submission.feedback) && (
+          <div className="bg-indigo-500/5 backdrop-blur-md p-6 rounded-3xl border border-indigo-500/20 shadow-sm">
+            <div className="flex items-center justify-between mb-4">
+              <span className="text-[10px] font-bold text-indigo-400 uppercase tracking-widest">Feedback del Docente</span>
+              {submission.score && (
+                <div className="bg-white px-3 py-1 rounded-full border border-indigo-100 font-bold text-indigo-600 text-sm shadow-sm">
+                  Voto: {submission.score}
+                </div>
+              )}
             </div>
-            <div className="prose prose-sm max-w-none prose-headings:text-indigo-800 prose-p:text-gray-700 prose-li:text-gray-700">
-              <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
-                {slide?.content || ''}
-              </ReactMarkdown>
-            </div>
+            {submission.feedback ? (
+              <p className="text-slate-700 leading-relaxed">{submission.feedback}</p>
+            ) : (
+              <p className="text-slate-400 text-sm italic">Il docente non ha ancora inserito un commento.</p>
+            )}
           </div>
         )}
       </div>
-
-      {/* Navigation Controls */}
-      <div className="flex items-center justify-between bg-white p-3 rounded-lg border">
-        <Button
-          variant="ghost"
-          onClick={goToPrevious}
-          disabled={currentSlideIndex === 0}
-          className="flex items-center gap-1"
-        >
-          <ChevronLeft className="h-4 w-4" />
-          Precedente
-        </Button>
-
-        {/* Slide dots or counter */}
-        <span className="text-sm font-medium text-slate-500">
-           Slide {currentSlideIndex + 1} di {sortedSlides.length}
-        </span>
-
-        <Button
-          variant="ghost"
-          onClick={goToNext}
-          disabled={currentSlideIndex === sortedSlides.length - 1}
-          className="flex items-center gap-1"
-        >
-          Successiva
-          <ChevronRight className="h-4 w-4" />
-        </Button>
-      </div>
-      
-      {/* Keyboard hint */}
-      <p className="text-xs text-center text-gray-400">
-        Usa i pulsanti per navigare
-      </p>
     </div>
   )
 }
 
-// Lesson Viewer Component - Ebook style modal
-interface LessonViewerProps {
-  content: TaskContent
-  title: string
-  description?: string | null
-  onClose?: () => void
+// Icons
+function LoaderIcon(props: any) {
+  return (
+    <svg
+      {...props}
+      xmlns="http://www.w3.org/2000/svg"
+      width="24"
+      height="24"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M12 2v4" />
+      <path d="m16.2 7.8 2.9-2.9" />
+      <path d="M18 12h4" />
+      <path d="m16.2 16.2 2.9 2.9" />
+      <path d="M12 18v4" />
+      <path d="m4.9 19.1 2.9-2.9" />
+      <path d="M2 12h4" />
+      <path d="m4.9 4.9 2.9 2.9" />
+    </svg>
+  )
 }
 
-function LessonViewer({ content, title, description }: LessonViewerProps) {
-  const [isModalOpen, setIsModalOpen] = useState(false)
-  const [currentSection, setCurrentSection] = useState(0)
-
-  const sections = content.sections || []
-  const hasMultipleSections = sections.length > 1
-
+function ListChecksIcon(props: any) {
   return (
-    <>
-      {/* Preview Card */}
-      <div className="space-y-4">
-        <div className="bg-gradient-to-br from-emerald-50 to-teal-50 border border-emerald-200 rounded-xl p-6">
-          <div className="flex items-start gap-4">
-            <div className="p-3 bg-emerald-500 rounded-xl text-white">
-              <BookOpen className="h-8 w-8" />
-            </div>
-            <div className="flex-1">
-              <h3 className="text-lg font-bold text-emerald-800 mb-1">{title}</h3>
-              {description && (
-                <p className="text-sm text-emerald-600 mb-3">{description}</p>
-              )}
+    <svg
+      {...props}
+      xmlns="http://www.w3.org/2000/svg"
+      width="24"
+      height="24"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="m3 17 2 2 4-4" />
+      <path d="m3 7 2 2 4-4" />
+      <path d="M13 6h8" />
+      <path d="M13 12h8" />
+      <path d="M13 18h8" />
+    </svg>
+  )
+}
 
-              {/* Learning Objectives Preview */}
-              {content.learning_objectives && content.learning_objectives.length > 0 && (
-                <div className="mb-3">
-                  <p className="text-xs font-semibold text-emerald-700 mb-1 flex items-center gap-1">
-                    <Target className="h-3 w-3" />
-                    Obiettivi di apprendimento:
-                  </p>
-                  <ul className="text-xs text-emerald-600 space-y-0.5">
-                    {content.learning_objectives.slice(0, 2).map((obj, i) => (
-                      <li key={i} className="flex items-start gap-1">
-                        <span className="text-emerald-400">•</span>
-                        {obj}
-                      </li>
-                    ))}
-                    {content.learning_objectives.length > 2 && (
-                      <li className="text-emerald-400 italic">
-                        +{content.learning_objectives.length - 2} altri...
-                      </li>
-                    )}
-                  </ul>
-                </div>
-              )}
-
-              {/* Sections count */}
-              {sections.length > 0 && (
-                <p className="text-xs text-emerald-500">
-                  {sections.length} {sections.length === 1 ? 'sezione' : 'sezioni'} disponibili
-                </p>
-              )}
-            </div>
-          </div>
-        </div>
-
-        <Button
-          onClick={() => setIsModalOpen(true)}
-          className="w-full bg-emerald-600 hover:bg-emerald-700"
-        >
-          <BookOpen className="h-4 w-4 mr-2" />
-          Apri Lezione
-        </Button>
-      </div>
-
-      {/* Modal Ebook Reader */}
-      {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden">
-            {/* Modal Header */}
-            <div className="bg-gradient-to-r from-emerald-600 to-teal-600 text-white px-6 py-4 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <BookOpen className="h-6 w-6" />
-                <div>
-                  <h2 className="font-bold text-lg">{title}</h2>
-                  {hasMultipleSections && (
-                    <p className="text-emerald-100 text-sm">
-                      Sezione {currentSection + 1} di {sections.length}
-                    </p>
-                  )}
-                </div>
-              </div>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setIsModalOpen(false)}
-                className="text-white hover:bg-emerald-500"
-              >
-                <X className="h-5 w-5" />
-              </Button>
-            </div>
-
-            {/* Modal Content */}
-            <div className="flex-1 overflow-y-auto">
-              <div className="p-6 md:p-8">
-                {/* Learning Objectives */}
-                {content.learning_objectives && content.learning_objectives.length > 0 && currentSection === 0 && (
-                  <div className="mb-8 p-4 bg-amber-50 border border-amber-200 rounded-xl">
-                    <h3 className="font-semibold text-amber-800 mb-3 flex items-center gap-2">
-                      <Target className="h-5 w-5" />
-                      Obiettivi di Apprendimento
-                    </h3>
-                    <ul className="space-y-2">
-                      {content.learning_objectives.map((obj, i) => (
-                        <li key={i} className="flex items-start gap-2 text-amber-700">
-                          <Check className="h-4 w-4 mt-0.5 text-amber-500 flex-shrink-0" />
-                          <span>{obj}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-
-                {/* Key Concepts */}
-                {content.key_concepts && content.key_concepts.length > 0 && currentSection === 0 && (
-                  <div className="mb-8 p-4 bg-violet-50 border border-violet-200 rounded-xl">
-                    <h3 className="font-semibold text-violet-800 mb-3 flex items-center gap-2">
-                      <Sparkles className="h-5 w-5" />
-                      Concetti Chiave
-                    </h3>
-                    <div className="flex flex-wrap gap-2">
-                      {content.key_concepts.map((concept, i) => (
-                        <span
-                          key={i}
-                          className="px-3 py-1 bg-violet-100 text-violet-700 rounded-full text-sm font-medium"
-                        >
-                          {concept}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Main Content - Sections or Simple Content */}
-                {sections.length > 0 ? (
-                  <div className="prose prose-emerald max-w-none">
-                    <h2 className="text-2xl font-bold text-emerald-800 mb-4 pb-2 border-b border-emerald-100">
-                      {sections[currentSection]?.title}
-                    </h2>
-                    <ReactMarkdown
-                      remarkPlugins={[remarkGfm, remarkMath]}
-                      rehypePlugins={[rehypeKatex]}
-                      className="text-gray-700 leading-relaxed"
-                    >
-                      {sections[currentSection]?.content || ''}
-                    </ReactMarkdown>
-                  </div>
-                ) : content.content ? (
-                  <div className="prose prose-emerald max-w-none">
-                    <ReactMarkdown
-                      remarkPlugins={[remarkGfm, remarkMath]}
-                      rehypePlugins={[rehypeKatex]}
-                      className="text-gray-700 leading-relaxed"
-                    >
-                      {content.content}
-                    </ReactMarkdown>
-                  </div>
-                ) : (
-                  <p className="text-gray-500 text-center py-8">
-                    Nessun contenuto disponibile per questa lezione.
-                  </p>
-                )}
-
-                {/* Summary - show at the end */}
-                {content.summary && (!hasMultipleSections || currentSection === sections.length - 1) && (
-                  <div className="mt-8 p-4 bg-blue-50 border border-blue-200 rounded-xl">
-                    <h3 className="font-semibold text-blue-800 mb-3 flex items-center gap-2">
-                      <BookMarked className="h-5 w-5" />
-                      Riepilogo
-                    </h3>
-                    <p className="text-blue-700">{content.summary}</p>
-                  </div>
-                )}
-
-                {/* Activities */}
-                {content.activities && content.activities.length > 0 && (!hasMultipleSections || currentSection === sections.length - 1) && (
-                  <div className="mt-8 p-4 bg-orange-50 border border-orange-200 rounded-xl">
-                    <h3 className="font-semibold text-orange-800 mb-3 flex items-center gap-2">
-                      <ListChecks className="h-5 w-5" />
-                      Attività Suggerite
-                    </h3>
-                    <ul className="space-y-2">
-                      {content.activities.map((activity, i) => (
-                        <li key={i} className="flex items-start gap-2 text-orange-700">
-                          <span className="w-5 h-5 bg-orange-200 text-orange-600 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0">
-                            {i + 1}
-                          </span>
-                          <span>{activity}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-
-                {/* Resources */}
-                {content.resources && content.resources.length > 0 && (!hasMultipleSections || currentSection === sections.length - 1) && (
-                  <div className="mt-8 p-4 bg-gray-50 border border-gray-200 rounded-xl">
-                    <h3 className="font-semibold text-gray-800 mb-3 flex items-center gap-2">
-                      <ExternalLink className="h-5 w-5" />
-                      Risorse Aggiuntive
-                    </h3>
-                    <ul className="space-y-1">
-                      {content.resources.map((resource, i) => (
-                        <li key={i} className="text-gray-600 flex items-center gap-2">
-                          <span className="text-gray-400">•</span>
-                          {resource}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Modal Footer - Navigation */}
-            {hasMultipleSections && (
-              <div className="border-t bg-gray-50 px-6 py-4 flex items-center justify-between">
-                <Button
-                  variant="outline"
-                  onClick={() => setCurrentSection(prev => Math.max(0, prev - 1))}
-                  disabled={currentSection === 0}
-                >
-                  <ChevronLeft className="h-4 w-4 mr-1" />
-                  Precedente
-                </Button>
-
-                {/* Section dots */}
-                <div className="flex gap-2">
-                  {sections.map((_, idx) => (
-                    <button
-                      key={idx}
-                      onClick={() => setCurrentSection(idx)}
-                      className={`w-3 h-3 rounded-full transition-colors ${
-                        idx === currentSection
-                          ? 'bg-emerald-600'
-                          : 'bg-gray-300 hover:bg-emerald-300'
-                      }`}
-                      aria-label={`Vai alla sezione ${idx + 1}`}
-                    />
-                  ))}
-                </div>
-
-                <Button
-                  variant="outline"
-                  onClick={() => setCurrentSection(prev => Math.min(sections.length - 1, prev + 1))}
-                  disabled={currentSection === sections.length - 1}
-                >
-                  Successiva
-                  <ChevronRight className="h-4 w-4 ml-1" />
-                </Button>
-              </div>
-            )}
-
-            {/* Close button for single section lessons */}
-            {!hasMultipleSections && (
-              <div className="border-t bg-gray-50 px-6 py-4 flex justify-center">
-                <Button
-                  onClick={() => setIsModalOpen(false)}
-                  className="bg-emerald-600 hover:bg-emerald-700"
-                >
-                  <Check className="h-4 w-4 mr-2" />
-                  Ho completato la lettura
-                </Button>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-    </>
+function TargetIcon(props: any) {
+  return (
+    <svg
+      {...props}
+      xmlns="http://www.w3.org/2000/svg"
+      width="24"
+      height="24"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <circle cx="12" cy="12" r="10" />
+      <circle cx="12" cy="12" r="6" />
+      <circle cx="12" cy="12" r="2" />
+    </svg>
   )
 }
