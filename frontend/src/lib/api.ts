@@ -254,6 +254,8 @@ export const llmApi = {
     api.delete(`/llm/conversations/${conversationId}`),
   deleteAllConversations: (sessionId: string) =>
     api.delete(`/llm/sessions/${sessionId}/conversations`),
+  studentChat: (content: string, history: { role: string; content: string }[], profileKey?: string, provider?: string, model?: string) =>
+    api.post('/llm/student/chat', { content, history, profile_key: profileKey, provider, model }),
   teacherChat: (content: string, history: { role: string; content: string }[], profileKey?: string, provider?: string, model?: string, imageProvider?: string, imageSize?: string) =>
     api.post('/llm/teacher/chat', { content, history, profile_key: profileKey, provider, model, image_provider: imageProvider, image_size: imageSize }),
   teacherChatWithFiles: (content: string, history: { role: string; content: string }[], profileKey: string, provider: string, model: string, files: File[], imageProvider?: string, imageSize?: string) => {

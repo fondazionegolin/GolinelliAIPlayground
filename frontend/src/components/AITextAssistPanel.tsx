@@ -145,12 +145,15 @@ ${/converti in formula|formula|latex/i.test(customInstruction)
     }
 
     try {
-      const response = await llmApi.teacherChat(
+      const isStudent = !!localStorage.getItem('student_token')
+      const chatFn = isStudent ? llmApi.studentChat : llmApi.teacherChat
+      
+      const response = await chatFn(
         prompt,
         [],
-        'teacher_support',
-        'anthropic',
-        'claude-haiku-4-5-20251001'
+        isStudent ? 'tutor' : 'teacher_support',
+        isStudent ? undefined : 'anthropic',
+        isStudent ? undefined : 'claude-haiku-4-5-20251001'
       )
 
       const assistantMessage = response.data?.response || response.data?.content || ''

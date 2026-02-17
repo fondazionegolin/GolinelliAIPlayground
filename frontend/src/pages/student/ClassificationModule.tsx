@@ -354,9 +354,24 @@ function ImageClassification() {
               className="w-full h-full object-cover"
             />
             {isPredicting && predictions.length > 0 && (
-              <div className="absolute bottom-0 left-0 right-0 bg-black/70 p-2">
-                <div className="text-white text-sm font-bold">
-                  {predictions[0].className}: {predictions[0].confidence.toFixed(1)}%
+              <div 
+                className="absolute bottom-0 left-0 right-0 p-2 backdrop-blur-md border-t border-white/20"
+                style={{ 
+                  backgroundColor: (() => {
+                    const colorClass = classes.find(c => c.name === predictions[0].className)?.color || ''
+                    // Map Tailwind classes to semi-transparent hex if possible, or fallback to class-based bg
+                    if (colorClass.includes('rose')) return 'rgba(244, 63, 94, 0.8)'
+                    if (colorClass.includes('blue')) return 'rgba(59, 130, 246, 0.8)'
+                    if (colorClass.includes('emerald')) return 'rgba(16, 185, 129, 0.8)'
+                    if (colorClass.includes('amber')) return 'rgba(245, 158, 11, 0.8)'
+                    if (colorClass.includes('purple')) return 'rgba(168, 85, 247, 0.8)'
+                    return 'rgba(0,0,0,0.7)'
+                  })()
+                }}
+              >
+                <div className="text-white text-sm font-bold flex items-center justify-between">
+                  <span>{predictions[0].className}</span>
+                  <span>{predictions[0].confidence.toFixed(1)}%</span>
                 </div>
               </div>
             )}
@@ -493,18 +508,23 @@ function ImageClassification() {
           </CardHeader>
           <CardContent>
             <div className="space-y-2">
-              {predictions.map((pred, idx) => (
-                <div key={idx} className="flex items-center gap-3">
-                  <span className="w-24 text-sm font-medium truncate">{pred.className}</span>
-                  <div className="flex-1 bg-gray-200 rounded-full h-4 overflow-hidden">
-                    <div 
-                      className={`h-full ${CLASS_COLORS[idx] || 'bg-gray-500'} transition-all duration-200`}
-                      style={{ width: `${pred.confidence}%` }}
-                    />
+              {predictions.map((pred, idx) => {
+                const classInfo = classes.find(c => c.name === pred.className)
+                const colorClass = classInfo ? classInfo.color : 'bg-gray-500'
+                
+                return (
+                  <div key={idx} className="flex items-center gap-3">
+                    <span className="w-24 text-sm font-medium truncate">{pred.className}</span>
+                    <div className="flex-1 bg-gray-200 rounded-full h-4 overflow-hidden">
+                      <div 
+                        className={`h-full ${colorClass} transition-all duration-200`}
+                        style={{ width: `${pred.confidence}%` }}
+                      />
+                    </div>
+                    <span className="w-16 text-sm text-right">{pred.confidence.toFixed(1)}%</span>
                   </div>
-                  <span className="w-16 text-sm text-right">{pred.confidence.toFixed(1)}%</span>
-                </div>
-              ))}
+                )
+              })}
             </div>
             
             {/* Explainability */}

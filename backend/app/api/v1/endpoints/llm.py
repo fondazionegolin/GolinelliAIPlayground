@@ -628,6 +628,88 @@ async def send_message(
     return assistant_message
 
 
+@router.post("/student/chat")
+async def student_chat(
+    request: dict,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    student: Annotated[SessionStudent, Depends(get_current_student)],
+):
+    """Direct chat endpoint for students (e.g. for document assistant)"""
+    content = request.get("content", "")
+    history = request.get("history", [])
+    profile_key = request.get("profile_key", "tutor")
+    provider = request.get("provider")
+    model = request.get("model")
+
+    if not content:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Content required")
+
+    # Fetch context for credits (Session -> Class -> Teacher)
+    session_result = await db.execute(
+        select(Session, Class)
+        .join(Class, Session.class_id == Class.id)
+        .where(Session.id == student.session_id)
+    )
+    session_rw = session_result.first()
+    if not session_rw:
+        raise HTTPException(status_code=404, detail="Session not found")
+    session_obj, class_obj = session_rw
+
+    # Check credit availability
+    allowed = await credit_service.check_availability(
+        db, student.tenant_id, 0.0001, class_obj.teacher_id, class_obj.id, session_obj.id, student.id
+    )
+    if not allowed:
+        raise HTTPException(status_code=402, detail="Credit limit exceeded")
+
+    # Get chatbot profile
+    profile = get_profile(profile_key)
+    grade_instruction = get_school_grade_instruction(class_obj.school_grade)
+    system_prompt = profile["system_prompt"] + grade_instruction
+
+    # Build messages
+    messages = []
+    for msg in history:
+        messages.append({
+            "role": msg.get("role", "user"),
+            "content": msg.get("content", ""),
+        })
+    messages.append({"role": "user", "content": content})
+
+    try:
+        llm_response = await llm_service.generate(
+            messages=messages,
+            system_prompt=system_prompt,
+            provider=provider,
+            model=model,
+            temperature=profile.get("temperature", 0.7),
+            max_tokens=2048,
+        )
+
+        # Track usage
+        cost = credit_service.calculate_cost_for_model(
+            llm_response.provider, llm_response.model, 
+            llm_response.prompt_tokens, llm_response.completion_tokens
+        )
+        await safe_track_usage(
+            db, student.tenant_id, llm_response.provider, llm_response.model, cost,
+            {"prompt_tokens": llm_response.prompt_tokens, "completion_tokens": llm_response.completion_tokens},
+            class_obj.teacher_id, class_obj.id, session_obj.id, student.id,
+            context="student_direct_chat"
+        )
+
+        return {
+            "response": llm_response.content,
+            "provider": llm_response.provider,
+            "model": llm_response.model,
+            "prompt_tokens": llm_response.prompt_tokens,
+            "completion_tokens": llm_response.completion_tokens,
+        }
+    except Exception as e:
+        logger.error(f"Student chat error: {e}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+
+
 @router.post("/generate-image")
 async def generate_image(
     request: dict,
