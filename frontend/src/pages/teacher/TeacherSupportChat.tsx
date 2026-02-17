@@ -1899,51 +1899,38 @@ REGOLE IMPORTANTI:
 
   return (
     <>
+      <div className="h-full flex flex-col bg-slate-50 font-sans" style={accentVars} onDragOver={(e) => e.preventDefault()} onDrop={handleDrop}>
+        
+        {/* Top Navigation - Centered Segmented Control */}
+        <div className="flex items-center justify-center pt-6 pb-4 shrink-0">
+          <div className="bg-white border border-slate-200 p-1 rounded-full flex gap-1 shadow-sm">
+             <button
+               onClick={() => setActiveTab('chat')}
+               className={`flex items-center gap-2 px-6 py-2 rounded-full text-xs font-bold transition-all ${activeTab === 'chat' ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-500 hover:text-slate-900 hover:bg-slate-50'}`}
+             >
+               <MessageCircle className="h-3.5 w-3.5" />
+               Chat AI
+             </button>
+             <button
+               onClick={() => setActiveTab('teacherbots')}
+               className={`flex items-center gap-2 px-6 py-2 rounded-full text-xs font-bold transition-all ${activeTab === 'teacherbots' ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-500 hover:text-slate-900 hover:bg-slate-50'}`}
+             >
+               <Sparkles className="h-3.5 w-3.5" />
+               Teacherbots
+             </button>
+          </div>
+        </div>
 
-      <div className="h-full flex flex-col p-0" style={accentVars}>
-        <div className="flex-1 flex h-full">
-          <div
-            className="flex flex-col h-full bg-slate-50 font-sans w-full overflow-hidden"
-            onDragOver={(e) => e.preventDefault()}
-            onDrop={handleDrop}
-          >
-            {/* Tab Navigation */}
-            <div className="flex items-center gap-1 px-4 pt-4 pb-2 bg-white border-b border-slate-100">
-              <button
-                onClick={() => setActiveTab('chat')}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all border ${activeTab === 'chat'
-                  ? ''
-                  : 'text-slate-500 border-transparent hover:bg-slate-100'
-                  }`}
-                style={activeTab === 'chat' ? selectedSoftStyle : undefined}
-              >
-                <MessageCircle className="h-4 w-4" />
-                Chat AI
-              </button>
-              <button
-                onClick={() => setActiveTab('teacherbots')}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all border ${activeTab === 'teacherbots'
-                  ? ''
-                  : 'text-slate-500 border-transparent hover:bg-slate-100'
-                  }`}
-                style={activeTab === 'teacherbots' ? selectedSoftStyle : undefined}
-              >
-                <Sparkles className="h-4 w-4" />
-                Teacherbots
-              </button>
-            </div>
-
-            {/* Teacherbots Tab Content */}
-            {activeTab === 'teacherbots' ? (
-              <div className="flex-1 overflow-y-auto p-6">
-                <TeacherbotsPanel />
+        {/* Main Content Area */}
+        <div className="flex-1 overflow-hidden px-6 pb-6">
+           {activeTab === 'teacherbots' ? (
+              <div className="h-full bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden p-6 relative">
+                 <TeacherbotsPanel />
               </div>
-            ) : (
-              /* Chat Tab Content */
-              <div className="flex flex-1 overflow-hidden">
-
-                {/* SIDEBAR - History */}
-                <aside className={`${isSidebarCollapsed ? 'w-12' : 'w-64'} bg-slate-50 border-r border-slate-200 flex flex-col hidden md:flex transition-all duration-300 flex-shrink-0 rounded-l-2xl`}>
+           ) : (
+              <div className="flex h-full gap-6 max-w-7xl mx-auto w-full">
+                 {/* Sidebar Card */}
+                 <aside className={`${isSidebarCollapsed ? 'w-16' : 'w-80'} bg-white rounded-2xl border border-slate-200 shadow-sm flex flex-col transition-all duration-300 flex-shrink-0 overflow-hidden`}>
                   <div className={`p-4 border-b border-slate-100 flex items-center ${isSidebarCollapsed ? 'justify-center' : 'justify-between'}`}>
                     {!isSidebarCollapsed && <h2 className="text-sm font-semibold text-slate-800 tracking-tight">Cronologia</h2>}
                     <div className="flex gap-1">
@@ -2031,11 +2018,8 @@ REGOLE IMPORTANTI:
                   </div>
                 </aside>
 
-                {/* MAIN CHAT AREA */}
-                <main
-                  className="flex-1 flex flex-col relative overflow-hidden"
-                  style={chatBg ? { backgroundColor: chatBg } : undefined}
-                >
+                 {/* Chat Main Card */}
+                 <main className="flex-1 bg-white rounded-2xl border border-slate-200 shadow-sm flex flex-col relative overflow-hidden" style={chatBg ? { backgroundColor: chatBg } : undefined}>
 
                   <header className="px-3 py-2 md:px-4 md:py-3 border-b border-slate-200 bg-white/80 backdrop-blur-sm sticky top-0 z-10 flex items-center justify-between shrink-0">
                     <div className="flex items-center gap-3">
@@ -2252,9 +2236,10 @@ REGOLE IMPORTANTI:
                   </header>
 
                   <div
-                    className={`flex-1 overflow-y-auto px-3 py-3 md:px-4 md:py-6 space-y-3 md:space-y-6 ${chatBgIsDark ? 'text-white' : ''}`}
+                    className={`flex-1 overflow-y-auto px-3 py-3 md:px-4 md:py-6 ${chatBgIsDark ? 'text-white' : ''}`}
                     style={{ WebkitOverflowScrolling: 'touch', scrollBehavior: 'smooth' }}
                   >
+                    <div className="max-w-3xl mx-auto w-full space-y-3 md:space-y-6 min-h-full flex flex-col">
                     {messages.length === 0 ? (
                       <div className="h-full flex flex-col items-center justify-center opacity-50">
                         <Bot className="h-12 w-12 text-slate-300 mb-4" />
@@ -2442,11 +2427,12 @@ REGOLE IMPORTANTI:
                         </div>
                       </div>
                     )}
-                    <div ref={messagesEndRef} />
+                      <div ref={messagesEndRef} />
+                    </div>
                   </div>
 
                   <div className="p-4 bg-white border-t border-slate-200">
-                    <div className="max-w-4xl mx-auto">
+                    <div className="max-w-3xl mx-auto">
 
                       {attachedFiles.length > 0 && (
                         <div className="flex flex-wrap gap-2 mb-2">
@@ -2548,7 +2534,6 @@ REGOLE IMPORTANTI:
                 </main>
               </div>
             )}
-          </div>
         </div>
       </div>
 
