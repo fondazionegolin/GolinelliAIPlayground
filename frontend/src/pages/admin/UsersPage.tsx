@@ -6,7 +6,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useToast } from '@/components/ui/use-toast'
-import { User, Key, Copy, X, Shield, GraduationCap, Trash2, Mail, UserPlus } from 'lucide-react'
+import { User, Key, Copy, X, Shield, GraduationCap, Trash2, Mail, UserPlus, RotateCcw } from 'lucide-react'
 
 interface UserData {
   id: string
@@ -16,6 +16,8 @@ interface UserData {
   role: string
   tenant_id: string | null
   is_verified: boolean
+  is_active: boolean
+  deactivated_at: string | null
   created_at: string | null
 }
 
@@ -29,6 +31,7 @@ export default function UsersPage() {
   const { toast } = useToast()
   const [resetResult, setResetResult] = useState<ResetResult | null>(null)
   const [roleFilter, setRoleFilter] = useState<string>('')
+  const [includeInactive, setIncludeInactive] = useState(false)
   const [inviteEmail, setInviteEmail] = useState('')
   const [inviteFirstName, setInviteFirstName] = useState('')
   const [inviteLastName, setInviteLastName] = useState('')
@@ -36,9 +39,9 @@ export default function UsersPage() {
   const [bulkInviteText, setBulkInviteText] = useState('')
 
   const { data: users, isLoading } = useQuery<UserData[]>({
-    queryKey: ['users', roleFilter],
+    queryKey: ['users', roleFilter, includeInactive],
     queryFn: async () => {
-      const res = await adminApi.getUsers(roleFilter || undefined)
+      const res = await adminApi.getUsers(roleFilter || undefined, includeInactive)
       return res.data
     },
   })
@@ -73,6 +76,21 @@ export default function UsersPage() {
         variant: 'destructive', 
         title: 'Errore', 
         description: error.response?.data?.detail || 'Impossibile eliminare l\'utente' 
+      })
+    },
+  })
+
+  const reactivateMutation = useMutation({
+    mutationFn: (userId: string) => adminApi.reactivateUser(userId),
+    onSuccess: (response) => {
+      queryClient.invalidateQueries({ queryKey: ['users'] })
+      toast({ title: 'Utente riattivato', description: response.data.message })
+    },
+    onError: (error: Error & { response?: { data?: { detail?: string } } }) => {
+      toast({
+        variant: 'destructive',
+        title: 'Errore',
+        description: error.response?.data?.detail || 'Impossibile riattivare l\'utente',
       })
     },
   })
@@ -164,7 +182,14 @@ export default function UsersPage() {
     <div>
       <div className="flex items-center justify-between mb-6">
         <h2 className="text-2xl font-bold">Gestione Utenti</h2>
-        <div className="flex gap-2">
+        <div className="flex items-center gap-2">
+          <Button
+            variant={includeInactive ? 'secondary' : 'outline'}
+            size="sm"
+            onClick={() => setIncludeInactive((v) => !v)}
+          >
+            {includeInactive ? 'Nascondi disattivati' : 'Includi disattivati'}
+          </Button>
           <Button
             variant={roleFilter === '' ? 'default' : 'outline'}
             size="sm"
@@ -355,6 +380,9 @@ export default function UsersPage() {
                       </span>
                     </div>
                     <p className="text-sm text-muted-foreground">{user.email}</p>
+                    {!user.is_active && (
+                      <p className="text-xs text-red-600">Utente disattivato</p>
+                    )}
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
@@ -363,16 +391,28 @@ export default function UsersPage() {
                       {new Date(user.created_at).toLocaleDateString('it-IT')}
                     </span>
                   )}
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => resetMutation.mutate(user.id)}
-                    disabled={resetMutation.isPending}
-                  >
-                    <Key className="h-4 w-4 mr-1" />
-                    Reset Password
-                  </Button>
-                  {user.role !== 'ADMIN' && (
+                  {user.is_active ? (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => resetMutation.mutate(user.id)}
+                      disabled={resetMutation.isPending}
+                    >
+                      <Key className="h-4 w-4 mr-1" />
+                      Reset Password
+                    </Button>
+                  ) : (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => reactivateMutation.mutate(user.id)}
+                      disabled={reactivateMutation.isPending}
+                    >
+                      <RotateCcw className="h-4 w-4 mr-1" />
+                      Riattiva
+                    </Button>
+                  )}
+                  {user.role !== 'ADMIN' && user.is_active && (
                     <Button
                       size="sm"
                       variant="destructive"

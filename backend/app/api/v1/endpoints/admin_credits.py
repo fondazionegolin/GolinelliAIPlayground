@@ -245,9 +245,9 @@ async def invite_teacher(
 ):
     """Invite a new teacher via email"""
     # Check if user already exists
-    stmt = select(User).where(User.email == invitation.email)
+    stmt = select(User).where(User.email == invitation.email).order_by(desc(User.created_at))
     existing_user = (await db.execute(stmt)).scalar_one_or_none()
-    if existing_user:
+    if existing_user and existing_user.is_active:
         raise HTTPException(status_code=400, detail="User with this email already exists")
     
     # Check if invitation already exists
@@ -260,18 +260,32 @@ async def invite_teacher(
     temp_password = secrets.token_urlsafe(12)
     activation_token = secrets.token_urlsafe(48)
 
-    user = User(
-        tenant_id=admin.tenant_id,
-        email=invitation.email,
-        password_hash=get_password_hash(temp_password),
-        role=UserRole.TEACHER,
-        first_name=invitation.first_name,
-        last_name=invitation.last_name,
-        institution=invitation.school,
-        is_verified=True,
-    )
-    db.add(user)
-    await db.flush()
+    if existing_user and not existing_user.is_active:
+        user = existing_user
+        user.tenant_id = admin.tenant_id
+        user.password_hash = get_password_hash(temp_password)
+        user.role = UserRole.TEACHER
+        user.first_name = invitation.first_name
+        user.last_name = invitation.last_name
+        user.institution = invitation.school
+        user.is_verified = True
+        user.is_active = True
+        user.deactivated_at = None
+        user.deactivated_by_admin_id = None
+        await db.flush()
+    else:
+        user = User(
+            tenant_id=admin.tenant_id,
+            email=invitation.email,
+            password_hash=get_password_hash(temp_password),
+            role=UserRole.TEACHER,
+            first_name=invitation.first_name,
+            last_name=invitation.last_name,
+            institution=invitation.school,
+            is_verified=True,
+        )
+        db.add(user)
+        await db.flush()
 
     activation = ActivationToken(
         user_id=user.id,
@@ -331,26 +345,41 @@ async def bulk_invite_teachers(
             continue
             
         # Basic check
-        stmt = select(User).where(User.email == email)
-        if (await db.execute(stmt)).scalar_one_or_none():
-            continue # Skip existing
+        stmt = select(User).where(User.email == email).order_by(desc(User.created_at))
+        existing_user = (await db.execute(stmt)).scalar_one_or_none()
+        if existing_user and existing_user.is_active:
+            continue
             
         token = secrets.token_urlsafe(32)
         temp_password = secrets.token_urlsafe(12)
         activation_token = secrets.token_urlsafe(48)
 
-        user = User(
-            tenant_id=admin.tenant_id,
-            email=email,
-            password_hash=get_password_hash(temp_password),
-            role=UserRole.TEACHER,
-            first_name=row.get("first_name"),
-            last_name=row.get("last_name"),
-            institution=row.get("school"),
-            is_verified=True,
-        )
-        db.add(user)
-        await db.flush()
+        if existing_user and not existing_user.is_active:
+            user = existing_user
+            user.tenant_id = admin.tenant_id
+            user.password_hash = get_password_hash(temp_password)
+            user.role = UserRole.TEACHER
+            user.first_name = row.get("first_name")
+            user.last_name = row.get("last_name")
+            user.institution = row.get("school")
+            user.is_verified = True
+            user.is_active = True
+            user.deactivated_at = None
+            user.deactivated_by_admin_id = None
+            await db.flush()
+        else:
+            user = User(
+                tenant_id=admin.tenant_id,
+                email=email,
+                password_hash=get_password_hash(temp_password),
+                role=UserRole.TEACHER,
+                first_name=row.get("first_name"),
+                last_name=row.get("last_name"),
+                institution=row.get("school"),
+                is_verified=True,
+            )
+            db.add(user)
+            await db.flush()
 
         activation = ActivationToken(
             user_id=user.id,

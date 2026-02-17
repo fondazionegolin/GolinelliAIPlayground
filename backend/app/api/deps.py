@@ -53,6 +53,11 @@ async def get_current_user(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="User not found",
         )
+    if not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Account deactivated",
+        )
     
     return user
 
@@ -195,7 +200,7 @@ async def get_student_or_teacher(
         user_id = payload.get("sub")
         result = await db.execute(select(User).where(User.id == uuid.UUID(user_id)))
         user = result.scalar_one_or_none()
-        if not user or user.role != UserRole.TEACHER:
+        if not user or user.role != UserRole.TEACHER or not user.is_active:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Teacher access required")
         return StudentOrTeacher(teacher=user)
     

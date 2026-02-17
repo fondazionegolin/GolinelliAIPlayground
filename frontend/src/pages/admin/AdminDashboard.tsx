@@ -1,9 +1,9 @@
-import { Routes, Route, Link, useLocation } from 'react-router-dom'
+import { Routes, Route, Link, useLocation, Navigate } from 'react-router-dom'
 import { useAuthStore } from '@/stores/auth'
 import { Button } from '@/components/ui/button'
 import {
   Building2, LogOut,
-  LayoutDashboard, UserCheck, UserCog, Gauge
+  UserCheck, UserCog, Gauge
 } from 'lucide-react'
 import TenantsPage from './TenantsPage'
 import TeacherRequestsPage from './TeacherRequestsPage'
@@ -13,7 +13,6 @@ import { AppBackground } from '@/components/ui/AppBackground'
 
 const navItems = [
   { path: '/admin', label: 'Cruscotto', icon: Gauge, exact: true },
-  { path: '/admin/overview', label: 'Osservabilita', icon: LayoutDashboard },
   { path: '/admin/teacher-requests', label: 'Richieste Docenti', icon: UserCheck },
   { path: '/admin/users', label: 'Utenti', icon: UserCog },
   { path: '/admin/tenants', label: 'Tenant', icon: Building2 },
@@ -60,7 +59,7 @@ export default function AdminDashboard() {
       <main className="flex-1 p-8">
         <Routes>
           <Route index element={<AdminControlCenterPage />} />
-          <Route path="overview" element={<AdminControlCenterPage />} />
+          <Route path="overview" element={<Navigate to="/admin" replace />} />
           <Route path="tenants" element={<TenantsPage />} />
           <Route path="teacher-requests" element={<TeacherRequestsPage />} />
           <Route path="users" element={<UsersPage />} />

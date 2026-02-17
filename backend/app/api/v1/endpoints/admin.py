@@ -359,15 +359,38 @@ async def delete_user(
     if user.role == UserRole.ADMIN:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot delete admin users")
     
+    user.is_active = False
+    user.deactivated_at = datetime.now(timezone.utc)
+    user.deactivated_by_admin_id = admin.id
+
     user_email = user.email
     user_name = f"{user.first_name} {user.last_name}"
-    
-    await db.delete(user)
+
     await db.commit()
     
     return {
-        "message": f"User {user_name} ({user_email}) deleted successfully",
+        "message": f"User {user_name} ({user_email}) deactivated successfully",
     }
+
+
+@router.post("/users/{user_id}/reactivate")
+async def reactivate_user(
+    user_id: UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    admin: Annotated[User, Depends(get_current_admin)],
+):
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    if user.role == UserRole.ADMIN:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot reactivate admin users via this action")
+
+    user.is_active = True
+    user.deactivated_at = None
+    user.deactivated_by_admin_id = None
+    await db.commit()
+    return {"message": f"User {user.email} reactivated successfully"}
 
 
 @router.get("/users", response_model=list[dict])
@@ -375,10 +398,13 @@ async def list_users(
     db: Annotated[AsyncSession, Depends(get_db)],
     admin: Annotated[User, Depends(get_current_admin)],
     role: Optional[str] = None,
+    include_inactive: bool = False,
 ):
     query = select(User).order_by(User.created_at.desc())
     if role:
         query = query.where(User.role == UserRole(role))
+    if not include_inactive:
+        query = query.where(User.is_active == True)
     
     result = await db.execute(query)
     users = result.scalars().all()
@@ -392,6 +418,8 @@ async def list_users(
             "role": u.role.value,
             "tenant_id": str(u.tenant_id) if u.tenant_id else None,
             "is_verified": u.is_verified,
+            "is_active": bool(u.is_active),
+            "deactivated_at": u.deactivated_at.isoformat() if u.deactivated_at else None,
             "created_at": u.created_at.isoformat() if u.created_at else None,
         }
         for u in users
@@ -577,6 +605,7 @@ async def get_top_consumers(
             .where(
                 User.tenant_id == admin.tenant_id,
                 User.role == UserRole.TEACHER,
+                User.is_active == True,
                 CreditTransaction.timestamp >= start_at,
             )
             .group_by(User.id, User.first_name, User.last_name, User.email, User.institution)
@@ -612,6 +641,7 @@ async def get_teachers_status(
             select(User).where(
                 User.tenant_id == admin.tenant_id,
                 User.role == UserRole.TEACHER,
+                User.is_active == True,
             ).order_by(User.created_at.desc())
         )
     ).scalars().all()
@@ -747,6 +777,7 @@ async def get_realtime_status(
                 select(User).where(
                     User.tenant_id == admin.tenant_id,
                     User.id.in_(teacher_ids),
+                    User.is_active == True,
                 )
             )
         ).scalars().all()

@@ -88,12 +88,14 @@ export const adminApi = {
     api.post(`/admin/teacher-requests/${id}/approve`),
   rejectTeacher: (id: string) =>
     api.post(`/admin/teacher-requests/${id}/reject`),
-  getUsers: (role?: string) =>
-    api.get('/admin/users', { params: { role } }),
+  getUsers: (role?: string, includeInactive?: boolean) =>
+    api.get('/admin/users', { params: { role, include_inactive: includeInactive } }),
   resetPassword: (userId: string) =>
     api.post(`/admin/users/${userId}/reset-password`),
   deleteUser: (userId: string) =>
     api.delete(`/admin/users/${userId}`),
+  reactivateUser: (userId: string) =>
+    api.post(`/admin/users/${userId}/reactivate`),
   getUsage: () => api.get('/admin/usage'),
   getDashboardOverview: (days = 30) =>
     api.get('/admin/dashboard/overview', { params: { days } }),
