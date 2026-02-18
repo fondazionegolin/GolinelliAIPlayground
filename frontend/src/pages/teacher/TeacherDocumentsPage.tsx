@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
-  Plus, Trash2, Upload, Monitor, FileText, ChevronLeft, ChevronRight, FileSpreadsheet, PenTool
+  Plus, Trash2, Upload, Monitor, FileText, ChevronLeft, ChevronRight, FileSpreadsheet, PenTool, Share2, User, Clock, MonitorPlay, Calendar, BookOpen
 } from 'lucide-react'
 import { teacherApi } from '@/lib/api'
 import { useToast } from '@/components/ui/use-toast'
@@ -54,7 +54,9 @@ interface StoredDocument {
   updatedAt: string
   sessionId: string
   sessionName: string
+  className: string
   contentJson: string
+  authorName: string
 }
 
 interface DraftDocument {
@@ -118,9 +120,8 @@ export default function TeacherDocumentsPage() {
   })
   
   // Sidebar State
-  const [showSidebar, setShowSidebar] = useState(false)
+  const [showSidebar, setShowSidebar] = useState(true)
   const [storedDocuments, setStoredDocuments] = useState<StoredDocument[]>([])
-  const [isLoadingDocs, setIsLoadingDocs] = useState(false)
   const [draftDocuments, setDraftDocuments] = useState<DraftDocument[]>([])
 
   // Editor State
@@ -324,7 +325,6 @@ export default function TeacherDocumentsPage() {
     const fetchDocuments = async () => {
       if (!classesData || classesData.length === 0) return
       
-      setIsLoadingDocs(true)
       const docs: StoredDocument[] = []
       
       for (const session of classesData) {
@@ -348,7 +348,9 @@ export default function TeacherDocumentsPage() {
                     updatedAt: t.created_at,
                     sessionId: session.id,
                     sessionName: session.name,
-                    contentJson: t.content_json
+                    className: session.class_name,
+                    contentJson: t.content_json,
+                    authorName: t.author_name || 'Io'
                   })
                 }
               } catch (e) { }
@@ -359,7 +361,6 @@ export default function TeacherDocumentsPage() {
       
       docs.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
       setStoredDocuments(docs)
-      setIsLoadingDocs(false)
     }
 
     fetchDocuments()
@@ -845,31 +846,33 @@ export default function TeacherDocumentsPage() {
         <div className="flex-1 flex overflow-hidden"> 
           
           {/* LEFT SIDEBAR: Documents & Slides */}
-          <div className={`${showSidebar ? 'w-64' : 'w-0'} bg-white border-r flex flex-col transition-all duration-300 overflow-hidden shrink-0`}>
+          <div className={`${showSidebar ? 'w-72' : 'w-0'} bg-slate-50 border-r flex flex-col transition-all duration-300 overflow-hidden shrink-0`}>
             
             {/* Slide Navigation (Only in Slide Mode) */}
             {mode === 'slides' && (
-              <div className="flex-1 flex flex-col overflow-hidden border-b">
-                 <div className="p-3 border-b flex justify-between items-center bg-slate-50">
-                   <span className="font-semibold text-xs uppercase text-slate-500">Slide</span>
+              <div className="flex-shrink-0 flex flex-col overflow-hidden max-h-64 border-b bg-white">
+                 <div className="p-3 border-b flex justify-between items-center">
+                   <span className="font-bold text-[10px] uppercase tracking-widest text-slate-400">Pagine / Slide</span>
                    <Button size="icon" variant="ghost" className="h-6 w-6" onClick={addSlide}>
                      <Plus className="h-4 w-4" />
                    </Button>
                  </div>
-                 <div className="flex-1 overflow-y-auto p-2 space-y-2">
+                 <div className="flex-1 overflow-y-auto p-2 space-y-2 scrollbar-hide">
                    {document.slides.map((slide, idx) => (
                      <div 
                        key={slide.id}
                        onClick={() => { setCurrentSlideIndex(idx); setSelectedBlockId(null); }}
-                       className={`p-3 rounded-lg border cursor-pointer transition-all group relative ${currentSlideIndex === idx ? 'ring-2 ring-violet-500 bg-violet-50' : 'hover:bg-slate-50'}`}
+                       className={`p-3 rounded-xl border transition-all group relative backdrop-blur-md ${currentSlideIndex === idx 
+                         ? 'bg-violet-500/10 border-violet-500/40 shadow-sm' 
+                         : 'bg-white hover:bg-slate-50 border-transparent hover:border-slate-200'}`}
                      >
-                       <div className="text-xs font-bold text-slate-500 mb-1">#{idx + 1}</div>
-                       <div className="text-sm truncate font-medium">{slide.title}</div>
+                       <div className="text-[10px] font-bold text-slate-400 uppercase mb-1">Slide {idx + 1}</div>
+                       <div className={`text-sm truncate font-bold ${currentSlideIndex === idx ? 'text-violet-700' : 'text-slate-700'}`}>{slide.title}</div>
                        <button 
                          onClick={(e) => { e.stopPropagation(); deleteSlide(idx); }}
-                         className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-500"
+                         className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-500 transition-opacity"
                        >
-                         <Trash2 className="h-3 w-3" />
+                         <Trash2 className="h-3.5 w-3.5" />
                        </button>
                      </div>
                    ))}
@@ -878,52 +881,121 @@ export default function TeacherDocumentsPage() {
             )}
 
             {/* Document Lists */}
-            <div className={`flex flex-col ${mode === 'slides' ? 'h-1/3 border-t' : 'h-full'}`}>
-              <div className="p-3 border-b bg-slate-50">
-                <h3 className="font-semibold text-xs uppercase text-slate-500">Bozze</h3>
-              </div>
-              <div className="max-h-40 overflow-y-auto p-2 border-b">
-                {draftDocuments.length === 0 && (
-                  <p className="text-xs text-center text-slate-400 py-2">Nessuna bozza</p>
-                )}
-                {draftDocuments.map((doc) => (
-                  <div
-                    key={doc.id}
-                    onClick={() => loadDraft(doc)}
-                    className="group flex items-start gap-3 p-2 rounded-lg hover:bg-slate-100 cursor-pointer transition-colors border border-transparent hover:border-slate-200 mb-1"
-                  >
-                    <div className={`p-1.5 rounded-md ${doc.type === 'presentation' ? 'bg-indigo-100 text-indigo-600' : doc.type === 'sheet' ? 'bg-sky-100 text-sky-700' : doc.type === 'canvas' ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-600'}`}>
-                      {doc.type === 'presentation' ? <Monitor className="h-3 w-3" /> : doc.type === 'sheet' ? <FileSpreadsheet className="h-3 w-3" /> : doc.type === 'canvas' ? <PenTool className="h-3 w-3" /> : <FileText className="h-3 w-3" />}
+            <div className="flex-1 overflow-y-auto p-3 space-y-6">
+              {/* Drafts Section */}
+              <section>
+                <div className="flex items-center justify-between mb-3 px-1">
+                  <h3 className="font-bold text-[10px] uppercase tracking-widest text-slate-400">Le mie Bozze</h3>
+                  <span className="text-[10px] font-bold bg-slate-200 text-slate-500 px-1.5 py-0.5 rounded-full">{draftDocuments.length}</span>
+                </div>
+                
+                <div className="space-y-2">
+                  {draftDocuments.length === 0 && (
+                    <div className="text-center py-6 px-4 bg-white/40 rounded-2xl border border-dashed border-slate-200">
+                      <p className="text-[10px] font-medium text-slate-400">Nessuna bozza salvata</p>
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-medium text-slate-700 truncate">{doc.title}</p>
-                      <p className="text-[10px] text-slate-400 truncate">{new Date(doc.updatedAt).toLocaleDateString()}</p>
+                  )}
+                  {draftDocuments.map((doc) => (
+                    <div
+                      key={doc.id}
+                      onClick={() => loadDraft(doc)}
+                      className={`
+                        group flex flex-col p-3 rounded-2xl transition-all border cursor-pointer backdrop-blur-md
+                        ${draftId === doc.id
+                          ? 'bg-white border-violet-500/30 shadow-md ring-1 ring-violet-500/10' 
+                          : 'bg-white/60 border-slate-200/60 hover:bg-white hover:border-slate-300'}
+                      `}
+                    >
+                      <div className="flex items-center gap-3 mb-2">
+                        <div className={`p-2 rounded-xl shadow-sm ${
+                          doc.type === 'presentation' ? 'bg-indigo-100 text-indigo-600' : 
+                          doc.type === 'sheet' ? 'bg-sky-100 text-sky-700' : 
+                          doc.type === 'canvas' ? 'bg-amber-100 text-amber-700' : 
+                          'bg-emerald-100 text-emerald-600'
+                        }`}>
+                          {doc.type === 'presentation' ? <MonitorPlay className="h-4 w-4" /> : 
+                           doc.type === 'sheet' ? <FileSpreadsheet className="h-4 w-4" /> : 
+                           doc.type === 'canvas' ? <PenTool className="h-4 w-4" /> : 
+                           <FileText className="h-4 w-4" />}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className={`text-sm font-bold truncate ${draftId === doc.id ? 'text-violet-900' : 'text-slate-800'}`}>
+                            {doc.title}
+                          </p>
+                        </div>
+                      </div>
+                      
+                      <div className="flex items-center justify-between mt-auto">
+                        <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-400">
+                          <Clock className="h-3 w-3" />
+                          {new Date(doc.updatedAt).toLocaleDateString('it-IT', { day: 'numeric', month: 'short' })}
+                        </div>
+                        <span className="text-[9px] font-black uppercase tracking-tighter text-slate-300">Bozza Personale</span>
+                      </div>
                     </div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              </section>
 
-              <div className="p-3 border-b bg-slate-50">
-                <h3 className="font-semibold text-xs uppercase text-slate-500">Salvati</h3>
-              </div>
-              <div className="flex-1 overflow-y-auto p-2">
-                {isLoadingDocs && <p className="text-xs text-center text-slate-400 py-4">Caricamento...</p>}
-                {storedDocuments.map((doc) => (
-                  <div 
-                    key={doc.id}
-                    onClick={() => loadDocument(doc)}
-                    className="group flex items-start gap-3 p-2 rounded-lg hover:bg-slate-100 cursor-pointer transition-colors border border-transparent hover:border-slate-200 mb-1"
-                  >
-                    <div className={`p-1.5 rounded-md ${doc.type === 'presentation' ? 'bg-indigo-100 text-indigo-600' : doc.type === 'sheet' ? 'bg-sky-100 text-sky-700' : doc.type === 'canvas' ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-600'}`}>
-                      {doc.type === 'presentation' ? <Monitor className="h-3 w-3" /> : doc.type === 'sheet' ? <FileSpreadsheet className="h-3 w-3" /> : doc.type === 'canvas' ? <PenTool className="h-3 w-3" /> : <FileText className="h-3 w-3" />}
+              {/* Stored/Published Section */}
+              <section>
+                <div className="flex items-center justify-between mb-3 px-1">
+                  <h3 className="font-bold text-[10px] uppercase tracking-widest text-slate-400">Salvati nelle Sessioni</h3>
+                  <span className="text-[10px] font-bold bg-violet-100 text-violet-600 px-1.5 py-0.5 rounded-full">{storedDocuments.length}</span>
+                </div>
+
+                <div className="space-y-2">
+                  {storedDocuments.length === 0 && (
+                    <div className="text-center py-6 px-4 bg-white/40 rounded-2xl border border-dashed border-slate-200">
+                      <p className="text-[10px] font-medium text-slate-400">Nessun contenuto pubblicato nelle sessioni</p>
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-medium text-slate-700 truncate">{doc.title}</p>
-                      <p className="text-[10px] text-slate-400 truncate">{new Date(doc.updatedAt).toLocaleDateString()}</p>
+                  )}
+                  {storedDocuments.map((doc) => (
+                    <div
+                      key={doc.id}
+                      onClick={() => loadDocument(doc)}
+                      className={`
+                        group flex flex-col p-3 rounded-2xl transition-all border cursor-pointer backdrop-blur-md
+                        ${document.id === doc.id
+                          ? 'bg-violet-500/10 border-violet-500/40 shadow-md ring-1 ring-violet-500/10' 
+                          : 'bg-white/60 border-slate-200/60 hover:bg-white hover:border-slate-300'}
+                      `}
+                    >
+                      <div className="flex items-center gap-3 mb-2">
+                        <div className={`p-2 rounded-xl shadow-sm ${
+                          doc.type === 'presentation' ? 'bg-indigo-500 text-white' : 
+                          doc.type === 'canvas' ? 'bg-amber-500 text-white' : 
+                          'bg-emerald-500 text-white'
+                        }`}>
+                          {doc.type === 'presentation' ? <Monitor className="h-4 w-4" /> : 
+                           doc.type === 'canvas' ? <PenTool className="h-4 w-4" /> : 
+                           <BookOpen className="h-4 w-4" />}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className={`text-sm font-bold truncate ${document.id === doc.id ? 'text-violet-900' : 'text-slate-800'}`}>
+                            {doc.title}
+                          </p>
+                          <p className="text-[10px] font-medium text-slate-500 flex items-center gap-1">
+                            <User className="h-2.5 w-2.5 text-violet-500" />
+                            {doc.authorName} • {doc.className}
+                          </p>
+                        </div>
+                      </div>
+                      
+                      <div className="flex items-center justify-between mt-auto">
+                        <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-400">
+                          <Calendar className="h-3 w-3" />
+                          {new Date(doc.updatedAt).toLocaleDateString('it-IT', { day: 'numeric', month: 'short' })}
+                        </div>
+                        <div className="flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-violet-50 border border-violet-100 text-[9px] font-black uppercase tracking-tighter text-violet-600">
+                          <Share2 className="h-2 w-2" />
+                          Published
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              </section>
             </div>
           </div>
 

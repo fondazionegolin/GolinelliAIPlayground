@@ -914,11 +914,14 @@ async def list_tasks(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
     
     result = await db.execute(
-        select(Task)
+        select(Task, User.first_name, User.last_name)
+        .join(Session, Task.session_id == Session.id)
+        .join(Class, Session.class_id == Class.id)
+        .join(User, Class.teacher_id == User.id)
         .where(Task.session_id == session_id)
         .order_by(Task.created_at.desc())
     )
-    tasks = result.scalars().all()
+    rows = result.all()
     
     return [
         {
@@ -931,8 +934,9 @@ async def list_tasks(
             "points": t.points,
             "content_json": t.content_json,
             "created_at": t.created_at.isoformat(),
+            "author_name": f"{fn} {ln}".strip() or "Docente",
         }
-        for t in tasks
+        for t, fn, ln in rows
     ]
 
 
