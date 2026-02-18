@@ -274,10 +274,7 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
             <div className="flex items-center gap-3 cursor-pointer" onClick={() => navigate('/teacher')}>
               <LogoMark className="h-9 w-9" />
               <span className="pb-[1px] text-[18px] font-extrabold leading-[1.15] tracking-tight">
-                <span 
-                  className="text-slate-200/90" 
-                  style={{ WebkitTextStroke: '0.5px #475569' }}
-                >
+                <span className="bg-clip-text text-transparent bg-gradient-to-r from-purple-600 to-blue-600">
                   Golinelli
                 </span>
                 <span className="bg-gradient-to-r from-rose-500 to-red-600 bg-clip-text text-transparent">.ai</span>
