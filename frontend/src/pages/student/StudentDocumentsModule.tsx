@@ -245,6 +245,22 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId }: 
     upsertDraft(value)
   }
 
+  const handleDeleteDraft = async (e: React.MouseEvent, id: string) => {
+    e.stopPropagation()
+    if (!window.confirm('Sei sicuro di voler eliminare questa bozza?')) return
+    try {
+      await studentApi.deleteDocumentDraft(id)
+      setDraftDocuments(prev => prev.filter(d => d.id !== id))
+      if (draftId === id) {
+        setDraftId(null)
+        createNewDocument()
+      }
+      toast({ title: 'Bozza eliminata' })
+    } catch (e) {
+      toast({ title: 'Errore durante l\'eliminazione', variant: 'destructive' })
+    }
+  }
+
   useEffect(() => {
     const fetchSidebarDocuments = async () => {
       try {
@@ -795,6 +811,13 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId }: 
                             {doc.title}
                           </p>
                         </div>
+                        <button
+                          onClick={(e) => handleDeleteDraft(e, doc.id)}
+                          className="opacity-0 group-hover:opacity-100 p-1 text-slate-400 hover:text-red-500 transition-all"
+                          title="Elimina bozza"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
                       </div>
                       
                       <div className="flex items-center justify-between mt-auto">
