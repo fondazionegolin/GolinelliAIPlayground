@@ -1920,17 +1920,17 @@ REGOLE IMPORTANTI:
         
         {/* Top Navigation - Centered Segmented Control */}
         <div className="flex items-center justify-center pt-6 pb-4 shrink-0">
-          <div className="bg-white/50 backdrop-blur-md border border-slate-200 p-1 rounded-full flex gap-1 shadow-sm">
+          <div className="bg-white/50 backdrop-blur-md border border-slate-200 p-1 rounded-2xl flex gap-1 shadow-sm">
              <button
                onClick={() => setActiveTab('chat')}
-               className={`flex items-center gap-2 px-6 py-2 rounded-full text-xs font-bold transition-all ${activeTab === 'chat' ? 'bg-[var(--teacher-accent-soft)] text-[var(--teacher-accent-text)] border border-[var(--teacher-accent-border)]/50 shadow-sm backdrop-blur-md' : 'text-slate-500 hover:text-slate-900 hover:bg-white/50'}`}
+               className={`flex items-center gap-2 px-6 py-2 rounded-xl text-xs font-bold transition-all ${activeTab === 'chat' ? 'bg-[var(--teacher-accent-soft)] text-[var(--teacher-accent-text)] border border-[var(--teacher-accent-border)]/50 shadow-sm backdrop-blur-md' : 'text-slate-500 hover:text-slate-900 hover:bg-white/50'}`}
              >
                <MessageCircle className="h-3.5 w-3.5" />
                Chat AI
              </button>
              <button
                onClick={() => setActiveTab('teacherbots')}
-               className={`flex items-center gap-2 px-6 py-2 rounded-full text-xs font-bold transition-all ${activeTab === 'teacherbots' ? 'bg-[var(--teacher-accent-soft)] text-[var(--teacher-accent-text)] border border-[var(--teacher-accent-border)]/50 shadow-sm backdrop-blur-md' : 'text-slate-500 hover:text-slate-900 hover:bg-white/50'}`}
+               className={`flex items-center gap-2 px-6 py-2 rounded-xl text-xs font-bold transition-all ${activeTab === 'teacherbots' ? 'bg-[var(--teacher-accent-soft)] text-[var(--teacher-accent-text)] border border-[var(--teacher-accent-border)]/50 shadow-sm backdrop-blur-md' : 'text-slate-500 hover:text-slate-900 hover:bg-white/50'}`}
              >
                <Sparkles className="h-3.5 w-3.5" />
                Teacherbots

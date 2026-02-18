@@ -281,11 +281,11 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
               </span>
             </div>
 
-            <div className="hidden md:flex items-center gap-1 h-11 bg-white/50 backdrop-blur-sm p-1 rounded-xl border border-slate-200 shadow-sm">
+            <div className="hidden md:flex items-center gap-1 h-11 bg-white/50 backdrop-blur-sm p-1 rounded-2xl border border-slate-200 shadow-sm">
               {navItems.map((item) => (
                 <Link key={item.path} to={item.path}>
                   <button
-                    className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-[12px] font-bold transition-all duration-200 ${isActive(item.path)
+                    className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-[12px] font-bold transition-all duration-200 ${isActive(item.path)
                       ? 'bg-[var(--teacher-accent-soft)] text-[var(--teacher-accent-text)] border border-[var(--teacher-accent-border)]/50 shadow-sm backdrop-blur-md'
                       : 'text-slate-600 hover:bg-slate-100/50 hover:text-[var(--teacher-accent-text)] border border-transparent'
                       }`}
@@ -310,14 +310,14 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
               <div className="relative flex items-center gap-2" ref={sessionsMenuRef}>
                 <button
                   onClick={() => setShowSessionsMenu(!showSessionsMenu)}
-                  className="hidden lg:flex items-center gap-3 h-11 px-4 rounded-xl border bg-white/60 backdrop-blur-md border-slate-200 hover:bg-white/80 hover:border-slate-300 transition-all cursor-pointer shadow-sm"
+                  className="hidden lg:flex items-center gap-3 h-11 px-4 rounded-2xl border bg-white/60 backdrop-blur-md border-slate-200 hover:bg-white/80 hover:border-slate-300 transition-all cursor-pointer shadow-sm"
                 >
                   <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${currentSession ? 'bg-green-500 animate-pulse shadow-sm shadow-green-300' : 'bg-slate-300'}`} />
                   <div className="text-left min-w-0">
                     <div className="flex items-center gap-2">
                       <span className="text-sm font-bold text-[var(--teacher-accent-text)] truncate max-w-[160px]">{currentSession ? currentSession.name : 'Nessuna sessione'}</span>
                       <span className="text-slate-300">|</span>
-                      <span className="text-xs font-semibold text-slate-500 bg-white/40 px-2 py-0.5 rounded">{currentSession ? currentSession.className : 'Seleziona...'}</span>
+                      <span className="text-xs font-semibold text-slate-500 bg-white/40 px-2 py-0.5 rounded-lg">{currentSession ? currentSession.className : 'Seleziona...'}</span>
                     </div>
                   </div>
                   <ChevronDown className={`h-3 w-3 ml-1 text-slate-400 transition-transform flex-shrink-0 ${showSessionsMenu ? 'rotate-180' : ''}`} />

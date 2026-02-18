@@ -112,8 +112,8 @@ export default function LoginPage() {
         </section>
 
         <aside className="flex items-start justify-center lg:items-center">
-          <Card className="w-full max-w-md border-white/40 bg-white/95 shadow-2xl">
-            <CardHeader>
+          <Card className="w-full max-w-md border-white/40 bg-white/95 shadow-2xl rounded-3xl overflow-hidden">
+            <CardHeader className="pb-4">
               <CardTitle className="text-slate-900">Accesso Docente / Admin</CardTitle>
               <CardDescription>Entra in piattaforma o richiedi l&apos;accesso beta.</CardDescription>
             </CardHeader>
@@ -127,6 +127,7 @@ export default function LoginPage() {
                     placeholder="docente@scuola.it"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
+                    className="rounded-xl"
                     required
                   />
                 </div>
@@ -137,22 +138,23 @@ export default function LoginPage() {
                     type="password"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
+                    className="rounded-xl"
                     required
                   />
                 </div>
-                <Button type="submit" className="w-full bg-slate-900 hover:bg-slate-800" disabled={loading}>
+                <Button type="submit" className="w-full bg-slate-900 hover:bg-slate-800 rounded-xl h-11" disabled={loading}>
                   {loading ? 'Accesso in corso...' : 'Accedi'}
                 </Button>
               </form>
 
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                 <Link to="/teacher-request">
-                  <Button variant="outline" className="w-full">
+                  <Button variant="outline" className="w-full rounded-xl">
                     REGISTRATI QUI
                   </Button>
                 </Link>
                 <Link to="/join">
-                  <Button variant="secondary" className="w-full">
+                  <Button variant="secondary" className="w-full rounded-xl">
                     Entra Studente
                   </Button>
                 </Link>

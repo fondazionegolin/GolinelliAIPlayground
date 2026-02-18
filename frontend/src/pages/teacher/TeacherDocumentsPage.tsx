@@ -894,7 +894,7 @@ export default function TeacherDocumentsPage() {
                      <div 
                        key={slide.id}
                        onClick={() => { setCurrentSlideIndex(idx); setSelectedBlockId(null); }}
-                       className={`p-3 rounded-xl border transition-all group relative backdrop-blur-md ${currentSlideIndex === idx 
+                       className={`p-3 rounded-2xl border transition-all group relative backdrop-blur-md ${currentSlideIndex === idx 
                          ? 'bg-violet-500/10 border-violet-500/40 shadow-sm' 
                          : 'bg-white hover:bg-slate-50 border-transparent hover:border-slate-200'}`}
                      >

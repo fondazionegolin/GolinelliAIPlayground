@@ -164,12 +164,12 @@ export function StudentNavbar({
 
             {/* Desktop Navigation */}
             {onNavigate && (
-              <div className="hidden md:flex items-center gap-1 h-11 bg-white/50 backdrop-blur-sm p-1 rounded-xl border border-slate-200 shadow-sm">
+              <div className="hidden md:flex items-center gap-1 h-11 bg-white/50 backdrop-blur-sm p-1 rounded-2xl border border-slate-200 shadow-sm">
                 {navItems.map((item) => (
                   <button
                     key={item.label}
                     onClick={() => onNavigate(item.key)}
-                    className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-[12px] font-bold transition-all duration-200 ${activeModule === item.key
+                    className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-[12px] font-bold transition-all duration-200 ${activeModule === item.key
                         ? 'bg-[var(--student-accent-soft)] text-[var(--student-accent-text)] border border-[var(--student-accent-border)]/50 shadow-sm backdrop-blur-md'
                         : 'text-slate-600 hover:bg-slate-100/50 hover:text-[var(--student-accent-text)] border border-transparent'
                       }`}
@@ -184,13 +184,13 @@ export function StudentNavbar({
             <div className="flex items-center gap-2">
               {/* Session Info - Always visible */}
               {sessionTitle && (
-                <div className="hidden lg:flex items-center gap-3 h-11 px-4 rounded-xl border-2 bg-white border-slate-200 outline outline-1 outline-slate-200/70">
+                <div className="hidden lg:flex items-center gap-3 h-11 px-4 rounded-2xl border bg-white/60 backdrop-blur-md border-slate-200 shadow-sm">
                   <div className="w-2.5 h-2.5 rounded-full bg-green-500 animate-pulse shadow-sm shadow-green-300" />
                   <div className="text-left min-w-0">
                     <div className="flex items-center gap-2">
                       <span className="text-sm font-bold text-[var(--student-accent-text)] truncate max-w-[140px]">{sessionTitle}</span>
                       <span className="text-slate-300">|</span>
-                      <span className="text-xs font-semibold text-slate-500 bg-white/60 px-2 py-0.5 rounded">{joinCode}</span>
+                      <span className="text-xs font-semibold text-slate-500 bg-white/40 px-2 py-0.5 rounded-lg">{joinCode}</span>
                     </div>
                   </div>
                 </div>
@@ -236,7 +236,7 @@ export function StudentNavbar({
 
                 {/* Dropdown Menu - Modern Floating Style */}
                 {showDropdown && (
-                  <div className="absolute right-0 mt-2 w-64 bg-white rounded-xl shadow-xl border border-slate-100 py-2 animate-in fade-in zoom-in-95 duration-100 origin-top-right">
+                  <div className="absolute right-0 mt-2 w-64 bg-white rounded-2xl shadow-xl border border-slate-100 py-2 animate-in fade-in zoom-in-95 duration-100 origin-top-right">
                     <div className="px-4 py-3 border-b border-slate-50 mb-1">
                       <p className="text-sm font-semibold text-slate-900">{profile.nickname}</p>
                       <p className="text-xs text-slate-500 mt-0.5">Studente</p>
@@ -276,7 +276,7 @@ export function StudentNavbar({
                       onNavigate?.(item.key)
                       setShowMobileMenu(false)
                     }}
-                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${activeModule === item.key
+                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors ${activeModule === item.key
                         ? 'bg-[var(--student-accent-soft)] text-[var(--student-accent-text)]'
                         : 'text-slate-600 hover:bg-[var(--student-accent-soft)] hover:text-[var(--student-accent-text)]'
                       }`}
@@ -372,7 +372,7 @@ function SettingsModal({ profile, accent, onSave, onClose }: SettingsModalProps)
 
   return (
     <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-xl w-full max-w-md shadow-2xl border border-slate-100 overflow-hidden animate-in zoom-in-95 duration-200">
+      <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl border border-slate-100 overflow-hidden animate-in zoom-in-95 duration-200">
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-50 bg-slate-50/50">
           <h2 className="text-lg font-bold text-slate-900">Impostazioni Profilo</h2>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600 transition-colors">
@@ -407,7 +407,7 @@ function SettingsModal({ profile, accent, onSave, onClose }: SettingsModalProps)
               variant="outline"
               size="sm"
               onClick={() => fileInputRef.current?.click()}
-              className="text-xs"
+              className="text-xs rounded-xl"
             >
               Cambia Avatar
             </Button>
@@ -420,7 +420,7 @@ function SettingsModal({ profile, accent, onSave, onClose }: SettingsModalProps)
               type="text"
               value={formData.nickname}
               disabled
-              className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-500 cursor-not-allowed"
+              className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-500 cursor-not-allowed"
             />
             <p className="text-xs text-slate-400 mt-1">Il nickname non può essere modificato</p>
           </div>
@@ -435,7 +435,7 @@ function SettingsModal({ profile, accent, onSave, onClose }: SettingsModalProps)
                     key={accentOption.id}
                     type="button"
                     onClick={() => setSelectedAccent(accentOption.id)}
-                    className={`relative h-10 rounded-lg border transition-all ${isSelected ? 'border-slate-500' : 'border-slate-200 hover:border-slate-300'}`}
+                    className={`relative h-10 rounded-xl border transition-all ${isSelected ? 'border-slate-500' : 'border-slate-200 hover:border-slate-300'}`}
                     style={{ backgroundColor: accentOption.soft }}
                     title={accentOption.label}
                   >
@@ -454,12 +454,12 @@ function SettingsModal({ profile, accent, onSave, onClose }: SettingsModalProps)
 
           {/* Actions */}
           <div className="flex gap-3 pt-2">
-            <Button type="button" variant="ghost" onClick={onClose} className="flex-1 text-slate-500 hover:text-slate-700 hover:bg-slate-100">
+            <Button type="button" variant="ghost" onClick={onClose} className="flex-1 text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded-xl">
               Annulla
             </Button>
             <Button
               type="submit"
-              className="flex-1 text-white shadow-lg"
+              className="flex-1 text-white shadow-lg rounded-xl"
               style={{ backgroundColor: selectedTheme.accent }}
             >
               Salva Modifiche

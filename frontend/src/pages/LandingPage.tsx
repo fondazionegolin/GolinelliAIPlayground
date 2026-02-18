@@ -234,9 +234,9 @@ function HomeSection({ onCta }: { onCta: () => void }) {
             initial={{ opacity: 0, scale: 0.9 }}
             animate={{ opacity: 1, scale: 1 }}
             transition={{ delay: 0.1 * i }}
-            className="p-5 bg-white/80 backdrop-blur-xl border border-white/80 rounded-2xl shadow-sm hover:shadow-md transition-all hover:-translate-y-1"
+            className="p-5 bg-white/80 backdrop-blur-xl border border-white/80 rounded-3xl shadow-sm hover:shadow-md transition-all hover:-translate-y-1"
           >
-            <div className={`w-10 h-10 rounded-xl ${f.bg} ${f.color} flex items-center justify-center mb-3`}>
+            <div className={`w-10 h-10 rounded-2xl ${f.bg} ${f.color} flex items-center justify-center mb-3`}>
               <f.icon size={20} />
             </div>
             <h3 className="font-bold text-slate-900 mb-1">{f.title}</h3>

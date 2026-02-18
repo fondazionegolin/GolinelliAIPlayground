@@ -531,7 +531,7 @@ function HomeView({
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500 max-w-5xl mx-auto w-full pt-4">
       {/* Welcome Banner Mobile */}
-      <div className="md:hidden bg-gradient-to-br from-fuchsia-600 to-purple-600 rounded-2xl p-6 text-white shadow-lg shadow-fuchsia-200 mb-8">
+      <div className="md:hidden bg-gradient-to-br from-fuchsia-600 to-purple-600 rounded-3xl p-6 text-white shadow-lg shadow-fuchsia-200 mb-8">
         <h2 className="text-2xl font-bold mb-2">Ciao, {sessionInfo.student.nickname}!</h2>
         <p className="text-fuchsia-100 opacity-90 text-sm">
           Benvenuto nella tua area di apprendimento AI. Seleziona un modulo per iniziare.
@@ -559,7 +559,7 @@ function HomeView({
           return (
             <Card
               key={moduleKey}
-              className={`cursor-pointer transition-all duration-300 group relative overflow-hidden border-2 backdrop-blur-md ${config.borderClass} ${config.bgClass} hover:shadow-xl ${config.shadowClass}`}
+              className={`cursor-pointer transition-all duration-300 group relative overflow-hidden border-2 rounded-3xl backdrop-blur-md ${config.borderClass} ${config.bgClass} hover:shadow-xl ${config.shadowClass}`}
               onClick={() => onNavigate(moduleKey)}
             >
               <div className={`absolute top-0 right-0 p-3 opacity-10 group-hover:opacity-20 transition-opacity ${config.colorClass}`}>
