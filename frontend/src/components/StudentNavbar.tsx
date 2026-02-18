@@ -142,8 +142,8 @@ export function StudentNavbar({
             {/* Logo/Brand */}
             <div className="flex items-center gap-3 cursor-pointer" onClick={() => onNavigate?.(null)}>
               <LogoMark className="h-9 w-9" />
-              <span className="pb-[1px] text-[18px] leading-[1.15] tracking-tight">
-                <span className="font-bold text-[#2d2d2d]">
+              <span className="pb-[1px] text-[18px] leading-[1.15] tracking-wide">
+                <span className="font-bold text-[#2d2d2d]/85">
                   Golinelli
                 </span>
                 <span className="font-black text-[#e85c8d]">.ai</span>

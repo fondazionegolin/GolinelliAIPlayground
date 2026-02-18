@@ -106,8 +106,8 @@ export default function LandingPage() {
       <nav className="sticky top-0 z-50 w-full backdrop-blur-md bg-white/70 border-b border-white/50 px-6 py-4 flex items-center justify-between">
         <div className="flex items-center gap-3 cursor-pointer" onClick={() => switchTab('home')}>
           <img src="/logo_new.png" alt="Golinelli AI" className="h-10 w-auto shadow-sm rounded-md" />
-          <span className="text-2xl tracking-tight">
-            <span className="font-bold text-[#2d2d2d]">
+          <span className="text-2xl tracking-wide">
+            <span className="font-bold text-[#2d2d2d]/85">
               Golinelli
             </span>
             <span className="font-black text-[#e85c8d]">.ai</span>

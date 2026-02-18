@@ -182,8 +182,8 @@ export default function ActivatePage() {
         <div className="text-center">
           <div className="flex items-center justify-center gap-4 mb-2">
             <LogoMark className="h-12 w-12" />
-            <span className="text-[28px] leading-[1.15] tracking-tight text-left pb-[1px]">
-              <span className="font-bold text-[#2d2d2d]">
+            <span className="text-[28px] leading-[1.15] tracking-wide text-left pb-[1px]">
+              <span className="font-bold text-[#2d2d2d]/85">
                 Golinelli
               </span>
               <span className="font-black text-[#e85c8d]">.ai</span>
