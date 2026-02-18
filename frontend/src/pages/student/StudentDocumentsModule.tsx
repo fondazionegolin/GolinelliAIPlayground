@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
-  Plus, Trash2, Monitor, FileText, ChevronLeft, ChevronRight, Send, CheckCircle, FileSpreadsheet, BookOpen, PenTool
+  Plus, Trash2, Monitor, FileText, ChevronLeft, ChevronRight, Send, CheckCircle, FileSpreadsheet, BookOpen, PenTool, Share2, User, Clock, MonitorPlay
 } from 'lucide-react'
 import { studentApi } from '@/lib/api'
 import { useToast } from '@/components/ui/use-toast'
@@ -58,6 +58,7 @@ interface LessonDocument {
   type: 'presentation' | 'document' | 'canvas'
   updatedAt: string
   contentJson: string
+  authorName: string
 }
 
 interface StudentTask {
@@ -66,6 +67,7 @@ interface StudentTask {
   task_type: string
   content_json: string | null
   created_at: string
+  author_name?: string
 }
 
 // Format dimensions
@@ -112,7 +114,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId }: 
   })
 
   // Sidebar State
-  const [showSidebar, setShowSidebar] = useState(false)
+  const [showSidebar, setShowSidebar] = useState(true)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [submitted, setSubmitted] = useState(false)
   const [draftDocuments, setDraftDocuments] = useState<DraftDocument[]>([])
@@ -278,6 +280,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId }: 
                 type,
                 updatedAt: task.created_at,
                 contentJson: task.content_json,
+                authorName: task.author_name || 'Docente'
               }
             } catch {
               return null
@@ -715,19 +718,19 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId }: 
 
         <div className="flex-1 flex overflow-hidden">
 
-          {/* LEFT SIDEBAR: Slides */}
-          <div className={`${showSidebar ? 'w-56' : 'w-0'} bg-white border-r flex flex-col transition-all duration-300 overflow-hidden shrink-0`}>
+          {/* LEFT SIDEBAR: Documents & Slides */}
+          <div className={`${showSidebar ? 'w-72' : 'w-0'} bg-slate-50 border-r flex flex-col transition-all duration-300 overflow-hidden shrink-0`}>
 
             {/* Slide Navigation (Only in Slide Mode) */}
-            {mode === 'slides' && (
-              <div className="flex-1 flex flex-col overflow-hidden">
-                 <div className="p-3 border-b flex justify-between items-center bg-slate-50">
-                   <span className="font-semibold text-xs uppercase text-slate-500">Slide</span>
+            {mode === 'slides' && !isReadOnlyLesson && (
+              <div className="flex-shrink-0 flex flex-col overflow-hidden max-h-64 border-b">
+                 <div className="p-3 border-b flex justify-between items-center bg-white">
+                   <span className="font-bold text-[10px] uppercase tracking-widest text-slate-400">Pagine / Slide</span>
                    <Button size="icon" variant="ghost" className="h-6 w-6" onClick={addSlide}>
                      <Plus className="h-4 w-4" />
                    </Button>
                  </div>
-                 <div className="flex-1 overflow-y-auto p-2 space-y-2">
+                 <div className="flex-1 overflow-y-auto p-2 space-y-2 scrollbar-hide">
                    {document.slides.map((slide, idx) => (
                      <div
                        key={slide.id}
@@ -750,75 +753,132 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId }: 
               </div>
             )}
 
-            {/* Drafts */}
-            <div className="border-t">
-              <div className="p-3 border-b bg-slate-50">
-                <h3 className="font-semibold text-xs uppercase text-slate-500">Bozze</h3>
-              </div>
-              <div className="max-h-40 overflow-y-auto p-2">
-                {draftDocuments.length === 0 && (
-                  <p className="text-xs text-center text-slate-400 py-2">Nessuna bozza</p>
-                )}
-                {draftDocuments.map((doc) => (
-                  <div
-                    key={doc.id}
-                    onClick={() => loadDraft(doc)}
-                    className="group flex items-start gap-3 p-2 rounded-lg hover:bg-slate-100 cursor-pointer transition-colors border border-transparent hover:border-slate-200 mb-1"
-                  >
-                    <div className={`p-1.5 rounded-md ${doc.type === 'presentation' ? 'bg-indigo-100 text-indigo-600' : doc.type === 'sheet' ? 'bg-sky-100 text-sky-700' : doc.type === 'canvas' ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-600'}`}>
-                      {doc.type === 'presentation' ? <Monitor className="h-3 w-3" /> : doc.type === 'sheet' ? <FileSpreadsheet className="h-3 w-3" /> : doc.type === 'canvas' ? <PenTool className="h-3 w-3" /> : <FileText className="h-3 w-3" />}
+            <div className="flex-1 overflow-y-auto p-3 space-y-6">
+              {/* Drafts Section */}
+              <section>
+                <div className="flex items-center justify-between mb-3 px-1">
+                  <h3 className="font-bold text-[10px] uppercase tracking-widest text-slate-400">Le mie Bozze</h3>
+                  <span className="text-[10px] font-bold bg-slate-200 text-slate-500 px-1.5 py-0.5 rounded-full">{draftDocuments.length}</span>
+                </div>
+                
+                <div className="space-y-2">
+                  {draftDocuments.length === 0 && (
+                    <div className="text-center py-6 px-4 bg-white/40 rounded-2xl border border-dashed border-slate-200">
+                      <p className="text-[10px] font-medium text-slate-400">Nessun documento salvato</p>
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-medium text-slate-700 truncate">{doc.title}</p>
-                      <p className="text-[10px] text-slate-400 truncate">{new Date(doc.updatedAt).toLocaleDateString()}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div className="border-t">
-              <div className="p-3 border-b bg-slate-50">
-                <h3 className="font-semibold text-xs uppercase text-slate-500">Lezioni del docente</h3>
-              </div>
-              <div className="max-h-44 overflow-y-auto p-2">
-                {lessonDocuments.length === 0 && (
-                  <p className="text-xs text-center text-slate-400 py-2">Nessuna lesson pubblicata</p>
-                )}
-                {lessonDocuments.map((doc) => (
-                  <div
-                    key={doc.id}
-                    onClick={() => loadLesson(doc)}
-                    className={`group flex items-start gap-3 p-2.5 rounded-xl cursor-pointer transition-all border mb-1 backdrop-blur-md ${
-                      activeLessonTaskId === doc.taskId
-                        ? 'bg-emerald-500/10 border-emerald-500/40 shadow-sm'
-                        : 'hover:bg-slate-100 border-transparent hover:border-slate-200'
-                    }`}
-                  >
-                    <div className={`p-2 rounded-lg shadow-sm ${doc.type === 'presentation' ? 'bg-indigo-100 text-indigo-600' : doc.type === 'canvas' ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-600'}`}>
-                      {doc.type === 'presentation' ? <Monitor className="h-3.5 w-3.5" /> : doc.type === 'canvas' ? <PenTool className="h-3.5 w-3.5" /> : <BookOpen className="h-3.5 w-3.5" />}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className={`text-xs font-bold truncate ${activeLessonTaskId === doc.taskId ? 'text-emerald-800' : 'text-slate-700'}`}>{doc.title}</p>
-                      <div className="mt-1 flex items-center gap-2">
-                        <span className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 text-[8px] font-bold uppercase text-emerald-700">
-                          Lesson
-                        </span>
-                        <p className="text-[9px] text-slate-400 font-medium truncate">{new Date(doc.updatedAt).toLocaleDateString()}</p>
+                  )}
+                  {draftDocuments.map((doc) => (
+                    <div
+                      key={doc.id}
+                      onClick={() => loadDraft(doc)}
+                      className={`
+                        group flex flex-col p-3 rounded-2xl transition-all border cursor-pointer backdrop-blur-md
+                        ${draftId === doc.id && !isReadOnlyLesson
+                          ? 'bg-white border-indigo-500/30 shadow-md ring-1 ring-indigo-500/10' 
+                          : 'bg-white/60 border-slate-200/60 hover:bg-white hover:border-slate-300'}
+                      `}
+                    >
+                      <div className="flex items-center gap-3 mb-2">
+                        <div className={`p-2 rounded-xl shadow-sm ${
+                          doc.type === 'presentation' ? 'bg-indigo-100 text-indigo-600' : 
+                          doc.type === 'sheet' ? 'bg-sky-100 text-sky-700' : 
+                          doc.type === 'canvas' ? 'bg-amber-100 text-amber-700' : 
+                          'bg-emerald-100 text-emerald-600'
+                        }`}>
+                          {doc.type === 'presentation' ? <MonitorPlay className="h-4 w-4" /> : 
+                           doc.type === 'sheet' ? <FileSpreadsheet className="h-4 w-4" /> : 
+                           doc.type === 'canvas' ? <PenTool className="h-4 w-4" /> : 
+                           <FileText className="h-4 w-4" />}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className={`text-sm font-bold truncate ${draftId === doc.id && !isReadOnlyLesson ? 'text-indigo-900' : 'text-slate-800'}`}>
+                            {doc.title}
+                          </p>
+                        </div>
+                      </div>
+                      
+                      <div className="flex items-center justify-between mt-auto">
+                        <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-400">
+                          <Clock className="h-3 w-3" />
+                          {new Date(doc.updatedAt).toLocaleDateString('it-IT', { day: 'numeric', month: 'short' })}
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                           <span className="text-[9px] font-black uppercase tracking-tighter text-slate-300">Personale</span>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              </section>
+
+              {/* Lessons Section */}
+              <section>
+                <div className="flex items-center justify-between mb-3 px-1">
+                  <h3 className="font-bold text-[10px] uppercase tracking-widest text-slate-400">Materiali Condivisi</h3>
+                  <span className="text-[10px] font-bold bg-emerald-100 text-emerald-600 px-1.5 py-0.5 rounded-full">{lessonDocuments.length}</span>
+                </div>
+
+                <div className="space-y-2">
+                  {lessonDocuments.length === 0 && (
+                    <div className="text-center py-6 px-4 bg-white/40 rounded-2xl border border-dashed border-slate-200">
+                      <p className="text-[10px] font-medium text-slate-400">Nessun materiale condiviso dal docente</p>
+                    </div>
+                  )}
+                  {lessonDocuments.map((doc) => (
+                    <div
+                      key={doc.id}
+                      onClick={() => loadLesson(doc)}
+                      className={`
+                        group flex flex-col p-3 rounded-2xl transition-all border cursor-pointer backdrop-blur-md
+                        ${activeLessonTaskId === doc.taskId
+                          ? 'bg-emerald-500/10 border-emerald-500/40 shadow-md ring-1 ring-emerald-500/10' 
+                          : 'bg-white/60 border-slate-200/60 hover:bg-white hover:border-slate-300'}
+                      `}
+                    >
+                      <div className="flex items-center gap-3 mb-2">
+                        <div className={`p-2 rounded-xl shadow-sm ${
+                          doc.type === 'presentation' ? 'bg-indigo-500 text-white' : 
+                          doc.type === 'canvas' ? 'bg-amber-500 text-white' : 
+                          'bg-emerald-500 text-white'
+                        }`}>
+                          {doc.type === 'presentation' ? <Monitor className="h-4 w-4" /> : 
+                           doc.type === 'canvas' ? <PenTool className="h-4 w-4" /> : 
+                           <BookOpen className="h-4 w-4" />}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className={`text-sm font-bold truncate ${activeLessonTaskId === doc.taskId ? 'text-emerald-900' : 'text-slate-800'}`}>
+                            {doc.title}
+                          </p>
+                          <p className="text-[10px] font-medium text-slate-500 flex items-center gap-1">
+                            <User className="h-2.5 w-2.5 text-emerald-500" />
+                            {doc.authorName}
+                          </p>
+                        </div>
+                      </div>
+                      
+                      <div className="flex items-center justify-between mt-auto">
+                        <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-400">
+                          <Calendar className="h-3 w-3" />
+                          {new Date(doc.updatedAt).toLocaleDateString('it-IT', { day: 'numeric', month: 'short' })}
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                           <div className="flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-emerald-50 border border-emerald-100 text-[9px] font-black uppercase tracking-tighter text-emerald-600">
+                             <Share2 className="h-2 w-2" />
+                             Shared
+                           </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </section>
             </div>
 
             {/* Status indicator */}
             {submitted && (
-              <div className="p-4 bg-green-50 border-t">
-                <div className="flex items-center gap-2 text-green-700">
-                  <CheckCircle className="h-5 w-5" />
-                  <span className="text-sm font-medium">Inviato!</span>
-                </div>
+              <div className="p-4 bg-emerald-50 border-t flex items-center justify-center gap-2">
+                <CheckCircle className="h-4 w-4 text-emerald-600" />
+                <span className="text-xs font-bold text-emerald-700 uppercase tracking-tight">Documento Inviato</span>
               </div>
             )}
           </div>
@@ -1055,5 +1115,27 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId }: 
         )}
       </div>
     </>
+  )
+}
+
+function Calendar(props: any) {
+  return (
+    <svg
+      {...props}
+      xmlns="http://www.w3.org/2000/svg"
+      width="24"
+      height="24"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <rect width="18" height="18" x="3" y="4" rx="2" ry="2" />
+      <line x1="16" x2="16" y1="2" y2="6" />
+      <line x1="8" x2="8" y1="2" y2="6" />
+      <line x1="3" x2="21" y1="10" y2="10" />
+    </svg>
   )
 }

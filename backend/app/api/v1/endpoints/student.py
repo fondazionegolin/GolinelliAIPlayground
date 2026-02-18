@@ -407,16 +407,22 @@ async def get_student_tasks(
     student: Annotated[SessionStudent, Depends(get_current_student)],
 ):
     """Get all published tasks for the student's session"""
+    from app.models.user import User
+    from app.models.session import Class
+
     result = await db.execute(
-        select(Task)
+        select(Task, User.first_name, User.last_name)
+        .join(Session, Task.session_id == Session.id)
+        .join(Class, Session.class_id == Class.id)
+        .join(User, Class.teacher_id == User.id)
         .where(Task.session_id == student.session_id)
         .where(Task.status == TaskStatus.PUBLISHED)
         .order_by(Task.created_at.desc())
     )
-    tasks = result.scalars().all()
+    rows = result.all()
     
     # Get student's submissions
-    task_ids = [t.id for t in tasks]
+    task_ids = [t.id for t, _, _ in rows]
     submissions = {}
     if task_ids:
         result = await db.execute(
@@ -444,9 +450,10 @@ async def get_student_tasks(
             "points": t.points,
             "content_json": t.content_json,
             "created_at": t.created_at.isoformat(),
+            "author_name": f"{fn} {ln}".strip() or "Docente",
             "submission": submissions.get(str(t.id)),
         }
-        for t in tasks
+        for t, fn, ln in rows
     ]
 
 
