@@ -54,10 +54,10 @@ export default function StudentJoinPage() {
           <div className="flex items-center justify-center gap-4 mb-4">
             <LogoMark className="h-14 w-14" />
             <h1 className="text-[30px] leading-[1.15] tracking-tight text-left pb-[1px]">
-              <span className="font-medium text-blue-800/90">
+              <span className="font-bold text-[#2d2d2d]">
                 Golinelli
               </span>
-              <span className="font-black bg-gradient-to-r from-rose-500 to-red-600 bg-clip-text text-transparent">.ai</span>
+              <span className="font-black text-[#e85c8d]">.ai</span>
             </h1>
           </div>
           <p className="text-gray-600 mt-2">Inserisci il codice fornito dal docente</p>
