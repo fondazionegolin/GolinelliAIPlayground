@@ -184,8 +184,8 @@ export default function ActivatePage() {
             <LogoMark className="h-12 w-12" />
             <span className="text-[28px] font-extrabold leading-[1.15] tracking-tight text-left pb-[1px]">
               <span 
-                className="text-blue-700/80" 
-                style={{ WebkitTextStroke: '0.5px #93c5fd' }}
+                className="text-slate-200/90" 
+                style={{ WebkitTextStroke: '0.5px #475569' }}
               >
                 Golinelli
               </span>

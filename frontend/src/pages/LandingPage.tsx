@@ -108,8 +108,8 @@ export default function LandingPage() {
           <img src="/logo_new.png" alt="Golinelli AI" className="h-10 w-auto shadow-sm rounded-md" />
           <span className="font-bold text-2xl tracking-tight">
             <span 
-              className="text-blue-700/80" 
-              style={{ WebkitTextStroke: '0.5px #93c5fd' }}
+              className="text-slate-200/90" 
+              style={{ WebkitTextStroke: '0.5px #475569' }}
             >
               Golinelli
             </span>

@@ -144,8 +144,8 @@ export function StudentNavbar({
               <LogoMark className="h-9 w-9" />
               <span className="pb-[1px] text-[18px] font-extrabold leading-[1.15] tracking-tight">
                 <span 
-                  className="text-blue-700/80" 
-                  style={{ WebkitTextStroke: '0.5px #93c5fd' }}
+                  className="text-slate-200/90" 
+                  style={{ WebkitTextStroke: '0.5px #475569' }}
                 >
                   Golinelli
                 </span>
