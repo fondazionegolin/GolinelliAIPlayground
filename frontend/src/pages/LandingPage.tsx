@@ -107,7 +107,7 @@ export default function LandingPage() {
         <div className="flex items-center gap-3 cursor-pointer" onClick={() => switchTab('home')}>
           <img src="/logo_new.png" alt="Golinelli AI" className="h-10 w-auto shadow-sm rounded-md" />
           <span className="font-bold text-2xl tracking-tight">
-            <span className="bg-clip-text text-transparent bg-gradient-to-r from-purple-600 to-blue-600">
+            <span className="text-slate-800">
               Golinelli
             </span>
             <span className="bg-clip-text text-transparent bg-gradient-to-r from-rose-500 to-red-600">.ai</span>
