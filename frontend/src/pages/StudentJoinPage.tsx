@@ -53,8 +53,13 @@ export default function StudentJoinPage() {
         <div className="text-center">
           <div className="flex items-center justify-center gap-4 mb-4">
             <LogoMark className="h-14 w-14" />
-            <h1 className="text-[30px] font-extrabold leading-[1.15] tracking-tight text-gray-900 text-left pb-[1px]">
-              <span className="text-gray-700">Golinelli</span>
+            <h1 className="text-[30px] font-extrabold leading-[1.15] tracking-tight text-left pb-[1px]">
+              <span 
+                className="text-blue-700/80" 
+                style={{ WebkitTextStroke: '0.5px #93c5fd' }}
+              >
+                Golinelli
+              </span>
               <span className="bg-gradient-to-r from-rose-500 to-red-600 bg-clip-text text-transparent">.ai</span>
             </h1>
           </div>
