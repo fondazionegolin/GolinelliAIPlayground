@@ -54,7 +54,7 @@ export default function StudentJoinPage() {
           <div className="flex items-center justify-center gap-4 mb-4">
             <LogoMark className="h-14 w-14" />
             <h1 className="text-[30px] leading-[1.15] tracking-tight text-left pb-[1px]">
-              <span className="font-medium text-slate-600/90">
+              <span className="font-medium text-blue-800/90">
                 Golinelli
               </span>
               <span className="font-black bg-gradient-to-r from-rose-500 to-red-600 bg-clip-text text-transparent">.ai</span>
