@@ -538,7 +538,12 @@ export default function TeacherSupportChat() {
           const sessionsRes = await teacherApi.getSessions(cls.id)
           const sessions = sessionsRes.data || []
           sessions.forEach((s: any) => {
-            allSessions.push({ id: s.id, name: s.title || s.name, class_name: cls.name })
+            allSessions.push({ 
+              id: s.id, 
+              title: s.title || s.name || 'Sessione senza titolo', 
+              class_name: cls.name,
+              status: s.status || 'attiva'
+            })
           })
         } catch (e) { } // Ignore errors for individual session fetches
       }
