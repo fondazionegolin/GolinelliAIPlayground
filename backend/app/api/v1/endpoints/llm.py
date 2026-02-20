@@ -515,110 +515,30 @@ async def send_message(
     else:
         # Get chatbot profile for system prompt
         profile = get_profile(conversation.profile_key)
-        grade_instruction = get_school_grade_instruction(class_obj.school_grade)
-        system_prompt = profile["system_prompt"] + grade_instruction
         
-        # Add verbose mode instruction
-        if request.verbose_mode:
-            system_prompt += "\n\nIMPORTANTE: L'utente ha richiesto risposte ESAUSTIVE e DETTAGLIATE. Fornisci spiegazioni approfondite, esempi, e tutti i dettagli rilevanti."
-        else:
-            system_prompt += "\n\nIMPORTANTE: L'utente preferisce risposte SINTETICHE e CONCISE. Sii breve e vai dritto al punto, evitando spiegazioni superflue."
-        
-        temperature = profile.get("temperature", 0.7)
-        
-        # Check if this is the math_coach profile - use agentic system with tools
-        if conversation.profile_key == "math_coach":
-            try:
-                from app.services.math_agent import run_math_agent
-                
-                # Use math agent with tool calling for accurate calculations
-                assistant_content = await run_math_agent(
-                    messages=messages,
-                    provider=conversation.llm_provider or "openai",
-                    model=conversation.llm_model or "gpt-4o-mini",
-                    max_iterations=5,
-                )
-                provider = conversation.llm_provider or "openai"
-                model = conversation.llm_model or "gpt-4o-mini"
-                token_usage = {"prompt_tokens": 0, "completion_tokens": 0}
-                
-                # Tracking for math agent (approximation)
-                txt_cost = credit_service.calculate_cost_for_model(provider, model, 1000, 500) # Estimate
-                await safe_track_usage(
-                    db, student.tenant_id, provider, model, txt_cost,
-                    {"note": "math_agent_estimate"},
-                    teacher_id=class_obj.teacher_id, class_id=class_obj.id, session_id=session_obj.id, student_id=student.id,
-                    context="math_agent"
-                )
+        # Call teacher agent for intelligent routing even for students
+        try:
+            from app.services.teacher_agent import run_teacher_agent
+            
+            assistant_content = await run_teacher_agent(
+                messages=messages,
+                context="", # Minimal context for student
+                structured_context={},
+                provider=conversation.llm_provider,
+                model=conversation.llm_model,
+                actor_type="STUDENT",
+                profile_key=conversation.profile_key
+            )
+            provider = conversation.llm_provider or "openai"
+            model = conversation.llm_model or "gpt-5-mini"
+            token_usage = {"prompt_tokens": 0, "completion_tokens": 0}
 
-            except Exception as e:
-                logger.error(f"Math agent error: {e}")
-                # Fallback to regular LLM
-                llm_response = await llm_service.generate(
-                    messages=messages,
-                    system_prompt=system_prompt,
-                    provider=conversation.llm_provider,
-                    model=conversation.llm_model,
-                    temperature=temperature,
-                    max_tokens=2048,
-                )
-                assistant_content = llm_response.content
-                provider = llm_response.provider
-                model = llm_response.model
-                token_usage = {
-                    "prompt_tokens": llm_response.prompt_tokens,
-                    "completion_tokens": llm_response.completion_tokens,
-                }
-                
-                # Track fallback
-                txt_cost = credit_service.calculate_cost_for_model(provider, model, token_usage["prompt_tokens"], token_usage["completion_tokens"])
-                await safe_track_usage(
-                    db, student.tenant_id, provider, model, txt_cost,
-                    token_usage,
-                    teacher_id=class_obj.teacher_id, class_id=class_obj.id, session_id=session_obj.id, student_id=student.id,
-                    context="math_agent_fallback"
-                )
-        else:
-            # Call LLM service with conversation's preferred provider/model
-            try:
-                llm_response = await llm_service.generate(
-                    messages=messages,
-                    system_prompt=system_prompt,
-                    provider=conversation.llm_provider,
-                    model=conversation.llm_model,
-                    temperature=temperature,
-                    max_tokens=2048,
-                )
-                
-                assistant_content = llm_response.content
-                provider = llm_response.provider
-                model = llm_response.model
-                token_usage = {
-                    "prompt_tokens": llm_response.prompt_tokens,
-                    "completion_tokens": llm_response.completion_tokens,
-                }
-                
-                # TRACK TEXT COST (Standard)
-                txt_cost = credit_service.calculate_cost_for_model(
-                    provider, model, 
-                    token_usage.get("prompt_tokens", 0), 
-                    token_usage.get("completion_tokens", 0)
-                )
-                await safe_track_usage(
-                    db, student.tenant_id, provider, model, txt_cost,
-                    token_usage,
-                    teacher_id=class_obj.teacher_id, class_id=class_obj.id, session_id=session_obj.id, student_id=student.id,
-                    context="llm_standard"
-                )
-
-            except Exception as e:
-                logger.error(f"LLM service error: {e}")
-                # Fallback response if LLM fails
-                assistant_content = "Mi dispiace, si è verificato un errore nel generare la risposta. Per favore riprova tra qualche istante."
-                provider = "fallback"
-                model = "none"
-                token_usage = {"prompt_tokens": 0, "completion_tokens": 0}
-                # No charge for error
+        except Exception as e:
+            logger.error(f"Teacher agent error for student: {e}")
+            assistant_content = "Mi dispiace, si è verificato un errore nel generare la risposta."
+            provider = "fallback"
+            model = "none"
+            token_usage = {"prompt_tokens": 0, "completion_tokens": 0}
     
     # Save assistant message
     assistant_message = ConversationMessage(
@@ -676,9 +596,7 @@ async def student_chat(
 
     # Get chatbot profile
     profile = get_profile(profile_key)
-    grade_instruction = get_school_grade_instruction(class_obj.school_grade)
-    system_prompt = profile["system_prompt"] + grade_instruction
-
+    
     # Build messages
     messages = []
     for msg in history:
@@ -689,33 +607,27 @@ async def student_chat(
     messages.append({"role": "user", "content": content})
 
     try:
-        llm_response = await llm_service.generate(
+        # Use teacher agent logic even for students for consistent widgets/intent handling
+        from app.services.teacher_agent import run_teacher_agent
+        
+        # Build a minimal context for student if needed, but for now we focus on the agent routing
+        # Students don't see the teacher's full analytics context
+        
+        response_content = await run_teacher_agent(
             messages=messages,
-            system_prompt=system_prompt,
+            context="", # No full teacher context for students
+            structured_context={},
             provider=provider,
             model=model,
-            temperature=profile.get("temperature", 0.7),
-            max_tokens=2048,
-        )
-
-        # Track usage
-        cost = credit_service.calculate_cost_for_model(
-            llm_response.provider, llm_response.model, 
-            llm_response.prompt_tokens, llm_response.completion_tokens
-        )
-        await safe_track_usage(
-            db, student.tenant_id, llm_response.provider, llm_response.model, cost,
-            {"prompt_tokens": llm_response.prompt_tokens, "completion_tokens": llm_response.completion_tokens},
-            class_obj.teacher_id, class_obj.id, session_obj.id, student.id,
-            context="student_direct_chat"
+            actor_type="STUDENT"
         )
 
         return {
-            "response": llm_response.content,
-            "provider": llm_response.provider,
-            "model": llm_response.model,
-            "prompt_tokens": llm_response.prompt_tokens,
-            "completion_tokens": llm_response.completion_tokens,
+            "response": response_content,
+            "provider": provider,
+            "model": model,
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
         }
     except Exception as e:
         logger.error(f"Student chat error: {e}")
@@ -1297,6 +1209,21 @@ async def teacher_chat_stream(
                 yield f"data: {json.dumps({'type': 'status', 'message': '⏳ Creazione esercizio...'})}\n\n"
 
                 result = await generate_exercise_with_tools(messages, provider, model)
+                yield f"data: {json.dumps({'type': 'done', 'content': result})}\n\n"
+
+            elif intent_result.intent == TeacherIntent.REPORT_GENERATION:
+                yield f"data: {json.dumps({'type': 'status', 'message': '📊 Modalità: Selezione Report'})}\n\n"
+                
+                from app.services.teacher_agent import generate_report_widgets
+                _, structured_context = await load_teacher_context(db, teacher)
+                result = await generate_report_widgets(content, structured_context)
+                yield f"data: {json.dumps({'type': 'done', 'content': result})}\n\n"
+
+            elif intent_result.intent == TeacherIntent.ACTION_MENU:
+                yield f"data: {json.dumps({'type': 'status', 'message': '📋 Apertura Menu Azioni'})}\n\n"
+                
+                from app.services.teacher_agent import generate_action_menu_widget
+                result = await generate_action_menu_widget()
                 yield f"data: {json.dumps({'type': 'done', 'content': result})}\n\n"
 
             else:

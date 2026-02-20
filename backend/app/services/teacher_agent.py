@@ -104,6 +104,11 @@ def classify_intent_by_keywords(message: str) -> IntentResult:
         "come stanno andando", "risultati", "sessioni attive"
     ]
 
+    # Action menu keywords
+    menu_keywords = [
+        "menu", "opzioni", "cosa puoi fare", "aiutami", "comandi", "funzioni"
+    ]
+
     # Document keywords
     document_keywords = [
         "pei", "ptof", "relazione", "verbale", "documento", "modulo"
@@ -152,6 +157,16 @@ def classify_intent_by_keywords(message: str) -> IntentResult:
             logger.info(f"Intent classified by keywords: report_generation")
             return IntentResult(
                 intent=TeacherIntent.REPORT_GENERATION,
+                confidence=0.85,
+                extracted_params=message
+            )
+
+    # Check for menu
+    for keyword in menu_keywords:
+        if keyword in message_lower:
+            logger.info(f"Intent classified by keywords: action_menu")
+            return IntentResult(
+                intent=TeacherIntent.ACTION_MENU,
                 confidence=0.85,
                 extracted_params=message
             )
@@ -1057,6 +1072,8 @@ async def run_teacher_agent(
     structured_context: Optional[dict] = None,
     provider: str = "openai",
     model: str = "gpt-5-mini",
+    actor_type: str = "TEACHER",
+    profile_key: str = "teacher_support"
 ) -> str:
     """
     Main teacher agent orchestrator.
@@ -1068,25 +1085,37 @@ async def run_teacher_agent(
         structured_context: Raw database data (for widgets)
         provider: LLM provider
         model: Model to use
+        actor_type: "TEACHER" or "STUDENT"
+        profile_key: The specific chatbot profile key
 
     Returns:
         Generated response string
     """
     try:
+        # 0. Handle specialized student profiles first
+        if actor_type == "STUDENT" and profile_key == "math_coach":
+            from app.services.math_agent import run_math_agent
+            return await run_math_agent(
+                messages=messages,
+                provider=provider or "openai",
+                model=model or "gpt-4o-mini",
+                max_iterations=5,
+            )
+
         # Extract last user message for intent classification
         last_message = messages[-1]["content"] if messages else ""
         history = messages[:-1] if len(messages) > 1 else []
 
         # Classify intent
-        logger.info("Classifying teacher intent...")
+        logger.info(f"Classifying {actor_type} intent...")
         intent_result = await classify_intent(last_message, history)
 
         logger.info(f"Intent: {intent_result.intent.value}, Confidence: {intent_result.confidence}")
 
-        # If confidence is low, default to analytics
+        # If confidence is low, default to profile-specific behavior
         if intent_result.confidence < 0.6:
-            logger.info("Low confidence, routing to analytics")
-            intent_result.intent = TeacherIntent.ANALYTICS
+            logger.info("Low confidence, routing to default behavior")
+            intent_result.intent = TeacherIntent.ANALYTICS # Analytics is the generic fallback
 
         # Route based on intent
         if intent_result.intent == TeacherIntent.QUIZ_GENERATION:
@@ -1098,8 +1127,15 @@ async def run_teacher_agent(
             return await generate_exercise_with_tools(messages, provider, model)
 
         elif intent_result.intent == TeacherIntent.REPORT_GENERATION:
+            if actor_type == "STUDENT":
+                # Students don't get report widgets, fallback to generic
+                return await generate_generic_response(messages, provider, model, profile_key)
             logger.info("Routing to report generator (widgets)")
             return await generate_report_widgets(last_message, structured_context)
+
+        elif intent_result.intent == TeacherIntent.ACTION_MENU:
+            logger.info("Routing to action menu generator")
+            return await generate_action_menu_widget(actor_type)
 
         elif intent_result.intent == TeacherIntent.WEB_SEARCH:
             logger.info("Routing to web search generator")
@@ -1112,16 +1148,45 @@ async def run_teacher_agent(
         elif intent_result.intent == TeacherIntent.DOCUMENT_HELP:
             # For now, use analytics mode with document-focused prompt
             logger.info("Routing to document help (analytics mode)")
+            if actor_type == "STUDENT":
+                return await generate_generic_response(messages, provider, model, profile_key)
             return await generate_with_analytics(messages, context, provider, model)
 
         else:  # ANALYTICS or default
+            if actor_type == "STUDENT":
+                return await generate_generic_response(messages, provider, model, profile_key)
             logger.info("Routing to analytics mode")
             return await generate_with_analytics(messages, context, provider, model)
 
     except Exception as e:
-        logger.error(f"Teacher agent error: {e}")
-        # Fallback to analytics on any error
+        logger.error(f"Agent error: {e}")
+        # Fallback
+        if actor_type == "STUDENT":
+            return await generate_generic_response(messages, provider, model, profile_key)
         return await generate_with_analytics(messages, context, provider, model)
+
+
+async def generate_generic_response(
+    messages: list[dict],
+    provider: str,
+    model: str,
+    profile_key: str
+) -> str:
+    """
+    Generate a generic response based on the student's profile.
+    """
+    from app.services.chatbot_profiles import get_profile
+    profile = get_profile(profile_key)
+    
+    response = await llm_service.generate(
+        messages=messages,
+        system_prompt=profile["system_prompt"],
+        provider=provider,
+        model=model,
+        temperature=profile.get("temperature", 0.7),
+        max_tokens=2048,
+    )
+    return response.content
 
 
 async def generate_report_widgets(message: str, structured_context: Optional[dict]) -> str:
@@ -1168,6 +1233,35 @@ async def generate_report_widgets(message: str, structured_context: Optional[dic
         response += "\n```"
         
     response += "\n\nUna volta effettuata la selezione, clicca sul tasto 'Genera Report' per procedere."
+    return response
+
+
+async def generate_action_menu_widget(actor_type: str = "TEACHER") -> str:
+    """
+    Generate a quick action menu widget customized by actor type.
+    """
+    if actor_type == "STUDENT":
+        actions = [
+            {"label": "❓ Allenami con un Quiz", "value": "Generami un quiz sull'argomento che abbiamo trattato"},
+            {"label": "💪 Dammi un Esercizio", "value": "Fammi fare un esercizio pratico"},
+            {"label": "💡 Spiegami un Concetto", "value": "Puoi spiegami meglio un concetto difficile?"},
+            {"label": "🎨 Crea un'Immagine", "value": "Disegna un'immagine che rappresenti quello di cui stiamo parlando"},
+            {"label": "🌐 Ricerca Web", "value": "Cercami informazioni aggiornate su..."},
+        ]
+    else:
+        actions = [
+            {"label": "📊 Report Sessione", "value": "Voglio un report della sessione"},
+            {"label": "👥 Report Studenti", "value": "Voglio un report degli studenti"},
+            {"label": "❓ Crea Quiz", "value": "CREA QUIZ: Generami un quiz"},
+            {"label": "💪 Crea Esercizio", "value": "CREA ESERCIZIO: Generami un esercizio"},
+            {"label": "🌐 Ricerca Web", "value": "RICERCA WEB: Cercami informazioni su..."},
+            {"label": "📈 Analisi Classe", "value": "Analizza l'andamento generale della classe"},
+        ]
+    
+    response = "Ciao! Sono il tuo assistente AI. Ecco alcune azioni rapide che posso eseguire per te:\n\n"
+    response += "```action_menu\n"
+    response += json.dumps(actions, indent=2, ensure_ascii=False)
+    response += "\n```"
     return response
 
 

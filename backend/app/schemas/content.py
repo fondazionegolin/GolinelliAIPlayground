@@ -17,6 +17,7 @@ class TeacherIntent(str, Enum):
     WEB_SEARCH = "web_search"
     ANALYTICS = "analytics"
     REPORT_GENERATION = "report_generation"
+    ACTION_MENU = "action_menu"
     DOCUMENT_HELP = "document_help"
     TEXT_EDITOR = "text_editor"
 

@@ -1620,7 +1620,15 @@ export default function ChatbotModule({ sessionId, initialTeacherbotId, onInputF
                   style={message.role === 'user' ? selectedSolidStyle : undefined}
                 >
                   {message.role === 'assistant' ? (
-                    <MessageContent content={message.content} onQuizSubmit={(answers) => setInput(answers)} darkMode={chatBgIsDark} />
+                    <MessageContent 
+                      content={message.content} 
+                      onQuizSubmit={(answers) => setInput(answers)} 
+                      onInput={(text) => {
+                        setInput(text);
+                        setTimeout(() => handleSend(text), 100);
+                      }}
+                      darkMode={chatBgIsDark} 
+                    />
                   ) : (
                     <p className="text-sm whitespace-pre-wrap">{message.content}</p>
                   )}
@@ -1829,8 +1837,121 @@ function extractBase64Images(content: string): { cleanContent: string; images: s
   return { cleanContent: cleanContent.trim(), images }
 }
 
-function MessageContent({ content, onQuizSubmit, darkMode = false }: { content: string; onQuizSubmit: (answers: string) => void; darkMode?: boolean }) {
-  const { quiz, csv, textContent, isGenerating, generationType } = parseContentBlocks(content)
+function ActionMenu({ actions, onSelect, darkMode = false }: { actions: any[], onSelect: (value: string) => void, darkMode?: boolean }) {
+  return (
+    <div className="grid grid-cols-2 gap-2 my-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
+      {actions.map((action, idx) => (
+        <button
+          key={idx}
+          onClick={() => onSelect(action.value)}
+          className={`flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm font-medium transition-all shadow-sm group border ${
+            darkMode 
+              ? 'bg-white/10 border-white/20 text-white hover:bg-white/20' 
+              : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50 hover:border-slate-300'
+          }`}
+        >
+          <span className="group-hover:scale-110 transition-transform">{action.label.split(' ')[0]}</span>
+          <span className="truncate">{action.label.split(' ').slice(1).join(' ')}</span>
+        </button>
+      ))}
+    </div>
+  )
+}
+
+function SessionSelector({ sessions, onSelect, darkMode = false }: { sessions: any[], onSelect: (id: string) => void, darkMode?: boolean }) {
+  return (
+    <div className={`border rounded-xl overflow-hidden shadow-sm my-4 animate-in fade-in slide-in-from-bottom-2 duration-300 ${
+      darkMode ? 'bg-slate-900/50 border-white/10' : 'bg-white border-slate-200'
+    }`}>
+      <div className={`px-4 py-2 border-b flex items-center justify-between ${
+        darkMode ? 'bg-white/5 border-white/10' : 'bg-slate-50 border-slate-200'
+      }`}>
+        <span className={`text-xs font-bold uppercase tracking-wider ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>Seleziona Sessione</span>
+        <span className="text-[10px] text-slate-400">{sessions.length} sessioni attive</span>
+      </div>
+      <div className="p-2 grid grid-cols-1 gap-1 max-h-60 overflow-y-auto">
+        {sessions.map(s => (
+          <button
+            key={s.id}
+            onClick={() => onSelect(s.id)}
+            className={`text-left px-3 py-2.5 rounded-lg border border-transparent transition-all group flex items-center justify-between ${
+              darkMode 
+                ? 'hover:bg-white/10 hover:text-white' 
+                : 'hover:bg-sky-50 hover:text-sky-700 hover:border-sky-200'
+            }`}
+          >
+            <div>
+              <div className="text-sm font-semibold">{s.title}</div>
+              <div className={`text-[10px] ${darkMode ? 'text-slate-400' : 'text-slate-400'}`}>{s.class_name} • {s.status}</div>
+            </div>
+            <ChevronRight className="h-4 w-4 text-slate-300 group-hover:translate-x-1 transition-transform" />
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function StudentSelector({ students, onSelect, darkMode = false }: { students: any[], onSelect: (selectedIds: string[]) => void, darkMode?: boolean }) {
+  const [selected, setSelected] = useState<string[]>([])
+  
+  const toggle = (id: string) => {
+    setSelected(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id])
+  }
+
+  return (
+    <div className={`border rounded-xl overflow-hidden shadow-sm my-4 animate-in fade-in slide-in-from-bottom-2 duration-300 ${
+      darkMode ? 'bg-slate-900/50 border-white/10' : 'bg-white border-slate-200'
+    }`}>
+      <div className={`px-4 py-2 border-b flex items-center justify-between ${
+        darkMode ? 'bg-white/5 border-white/10' : 'bg-slate-50 border-slate-200'
+      }`}>
+        <span className={`text-xs font-bold uppercase tracking-wider ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>Seleziona Studenti</span>
+        <span className="text-[10px] text-slate-400">{students.length} studenti</span>
+      </div>
+      <div className="p-2 grid grid-cols-2 gap-2 max-h-60 overflow-y-auto">
+        {students.map(s => (
+          <div
+            key={s.id}
+            onClick={() => toggle(s.id)}
+            className={`flex items-center gap-2 p-2 rounded-lg border cursor-pointer transition-all ${
+              selected.includes(s.id) 
+                ? (darkMode ? 'bg-sky-500/20 border-sky-500/50 text-sky-300' : 'bg-sky-50 border-sky-200 text-sky-700')
+                : (darkMode ? 'bg-white/5 border-white/5 text-slate-400 hover:bg-white/10' : 'bg-slate-50 border-slate-100 text-slate-600 hover:bg-slate-100')
+            }`}
+          >
+            <div className={`w-4 h-4 rounded border flex items-center justify-center ${
+              selected.includes(s.id) 
+                ? (darkMode ? 'bg-sky-500 border-sky-500' : 'bg-sky-500 border-sky-500') 
+                : (darkMode ? 'bg-slate-800 border-white/20' : 'bg-white border-slate-300')
+            }`}>
+              {selected.includes(s.id) && <Check className="h-2.5 w-2.5 text-white" />}
+            </div>
+            <div className="text-xs font-medium truncate">{s.nickname}</div>
+          </div>
+        ))}
+      </div>
+      <div className={`p-3 border-t flex justify-end ${darkMode ? 'bg-white/5 border-white/10' : 'bg-slate-50 border-slate-100'}`}>
+        <Button 
+          size="sm" 
+          disabled={selected.length === 0}
+          className={`text-xs ${darkMode ? 'bg-sky-600 hover:bg-sky-700 text-white' : 'bg-sky-600 hover:bg-sky-700 text-white'}`}
+          onClick={() => onSelect(selected)}
+        >
+          Seleziona ({selected.length})
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+function MessageContent({ content, onQuizSubmit, onInput, darkMode = false }: { 
+  content: string; 
+  onQuizSubmit: (answers: string) => void; 
+  onInput?: (text: string) => void; 
+  darkMode?: boolean 
+}) {
+  const { quiz, csv, textContent, isGenerating, generationType, actionMenu, sessionSelector, studentSelector } = parseContentBlocks(content)
   const { cleanContent, images } = extractBase64Images(textContent)
 
   if (isGenerating) {
@@ -1994,6 +2115,36 @@ function MessageContent({ content, onQuizSubmit, darkMode = false }: { content: 
           <InteractiveQuiz quiz={quiz} onSubmitAnswers={onQuizSubmit} />
         </div>
       )}
+      {actionMenu && (
+        <ActionMenu 
+          actions={actionMenu} 
+          onSelect={(value) => onInput?.(value)} 
+          darkMode={darkMode}
+        />
+      )}
+      {sessionSelector && (
+        <SessionSelector 
+          sessions={sessionSelector} 
+          onSelect={(id) => {
+            const session = sessionSelector.find(s => s.id === id);
+            onInput?.(`Parlami della sessione: ${session?.title} (${id})`);
+          }} 
+          darkMode={darkMode}
+        />
+      )}
+      {studentSelector && (
+        <StudentSelector 
+          students={studentSelector} 
+          onSelect={(selectedIds) => {
+            const names = studentSelector
+              .filter(s => selectedIds.includes(s.id))
+              .map(s => s.nickname)
+              .join(', ');
+            onInput?.(`Analizza questi studenti: ${names}`);
+          }} 
+          darkMode={darkMode}
+        />
+      )}
     </div>
   )
 }
@@ -2010,10 +2161,22 @@ interface QuizData {
   questions: QuizQuestion[]
 }
 
-function parseContentBlocks(content: string): { quiz: QuizData | null; csv: string | null; textContent: string; isGenerating: boolean; generationType: string | null } {
+function parseContentBlocks(content: string): { 
+  quiz: QuizData | null; 
+  csv: string | null; 
+  textContent: string; 
+  isGenerating: boolean; 
+  generationType: string | null;
+  sessionSelector: any[] | null;
+  studentSelector: any[] | null;
+  actionMenu: any[] | null;
+} {
   let textContent = content
   let quiz: QuizData | null = null
   let csv: string | null = null
+  let sessionSelector: any[] | null = null
+  let studentSelector: any[] | null = null
+  let actionMenu: any[] | null = null
   let isGenerating = false
   let generationType: string | null = null
 
@@ -2029,7 +2192,7 @@ function parseContentBlocks(content: string): { quiz: QuizData | null; csv: stri
 
   const hasBase64Image = content.includes('data:image') && content.includes('base64')
   if (hasBase64Image) {
-    return { quiz, csv, textContent, isGenerating: false, generationType: null }
+    return { quiz, csv, textContent, isGenerating: false, generationType: null, actionMenu }
   }
 
   if (hasIncompleteQuiz || (generatingQuizPattern.test(content) && content.length < 200)) {
@@ -2072,9 +2235,36 @@ function parseContentBlocks(content: string): { quiz: QuizData | null; csv: stri
     isGenerating = false
   }
 
+  // Extract Action Menu
+  const actionMenuMatch = content.match(/```action_menu\s*([\s\S]*?)```/)
+  if (actionMenuMatch) {
+    try {
+      actionMenu = JSON.parse(actionMenuMatch[1].trim())
+      textContent = textContent.replace(/```action_menu[\s\S]*?```/, '').trim()
+    } catch (e) { console.error("Error parsing action menu", e) }
+  }
+
+  // Extract Session Selector
+  const sessionMatch = content.match(/```session_selector\s*([\s\S]*?)```/)
+  if (sessionMatch) {
+    try {
+      sessionSelector = JSON.parse(sessionMatch[1].trim())
+      textContent = textContent.replace(/```session_selector[\s\S]*?```/, '').trim()
+    } catch (e) { console.error("Error parsing session selector", e) }
+  }
+
+  // Extract Student Selector
+  const studentMatch = content.match(/```student_selector\s*([\s\S]*?)```/)
+  if (studentMatch) {
+    try {
+      studentSelector = JSON.parse(studentMatch[1].trim())
+      textContent = textContent.replace(/```student_selector[\s\S]*?```/, '').trim()
+    } catch (e) { console.error("Error parsing student selector", e) }
+  }
+
   textContent = textContent.replace(/```json[\s\S]*?```/g, '').trim()
 
-  return { quiz, csv, textContent, isGenerating, generationType }
+  return { quiz, csv, textContent, isGenerating, generationType, actionMenu, sessionSelector, studentSelector }
 }
 
 function InteractiveQuiz({ quiz, onSubmitAnswers }: { quiz: QuizData; onSubmitAnswers: (answers: string) => void }) {

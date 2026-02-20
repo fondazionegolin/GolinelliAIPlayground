@@ -1378,109 +1378,6 @@ REGOLE IMPORTANTI:
       return
     }
 
-    if (agentMode === 'report' && reportInterview.active) {
-      if (!userInput) return
-      const convId = await ensureConversation('Generazione report guidata')
-      const userMessage: Message = {
-        id: `msg-${Date.now()}`,
-        role: 'user',
-        content: userInput,
-        timestamp: new Date()
-      }
-      setMessages(prev => [...prev, userMessage])
-      setInputText('')
-
-      const currentStep = REPORT_INTERVIEW_STEPS[reportInterview.stepIndex]
-      if (!currentStep) return
-
-      const nextAnswers = { ...reportInterview.answers }
-      let followUp: string | null = null
-
-      if (!userInput.trim()) {
-        followUp = 'Risposta vuota. Inserisci un testo breve per continuare.'
-      } else if (currentStep.key === 'session') {
-        nextAnswers.session = userInput
-      } else if (currentStep.key === 'focus') {
-        nextAnswers.focus = userInput
-      } else if (currentStep.key === 'scope') {
-        nextAnswers.scope = userInput
-      }
-
-      if (followUp) {
-        const assistantMessage: Message = {
-          id: `resp-${Date.now()}`,
-          role: 'assistant',
-          content: followUp,
-          timestamp: new Date()
-        }
-        setMessages(prev => [...prev, assistantMessage])
-        await saveMessageToServer(convId, userMessage, assistantMessage, 'claude-haiku-4-5-20251001')
-        return
-      }
-
-      const isLastStep = reportInterview.stepIndex === REPORT_INTERVIEW_STEPS.length - 1
-      if (!isLastStep) {
-        const nextStepIndex = reportInterview.stepIndex + 1
-        setReportInterview({
-          active: true,
-          stepIndex: nextStepIndex,
-          answers: nextAnswers
-        })
-        const assistantMessage: Message = {
-          id: `resp-${Date.now()}`,
-          role: 'assistant',
-          content: REPORT_INTERVIEW_STEPS[nextStepIndex].question,
-          timestamp: new Date()
-        }
-        setMessages(prev => [...prev, assistantMessage])
-        await saveMessageToServer(convId, userMessage, assistantMessage, 'claude-haiku-4-5-20251001')
-        return
-      }
-
-      const finalAnswers = nextAnswers as ReportInterviewAnswers
-      const summaryMessage: Message = {
-        id: `resp-${Date.now()}`,
-        role: 'assistant',
-        content: buildReportSummary(finalAnswers),
-        timestamp: new Date()
-      }
-      setMessages(prev => [...prev, summaryMessage])
-      await saveMessageToServer(convId, userMessage, summaryMessage, 'claude-haiku-4-5-20251001')
-
-      setReportInterview({
-        active: false,
-        stepIndex: REPORT_INTERVIEW_STEPS.length,
-        answers: finalAnswers
-      })
-
-      const generationPrompt = buildReportGenerationPrompt(finalAnswers)
-      setIsLoading(true)
-      try {
-        const finalContent = await runStreamingRequest(generationPrompt, [...messages, userMessage, summaryMessage])
-        const assistantMessage: Message = {
-          id: `resp-${Date.now()}`,
-          role: 'assistant',
-          content: finalContent,
-          timestamp: new Date()
-        }
-        setMessages(prev => [...prev, assistantMessage])
-        await saveSingleMessageToServer(convId, assistantMessage, 'claude-haiku-4-5-20251001')
-      } catch (e) {
-        console.error(e)
-        toast({ title: "Errore", description: "Impossibile generare il report.", variant: "destructive" })
-        const errorMsg: Message = {
-          id: `err-${Date.now()}`,
-          role: 'assistant',
-          content: "Si è verificato un errore durante la generazione del report. Riprova.",
-          timestamp: new Date()
-        }
-        setMessages(prev => [...prev, errorMsg])
-      } finally {
-        setIsLoading(false)
-      }
-      return
-    }
-
     if (agentMode === 'quiz' && quizInterview.active) {
       if (!userInput) return
       const convId = await ensureConversation('Generazione quiz guidata')
@@ -1838,7 +1735,11 @@ REGOLE IMPORTANTI:
 
     if (mode === 'dataset') startDatasetInterview()
     if (mode === 'image') startImageInterview()
-    if (mode === 'report') startReportInterview()
+    if (mode === 'report') {
+      // Instead of text interview, trigger backend widgets
+      setInputText('Voglio generare un report')
+      setTimeout(() => handleSend(), 100)
+    }
     if (mode === 'quiz') startQuizInterview()
   }
 
@@ -2738,12 +2639,14 @@ function parseContentBlocks(content: string): {
   generationType: string | null;
   sessionSelector: any[] | null;
   studentSelector: any[] | null;
+  actionMenu: any[] | null;
 } {
   let textContent = content
   let quiz: QuizData | null = null
   let csv: string | null = null
   let sessionSelector: any[] | null = null
   let studentSelector: any[] | null = null
+  let actionMenu: any[] | null = null
   let isGenerating = false
   let generationType: string | null = null
 
@@ -2819,7 +2722,16 @@ function parseContentBlocks(content: string): {
     } catch (e) { console.error("Error parsing student selector", e) }
   }
 
-  return { quiz, csv, textContent, isGenerating, generationType, sessionSelector, studentSelector }
+  // Extract Action Menu
+  const actionMenuMatch = content.match(/```action_menu\s*([\s\S]*?)```/)
+  if (actionMenuMatch) {
+    try {
+      actionMenu = JSON.parse(actionMenuMatch[1].trim())
+      textContent = textContent.replace(/```action_menu[\s\S]*?```/, '').trim()
+    } catch (e) { console.error("Error parsing action menu", e) }
+  }
+
+  return { quiz, csv, textContent, isGenerating, generationType, sessionSelector, studentSelector, actionMenu }
 }
 
 function SessionSelector({ sessions, onSelect }: { sessions: any[], onSelect: (id: string) => void }) {
@@ -2891,6 +2803,23 @@ function StudentSelector({ students, onSelect }: { students: any[], onSelect: (s
   )
 }
 
+function ActionMenu({ actions, onSelect }: { actions: any[], onSelect: (value: string) => void }) {
+  return (
+    <div className="grid grid-cols-2 gap-2 my-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
+      {actions.map((action, idx) => (
+        <button
+          key={idx}
+          onClick={() => onSelect(action.value)}
+          className="flex items-center gap-2 px-3 py-2.5 bg-white border border-slate-200 rounded-xl hover:bg-red-50 hover:border-red-200 hover:text-red-700 text-sm font-medium transition-all shadow-sm group"
+        >
+          <span className="group-hover:scale-110 transition-transform">{action.label.split(' ')[0]}</span>
+          <span className="truncate">{action.label.split(' ').slice(1).join(' ')}</span>
+        </button>
+      ))}
+    </div>
+  )
+}
+
 function MessageContent({ content, onPublish, onEdit, onInput, toast, darkMode = false }: { 
   content: string; 
   onPublish: (type: 'quiz' | 'dataset', data: any) => void; 
@@ -2899,7 +2828,7 @@ function MessageContent({ content, onPublish, onEdit, onInput, toast, darkMode =
   toast: any; 
   darkMode?: boolean 
 }) {
-  const { quiz, csv, textContent, isGenerating, generationType, sessionSelector, studentSelector } = parseContentBlocks(content)
+  const { quiz, csv, textContent, isGenerating, generationType, sessionSelector, studentSelector, actionMenu } = parseContentBlocks(content)
   const { cleanContent, images } = extractBase64Images(textContent)
 
   if (isGenerating) {
@@ -3131,6 +3060,13 @@ function MessageContent({ content, onPublish, onEdit, onInput, toast, darkMode =
               .join(', ');
             onInput(`Generami un report per questi studenti: ${names}`);
           }} 
+        />
+      )}
+
+      {actionMenu && (
+        <ActionMenu 
+          actions={actionMenu} 
+          onSelect={(value) => onInput(value)} 
         />
       )}
     </div>
