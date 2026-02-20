@@ -970,18 +970,18 @@ async def send_message_with_files(
             provider = "fallback"
     else:
         # Get chatbot profile
-    profile = get_profile(conversation.profile_key)
-    grade_instruction = get_school_grade_instruction(class_obj.school_grade)
-    system_prompt = (
-        profile["system_prompt"]
-        + grade_instruction
-        + "\n\nQuando l'utente allega documenti, analizzali attentamente e rispondi in base al loro contenuto."
-    )
-    temperature = profile.get("temperature", 0.7)
-    
-    provider = "none"
-    model = "none"
-    token_usage = {"prompt_tokens": 0, "completion_tokens": 0}
+        profile = get_profile(conversation.profile_key)
+        grade_instruction = get_school_grade_instruction(class_obj.school_grade)
+        system_prompt = (
+            profile["system_prompt"]
+            + grade_instruction
+            + "\n\nQuando l'utente allega documenti, analizzali attentamente e rispondi in base al loro contenuto."
+        )
+        temperature = profile.get("temperature", 0.7)
+        
+        provider = "none"
+        model = "none"
+        token_usage = {"prompt_tokens": 0, "completion_tokens": 0}
     
     # Call LLM
     try:
