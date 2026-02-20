@@ -184,14 +184,10 @@ export function StudentNavbar({
             <div className="flex items-center gap-2">
               {/* Session Info - Always visible */}
               {sessionTitle && (
-                <div className="hidden lg:flex items-center gap-3 h-11 px-4 rounded-2xl border bg-white/60 backdrop-blur-md border-slate-200 shadow-sm">
-                  <div className="w-2.5 h-2.5 rounded-full bg-green-500 animate-pulse shadow-sm shadow-green-300" />
+                <div className="hidden lg:flex items-center gap-2 h-9 px-3 rounded-xl border bg-white/60 backdrop-blur-md border-slate-200 shadow-sm">
+                  <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse shadow-sm shadow-green-300" />
                   <div className="text-left min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-bold text-[var(--student-accent-text)] truncate max-w-[140px]">{sessionTitle}</span>
-                      <span className="text-slate-300">|</span>
-                      <span className="text-xs font-semibold text-slate-500 bg-white/40 px-2 py-0.5 rounded-lg">{joinCode}</span>
-                    </div>
+                    <span className="text-[11px] font-bold text-[var(--student-accent-text)] truncate max-w-[120px]">{sessionTitle}</span>
                   </div>
                 </div>
               )}
