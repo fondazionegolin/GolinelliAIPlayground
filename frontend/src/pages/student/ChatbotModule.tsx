@@ -546,7 +546,7 @@ export default function ChatbotModule({ sessionId, initialTeacherbotId, onInputF
         if (existingHistory && existingHistory.length > 0) {
           const actualHistory = existingHistory.filter(m => m.content !== content);
           for (const msg of actualHistory) {
-            await llmApi.sendMessage(convId, msg.content, undefined, undefined, undefined)
+            await llmApi.sendMessage(convId!, msg.content, undefined, undefined, undefined)
           }
         }
       }
