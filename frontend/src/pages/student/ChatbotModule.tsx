@@ -166,7 +166,7 @@ export default function ChatbotModule({ sessionId, initialTeacherbotId, onInputF
   const [selectedModel, setSelectedModel] = useState<LLMModel | null>(null)
   const [showModelMenu, setShowModelMenu] = useState(false)
   const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([])
-  const [imageProvider, setImageProvider] = useState<'dall-e' | 'flux-schnell' | 'flux-dev' | 'flux-pro' | 'flux-pro-1.1'>('flux-schnell')
+  const [imageProvider, setImageProvider] = useState<'dall-e' | 'flux-schnell' | 'flux-dev' | 'flux-pro' | 'flux-pro-1.1' | 'flux-2-pro' | 'flux-2-klein'>('flux-schnell')
   const [imageSize, setImageSize] = useState<string>('1024x1024')
   const [verboseMode] = useState(false)
   const [chatBg, setChatBg] = useState<string>('')
@@ -588,11 +588,16 @@ export default function ChatbotModule({ sessionId, initialTeacherbotId, onInputF
         inputRef.current?.focus()
       }, 0)
     },
-    onError: () => {
+    onError: (e: any) => {
+      console.error("Student chat error:", e)
+      if (e.response) {
+        console.error("Server Error Data:", e.response.data)
+        console.error("Server Error Status:", e.response.status)
+      }
       const errorMessage: Message = {
         id: Date.now().toString(),
         role: 'assistant',
-        content: 'Mi dispiace, si è verificato un errore. Riprova più tardi.',
+        content: `Mi dispiace, si è verificato un errore: ${e.response?.data?.detail || e.message}. Controlla la console per i dettagli.`,
         timestamp: new Date(),
       }
       setMessages((prev) => [...prev, errorMessage])
@@ -1772,10 +1777,10 @@ export default function ChatbotModule({ sessionId, initialTeacherbotId, onInputF
               <span className="text-xs text-slate-400">Modello FLUX:</span>
               <div className="flex items-center bg-slate-100 rounded-lg p-0.5">
                 {[
-                  { id: 'flux-schnell', label: 'Schnell' },
-                  { id: 'flux-dev', label: 'Dev' },
-                  { id: 'flux-pro', label: 'Pro' },
+                  { id: 'flux-schnell', label: '1.0 Fast' },
                   { id: 'flux-pro-1.1', label: '1.1 Pro' },
+                  { id: 'flux-2-klein', label: '2.0 Fast' },
+                  { id: 'flux-2-pro', label: '2.0 Pro' },
                 ].map((m) => (
                   <button
                     key={m.id}

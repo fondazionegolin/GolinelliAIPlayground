@@ -372,7 +372,8 @@ class LLMService:
         bfl_models = [
             "flux-pro-1.1", "flux-pro", "flux-dev", "flux-schnell", 
             "flux-pro-1.1-ultra", "flux-pro-fill", "flux-pro-canny", 
-            "flux-pro-depth", "flux-pro-redaction"
+            "flux-pro-depth", "flux-pro-redaction",
+            "flux-2-pro", "flux-2-dev", "flux-2-klein", "flux-2-max", "flux-2-flex"
         ]
         
         if provider in bfl_models or provider.startswith("flux-"):
@@ -409,6 +410,11 @@ class LLMService:
             "flux-dev": "flux-dev",
             "flux-schnell": "flux-schnell",
             "flux-pro-1.1-ultra": "flux-pro-1.1-ultra",
+            "flux-2-pro": "flux-2-pro",
+            "flux-2-dev": "flux-2-dev",
+            "flux-2-klein": "flux-2-klein",
+            "flux-2-max": "flux-2-max",
+            "flux-2-flex": "flux-2-flex",
         }
         bfl_model = model_map.get(model, model)
         
@@ -437,6 +443,7 @@ class LLMService:
 
         async with httpx.AsyncClient(timeout=120.0) as client:
             # 1. Post request
+            logger.info(f"BFL Request: endpoint={endpoint}, payload_keys={list(payload.keys())}")
             response = await client.post(
                 endpoint,
                 headers={
@@ -447,10 +454,12 @@ class LLMService:
             )
             
             if response.status_code != 200:
+                logger.error(f"BFL Error Response: {response.status_code} - {response.text}")
                 raise RuntimeError(f"BFL image generation request failed: {response.text}")
             
             data = response.json()
             request_id = data.get("id")
+            logger.info(f"BFL Request success: id={request_id}")
             if not request_id:
                 raise RuntimeError(f"BFL API did not return a request ID: {data}")
 
@@ -467,12 +476,14 @@ class LLMService:
                 )
                 
                 if status_response.status_code != 200:
+                    logger.warning(f"BFL Poll Error: {status_response.status_code}")
                     continue # Try again
                 
                 status_data = status_response.json()
                 status = status_data.get("status")
                 
                 if status == "Ready":
+                    logger.info(f"BFL Result Ready: {request_id}")
                     result_url = status_data.get("result", {}).get("sample")
                     if not result_url:
                         raise RuntimeError("BFL result ready but no sample URL found")
@@ -480,6 +491,7 @@ class LLMService:
                     # Download and save locally for persistence
                     return await self._download_and_save_image(result_url)
                 elif status == "Failed":
+                    logger.error(f"BFL Generation Failed: {status_data}")
                     raise RuntimeError(f"BFL generation failed: {status_data.get('error', 'Unknown error')}")
                 
                 # Still processing...

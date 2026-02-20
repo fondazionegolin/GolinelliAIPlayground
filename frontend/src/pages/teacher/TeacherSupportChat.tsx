@@ -261,7 +261,7 @@ export default function TeacherSupportChat() {
   const conversationCacheRef = useRef<Record<string, Message[]>>({})
   const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([])
   const [agentMode, setAgentMode] = useState<AgentMode>('default')
-  const [imageProvider, setImageProvider] = useState<'dall-e' | 'flux-schnell' | 'flux-dev' | 'flux-pro' | 'flux-pro-1.1'>('flux-schnell')
+  const [imageProvider, setImageProvider] = useState<'dall-e' | 'flux-schnell' | 'flux-dev' | 'flux-pro' | 'flux-pro-1.1' | 'flux-2-pro' | 'flux-2-klein'>('flux-schnell')
   const [imageSize, setImageSize] = useState<string>('1024x1024')
   const [chatBg, setChatBg] = useState<string>('')
   const [chatBgDefault, setChatBgDefault] = useState<string>('')
@@ -1644,14 +1644,24 @@ REGOLE IMPORTANTI:
         // Save to server
         await saveMessageToServer(convId, userMessage, assistantMessage, selectedModel)
       }
-    } catch (e) {
-      console.error(e)
+    } catch (e: any) {
+      console.error("Teacher support chat error:", e)
+      if (e.response) {
+        console.error("Server Error Data:", e.response.data)
+        console.error("Server Error Status:", e.response.status)
+        console.error("Server Error Headers:", e.response.headers)
+      } else if (e.request) {
+        console.error("No request response received:", e.request)
+      } else {
+        console.error("Error setting up request:", e.message)
+      }
+      
       setImageGenerationProgress(null)
-      toast({ title: "Errore", description: "Impossibile completare la richiesta.", variant: "destructive" })
+      toast({ title: "Errore", description: `Impossibile completare la richiesta: ${e.response?.data?.detail || e.message}`, variant: "destructive" })
       const errorMsg: Message = {
         id: `err-${Date.now()}`,
         role: 'assistant',
-        content: "Si è verificato un errore durante la generazione. Riprova.",
+        content: "Si è verificato un errore durante la generazione. Per favore controlla la console per i dettagli tecnici.",
         timestamp: new Date()
       }
       setMessages(prev => [...prev, errorMsg])
@@ -1954,10 +1964,10 @@ REGOLE IMPORTANTI:
                           <>
                             <div className="flex items-center bg-slate-100/80 rounded-full p-1 border border-slate-200">
                               {[
-                                { id: 'flux-schnell', label: 'Schnell' },
-                                { id: 'flux-dev', label: 'Dev' },
-                                { id: 'flux-pro', label: 'Pro' },
+                                { id: 'flux-schnell', label: '1.0 Fast' },
                                 { id: 'flux-pro-1.1', label: '1.1 Pro' },
+                                { id: 'flux-2-klein', label: '2.0 Fast' },
+                                { id: 'flux-2-pro', label: '2.0 Pro' },
                               ].map((m) => (
                                 <button
                                   key={m.id}

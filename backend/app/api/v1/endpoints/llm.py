@@ -475,13 +475,25 @@ async def send_message(
         try:
             # Check for existing images in attachments or history for img2img
             image_base64 = None
-            if hasattr(request, 'attachments') and request.attachments:
+            if request.attachments:
                 # Look for images in current request attachments
                 for att in request.attachments:
-                    if isinstance(att, dict) and att.get('mime_type', '').startswith('image/'):
-                        # Need to load the file and convert to base64
-                        # For simplicity, we assume the frontend might send it or we fetch it from local storage
-                        pass # TODO: Implementation below
+                    # In this platform, attachments are usually URLs like /uploads/chat/...
+                    # We need to read the file from the local path
+                    file_url = att.get('url') if isinstance(att, dict) else None
+                    if file_url and file_url.startswith('/uploads/chat/'):
+                        try:
+                            # Map URL to local path
+                            relative_path = file_url.lstrip('/')
+                            local_path = Path(relative_path)
+                            if local_path.exists():
+                                async with aiofiles.open(local_path, 'rb') as f:
+                                    img_data = await f.read()
+                                    image_base64 = base64.b64encode(img_data).decode("utf-8")
+                                    logger.info(f"Img2Img: Loaded image from {local_path}")
+                                    break
+                        except Exception as ex:
+                            logger.error(f"Failed to load image for img2img: {ex}")
 
             # Prepare a prompt for the LLM to extract/refine the image description
             extraction_messages = messages[:-1] # All history except current message
