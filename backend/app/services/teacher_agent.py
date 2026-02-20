@@ -24,51 +24,31 @@ logger = logging.getLogger(__name__)
 # INTENT CLASSIFICATION
 # ============================================================================
 
-INTENT_CLASSIFIER_PROMPT = """Sei un classificatore di intenti per un assistente docente AI.
+INTENT_CLASSIFIER_PROMPT = """Sei un classificatore di intenti per l'Assistente Personale del docente.
 
-Analizza il messaggio del docente e determina cosa vuole fare.
+Il tuo compito è distinguere tra richieste di strumenti specifici e dialogo libero di supporto/brainstorming.
 
 INTENTI DISPONIBILI:
-1. quiz_generation - Il docente vuole creare un quiz/verifica con domande
-   Parole chiave: "quiz", "verifica", "test", "domande", "quesiti"
-
-2. exercise_generation - Il docente vuole creare esercizi/problemi
-   Parole chiave: "esercizio", "esercizi", "problema", "problemi", "attività pratica"
-
-3. report_generation - Il docente vuole un report sulle sessioni o sugli studenti
-   Parole chiave: "report", "analisi classe", "andamento studenti", "statistiche sessione", "resoconto"
-
-4. web_search - Il docente vuole cercare informazioni aggiornate dal web
-   Parole chiave: "cerca", "ricerca", "trova", "cerca online", "cerca sul web", "informazioni recenti", "ultime notizie", "aggiornamenti", "cerca in internet", "informazioni su", "dimmi di", "cosa sai di"
-
-4. document_help - Il docente vuole aiuto con documenti scolastici
-   Parole chiave: "PEI", "PTOF", "relazione", "verbale", "documento", "modulo"
-
-5. analytics - Il docente vuole analisi, statistiche, valutazioni (DEFAULT)
-   Parole chiave: "statistiche", "performance", "valutazioni", "come sta andando", "dati"
+1. quiz_generation - Il docente chiede ESPLICITAMENTE di creare un quiz o una verifica.
+2. exercise_generation - Il docente chiede ESPLICITAMENTE di creare esercizi o attività pratiche.
+3. report_generation - Il docente chiede dati, statistiche o report sull'andamento di sessioni o studenti.
+4. web_search - Il docente chiede di cercare informazioni aggiornate online.
+5. action_menu - Il docente chiede aiuto, opzioni o cosa può fare l'assistente.
+6. analytics - (DEFAULT / CHAT LIBERA) Il docente vuole dialogare, fare brainstorming, progettare lezioni, discutere di pedagogia o chiedere consigli generali. Usa questo intento per ogni interazione che non sia una richiesta tecnica esplicita di generazione contenuti.
 
 REGOLE DI CLASSIFICAZIONE:
-- Se il messaggio menziona esplicitamente creazione di contenuti didattici → usa intent specifico
-- Se usa verbi come "cerca", "ricerca", "trova", "dimmi di" seguiti da un argomento → web_search
-- Se chiede di cercare online o informazioni aggiornate → web_search
-- Se chiede "informazioni su X" dove X è un argomento generale → web_search
-- Se chiede analisi o informazioni sulla classe → analytics
-- Se chiede aiuto con documenti → document_help
-- In caso di ambiguità → analytics (è il più sicuro)
+- Se il messaggio è colloquiale, riflessivo o di progettazione ("Cosa ne pensi di...", "Aiutami a ideare...", "Come posso spiegare...") → usa analytics.
+- Non forzare l'uso di quiz/esercizi se il docente sta solo esplorando un tema.
+- Se il docente chiede di "progettare una lezione" senza chiedere i dati strutturati finali → usa analytics per il brainstorming.
+- In caso di dubbio o ambiguità → analytics.
 
 FORMATO OUTPUT:
-Rispondi SOLO con un JSON valido (senza markdown):
+Rispondi SOLO con un JSON valido:
 {
-  "intent": "quiz_generation",
-  "confidence": 0.95,
-  "topic": "estratto del tema/argomento se presente"
-}
-
-Confidence deve essere:
-- 0.9-1.0: Molto chiaro dall'uso di parole chiave
-- 0.7-0.89: Probabile ma non esplicito
-- 0.5-0.69: Ambiguo, usa fallback
-- <0.5: Molto incerto, usa analytics"""
+  "intent": "analytics",
+  "confidence": 0.9,
+  "topic": "estratto dell'argomento"
+}"""
 
 
 def classify_intent_by_keywords(message: str) -> IntentResult:

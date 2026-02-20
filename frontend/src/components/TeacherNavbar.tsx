@@ -314,7 +314,7 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
                 >
                   <div className={`w-2 h-2 rounded-full flex-shrink-0 ${currentSession ? 'bg-green-500 animate-pulse shadow-sm shadow-green-300' : 'bg-slate-300'}`} />
                   <div className="text-left min-w-0">
-                    <span className="text-[11px] font-bold text-[var(--teacher-accent-text)] truncate max-w-[140px]">{currentSession ? currentSession.name : 'Nessuna sessione'}</span>
+                    <span className="text-sm font-bold text-[var(--teacher-accent-text)] truncate max-w-[140px]">{currentSession ? currentSession.name : 'Nessuna sessione'}</span>
                   </div>
                   <ChevronDown className={`h-3 w-3 ml-0.5 text-slate-400 transition-transform flex-shrink-0 ${showSessionsMenu ? 'rotate-180' : ''}`} />
                 </button>

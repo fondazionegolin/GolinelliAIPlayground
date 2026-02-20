@@ -2799,8 +2799,7 @@ function ActionMenu({ actions, onSelect }: { actions: any[], onSelect: (value: s
           onClick={() => onSelect(action.value)}
           className="flex items-center gap-2 px-3 py-2.5 bg-white border border-slate-200 rounded-xl hover:bg-red-50 hover:border-red-200 hover:text-red-700 text-sm font-medium transition-all shadow-sm group"
         >
-          <span className="group-hover:scale-110 transition-transform">{action.label.split(' ')[0]}</span>
-          <span className="truncate">{action.label.split(' ').slice(1).join(' ')}</span>
+          <span className="truncate">{action.label}</span>
         </button>
       ))}
     </div>

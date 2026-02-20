@@ -1850,8 +1850,7 @@ function ActionMenu({ actions, onSelect, darkMode = false }: { actions: any[], o
               : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50 hover:border-slate-300'
           }`}
         >
-          <span className="group-hover:scale-110 transition-transform">{action.label.split(' ')[0]}</span>
-          <span className="truncate">{action.label.split(' ').slice(1).join(' ')}</span>
+          <span className="truncate">{action.label}</span>
         </button>
       ))}
     </div>

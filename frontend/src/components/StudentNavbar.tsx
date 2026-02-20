@@ -185,7 +185,7 @@ export function StudentNavbar({
                 <div className="hidden lg:flex items-center gap-2 h-9 px-3 rounded-xl border bg-white/60 backdrop-blur-md border-slate-200 shadow-sm">
                   <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse shadow-sm shadow-green-300" />
                   <div className="text-left min-w-0">
-                    <span className="text-[11px] font-bold text-[var(--student-accent-text)] truncate max-w-[120px]">{sessionTitle}</span>
+                    <span className="text-sm font-bold text-[var(--student-accent-text)] truncate max-w-[120px]">{sessionTitle}</span>
                   </div>
                 </div>
               )}
