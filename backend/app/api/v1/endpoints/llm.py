@@ -445,8 +445,9 @@ async def send_message(
             "role": msg.role.value,
             "content": msg.content or "",
         })
-    # Add current user message
-    messages.append({"role": "user", "content": request.content})
+    
+    # history already includes user_message because of db.add and flush
+    # So we don't need to append request.content again if it's already in history
     
     # Check if user is requesting image generation
     import re
@@ -457,6 +458,11 @@ async def send_message(
         r"generate\s+(?:an?\s+)?image",
         r"create\s+(?:an?\s+)?image",
         r"draw\s+(?:me\s+)?",
+        r"rifallo",
+        r"cambial[oa]",
+        r"miglioral[oa]",
+        r"aggiungi",
+        r"modifica",
     ]
     is_image_request = any(re.search(p, request.content.lower()) for p in image_request_patterns)
     
@@ -465,14 +471,20 @@ async def send_message(
     token_usage = {"prompt_tokens": 0, "completion_tokens": 0}
     
     if is_image_request:
-        # Extract the image description from the request
+        # Extract the image description from the request, using history for context
         try:
-            # Use LLM to extract a good DALL-E prompt
+            # Prepare a prompt for the LLM to extract/refine the image description
+            extraction_messages = messages[:-1] # All history except current message
+            extraction_messages.append({
+                "role": "user", 
+                "content": f"Basandoti sulla conversazione precedente e su questa nuova richiesta, estrai una descrizione dettagliata in inglese per generare un'immagine. Se l'utente chiede modifiche a un'immagine precedente, incorpora le modifiche nella nuova descrizione. Rispondi SOLO con la descrizione in inglese, senza altro testo. Richiesta: {request.content}"
+            })
+
             prompt_extraction = await llm_service.generate(
-                messages=[{"role": "user", "content": f"Estrai una descrizione dettagliata per generare un'immagine da questa richiesta. Rispondi SOLO con la descrizione in inglese, senza altro testo: {request.content}"}],
-                system_prompt="You are a helpful assistant that extracts image descriptions. Respond only with the image description in English.",
+                messages=extraction_messages,
+                system_prompt="You are a helpful assistant that extracts and refines image descriptions for DALL-E or Flux. Respond only with the detailed image description in English.",
                 temperature=0.3,
-                max_tokens=200,
+                max_tokens=300,
             )
             image_prompt = prompt_extraction.content.strip()
             
@@ -922,13 +934,17 @@ async def send_message_with_files(
     
     # Build messages for LLM
     messages = []
-    for msg in history[:-1]:  # Exclude the message we just added
+    for msg in history:
         messages.append({
             "role": msg.role.value,
             "content": msg.content or "",
         })
-    # Add current message with file context
-    messages.append({"role": "user", "content": full_content})
+    
+    # history already includes user_message because of db.add and flush
+    # and we already processed the full_content with file extraction
+    # We need to replace the last message in history with the one containing full_content
+    if messages:
+        messages[-1]["content"] = full_content
     
     # Get chatbot profile
     profile = get_profile(conversation.profile_key)
@@ -997,16 +1013,21 @@ async def send_message_with_files(
     return assistant_message
 
 
-async def load_teacher_context(db: AsyncSession, teacher: User) -> str:
+async def load_teacher_context(db: AsyncSession, teacher: User) -> tuple[str, dict]:
     """
     Load teacher's database context for analytics mode.
-    Returns formatted context string with all teacher's classes, sessions, students, tasks, etc.
+    Returns (formatted context string, structured context dict).
     """
     from app.models.task import Task, TaskSubmission
     from app.models.chat import ChatMessage
 
     # Load all teacher's data from database for context
     context_parts = []
+    structured_context = {
+        "classes": [],
+        "active_sessions": [],
+        "students": []
+    }
     
     # 1. Get all classes
     classes_result = await db.execute(
@@ -1029,6 +1050,14 @@ async def load_teacher_context(db: AsyncSession, teacher: User) -> str:
             for session in sessions:
                 context_parts.append(f"  - Sessione: **{session.title}** (codice: {session.join_code}, stato: {session.status.value})")
                 
+                # Add to structured context
+                structured_context["active_sessions"].append({
+                    "id": str(session.id),
+                    "title": session.title,
+                    "class_name": cls.name,
+                    "status": session.status.value
+                })
+                
                 # Get students in this session
                 students_result = await db.execute(
                     select(SessionStudent).where(SessionStudent.session_id == session.id)
@@ -1038,6 +1067,14 @@ async def load_teacher_context(db: AsyncSession, teacher: User) -> str:
                 if students:
                     student_names = [s.nickname for s in students]
                     context_parts.append(f"    - Studenti ({len(students)}): {', '.join(student_names)}")
+                    
+                    for s in students:
+                        structured_context["students"].append({
+                            "id": str(s.id),
+                            "nickname": s.nickname,
+                            "session_id": str(session.id),
+                            "session_title": session.title
+                        })
                 
                 # Get tasks for this session
                 tasks_result = await db.execute(
@@ -1089,7 +1126,7 @@ async def load_teacher_context(db: AsyncSession, teacher: User) -> str:
     
     # Build and return the full context
     teacher_context = "\n".join(context_parts) if context_parts else "Nessun dato disponibile. Crea prima delle classi e sessioni."
-    return teacher_context
+    return teacher_context, structured_context
 
 
 @router.post("/teacher/chat")
@@ -1122,16 +1159,17 @@ async def teacher_chat(
     messages.append({"role": "user", "content": content})
 
     try:
+        # Load database context (used by analytics mode)
+        context, structured_context = await load_teacher_context(db, teacher)
+
         if uses_agent:
             # NEW: Route to teacher agent for intelligent content generation
             from app.services.teacher_agent import run_teacher_agent
 
-            # Load database context (used by analytics mode)
-            context = await load_teacher_context(db, teacher)
-
             llm_response_content = await run_teacher_agent(
                 messages=messages,
                 context=context,
+                structured_context=structured_context,
                 provider=provider or "openai",
                 model=model or "gpt-5-mini",
             )
@@ -1145,7 +1183,6 @@ async def teacher_chat(
             }
         else:
             # EXISTING: Use context-rich analytics approach for backward compatibility
-            context = await load_teacher_context(db, teacher)
             base_system_prompt = profile["system_prompt"]
 
             # Enhance system prompt with real data
@@ -1244,7 +1281,7 @@ async def teacher_chat_stream(
                 yield f"data: {json.dumps({'type': 'status', 'message': '🌐 Modalità: Ricerca Web'})}\n\n"
 
                 # Use streaming web search
-                context = await load_teacher_context(db, teacher)
+                context, _ = await load_teacher_context(db, teacher)
                 async for update in generate_with_web_search_streaming(messages, context, provider, model):
                     yield f"data: {json.dumps(update)}\n\n"
 
@@ -1266,7 +1303,7 @@ async def teacher_chat_stream(
                 yield f"data: {json.dumps({'type': 'status', 'message': '📊 Modalità: Analytics'})}\n\n"
                 yield f"data: {json.dumps({'type': 'status', 'message': '⏳ Elaborazione risposta...'})}\n\n"
 
-                context = await load_teacher_context(db, teacher)
+                context, _ = await load_teacher_context(db, teacher)
                 result = await generate_with_analytics(messages, context, provider, model)
                 yield f"data: {json.dumps({'type': 'done', 'content': result})}\n\n"
 

@@ -642,10 +642,13 @@ export default function TeacherSupportChat() {
           const localMessages = cachedMessages || []
           const localLast = localMessages[localMessages.length - 1]?.timestamp?.getTime() || 0
           const serverLast = serverMessages[serverMessages.length - 1]?.timestamp?.getTime() || 0
-          const shouldReplace =
-            (serverMessages.length > localMessages.length) ||
-            (serverMessages.length === localMessages.length && serverLast >= localLast) ||
-            localMessages.length === 0
+          
+          // Only replace if server has more messages OR server has same number but newer last message
+          // OR if local is empty
+          const shouldReplace = 
+            (serverMessages.length > localMessages.length) || 
+            (serverMessages.length === localMessages.length && serverLast > localLast) ||
+            (localMessages.length === 0 && serverMessages.length > 0)
 
           if (shouldReplace) {
             setMessages(serverMessages)
@@ -1327,7 +1330,7 @@ REGOLE IMPORTANTI:
 
         const expansionResponse = await llmApi.teacherChat(
           expansionPrompt,
-          [],
+          messages.map(m => ({ role: m.role, content: m.content })),
           'tutor',
           'openai',
           'gpt-5-mini'
@@ -1656,6 +1659,8 @@ REGOLE IMPORTANTI:
 
         const expansionPrompt = `Sei un esperto Prompt Engineer. Il tuo compito e' scrivere un prompt dettagliato e ottimizzato per generare un'immagine con il modello ${providerLabel}.
 
+Basati sulla conversazione precedente per capire se l'utente sta chiedendo una nuova immagine o modifiche a una esistente.
+
 Descrizione utente: "${messageContent}"
 
 REGOLE IMPORTANTI:
@@ -1665,11 +1670,12 @@ REGOLE IMPORTANTI:
 - NON creare quiz, domande o contenuti didattici.
 - Rispondi SOLO con il prompt ottimizzato per la generazione dell'immagine.`
 
-        // IMPORTANTE: Usa il profilo 'tutor' invece di 'teacher_support' per evitare l'intent classification
-        // che potrebbe interpretare la richiesta come generazione di quiz
+        // Use actual history for context
+        const expansionHistory = messages.map(m => ({ role: m.role, content: m.content }))
+
         const expansionResponse = await llmApi.teacherChat(
           expansionPrompt,
-          [],
+          expansionHistory,
           'tutor',  // NON usare 'teacher_support' - ha uses_agent:true che attiva intent classification
           'openai',
           'gpt-5-mini'
@@ -2283,6 +2289,11 @@ REGOLE IMPORTANTI:
                                     setPublishModal({ isOpen: true, type, data })
                                   }}
                                   onEdit={(type, data) => setEditorModal({ isOpen: true, type, data })}
+                                  onInput={(text) => {
+                                    setInputText(text);
+                                    // Automatically trigger send after selection
+                                    setTimeout(() => handleSend(), 100);
+                                  }}
                                   toast={toast}
                                   darkMode={chatBgIsDark}
                                 />
@@ -2719,10 +2730,20 @@ function extractBase64Images(content: string): { cleanContent: string; images: s
   return { cleanContent: cleanContent.trim(), images }
 }
 
-function parseContentBlocks(content: string): { quiz: QuizData | null; csv: string | null; textContent: string; isGenerating: boolean; generationType: string | null } {
+function parseContentBlocks(content: string): { 
+  quiz: QuizData | null; 
+  csv: string | null; 
+  textContent: string; 
+  isGenerating: boolean; 
+  generationType: string | null;
+  sessionSelector: any[] | null;
+  studentSelector: any[] | null;
+} {
   let textContent = content
   let quiz: QuizData | null = null
   let csv: string | null = null
+  let sessionSelector: any[] | null = null
+  let studentSelector: any[] | null = null
   let isGenerating = false
   let generationType: string | null = null
 
@@ -2733,7 +2754,7 @@ function parseContentBlocks(content: string): { quiz: QuizData | null; csv: stri
 
   const hasBase64Image = content.includes('data:image') && content.includes('base64')
   if (hasBase64Image) {
-    return { quiz, csv, textContent, isGenerating: false, generationType: null }
+    return { quiz, csv, textContent, isGenerating: false, generationType: null, sessionSelector, studentSelector }
   }
 
   const hasIncompleteQuiz = content.includes('```quiz') && !content.includes('```quiz')
@@ -2780,11 +2801,105 @@ function parseContentBlocks(content: string): { quiz: QuizData | null; csv: stri
     isGenerating = false
   }
 
-  return { quiz, csv, textContent, isGenerating, generationType }
+  // Extract Session Selector
+  const sessionMatch = content.match(/```session_selector\s*([\s\S]*?)```/)
+  if (sessionMatch) {
+    try {
+      sessionSelector = JSON.parse(sessionMatch[1].trim())
+      textContent = textContent.replace(/```session_selector[\s\S]*?```/, '').trim()
+    } catch (e) { console.error("Error parsing session selector", e) }
+  }
+
+  // Extract Student Selector
+  const studentMatch = content.match(/```student_selector\s*([\s\S]*?)```/)
+  if (studentMatch) {
+    try {
+      studentSelector = JSON.parse(studentMatch[1].trim())
+      textContent = textContent.replace(/```student_selector[\s\S]*?```/, '').trim()
+    } catch (e) { console.error("Error parsing student selector", e) }
+  }
+
+  return { quiz, csv, textContent, isGenerating, generationType, sessionSelector, studentSelector }
 }
 
-function MessageContent({ content, onPublish, onEdit, toast, darkMode = false }: { content: string; onPublish: (type: 'quiz' | 'dataset', data: any) => void; onEdit: (type: 'quiz' | 'dataset', data: any) => void; toast: any; darkMode?: boolean }) {
-  const { quiz, csv, textContent, isGenerating, generationType } = parseContentBlocks(content)
+function SessionSelector({ sessions, onSelect }: { sessions: any[], onSelect: (id: string) => void }) {
+  return (
+    <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm my-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
+      <div className="bg-slate-50 px-4 py-2 border-b border-slate-200 flex items-center justify-between">
+        <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">Seleziona Sessione</span>
+        <span className="text-[10px] text-slate-400">{sessions.length} sessioni attive</span>
+      </div>
+      <div className="p-2 grid grid-cols-1 gap-1 max-h-60 overflow-y-auto">
+        {sessions.map(s => (
+          <button
+            key={s.id}
+            onClick={() => onSelect(s.id)}
+            className="text-left px-3 py-2.5 rounded-lg hover:bg-red-50 hover:text-red-700 border border-transparent hover:border-red-200 transition-all group flex items-center justify-between"
+          >
+            <div>
+              <div className="text-sm font-semibold">{s.title}</div>
+              <div className="text-[10px] text-slate-400 group-hover:text-red-500">{s.class_name} • {s.status}</div>
+            </div>
+            <ChevronRight className="h-4 w-4 text-slate-300 group-hover:text-red-500" />
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function StudentSelector({ students, onSelect }: { students: any[], onSelect: (selectedIds: string[]) => void }) {
+  const [selected, setSelected] = useState<string[]>([])
+  
+  const toggle = (id: string) => {
+    setSelected(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id])
+  }
+
+  return (
+    <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm my-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
+      <div className="bg-slate-50 px-4 py-2 border-b border-slate-200 flex items-center justify-between">
+        <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">Seleziona Studenti</span>
+        <span className="text-[10px] text-slate-400">{students.length} studenti</span>
+      </div>
+      <div className="p-2 grid grid-cols-2 gap-2 max-h-60 overflow-y-auto">
+        {students.map(s => (
+          <div
+            key={s.id}
+            onClick={() => toggle(s.id)}
+            className={`flex items-center gap-2 p-2 rounded-lg border cursor-pointer transition-all ${
+              selected.includes(s.id) ? 'bg-red-50 border-red-200 text-red-700' : 'bg-slate-50 border-slate-100 text-slate-600 hover:bg-slate-100'
+            }`}
+          >
+            <div className={`w-4 h-4 rounded border flex items-center justify-center ${selected.includes(s.id) ? 'bg-red-500 border-red-500' : 'bg-white border-slate-300'}`}>
+              {selected.includes(s.id) && <Check className="h-2.5 w-2.5 text-white" />}
+            </div>
+            <div className="text-xs font-medium truncate">{s.nickname}</div>
+          </div>
+        ))}
+      </div>
+      <div className="p-3 border-t border-slate-100 bg-slate-50 flex justify-end">
+        <Button 
+          size="sm" 
+          disabled={selected.length === 0}
+          className="text-xs bg-red-600 hover:bg-red-700 text-white"
+          onClick={() => onSelect(selected)}
+        >
+          Genera Report per {selected.length} {selected.length === 1 ? 'studente' : 'studenti'}
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+function MessageContent({ content, onPublish, onEdit, onInput, toast, darkMode = false }: { 
+  content: string; 
+  onPublish: (type: 'quiz' | 'dataset', data: any) => void; 
+  onEdit: (type: 'quiz' | 'dataset', data: any) => void; 
+  onInput: (text: string) => void;
+  toast: any; 
+  darkMode?: boolean 
+}) {
+  const { quiz, csv, textContent, isGenerating, generationType, sessionSelector, studentSelector } = parseContentBlocks(content)
   const { cleanContent, images } = extractBase64Images(textContent)
 
   if (isGenerating) {
@@ -2994,6 +3109,29 @@ function MessageContent({ content, onPublish, onEdit, toast, darkMode = false }:
             toast({ title: "Risposte verificate", description: "Hai completato il quiz in anteprima." })
           }} />
         </div>
+      )}
+
+      {sessionSelector && (
+        <SessionSelector 
+          sessions={sessionSelector} 
+          onSelect={(id) => {
+            const session = sessionSelector.find(s => s.id === id);
+            onInput(`Generami un report per la sessione: ${session?.title} (${id})`);
+          }} 
+        />
+      )}
+
+      {studentSelector && (
+        <StudentSelector 
+          students={studentSelector} 
+          onSelect={(selectedIds) => {
+            const names = studentSelector
+              .filter(s => selectedIds.includes(s.id))
+              .map(s => s.nickname)
+              .join(', ');
+            onInput(`Generami un report per questi studenti: ${names}`);
+          }} 
+        />
       )}
     </div>
   )

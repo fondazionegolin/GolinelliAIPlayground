@@ -35,7 +35,10 @@ INTENTI DISPONIBILI:
 2. exercise_generation - Il docente vuole creare esercizi/problemi
    Parole chiave: "esercizio", "esercizi", "problema", "problemi", "attività pratica"
 
-3. web_search - Il docente vuole cercare informazioni aggiornate dal web
+3. report_generation - Il docente vuole un report sulle sessioni o sugli studenti
+   Parole chiave: "report", "analisi classe", "andamento studenti", "statistiche sessione", "resoconto"
+
+4. web_search - Il docente vuole cercare informazioni aggiornate dal web
    Parole chiave: "cerca", "ricerca", "trova", "cerca online", "cerca sul web", "informazioni recenti", "ultime notizie", "aggiornamenti", "cerca in internet", "informazioni su", "dimmi di", "cosa sai di"
 
 4. document_help - Il docente vuole aiuto con documenti scolastici
@@ -95,6 +98,12 @@ def classify_intent_by_keywords(message: str) -> IntentResult:
         "attività pratica", "crea esercizi", "genera esercizi"
     ]
 
+    # Report/Analytics keywords
+    report_keywords = [
+        "report", "analisi", "statistiche", "andamento", "resoconto",
+        "come stanno andando", "risultati", "sessioni attive"
+    ]
+
     # Document keywords
     document_keywords = [
         "pei", "ptof", "relazione", "verbale", "documento", "modulo"
@@ -133,6 +142,16 @@ def classify_intent_by_keywords(message: str) -> IntentResult:
             logger.info(f"Intent classified by keywords: exercise_generation")
             return IntentResult(
                 intent=TeacherIntent.EXERCISE_GENERATION,
+                confidence=0.85,
+                extracted_params=message
+            )
+
+    # Check for report
+    for keyword in report_keywords:
+        if keyword in message_lower:
+            logger.info(f"Intent classified by keywords: report_generation")
+            return IntentResult(
+                intent=TeacherIntent.REPORT_GENERATION,
                 confidence=0.85,
                 extracted_params=message
             )
@@ -1035,6 +1054,7 @@ async def generate_with_web_search_streaming(
 async def run_teacher_agent(
     messages: list[dict],
     context: str,
+    structured_context: Optional[dict] = None,
     provider: str = "openai",
     model: str = "gpt-5-mini",
 ) -> str:
@@ -1045,6 +1065,7 @@ async def run_teacher_agent(
     Args:
         messages: Conversation history
         context: Database context (for analytics mode)
+        structured_context: Raw database data (for widgets)
         provider: LLM provider
         model: Model to use
 
@@ -1076,6 +1097,10 @@ async def run_teacher_agent(
             logger.info("Routing to exercise generator")
             return await generate_exercise_with_tools(messages, provider, model)
 
+        elif intent_result.intent == TeacherIntent.REPORT_GENERATION:
+            logger.info("Routing to report generator (widgets)")
+            return await generate_report_widgets(last_message, structured_context)
+
         elif intent_result.intent == TeacherIntent.WEB_SEARCH:
             logger.info("Routing to web search generator")
             return await generate_with_web_search(messages, context, provider, model)
@@ -1097,6 +1122,53 @@ async def run_teacher_agent(
         logger.error(f"Teacher agent error: {e}")
         # Fallback to analytics on any error
         return await generate_with_analytics(messages, context, provider, model)
+
+
+async def generate_report_widgets(message: str, structured_context: Optional[dict]) -> str:
+    """
+    Generate specialized markdown blocks for session/student selection widgets.
+    """
+    if not structured_context:
+        return "Non ho dati sufficienti per mostrarti i selettori. Assicurati di avere classi e sessioni attive."
+
+    message_lower = message.lower()
+    
+    # Check if asking for students
+    is_student_report = any(kw in message_lower for kw in ["studente", "studenti", "ragazz"])
+    
+    response = "Certamente! Per procedere con il report, per favore seleziona gli elementi di tuo interesse tramite il widget qui sotto:\n\n"
+    
+    if is_student_report:
+        students = structured_context.get("students", [])
+        if not students:
+            return "Non ho trovato studenti connessi in nessuna sessione al momento."
+        
+        # Group students by session
+        sessions_students = {}
+        for s in students:
+            s_title = s["session_title"]
+            if s_title not in sessions_students:
+                sessions_students[s_title] = []
+            sessions_students[s_title].append(s)
+            
+        response += "### Selezione Studenti\n"
+        response += "Puoi selezionare uno o più studenti dalle sessioni attive per generare un report mirato.\n\n"
+        response += "```student_selector\n"
+        response += json.dumps(students, indent=2, ensure_ascii=False)
+        response += "\n```"
+    else:
+        sessions = structured_context.get("active_sessions", [])
+        if not sessions:
+            return "Al momento non ci sono sessioni attive da analizzare."
+            
+        response += "### Selezione Sessione\n"
+        response += "Seleziona la sessione per la quale desideri generare il report dettagliato.\n\n"
+        response += "```session_selector\n"
+        response += json.dumps(sessions, indent=2, ensure_ascii=False)
+        response += "\n```"
+        
+    response += "\n\nUna volta effettuata la selezione, clicca sul tasto 'Genera Report' per procedere."
+    return response
 
 
 async def generate_text_editor_response(

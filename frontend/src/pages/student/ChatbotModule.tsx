@@ -540,8 +540,12 @@ export default function ChatbotModule({ sessionId, initialTeacherbotId, onInputF
         convId = convRes.data.id
         setConversationId(convId)
 
-        if (existingHistory && existingHistory.length > 0 && convId) {
-          for (const msg of existingHistory) {
+        // If we had history (e.g. from a proactive interview), we might want to persist it.
+        // But for the FIRST message from user, existingHistory will likely be empty or just the current message.
+        // We only want to send messages that are NOT the current one.
+        if (existingHistory && existingHistory.length > 0) {
+          const actualHistory = existingHistory.filter(m => m.content !== content);
+          for (const msg of actualHistory) {
             await llmApi.sendMessage(convId, msg.content, undefined, undefined, undefined)
           }
         }
@@ -807,13 +811,21 @@ export default function ChatbotModule({ sessionId, initialTeacherbotId, onInputF
 
     try {
       const res = await llmApi.getMessages(convId)
-      const loadedMessages: Message[] = res.data.map((m: { id: string; role: string; content: string; created_at: string }) => ({
+      const serverMessages: Message[] = res.data.map((m: { id: string; role: string; content: string; created_at: string }) => ({
         id: m.id,
         role: m.role as 'user' | 'assistant',
         content: m.content,
         timestamp: new Date(m.created_at),
       }))
-      setMessages(loadedMessages)
+      
+      setMessages(prev => {
+        // Only replace if server has more messages or local is empty
+        if (serverMessages.length >= prev.length || prev.length === 0) {
+          return serverMessages;
+        }
+        return prev;
+      })
+
       const conv = conversationsData?.find(c => c.id === convId)
       if (conv) {
         setSelectedProfile(conv.profile_key)

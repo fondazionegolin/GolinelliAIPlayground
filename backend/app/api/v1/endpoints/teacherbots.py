@@ -737,8 +737,9 @@ async def send_teacherbot_message(
     )
     history = result.scalars().all()
     messages = [{"role": msg.role, "content": msg.content} for msg in history]
-
-    # Generate response
+    
+    # history already includes user_msg because of db.add and flush
+    # So we don't need to append request.content again if it's already in history
     llm_response = await llm_service.generate(
         messages=messages,
         system_prompt=bot.system_prompt,
@@ -934,14 +935,17 @@ async def send_teacherbot_message_with_files(
     
     # Build messages for LLM
     messages = []
-    # Exclude the message we just added
-    for msg in history[:-1]:  
+    for msg in history:
         messages.append({
             "role": msg.role,
             "content": msg.content or "",
         })
-    # Add current message with file context
-    messages.append({"role": "user", "content": full_content})
+    
+    # history already includes user_msg because of db.add and flush
+    # and we already processed the full_content with file extraction
+    # We need to replace the last message in history with the one containing full_content
+    if messages:
+        messages[-1]["content"] = full_content
 
     # Update system prompt to handle files
     grade_instruction = get_school_grade_instruction(class_obj.school_grade)
