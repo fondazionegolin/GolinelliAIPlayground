@@ -1712,9 +1712,15 @@ REGOLE IMPORTANTI:
     if (mode === 'dataset') startDatasetInterview()
     if (mode === 'image') startImageInterview()
     if (mode === 'report') {
-      // Instead of text interview, trigger backend widgets
-      setInputText('Voglio generare un report')
-      setTimeout(() => handleSend(), 100)
+      // INSTANT UI: Inject a local message with the session selector widget
+      const sessions = classesData || [];
+      const localMsg: Message = {
+        id: `local-report-selector-${Date.now()}`,
+        role: 'assistant',
+        content: `Certamente! Seleziona una delle tue sessioni attive per generare il report:\n\n\`\`\`session_selector\n${JSON.stringify(sessions)}\n\`\`\``,
+        timestamp: new Date()
+      };
+      setMessages(prev => [...prev, localMsg]);
     }
     if (mode === 'quiz') startQuizInterview()
   }
