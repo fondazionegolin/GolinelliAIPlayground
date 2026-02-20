@@ -2192,7 +2192,7 @@ function parseContentBlocks(content: string): {
 
   const hasBase64Image = content.includes('data:image') && content.includes('base64')
   if (hasBase64Image) {
-    return { quiz, csv, textContent, isGenerating: false, generationType: null, actionMenu }
+    return { quiz, csv, textContent, isGenerating: false, generationType: null, actionMenu, sessionSelector, studentSelector }
   }
 
   if (hasIncompleteQuiz || (generatingQuizPattern.test(content) && content.length < 200)) {

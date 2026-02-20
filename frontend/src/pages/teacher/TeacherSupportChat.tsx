@@ -1039,42 +1039,6 @@ Vincoli obbligatori:
 - Stile visivo: ${answers.style}`
   }
 
-  const buildReportSummary = (answers: ReportInterviewAnswers) => {
-    return [
-      'Riepilogo specifiche report:',
-      `- Sessione: ${answers.session}`,
-      `- Focus: ${answers.focus}`,
-      `- Ambito: ${answers.scope}`,
-      '',
-      'Procedo ora con la generazione del report.'
-    ].join('\n')
-  }
-
-  const buildReportGenerationPrompt = (answers: ReportInterviewAnswers) => {
-    return `GENERA REPORT: Crea un report didattico dettagliato con queste specifiche:
-- Sessione da analizzare: ${answers.session}
-- Informazioni richieste: ${answers.focus}
-- Ambito del report: ${answers.scope}
-
-Requisiti:
-1) Sezione iniziale con sintesi esecutiva.
-2) Analisi puntuale in base alle informazioni richieste.
-3) Se l'ambito riguarda studenti specifici, separa chiaramente i risultati per studente.
-4) Concludi con osservazioni operative e prossimi passi didattici.`
-  }
-
-  const buildQuizSummary = (answers: QuizInterviewAnswers) => {
-    return [
-      'Riepilogo specifiche quiz:',
-      `- Argomento: ${answers.topic}`,
-      `- Numero domande: ${answers.questionCount}`,
-      `- Risposte per domanda: ${answers.optionsPerQuestion}`,
-      `- Highlights: ${answers.highlights}`,
-      '',
-      'Procedo ora con la generazione del quiz.'
-    ].join('\n')
-  }
-
   const buildQuizGenerationPrompt = (answers: QuizInterviewAnswers) => {
     const highlightInstruction = answers.highlights && answers.highlights.toLowerCase() !== 'no'
       ? `Includi questi highlights didattici: ${answers.highlights}.`
@@ -2657,7 +2621,7 @@ function parseContentBlocks(content: string): {
 
   const hasBase64Image = content.includes('data:image') && content.includes('base64')
   if (hasBase64Image) {
-    return { quiz, csv, textContent, isGenerating: false, generationType: null, sessionSelector, studentSelector }
+    return { quiz, csv, textContent, isGenerating: false, generationType: null, sessionSelector, studentSelector, actionMenu }
   }
 
   const hasIncompleteQuiz = content.includes('```quiz') && !content.includes('```quiz')
