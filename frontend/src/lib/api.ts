@@ -280,7 +280,7 @@ export const llmApi = {
       headers: { 'Content-Type': 'multipart/form-data' }
     })
   },
-  generateImage: (prompt: string, provider: 'dall-e' | 'flux-schnell' = 'dall-e') =>
+  generateImage: (prompt: string, provider: string = 'flux-schnell') =>
     api.post('/llm/generate-image', { prompt, provider }),
   explain: (messageId: string) =>
     api.post('/llm/explain', { message_id: messageId }),
