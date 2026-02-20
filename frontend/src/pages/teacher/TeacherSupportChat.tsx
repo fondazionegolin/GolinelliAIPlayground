@@ -261,7 +261,7 @@ export default function TeacherSupportChat() {
   const conversationCacheRef = useRef<Record<string, Message[]>>({})
   const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([])
   const [agentMode, setAgentMode] = useState<AgentMode>('default')
-  const [imageProvider, setImageProvider] = useState<'dall-e' | 'flux-schnell'>('flux-schnell')
+  const [imageProvider, setImageProvider] = useState<'dall-e' | 'flux-schnell' | 'flux-dev' | 'flux-pro' | 'flux-pro-1.1'>('flux-schnell')
   const [imageSize, setImageSize] = useState<string>('1024x1024')
   const [chatBg, setChatBg] = useState<string>('')
   const [chatBgDefault, setChatBgDefault] = useState<string>('')
@@ -1953,19 +1953,27 @@ REGOLE IMPORTANTI:
                         {agentMode === 'image' && (
                           <>
                             <div className="flex items-center bg-slate-100/80 rounded-full p-1 border border-slate-200">
+                              {[
+                                { id: 'flux-schnell', label: 'Schnell' },
+                                { id: 'flux-dev', label: 'Dev' },
+                                { id: 'flux-pro', label: 'Pro' },
+                                { id: 'flux-pro-1.1', label: '1.1 Pro' },
+                              ].map((m) => (
+                                <button
+                                  key={m.id}
+                                  onClick={() => setImageProvider(m.id as any)}
+                                  className={`px-3 py-1 text-[10px] rounded-full transition-all flex items-center gap-1 ${imageProvider === m.id
+                                    ? 'bg-white shadow-sm font-bold'
+                                    : 'text-slate-500 hover:text-slate-700'
+                                    }`}
+                                  style={imageProvider === m.id ? { color: accentTheme.text } : undefined}
+                                >
+                                  {m.label}
+                                </button>
+                              ))}
                               <button
-                                onClick={() => setImageProvider('flux-schnell')}
-                                className={`px-3 py-1 text-xs rounded-full transition-all flex items-center gap-1 ${imageProvider === 'flux-schnell'
-                                  ? 'bg-white shadow-sm font-bold'
-                                  : 'text-slate-500 hover:text-slate-700'
-                                  }`}
-                                style={imageProvider === 'flux-schnell' ? { color: accentTheme.text } : undefined}
-                              >
-                                ⚡ Flux
-                              </button>
-                              <button
-                                onClick={() => setImageProvider('dall-e')}
-                                className={`px-3 py-1 text-xs rounded-full transition-all flex items-center gap-1 ${imageProvider === 'dall-e'
+                                onClick={() => setImageProvider('dall-e' as any)}
+                                className={`px-3 py-1 text-[10px] rounded-full transition-all flex items-center gap-1 ${imageProvider === 'dall-e'
                                   ? 'bg-white shadow-sm font-bold'
                                   : 'text-slate-500 hover:text-slate-700'
                                   }`}

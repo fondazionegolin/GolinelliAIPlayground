@@ -362,21 +362,150 @@ class LLMService:
         size: str = "1024x1024",
         quality: str = "standard",
         style: str = "vivid",
-        provider: str = "dall-e",  # "dall-e", "sdxl", "sd-turbo", "flux-schnell", "flux-dev"
+        provider: str = "flux-schnell",  # Default changed to flux-schnell
+        image_base64: Optional[str] = None, # For image-to-image
+        strength: float = 0.8,
     ) -> str:
-        """Generate an image using DALL-E 3 or Golinelli API (SDXL/SD-Turbo/FLUX) and return the URL/base64"""
+        """Generate an image using BFL (Flux), DALL-E 3 or Golinelli API"""
         
-        golinelli_models = ["flux-schnell", "flux-dev", "flux", "sdxl", "sd-turbo"]
+        # BFL Models
+        bfl_models = [
+            "flux-pro-1.1", "flux-pro", "flux-dev", "flux-schnell", 
+            "flux-pro-1.1-ultra", "flux-pro-fill", "flux-pro-canny", 
+            "flux-pro-depth", "flux-pro-redaction"
+        ]
+        
+        if provider in bfl_models or provider.startswith("flux-"):
+            return await self._generate_image_bfl(prompt, size, model=provider, image_base64=image_base64, strength=strength)
+        
+        golinelli_models = ["sdxl", "sd-turbo"]
         if provider in golinelli_models:
-            # Map provider to actual model name
-            model = provider
-            if provider == "flux":
-                model = "flux-schnell"
-            return await self._generate_image_flux(prompt, size, model=model)
-        else:
-            # Use OpenAI DALL-E
+            return await self._generate_image_flux(prompt, size, model=provider)
+        
+        if provider == "dall-e":
             return await self._generate_image_dalle(prompt, size, quality, style)
-    
+            
+        # Fallback to BFL schnell
+        return await self._generate_image_bfl(prompt, size, model="flux-schnell")
+
+    async def _generate_image_bfl(
+        self,
+        prompt: str,
+        size: str = "1024x1024",
+        model: str = "flux-schnell",
+        image_base64: Optional[str] = None,
+        strength: float = 0.8,
+    ) -> str:
+        """Generate an image using Black Forest Labs API (asynchronous)"""
+        if not settings.BFL_API_KEY:
+            # Fallback to Golinelli if BFL key missing
+            logger.warning("BFL_API_KEY not configured, falling back to Golinelli API")
+            return await self._generate_image_flux(prompt, size, model="flux-schnell")
+
+        # Map frontend model names to BFL endpoint names
+        model_map = {
+            "flux-pro-1.1": "flux-pro-1.1",
+            "flux-pro": "flux-pro-1.0",
+            "flux-dev": "flux-dev",
+            "flux-schnell": "flux-schnell",
+            "flux-pro-1.1-ultra": "flux-pro-1.1-ultra",
+        }
+        bfl_model = model_map.get(model, model)
+        
+        # Handle image-to-image if image_base64 is provided
+        # Note: In a real implementation, we'd check which BFL models support img2img.
+        # Usually, it involves a different endpoint or extra params.
+        # For simplicity, we use the requested model.
+        
+        endpoint = f"https://api.bfl.ml/v1/{bfl_model}"
+        
+        # Parse size
+        try:
+            width, height = map(int, size.split("x"))
+        except:
+            width, height = 1024, 1024
+
+        payload = {
+            "prompt": prompt,
+            "width": width,
+            "height": height,
+        }
+        
+        if image_base64:
+            payload["image"] = image_base64
+            payload["strength"] = strength
+
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            # 1. Post request
+            response = await client.post(
+                endpoint,
+                headers={
+                    "X-Key": settings.BFL_API_KEY,
+                    "Content-Type": "application/json",
+                },
+                json=payload,
+            )
+            
+            if response.status_code != 200:
+                raise RuntimeError(f"BFL image generation request failed: {response.text}")
+            
+            data = response.json()
+            request_id = data.get("id")
+            if not request_id:
+                raise RuntimeError(f"BFL API did not return a request ID: {data}")
+
+            # 2. Poll for results
+            import asyncio
+            max_retries = 60
+            for i in range(max_retries):
+                await asyncio.sleep(2.0) # Wait 2 seconds between polls
+                
+                status_response = await client.get(
+                    "https://api.bfl.ml/v1/get_result",
+                    headers={"X-Key": settings.BFL_API_KEY},
+                    params={"id": request_id}
+                )
+                
+                if status_response.status_code != 200:
+                    continue # Try again
+                
+                status_data = status_response.json()
+                status = status_data.get("status")
+                
+                if status == "Ready":
+                    result_url = status_data.get("result", {}).get("sample")
+                    if not result_url:
+                        raise RuntimeError("BFL result ready but no sample URL found")
+                    
+                    # Download and save locally for persistence
+                    return await self._download_and_save_image(result_url)
+                elif status == "Failed":
+                    raise RuntimeError(f"BFL generation failed: {status_data.get('error', 'Unknown error')}")
+                
+                # Still processing...
+            
+            raise TimeoutError("BFL image generation timed out")
+
+    async def _download_and_save_image(self, url: str) -> str:
+        """Download image from URL and save locally"""
+        try:
+            async with httpx.AsyncClient(timeout=60.0) as client:
+                img_response = await client.get(url)
+                if img_response.status_code == 200:
+                    upload_dir = Path("/app/uploads/generated")
+                    upload_dir.mkdir(parents=True, exist_ok=True)
+                    
+                    filename = f"{uuid.uuid4()}.png"
+                    file_path = upload_dir / filename
+                    
+                    async with aiofiles.open(file_path, 'wb') as f:
+                        await f.write(img_response.content)
+                    
+                    return f"/uploads/generated/{filename}"
+        except Exception as e:
+            logger.error(f"Failed to save image locally: {e}")
+        return url
+
     async def _generate_image_dalle(
         self,
         prompt: str,

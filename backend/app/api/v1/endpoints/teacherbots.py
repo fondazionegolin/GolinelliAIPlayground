@@ -947,6 +947,76 @@ async def send_teacherbot_message_with_files(
     if messages:
         messages[-1]["content"] = full_content
 
+    # Check for image generation request
+    import re
+    image_request_patterns = [
+        r"genera(?:mi)?\s+(?:una?\s+)?immagine",
+        r"crea(?:mi)?\s+(?:una?\s+)?immagine",
+        r"disegna(?:mi)?",
+        r"generate\s+(?:an?\s+)?image",
+        r"create\s+(?:an?\s+)?image",
+        r"draw\s+(?:me\s+)?",
+        r"rifallo",
+        r"cambial[oa]",
+        r"miglioral[oa]",
+        r"aggiungi",
+        r"modifica",
+    ]
+    is_image_request = any(re.search(p, content.lower()) for p in image_request_patterns)
+
+    if is_image_request:
+        try:
+            # Look for image in attached files
+            image_base64 = None
+            for file in files:
+                if file.content_type and file.content_type.startswith("image/"):
+                    await file.seek(0)
+                    img_data = await file.read()
+                    image_base64 = base64.b64encode(img_data).decode("utf-8")
+                    break
+
+            # Prompt extraction using history
+            extraction_messages = messages[:-1]
+            extraction_messages.append({
+                "role": "user",
+                "content": f"Basandoti sulla conversazione precedente e su questa nuova richiesta, estrai una descrizione dettagliata in inglese per generare un'immagine. Se l'utente chiede modifiche a un'immagine precedente o fornisce un'immagine di riferimento, incorpora questi dettagli nella nuova descrizione. Rispondi SOLO con la descrizione in inglese, senza altro testo. Richiesta: {content}"
+            })
+            
+            prompt_ext = await llm_service.generate(
+                messages=extraction_messages,
+                system_prompt="You are a helpful assistant that extracts image descriptions for FLUX. Respond only with the English description.",
+                temperature=0.3,
+                max_tokens=300
+            )
+            image_prompt = prompt_ext.content.strip()
+            
+            image_url = await llm_service.generate_image(
+                image_prompt, 
+                size="1024x1024", 
+                provider="flux-schnell",
+                image_base64=image_base64
+            )
+            
+            assistant_content = f"🎨 Ecco l'immagine che hai richiesto:\n\n![Immagine generata]({image_url})\n\n*Generata con FLUX - Prompt: {image_prompt}*"
+            
+            # Save assistant message
+            assistant_msg = TeacherbotMessage(
+                tenant_id=student.tenant_id,
+                conversation_id=conversation_id,
+                role="assistant",
+                content=assistant_content,
+                provider="flux",
+                model="flux-schnell",
+            )
+            db.add(assistant_msg)
+            await db.commit()
+            await db.refresh(assistant_msg)
+            return assistant_msg
+
+        except Exception as e:
+            logger.error(f"Teacherbot image generation error: {e}")
+            # Fallback to normal chat if image generation fails
+
     # Update system prompt to handle files
     grade_instruction = get_school_grade_instruction(class_obj.school_grade)
     system_prompt = (

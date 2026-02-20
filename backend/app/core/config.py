@@ -35,6 +35,7 @@ class Settings(BaseSettings):
     DEEPSEEK_BASE_URL: str = "https://api.deepseek.com"
     OLLAMA_BASE_URL: str = "http://localhost:11434"
     GOLINELLI_IMAGE_API_KEY: Optional[str] = None
+    BFL_API_KEY: Optional[str] = None
     
     # Default LLM settings
     DEFAULT_LLM_PROVIDER: str = "openai"

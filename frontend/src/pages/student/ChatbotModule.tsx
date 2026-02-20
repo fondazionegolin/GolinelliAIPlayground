@@ -166,7 +166,7 @@ export default function ChatbotModule({ sessionId, initialTeacherbotId, onInputF
   const [selectedModel, setSelectedModel] = useState<LLMModel | null>(null)
   const [showModelMenu, setShowModelMenu] = useState(false)
   const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([])
-  const [imageProvider, setImageProvider] = useState<'dall-e' | 'flux-schnell'>('flux-schnell')
+  const [imageProvider, setImageProvider] = useState<'dall-e' | 'flux-schnell' | 'flux-dev' | 'flux-pro' | 'flux-pro-1.1'>('flux-schnell')
   const [imageSize, setImageSize] = useState<string>('1024x1024')
   const [verboseMode] = useState(false)
   const [chatBg, setChatBg] = useState<string>('')
@@ -1769,17 +1769,25 @@ export default function ChatbotModule({ sessionId, initialTeacherbotId, onInputF
 
           <div className="hidden lg:flex items-center justify-center gap-4 mt-2 pb-4 flex-wrap">
             <div className="flex items-center gap-2">
-              <span className="text-xs text-slate-400">Generatore:</span>
+              <span className="text-xs text-slate-400">Modello FLUX:</span>
               <div className="flex items-center bg-slate-100 rounded-lg p-0.5">
+                {[
+                  { id: 'flux-schnell', label: 'Schnell' },
+                  { id: 'flux-dev', label: 'Dev' },
+                  { id: 'flux-pro', label: 'Pro' },
+                  { id: 'flux-pro-1.1', label: '1.1 Pro' },
+                ].map((m) => (
+                  <button
+                    key={m.id}
+                    onClick={() => setImageProvider(m.id as any)}
+                    className={`px-2 py-1 text-[10px] rounded-md transition-all ${imageProvider === m.id ? 'bg-white shadow text-fuchsia-600 font-bold' : 'text-slate-500 hover:text-slate-700'}`}
+                  >
+                    {m.label}
+                  </button>
+                ))}
                 <button
-                  onClick={() => setImageProvider('flux-schnell')}
-                  className={`px-2 py-1 text-xs rounded-md transition-all ${imageProvider === 'flux-schnell' ? 'bg-white shadow text-fuchsia-600 font-medium' : 'text-slate-500 hover:text-slate-700'}`}
-                >
-                  Flux
-                </button>
-                <button
-                  onClick={() => setImageProvider('dall-e')}
-                  className={`px-2 py-1 text-xs rounded-md transition-all ${imageProvider === 'dall-e' ? 'bg-white shadow text-fuchsia-600 font-medium' : 'text-slate-500 hover:text-slate-700'}`}
+                  onClick={() => setImageProvider('dall-e' as any)}
+                  className={`px-2 py-1 text-[10px] rounded-md transition-all ${imageProvider === 'dall-e' ? 'bg-white shadow text-fuchsia-600 font-bold' : 'text-slate-500 hover:text-slate-700'}`}
                 >
                   DALL-E
                 </button>

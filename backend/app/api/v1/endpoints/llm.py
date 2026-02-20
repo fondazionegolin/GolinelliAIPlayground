@@ -473,6 +473,16 @@ async def send_message(
     if is_image_request:
         # Extract the image description from the request, using history for context
         try:
+            # Check for existing images in attachments or history for img2img
+            image_base64 = None
+            if hasattr(request, 'attachments') and request.attachments:
+                # Look for images in current request attachments
+                for att in request.attachments:
+                    if isinstance(att, dict) and att.get('mime_type', '').startswith('image/'):
+                        # Need to load the file and convert to base64
+                        # For simplicity, we assume the frontend might send it or we fetch it from local storage
+                        pass # TODO: Implementation below
+
             # Prepare a prompt for the LLM to extract/refine the image description
             extraction_messages = messages[:-1] # All history except current message
             extraction_messages.append({
@@ -482,7 +492,7 @@ async def send_message(
 
             prompt_extraction = await llm_service.generate(
                 messages=extraction_messages,
-                system_prompt="You are a helpful assistant that extracts and refines image descriptions for DALL-E or Flux. Respond only with the detailed image description in English.",
+                system_prompt="You are a helpful assistant that extracts and refines image descriptions for FLUX models. Respond only with the detailed image description in English.",
                 temperature=0.3,
                 max_tokens=300,
             )
@@ -491,7 +501,14 @@ async def send_message(
             # Generate the image using selected provider and size
             image_provider = request.image_provider or "flux-schnell"
             image_size = request.image_size or "1024x1024"
-            image_url = await llm_service.generate_image(image_prompt, size=image_size, provider=image_provider)
+            
+            # Call generation
+            image_url = await llm_service.generate_image(
+                image_prompt, 
+                size=image_size, 
+                provider=image_provider,
+                image_base64=image_base64
+            )
             provider_label = "DALL-E 3" if image_provider == "dall-e" else "Flux Schnell"
             assistant_content = f"🎨 Ecco l'immagine che hai richiesto:\n\n![Immagine generata]({image_url})\n\n*Generata con {provider_label} - Prompt: {image_prompt}*"
             provider = "openai" if image_provider == "dall-e" else "flux"
@@ -858,7 +875,89 @@ async def send_message_with_files(
     if messages:
         messages[-1]["content"] = full_content
     
-    # Get chatbot profile
+    # Check for image generation request in content
+    import re
+    image_request_patterns = [
+        r"genera(?:mi)?\s+(?:una?\s+)?immagine",
+        r"crea(?:mi)?\s+(?:una?\s+)?immagine",
+        r"disegna(?:mi)?",
+        r"generate\s+(?:an?\s+)?image",
+        r"create\s+(?:an?\s+)?image",
+        r"draw\s+(?:me\s+)?",
+        r"rifallo",
+        r"cambial[oa]",
+        r"miglioral[oa]",
+        r"aggiungi",
+        r"modifica",
+    ]
+    is_image_request = any(re.search(p, content.lower()) for p in image_request_patterns)
+    
+    provider = "none"
+    model = "none"
+    token_usage = {"prompt_tokens": 0, "completion_tokens": 0}
+    
+    if is_image_request:
+        try:
+            # Look for image in attached files
+            image_base64 = None
+            # Find the first image in file_contents (we already have it in memory)
+            # But file_contents has extracted_text, not raw base64. 
+            # We need to get it again or pass it. 
+            # Let's assume we use the first image file if available.
+            for file in files:
+                if file.content_type and file.content_type.startswith("image/"):
+                    # Rewind file to read from start again if needed
+                    await file.seek(0)
+                    img_data = await file.read()
+                    image_base64 = base64.b64encode(img_data).decode("utf-8")
+                    break
+
+            # Prompt extraction using history
+            extraction_messages = messages[:-1]
+            extraction_messages.append({
+                "role": "user",
+                "content": f"Basandoti sulla conversazione precedente e su questa nuova richiesta, estrai una descrizione dettagliata in inglese per generare un'immagine. Se l'utente chiede modifiche a un'immagine precedente o fornisce un'immagine di riferimento, incorpora questi dettagli nella nuova descrizione. Rispondi SOLO con la descrizione in inglese, senza altro testo. Richiesta: {content}"
+            })
+            
+            prompt_ext = await llm_service.generate(
+                messages=extraction_messages,
+                system_prompt="You are a helpful assistant that extracts image descriptions for FLUX. Respond only with the English description.",
+                temperature=0.3,
+                max_tokens=300
+            )
+            image_prompt = prompt_ext.content.strip()
+            
+            # Use default flux-schnell if not specified (request dict is not available in Form method directly as object)
+            # We'd need to add these as Form fields if we want them here.
+            image_provider = "flux-schnell" 
+            image_size = "1024x1024"
+            
+            image_url = await llm_service.generate_image(
+                image_prompt, 
+                size=image_size, 
+                provider=image_provider,
+                image_base64=image_base64
+            )
+            
+            provider_label = "FLUX"
+            assistant_content = f"🎨 Ecco l'immagine che hai richiesto:\n\n![Immagine generata]({image_url})\n\n*Generata con {provider_label} - Prompt: {image_prompt}*"
+            provider = "flux"
+            model = image_provider
+            
+            # Track Usage
+            img_cost = credit_service.calculate_cost_for_model(provider, model, 0, 0, image_count=1)
+            await safe_track_usage(
+                db, student.tenant_id, provider, model, img_cost,
+                {"image_prompt": image_prompt, "type": "img2img" if image_base64 else "txt2img"},
+                teacher_id=class_obj.teacher_id, class_id=class_obj.id, session_id=session_obj.id, student_id=student.id,
+                context="image_generation_files"
+            )
+        except Exception as e:
+            logger.error(f"Image generation with files error: {e}")
+            assistant_content = f"Errore generazione immagine: {str(e)}"
+            provider = "fallback"
+    else:
+        # Get chatbot profile
     profile = get_profile(conversation.profile_key)
     grade_instruction = get_school_grade_instruction(class_obj.school_grade)
     system_prompt = (
