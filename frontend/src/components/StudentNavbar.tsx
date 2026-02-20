@@ -18,7 +18,6 @@ interface StudentNavbarProps {
   activeModule?: string | null
   onNavigate?: (module: string | null) => void
   sessionTitle?: string
-  joinCode?: string
   sessionId?: string
   chatSidebarOpen?: boolean
   onToggleChatSidebar?: () => void
@@ -30,7 +29,6 @@ export function StudentNavbar({
   activeModule,
   onNavigate,
   sessionTitle,
-  joinCode,
   chatSidebarOpen = false,
   onToggleChatSidebar,
   accent = DEFAULT_STUDENT_ACCENT,
