@@ -1810,7 +1810,7 @@ REGOLE IMPORTANTI:
 
   return (
     <>
-      <div className="h-full flex flex-col bg-slate-50 font-sans" style={accentVars} onDragOver={(e) => e.preventDefault()} onDrop={handleDrop}>
+      <div className="h-full flex flex-col bg-slate-200 font-sans" style={accentVars} onDragOver={(e) => e.preventDefault()} onDrop={handleDrop}>
         
         {/* Top Navigation - Centered Segmented Control */}
         <div className="flex items-center justify-center pt-6 pb-4 shrink-0">
@@ -2166,9 +2166,11 @@ REGOLE IMPORTANTI:
                           )}
                           <div className={`max-w-[75%] space-y-1 ${msg.role === 'user' ? 'items-end flex flex-col' : 'items-start'}`}>
                             <div className={`px-5 py-3 text-sm leading-relaxed shadow-sm backdrop-blur-md transition-all ${msg.role === 'user'
-                              ? `${chatBgIsDark ? 'bg-white/20 text-white border border-white/20' : 'bg-red-50/60 text-red-900 border border-red-200/80'} font-medium rounded-2xl rounded-tr-sm`
+                              ? `${chatBgIsDark ? 'bg-white/20 text-white border border-white/20' : 'text-white border border-transparent shadow-md'} font-medium rounded-2xl rounded-tr-sm`
                               : `${chatBgIsDark ? 'bg-white/10 text-white border border-white/15' : 'bg-slate-50/60 text-slate-800 border border-slate-200/80'} rounded-2xl rounded-tl-sm ${chatBgIsDark ? 'prose prose-invert' : ''}`
-                              }`}>
+                              }`}
+                              style={msg.role === 'user' && !chatBgIsDark ? selectedSolidStyle : undefined}
+                            >
                               {msg.role === 'assistant' ? (
                                 <MessageContent
                                   content={msg.content}
@@ -2186,7 +2188,7 @@ REGOLE IMPORTANTI:
                                   darkMode={chatBgIsDark}
                                 />
                               ) : (
-                                <ReactMarkdown className={`prose prose-sm max-w-none prose-p:leading-relaxed prose-pre:bg-slate-800 prose-pre:text-slate-100 [&_*]:!text-white [&_strong]:font-bold`}>
+                                <ReactMarkdown className={`prose prose-sm max-w-none prose-p:leading-relaxed prose-pre:bg-slate-800 prose-pre:text-slate-100 ${msg.role === 'user' ? '[&_*]:!text-white' : ''} [&_strong]:font-bold`}>
                                   {convertEmoticons(msg.content)}
                                 </ReactMarkdown>
                               )}
