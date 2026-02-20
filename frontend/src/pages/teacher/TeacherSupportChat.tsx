@@ -1039,6 +1039,18 @@ Vincoli obbligatori:
 - Stile visivo: ${answers.style}`
   }
 
+  const buildQuizSummary = (answers: QuizInterviewAnswers) => {
+    return [
+      'Riepilogo specifiche quiz:',
+      `- Argomento: ${answers.topic}`,
+      `- Numero domande: ${answers.questionCount}`,
+      `- Risposte per domanda: ${answers.optionsPerQuestion}`,
+      `- Highlights: ${answers.highlights}`,
+      '',
+      'Procedo ora con la generazione del quiz.'
+    ].join('\n')
+  }
+
   const buildQuizGenerationPrompt = (answers: QuizInterviewAnswers) => {
     const highlightInstruction = answers.highlights && answers.highlights.toLowerCase() !== 'no'
       ? `Includi questi highlights didattici: ${answers.highlights}.`
