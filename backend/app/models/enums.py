@@ -127,3 +127,18 @@ class CreditRequestStatus(str, enum.Enum):
     PENDING = "pending"
     APPROVED = "approved"
     REJECTED = "rejected"
+
+
+class AlertType(str, enum.Enum):
+    VULGAR = "vulgar"
+    SEXUAL = "sexual"
+    OFFENSIVE = "offensive"
+    THREATENING = "threatening"
+    PII_DETECTED = "pii_detected"
+
+
+class AlertStatus(str, enum.Enum):
+    PENDING = "pending"
+    ACKNOWLEDGED = "acknowledged"
+    BLOCKED = "blocked"
+    ACCEPTED = "accepted"

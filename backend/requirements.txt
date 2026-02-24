@@ -44,6 +44,7 @@ pillow==10.2.0
 # Document processing
 pypdf2==3.0.1
 python-docx==1.1.0
+PyMuPDF>=1.23.0
 beautifulsoup4==4.12.3
 duckduckgo-search>=6.0.0
 

@@ -842,3 +842,38 @@ async def canvas_item_unlock(sid, data):
 async def broadcast_to_session(session_id: str, event: str, data: dict):
     """Broadcast an event to all users in a session"""
     await sio.emit(event, data, room=f"session:{session_id}")
+
+
+async def notify_teacher_content_alert(
+    session_id: str,
+    alert_id: str,
+    student_id: str,
+    nickname: str,
+    alert_type: str,
+    risk_score: float,
+    preview: str,
+):
+    """Emit a content_alert notification to the teacher of the given session."""
+    _ALERT_LABELS = {
+        "vulgar": "contenuto volgare",
+        "sexual": "contenuto sessuale",
+        "offensive": "contenuto offensivo",
+        "threatening": "contenuto minaccioso",
+        "pii_detected": "dati personali rilevati",
+    }
+    label = _ALERT_LABELS.get(alert_type, alert_type)
+    await notify_session_teacher(
+        session_id,
+        {
+            "type": "content_alert",
+            "alert_id": alert_id,
+            "session_id": session_id,
+            "student_id": student_id,
+            "nickname": nickname,
+            "alert_type": alert_type,
+            "risk_score": risk_score,
+            "message": f"⚠️ Allarme sicurezza: {nickname} — {label}",
+            "preview": preview[:120] + ("..." if len(preview) > 120 else ""),
+            "timestamp": datetime.utcnow().isoformat(),
+        },
+    )

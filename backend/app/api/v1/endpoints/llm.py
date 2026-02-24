@@ -10,6 +10,8 @@ import base64
 import io
 import json
 import asyncio
+import aiofiles
+from pathlib import Path
 
 from app.core.database import get_db
 from app.api.deps import get_current_teacher, get_current_student, get_student_or_teacher, StudentOrTeacher
@@ -25,6 +27,10 @@ from app.services.llm_service import llm_service
 from app.services.credit_service import credit_service
 from app.services.chatbot_profiles import get_profile, get_all_profiles, CHATBOT_PROFILES
 from app.services.education_level import get_school_grade_instruction
+from app.services.document_processor import document_processor
+from app.services.moderation_service import moderation_service
+from app.models.alert import ContentAlert
+from app.realtime.gateway import notify_teacher_content_alert
 
 logger = logging.getLogger(__name__)
 
@@ -400,16 +406,102 @@ async def send_message(
     )
     if not is_allowed:
         raise HTTPException(
-            status_code=status.HTTP_402_PAYMENT_REQUIRED, 
+            status_code=status.HTTP_402_PAYMENT_REQUIRED,
             detail="Credit limit exceeded for this session/class."
         )
 
-    # Save user message
+    # === Content Moderation ===
+    moderation_result = await moderation_service.check(request.content or "")
+    effective_content = moderation_result.masked_text or request.content
+
+    if not moderation_result.is_safe and moderation_result.flagged:
+        # Flagged: block message, create alert, notify teacher, return blocked reply
+        alert = ContentAlert(
+            tenant_id=student.tenant_id,
+            session_id=conversation.session_id,
+            student_id=student.id,
+            conversation_id=conversation_id,
+            alert_type=moderation_result.alert_type or "offensive",
+            status="pending",
+            original_message=request.content or "",
+            masked_message=moderation_result.masked_text,
+            risk_score=moderation_result.risk_score,
+            details={
+                "flagged_categories": moderation_result.flagged_categories,
+                "pii_found": moderation_result.pii_found,
+            },
+        )
+        db.add(alert)
+        blocked_user_msg = ConversationMessage(
+            tenant_id=student.tenant_id,
+            conversation_id=conversation_id,
+            role=MessageRole.USER,
+            content=f"[BLOCCATO] {effective_content}",
+        )
+        db.add(blocked_user_msg)
+        blocked_reply = ConversationMessage(
+            tenant_id=student.tenant_id,
+            conversation_id=conversation_id,
+            role=MessageRole.ASSISTANT,
+            content="🚫 Il tuo messaggio è stato bloccato perché contiene contenuto non appropriato. Questo evento è stato segnalato al tuo docente.",
+            provider="system",
+            model="moderation",
+            token_usage_json={"prompt_tokens": 0, "completion_tokens": 0},
+        )
+        db.add(blocked_reply)
+        conversation.updated_at = datetime.utcnow()
+        await db.flush()
+        try:
+            await notify_teacher_content_alert(
+                session_id=str(conversation.session_id),
+                alert_id=str(alert.id),
+                student_id=str(student.id),
+                nickname=student.nickname or "Studente",
+                alert_type=moderation_result.alert_type or "offensive",
+                risk_score=moderation_result.risk_score,
+                preview=(request.content or "")[:100],
+            )
+        except Exception as ge:
+            logger.warning(f"[Moderation] notify_teacher_content_alert failed: {ge}")
+        await db.commit()
+        await db.refresh(blocked_reply)
+        return blocked_reply
+
+    elif moderation_result.pii_found:
+        # PII only: mask + continue, create alert, notify teacher
+        alert = ContentAlert(
+            tenant_id=student.tenant_id,
+            session_id=conversation.session_id,
+            student_id=student.id,
+            conversation_id=conversation_id,
+            alert_type="pii_detected",
+            status="pending",
+            original_message=request.content or "",
+            masked_message=effective_content,
+            risk_score=0.3,
+            details={"pii_found": moderation_result.pii_found},
+        )
+        db.add(alert)
+        await db.flush()
+        try:
+            await notify_teacher_content_alert(
+                session_id=str(conversation.session_id),
+                alert_id=str(alert.id),
+                student_id=str(student.id),
+                nickname=student.nickname or "Studente",
+                alert_type="pii_detected",
+                risk_score=0.3,
+                preview=(request.content or "")[:100],
+            )
+        except Exception as ge:
+            logger.warning(f"[Moderation] notify_teacher_content_alert (pii) failed: {ge}")
+
+    # Save user message (use masked content if PII was found)
     user_message = ConversationMessage(
         tenant_id=student.tenant_id,
         conversation_id=conversation_id,
         role=MessageRole.USER,
-        content=request.content,
+        content=effective_content,
         content_json=request.content_json,
     )
     db.add(user_message)
@@ -569,6 +661,12 @@ async def send_message(
             model = "none"
             token_usage = {"prompt_tokens": 0, "completion_tokens": 0}
     
+    # Prepend PII notice to assistant response if PII was masked
+    if moderation_result.pii_found:
+        pii_label = moderation_service.pii_label_list(moderation_result.pii_found)
+        pii_notice = f"⚠️ *Nota: il tuo messaggio conteneva dati sensibili ({pii_label}) che sono stati automaticamente rimossi per la tua sicurezza.*\n\n"
+        assistant_content = pii_notice + assistant_content
+
     # Save assistant message
     assistant_message = ConversationMessage(
         tenant_id=student.tenant_id,
@@ -580,12 +678,12 @@ async def send_message(
         token_usage_json=token_usage,
     )
     db.add(assistant_message)
-    
+
     conversation.updated_at = datetime.utcnow()
-    
+
     await db.commit()
     await db.refresh(assistant_message)
-    
+
     return assistant_message
 
 
@@ -771,87 +869,62 @@ async def send_message_with_files(
     if not allowed:
         raise HTTPException(status_code=402, detail="Credit limit exceeded for this session/class.")
     
-    # Process attached files
-    file_contents = []
+    # Process attached files with advanced multi-step processor
+    file_extracts: list[str] = []
+    file_infos: list[dict] = []
+    MAX_FILE_BYTES = 10 * 1024 * 1024  # 10 MB
+
     for file in files:
         file_data = await file.read()
         filename = file.filename or "unknown"
         mime_type = file.content_type or "application/octet-stream"
-        
-        # Extract text content based on file type
-        extracted_text = ""
-        if mime_type.startswith("text/") or filename.endswith((".txt", ".md")):
-            try:
-                extracted_text = file_data.decode("utf-8")
-            except:
-                extracted_text = file_data.decode("latin-1", errors="ignore")
-        elif mime_type == "application/pdf" or filename.endswith(".pdf"):
-            # Try to extract text from PDF
-            try:
-                import fitz  # PyMuPDF
-                pdf_doc = fitz.open(stream=file_data, filetype="pdf")
-                extracted_text = ""
-                for page in pdf_doc:
-                    extracted_text += page.get_text()
-                pdf_doc.close()
-            except ImportError:
-                extracted_text = "[PDF content - PyMuPDF not installed]"
-            except Exception as e:
-                extracted_text = f"[Error reading PDF: {str(e)}]"
-        elif mime_type.startswith("image/"):
-            # For images, we'll use vision API if available
-            try:
-                base64_image = base64.b64encode(file_data).decode("utf-8")
-                # Use GPT-4 Vision to describe the image
-                # This incurs cost!
-                vision_model = "gpt-4o"
-                
-                # Double check credits for vision
-                if not await credit_service.check_availability(
-                    db, student.tenant_id, 0.005, class_obj.teacher_id, class_obj.id, session_obj.id, student.id
-                ):
-                     extracted_text = "[Immagine non analizzata: credito insufficiente]"
-                else:
-                    vision_response = await llm_service.generate(
-                        messages=[{
-                            "role": "user",
-                            "content": [
-                                {"type": "text", "text": "Descrivi dettagliatamente questa immagine in italiano."},
-                                {"type": "image_url", "image_url": {"url": f"data:{mime_type};base64,{base64_image}"}}
-                            ]
-                        }],
-                        provider="openai",
-                        model=vision_model,
-                        temperature=0.3,
-                        max_tokens=1000,
-                    )
-                    extracted_text = f"[Immagine: {filename}]\n{vision_response.content}"
-                    
-                    # Track Vision Usage
-                    v_cost = credit_service.calculate_cost_for_model("openai", vision_model, vision_response.prompt_tokens, vision_response.completion_tokens)
-                    await safe_track_usage(
-                        db, student.tenant_id, "openai", vision_model, v_cost,
-                        {"type": "vision_analysis", "filename": filename},
-                        class_obj.teacher_id, class_obj.id, session_obj.id, student.id,
-                        context="vision_analysis"
-                    )
+        file_infos.append({"filename": filename, "mime_type": mime_type})
 
-            except Exception as e:
-                extracted_text = f"[Immagine: {filename} - impossibile analizzare: {str(e)}]"
-        
-        file_contents.append({
-            "filename": filename,
-            "mime_type": mime_type,
-            "content": extracted_text[:10000]  # Limit content size
-        })
-    
-    # Build the full message with file context
+        if len(file_data) > MAX_FILE_BYTES:
+            file_extracts.append(f"\n[File troppo grande: {filename}]\n")
+            continue
+
+        # For images, do a quick credit check before vision analysis
+        if mime_type.startswith("image/"):
+            credits_ok = await credit_service.check_availability(
+                db, student.tenant_id, 0.005,
+                class_obj.teacher_id, class_obj.id, session_obj.id, student.id,
+            )
+            analyze_visuals = credits_ok
+        else:
+            analyze_visuals = True
+
+        try:
+            analysis = await document_processor.process(
+                file_bytes=file_data,
+                filename=filename,
+                mime_type=mime_type,
+                llm_service=llm_service,
+                analyze_visuals=analyze_visuals,
+            )
+            file_extracts.append(analysis.structured_extract)
+
+            # Track vision cost if image was analyzed
+            if mime_type.startswith("image/") and analyze_visuals and analysis.visual_descriptions:
+                v_cost = 0.005
+                await safe_track_usage(
+                    db, student.tenant_id, "openai", "gpt-4o", v_cost,
+                    {"type": "vision_analysis", "filename": filename},
+                    class_obj.teacher_id, class_obj.id, session_obj.id, student.id,
+                    context="vision_analysis",
+                )
+        except Exception as e:
+            logger.error(f"Document processing error for {filename}: {e}")
+            file_extracts.append(f"\n[Errore elaborazione {filename}: {e}]\n")
+
+    # Build the full message with processed file extracts
     full_content = content
-    if file_contents:
-        files_context = "\n\n--- DOCUMENTI ALLEGATI ---\n"
-        for fc in file_contents:
-            files_context += f"\n📄 **{fc['filename']}** ({fc['mime_type']}):\n{fc['content']}\n"
-        files_context += "\n--- FINE DOCUMENTI ---\n"
+    if file_extracts:
+        files_context = (
+            "\n\n--- DOCUMENTI ELABORATI ---\n"
+            + "\n\n".join(file_extracts)
+            + "\n--- FINE DOCUMENTI ---\n"
+        )
         full_content = files_context + "\n" + content if content else files_context
     
     # Save user message
@@ -860,7 +933,7 @@ async def send_message_with_files(
         conversation_id=conversation_id,
         role=MessageRole.USER,
         content=content or "[Allegati caricati]",
-        content_json={"files": [{"filename": fc["filename"], "mime_type": fc["mime_type"]} for fc in file_contents]},
+        content_json={"files": file_infos},
     )
     db.add(user_message)
     await db.flush()
@@ -991,7 +1064,7 @@ async def send_message_with_files(
             provider=conversation.llm_provider,
             model=conversation.llm_model,
             temperature=temperature,
-            max_tokens=2048,
+            max_tokens=1200,
         )
         assistant_content = llm_response.content
         provider = llm_response.provider
@@ -1000,7 +1073,7 @@ async def send_message_with_files(
             "prompt_tokens": llm_response.prompt_tokens,
             "completion_tokens": llm_response.completion_tokens,
         }
-        
+
         # Track Usage
         cost = credit_service.calculate_cost_for_model(provider, model, token_usage["prompt_tokens"], token_usage["completion_tokens"])
         await safe_track_usage(
@@ -1238,7 +1311,7 @@ IMPORTANTE: Usa questi dati reali per rispondere alle domande del docente. Quand
                 provider=provider,
                 model=model,
                 temperature=temperature,
-                max_tokens=4096,
+                max_tokens=1500,
             )
 
             return {
@@ -1371,81 +1444,57 @@ async def teacher_chat_with_files(
     db: AsyncSession = Depends(get_db),
     teacher: User = Depends(get_current_teacher),
 ):
-    """Teacher chat endpoint with file upload support"""
-    import json
-    import base64
-    import asyncio
-    
-    MAX_FILE_BYTES = 3 * 1024 * 1024  # 3 MB per file
-    MAX_TEXT_CHARS = 12000
-    MAX_PDF_PAGES = 5
-    MAX_TOTAL_CHARS = 20000
+    """Teacher chat endpoint with file upload support (advanced multi-step processing)."""
+    MAX_FILE_BYTES = 10 * 1024 * 1024  # 10 MB per file
 
     # Parse history from JSON string
     try:
         parsed_history = json.loads(history)
-    except:
+    except Exception:
         parsed_history = []
-    
-    # Process uploaded files
-    file_contents = []
-    total_chars = 0
+
+    # Process uploaded files with the advanced document processor
+    file_extracts: list[str] = []
     for file in files:
         file_data = await file.read()
         file_name = file.filename or "document"
         file_type = file.content_type or "application/octet-stream"
 
         if len(file_data) > MAX_FILE_BYTES:
-            file_contents.append(f"\n[File troppo grande: {file_name} ({len(file_data)} bytes)]\n")
+            file_extracts.append(f"\n[File troppo grande: {file_name}]\n")
             continue
-        
-        # For text files, extract content directly
-        if file_type.startswith("text/") or file_name.endswith((".txt", ".md", ".csv", ".json")):
-            try:
-                text_content = file_data.decode("utf-8", errors="ignore")
-                if len(text_content) > MAX_TEXT_CHARS:
-                    text_content = text_content[:MAX_TEXT_CHARS] + "\n...[troncato]..."
-                file_contents.append(f"\n--- Contenuto di {file_name} ---\n{text_content}\n--- Fine {file_name} ---\n")
-            except:
-                file_contents.append(f"\n[File {file_name} non leggibile come testo]\n")
-        elif file_type == "application/pdf" or file_name.endswith(".pdf"):
-            # Try to extract PDF text
-            try:
-                from PyPDF2 import PdfReader
-                from io import BytesIO
-                reader = PdfReader(BytesIO(file_data))
-                pdf_text = ""
-                for idx, page in enumerate(reader.pages):
-                    if idx >= MAX_PDF_PAGES:
-                        break
-                    pdf_text += page.extract_text() or ""
-                    if len(pdf_text) > MAX_TEXT_CHARS:
-                        break
-                if len(pdf_text) > MAX_TEXT_CHARS:
-                    pdf_text = pdf_text[:MAX_TEXT_CHARS] + "\n...[troncato]..."
-                file_contents.append(f"\n--- Contenuto di {file_name} (PDF) ---\n{pdf_text}\n--- Fine {file_name} ---\n")
-            except Exception as e:
-                file_contents.append(f"\n[Errore lettura PDF {file_name}: {str(e)}]\n")
-        elif file_type.startswith("image/"):
-            # Non inviamo base64: solo nota
-            file_contents.append(f"\n[Immagine allegata: {file_name}]\n")
-        else:
-            file_contents.append(f"\n[File allegato: {file_name} ({file_type})]\n")
 
-        total_chars = sum(len(fc) for fc in file_contents)
-        if total_chars >= MAX_TOTAL_CHARS:
-            file_contents.append("\n[Allegati troncati per limiti di dimensione]\n")
-            break
-    
-    # Combine content with file contents
+        try:
+            analysis = await document_processor.process(
+                file_bytes=file_data,
+                filename=file_name,
+                mime_type=file_type,
+                llm_service=llm_service,
+                analyze_visuals=True,
+            )
+            file_extracts.append(analysis.structured_extract)
+            logger.info(
+                "Teacher doc processed: %s | steps: %s",
+                file_name,
+                analysis.processing_steps,
+            )
+        except Exception as e:
+            logger.error(f"Document processing error for {file_name}: {e}")
+            file_extracts.append(f"\n[Errore elaborazione {file_name}: {e}]\n")
+
+    # Combine user message with processed file extracts
     full_content = content
-    if file_contents:
-        full_content += "\n\nDocumenti allegati:" + "".join(file_contents)
-    
+    if file_extracts:
+        full_content += (
+            "\n\n--- DOCUMENTI ELABORATI ---\n"
+            + "\n\n".join(file_extracts)
+            + "\n--- FINE DOCUMENTI ---\n"
+        )
+
     # Get chatbot profile
     profile = get_profile(profile_key)
     base_system_prompt = profile["system_prompt"]
-    
+
     # Build messages
     messages = []
     for msg in parsed_history:
@@ -1454,9 +1503,9 @@ async def teacher_chat_with_files(
             "content": msg.get("content", ""),
         })
     messages.append({"role": "user", "content": full_content})
-    
+
     temperature = profile.get("temperature", 0.7)
-    
+
     try:
         llm_response = await llm_service.generate(
             messages=messages,
@@ -1464,9 +1513,9 @@ async def teacher_chat_with_files(
             provider=provider,
             model=model,
             temperature=temperature,
-            max_tokens=2048,
+            max_tokens=1500,
         )
-        
+
         return {
             "response": llm_response.content,
             "provider": llm_response.provider,
@@ -1477,6 +1526,93 @@ async def teacher_chat_with_files(
     except Exception as e:
         logger.error(f"Teacher chat with files error: {e}")
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+
+
+@router.post("/documents/analyze")
+async def analyze_document(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    auth: Annotated[StudentOrTeacher, Depends(get_student_or_teacher)],
+    file: UploadFile = File(...),
+    session_id: Optional[str] = Form(None),
+    ingest_to_rag: bool = Form(False),
+):
+    """
+    Multi-step document analysis endpoint.
+
+    Extracts text, detects visual content (charts/graphs), runs vision analysis,
+    and returns a structured extract ready to inject into chat context.
+
+    Optionally ingests the document to the RAG pipeline for semantic search
+    (requires a valid session_id and an existing RAGDocument record).
+    """
+    from app.services.rag_service import rag_service as _rag_service
+    from app.models.rag import RAGDocument
+    from app.models.enums import DocumentStatus
+
+    file_bytes = await file.read()
+    filename = file.filename or "document"
+    mime_type = file.content_type or "application/octet-stream"
+
+    if not file_bytes:
+        raise HTTPException(status_code=400, detail="Empty file")
+
+    MAX_BYTES = 20 * 1024 * 1024
+    if len(file_bytes) > MAX_BYTES:
+        raise HTTPException(status_code=400, detail=f"File too large (max {MAX_BYTES // 1024 // 1024} MB)")
+
+    try:
+        analysis = await document_processor.process(
+            file_bytes=file_bytes,
+            filename=filename,
+            mime_type=mime_type,
+            llm_service=llm_service,
+            analyze_visuals=True,
+        )
+    except Exception as e:
+        logger.error(f"Document analysis error: {e}")
+        raise HTTPException(status_code=500, detail=f"Document processing failed: {e}")
+
+    result = {
+        "filename": analysis.filename,
+        "mime_type": analysis.mime_type,
+        "page_count": analysis.page_count,
+        "summary": analysis.summary,
+        "key_concepts": analysis.key_concepts,
+        "entities": analysis.entities,
+        "has_visual_content": analysis.has_visual_content,
+        "visual_descriptions": analysis.visual_descriptions,
+        "structured_extract": analysis.structured_extract,
+        "processing_steps": analysis.processing_steps,
+        "rag_ingested": False,
+        "rag_chunk_count": 0,
+    }
+
+    # Optional RAG ingestion
+    if ingest_to_rag and session_id:
+        try:
+            session_uuid = UUID(session_id)
+            tenant_id = auth.teacher.tenant_id if auth.is_teacher else auth.student.tenant_id
+
+            # Find an existing QUEUED RAGDocument for this session + filename
+            rag_doc_result = await db.execute(
+                select(RAGDocument)
+                .where(RAGDocument.session_id == session_uuid)
+                .where(RAGDocument.title == filename)
+                .where(RAGDocument.status == DocumentStatus.QUEUED)
+                .order_by(RAGDocument.created_at.desc())
+                .limit(1)
+            )
+            rag_doc = rag_doc_result.scalar_one_or_none()
+
+            if rag_doc:
+                content_for_rag = analysis.structured_extract or analysis.raw_text
+                chunk_count = await _rag_service.ingest_document(db, rag_doc, content_for_rag)
+                result["rag_ingested"] = True
+                result["rag_chunk_count"] = chunk_count
+        except Exception as e:
+            logger.warning(f"RAG ingestion skipped: {e}")
+
+    return result
 
 
 @router.post("/explain", response_model=ExplainResponse)

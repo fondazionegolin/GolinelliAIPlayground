@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { Bell, UserPlus, UserMinus, MessageSquare, ClipboardCheck, X, Share2, CheckCircle2, XCircle } from 'lucide-react'
+import { Bell, UserPlus, UserMinus, MessageSquare, ClipboardCheck, X, Share2, CheckCircle2, XCircle, ShieldAlert, Eye, Ban, Check } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
 export interface QuizAnswer {
@@ -12,7 +12,7 @@ export interface QuizAnswer {
 
 export interface TeacherNotification {
   id: string
-  type: 'student_joined' | 'student_left' | 'private_message' | 'task_submitted' | 'public_chat' | 'assignment_shared' | 'quiz_completed'
+  type: 'student_joined' | 'student_left' | 'private_message' | 'task_submitted' | 'public_chat' | 'assignment_shared' | 'quiz_completed' | 'content_alert'
   session_id: string
   session_name?: string
   class_name?: string
@@ -23,8 +23,14 @@ export interface TeacherNotification {
   task_title?: string
   quiz_answers?: QuizAnswer[]
   quiz_score?: { correct: number; total: number }
+  // content_alert specific
+  alert_id?: string
+  alert_type?: 'vulgar' | 'sexual' | 'offensive' | 'threatening' | 'pii_detected'
+  risk_score?: number
   timestamp: string
   read: boolean
+  // alert action state (local UI only)
+  alertStatus?: 'pending' | 'acknowledged' | 'blocked' | 'accepted'
 }
 
 interface TeacherNotificationsProps {
@@ -32,6 +38,7 @@ interface TeacherNotificationsProps {
   onClearAll: () => void
   onMarkAsRead: (id: string) => void
   onNotificationClick: (notification: TeacherNotification) => void
+  onAlertAction?: (alertId: string, action: 'acknowledged' | 'blocked' | 'accepted') => void
 }
 
 const getNotificationIcon = (type: string) => {
@@ -50,9 +57,19 @@ const getNotificationIcon = (type: string) => {
       return <Share2 className="h-3 w-3 text-indigo-500" />
     case 'quiz_completed':
       return <CheckCircle2 className="h-3 w-3 text-emerald-500" />
+    case 'content_alert':
+      return <ShieldAlert className="h-3 w-3 text-red-600 animate-pulse" />
     default:
       return <Bell className="h-3 w-3 text-gray-500" />
   }
+}
+
+const ALERT_TYPE_LABELS: Record<string, string> = {
+  vulgar: 'Volgare',
+  sexual: 'Sessuale',
+  offensive: 'Offensivo',
+  threatening: 'Minaccioso',
+  pii_detected: 'Dati personali',
 }
 
 const formatTime = (timestamp: string) => {
@@ -64,13 +81,16 @@ export default function TeacherNotifications({
   notifications,
   onClearAll,
   onMarkAsRead,
-  onNotificationClick
+  onNotificationClick,
+  onAlertAction,
 }: TeacherNotificationsProps) {
   const [isOpen, setIsOpen] = useState(false)
   const [newNotificationIds, setNewNotificationIds] = useState<Set<string>>(new Set())
   const listRef = useRef<HTMLDivElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const prevNotificationsRef = useRef<TeacherNotification[]>([])
+
+  const hasUnreadAlerts = notifications.some(n => n.type === 'content_alert' && !n.read)
 
   // Track new notifications for animation
   useEffect(() => {
@@ -123,9 +143,9 @@ export default function TeacherNotifications({
         className="relative h-8 w-8 p-0 flex items-center justify-center"
         onClick={() => setIsOpen(!isOpen)}
       >
-        <Bell className="h-4 w-4" />
+        <Bell className={`h-4 w-4 ${hasUnreadAlerts ? 'text-red-600 animate-bounce' : ''}`} />
         {unreadCount > 0 && (
-          <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] px-1 py-0.5 rounded-full min-w-[16px] text-center animate-pulse">
+          <span className={`absolute -top-1 -right-1 text-white text-[10px] px-1 py-0.5 rounded-full min-w-[16px] text-center animate-pulse ${hasUnreadAlerts ? 'bg-red-600 shadow-[0_0_6px_2px_rgba(220,38,38,0.7)]' : 'bg-red-500'}`}>
             {unreadCount}
           </span>
         )}
@@ -164,19 +184,26 @@ export default function TeacherNotifications({
                 {notifications.map((notification) => {
                   const isNew = newNotificationIds.has(notification.id)
                   const hasQuizDetails = notification.type === 'quiz_completed' && notification.quiz_answers
+                  const isAlert = notification.type === 'content_alert'
 
                   return (
                     <div
                       key={notification.id}
                       className={`
-                          cursor-pointer p-2 rounded text-xs transition-all duration-300
-                          ${isNew ? 'bg-red-50 animate-notification' : 'hover:bg-gray-50'}
-                          ${!notification.read ? 'border-l-2 border-l-blue-500 pl-1.5' : ''}
+                          p-2 rounded text-xs transition-all duration-300
+                          ${isAlert
+                            ? 'border border-red-200 bg-red-50 cursor-default'
+                            : `cursor-pointer ${isNew ? 'bg-red-50 animate-notification' : 'hover:bg-gray-50'}`
+                          }
+                          ${!notification.read && !isAlert ? 'border-l-2 border-l-blue-500 pl-1.5' : ''}
+                          ${isAlert && !notification.read ? 'border-l-2 border-l-red-600' : ''}
                         `}
                       onClick={() => {
-                        onMarkAsRead(notification.id)
-                        onNotificationClick(notification)
-                        setIsOpen(false)
+                        if (!isAlert) {
+                          onMarkAsRead(notification.id)
+                          onNotificationClick(notification)
+                          setIsOpen(false)
+                        }
                       }}
                     >
                       <div className="flex items-start gap-2">
@@ -184,9 +211,20 @@ export default function TeacherNotifications({
                           {getNotificationIcon(notification.type)}
                         </div>
                         <div className="flex-1 min-w-0">
-                          <p className={`text-gray-700 leading-tight ${isNew ? 'font-medium text-red-700' : ''}`}>
+                          <p className={`leading-tight font-medium ${isAlert ? 'text-red-700' : isNew ? 'text-red-700' : 'text-gray-700'}`}>
                             {notification.message}
                           </p>
+
+                          {/* Alert type badge */}
+                          {isAlert && notification.alert_type && (
+                            <span className="inline-block mt-0.5 px-1.5 py-0.5 rounded-full text-[9px] font-semibold bg-red-100 text-red-700 uppercase tracking-wide">
+                              {ALERT_TYPE_LABELS[notification.alert_type] ?? notification.alert_type}
+                              {notification.risk_score !== undefined && notification.risk_score > 0 && (
+                                <span className="ml-1 opacity-70">· {Math.round(notification.risk_score * 100)}%</span>
+                              )}
+                            </span>
+                          )}
+
                           {notification.session_name && (
                             <p className="text-gray-400 text-[10px] mt-0.5">
                               📍 {notification.class_name || 'Classe'} - {notification.session_name}
@@ -202,6 +240,47 @@ export default function TeacherNotifications({
                           </p>
                         </div>
                       </div>
+
+                      {/* Content Alert Actions */}
+                      {isAlert && notification.alert_id && onAlertAction && (
+                        <div className="mt-2 flex items-center gap-1 pl-5">
+                          {notification.alertStatus === 'acknowledged' || notification.alertStatus === 'accepted' || notification.alertStatus === 'blocked' ? (
+                            <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${
+                              notification.alertStatus === 'blocked' ? 'bg-red-100 text-red-700' :
+                              notification.alertStatus === 'accepted' ? 'bg-green-100 text-green-700' :
+                              'bg-gray-100 text-gray-600'
+                            }`}>
+                              {notification.alertStatus === 'blocked' ? '🚫 Bloccato' :
+                               notification.alertStatus === 'accepted' ? '✅ Accettato' :
+                               '👁 Visto'}
+                            </span>
+                          ) : (
+                            <>
+                              <button
+                                className="flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] bg-gray-100 hover:bg-gray-200 text-gray-600 transition-colors"
+                                onClick={(e) => { e.stopPropagation(); onMarkAsRead(notification.id); onAlertAction(notification.alert_id!, 'acknowledged') }}
+                                title="Segna come visto"
+                              >
+                                <Eye className="h-2.5 w-2.5" /> Visto
+                              </button>
+                              <button
+                                className="flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] bg-green-100 hover:bg-green-200 text-green-700 transition-colors"
+                                onClick={(e) => { e.stopPropagation(); onMarkAsRead(notification.id); onAlertAction(notification.alert_id!, 'accepted') }}
+                                title="Accetta e ignora"
+                              >
+                                <Check className="h-2.5 w-2.5" /> Accetta
+                              </button>
+                              <button
+                                className="flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] bg-red-100 hover:bg-red-200 text-red-700 transition-colors"
+                                onClick={(e) => { e.stopPropagation(); onMarkAsRead(notification.id); onAlertAction(notification.alert_id!, 'blocked') }}
+                                title="Blocca studente"
+                              >
+                                <Ban className="h-2.5 w-2.5" /> Blocca
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      )}
 
                       {/* Quiz Details */}
                       {hasQuizDetails && notification.quiz_answers && (

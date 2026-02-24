@@ -3,17 +3,22 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from typing import Annotated, Optional
 from uuid import UUID
+from pathlib import Path
 
 from app.core.database import get_db
 from app.api.deps import get_current_teacher, get_current_student, get_student_or_teacher, StudentOrTeacher
 from app.models.user import User
 from app.models.session import Session, SessionStudent, Class
 from app.models.rag import RAGDocument, RAGChunk
+from app.models.file import File as FileModel
 from app.models.enums import Scope, DocumentStatus
 from app.schemas.rag import (
     RAGDocumentCreate, RAGDocumentResponse, RAGChunkResponse,
     RAGSearchRequest, RAGSearchResult,
 )
+from app.services.rag_service import rag_service
+from app.services.document_processor import document_processor
+from app.services.llm_service import llm_service
 
 router = APIRouter()
 
@@ -130,18 +135,55 @@ async def ingest_document(
         if document.owner_teacher_id != auth.teacher.id:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
     
-    if document.status != DocumentStatus.QUEUED:
+    if document.status not in (DocumentStatus.QUEUED, DocumentStatus.FAILED):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Document already in status: {document.status.value}",
         )
-    
-    document.status = DocumentStatus.PROCESSING
-    await db.commit()
-    
-    # TODO: Enqueue ingestion job via Celery
-    
-    return {"message": "Ingestion started", "document_id": str(doc_id)}
+
+    # Resolve file path from the linked File record
+    file_result = await db.execute(select(FileModel).where(FileModel.id == document.file_id))
+    file_record = file_result.scalar_one_or_none()
+    if not file_record:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File record not found")
+
+    # Build local path (chat uploads use uploads/{storage_key})
+    file_path = Path("uploads") / file_record.storage_key
+    if not file_path.exists():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"File not found on disk: {file_path}",
+        )
+
+    # Read file bytes
+    file_bytes = file_path.read_bytes()
+
+    # Process document (extract text + visual analysis)
+    analysis = await document_processor.process(
+        file_bytes=file_bytes,
+        filename=file_record.filename,
+        mime_type=file_record.mime_type,
+        llm_service=llm_service,
+        analyze_visuals=True,
+    )
+
+    if not analysis.raw_text and not analysis.visual_descriptions:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Could not extract content from document",
+        )
+
+    # Ingest: chunk + embed and store in DB
+    content_for_rag = analysis.structured_extract or analysis.raw_text
+    chunk_count = await rag_service.ingest_document(db, document, content_for_rag)
+
+    return {
+        "message": "Ingestion completed",
+        "document_id": str(doc_id),
+        "chunk_count": chunk_count,
+        "summary": analysis.summary,
+        "processing_steps": analysis.processing_steps,
+    }
 
 
 @router.get("/documents/{doc_id}/status")
@@ -181,9 +223,26 @@ async def search_documents(
         .where(Session.id == request.session_id)
         .where(Class.teacher_id == teacher.id)
     )
-    if not result.scalar_one_or_none():
+    session = result.scalar_one_or_none()
+    if not session:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
-    
-    # TODO: Implement vector search with pgvector
-    # For now, return placeholder
-    return []
+
+    chunks = await rag_service.search(
+        db=db,
+        query=request.query,
+        session_id=request.session_id,
+        tenant_id=teacher.tenant_id,
+        top_k=request.top_k if hasattr(request, "top_k") else 5,
+    )
+
+    return [
+        {
+            "chunk_id": str(c.chunk_id),
+            "document_id": str(c.document_id),
+            "document_title": c.document_title,
+            "text": c.text,
+            "page": c.page,
+            "score": c.score,
+        }
+        for c in chunks
+    ]

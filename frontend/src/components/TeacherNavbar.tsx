@@ -89,20 +89,29 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
       }
 
       if (notificationData.type) {
+        const nd = notificationData as typeof notificationData & {
+          alert_id?: string
+          alert_type?: string
+          risk_score?: number
+        }
         const newNotification: TeacherNotification = {
           id: latestNotification.id,
-          type: notificationData.type as TeacherNotification['type'],
-          session_id: notificationData.session_id || '',
-          session_name: notificationData.session_name,
-          class_name: notificationData.class_name,
-          student_id: notificationData.student_id || '',
-          nickname: notificationData.nickname || 'Studente',
-          message: notificationData.message || latestNotification.text,
-          preview: notificationData.preview,
-          task_title: notificationData.task_title,
-          quiz_answers: notificationData.quiz_answers,
-          quiz_score: notificationData.quiz_score,
-          timestamp: notificationData.timestamp || new Date().toISOString(),
+          type: nd.type as TeacherNotification['type'],
+          session_id: nd.session_id || '',
+          session_name: nd.session_name,
+          class_name: nd.class_name,
+          student_id: nd.student_id || '',
+          nickname: nd.nickname || 'Studente',
+          message: nd.message || latestNotification.text,
+          preview: nd.preview,
+          task_title: nd.task_title,
+          quiz_answers: nd.quiz_answers,
+          quiz_score: nd.quiz_score,
+          alert_id: nd.alert_id,
+          alert_type: nd.alert_type as TeacherNotification['alert_type'],
+          risk_score: nd.risk_score,
+          alertStatus: 'pending',
+          timestamp: nd.timestamp || new Date().toISOString(),
           read: false,
         }
         setTeacherNotifications(prev => [newNotification, ...prev])
@@ -113,6 +122,24 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
   const handleClearNotifications = () => setTeacherNotifications([])
   const handleMarkAsRead = (id: string) => {
     setTeacherNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n))
+  }
+
+  const handleAlertAction = async (alertId: string, action: 'acknowledged' | 'blocked' | 'accepted') => {
+    try {
+      await fetch(`/api/v1/alerts/${alertId}/status`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('teacher_token')}`,
+        },
+        body: JSON.stringify({ status: action }),
+      })
+    } catch (err) {
+      console.error('[TeacherNavbar] Alert action failed:', err)
+    }
+    setTeacherNotifications(prev =>
+      prev.map(n => n.alert_id === alertId ? { ...n, alertStatus: action } : n)
+    )
   }
 
   useEffect(() => {
@@ -304,6 +331,7 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
                 onClearAll={handleClearNotifications}
                 onMarkAsRead={handleMarkAsRead}
                 onNotificationClick={handleNotificationClick}
+                onAlertAction={handleAlertAction}
               />
 
               {/* Session Selector */}

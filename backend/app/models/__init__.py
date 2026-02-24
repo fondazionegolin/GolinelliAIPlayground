@@ -13,6 +13,7 @@ from app.models.teacherbot import Teacherbot, TeacherbotStatus, TeacherbotPublic
 from app.models.document_draft import DocumentDraft
 from app.models.session_canvas import SessionCanvas
 from app.models.template_version import TenantTemplateVersion
+from app.models.alert import ContentAlert
 
 __all__ = [
     "Tenant",
@@ -58,4 +59,5 @@ __all__ = [
     "DocumentDraft",
     "SessionCanvas",
     "TenantTemplateVersion",
+    "ContentAlert",
 ]

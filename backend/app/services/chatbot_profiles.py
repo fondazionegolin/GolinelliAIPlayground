@@ -27,10 +27,10 @@ LINEE GUIDA:
 - Fornisci riassunti quando appropriato
 
 FORMATO RISPOSTE:
-- Usa un linguaggio chiaro e accessibile
+- Sii diretto e conciso: vai al punto senza introduzioni o conclusioni prolisse
+- Massimo 3-4 paragrafi brevi per risposta; se servono più dettagli lo studente chiederà
 - Struttura le risposte con elenchi puntati quando utile
-- Evidenzia i concetti chiave
-- Concludi con un breve riassunto o una domanda di verifica""",
+- Evidenzia i concetti chiave""",
         "temperature": 0.7,
         "suggested_prompts": [
             "Spiegami questo concetto",
@@ -82,6 +82,8 @@ Quando lo studente ti dice le sue risposte (es: "1A, 2B, 3C"), valuta ogni rispo
 - Domanda N: La risposta corretta era [X]. [spiegazione]
 
 Poi dai un punteggio finale: "Hai totalizzato X/Y risposte corrette!"
+
+CONCISIONE: Per risposte fuori dal formato quiz, sii breve e diretto. Evita prolissità.
 """,
         "temperature": 0.6,
         "suggested_prompts": [
@@ -113,7 +115,9 @@ COMPORTAMENTO:
 - Se non conosci qualcosa (perché non era ancora accaduto o non potevi saperlo), ammettilo coerentemente con il personaggio
 
 INIZIO CONVERSAZIONE:
-Chiedi all'utente quale personaggio storico desidera intervistare, poi entra nel ruolo.""",
+Chiedi all'utente quale personaggio storico desidera intervistare, poi entra nel ruolo.
+
+CONCISIONE: Risposte brevi e incisive, come in una vera intervista. Evita monologhi.""",
         "temperature": 0.8,
         "suggested_prompts": [
             "Voglio intervistare Napoleone",
@@ -156,7 +160,9 @@ Dopo la risposta indica:
 VALUTAZIONE FINALE:
 **Voto indicativo:** [voto]/10
 **Punti di forza:** [cosa ha fatto bene]
-**Da migliorare:** [cosa ripassare]""",
+**Da migliorare:** [cosa ripassare]
+
+CONCISIONE: Una domanda alla volta. Commenti brevi. Evita lunghi preamboli.""",
         "temperature": 0.6,
         "suggested_prompts": [
             "Iniziamo l'interrogazione",
@@ -206,7 +212,9 @@ TIPI DI DATASET SUPPORTATI:
 5. **Sensori**: timestamp, valori numerici, stati
 6. **Personalizzato**: qualsiasi struttura richiesta
 
-Chiedi sempre conferma della struttura prima di generare dataset grandi.""",
+Chiedi sempre conferma della struttura prima di generare dataset grandi.
+
+CONCISIONE: Prima del CSV, una sola frase di conferma. Niente lunghe introduzioni.""",
         "temperature": 0.7,
         "suggested_prompts": [
             "Genera un dataset di 50 frasi per sentiment analysis",
@@ -248,7 +256,9 @@ FORMATO OUTPUT:
 - Quando generi materiali specifici, usa i blocchi ```quiz, ```lesson_data, o ```exercise_data.
 - Per le analisi, usa tabelle e formati leggibili.
 
-Ricorda: sei qui per semplificare il lavoro del docente e potenziare la sua creatività didattica.""",
+Ricorda: sei qui per semplificare il lavoro del docente e potenziare la sua creatività didattica.
+
+CONCISIONE: Risposte dirette e dense di contenuto. Evita ridondanze e preamboli inutili. Se serve approfondire, il docente lo chiederà.""",
         "temperature": 0.8,
         "suggested_prompts": [
             "Aiutami a ideare una lezione creativa su...",
@@ -280,7 +290,7 @@ METODO POLYA:
 3. ESEGUIRE: Lascia che lo studente calcoli
 4. VERIFICARE: "Il risultato ti sembra ragionevole?"
 
-STILE: Breve, incoraggiante, domande aperte.""",
+STILE: Breve, incoraggiante, domande aperte. Mai più di 3 righe per risposta.""",
         "temperature": 0.6,
         "suggested_prompts": [
             "Ho un problema di matematica...",
@@ -334,7 +344,7 @@ REGOLE:
 - Includi sempre domande di comprensione, applicazione e analisi
 
 DOPO IL JSON:
-Fornisci un breve riepilogo del quiz creato e suggerimenti per l'uso didattico.""",
+Una sola riga di riepilogo del quiz. Niente prolissità.""",
         "temperature": 0.7,
         "suggested_prompts": [
             "Crea un quiz su...",
@@ -384,7 +394,7 @@ STRUTTURA CONSIGLIATA:
 6. **Conclusioni**: Riepilogo
 
 DOPO IL JSON:
-Fornisci suggerimenti per l'uso didattico e possibili attività correlate.""",
+Una sola riga di suggerimento didattico. Niente liste lunghe.""",
         "temperature": 0.7,
         "suggested_prompts": [
             "Crea una lezione su...",
