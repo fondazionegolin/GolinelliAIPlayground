@@ -16,6 +16,7 @@ import 'katex/dist/katex.min.css'
 import { ContentEditorModal } from '@/components/ContentEditorModal'
 import TeacherbotsPanel from '@/components/teacher/TeacherbotsPanel'
 import { DEFAULT_TEACHER_ACCENT, getTeacherAccentTheme } from '@/lib/teacherAccent'
+import { VoiceRecorder } from '@/components/VoiceRecorder'
 
 // Constants
 const FALLBACK_MODELS = [
@@ -2429,9 +2430,13 @@ REGOLE IMPORTANTI:
                           )}
                         </div>
 
+                        <VoiceRecorder
+                          onInsertText={(text) => setInputText((prev) => prev ? prev + ' ' + text : text)}
+                        />
+
                         <Button
-                          variant="ghost" 
-                          size="icon" 
+                          variant="ghost"
+                          size="icon"
                           className="h-8 w-8 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-full flex-shrink-0 mb-0.5"
                           onClick={() => fileInputRef.current?.click()}
                           title="Allega file"

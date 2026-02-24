@@ -11,6 +11,7 @@ import {
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { DEFAULT_STUDENT_ACCENT, getStudentAccentTheme, type StudentAccentId } from '@/lib/studentAccent'
 import { getTeacherAccentTheme } from '@/lib/teacherAccent'
+import { VoiceRecorder } from '@/components/VoiceRecorder'
 
 // File Viewer Modal Component
 function FileViewerModal({
@@ -1829,6 +1830,10 @@ export default function ChatSidebar({
             >
               <Paperclip className="h-4 w-4" />
             </Button>
+            <VoiceRecorder
+              compact
+              onInsertText={(text) => setInputText((prev) => prev ? prev + ' ' + text : text)}
+            />
             <Input
               value={inputText}
               onChange={(e) => setInputText(e.target.value)}

@@ -18,6 +18,7 @@ import { useMobile } from '@/hooks/useMobile'
 import { triggerHaptic } from '@/lib/haptics'
 import ChatConversationList from '@/components/student/ChatConversationList'
 import ChatConversationView from '@/components/student/ChatConversationView'
+import { VoiceRecorder } from '@/components/VoiceRecorder'
 import { DEFAULT_STUDENT_ACCENT, getStudentAccentTheme, loadStudentAccent } from '@/lib/studentAccent'
 
 interface Message {
@@ -1720,6 +1721,13 @@ export default function ChatbotModule({ sessionId, initialTeacherbotId, onInputF
                 })
                 e.target.value = ''
               }}
+              />
+
+              <VoiceRecorder
+                onInsertText={(text) => {
+                  setInput(text)
+                  setTimeout(() => inputRef.current?.focus(), 50)
+                }}
               />
 
               <Button
