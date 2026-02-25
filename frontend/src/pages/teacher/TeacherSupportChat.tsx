@@ -289,6 +289,10 @@ export default function TeacherSupportChat() {
     stepIndex: 0,
     answers: {},
   })
+  // Ref mirrors quizInterview so handleSend always reads current state (avoids stale closure after await)
+  const quizInterviewRef = useRef<QuizInterviewState>({ active: false, stepIndex: 0, answers: {} })
+  // Prevents duplicate concurrent sends during the async interview flow
+  const interviewSendingRef = useRef(false)
   const modelMenuRef = useRef<HTMLDivElement>(null)
   const modeMenuRef = useRef<HTMLDivElement>(null)
   const { data: availableModelsResponse } = useQuery({
@@ -940,7 +944,9 @@ export default function TeacherSupportChat() {
   }
 
   const resetQuizInterview = () => {
-    setQuizInterview({ active: false, stepIndex: 0, answers: {} })
+    const s: QuizInterviewState = { active: false, stepIndex: 0, answers: {} }
+    quizInterviewRef.current = s
+    setQuizInterview(s)
   }
 
   const startDatasetInterview = () => {
@@ -983,7 +989,10 @@ export default function TeacherSupportChat() {
   }
 
   const startQuizInterview = () => {
-    setQuizInterview({ active: true, stepIndex: 0, answers: {} })
+    const s: QuizInterviewState = { active: true, stepIndex: 0, answers: {} }
+    quizInterviewRef.current = s
+    interviewSendingRef.current = false
+    setQuizInterview(s)
     setMessages(prev => [
       ...prev,
       {
@@ -1076,8 +1085,17 @@ Requisiti:
   }
 
   const handleSend = async () => {
-    if ((!inputText.trim() && attachedFiles.length === 0) || isLoading) return
     const userInput = inputText.trim()
+
+    // Interview handlers are pure local state operations — they must NOT be blocked by isLoading
+    // (which reflects an ongoing LLM request that may still be running from a previous mode)
+    const isInInterview =
+      (agentMode === 'quiz' && quizInterviewRef.current.active) ||
+      (agentMode === 'dataset' && datasetInterview.active) ||
+      (agentMode === 'image' && imageInterview.active) ||
+      (agentMode === 'report' && reportInterview.active)
+
+    if ((!userInput && attachedFiles.length === 0) || (!isInInterview && isLoading)) return
 
     if (agentMode === 'dataset' && datasetInterview.active) {
       if (!userInput) return
@@ -1360,117 +1378,136 @@ REGOLE IMPORTANTI:
       return
     }
 
-    if (agentMode === 'quiz' && quizInterview.active) {
+    if (agentMode === 'quiz' && quizInterviewRef.current.active) {
       if (!userInput) return
-      const convId = await ensureConversation('Generazione quiz guidata')
-      const userMessage: Message = {
-        id: `msg-${Date.now()}`,
-        role: 'user',
-        content: userInput,
-        timestamp: new Date()
-      }
-      setMessages(prev => [...prev, userMessage])
-      setInputText('')
+      // Prevent duplicate concurrent sends (e.g. double Enter press)
+      if (interviewSendingRef.current) return
+      interviewSendingRef.current = true
 
-      const currentStep = QUIZ_INTERVIEW_STEPS[quizInterview.stepIndex]
-      if (!currentStep) return
-
-      const nextAnswers = { ...quizInterview.answers }
-      let followUp: string | null = null
-
-      if (!userInput.trim()) {
-        followUp = 'Risposta vuota. Inserisci un testo breve per continuare.'
-      } else if (currentStep.key === 'topic') {
-        nextAnswers.topic = userInput
-      } else if (currentStep.key === 'questionCount') {
-        const parsed = Number.parseInt(userInput, 10)
-        if (Number.isNaN(parsed) || parsed < 1 || parsed > 30) {
-          followUp = 'Inserisci un numero valido di domande (tra 1 e 30).'
-        } else {
-          nextAnswers.questionCount = parsed
-        }
-      } else if (currentStep.key === 'optionsPerQuestion') {
-        const parsed = Number.parseInt(userInput, 10)
-        if (Number.isNaN(parsed) || parsed < 2 || parsed > 8) {
-          followUp = 'Inserisci un numero valido di opzioni per domanda (tra 2 e 8).'
-        } else {
-          nextAnswers.optionsPerQuestion = parsed
-        }
-      } else if (currentStep.key === 'highlights') {
-        nextAnswers.highlights = userInput
-      }
-
-      if (followUp) {
-        const assistantMessage: Message = {
-          id: `resp-${Date.now()}`,
-          role: 'assistant',
-          content: followUp,
-          timestamp: new Date()
-        }
-        setMessages(prev => [...prev, assistantMessage])
-        await saveMessageToServer(convId, userMessage, assistantMessage, 'claude-haiku-4-5-20251001')
-        return
-      }
-
-      const isLastStep = quizInterview.stepIndex === QUIZ_INTERVIEW_STEPS.length - 1
-      if (!isLastStep) {
-        const nextStepIndex = quizInterview.stepIndex + 1
-        setQuizInterview({
-          active: true,
-          stepIndex: nextStepIndex,
-          answers: nextAnswers
-        })
-        const assistantMessage: Message = {
-          id: `resp-${Date.now()}`,
-          role: 'assistant',
-          content: QUIZ_INTERVIEW_STEPS[nextStepIndex].question,
-          timestamp: new Date()
-        }
-        setMessages(prev => [...prev, assistantMessage])
-        await saveMessageToServer(convId, userMessage, assistantMessage, 'claude-haiku-4-5-20251001')
-        return
-      }
-
-      const finalAnswers = nextAnswers as QuizInterviewAnswers
-      const summaryMessage: Message = {
-        id: `resp-${Date.now()}`,
-        role: 'assistant',
-        content: buildQuizSummary(finalAnswers),
-        timestamp: new Date()
-      }
-      setMessages(prev => [...prev, summaryMessage])
-      await saveMessageToServer(convId, userMessage, summaryMessage, 'claude-haiku-4-5-20251001')
-
-      setQuizInterview({
-        active: false,
-        stepIndex: QUIZ_INTERVIEW_STEPS.length,
-        answers: finalAnswers
-      })
-
-      const generationPrompt = buildQuizGenerationPrompt(finalAnswers)
-      setIsLoading(true)
       try {
-        const finalContent = await runStreamingRequest(generationPrompt, [...messages, userMessage, summaryMessage])
-        const assistantMessage: Message = {
+        // Read from ref — always current even after async pauses
+        const quiz = quizInterviewRef.current
+        const currentStep = QUIZ_INTERVIEW_STEPS[quiz.stepIndex]
+
+        if (!currentStep) {
+          // State is corrupt — reset and inform user
+          const s: QuizInterviewState = { active: false, stepIndex: 0, answers: {} }
+          quizInterviewRef.current = s
+          setQuizInterview(s)
+          toast({ title: "Errore intervista", description: "Stato non valido. Riseleziona la modalità Quiz.", variant: "destructive" })
+          return
+        }
+
+        const convId = await ensureConversation('Generazione quiz guidata')
+
+        const userMessage: Message = {
+          id: `msg-${Date.now()}`,
+          role: 'user',
+          content: userInput,
+          timestamp: new Date()
+        }
+        setMessages(prev => [...prev, userMessage])
+        setInputText('')
+
+        // Re-read from ref after the await (ensureConversation may have triggered re-renders)
+        const quizNow = quizInterviewRef.current
+        const stepNow = QUIZ_INTERVIEW_STEPS[quizNow.stepIndex]
+        if (!stepNow) return // guard against concurrent state corruption
+
+        const nextAnswers = { ...quizNow.answers }
+        let followUp: string | null = null
+
+        if (stepNow.key === 'topic') {
+          nextAnswers.topic = userInput
+        } else if (stepNow.key === 'questionCount') {
+          const parsed = Number.parseInt(userInput, 10)
+          if (Number.isNaN(parsed) || parsed < 1 || parsed > 30) {
+            followUp = 'Inserisci un numero valido di domande (tra 1 e 30).'
+          } else {
+            nextAnswers.questionCount = parsed
+          }
+        } else if (stepNow.key === 'optionsPerQuestion') {
+          const parsed = Number.parseInt(userInput, 10)
+          if (Number.isNaN(parsed) || parsed < 2 || parsed > 8) {
+            followUp = 'Inserisci un numero valido di opzioni per domanda (tra 2 e 8).'
+          } else {
+            nextAnswers.optionsPerQuestion = parsed
+          }
+        } else if (stepNow.key === 'highlights') {
+          nextAnswers.highlights = userInput
+        }
+
+        if (followUp) {
+          const assistantMessage: Message = {
+            id: `resp-${Date.now()}`,
+            role: 'assistant',
+            content: followUp,
+            timestamp: new Date()
+          }
+          setMessages(prev => [...prev, assistantMessage])
+          await saveMessageToServer(convId, userMessage, assistantMessage, 'claude-haiku-4-5-20251001')
+          return
+        }
+
+        const isLastStep = quizNow.stepIndex === QUIZ_INTERVIEW_STEPS.length - 1
+
+        if (!isLastStep) {
+          const nextStepIndex = quizNow.stepIndex + 1
+          const nextState: QuizInterviewState = { active: true, stepIndex: nextStepIndex, answers: nextAnswers }
+          quizInterviewRef.current = nextState
+          setQuizInterview(nextState)
+          const assistantMessage: Message = {
+            id: `resp-${Date.now()}`,
+            role: 'assistant',
+            content: QUIZ_INTERVIEW_STEPS[nextStepIndex].question,
+            timestamp: new Date()
+          }
+          setMessages(prev => [...prev, assistantMessage])
+          await saveMessageToServer(convId, userMessage, assistantMessage, 'claude-haiku-4-5-20251001')
+          return
+        }
+
+        // All steps answered — generate the quiz
+        const finalAnswers = nextAnswers as QuizInterviewAnswers
+        const summaryMessage: Message = {
           id: `resp-${Date.now()}`,
           role: 'assistant',
-          content: finalContent,
+          content: buildQuizSummary(finalAnswers),
           timestamp: new Date()
         }
-        setMessages(prev => [...prev, assistantMessage])
-        await saveSingleMessageToServer(convId, assistantMessage, 'claude-haiku-4-5-20251001')
-      } catch (e) {
-        console.error(e)
-        toast({ title: "Errore", description: "Impossibile generare il quiz.", variant: "destructive" })
-        const errorMsg: Message = {
-          id: `err-${Date.now()}`,
-          role: 'assistant',
-          content: "Si è verificato un errore durante la generazione del quiz. Riprova.",
-          timestamp: new Date()
+        setMessages(prev => [...prev, summaryMessage])
+        await saveMessageToServer(convId, userMessage, summaryMessage, 'claude-haiku-4-5-20251001')
+
+        const doneState: QuizInterviewState = { active: false, stepIndex: QUIZ_INTERVIEW_STEPS.length, answers: finalAnswers }
+        quizInterviewRef.current = doneState
+        setQuizInterview(doneState)
+
+        const generationPrompt = buildQuizGenerationPrompt(finalAnswers)
+        setIsLoading(true)
+        try {
+          const finalContent = await runStreamingRequest(generationPrompt, [...messages, userMessage, summaryMessage])
+          const assistantMessage: Message = {
+            id: `resp-${Date.now()}`,
+            role: 'assistant',
+            content: finalContent,
+            timestamp: new Date()
+          }
+          setMessages(prev => [...prev, assistantMessage])
+          await saveSingleMessageToServer(convId, assistantMessage, 'claude-haiku-4-5-20251001')
+        } catch (e) {
+          console.error(e)
+          toast({ title: "Errore", description: "Impossibile generare il quiz.", variant: "destructive" })
+          setMessages(prev => [...prev, {
+            id: `err-${Date.now()}`,
+            role: 'assistant',
+            content: "Si è verificato un errore durante la generazione del quiz. Riprova.",
+            timestamp: new Date()
+          }])
+        } finally {
+          setIsLoading(false)
         }
-        setMessages(prev => [...prev, errorMsg])
       } finally {
-        setIsLoading(false)
+        interviewSendingRef.current = false
       }
       return
     }

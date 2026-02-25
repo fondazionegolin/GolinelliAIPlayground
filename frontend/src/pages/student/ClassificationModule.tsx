@@ -5,7 +5,7 @@ import { Input } from '@/components/ui/input'
 import {
   Camera, Type, Database, Play, Square, Trash2, Plus,
   Upload, Loader2, CheckCircle, XCircle, BarChart3, Info,
-  TrendingUp, Tags, AlertCircle, Lightbulb, Eye, EyeOff
+  TrendingUp, Tags, AlertCircle, Lightbulb
 } from 'lucide-react'
 import * as tf from '@tensorflow/tfjs'
 import { ScatterChart, Scatter, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, BarChart, Bar, Legend } from 'recharts'
@@ -35,16 +35,6 @@ const CLASS_COLORS = [
   'bg-purple-500',
 ]
 
-// Colors for COCO-SSD segmentation overlay
-const SEG_COLORS: Record<string, string> = {
-  person: '#00e5ff',
-  cat: '#4ade80', dog: '#4ade80', horse: '#4ade80', sheep: '#4ade80',
-  cow: '#4ade80', elephant: '#4ade80', bear: '#4ade80', zebra: '#4ade80',
-  giraffe: '#4ade80', bird: '#4ade80',
-  car: '#fb923c', bicycle: '#fb923c', motorcycle: '#fb923c',
-  bus: '#fb923c', truck: '#fb923c', train: '#fb923c',
-  boat: '#fb923c', airplane: '#fb923c',
-}
 
 export default function ClassificationModule() {
   const [mode, setMode] = useState<ClassificationMode | null>(null)
@@ -127,17 +117,11 @@ function ImageClassification() {
   const [model, setModel] = useState<tf.LayersModel | null>(null)
   const [isPredicting, setIsPredicting] = useState(false)
   const [predictions, setPredictions] = useState<{className: string, confidence: number}[]>([])
-  const [isSegmenting, setIsSegmenting] = useState(false)
-  const [segLoading, setSegLoading] = useState(false)
 
   const videoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
-  const segCanvasRef = useRef<HTMLCanvasElement>(null)
   const captureIntervalRef = useRef<NodeJS.Timeout | null>(null)
   const predictionIntervalRef = useRef<NodeJS.Timeout | null>(null)
-  const segAnimRef = useRef<number | null>(null)
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const segModelRef = useRef<any>(null)
 
   // Initialize webcam
   useEffect(() => {
@@ -162,94 +146,9 @@ function ImageClassification() {
       }
       if (captureIntervalRef.current) clearInterval(captureIntervalRef.current)
       if (predictionIntervalRef.current) clearInterval(predictionIntervalRef.current)
-      if (segAnimRef.current) cancelAnimationFrame(segAnimRef.current)
     }
   }, [])
 
-  const toggleSegmentation = async () => {
-    if (isSegmenting) {
-      setIsSegmenting(false)
-      return
-    }
-    if (!segModelRef.current) {
-      setSegLoading(true)
-      try {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const cocoSsd = (await import('@tensorflow-models/coco-ssd')) as any
-        segModelRef.current = await cocoSsd.load()
-      } catch (e) {
-        console.error('[Seg] Failed to load COCO-SSD:', e)
-        setSegLoading(false)
-        return
-      }
-      setSegLoading(false)
-    }
-    setIsSegmenting(true)
-  }
-
-  useEffect(() => {
-    if (!isSegmenting) {
-      if (segAnimRef.current) cancelAnimationFrame(segAnimRef.current)
-      if (segCanvasRef.current) {
-        const ctx = segCanvasRef.current.getContext('2d')
-        ctx?.clearRect(0, 0, segCanvasRef.current.width, segCanvasRef.current.height)
-      }
-      return
-    }
-    let active = true
-    const runDetection = async () => {
-      if (!active || !segModelRef.current || !videoRef.current || !segCanvasRef.current) {
-        if (active) segAnimRef.current = requestAnimationFrame(runDetection)
-        return
-      }
-      const video = videoRef.current
-      const canvas = segCanvasRef.current
-      const cw = video.clientWidth
-      const ch = video.clientHeight
-      if (canvas.width !== cw || canvas.height !== ch) {
-        canvas.width = cw
-        canvas.height = ch
-      }
-      const ctx = canvas.getContext('2d')
-      if (!ctx) { if (active) segAnimRef.current = requestAnimationFrame(runDetection); return }
-      ctx.clearRect(0, 0, cw, ch)
-      try {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const dets: any[] = await segModelRef.current.detect(video)
-        const vw = video.videoWidth || 224
-        const vh = video.videoHeight || 224
-        const sw = cw / vw
-        const sh = ch / vh
-        for (const det of dets) {
-          if (det.score < 0.45) continue
-          const [bx, by, bw, bh] = det.bbox
-          // Mirror X to match the CSS-flipped video display
-          const fx = cw - (bx + bw) * sw
-          const fy = by * sh
-          const fw = bw * sw
-          const fh = bh * sh
-          const color = SEG_COLORS[det.class] ?? '#c084fc'
-          ctx.strokeStyle = color
-          ctx.lineWidth = 2
-          ctx.strokeRect(fx, fy, fw, fh)
-          const label = `${det.class} ${(det.score * 100).toFixed(0)}%`
-          ctx.font = 'bold 11px sans-serif'
-          const tw = ctx.measureText(label).width
-          const ly = fy > 18 ? fy - 18 : fy + fh
-          ctx.fillStyle = color
-          ctx.fillRect(fx, ly, tw + 6, 18)
-          ctx.fillStyle = '#000'
-          ctx.fillText(label, fx + 3, ly + 13)
-        }
-      } catch { /* ignore frame errors */ }
-      if (active) segAnimRef.current = requestAnimationFrame(runDetection)
-    }
-    runDetection()
-    return () => {
-      active = false
-      if (segAnimRef.current) cancelAnimationFrame(segAnimRef.current)
-    }
-  }, [isSegmenting])
 
   const captureFrame = useCallback(() => {
     if (!videoRef.current || !canvasRef.current) return null
@@ -460,11 +359,6 @@ function ImageClassification() {
               className="w-full h-full object-cover"
               style={{ transform: 'scaleX(-1)' }}
             />
-            {/* Segmentation overlay canvas — no CSS flip; X coords are mirrored in draw code */}
-            <canvas
-              ref={segCanvasRef}
-              className="absolute inset-0 pointer-events-none"
-            />
             {isPredicting && topPrediction && (
               <div
                 className="absolute bottom-0 left-0 right-0 p-2 backdrop-blur-md border-t border-white/20"
@@ -524,22 +418,6 @@ function ImageClassification() {
             </Button>
           )}
 
-          {/* Segmentation toggle — works independently of custom model */}
-          <Button
-            variant={isSegmenting ? "destructive" : "outline"}
-            size="sm"
-            className="w-full mt-2"
-            onClick={toggleSegmentation}
-            disabled={segLoading}
-          >
-            {segLoading ? (
-              <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Caricamento modello…</>
-            ) : isSegmenting ? (
-              <><EyeOff className="h-4 w-4 mr-2" /> Stop Segmentazione</>
-            ) : (
-              <><Eye className="h-4 w-4 mr-2" /> Segmentazione oggetti</>
-            )}
-          </Button>
         </CardContent>
       </Card>
 
