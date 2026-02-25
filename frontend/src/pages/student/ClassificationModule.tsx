@@ -2,10 +2,10 @@ import { useState, useRef, useCallback, useEffect, lazy, Suspense } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
-import { 
-  Camera, Type, Database, Play, Square, Trash2, Plus, 
+import {
+  Camera, Type, Database, Play, Square, Trash2, Plus,
   Upload, Loader2, CheckCircle, XCircle, BarChart3, Info,
-  TrendingUp, Tags, AlertCircle, Lightbulb
+  TrendingUp, Tags, AlertCircle, Lightbulb, Eye, EyeOff
 } from 'lucide-react'
 import * as tf from '@tensorflow/tfjs'
 import { ScatterChart, Scatter, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, BarChart, Bar, Legend } from 'recharts'
@@ -29,11 +29,22 @@ interface TextSample {
 
 const CLASS_COLORS = [
   'bg-rose-500',
-  'bg-blue-500', 
+  'bg-blue-500',
   'bg-emerald-500',
   'bg-amber-500',
   'bg-purple-500',
 ]
+
+// Colors for COCO-SSD segmentation overlay
+const SEG_COLORS: Record<string, string> = {
+  person: '#00e5ff',
+  cat: '#4ade80', dog: '#4ade80', horse: '#4ade80', sheep: '#4ade80',
+  cow: '#4ade80', elephant: '#4ade80', bear: '#4ade80', zebra: '#4ade80',
+  giraffe: '#4ade80', bird: '#4ade80',
+  car: '#fb923c', bicycle: '#fb923c', motorcycle: '#fb923c',
+  bus: '#fb923c', truck: '#fb923c', train: '#fb923c',
+  boat: '#fb923c', airplane: '#fb923c',
+}
 
 export default function ClassificationModule() {
   const [mode, setMode] = useState<ClassificationMode | null>(null)
@@ -116,11 +127,17 @@ function ImageClassification() {
   const [model, setModel] = useState<tf.LayersModel | null>(null)
   const [isPredicting, setIsPredicting] = useState(false)
   const [predictions, setPredictions] = useState<{className: string, confidence: number}[]>([])
-  
+  const [isSegmenting, setIsSegmenting] = useState(false)
+  const [segLoading, setSegLoading] = useState(false)
+
   const videoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
+  const segCanvasRef = useRef<HTMLCanvasElement>(null)
   const captureIntervalRef = useRef<NodeJS.Timeout | null>(null)
   const predictionIntervalRef = useRef<NodeJS.Timeout | null>(null)
+  const segAnimRef = useRef<number | null>(null)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const segModelRef = useRef<any>(null)
 
   // Initialize webcam
   useEffect(() => {
@@ -145,8 +162,94 @@ function ImageClassification() {
       }
       if (captureIntervalRef.current) clearInterval(captureIntervalRef.current)
       if (predictionIntervalRef.current) clearInterval(predictionIntervalRef.current)
+      if (segAnimRef.current) cancelAnimationFrame(segAnimRef.current)
     }
   }, [])
+
+  const toggleSegmentation = async () => {
+    if (isSegmenting) {
+      setIsSegmenting(false)
+      return
+    }
+    if (!segModelRef.current) {
+      setSegLoading(true)
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const cocoSsd = (await import('@tensorflow-models/coco-ssd')) as any
+        segModelRef.current = await cocoSsd.load()
+      } catch (e) {
+        console.error('[Seg] Failed to load COCO-SSD:', e)
+        setSegLoading(false)
+        return
+      }
+      setSegLoading(false)
+    }
+    setIsSegmenting(true)
+  }
+
+  useEffect(() => {
+    if (!isSegmenting) {
+      if (segAnimRef.current) cancelAnimationFrame(segAnimRef.current)
+      if (segCanvasRef.current) {
+        const ctx = segCanvasRef.current.getContext('2d')
+        ctx?.clearRect(0, 0, segCanvasRef.current.width, segCanvasRef.current.height)
+      }
+      return
+    }
+    let active = true
+    const runDetection = async () => {
+      if (!active || !segModelRef.current || !videoRef.current || !segCanvasRef.current) {
+        if (active) segAnimRef.current = requestAnimationFrame(runDetection)
+        return
+      }
+      const video = videoRef.current
+      const canvas = segCanvasRef.current
+      const cw = video.clientWidth
+      const ch = video.clientHeight
+      if (canvas.width !== cw || canvas.height !== ch) {
+        canvas.width = cw
+        canvas.height = ch
+      }
+      const ctx = canvas.getContext('2d')
+      if (!ctx) { if (active) segAnimRef.current = requestAnimationFrame(runDetection); return }
+      ctx.clearRect(0, 0, cw, ch)
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const dets: any[] = await segModelRef.current.detect(video)
+        const vw = video.videoWidth || 224
+        const vh = video.videoHeight || 224
+        const sw = cw / vw
+        const sh = ch / vh
+        for (const det of dets) {
+          if (det.score < 0.45) continue
+          const [bx, by, bw, bh] = det.bbox
+          // Mirror X to match the CSS-flipped video display
+          const fx = cw - (bx + bw) * sw
+          const fy = by * sh
+          const fw = bw * sw
+          const fh = bh * sh
+          const color = SEG_COLORS[det.class] ?? '#c084fc'
+          ctx.strokeStyle = color
+          ctx.lineWidth = 2
+          ctx.strokeRect(fx, fy, fw, fh)
+          const label = `${det.class} ${(det.score * 100).toFixed(0)}%`
+          ctx.font = 'bold 11px sans-serif'
+          const tw = ctx.measureText(label).width
+          const ly = fy > 18 ? fy - 18 : fy + fh
+          ctx.fillStyle = color
+          ctx.fillRect(fx, ly, tw + 6, 18)
+          ctx.fillStyle = '#000'
+          ctx.fillText(label, fx + 3, ly + 13)
+        }
+      } catch { /* ignore frame errors */ }
+      if (active) segAnimRef.current = requestAnimationFrame(runDetection)
+    }
+    runDetection()
+    return () => {
+      active = false
+      if (segAnimRef.current) cancelAnimationFrame(segAnimRef.current)
+    }
+  }, [isSegmenting])
 
   const captureFrame = useCallback(() => {
     if (!videoRef.current || !canvasRef.current) return null
@@ -312,11 +415,11 @@ function ImageClassification() {
       const prediction = model.predict(input) as tf.Tensor
       const probs = await prediction.data()
       
+      // Keep classes in fixed order — only bar widths animate
       const results = classes.map((c, i) => ({
         className: c.name,
         confidence: probs[i] * 100
-      })).sort((a, b) => b.confidence - a.confidence)
-      
+      }))
       setPredictions(results)
       input.dispose()
       prediction.dispose()
@@ -333,6 +436,9 @@ function ImageClassification() {
   }
 
   const totalSamples = classes.reduce((sum, c) => sum + c.samples.length, 0)
+  const topPrediction = predictions.length > 0
+    ? predictions.reduce((a, b) => a.confidence > b.confidence ? a : b)
+    : null
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 pb-20 lg:pb-0">
@@ -346,20 +452,25 @@ function ImageClassification() {
         </CardHeader>
         <CardContent>
           <div className="relative aspect-square bg-black rounded-lg overflow-hidden mb-4">
-            <video 
-              ref={videoRef} 
-              autoPlay 
-              playsInline 
-              muted 
+            <video
+              ref={videoRef}
+              autoPlay
+              playsInline
+              muted
               className="w-full h-full object-cover"
+              style={{ transform: 'scaleX(-1)' }}
             />
-            {isPredicting && predictions.length > 0 && (
-              <div 
+            {/* Segmentation overlay canvas — no CSS flip; X coords are mirrored in draw code */}
+            <canvas
+              ref={segCanvasRef}
+              className="absolute inset-0 pointer-events-none"
+            />
+            {isPredicting && topPrediction && (
+              <div
                 className="absolute bottom-0 left-0 right-0 p-2 backdrop-blur-md border-t border-white/20"
-                style={{ 
+                style={{
                   backgroundColor: (() => {
-                    const colorClass = classes.find(c => c.name === predictions[0].className)?.color || ''
-                    // Map Tailwind classes to semi-transparent hex if possible, or fallback to class-based bg
+                    const colorClass = classes.find(c => c.name === topPrediction.className)?.color || ''
                     if (colorClass.includes('rose')) return 'rgba(244, 63, 94, 0.8)'
                     if (colorClass.includes('blue')) return 'rgba(59, 130, 246, 0.8)'
                     if (colorClass.includes('emerald')) return 'rgba(16, 185, 129, 0.8)'
@@ -370,8 +481,8 @@ function ImageClassification() {
                 }}
               >
                 <div className="text-white text-sm font-bold flex items-center justify-between">
-                  <span>{predictions[0].className}</span>
-                  <span>{predictions[0].confidence.toFixed(1)}%</span>
+                  <span>{topPrediction.className}</span>
+                  <span>{topPrediction.confidence.toFixed(1)}%</span>
                 </div>
               </div>
             )}
@@ -380,7 +491,7 @@ function ImageClassification() {
           
           {model ? (
             <div className="space-y-2">
-              <Button 
+              <Button
                 className="w-full"
                 variant={isPredicting ? "destructive" : "default"}
                 onClick={isPredicting ? stopPrediction : startPrediction}
@@ -391,8 +502,8 @@ function ImageClassification() {
                   <><Play className="h-4 w-4 mr-2" /> Avvia Classificazione</>
                 )}
               </Button>
-              <Button 
-                variant="outline" 
+              <Button
+                variant="outline"
                 className="w-full"
                 onClick={() => { setModel(null); stopPrediction() }}
               >
@@ -400,8 +511,8 @@ function ImageClassification() {
               </Button>
             </div>
           ) : (
-            <Button 
-              className="w-full" 
+            <Button
+              className="w-full"
               onClick={trainModel}
               disabled={isTraining || totalSamples < 10}
             >
@@ -412,6 +523,23 @@ function ImageClassification() {
               )}
             </Button>
           )}
+
+          {/* Segmentation toggle — works independently of custom model */}
+          <Button
+            variant={isSegmenting ? "destructive" : "outline"}
+            size="sm"
+            className="w-full mt-2"
+            onClick={toggleSegmentation}
+            disabled={segLoading}
+          >
+            {segLoading ? (
+              <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Caricamento modello…</>
+            ) : isSegmenting ? (
+              <><EyeOff className="h-4 w-4 mr-2" /> Stop Segmentazione</>
+            ) : (
+              <><Eye className="h-4 w-4 mr-2" /> Segmentazione oggetti</>
+            )}
+          </Button>
         </CardContent>
       </Card>
 
@@ -508,15 +636,16 @@ function ImageClassification() {
           </CardHeader>
           <CardContent>
             <div className="space-y-2">
-              {predictions.map((pred, idx) => {
+              {predictions.map((pred) => {
                 const classInfo = classes.find(c => c.name === pred.className)
                 const colorClass = classInfo ? classInfo.color : 'bg-gray-500'
-                
+                const isTop = pred.className === topPrediction?.className
+
                 return (
-                  <div key={idx} className="flex items-center gap-3">
-                    <span className="w-24 text-sm font-medium truncate">{pred.className}</span>
+                  <div key={pred.className} className={`flex items-center gap-3 ${isTop ? 'font-semibold' : ''}`}>
+                    <span className="w-24 text-sm truncate">{pred.className}</span>
                     <div className="flex-1 bg-gray-200 rounded-full h-4 overflow-hidden">
-                      <div 
+                      <div
                         className={`h-full ${colorClass} transition-all duration-200`}
                         style={{ width: `${pred.confidence}%` }}
                       />
@@ -526,15 +655,15 @@ function ImageClassification() {
                 )
               })}
             </div>
-            
+
             {/* Explainability */}
             <div className="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
               <div className="flex items-start gap-2">
                 <Lightbulb className="h-4 w-4 text-amber-600 mt-0.5" />
                 <div className="text-xs text-amber-800">
-                  <strong>Spiegazione:</strong> Il modello analizza i pixel dell'immagine (64x64, {64*64*3} valori RGB normalizzati) 
-                  attraverso una rete neurale con 2 layer densi. La classe "{predictions[0]?.className}" ha la confidenza più alta 
-                  ({predictions[0]?.confidence.toFixed(1)}%) perché i pattern visivi catturati sono più simili ai {classes.find(c => c.name === predictions[0]?.className)?.samples.length || 0} samples 
+                  <strong>Spiegazione:</strong> Il modello analizza i pixel dell'immagine (64x64, {64*64*3} valori RGB normalizzati)
+                  attraverso una rete neurale con 2 layer densi. La classe "{topPrediction?.className}" ha la confidenza più alta
+                  ({topPrediction?.confidence.toFixed(1)}%) perché i pattern visivi catturati sono più simili ai {classes.find(c => c.name === topPrediction?.className)?.samples.length || 0} samples
                   di training di quella classe.
                 </div>
               </div>
