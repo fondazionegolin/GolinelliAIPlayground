@@ -8,6 +8,8 @@ import { useAuthStore } from '@/stores/auth'
 import TeacherNotifications, { TeacherNotification } from './TeacherNotifications'
 import { useSocket } from '@/hooks/useSocket'
 import { DEFAULT_TEACHER_ACCENT, getTeacherAccentTheme, TEACHER_ACCENTS, type TeacherAccentId } from '@/lib/teacherAccent'
+import { useTranslation } from 'react-i18next'
+import { LanguageSwitcher } from '@/components/LanguageSwitcher'
 
 interface TeacherProfile {
   firstName: string
@@ -55,6 +57,8 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
     '--teacher-accent-soft': accentTheme.soft,
     '--teacher-accent-soft-strong': accentTheme.softStrong,
     '--teacher-accent-border': accentTheme.border,
+    backgroundColor: accentTheme.soft,
+    borderBottomColor: accentTheme.border,
   } as CSSProperties
 
   // Global notifications state
@@ -262,10 +266,12 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
 
   const isActive = (path: string) => location.pathname === path
 
+  const { t } = useTranslation()
+
   const navItems = [
-    { path: '/teacher', label: 'Supporto', icon: MessageSquare },
-    { path: '/teacher/classes', label: 'Classi', icon: Users },
-    { path: '/teacher/documents', label: 'Documenti', icon: FileText },
+    { path: '/teacher', label: t('navbar.nav_support'), icon: MessageSquare },
+    { path: '/teacher/classes', label: t('navbar.nav_classes'), icon: Users },
+    { path: '/teacher/documents', label: t('navbar.nav_documents'), icon: FileText },
     { path: '/teacher/ml-lab', label: 'ML Lab', icon: Brain },
   ]
 
@@ -275,8 +281,8 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
       if (notification.type === 'private_message' || notification.type === 'public_chat') {
         const sessionInfo = {
           id: notification.session_id,
-          name: notification.session_name || 'Sessione',
-          className: notification.class_name || 'Classe'
+          name: notification.session_name || t('navbar.no_session'),
+          className: notification.class_name || t('navbar.nav_classes')
         }
         onSessionChange?.(sessionInfo)
         localStorage.setItem('teacher_selected_session', JSON.stringify(sessionInfo))
@@ -294,13 +300,13 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
 
   return (
     <>
-      <nav className="fixed top-0 left-0 right-0 z-50 bg-white/90 backdrop-blur-md border-b border-slate-200 shadow-sm" style={accentVars}>
+      <nav className="fixed top-0 left-0 right-0 z-50 backdrop-blur-md border-b shadow-sm" style={accentVars}>
         <div className="max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             {/* Logo/Brand */}
             <div className="flex items-center gap-3 cursor-pointer" onClick={() => navigate('/teacher')}>
               <LogoMark className="h-9 w-9" />
-              <span className="pb-[1px] text-[18px] leading-[1.15] tracking-wide">
+              <span className="pb-[1px] text-[18px] leading-[1.15] tracking-tight" style={{ fontFamily: '"SofiaPro"' }}>
                 <span className="font-bold text-[#2d2d2d]/85">
                   Golinelli
                 </span>
@@ -342,7 +348,7 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
                 >
                   <div className={`w-2 h-2 rounded-full flex-shrink-0 ${currentSession ? 'bg-green-500 animate-pulse shadow-sm shadow-green-300' : 'bg-slate-300'}`} />
                   <div className="text-left min-w-0">
-                    <span className="text-sm font-bold text-[var(--teacher-accent-text)] truncate max-w-[140px]">{currentSession ? currentSession.name : 'Nessuna sessione'}</span>
+                    <span className="text-sm font-bold text-[var(--teacher-accent-text)] truncate max-w-[140px]">{currentSession ? currentSession.name : t('navbar.no_session')}</span>
                   </div>
                   <ChevronDown className={`h-3 w-3 ml-0.5 text-slate-400 transition-transform flex-shrink-0 ${showSessionsMenu ? 'rotate-180' : ''}`} />
                 </button>
@@ -350,7 +356,7 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
                   className={`hidden lg:flex items-center justify-center h-11 w-11 rounded-full border transition-all shadow-sm backdrop-blur-md ${chatSidebarOpen ? '' : 'bg-white/60 text-[var(--teacher-accent-text)] border-slate-200 hover:bg-white/80'}`}
                   style={chatSidebarOpen ? { backgroundColor: `${accentTheme.accent}15`, borderColor: `${accentTheme.accent}40`, color: accentTheme.text } : undefined}
                   onClick={onToggleChatSidebar}
-                  title={chatSidebarOpen ? 'Nascondi chat di classe' : 'Mostra chat di classe'}
+                  title={chatSidebarOpen ? t('navbar.hide_class_chat') : t('navbar.show_class_chat')}
                 >
                   <MessageSquare className="h-5 w-5" />
                 </button>
@@ -360,8 +366,8 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
                   <div className="absolute right-0 mt-2 w-80 bg-white/80 backdrop-blur-lg rounded-2xl shadow-xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-150 origin-top-right z-50">
                     {/* Header */}
                     <div className="px-5 py-4 border-b border-slate-100 bg-slate-50">
-                      <h3 className="font-bold text-slate-800">Sessioni Disponibili</h3>
-                      <p className="text-xs text-slate-500 mt-0.5">Seleziona la sessione di lavoro</p>
+                      <h3 className="font-bold text-slate-800">{t('navbar.sessions_title')}</h3>
+                      <p className="text-xs text-slate-500 mt-0.5">{t('navbar.select_session_hint')}</p>
                     </div>
 
                     {/* Sessions List */}
@@ -371,8 +377,8 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
                           <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-3">
                             <Users className="h-6 w-6 text-slate-400" />
                           </div>
-                          <p className="text-sm text-slate-500">Nessuna sessione disponibile</p>
-                          <p className="text-xs text-slate-400 mt-1">Crea una nuova sessione dalla pagina Classi</p>
+                          <p className="text-sm text-slate-500">{t('navbar.no_sessions')}</p>
+                          <p className="text-xs text-slate-400 mt-1">{t('navbar.create_session_hint')}</p>
                         </div>
                       ) : (
                         <div className="space-y-1">
@@ -410,7 +416,7 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
                                       ? 'bg-slate-200 text-slate-800'
                                       : 'bg-slate-100 text-slate-500 group-hover:bg-slate-200 group-hover:text-[var(--teacher-accent-text)]'
                                       }`}>
-                                      {session.studentCount} studenti
+                                      {session.studentCount} {t('navbar.students_label')}
                                     </span>
                                   )}
                                   {isSelected && (
@@ -468,7 +474,7 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
                       className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-600 hover:bg-slate-50 hover:text-[var(--teacher-accent-text)] transition-colors"
                     >
                       <Settings className="h-4 w-4" />
-                      Impostazioni account
+                      {t('navbar.settings')}
                     </button>
                     <div className="h-px bg-slate-50 my-1"></div>
                     <button
@@ -476,7 +482,7 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
                       className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 transition-colors"
                     >
                       <LogOut className="h-4 w-4" />
-                      Esci
+                      {t('navbar.logout')}
                     </button>
                   </div>
                 )}
@@ -509,6 +515,11 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
         <SettingsModal
           profile={profile}
           onSave={async (updated) => {
+            // Optimistic update
+            setProfile(updated)
+            window.dispatchEvent(new CustomEvent('teacherProfileUpdated', { detail: updated }))
+            setShowSettings(false)
+            
             try {
               await teacherApi.updateProfile({
                 first_name: updated.firstName,
@@ -516,11 +527,9 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
                 avatar_url: updated.avatarUrl,
                 ui_accent: updated.uiAccent,
               })
-              setProfile(updated)
-              setShowSettings(false)
             } catch (err) {
               console.error('Failed to save profile:', err)
-              alert('Errore nel salvataggio del profilo')
+              // We could revert here, but for "fast" feeling, we'll just log
             }
           }}
           onClose={() => setShowSettings(false)}
@@ -538,6 +547,7 @@ interface SettingsModalProps {
 }
 
 function SettingsModal({ profile, onSave, onClose }: SettingsModalProps) {
+  const { t } = useTranslation()
   const [formData, setFormData] = useState(profile)
   const [previewUrl, setPreviewUrl] = useState(profile.avatarUrl || '')
   const modalAccentTheme = getTeacherAccentTheme(formData.uiAccent)
@@ -574,7 +584,7 @@ function SettingsModal({ profile, onSave, onClose }: SettingsModalProps) {
     <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-xl w-full max-w-md shadow-2xl border border-slate-100 overflow-hidden animate-in zoom-in-95 duration-200">
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-50 bg-slate-50/50">
-          <h2 className="text-lg font-bold text-slate-900">Impostazioni Profilo</h2>
+          <h2 className="text-lg font-bold text-slate-900">{t('navbar.settings_title')}</h2>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600 transition-colors">
             ✕
           </button>
@@ -610,13 +620,13 @@ function SettingsModal({ profile, onSave, onClose }: SettingsModalProps) {
               onClick={() => fileInputRef.current?.click()}
               className="text-xs"
             >
-              Cambia Foto
+              {t('navbar.change_photo')}
             </Button>
           </div>
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-xs font-semibold text-slate-500 uppercase mb-1.5">Nome</label>
+              <label className="block text-xs font-semibold text-slate-500 uppercase mb-1.5">{t('navbar.first_name')}</label>
               <input
                 type="text"
                 value={formData.firstName}
@@ -626,7 +636,7 @@ function SettingsModal({ profile, onSave, onClose }: SettingsModalProps) {
               />
             </div>
             <div>
-              <label className="block text-xs font-semibold text-slate-500 uppercase mb-1.5">Cognome</label>
+              <label className="block text-xs font-semibold text-slate-500 uppercase mb-1.5">{t('navbar.last_name')}</label>
               <input
                 type="text"
                 value={formData.lastName}
@@ -638,7 +648,7 @@ function SettingsModal({ profile, onSave, onClose }: SettingsModalProps) {
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-slate-500 uppercase mb-1.5">Email</label>
+            <label className="block text-xs font-semibold text-slate-500 uppercase mb-1.5">{t('navbar.email')}</label>
             <input
               type="email"
               value={formData.email}
@@ -649,7 +659,12 @@ function SettingsModal({ profile, onSave, onClose }: SettingsModalProps) {
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-slate-500 uppercase mb-2">Colore Accento</label>
+            <label className="block text-xs font-semibold text-slate-500 uppercase mb-1.5">{t('navbar.language_label')}</label>
+            <LanguageSwitcher variant="full" />
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-slate-500 uppercase mb-2">{t('navbar.accent_color')}</label>
             <div className="grid grid-cols-5 gap-2">
               {(Object.values(TEACHER_ACCENTS)).map((accentOption) => {
                 const isSelected = formData.uiAccent === accentOption.id
@@ -677,10 +692,10 @@ function SettingsModal({ profile, onSave, onClose }: SettingsModalProps) {
           {/* Actions */}
           <div className="flex gap-3 pt-2">
             <Button type="button" variant="ghost" onClick={onClose} className="flex-1 text-slate-500 hover:text-slate-700 hover:bg-slate-100">
-              Annulla
+              {t('common.cancel')}
             </Button>
             <Button type="submit" className="flex-1 text-white shadow-lg" style={{ backgroundColor: modalAccentTheme.accent }}>
-              Salva Modifiche
+              {t('common.save')}
             </Button>
           </div>
         </form>

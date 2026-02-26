@@ -5,6 +5,8 @@ import { Button } from './ui/button'
 import { LogoMark } from './LogoMark'
 import { studentApi } from '@/lib/api'
 import { DEFAULT_STUDENT_ACCENT, getStudentAccentTheme, saveStudentAccent, STUDENT_ACCENTS, type StudentAccentId } from '@/lib/studentAccent'
+import { useTranslation } from 'react-i18next'
+import { LanguageSwitcher } from '@/components/LanguageSwitcher'
 import { useAuthStore } from '@/stores/auth'
 
 interface StudentProfile {
@@ -52,6 +54,8 @@ export function StudentNavbar({
     '--student-accent-soft-strong': accentTheme.softStrong,
     '--student-accent-border': accentTheme.border,
     '--student-accent-text': accentTheme.text,
+    backgroundColor: accentTheme.soft,
+    borderBottomColor: accentTheme.border,
   } as CSSProperties
 
   // Load profile from API
@@ -132,7 +136,7 @@ export function StudentNavbar({
   return (
     <>
       <nav
-        className="fixed top-0 left-0 right-0 z-50 bg-white/90 backdrop-blur-md border-b border-slate-200 shadow-sm"
+        className="fixed top-0 left-0 right-0 z-50 backdrop-blur-md border-b shadow-sm"
         style={accentVars}
       >
         <div className="max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -140,7 +144,7 @@ export function StudentNavbar({
             {/* Logo/Brand */}
             <div className="flex items-center gap-3 cursor-pointer" onClick={() => onNavigate?.(null)}>
               <LogoMark className="h-9 w-9" />
-              <span className="pb-[1px] text-[18px] leading-[1.15] tracking-wide">
+              <span className="pb-[1px] text-[18px] leading-[1.15] tracking-tight" style={{ fontFamily: '"SofiaPro"' }}>
                 <span className="font-bold text-[#2d2d2d]/85">
                   Golinelli
                 </span>
@@ -291,19 +295,21 @@ export function StudentNavbar({
           profile={profile}
           accent={accent}
           onSave={async (updated, nextAccent) => {
+            // Optimistic Update
+            setProfile(updated)
+            onAccentChange?.(nextAccent)
+            saveStudentAccent(nextAccent)
+            window.dispatchEvent(new CustomEvent('studentAccentChanged'))
+            setShowSettings(false)
+
             try {
               await studentApi.updateProfile({
                 avatar_url: updated.avatarUrl,
                 ui_accent: nextAccent,
               })
-              setProfile(updated)
-              onAccentChange?.(nextAccent)
-              saveStudentAccent(nextAccent)
-              window.dispatchEvent(new CustomEvent('studentAccentChanged'))
-              setShowSettings(false)
             } catch (err) {
               console.error('Failed to save profile:', err)
-              alert('Errore nel salvataggio del profilo')
+              // We could revert here, but for "fast" feeling, we'll just log
             }
           }}
           onClose={() => setShowSettings(false)}
@@ -322,6 +328,7 @@ interface SettingsModalProps {
 }
 
 function SettingsModal({ profile, accent, onSave, onClose }: SettingsModalProps) {
+  const { t } = useTranslation()
   const [formData, setFormData] = useState(profile)
   const [previewUrl, setPreviewUrl] = useState(profile.avatarUrl || '')
   const [selectedAccent, setSelectedAccent] = useState<StudentAccentId>(accent)
@@ -420,6 +427,11 @@ function SettingsModal({ profile, accent, onSave, onClose }: SettingsModalProps)
           </div>
 
           <div>
+            <label className="block text-xs font-semibold text-slate-500 uppercase mb-1.5">{t('navbar.language_label')}</label>
+            <LanguageSwitcher variant="full" />
+          </div>
+
+          <div>
             <label className="block text-xs font-semibold text-slate-500 uppercase mb-2">Colore Accento</label>
             <div className="grid grid-cols-5 gap-2">
               {(Object.values(STUDENT_ACCENTS)).map((accentOption) => {
@@ -449,14 +461,14 @@ function SettingsModal({ profile, accent, onSave, onClose }: SettingsModalProps)
           {/* Actions */}
           <div className="flex gap-3 pt-2">
             <Button type="button" variant="ghost" onClick={onClose} className="flex-1 text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded-xl">
-              Annulla
+              {t('common.cancel')}
             </Button>
             <Button
               type="submit"
               className="flex-1 text-white shadow-lg rounded-xl"
               style={{ backgroundColor: selectedTheme.accent }}
             >
-              Salva Modifiche
+              {t('common.save')}
             </Button>
           </div>
         </form>

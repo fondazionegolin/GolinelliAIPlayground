@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link, useSearchParams } from 'react-router-dom'
 import { teacherApi } from '@/lib/api'
@@ -27,6 +28,7 @@ interface SessionData {
 }
 
 export default function SessionsPage() {
+  const { t } = useTranslation()
   const [searchParams] = useSearchParams()
   const classFilter = searchParams.get('class')
   const queryClient = useQueryClient()
@@ -60,7 +62,7 @@ export default function SessionsPage() {
       queryClient.invalidateQueries({ queryKey: ['sessions'] })
       setNewTitle('')
       setShowNewForm(false)
-      toast({ title: 'Sessione creata!' })
+      toast({ title: t('sessions.created') })
     },
   })
 
@@ -69,7 +71,7 @@ export default function SessionsPage() {
       teacherApi.updateSession(id, { status }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['sessions'] })
-      toast({ title: 'Stato sessione aggiornato!' })
+      toast({ title: t('sessions.status_updated') })
     },
   })
 
@@ -77,13 +79,13 @@ export default function SessionsPage() {
     mutationFn: (id: string) => teacherApi.deleteSession(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['sessions'] })
-      toast({ title: 'Sessione eliminata!', variant: "destructive" })
+      toast({ title: t('sessions.deleted'), variant: "destructive" })
     },
   })
 
   const copyCode = (code: string) => {
     navigator.clipboard.writeText(code)
-    toast({ title: 'Codice copiato!' })
+    toast({ title: t('sessions.code_copied') })
   }
 
   const handleCreate = (e: React.FormEvent) => {
@@ -101,10 +103,10 @@ export default function SessionsPage() {
       ended: 'bg-red-100 text-red-800',
     }
     const labels: Record<string, string> = {
-      draft: 'Bozza',
-      active: 'Attiva',
-      paused: 'In pausa',
-      ended: 'Terminata',
+      draft: t('sessions.status_draft'),
+      active: t('sessions.status_active'),
+      paused: t('sessions.status_paused'),
+      ended: t('sessions.status_ended'),
     }
     return (
       <span className={`px-2 py-1 rounded text-xs font-medium ${styles[status] || styles.draft}`}>
@@ -119,23 +121,23 @@ export default function SessionsPage() {
     <div className="p-6">
       <div className="max-w-7xl mx-auto space-y-6">
           <div className="flex items-center justify-between mb-6">
-            <h2 className="text-2xl font-bold">Sessioni</h2>
+            <h2 className="text-2xl font-bold">{t('sessions.title')}</h2>
             {selectedClass && (
               <Button onClick={() => setShowNewForm(true)} disabled={showNewForm}>
                 <Plus className="h-4 w-4 mr-2" />
-                Nuova Sessione
+                {t('sessions.new_session')}
               </Button>
             )}
           </div>
 
       <div className="mb-6">
-        <label className="text-sm font-medium mb-2 block">Seleziona Classe</label>
+        <label className="text-sm font-medium mb-2 block">{t('sessions.select_class')}</label>
         <select
           className="w-full md:w-64 p-2 border rounded-md"
           value={selectedClass}
           onChange={(e) => setSelectedClass(e.target.value)}
         >
-          <option value="">-- Seleziona una classe --</option>
+          <option value="">{t('sessions.select_class_default')}</option>
           {classes?.map((cls) => (
             <option key={cls.id} value={cls.id}>
               {cls.name}{cls.school_grade ? ` • ${cls.school_grade}` : ''}
@@ -144,7 +146,7 @@ export default function SessionsPage() {
         </select>
         {selectedClassData && (
           <p className="mt-2 text-xs text-slate-600">
-            Grado scolastico classe: <span className="font-semibold">{selectedClassData.school_grade || 'Non impostato'}</span>
+            {t('sessions.class_grade', { grade: selectedClassData.school_grade || t('classes.not_set') })}
           </p>
         )}
       </div>
@@ -153,9 +155,9 @@ export default function SessionsPage() {
         <Card>
           <CardContent className="py-12 text-center">
             <Users className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-            <h3 className="font-semibold mb-2">Seleziona una classe</h3>
+            <h3 className="font-semibold mb-2">{t('sessions.select_class')}</h3>
             <p className="text-muted-foreground">
-              Scegli una classe per vedere e gestire le sessioni
+              {t('sessions.select_class_hint')}
             </p>
           </CardContent>
         </Card>
@@ -166,16 +168,16 @@ export default function SessionsPage() {
               <CardContent className="pt-6">
                 <form onSubmit={handleCreate} className="flex gap-3">
                   <Input
-                    placeholder="Titolo sessione (es. Lezione su Python)"
+                    placeholder={t('sessions.title_placeholder')}
                     value={newTitle}
                     onChange={(e) => setNewTitle(e.target.value)}
                     autoFocus
                   />
                   <Button type="submit" disabled={createMutation.isPending}>
-                    Crea
+                    {t('sessions.create_short')}
                   </Button>
                   <Button type="button" variant="outline" onClick={() => setShowNewForm(false)}>
-                    Annulla
+                    {t('common.cancel')}
                   </Button>
                 </form>
               </CardContent>
@@ -183,18 +185,18 @@ export default function SessionsPage() {
           )}
 
           {isLoading ? (
-            <p>Caricamento...</p>
+            <p>{t('common.loading')}</p>
           ) : !sessions?.length ? (
             <Card>
               <CardContent className="py-12 text-center">
                 <Clock className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                <h3 className="font-semibold mb-2">Nessuna sessione</h3>
+                <h3 className="font-semibold mb-2">{t('sessions.empty_title')}</h3>
                 <p className="text-muted-foreground mb-4">
-                  Crea la prima sessione per questa classe
+                  {t('sessions.empty_body')}
                 </p>
                 <Button onClick={() => setShowNewForm(true)}>
                   <Plus className="h-4 w-4 mr-2" />
-                  Crea Sessione
+                  {t('sessions.create_btn')}
                 </Button>
               </CardContent>
             </Card>
@@ -211,7 +213,7 @@ export default function SessionsPage() {
                   <CardContent>
                     <div className="flex items-center gap-6 text-sm text-muted-foreground mb-4">
                       <div className="flex items-center gap-2">
-                        <span className="font-medium">Codice:</span>
+                        <span className="font-medium">{t('sessions.code_label')}</span>
                         <code className="bg-gray-100 px-2 py-1 rounded font-mono">
                           {session.join_code}
                         </code>
@@ -220,7 +222,7 @@ export default function SessionsPage() {
                         </Button>
                       </div>
                       <span>
-                        Creata: {new Date(session.created_at).toLocaleDateString('it-IT')}
+                        {t('sessions.created_at')} {new Date(session.created_at).toLocaleDateString()}
                       </span>
                     </div>
                     <div className="flex gap-2">
@@ -230,7 +232,7 @@ export default function SessionsPage() {
                           disabled={updateStatusMutation.isPending}
                         >
                           <Play className="h-4 w-4 mr-2" />
-                          Avvia
+                          {t('sessions.start_btn')}
                         </Button>
                       )}
                       {session.status === 'active' && (
@@ -241,14 +243,14 @@ export default function SessionsPage() {
                             disabled={updateStatusMutation.isPending}
                           >
                             <Square className="h-4 w-4 mr-2" />
-                            Pausa
+                            {t('sessions.pause_btn')}
                           </Button>
                           <Button
                             variant="destructive"
                             onClick={() => updateStatusMutation.mutate({ id: session.id, status: 'ended' })}
                             disabled={updateStatusMutation.isPending}
                           >
-                            Termina
+                            {t('sessions.end_btn')}
                           </Button>
                         </>
                       )}
@@ -258,27 +260,27 @@ export default function SessionsPage() {
                           disabled={updateStatusMutation.isPending}
                         >
                           <Play className="h-4 w-4 mr-2" />
-                          Riprendi
+                          {t('sessions.resume_btn')}
                         </Button>
                       )}
                       {session.status === 'ended' && (
                         <Button
                           variant="destructive"
                           onClick={() => {
-                            if (confirm('Sei sicuro di voler eliminare questa sessione?')) {
+                            if (confirm(t('sessions.delete_confirm'))) {
                               deleteMutation.mutate(session.id)
                             }
                           }}
                           disabled={deleteMutation.isPending}
                         >
                           <Trash2 className="h-4 w-4 mr-2" />
-                          Elimina
+                          {t('common.delete')}
                         </Button>
                       )}
                       <Link to={`/teacher/sessions/${session.id}`}>
                         <Button variant="outline">
                           <Eye className="h-4 w-4 mr-2" />
-                          Monitora
+                          {t('sessions.monitor_btn')}
                         </Button>
                       </Link>
                     </div>

@@ -1,4 +1,4 @@
-export type StudentAccentId = 'pink' | 'blue' | 'cyan' | 'orange' | 'mustard'
+export type StudentAccentId = 'pink' | 'slate' | 'black' | 'blue'
 
 export interface StudentAccentTheme {
   id: StudentAccentId
@@ -6,6 +6,7 @@ export interface StudentAccentTheme {
   accent: string
   text: string
   soft: string
+  softMid: string
   softStrong: string
   border: string
 }
@@ -16,48 +17,43 @@ export const DEFAULT_STUDENT_ACCENT: StudentAccentId = 'pink'
 export const STUDENT_ACCENTS: Record<StudentAccentId, StudentAccentTheme> = {
   pink: {
     id: 'pink',
-    label: 'Rosa',
-    accent: '#ec4899',
-    text: '#be185d',
-    soft: '#fdf2f8',
-    softStrong: '#fbcfe8',
+    label: 'Brand Pink',
+    accent: '#e85c8d', // Logo Pink
+    text: '#c13d6a',
+    soft: '#fff5f8',
+    softMid: '#ffe4ee',
+    softStrong: '#ffc9db',
     border: '#f9a8d4',
+  },
+  slate: {
+    id: 'slate',
+    label: 'Brand Slate',
+    accent: '#2d2d2d', // Logo Slate
+    text: '#1a1a1a',
+    soft: '#f8f8f8',
+    softMid: '#eeeeee',
+    softStrong: '#e0e0e0',
+    border: '#cccccc',
+  },
+  black: {
+    id: 'black',
+    label: 'High Contrast',
+    accent: '#000000', // Black
+    text: '#000000',
+    soft: '#f3f4f6',
+    softMid: '#e5e7eb',
+    softStrong: '#d1d5db',
+    border: '#9ca3af',
   },
   blue: {
     id: 'blue',
-    label: 'Blu',
+    label: 'Professional Blue',
     accent: '#2563eb',
     text: '#1d4ed8',
     soft: '#eff6ff',
+    softMid: '#dbeafe',
     softStrong: '#bfdbfe',
     border: '#93c5fd',
-  },
-  cyan: {
-    id: 'cyan',
-    label: 'Cyan',
-    accent: '#0891b2',
-    text: '#0e7490',
-    soft: '#ecfeff',
-    softStrong: '#a5f3fc',
-    border: '#67e8f9',
-  },
-  orange: {
-    id: 'orange',
-    label: 'Arancio',
-    accent: '#ea580c',
-    text: '#c2410c',
-    soft: '#fff7ed',
-    softStrong: '#fed7aa',
-    border: '#fdba74',
-  },
-  mustard: {
-    id: 'mustard',
-    label: 'Senape',
-    accent: '#ca8a04',
-    text: '#a16207',
-    soft: '#fefce8',
-    softStrong: '#fde68a',
-    border: '#fcd34d',
   },
 }
 

@@ -21,7 +21,7 @@ from app.realtime.gateway import sio
 
 router = APIRouter()
 
-STUDENT_ACCENTS = {"pink", "blue", "cyan", "orange", "mustard"}
+STUDENT_ACCENTS = {"pink", "slate", "black", "blue"}
 
 
 class UpdateProfileRequest(BaseModel):

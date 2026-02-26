@@ -1,5 +1,5 @@
-/* Modern SaaS Font - Plus Jakarta Sans */
-@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap');
+/* Base Font - Lexend */
+@import url('https://fonts.googleapis.com/css2?family=Lexend:wght@300;400;500;600;700&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -7,7 +7,7 @@
 
 @layer base {
   :root {
-    --font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+    --font-family: 'Lexend', system-ui, sans-serif;
     
     /* Cool Light Gray Background (SaaS standard) */
     --background: 210 40% 98%;
@@ -89,9 +89,9 @@
 
 /* UI Overrides for "Clean SaaS" look */
 @layer components {
-  /* Clean Cards with soft shadow instead of border */
+  /* Deep shadows for high contrast on vibrant backgrounds */
   .card-modern {
-    @apply bg-white rounded-xl border-none shadow-[0_2px_10px_-2px_rgba(0,0,0,0.05)];
+    @apply bg-white/95 backdrop-blur-sm rounded-2xl border border-white/40 shadow-[0_8px_30px_rgb(0,0,0,0.12)];
   }
   
   /* Update default border radius classes globally if needed */

@@ -38,6 +38,8 @@
     "@tiptap/starter-kit": "^3.17.0",
     "@use-gesture/react": "^10.3.1",
     "axios": "^1.6.5",
+    "i18next": "^23.7.16",
+    "react-i18next": "^14.0.5",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.0",
     "date-fns": "^3.2.0",

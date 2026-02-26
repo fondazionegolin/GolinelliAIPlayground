@@ -1,4 +1,4 @@
-export type TeacherAccentId = 'red' | 'indigo' | 'gray' | 'green' | 'slateblue'
+export type TeacherAccentId = 'pink' | 'slate' | 'black' | 'indigo'
 
 export interface TeacherAccentTheme {
   id: TeacherAccentId
@@ -6,55 +6,51 @@ export interface TeacherAccentTheme {
   accent: string
   text: string
   soft: string
+  softMid: string
   softStrong: string
   border: string
 }
 
-export const DEFAULT_TEACHER_ACCENT: TeacherAccentId = 'red'
+export const DEFAULT_TEACHER_ACCENT: TeacherAccentId = 'pink'
 
 export const TEACHER_ACCENTS: Record<TeacherAccentId, TeacherAccentTheme> = {
-  red: {
-    id: 'red',
-    label: 'Rosso',
-    accent: '#ef4444',
-    text: '#dc2626',
-    soft: '#fef2f2',
-    softStrong: '#fecaca',
-    border: '#fca5a5',
+  pink: {
+    id: 'pink',
+    label: 'Brand Pink',
+    accent: '#e85c8d', // Logo Pink
+    text: '#c13d6a',
+    soft: '#fff5f8',
+    softMid: '#ffe4ee',
+    softStrong: '#ffc9db',
+    border: '#f9a8d4',
   },
-  indigo: {
-    id: 'indigo',
-    label: 'Indaco',
-    accent: '#6366f1',
-    text: '#4f46e5',
-    soft: '#eef2ff',
-    softStrong: '#c7d2fe',
-    border: '#a5b4fc',
+  slate: {
+    id: 'slate',
+    label: 'Brand Slate',
+    accent: '#2d2d2d', // Logo Slate
+    text: '#1a1a1a',
+    soft: '#f8f8f8',
+    softMid: '#eeeeee',
+    softStrong: '#e0e0e0',
+    border: '#cccccc',
   },
-  gray: {
-    id: 'gray',
-    label: 'Grigio',
-    accent: '#6b7280',
-    text: '#4b5563',
+  black: {
+    id: 'black',
+    label: 'High Contrast',
+    accent: '#000000', // Black
+    text: '#000000',
     soft: '#f3f4f6',
+    softMid: '#e5e7eb',
     softStrong: '#d1d5db',
     border: '#9ca3af',
   },
-  green: {
-    id: 'green',
-    label: 'Verde',
-    accent: '#16a34a',
-    text: '#15803d',
-    soft: '#f0fdf4',
-    softStrong: '#bbf7d0',
-    border: '#86efac',
-  },
-  slateblue: {
-    id: 'slateblue',
-    label: 'Slate Blue',
-    accent: '#5b6ee1',
-    text: '#4757c8',
+  indigo: {
+    id: 'indigo',
+    label: 'Professional Indigo',
+    accent: '#6366f1',
+    text: '#4f46e5',
     soft: '#eef2ff',
+    softMid: '#e0e7ff',
     softStrong: '#c7d2fe',
     border: '#a5b4fc',
   },

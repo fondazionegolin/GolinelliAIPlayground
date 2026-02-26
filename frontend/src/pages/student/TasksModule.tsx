@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'framer-motion'
 import { studentApi } from '@/lib/api'
@@ -56,6 +57,7 @@ interface TasksModuleProps {
 }
 
 export default function TasksModule({ openTaskId, onOpenDocument }: TasksModuleProps) {
+  const { t } = useTranslation()
   const queryClient = useQueryClient()
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(openTaskId || null)
   const [accentTheme] = useState(getStudentAccentTheme(loadStudentAccent()))
@@ -96,9 +98,9 @@ export default function TasksModule({ openTaskId, onOpenDocument }: TasksModuleP
         <div className="w-20 h-20 rounded-full bg-slate-100 flex items-center justify-center mb-6">
           <ClipboardList className="h-10 w-10 text-slate-300" />
         </div>
-        <h3 className="text-xl font-bold text-slate-800 mb-2">Nessun compito assegnato</h3>
+        <h3 className="text-xl font-bold text-slate-800 mb-2">{t('tasks.empty_title')}</h3>
         <p className="text-slate-500 max-w-sm">
-          Il docente non ha ancora pubblicato attività per questa sessione.
+          {t('tasks.empty_body')}
         </p>
       </div>
     )
@@ -111,13 +113,13 @@ export default function TasksModule({ openTaskId, onOpenDocument }: TasksModuleP
         <div className="max-w-6xl mx-auto">
           <div className="flex items-center justify-between mb-8">
             <div>
-              <h2 className="text-2xl font-bold text-slate-900 tracking-tight">I miei Compiti</h2>
-              <p className="text-slate-500">Gestisci le tue attività e visualizza i feedback</p>
+              <h2 className="text-2xl font-bold text-slate-900 tracking-tight">{t('tasks.title')}</h2>
+              <p className="text-slate-500">{t('tasks.subtitle')}</p>
             </div>
             <div className="bg-white/50 backdrop-blur-md px-4 py-2 rounded-full border border-slate-200 shadow-sm flex items-center gap-2">
               <Award className="h-4 w-4 text-amber-500" />
               <span className="text-sm font-bold text-slate-700">
-                {tasks.filter(t => t.submission).length} / {tasks.length} completati
+                {t('tasks.completed_count', { done: tasks.filter(t => t.submission).length, total: tasks.length })}
               </span>
             </div>
           </div>
@@ -157,6 +159,7 @@ export default function TasksModule({ openTaskId, onOpenDocument }: TasksModuleP
 }
 
 function TaskCard({ task, onClick, accentColor }: { task: TaskData; onClick: () => void; accentColor: string }) {
+  const { t } = useTranslation()
   const isCompleted = !!task.submission
   
   // Calculate priority
@@ -207,7 +210,7 @@ function TaskCard({ task, onClick, accentColor }: { task: TaskData; onClick: () 
             {typeIcon}
           </div>
           <div className={`px-2.5 py-1 rounded-full border text-[10px] font-bold uppercase tracking-wider ${priorityStyles[priority]}`}>
-            {priority === 'high' ? (isCompleted ? 'Priorità Bassa' : 'Urgente') : priority === 'medium' ? 'Priorità Media' : 'Priorità Bassa'}
+            {priority === 'high' ? (isCompleted ? t('tasks.priority_low') : t('tasks.priority_urgent')) : priority === 'medium' ? t('tasks.priority_medium') : t('tasks.priority_low')}
           </div>
         </div>
 
@@ -216,7 +219,7 @@ function TaskCard({ task, onClick, accentColor }: { task: TaskData; onClick: () 
           {task.title}
         </h3>
         <p className="text-sm text-slate-500 line-clamp-2 mb-6 min-h-[40px]">
-          {task.description || 'Nessuna descrizione fornita per questo compito.'}
+          {task.description || t('tasks.no_description')}
         </p>
 
         {/* Footer */}
@@ -240,11 +243,11 @@ function TaskCard({ task, onClick, accentColor }: { task: TaskData; onClick: () 
             {isCompleted ? (
               <>
                 <CheckCircle2 className="h-4 w-4" />
-                <span>Fatto</span>
+                <span>{t('tasks.done')}</span>
               </>
             ) : (
               <>
-                <span>Inizia</span>
+                <span>{t('tasks.start')}</span>
                 <ArrowRight className="h-4 w-4 group-hover:translate-x-1 transition-transform" />
               </>
             )}
@@ -265,6 +268,7 @@ function TaskCard({ task, onClick, accentColor }: { task: TaskData; onClick: () 
 }
 
 function TaskViewerOverlay({ task, onClose, accentTheme, onSuccess }: { task: TaskData; onClose: () => void; accentTheme: any; onSuccess: () => void }) {
+  const { t } = useTranslation()
   const { toast } = useToast()
   const isCompleted = !!task.submission
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -280,11 +284,11 @@ function TaskViewerOverlay({ task, onClose, accentTheme, onSuccess }: { task: Ta
       studentApi.submitTask(task.id, content, content_json),
     onSuccess: () => {
       onSuccess()
-      toast({ title: 'Ottimo lavoro!', description: 'Il tuo compito è stato inviato correttamente.' })
+      toast({ title: t('tasks.submitted_title'), description: t('tasks.submitted_body') })
       onClose()
     },
     onError: () => {
-      toast({ variant: 'destructive', title: 'Errore nell\'invio', description: 'Riprova tra qualche istante.' })
+      toast({ variant: 'destructive', title: t('tasks.submit_error_title'), description: t('tasks.submit_error_body') })
     },
     onSettled: () => setIsSubmitting(false)
   })
@@ -321,7 +325,7 @@ function TaskViewerOverlay({ task, onClose, accentTheme, onSuccess }: { task: Ta
                 </span>
                 {task.due_at && (
                   <span className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                    <Clock className="h-3 w-3" /> Scadenza: {new Date(task.due_at).toLocaleDateString()}
+                    <Clock className="h-3 w-3" /> {t('tasks.deadline')} {new Date(task.due_at).toLocaleDateString()}
                   </span>
                 )}
               </div>
@@ -331,7 +335,7 @@ function TaskViewerOverlay({ task, onClose, accentTheme, onSuccess }: { task: Ta
           {isCompleted && (
             <div className="bg-emerald-50 px-3 py-1.5 rounded-full border border-emerald-100 flex items-center gap-2">
               <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-              <span className="text-xs font-bold text-emerald-700">Completato</span>
+              <span className="text-xs font-bold text-emerald-700">{t('tasks.completed_badge')}</span>
             </div>
           )}
         </div>
@@ -383,7 +387,7 @@ function TaskViewerOverlay({ task, onClose, accentTheme, onSuccess }: { task: Ta
                     <textarea
                       value={response}
                       onChange={(e) => setResponse(e.target.value)}
-                      placeholder="Scrivi qui la tua risposta..."
+                      placeholder={t('tasks.answer_placeholder')}
                       className="w-full p-4 rounded-2xl border border-slate-200 bg-white shadow-sm min-h-[200px] focus:ring-2 focus:ring-indigo-500 outline-none"
                     />
                     <Button
@@ -392,7 +396,7 @@ function TaskViewerOverlay({ task, onClose, accentTheme, onSuccess }: { task: Ta
                       className="w-full h-12 text-lg rounded-xl"
                       style={{ backgroundColor: accentTheme.accent }}
                     >
-                      {isSubmitting ? 'Invio in corso...' : 'Invia Risposta'}
+                      {isSubmitting ? t('tasks.submitting') : t('tasks.submit_answer')}
                     </Button>
                   </div>
                 )}

@@ -1,6 +1,7 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { useAuthStore } from '@/stores/auth'
 import { Toaster } from '@/components/ui/toaster'
+import { CookieBanner } from '@/components/CookieBanner'
 
 import LandingPage from '@/pages/LandingPage'
 import StudentJoinPage from '@/pages/StudentJoinPage'
@@ -76,6 +77,7 @@ function App() {
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
       <Toaster />
+      <CookieBanner />
     </>
   )
 }

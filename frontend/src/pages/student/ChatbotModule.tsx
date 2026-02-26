@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback, useMemo, type CSSProperties } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
 import { llmApi, studentApi, teacherbotsApi } from '@/lib/api'
@@ -83,51 +84,55 @@ const PROFILE_COLORS: Record<string, string> = {
   'math_coach': 'bg-cyan-50 text-cyan-600 border-cyan-200',
 }
 
-const FALLBACK_PROFILES: ChatbotProfile[] = [
-  { key: 'tutor', name: 'Tutor AI', description: 'Spiega argomenti passo passo con esempi semplici e mirati al tuo livello.', icon: 'graduation-cap', suggested_prompts: ['Spiegami questo concetto', 'Fammi un esempio pratico'] },
-  { key: 'quiz', name: 'Quiz Master', description: 'Costruisce quiz personalizzati e ti aiuta a ripassare in modo attivo.', icon: 'clipboard-check', suggested_prompts: ['Voglio un quiz guidato', 'Allenami su questo argomento'] },
-  { key: 'interview', name: 'Intervista', description: 'Simula dialoghi con personaggi storici o scientifici per capire meglio il contesto.', icon: 'mic', suggested_prompts: ['Voglio intervistare un personaggio', 'Suggeriscimi chi intervistare'] },
-  { key: 'oral_exam', name: 'Interrogazione', description: 'Simula un orale realistico con domande progressive e feedback su chiarezza e completezza.', icon: 'user-check', suggested_prompts: ['Interrogami su un argomento', 'Fammi una simulazione orale'] },
-  { key: 'dataset_generator', name: 'Generatore Dataset', description: 'Crea dataset CSV coerenti con scenario, variabili e difficoltà richiesti.', icon: 'database', suggested_prompts: ['Guidami a creare un dataset', 'Genera un CSV per analisi'] },
-  { key: 'math_coach', name: 'Math Coach', description: 'Ti guida nella risoluzione dei problemi con metodo, passaggi chiari e controllo errori.', icon: 'calculator', suggested_prompts: ['Guidami su un problema', 'Verifica il mio procedimento'] },
-]
+function getFallbackProfiles(t: (key: string) => string): ChatbotProfile[] {
+  return [
+    { key: 'tutor', name: t('chatbot.profile_tutor'), description: t('chatbot.profile_tutor_desc'), icon: 'graduation-cap', suggested_prompts: [t('chatbot.profile_tutor_p1'), t('chatbot.profile_tutor_p2')] },
+    { key: 'quiz', name: t('chatbot.profile_quiz'), description: t('chatbot.profile_quiz_desc'), icon: 'clipboard-check', suggested_prompts: [t('chatbot.profile_quiz_p1'), t('chatbot.profile_quiz_p2')] },
+    { key: 'interview', name: t('chatbot.profile_interview'), description: t('chatbot.profile_interview_desc'), icon: 'mic', suggested_prompts: [t('chatbot.profile_interview_p1'), t('chatbot.profile_interview_p2')] },
+    { key: 'oral_exam', name: t('chatbot.profile_oral'), description: t('chatbot.profile_oral_desc'), icon: 'user-check', suggested_prompts: [t('chatbot.profile_oral_p1'), t('chatbot.profile_oral_p2')] },
+    { key: 'dataset_generator', name: t('chatbot.profile_dataset'), description: t('chatbot.profile_dataset_desc'), icon: 'database', suggested_prompts: [t('chatbot.profile_dataset_p1'), t('chatbot.profile_dataset_p2')] },
+    { key: 'math_coach', name: t('chatbot.profile_math'), description: t('chatbot.profile_math_desc'), icon: 'calculator', suggested_prompts: [t('chatbot.profile_math_p1'), t('chatbot.profile_math_p2')] },
+  ]
+}
 
 type InterviewStep = { key: string; question: string }
 type ProactiveProfileKey = 'quiz' | 'interview' | 'oral_exam' | 'dataset_generator' | 'math_coach'
 
 const PROACTIVE_PROFILE_KEYS: ProactiveProfileKey[] = ['quiz', 'interview', 'oral_exam', 'dataset_generator', 'math_coach']
 
-const PROFILE_INTERVIEWS: Record<ProactiveProfileKey, InterviewStep[]> = {
-  quiz: [
-    { key: 'topic', question: 'Modalita Quiz guidata attiva.\n\n1) Quale argomento vuoi allenare?' },
-    { key: 'questionCount', question: '2) Quante domande vuoi? (numero)' },
-    { key: 'difficulty', question: '3) Che livello desideri? (base, intermedio, avanzato)' },
-    { key: 'focus', question: '4) Vuoi focus su teoria, applicazioni o entrambi?' },
-  ],
-  interview: [
-    { key: 'character', question: 'Modalita Intervista guidata attiva.\n\n1) Quale personaggio ti piacerebbe intervistare? Se non hai un idea precisa, posso suggerirti qualcuno in base al periodo storico o all\'argomento.' },
-    { key: 'period_or_topic', question: '2) Quale periodo storico o tema vuoi trattare?' },
-    { key: 'tone', question: '3) Preferisci tono formale, divulgativo o creativo?' },
-    { key: 'goal', question: '4) Obiettivo dell\'intervista: ripasso, approfondimento o preparazione verifica?' },
-  ],
-  oral_exam: [
-    { key: 'subject', question: 'Modalita Interrogazione guidata attiva.\n\n1) Materia e argomento principale?' },
-    { key: 'scope', question: '2) Quali sotto-argomenti vuoi includere?' },
-    { key: 'difficulty', question: '3) Livello atteso: base, intermedio o avanzato?' },
-    { key: 'feedback', question: '4) Vuoi feedback rapido o dettagliato dopo ogni risposta?' },
-  ],
-  dataset_generator: [
-    { key: 'context', question: 'Modalita Dataset guidata attiva.\n\n1) In quale contesto vuoi usare il dataset?' },
-    { key: 'columns', question: '2) Quali colonne principali vuoi avere?' },
-    { key: 'rows', question: '3) Quante righe desideri? (numero)' },
-    { key: 'constraints', question: '4) Vuoi vincoli specifici (range, correlazioni, categorie)?' },
-  ],
-  math_coach: [
-    { key: 'topic', question: 'Modalita Math Coach guidata attiva.\n\n1) Su quale tema matematico vuoi lavorare?' },
-    { key: 'goal', question: '2) Obiettivo: capire teoria, risolvere esercizi o preparare verifica?' },
-    { key: 'level', question: '3) Livello attuale percepito: base, intermedio o avanzato?' },
-    { key: 'style', question: '4) Preferisci spiegazioni sintetiche o dettagliate passo-passo?' },
-  ],
+function getProfileInterviews(t: (key: string) => string): Record<ProactiveProfileKey, InterviewStep[]> {
+  return {
+    quiz: [
+      { key: 'topic', question: t('chatbot.quiz_interview_intro') },
+      { key: 'questionCount', question: t('chatbot.quiz_interview_q2') },
+      { key: 'difficulty', question: t('chatbot.quiz_interview_q3') },
+      { key: 'focus', question: t('chatbot.quiz_interview_q4') },
+    ],
+    interview: [
+      { key: 'character', question: t('chatbot.interview_intro') },
+      { key: 'period_or_topic', question: t('chatbot.interview_q2') },
+      { key: 'tone', question: t('chatbot.interview_q3') },
+      { key: 'goal', question: t('chatbot.interview_q4') },
+    ],
+    oral_exam: [
+      { key: 'subject', question: t('chatbot.oral_intro') },
+      { key: 'scope', question: t('chatbot.oral_q2') },
+      { key: 'difficulty', question: t('chatbot.oral_q3') },
+      { key: 'feedback', question: t('chatbot.oral_q4') },
+    ],
+    dataset_generator: [
+      { key: 'context', question: t('chatbot.dataset_intro') },
+      { key: 'columns', question: t('chatbot.dataset_q2') },
+      { key: 'rows', question: t('chatbot.dataset_q3') },
+      { key: 'constraints', question: t('chatbot.dataset_q4') },
+    ],
+    math_coach: [
+      { key: 'topic', question: t('chatbot.math_intro') },
+      { key: 'goal', question: t('chatbot.math_q2') },
+      { key: 'level', question: t('chatbot.math_q3') },
+      { key: 'style', question: t('chatbot.math_q4') },
+    ],
+  }
 }
 
 interface ConversationHistory {
@@ -158,6 +163,9 @@ interface AttachedFile {
 type MobileViewState = 'profiles' | 'conversations' | 'chat'
 
 export default function ChatbotModule({ sessionId, initialTeacherbotId, onInputFocusChange }: ChatbotModuleProps) {
+  const { t } = useTranslation()
+  const FALLBACK_PROFILES = getFallbackProfiles(t)
+  const PROFILE_INTERVIEWS = getProfileInterviews(t)
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [conversationId, setConversationId] = useState<string | null>(null)
@@ -1276,7 +1284,7 @@ export default function ChatbotModule({ sessionId, initialTeacherbotId, onInputF
                         }
                       }}
                       className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded hover:bg-red-100 opacity-0 group-hover:opacity-100 transition-opacity"
-                      title="Elimina conversazione"
+                      title={t('chatbot.delete_conversation')}
                     >
                       <Trash2 className="h-3 w-3 text-red-500" />
                     </button>
@@ -1461,7 +1469,7 @@ export default function ChatbotModule({ sessionId, initialTeacherbotId, onInputF
                 size="sm"
                 onClick={() => setShowBgPalette((v) => !v)}
                 className="text-slate-500 hover:text-slate-700"
-                title="Scegli colore"
+                title={t('chatbot.choose_color')}
               >
                 <Palette className="h-4 w-4" />
               </Button>
@@ -1496,7 +1504,7 @@ export default function ChatbotModule({ sessionId, initialTeacherbotId, onInputF
                         className={`text-slate-500 hover:text-slate-700 ${chatBg ? '' : 'opacity-40 cursor-not-allowed'}`}
                         disabled={!chatBg}
                       >
-                        Imposta default
+                        {t('chatbot.set_default')}
                       </button>
                       {chatBgDefault && (
                         <button
@@ -1557,7 +1565,7 @@ export default function ChatbotModule({ sessionId, initialTeacherbotId, onInputF
                           className={`w-4 h-4 rounded border flex items-center justify-center ${isDefault ? '' : 'border-slate-300'}`}
                           style={isDefault ? selectedSolidStyle : undefined}
                           onClick={(e) => handleSetDefaultModel(m, e)}
-                          title="Imposta come default"
+                          title={t('chatbot.set_default')}
                         >
                           {isDefault && <Check className="h-3 w-3 text-white" />}
                         </button>
@@ -1591,7 +1599,7 @@ export default function ChatbotModule({ sessionId, initialTeacherbotId, onInputF
                   <Bot className="h-10 w-10 text-white" />
                 )}
               </div>
-              <h3 className={`font-bold text-xl mb-2 ${chatBgIsDark ? 'text-white' : 'text-slate-800'}`}>Ciao! Sono {selectedTeacherbot ? selectedTeacherbot.name : currentProfile?.name}</h3>
+              <h3 className={`font-bold text-xl mb-2 ${chatBgIsDark ? 'text-white' : 'text-slate-800'}`}>{t('chatbot.greeting', { name: selectedTeacherbot ? selectedTeacherbot.name : currentProfile?.name })}</h3>
               <p className={`${chatBgIsDark ? 'text-white/70' : 'text-slate-500'} max-w-md mx-auto mb-8`}>{selectedTeacherbot ? '' : currentProfile?.description}</p>
               <div className="flex flex-wrap gap-2 justify-center max-w-lg mx-auto">
                 {currentProfile?.suggested_prompts && !selectedTeacherbot && currentProfile.suggested_prompts.map((suggestion) => (
@@ -1759,7 +1767,7 @@ export default function ChatbotModule({ sessionId, initialTeacherbotId, onInputF
                       handleSend()
                     }
                   }}
-                  placeholder={profileInterview.active ? "Rispondi alla domanda guidata..." : (attachedFiles.length > 0 ? "Descrivi..." : "Scrivi un messaggio...")}
+                  placeholder={profileInterview.active ? t('chatbot.guided_placeholder') : (attachedFiles.length > 0 ? t('chatbot.describe_placeholder') : "Scrivi un messaggio...")}
                   disabled={sendMessageMutation.isPending}
                   className="w-full py-2.5 bg-transparent border-none text-sm focus:ring-0 focus:outline-none outline-none placeholder:text-slate-400"
                 />
@@ -1965,12 +1973,13 @@ function StudentSelector({ students, onSelect, darkMode = false }: { students: a
   )
 }
 
-function MessageContent({ content, onQuizSubmit, onInput, darkMode = false }: { 
-  content: string; 
-  onQuizSubmit: (answers: string) => void; 
-  onInput?: (text: string) => void; 
-  darkMode?: boolean 
+function MessageContent({ content, onQuizSubmit, onInput, darkMode = false }: {
+  content: string;
+  onQuizSubmit: (answers: string) => void;
+  onInput?: (text: string) => void;
+  darkMode?: boolean
 }) {
+  const { t } = useTranslation()
   const { quiz, csv, textContent, isGenerating, generationType, actionMenu, sessionSelector, studentSelector } = parseContentBlocks(content)
   const { cleanContent, images } = extractBase64Images(textContent)
 
@@ -2070,7 +2079,7 @@ function MessageContent({ content, onQuizSubmit, onInput, darkMode = false }: {
                     document.body.removeChild(link)
                   }}
                   className="absolute top-2 right-2 bg-white/90 hover:bg-white p-2 rounded-lg shadow-md opacity-0 group-hover:opacity-100 transition-opacity"
-                  title="Scarica immagine"
+                  title={t('chatbot.download_image')}
                 >
                   <Download className="h-4 w-4 text-slate-700" />
                 </button>
@@ -2101,7 +2110,7 @@ function MessageContent({ content, onQuizSubmit, onInput, darkMode = false }: {
                 document.body.appendChild(link)
                 link.click()
                 document.body.removeChild(link)
-              }} className="absolute top-2 right-2 bg-white/90 hover:bg-white p-2 rounded-lg shadow-md opacity-0 group-hover:opacity-100 transition-opacity" title="Scarica immagine">
+              }} className="absolute top-2 right-2 bg-white/90 hover:bg-white p-2 rounded-lg shadow-md opacity-0 group-hover:opacity-100 transition-opacity" title={t('chatbot.download_image')}>
                 <Download className="h-4 w-4 text-slate-700" />
               </button>
             </div>

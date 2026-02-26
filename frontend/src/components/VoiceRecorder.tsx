@@ -25,6 +25,7 @@ import {
   RotateCcw,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { useTranslation } from 'react-i18next'
 
 interface VoiceRecorderProps {
   onInsertText: (text: string) => void
@@ -49,6 +50,7 @@ const LANGUAGES = [
 const NUM_BARS = 12
 
 export function VoiceRecorder({ onInsertText, compact = false }: VoiceRecorderProps) {
+  const { t } = useTranslation()
   const [recorderState, setRecorderState] = useState<RecorderState>('idle')
   const [transcription, setTranscription] = useState('')
   const [detectedLanguage, setDetectedLanguage] = useState('')
@@ -130,7 +132,7 @@ export function VoiceRecorder({ onInsertText, compact = false }: VoiceRecorderPr
       }
       drawWave()
     } catch {
-      setError('Impossibile accedere al microfono. Controlla i permessi.')
+      setError(t('voice_recorder.mic_error'))
     }
   }
 
@@ -254,10 +256,10 @@ export function VoiceRecorder({ onInsertText, compact = false }: VoiceRecorderPr
                 <Mic className="h-4 w-4 text-blue-600" />
               </div>
               <div>
-                <p className="text-sm font-semibold text-slate-800">Messaggio vocale</p>
+                <p className="text-sm font-semibold text-slate-800">{t('voice_recorder.header')}</p>
                 {detectedLanguage && (
                   <p className="text-[11px] text-slate-400">
-                    Lingua rilevata: <span className="capitalize">{langLabel}</span>
+                    {t('voice_recorder.detected_lang', { lang: langLabel })}
                   </p>
                 )}
               </div>
@@ -270,7 +272,7 @@ export function VoiceRecorder({ onInsertText, compact = false }: VoiceRecorderPr
                 className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-blue-600 bg-slate-50 hover:bg-blue-50 px-3 py-1.5 rounded-full border border-slate-200 hover:border-blue-200 transition-colors"
               >
                 <Volume2 className="h-3.5 w-3.5" />
-                Ascolta
+                {t('voice_recorder.listen')}
               </button>
             )}
             <audio ref={audioRef} src={audioUrl ?? ''} className="hidden" />
@@ -281,14 +283,14 @@ export function VoiceRecorder({ onInsertText, compact = false }: VoiceRecorderPr
             value={transcription}
             onChange={(e) => setTranscription(e.target.value)}
             className="w-full text-sm border border-slate-200 rounded-2xl p-3.5 resize-none focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-300 min-h-[96px] max-h-[220px] text-slate-800 leading-relaxed placeholder:text-slate-400"
-            placeholder="Nessuna trascrizione. Registra di nuovo."
+            placeholder={t('voice_recorder.transcript_placeholder')}
             autoFocus
           />
 
           {/* Translation controls */}
           <div className="flex flex-wrap items-center gap-2 mt-3">
             <Languages className="h-4 w-4 text-slate-400 flex-shrink-0" />
-            <span className="text-xs text-slate-500">Traduci in:</span>
+            <span className="text-xs text-slate-500">{t('voice_recorder.translate_label')}</span>
             <select
               value={translateTarget}
               onChange={(e) => setTranslateTarget(e.target.value)}
@@ -310,7 +312,7 @@ export function VoiceRecorder({ onInsertText, compact = false }: VoiceRecorderPr
               ) : (
                 <RotateCcw className="h-3.5 w-3.5" />
               )}
-              {translating ? 'Traduzione...' : 'Traduci'}
+              {translating ? t('voice_recorder.translating') : t('voice_recorder.translate_btn')}
             </button>
           </div>
 
@@ -323,7 +325,7 @@ export function VoiceRecorder({ onInsertText, compact = false }: VoiceRecorderPr
               className="text-slate-500 hover:text-slate-700 gap-1"
             >
               <X className="h-4 w-4" />
-              Scarta
+              {t('voice_recorder.discard')}
             </Button>
             <Button
               size="sm"
@@ -332,7 +334,7 @@ export function VoiceRecorder({ onInsertText, compact = false }: VoiceRecorderPr
               className="bg-blue-600 hover:bg-blue-700 text-white gap-1.5 px-4"
             >
               <Send className="h-3.5 w-3.5" />
-              Usa testo
+              {t('voice_recorder.use_text')}
             </Button>
           </div>
         </div>
@@ -371,7 +373,7 @@ export function VoiceRecorder({ onInsertText, compact = false }: VoiceRecorderPr
         <button
           onClick={stopRecording}
           className="h-7 w-7 rounded-full bg-red-500 hover:bg-red-600 flex items-center justify-center transition-colors flex-shrink-0"
-          title="Ferma e trascrivi"
+          title={t('voice_recorder.stop_title')}
           type="button"
         >
           <Square className="h-3 w-3 text-white fill-white" />
@@ -381,7 +383,7 @@ export function VoiceRecorder({ onInsertText, compact = false }: VoiceRecorderPr
         <button
           onClick={cancelRecording}
           className="h-7 w-7 rounded-full hover:bg-slate-100 flex items-center justify-center text-slate-400 hover:text-slate-600 transition-colors flex-shrink-0"
-          title="Annulla registrazione"
+          title={t('voice_recorder.cancel_title')}
           type="button"
         >
           <X className="h-4 w-4" />
@@ -395,7 +397,7 @@ export function VoiceRecorder({ onInsertText, compact = false }: VoiceRecorderPr
     return (
       <div className="flex items-center gap-2 px-1">
         <RefreshCw className="h-4 w-4 animate-spin text-blue-500" />
-        <span className="text-xs text-slate-500">Trascrizione in corso…</span>
+        <span className="text-xs text-slate-500">{t('voice_recorder.processing')}</span>
       </div>
     )
   }
@@ -408,7 +410,7 @@ export function VoiceRecorder({ onInsertText, compact = false }: VoiceRecorderPr
         className={`${
           compact ? 'h-8 w-8' : 'h-9 w-9'
         } rounded-full hover:bg-slate-100 flex items-center justify-center text-slate-400 hover:text-blue-600 transition-colors`}
-        title="Registra messaggio vocale (STT)"
+        title={t('voice_recorder.mic_title')}
         type="button"
       >
         <Mic className={compact ? 'h-4 w-4' : 'h-4 w-4'} />

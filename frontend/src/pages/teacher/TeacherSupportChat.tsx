@@ -17,6 +17,7 @@ import { ContentEditorModal } from '@/components/ContentEditorModal'
 import TeacherbotsPanel from '@/components/teacher/TeacherbotsPanel'
 import { DEFAULT_TEACHER_ACCENT, getTeacherAccentTheme } from '@/lib/teacherAccent'
 import { VoiceRecorder } from '@/components/VoiceRecorder'
+import { useTranslation } from 'react-i18next'
 
 // Constants
 const FALLBACK_MODELS = [
@@ -116,32 +117,34 @@ interface DatasetInterviewAnswers {
   rowCount: number
 }
 
-const DATASET_INTERVIEW_STEPS: Array<{ key: DatasetInterviewStepKey; question: string }> = [
-  {
-    key: 'context',
-    question: 'Perfetto. Iniziamo: qual e il contesto del dataset? (es. vendite scuola, risultati test, presenze)',
-  },
-  {
-    key: 'dataType',
-    question: 'Che tipologia di dati vuoi? (numerici, categorici, misti, temporali...)',
-  },
-  {
-    key: 'correlation',
-    question: 'Che relazione/correlazione vuoi tra i dati? (positiva, negativa, nessuna, non lineare...)',
-  },
-  {
-    key: 'columnCount',
-    question: 'Quante colonne deve avere il CSV? (inserisci solo un numero)',
-  },
-  {
-    key: 'headers',
-    question: 'Indica le intestazioni delle colonne, separate da virgola (es. eta,voto,ore_studio).',
-  },
-  {
-    key: 'rowCount',
-    question: 'Quante righe deve avere il dataset? (inserisci solo un numero)',
-  },
-]
+function getDatasetInterviewSteps(t: any): Array<{ key: DatasetInterviewStepKey; question: string }> {
+  return [
+    {
+      key: 'context',
+      question: t('teacher_chat.dataset_interview_q1'),
+    },
+    {
+      key: 'dataType',
+      question: t('teacher_chat.dataset_interview_q2'),
+    },
+    {
+      key: 'correlation',
+      question: t('teacher_chat.dataset_interview_q3'),
+    },
+    {
+      key: 'columnCount',
+      question: t('teacher_chat.dataset_interview_q4'),
+    },
+    {
+      key: 'headers',
+      question: t('teacher_chat.dataset_interview_q5'),
+    },
+    {
+      key: 'rowCount',
+      question: t('teacher_chat.dataset_interview_q6'),
+    },
+  ]
+}
 
 interface DatasetInterviewState {
   active: boolean
@@ -158,24 +161,26 @@ interface ImageInterviewAnswers {
   style: string
 }
 
-const IMAGE_INTERVIEW_STEPS: Array<{ key: ImageInterviewStepKey; question: string }> = [
-  {
-    key: 'subject',
-    question: "Modalita immagine attiva. Ti faccio una breve intervista guidata.\n\n1) Chi e il soggetto dell'immagine?",
-  },
-  {
-    key: 'action',
-    question: '2) Cosa succede nella scena?',
-  },
-  {
-    key: 'background',
-    question: '3) Quale sfondo vuoi?',
-  },
-  {
-    key: 'style',
-    question: '4) Quale stile visivo preferisci? (es. realistico, cartoon, acquerello, 3D)',
-  },
-]
+function getImageInterviewSteps(t: any): Array<{ key: ImageInterviewStepKey; question: string }> {
+  return [
+    {
+      key: 'subject',
+      question: t('teacher_chat.image_interview_intro'),
+    },
+    {
+      key: 'action',
+      question: t('teacher_chat.image_interview_q2'),
+    },
+    {
+      key: 'background',
+      question: t('teacher_chat.image_interview_q3'),
+    },
+    {
+      key: 'style',
+      question: t('teacher_chat.image_interview_q4'),
+    },
+  ]
+}
 
 interface ImageInterviewState {
   active: boolean
@@ -191,20 +196,22 @@ interface ReportInterviewAnswers {
   scope: string
 }
 
-const REPORT_INTERVIEW_STEPS: Array<{ key: ReportInterviewStepKey; question: string }> = [
-  {
-    key: 'session',
-    question: 'Modalita report attiva. Ti faccio una breve intervista guidata.\n\n1) A quale sessione sei interessato?',
-  },
-  {
-    key: 'focus',
-    question: '2) Cosa ti interessa sapere? (compiti svolti, interazioni con chatbot, interazioni col docente, altro)',
-  },
-  {
-    key: 'scope',
-    question: '3) Vuoi un report di tutta la classe o di alcuni studenti nello specifico? Se specifici, indica i nomi/nickname separati da virgola.',
-  },
-]
+function getReportInterviewSteps(t: any): Array<{ key: ReportInterviewStepKey; question: string }> {
+  return [
+    {
+      key: 'session',
+      question: t('teacher_chat.report_interview_intro'),
+    },
+    {
+      key: 'focus',
+      question: t('teacher_chat.report_interview_q2'),
+    },
+    {
+      key: 'scope',
+      question: t('teacher_chat.report_interview_q3'),
+    },
+  ]
+}
 
 interface ReportInterviewState {
   active: boolean
@@ -221,24 +228,26 @@ interface QuizInterviewAnswers {
   highlights: string
 }
 
-const QUIZ_INTERVIEW_STEPS: Array<{ key: QuizInterviewStepKey; question: string }> = [
-  {
-    key: 'topic',
-    question: 'Modalita quiz attiva. Ti faccio una breve intervista guidata.\n\n1) Quale argomento vuoi trattare nel quiz?',
-  },
-  {
-    key: 'questionCount',
-    question: '2) Quante domande vuoi nel quiz? (inserisci un numero)',
-  },
-  {
-    key: 'optionsPerQuestion',
-    question: '3) Quante possibili risposte per domanda? (inserisci un numero)',
-  },
-  {
-    key: 'highlights',
-    question: '4) Vuoi aggiungere highlights? Se si, scrivili (altrimenti rispondi "no").',
-  },
-]
+function getQuizInterviewSteps(t: any): Array<{ key: QuizInterviewStepKey; question: string }> {
+  return [
+    {
+      key: 'topic',
+      question: t('teacher_chat.quiz_interview_intro'),
+    },
+    {
+      key: 'questionCount',
+      question: t('teacher_chat.quiz_interview_q2'),
+    },
+    {
+      key: 'optionsPerQuestion',
+      question: t('teacher_chat.quiz_interview_q3'),
+    },
+    {
+      key: 'highlights',
+      question: t('teacher_chat.quiz_interview_q4'),
+    },
+  ]
+}
 
 interface QuizInterviewState {
   active: boolean
@@ -247,6 +256,7 @@ interface QuizInterviewState {
 }
 
 export default function TeacherSupportChat() {
+  const { t } = useTranslation()
   const { toast } = useToast()
   const [activeTab, setActiveTab] = useState<'chat' | 'teacherbots'>('chat')
   const [messages, setMessages] = useState<Message[]>([])
@@ -295,6 +305,12 @@ export default function TeacherSupportChat() {
   const interviewSendingRef = useRef(false)
   const modelMenuRef = useRef<HTMLDivElement>(null)
   const modeMenuRef = useRef<HTMLDivElement>(null)
+
+  // Computed interview steps using translations (must be inside component to use t())
+  const QUIZ_INTERVIEW_STEPS = getQuizInterviewSteps(t)
+  const IMAGE_INTERVIEW_STEPS = getImageInterviewSteps(t)
+  const DATASET_INTERVIEW_STEPS = getDatasetInterviewSteps(t)
+  const REPORT_INTERVIEW_STEPS = getReportInterviewSteps(t)
   const { data: availableModelsResponse } = useQuery({
     queryKey: ['llm-available-models'],
     queryFn: () => llmApi.getAvailableModels(),
@@ -378,8 +394,8 @@ export default function TeacherSupportChat() {
     setDefaultModel(id) // Always set the clicked one as default
     localStorage.setItem('default_model', id)
     toast({
-      title: "Modello predefinito aggiornato",
-      description: `Il modello predefinito è ora ${availableModels.find(m => m.id === id)?.name}`
+      title: t('teacher_chat.default_model_updated'),
+      description: t('teacher_chat.default_model_now', { model: availableModels.find(m => m.id === id)?.name })
     })
   }
 
@@ -1215,7 +1231,7 @@ Requisiti:
         const errorMsg: Message = {
           id: `err-${Date.now()}`,
           role: 'assistant',
-          content: "Si è verificato un errore durante la generazione. Riprova.",
+          content: t('teacher_chat.generation_error'),
           timestamp: new Date()
         }
         setMessages(prev => [...prev, errorMsg])
@@ -1368,7 +1384,7 @@ REGOLE IMPORTANTI:
         const errorMsg: Message = {
           id: `err-${Date.now()}`,
           role: 'assistant',
-          content: "Si è verificato un errore durante la generazione. Riprova.",
+          content: t('teacher_chat.generation_error'),
           timestamp: new Date()
         }
         setMessages(prev => [...prev, errorMsg])
@@ -1394,7 +1410,7 @@ REGOLE IMPORTANTI:
           const s: QuizInterviewState = { active: false, stepIndex: 0, answers: {} }
           quizInterviewRef.current = s
           setQuizInterview(s)
-          toast({ title: "Errore intervista", description: "Stato non valido. Riseleziona la modalità Quiz.", variant: "destructive" })
+          toast({ title: t('teacher_chat.interview_error'), description: t('teacher_chat.invalid_state'), variant: "destructive" })
           return
         }
 
@@ -1500,7 +1516,7 @@ REGOLE IMPORTANTI:
           setMessages(prev => [...prev, {
             id: `err-${Date.now()}`,
             role: 'assistant',
-            content: "Si è verificato un errore durante la generazione del quiz. Riprova.",
+            content: t('teacher_chat.quiz_generation_error'),
             timestamp: new Date()
           }])
         } finally {
@@ -1699,7 +1715,7 @@ REGOLE IMPORTANTI:
       const errorMsg: Message = {
         id: `err-${Date.now()}`,
         role: 'assistant',
-        content: "Si è verificato un errore durante la generazione. Per favore controlla la console per i dettagli tecnici.",
+        content: t('teacher_chat.generation_error_check_console'),
         timestamp: new Date()
       }
       setMessages(prev => [...prev, errorMsg])
@@ -1858,7 +1874,7 @@ REGOLE IMPORTANTI:
 
   return (
     <>
-      <div className="h-full flex flex-col bg-slate-200 font-sans" style={accentVars} onDragOver={(e) => e.preventDefault()} onDrop={handleDrop}>
+      <div className="h-full flex flex-col bg-transparent font-sans" style={accentVars} onDragOver={(e) => e.preventDefault()} onDrop={handleDrop}>
         
         {/* Top Navigation - Centered Segmented Control */}
         <div className="flex items-center justify-center pt-6 pb-4 shrink-0">
@@ -2459,7 +2475,7 @@ REGOLE IMPORTANTI:
                                     style={isSelected ? selectedSoftStyle : undefined}
                                   >
                                     {icon}
-                                    {m.label}
+                                    {m.id === 'image' ? t('teacher_chat.mode_image') : m.label}
                                   </button>
                                 )
                               })}

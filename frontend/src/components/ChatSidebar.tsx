@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, Dispatch, SetStateAction, useCallback } from 'react'
+import { useTranslation } from 'react-i18next'
 import { filesApi } from '@/lib/api'
 import { useSocket, ChatMessage, OnlineUser } from '@/hooks/useSocket'
 import { Button } from '@/components/ui/button'
@@ -35,6 +36,7 @@ function FileViewerModal({
 
   const fileType = getFileType(file.filename, file.type)
 
+  const { t } = useTranslation()
   const [csvData, setCsvData] = useState<string[][] | null>(null)
   const [textContent, setTextContent] = useState<string | null>(null)
 
@@ -116,14 +118,14 @@ function FileViewerModal({
           <div className="flex flex-col items-center justify-center p-12 bg-slate-100 rounded-lg">
             <FileSpreadsheet className="h-24 w-24 text-green-500 mb-4" />
             <p className="text-lg font-medium text-slate-700 mb-2">{file.filename}</p>
-            <p className="text-sm text-slate-500 mb-6">Anteprima Excel non disponibile. Scarica il file per visualizzarlo.</p>
+            <p className="text-sm text-slate-500 mb-6">{t('chat_sidebar.preview_excel_unavailable')}</p>
             <a
               href={file.url}
               download={file.filename}
               className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
             >
               <Download className="h-4 w-4" />
-              Scarica file Excel
+              {t('chat_sidebar.download_excel')}
             </a>
           </div>
         )
@@ -132,14 +134,14 @@ function FileViewerModal({
           <div className="flex flex-col items-center justify-center p-12 bg-slate-100 rounded-lg">
             <FileText className="h-24 w-24 text-blue-500 mb-4" />
             <p className="text-lg font-medium text-slate-700 mb-2">{file.filename}</p>
-            <p className="text-sm text-slate-500 mb-6">Anteprima Word non disponibile. Scarica il file per visualizzarlo.</p>
+            <p className="text-sm text-slate-500 mb-6">{t('chat_sidebar.preview_word_unavailable')}</p>
             <a
               href={file.url}
               download={file.filename}
               className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
             >
               <Download className="h-4 w-4" />
-              Scarica file Word
+              {t('chat_sidebar.download_word')}
             </a>
           </div>
         )
@@ -148,14 +150,14 @@ function FileViewerModal({
           <div className="flex flex-col items-center justify-center p-12 bg-slate-100 rounded-lg">
             <FileText className="h-24 w-24 text-orange-500 mb-4" />
             <p className="text-lg font-medium text-slate-700 mb-2">{file.filename}</p>
-            <p className="text-sm text-slate-500 mb-6">Anteprima PowerPoint non disponibile. Scarica il file per visualizzarlo.</p>
+            <p className="text-sm text-slate-500 mb-6">{t('chat_sidebar.preview_ppt_unavailable')}</p>
             <a
               href={file.url}
               download={file.filename}
               className="flex items-center gap-2 px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors"
             >
               <Download className="h-4 w-4" />
-              Scarica file PowerPoint
+              {t('chat_sidebar.download_ppt')}
             </a>
           </div>
         )
@@ -172,14 +174,14 @@ function FileViewerModal({
           <div className="flex flex-col items-center justify-center p-12 bg-slate-100 rounded-lg">
             <File className="h-24 w-24 text-slate-400 mb-4" />
             <p className="text-lg font-medium text-slate-700 mb-2">{file.filename}</p>
-            <p className="text-sm text-slate-500 mb-6">Anteprima non disponibile per questo tipo di file</p>
+            <p className="text-sm text-slate-500 mb-6">{t('chat_sidebar.preview_unavailable')}</p>
             <a
               href={file.url}
               download={file.filename}
               className="flex items-center gap-2 px-4 py-2 bg-[#181b1e] text-white rounded-lg hover:bg-[#0f1113] transition-colors"
             >
               <Download className="h-4 w-4" />
-              Scarica file
+              {t('chat_sidebar.download_file')}
             </a>
           </div>
         )
@@ -218,7 +220,7 @@ function FileViewerModal({
               target="_blank"
               rel="noopener noreferrer"
               className="p-2 text-slate-500 hover:text-[#181b1e] hover:bg-[#181b1e]/5 rounded-lg transition-colors"
-              title="Apri in nuova scheda"
+              title={t('chat_sidebar.open_new_tab')}
             >
               <ExternalLink className="h-4 w-4" />
             </a>
@@ -226,7 +228,7 @@ function FileViewerModal({
               href={file.url}
               download={file.filename}
               className="p-2 text-slate-500 hover:text-[#181b1e] hover:bg-[#181b1e]/5 rounded-lg transition-colors"
-              title="Scarica"
+              title={t('chat_sidebar.download')}
             >
               <Download className="h-4 w-4" />
             </a>
@@ -301,6 +303,7 @@ export default function ChatSidebar({
   onWidthChange,
   initialWidth = 380
 }: ChatSidebarProps) {
+  const { t } = useTranslation()
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [inputText, setInputText] = useState('')
   const [dragActive, setDragActive] = useState(false)
@@ -849,7 +852,7 @@ export default function ChatSidebar({
 
 
 
-  const containerClasses = `relative flex flex-col h-full bg-white border-l border-slate-200 overflow-hidden ${className || (isMobileView
+  const containerClasses = `relative flex flex-col h-full bg-white/80 backdrop-blur-xl border-l border-slate-200 overflow-hidden ${className || (isMobileView
     ? "w-full"
     : isPinned
       ? "relative"
@@ -937,7 +940,7 @@ export default function ChatSidebar({
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-1.5 mb-0.5">
-                  <span className="text-[10px] font-bold text-[#181b1e] uppercase">Nuovo Assistente</span>
+                  <span className="text-[10px] font-bold text-[#181b1e] uppercase">{t('chat_sidebar.new_assistant')}</span>
                 </div>
                 <p className="text-sm font-semibold text-slate-800 truncate">{data.name}</p>
                 {data.synopsis && (
@@ -965,7 +968,7 @@ export default function ChatSidebar({
         >
           <div className="flex items-center gap-2 mb-1">
             <Bell className="h-3 w-3 text-[#181b1e]" />
-            <span className="text-[10px] font-bold text-[#181b1e] uppercase">Notifica</span>
+            <span className="text-[10px] font-bold text-[#181b1e] uppercase">{t('chat_sidebar.notification')}</span>
           </div>
           <p className="text-xs font-semibold text-slate-800 group-hover:text-[#181b1e]">{content}</p>
         </div>
@@ -1092,8 +1095,8 @@ export default function ChatSidebar({
       return (
         <div className="flex-1 flex flex-col items-center justify-center text-slate-300 opacity-50 p-4">
           <MessagesSquare className="h-8 w-8 mb-2" />
-          <p className="text-[10px] font-medium uppercase text-center">Nessuna chat privata</p>
-          <p className="text-[9px] mt-1 text-center">Inizia una chat dalla lista studenti</p>
+          <p className="text-[10px] font-medium uppercase text-center">{t('chat_sidebar.no_private_chat')}</p>
+          <p className="text-[9px] mt-1 text-center">{t('chat_sidebar.start_chat_from_students')}</p>
         </div>
       )
     }
@@ -1157,7 +1160,7 @@ export default function ChatSidebar({
                 {currentChatMessages.length === 0 ? (
                   <div className="h-full flex flex-col items-center justify-center text-slate-300 opacity-50">
                     <MessageCircle className="h-6 w-6 mb-2" />
-                    <p className="text-[10px] font-medium uppercase">Inizia la conversazione</p>
+                    <p className="text-[10px] font-medium uppercase">{t('chat_sidebar.start_conversation')}</p>
                   </div>
                 ) : (
                   currentChatMessages.map((msg, idx) => renderMessage(msg, idx, currentChatMessages))
@@ -1167,7 +1170,7 @@ export default function ChatSidebar({
           ) : (
             <div className="flex-1 flex flex-col items-center justify-center text-slate-300 opacity-50 p-4">
               <MessageCircle className="h-6 w-6 mb-2" />
-              <p className="text-[10px] font-medium uppercase">Seleziona una chat</p>
+              <p className="text-[10px] font-medium uppercase">{t('chat_sidebar.select_chat')}</p>
             </div>
           )}
         </div>
@@ -1182,15 +1185,15 @@ export default function ChatSidebar({
         ref={scrollRef}
       >
         {loadingOlderPublicMessages && (
-          <div className="text-center text-[10px] text-slate-400 uppercase tracking-wider">Caricamento cronologia...</div>
+          <div className="text-center text-[10px] text-slate-400 uppercase tracking-wider">{t('chat_sidebar.loading_history')}</div>
         )}
         {!hasMorePublicMessages && messages.length > 0 && (
-          <div className="text-center text-[10px] text-slate-300 uppercase tracking-wider">Inizio chat</div>
+          <div className="text-center text-[10px] text-slate-300 uppercase tracking-wider">{t('chat_sidebar.chat_start')}</div>
         )}
         {messages.length === 0 && (
           <div className="h-full flex flex-col items-center justify-center text-slate-300 opacity-50">
             <MessageSquare className="h-8 w-8 mb-2" />
-            <p className="text-[10px] font-medium uppercase">Nessun messaggio</p>
+            <p className="text-[10px] font-medium uppercase">{t('chat_sidebar.no_messages')}</p>
           </div>
         )}
 
@@ -1207,7 +1210,7 @@ export default function ChatSidebar({
         </h3>
         {onlineUsers.length === 0 ? (
           <div className="text-center py-8 text-slate-400">
-            <p className="text-xs">Nessun utente online</p>
+            <p className="text-xs">{t('chat_sidebar.no_users_online')}</p>
           </div>
         ) : (
           onlineUsers.map(user => (
@@ -1605,19 +1608,19 @@ export default function ChatSidebar({
         <div className="p-3 space-y-3">
           {filesDropActive && (
             <div className="border-2 border-dashed border-[#181b1e]/40 bg-[#181b1e]/5/70 text-[#181b1e] rounded-xl p-6 text-center text-sm font-semibold">
-              Rilascia qui per condividere i file con la classe
+              {t('chat_sidebar.upload_hint')}
             </div>
           )}
 
           {isLoadingFiles && (
-            <div className="text-center py-8 text-slate-400 text-xs">Caricamento file...</div>
+            <div className="text-center py-8 text-slate-400 text-xs">{t('chat_sidebar.loading_files')}</div>
           )}
 
           {!isLoadingFiles && filteredFiles.length === 0 && (
             <div className="text-center py-10 text-slate-300">
               <Folder className="h-8 w-8 mx-auto mb-2" />
-              <p className="text-xs font-semibold uppercase tracking-wide">Nessun file</p>
-              <p className="text-[10px] mt-1">Carica file o cartelle per condividerli con la classe</p>
+              <p className="text-xs font-semibold uppercase tracking-wide">{t('chat_sidebar.no_files')}</p>
+              <p className="text-[10px] mt-1">{t('chat_sidebar.upload_hint')}</p>
             </div>
           )}
 
@@ -1860,7 +1863,7 @@ export default function ChatSidebar({
         <div className="absolute inset-0 bg-[#181b1e]/10 backdrop-blur-sm flex items-center justify-center z-50 border-4 border-dashed border-[#181b1e]/40 rounded-lg">
           <div className="text-center">
             <ImageIcon className="h-12 w-12 text-[#181b1e] mx-auto mb-2" />
-            <p className="text-sm font-semibold text-[#181b1e]">Trascina qui i file</p>
+            <p className="text-sm font-semibold text-[#181b1e]">{t('chat_sidebar.drop_files_here')}</p>
           </div>
         </div>
       )}

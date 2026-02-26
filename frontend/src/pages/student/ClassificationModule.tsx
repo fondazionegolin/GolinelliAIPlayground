@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback, useEffect, lazy, Suspense } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -37,6 +38,7 @@ const CLASS_COLORS = [
 
 
 export default function ClassificationModule() {
+  const { t } = useTranslation()
   const [mode, setMode] = useState<ClassificationMode | null>(null)
 
   if (!mode) {
@@ -46,7 +48,7 @@ export default function ClassificationModule() {
   return (
     <div className="space-y-4">
       <Button variant="ghost" onClick={() => setMode(null)} className="mb-2">
-        ← Cambia modalità
+        {t('classification.change_mode')}
       </Button>
       
       {mode === 'images' && <ImageClassification />}
@@ -57,34 +59,35 @@ export default function ClassificationModule() {
 }
 
 function ModeSelector({ onSelect }: { onSelect: (mode: ClassificationMode) => void }) {
+  const { t } = useTranslation()
   const modes = [
-    { 
-      key: 'images' as const, 
-      icon: Camera, 
-      title: 'Immagini', 
-      description: 'Classifica immagini dalla webcam in tempo reale',
+    {
+      key: 'images' as const,
+      icon: Camera,
+      title: t('classification.mode_images'),
+      description: t('classification.mode_images_desc'),
       color: 'bg-rose-100 text-rose-600 border-rose-200'
     },
-    { 
-      key: 'text' as const, 
-      icon: Type, 
-      title: 'Testo', 
-      description: 'Analisi del sentiment e classificazione testuale',
+    {
+      key: 'text' as const,
+      icon: Type,
+      title: t('classification.mode_text'),
+      description: t('classification.mode_text_desc'),
       color: 'bg-blue-100 text-blue-600 border-blue-200'
     },
-    { 
-      key: 'data' as const, 
-      icon: Database, 
-      title: 'Dati', 
-      description: 'Classificazione e regressione su dati tabellari CSV',
+    {
+      key: 'data' as const,
+      icon: Database,
+      title: t('classification.mode_data'),
+      description: t('classification.mode_data_desc'),
       color: 'bg-emerald-100 text-emerald-600 border-emerald-200'
     },
   ]
 
   return (
     <div className="p-6">
-      <h2 className="text-xl font-bold mb-2">Classificazione con Machine Learning</h2>
-      <p className="text-muted-foreground mb-6">Scegli il tipo di dati da classificare</p>
+      <h2 className="text-xl font-bold mb-2">{t('classification.title')}</h2>
+      <p className="text-muted-foreground mb-6">{t('classification.subtitle')}</p>
       
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {modes.map((m) => (
@@ -108,6 +111,7 @@ function ModeSelector({ onSelect }: { onSelect: (mode: ClassificationMode) => vo
 }
 
 function ImageClassification() {
+  const { t } = useTranslation()
   const [classes, setClasses] = useState<ImageClass[]>([
     { id: '1', name: 'Classe 1', samples: [], color: CLASS_COLORS[0] },
     { id: '2', name: 'Classe 2', samples: [], color: CLASS_COLORS[1] },
@@ -211,7 +215,7 @@ function ImageClassification() {
   const trainModel = async () => {
     const totalSamples = classes.reduce((sum, c) => sum + c.samples.length, 0)
     if (totalSamples < 10) {
-      alert('Raccogli almeno 10 samples totali per addestrare il modello')
+      alert(t('classification.min_samples_image'))
       return
     }
 
@@ -282,7 +286,7 @@ function ImageClassification() {
       
     } catch (err) {
       console.error('Training error:', err)
-      alert('Errore durante il training')
+      alert(t('classification.training_error'))
     } finally {
       setIsTraining(false)
     }
@@ -391,9 +395,9 @@ function ImageClassification() {
                 onClick={isPredicting ? stopPrediction : startPrediction}
               >
                 {isPredicting ? (
-                  <><Square className="h-4 w-4 mr-2" /> Stop Classificazione</>
+                  <><Square className="h-4 w-4 mr-2" /> {t('classification.stop')}</>
                 ) : (
-                  <><Play className="h-4 w-4 mr-2" /> Avvia Classificazione</>
+                  <><Play className="h-4 w-4 mr-2" /> {t('classification.start')}</>
                 )}
               </Button>
               <Button
@@ -401,7 +405,7 @@ function ImageClassification() {
                 className="w-full"
                 onClick={() => { setModel(null); stopPrediction() }}
               >
-                Reset Modello
+                {t('classification.reset_model')}
               </Button>
             </div>
           ) : (

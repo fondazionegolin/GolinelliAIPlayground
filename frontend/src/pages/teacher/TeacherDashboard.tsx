@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Routes, Route, useLocation } from 'react-router-dom'
 import ClassesPage from './ClassesPage'
 import SessionsPage from './SessionsPage'
@@ -10,16 +11,19 @@ import { TeacherNavbar } from '@/components/TeacherNavbar'
 import ChatSidebar from '@/components/ChatSidebar'
 import { teacherApi } from '@/lib/api'
 import { AppBackground } from '@/components/ui/AppBackground'
+import { getTeacherAccentTheme, DEFAULT_TEACHER_ACCENT, type TeacherAccentId } from '@/lib/teacherAccent'
+import { getAppBackgroundGradient } from '@/lib/theme'
 
 // Width below which the right class chat sidebar auto-hides.
 // Increase this value if you want earlier collapse.
 const CHATBAR_AUTO_HIDE_BREAKPOINT = 1280
 
 export default function TeacherDashboard() {
+  const { t } = useTranslation()
   const location = useLocation()
 
   // Sidebar State - always visible and pinned
-  const [teacherProfile, setTeacherProfile] = useState<{ id: string, name: string } | null>(null)
+  const [teacherProfile, setTeacherProfile] = useState<{ id: string, name: string, uiAccent?: TeacherAccentId } | null>(null)
   const [sidebarWidth, setSidebarWidth] = useState(380)
   const [showSidebar, setShowSidebar] = useState(false)
 
@@ -51,8 +55,8 @@ export default function TeacherDashboard() {
       teacherApi.getSessionLive(urlSessionId).then((res: { data: { session: { name?: string; title?: string; class_name?: string } } }) => {
         const sessionInfo = {
           id: urlSessionId,
-          name: res.data.session?.name || res.data.session?.title || 'Sessione',
-          className: res.data.session?.class_name || 'Classe'
+          name: res.data.session?.name || res.data.session?.title || t('navbar.no_session'),
+          className: res.data.session?.class_name || t('navbar.nav_classes')
         }
         setCurrentSession(sessionInfo)
         // Persist the session
@@ -86,11 +90,23 @@ export default function TeacherDashboard() {
         const res = await teacherApi.getProfile()
         setTeacherProfile({
           id: res.data.id,
-          name: `${res.data.first_name} ${res.data.last_name}`
+          name: `${res.data.first_name} ${res.data.last_name}`,
+          uiAccent: res.data.ui_accent || DEFAULT_TEACHER_ACCENT,
         })
       } catch (e) { console.error(e) }
     }
     loadProfile()
+
+    const handleProfileUpdate = (e: any) => {
+      const updated = e.detail
+      setTeacherProfile(prev => prev ? ({
+        ...prev,
+        name: `${updated.firstName} ${updated.lastName}`,
+        uiAccent: updated.uiAccent
+      }) : null)
+    }
+    window.addEventListener('teacherProfileUpdated', handleProfileUpdate)
+    return () => window.removeEventListener('teacherProfileUpdated', handleProfileUpdate)
   }, [])
 
   useEffect(() => {
@@ -104,8 +120,11 @@ export default function TeacherDashboard() {
     return () => window.removeEventListener('resize', handleResize)
   }, [])
 
+  const teacherTheme = getTeacherAccentTheme(teacherProfile?.uiAccent)
+  const bgGradient = getAppBackgroundGradient(teacherTheme)
+
   return (
-    <AppBackground className="h-screen flex flex-col overflow-hidden">
+    <AppBackground className="h-screen flex flex-col overflow-hidden" gradient={bgGradient}>
       <TeacherNavbar
         currentSession={currentSession}
         onSessionChange={(session) => {
@@ -156,8 +175,8 @@ export default function TeacherDashboard() {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
                   </svg>
                 </div>
-                <p className="text-sm font-medium text-slate-700 mb-1">Chat di Classe</p>
-                <p className="text-xs text-slate-400">Seleziona una sessione per visualizzare la chat.</p>
+                <p className="text-sm font-medium text-slate-700 mb-1">{t('teacher_dashboard.chat_title')}</p>
+                <p className="text-xs text-slate-400">{t('teacher_dashboard.chat_hint')}</p>
               </div>
             )}
           </div>

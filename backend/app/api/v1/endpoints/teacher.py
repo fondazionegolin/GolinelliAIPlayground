@@ -49,7 +49,7 @@ from app.schemas.invitation import (
 from app.services.education_level import SCHOOL_GRADE_OPTIONS
 
 router = APIRouter()
-TEACHER_ACCENTS = {"red", "indigo", "gray", "green", "slateblue"}
+TEACHER_ACCENTS = {"pink", "slate", "black", "indigo"}
 SCHOOL_GRADES = set(SCHOOL_GRADE_OPTIONS)
 
 

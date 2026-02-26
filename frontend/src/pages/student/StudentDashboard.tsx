@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useAuthStore } from '@/stores/auth'
@@ -20,7 +21,8 @@ import { StudentNavbar } from '@/components/StudentNavbar'
 import { useMobile, useKeyboard } from '@/hooks/useMobile'
 import { useSwipeBack } from '@/hooks/useSwipeBack'
 import { AppBackground } from '@/components/ui/AppBackground'
-import { loadStudentAccent, type StudentAccentId } from '@/lib/studentAccent'
+import { getStudentAccentTheme, loadStudentAccent, type StudentAccentId } from '@/lib/studentAccent'
+import { getAppBackgroundGradient } from '@/lib/theme'
 
 interface SessionInfo {
   session: {
@@ -40,7 +42,7 @@ interface SessionInfo {
   }>
 }
 
-const moduleConfig: Record<string, {
+type ModuleConfig = {
   label: string
   description: string
   icon: typeof Bot
@@ -48,60 +50,57 @@ const moduleConfig: Record<string, {
   bgClass: string
   borderClass: string
   shadowClass: string
-}> = {
-  chatbot: {
-    label: 'Chatbot AI',
-    description: 'Il tuo assistente personale intelligente. Chiedi aiuto, genera idee o fatti spiegare concetti complessi.',
-    icon: Bot,
-    colorClass: 'text-indigo-600',
-    bgClass: 'bg-indigo-500/5 hover:bg-indigo-500/10',
-    borderClass: 'border-indigo-500/20 hover:border-indigo-500/40',
-    shadowClass: 'shadow-indigo-100/30',
-  },
-  classification: {
-    label: 'ML Lab',
-    description: 'Laboratorio di Machine Learning. Addestra modelli per classificare testi e immagini in tempo reale.',
-    icon: Brain,
-    colorClass: 'text-emerald-600',
-    bgClass: 'bg-emerald-500/5 hover:bg-emerald-500/10',
-    borderClass: 'border-emerald-500/20 hover:border-emerald-500/40',
-    shadowClass: 'shadow-emerald-100/30',
-  },
-  documents: {
-    label: 'Editor Documenti',
-    description: 'Crea documenti e presentazioni. Invia i tuoi lavori al docente per la revisione.',
-    icon: FileEdit,
-    colorClass: 'text-violet-600',
-    bgClass: 'bg-violet-500/5 hover:bg-violet-500/10',
-    borderClass: 'border-violet-500/20 hover:border-violet-500/40',
-    shadowClass: 'shadow-violet-100/30',
-  },
-  self_assessment: {
-    label: 'Quiz & Badge',
-    description: 'Mettiti alla prova! Completa quiz, ottieni badge e traccia i tuoi progressi nell\'apprendimento.',
-    icon: Award,
-    colorClass: 'text-orange-600',
-    bgClass: 'bg-orange-500/5 hover:bg-orange-500/10',
-    borderClass: 'border-orange-500/20 hover:border-orange-500/40',
-    shadowClass: 'shadow-orange-100/30',
-  },
-  chat: {
-    label: 'Chat Classe',
-    description: 'Comunica con la tua classe.',
+}
+
+function getModuleConfig(t: (key: string) => string): Record<string, ModuleConfig> {
+  const chatEntry: ModuleConfig = {
+    label: t('student_dashboard.chat_label'),
+    description: t('student_dashboard.chat_desc'),
     icon: MessageSquare,
     colorClass: 'text-sky-600',
     bgClass: 'bg-sky-500/5',
     borderClass: 'border-sky-500/20',
     shadowClass: 'shadow-sky-100/30',
-  },
-  classe: {
-    label: 'Chat Classe',
-    description: 'Comunica con la tua classe.',
-    icon: MessageSquare,
-    colorClass: 'text-sky-600',
-    bgClass: 'bg-sky-500/5',
-    borderClass: 'border-sky-500/20',
-    shadowClass: 'shadow-sky-100/30',
+  }
+  return {
+    chatbot: {
+      label: t('student_dashboard.chatbot_label'),
+      description: t('student_dashboard.chatbot_desc'),
+      icon: Bot,
+      colorClass: 'text-indigo-600',
+      bgClass: 'bg-indigo-500/5 hover:bg-indigo-500/10',
+      borderClass: 'border-indigo-500/20 hover:border-indigo-500/40',
+      shadowClass: 'shadow-indigo-100/30',
+    },
+    classification: {
+      label: t('student_dashboard.ml_label'),
+      description: t('student_dashboard.ml_desc'),
+      icon: Brain,
+      colorClass: 'text-emerald-600',
+      bgClass: 'bg-emerald-500/5 hover:bg-emerald-500/10',
+      borderClass: 'border-emerald-500/20 hover:border-emerald-500/40',
+      shadowClass: 'shadow-emerald-100/30',
+    },
+    documents: {
+      label: t('student_dashboard.docs_label'),
+      description: t('student_dashboard.docs_desc'),
+      icon: FileEdit,
+      colorClass: 'text-violet-600',
+      bgClass: 'bg-violet-500/5 hover:bg-violet-500/10',
+      borderClass: 'border-violet-500/20 hover:border-violet-500/40',
+      shadowClass: 'shadow-violet-100/30',
+    },
+    self_assessment: {
+      label: t('student_dashboard.quiz_label'),
+      description: t('student_dashboard.quiz_desc'),
+      icon: Award,
+      colorClass: 'text-orange-600',
+      bgClass: 'bg-orange-500/5 hover:bg-orange-500/10',
+      borderClass: 'border-orange-500/20 hover:border-orange-500/40',
+      shadowClass: 'shadow-orange-100/30',
+    },
+    chat: chatEntry,
+    classe: chatEntry,
   }
 }
 
@@ -113,6 +112,8 @@ const pageVariants = {
 }
 
 export default function StudentDashboard() {
+  const { t } = useTranslation()
+  const moduleConfig = getModuleConfig(t)
   const { studentSession, logout } = useAuthStore()
   const navigate = useNavigate()
   const location = useLocation()
@@ -268,8 +269,11 @@ export default function StudentDashboard() {
 
   const headerConfig = getHeaderConfig()
 
+  const studentTheme = getStudentAccentTheme(loadStudentAccent())
+  const bgGradient = getAppBackgroundGradient(studentTheme)
+
   return (
-    <AppBackground className="h-[100dvh] flex flex-col">
+    <AppBackground className="h-[100dvh] flex flex-col" gradient={bgGradient}>
       {/* Desktop Navbar - hidden on mobile */}
       <div className="hidden md:block h-16 flex-shrink-0">
         <StudentNavbar
@@ -336,7 +340,7 @@ export default function StudentDashboard() {
                         className="gap-2 pl-0 hover:bg-transparent text-slate-600"
                         onClick={() => setActiveModule(null)}
                       >
-                        ← Torna alla home
+                        ← {t('student_dashboard.back_home')}
                       </Button>
                     </div>
                   )}
@@ -411,6 +415,9 @@ function HomeView({
   lastDocument: string | null
   isMobile: boolean
 }) {
+  const { t } = useTranslation()
+  const moduleConfig = getModuleConfig(t)
+
   // Quick start AI profiles
   const quickStartProfiles = [
     { key: 'tutor', label: 'Tutor', icon: '📚' },
@@ -423,9 +430,9 @@ function HomeView({
       <div className="space-y-4 pb-20 animate-in fade-in slide-in-from-bottom-4 duration-300">
         {/* Welcome Banner */}
         <div className="bg-gradient-to-br from-fuchsia-500 via-purple-500 to-violet-600 rounded-2xl p-5 text-white shadow-lg shadow-fuchsia-200/50">
-          <h2 className="text-xl font-bold mb-1">Ciao, {sessionInfo.student.nickname}! 👋</h2>
+          <h2 className="text-xl font-bold mb-1">{t('student_dashboard.welcome', { name: sessionInfo.student.nickname })} 👋</h2>
           <p className="text-fuchsia-100 text-sm opacity-90">
-            Pronto per una nuova sessione di apprendimento?
+            {t('student_dashboard.welcome_body_mobile')}
           </p>
         </div>
 
@@ -440,12 +447,12 @@ function HomeView({
             <div className="w-10 h-10 rounded-xl bg-orange-500/10 flex items-center justify-center mb-3 group-active:bg-orange-500/20 transition-colors">
               <ClipboardList className="h-5 w-5 text-orange-600" />
             </div>
-            <h3 className="font-semibold text-slate-800 text-sm">Compiti</h3>
+            <h3 className="font-semibold text-slate-800 text-sm">{t('student_dashboard.tasks_label')}</h3>
             <p className="text-xs text-slate-500 mt-0.5">
               {pendingTasksCount > 0 ? (
-                <span className="text-orange-600 font-medium">{pendingTasksCount} da fare</span>
+                <span className="text-orange-600 font-medium">{t('student_dashboard.tasks_pending', { count: pendingTasksCount })}</span>
               ) : (
-                'Tutto fatto!'
+                t('student_dashboard.tasks_all_done')
               )}
             </p>
             <ChevronRight className="h-4 w-4 text-slate-300 absolute top-4 right-3" />
@@ -460,9 +467,9 @@ function HomeView({
             <div className="w-10 h-10 rounded-xl bg-violet-500/10 flex items-center justify-center mb-3 group-active:bg-violet-500/20 transition-colors">
               <FileText className="h-5 w-5 text-violet-600" />
             </div>
-            <h3 className="font-semibold text-slate-800 text-sm">Documenti</h3>
+            <h3 className="font-semibold text-slate-800 text-sm">{t('student_dashboard.docs_label')}</h3>
             <p className="text-xs text-slate-500 mt-0.5 truncate">
-              {lastDocument || 'I tuoi lavori'}
+              {lastDocument || t('student_dashboard.docs_your_work')}
             </p>
             <ChevronRight className="h-4 w-4 text-slate-300 absolute top-4 right-3" />
           </motion.button>
@@ -491,11 +498,11 @@ function HomeView({
 
         {/* Module Grid for remaining modules */}
         <div className="space-y-3">
-          <h3 className="font-semibold text-slate-700 text-sm px-1">Esplora</h3>
+          <h3 className="font-semibold text-slate-700 text-sm px-1">{t('student_dashboard.explore')}</h3>
           {enabledModules.filter(k => !['self_assessment', 'documents'].includes(k)).map((moduleKey) => {
             const config = moduleConfig[moduleKey] || {
               label: moduleKey,
-              description: 'Modulo attivo',
+              description: t('student_dashboard.module_active'),
               icon: Bot,
               colorClass: 'text-slate-600',
               bgClass: 'bg-white',
@@ -531,22 +538,22 @@ function HomeView({
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500 max-w-5xl mx-auto w-full pt-4">
       {/* Welcome Banner Mobile */}
       <div className="md:hidden bg-gradient-to-br from-fuchsia-600 to-purple-600 rounded-3xl p-6 text-white shadow-lg shadow-fuchsia-200 mb-8">
-        <h2 className="text-2xl font-bold mb-2">Ciao, {sessionInfo.student.nickname}!</h2>
+        <h2 className="text-2xl font-bold mb-2">{t('student_dashboard.welcome', { name: sessionInfo.student.nickname })}!</h2>
         <p className="text-fuchsia-100 opacity-90 text-sm">
-          Benvenuto nella tua area di apprendimento AI. Seleziona un modulo per iniziare.
+          {t('student_dashboard.welcome_desktop')}
         </p>
       </div>
 
       <div className="px-1">
-        <h2 className="text-2xl font-bold text-slate-800 mb-2">Strumenti disponibili</h2>
-        <p className="text-slate-500 mb-6">Seleziona un'attività per iniziare il tuo percorso.</p>
+        <h2 className="text-2xl font-bold text-slate-800 mb-2">{t('student_dashboard.tools_title')}</h2>
+        <p className="text-slate-500 mb-6">{t('student_dashboard.tools_subtitle')}</p>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {enabledModules.map((moduleKey) => {
           const config = moduleConfig[moduleKey] || {
             label: moduleKey,
-            description: 'Modulo attivo',
+            description: t('student_dashboard.module_active'),
             icon: Bot,
             colorClass: 'text-slate-600',
             bgClass: 'bg-white',
@@ -578,7 +585,7 @@ function HomeView({
                 </div>
 
                 <div className="mt-auto pt-4 flex items-center text-sm font-semibold opacity-0 group-hover:opacity-100 transition-all transform translate-y-2 group-hover:translate-y-0">
-                  <span className={config.colorClass}>Inizia ora</span>
+                  <span className={config.colorClass}>{t('student_dashboard.start_now')}</span>
                   <svg className={`w-4 h-4 ml-2 ${config.colorClass}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8l4 4m0 0l-4 4m4-4H3" />
                   </svg>
@@ -604,6 +611,7 @@ function ModuleView({ moduleKey, sessionId, openTaskId, studentId, studentName, 
   openDocumentTaskId?: string | null;
   onOpenDocument?: (taskId: string) => void;
 }) {
+  const { t } = useTranslation()
   // Class chat module - full screen ChatSidebar
   if (moduleKey === 'classe' || moduleKey === 'chat') {
     return (
@@ -612,7 +620,7 @@ function ModuleView({ moduleKey, sessionId, openTaskId, studentId, studentName, 
           sessionId={sessionId}
           userType="student"
           currentUserId={studentId || ''}
-          currentUserName={studentName || 'Studente'}
+          currentUserName={studentName || t('student_dashboard.student_default')}
           studentAccent={studentAccent}
           isMobileView={true}
           className="h-full"

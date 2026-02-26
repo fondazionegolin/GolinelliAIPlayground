@@ -6,6 +6,7 @@ import { useToast } from '@/components/ui/use-toast'
 import { Switch } from '@/components/ui/switch'
 import { teacherbotsApi, teacherApi } from '@/lib/api'
 import { TeacherbotPromptOptimizer } from './TeacherbotPromptOptimizer'
+import { useTranslation } from 'react-i18next'
 
 interface TeacherbotFormProps {
   teacherbotId?: string
@@ -33,6 +34,7 @@ const COLORS = ['indigo', 'blue', 'green', 'purple', 'pink', 'orange', 'teal', '
 
 export default function TeacherbotForm({ teacherbotId, onBack, onSaved }: TeacherbotFormProps) {
   const { toast } = useToast()
+  const { t } = useTranslation()
   const queryClient = useQueryClient()
   const isEditing = !!teacherbotId
 
@@ -120,12 +122,12 @@ export default function TeacherbotForm({ teacherbotId, onBack, onSaved }: Teache
       }
     },
     onSuccess: () => {
-      toast({ title: isEditing ? 'Teacherbot aggiornato' : 'Teacherbot creato' })
+      toast({ title: isEditing ? t('teacherbot.updated') : t('teacherbot.created') })
       queryClient.invalidateQueries({ queryKey: ['teacherbots'] })
       onSaved()
     },
     onError: () => {
-      toast({ title: 'Errore', description: 'Impossibile salvare il teacherbot', variant: 'destructive' })
+      toast({ title: t('common.error'), description: t('teacherbot.save_error'), variant: 'destructive' })
     },
   })
 
@@ -134,14 +136,14 @@ export default function TeacherbotForm({ teacherbotId, onBack, onSaved }: Teache
       return teacherbotsApi.publish(teacherbotId!, classId)
     },
     onSuccess: () => {
-      toast({ title: 'Teacherbot pubblicato', description: 'Gli studenti possono ora interagire con questo assistente' })
+      toast({ title: t('teacherbot.published'), description: t('teacherbot.published_body') })
       queryClient.invalidateQueries({ queryKey: ['teacherbot-publications', teacherbotId] })
       setShowPublishModal(false)
       setSelectedClassId(null)
     },
     onError: (error: any) => {
-      const msg = error.response?.data?.detail || 'Impossibile pubblicare il teacherbot'
-      toast({ title: 'Errore', description: msg, variant: 'destructive' })
+      const msg = error.response?.data?.detail || t('teacherbot.publish_error')
+      toast({ title: t('common.error'), description: msg, variant: 'destructive' })
     },
   })
 
@@ -150,18 +152,18 @@ export default function TeacherbotForm({ teacherbotId, onBack, onSaved }: Teache
       return teacherbotsApi.unpublish(teacherbotId!, publicationId)
     },
     onSuccess: () => {
-      toast({ title: 'Pubblicazione rimossa' })
+      toast({ title: t('teacherbot.unpublished') })
       queryClient.invalidateQueries({ queryKey: ['teacherbot-publications', teacherbotId] })
     },
     onError: () => {
-      toast({ title: 'Errore', description: 'Impossibile rimuovere la pubblicazione', variant: 'destructive' })
+      toast({ title: t('common.error'), description: t('teacherbot.unpublish_error'), variant: 'destructive' })
     },
   })
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     if (!formData.name.trim() || !formData.system_prompt.trim()) {
-      toast({ title: 'Errore', description: 'Nome e System Prompt sono obbligatori', variant: 'destructive' })
+      toast({ title: t('common.error'), description: t('teacherbot.name_required'), variant: 'destructive' })
       return
     }
     saveMutation.mutate(formData)
@@ -245,11 +247,11 @@ export default function TeacherbotForm({ teacherbotId, onBack, onSaved }: Teache
       <div className="flex items-center gap-4 mb-4 flex-shrink-0">
         <Button variant="ghost" onClick={onBack} className="text-slate-600">
           <ArrowLeft className="h-4 w-4 mr-2" />
-          Indietro
+          {t('common.back')}
         </Button>
         <div className="flex-1">
           <h2 className="text-lg font-bold text-slate-800">
-            {isEditing ? 'Modifica Teacherbot' : 'Nuovo Teacherbot'}
+            {isEditing ? t('teacherbot.edit_teacherbot') : t('teacherbot.new_teacherbot')}
           </h2>
         </div>
         {isEditing && (
@@ -259,7 +261,7 @@ export default function TeacherbotForm({ teacherbotId, onBack, onSaved }: Teache
             className="text-[#181b1e] border-[#181b1e]/20 hover:bg-[#181b1e]/5"
           >
             <Globe className="h-4 w-4 mr-2" />
-            Pubblica
+            {t('teacherbot.publish_btn')}
           </Button>
         )}
       </div>
@@ -270,7 +272,7 @@ export default function TeacherbotForm({ teacherbotId, onBack, onSaved }: Teache
           {/* Left Column - Basic Info */}
           <div className="space-y-6">
             <div className="bg-white rounded-xl border border-slate-200 p-5">
-              <h3 className="font-semibold text-slate-800 mb-4">Informazioni Base</h3>
+              <h3 className="font-semibold text-slate-800 mb-4">{t('teacherbot.basic_info')}</h3>
 
               <div className="space-y-4">
                 <div>
@@ -289,7 +291,7 @@ export default function TeacherbotForm({ teacherbotId, onBack, onSaved }: Teache
 
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-1">
-                    Sinossi (breve descrizione)
+                    {t('teacherbot.synopsis_label')}
                   </label>
                   <input
                     type="text"
@@ -302,7 +304,7 @@ export default function TeacherbotForm({ teacherbotId, onBack, onSaved }: Teache
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">Colore</label>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">{t('teacherbot.color_label')}</label>
                   <div className="flex gap-2 flex-wrap">
                     {COLORS.map((color) => (
                       <button
@@ -319,13 +321,13 @@ export default function TeacherbotForm({ teacherbotId, onBack, onSaved }: Teache
 
             {/* Options */}
             <div className="bg-white rounded-xl border border-slate-200 p-5">
-              <h3 className="font-semibold text-slate-800 mb-4">Opzioni</h3>
+              <h3 className="font-semibold text-slate-800 mb-4">{t('teacherbot.options_section')}</h3>
 
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <label className="font-medium text-slate-700">Proattivo</label>
-                    <p className="text-sm text-slate-500">Il bot si presenta e inizia con una domanda</p>
+                    <label className="font-medium text-slate-700">{t('teacherbot.proactive')}</label>
+                    <p className="text-sm text-slate-500">{t('teacherbot.proactive_desc')}</p>
                   </div>
                   <Switch
                     checked={formData.is_proactive}
@@ -336,13 +338,13 @@ export default function TeacherbotForm({ teacherbotId, onBack, onSaved }: Teache
                 {formData.is_proactive && (
                   <div className="ml-1 pl-4 border-l-2 border-[#181b1e]/15 animate-in slide-in-from-top-2">
                     <label className="block text-sm font-medium text-slate-700 mb-1">
-                      Messaggio iniziale
+                      {t('teacherbot.initial_message_label')}
                     </label>
                     <textarea
                       value={formData.proactive_message}
                       onChange={(e) => setFormData({ ...formData, proactive_message: e.target.value })}
                       className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-[#181b1e] focus:border-transparent"
-                      placeholder="es. Ciao! Sono qui per aiutarti con la matematica. Su quale argomento vorresti lavorare oggi?"
+                      placeholder={t('teacherbot.initial_message_placeholder')}
                       rows={2}
                     />
                   </div>
@@ -351,8 +353,8 @@ export default function TeacherbotForm({ teacherbotId, onBack, onSaved }: Teache
                 <div className="pt-4 border-t border-slate-100">
                   <div className="flex items-center justify-between">
                     <div>
-                      <label className="font-medium text-slate-700">Reporting</label>
-                      <p className="text-sm text-slate-500">Genera report automatici delle conversazioni</p>
+                      <label className="font-medium text-slate-700">{t('teacherbot.reporting')}</label>
+                      <p className="text-sm text-slate-500">{t('teacherbot.reporting_desc')}</p>
                     </div>
                     <Switch
                       checked={formData.enable_reporting}
@@ -364,13 +366,13 @@ export default function TeacherbotForm({ teacherbotId, onBack, onSaved }: Teache
                 {formData.enable_reporting && (
                   <div className="ml-1 pl-4 border-l-2 border-[#181b1e]/15 animate-in slide-in-from-top-2">
                     <label className="block text-sm font-medium text-slate-700 mb-1">
-                      Prompt per il report (opzionale)
+                      {t('teacherbot.report_prompt_label')}
                     </label>
                     <textarea
                       value={formData.report_prompt}
                       onChange={(e) => setFormData({ ...formData, report_prompt: e.target.value })}
                       className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-[#181b1e] focus:border-transparent text-sm"
-                      placeholder="Lascia vuoto per usare il prompt predefinito"
+                      placeholder={t('teacherbot.report_prompt_placeholder')}
                       rows={3}
                     />
                   </div>
@@ -378,7 +380,7 @@ export default function TeacherbotForm({ teacherbotId, onBack, onSaved }: Teache
 
                 <div className="pt-4 border-t border-slate-100">
                   <label className="block text-sm font-medium text-slate-700 mb-2">
-                    Temperatura: {formData.temperature.toFixed(1)}
+                    {t('teacherbot.temperature_label', { value: formData.temperature.toFixed(1) })}
                   </label>
                   <input
                     type="range"
@@ -390,8 +392,8 @@ export default function TeacherbotForm({ teacherbotId, onBack, onSaved }: Teache
                     className="w-full"
                   />
                   <div className="flex justify-between text-xs text-slate-400 mt-1">
-                    <span>Preciso</span>
-                    <span>Creativo</span>
+                    <span>{t('teacherbot.temp_precise')}</span>
+                    <span>{t('teacherbot.temp_creative')}</span>
                   </div>
                 </div>
               </div>
@@ -404,10 +406,10 @@ export default function TeacherbotForm({ teacherbotId, onBack, onSaved }: Teache
               System Prompt <span className="text-red-500">*</span>
             </h3>
             <p className="text-sm text-slate-500 mb-4">
-              Definisci la personalità e il comportamento del tuo assistente.
+              {t('teacherbot.system_prompt_desc', 'Define the personality and behaviour of your assistant.')}
               <br />
               <span className="text-[#181b1e] text-xs italic">
-                💡 Suggerimento: Seleziona del testo per attivare l'ottimizzatore AI.
+                {t('teacherbot.system_prompt_tip')}
               </span>
             </p>
 
@@ -443,7 +445,7 @@ Il tuo obiettivo è:
         {/* Save Button */}
         <div className="mt-4 pt-4 pb-4 flex justify-end gap-3 border-t border-slate-200 bg-white/95 backdrop-blur-sm sticky bottom-0">
           <Button type="button" variant="outline" onClick={onBack}>
-            Annulla
+            {t('common.cancel')}
           </Button>
           <Button
             type="submit"
@@ -455,7 +457,7 @@ Il tuo obiettivo è:
             ) : (
               <Save className="h-4 w-4 mr-2" />
             )}
-            {isEditing ? 'Salva modifiche' : 'Crea Teacherbot'}
+            {isEditing ? t('teacherbot.save_changes') : t('teacherbot.create_btn')}
           </Button>
         </div>
       </form>
@@ -465,20 +467,20 @@ Il tuo obiettivo è:
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl p-6 w-full max-w-md shadow-2xl">
             <div className="flex justify-between items-center mb-4">
-              <h3 className="text-lg font-bold text-slate-800">Pubblica Teacherbot</h3>
+              <h3 className="text-lg font-bold text-slate-800">{t('teacherbot.publish_title')}</h3>
               <Button variant="ghost" size="icon" onClick={() => setShowPublishModal(false)}>
                 <X className="h-5 w-5" />
               </Button>
             </div>
 
             <p className="text-sm text-slate-600 mb-4">
-              Seleziona la classe in cui pubblicare questo assistente. Gli studenti potranno interagire con il bot durante le sessioni.
+              {t('teacherbot.publish_desc')}
             </p>
 
             {/* Current publications */}
             {publications && publications.filter((p: any) => p.is_active).length > 0 && (
               <div className="mb-4">
-                <label className="block text-sm font-medium text-slate-700 mb-2">Pubblicato su:</label>
+                <label className="block text-sm font-medium text-slate-700 mb-2">{t('teacherbot.published_on')}</label>
                 <div className="space-y-2">
                   {publications.filter((p: any) => p.is_active).map((pub: any) => (
                     <div key={pub.id} className="flex items-center justify-between p-2 bg-green-50 rounded-lg border border-green-200">
@@ -492,7 +494,7 @@ Il tuo obiettivo è:
                         className="text-red-600 hover:bg-red-50"
                         onClick={() => unpublishMutation.mutate(pub.id)}
                       >
-                        Rimuovi
+                        {t('teacherbot.remove_btn')}
                       </Button>
                     </div>
                   ))}
@@ -514,20 +516,20 @@ Il tuo obiettivo è:
                 >
                   <div className="font-medium text-slate-800">{cls.name}</div>
                   <div className="text-xs text-slate-500">
-                    {cls.role === 'owner' ? 'Proprietario' : `Condivisa da ${cls.owner_name}`}
+                    {cls.role === 'owner' ? t('teacherbot.owner') : t('teacherbot.shared_by', { name: cls.owner_name })}
                   </div>
                 </button>
               ))}
               {classes?.filter((c: any) => !publishedClassIds.has(c.id)).length === 0 && (
                 <p className="text-center text-sm text-slate-400 py-4">
-                  Tutte le classi sono già state pubblicate
+                  {t('teacherbot.all_published')}
                 </p>
               )}
             </div>
 
             <div className="flex justify-end gap-2">
               <Button variant="ghost" onClick={() => setShowPublishModal(false)}>
-                Chiudi
+                {t('common.close')}
               </Button>
               <Button
                 onClick={handlePublish}
@@ -539,7 +541,7 @@ Il tuo obiettivo è:
                 ) : (
                   <Globe className="h-4 w-4 mr-2" />
                 )}
-                Pubblica
+                {t('teacherbot.publish_btn')}
               </Button>
             </div>
           </div>

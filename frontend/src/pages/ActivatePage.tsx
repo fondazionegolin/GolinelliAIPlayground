@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -19,6 +20,7 @@ interface ActivationInfo {
 }
 
 export default function ActivatePage() {
+  const { t } = useTranslation()
   const { token } = useParams<{ token: string }>()
   const navigate = useNavigate()
   const { toast } = useToast()
@@ -38,7 +40,7 @@ export default function ActivatePage() {
   useEffect(() => {
     const fetchActivationInfo = async () => {
       if (!token) {
-        setError('Token non valido')
+        setError(t('activate.invalid_token'))
         setLoading(false)
         return
       }
@@ -49,11 +51,11 @@ export default function ActivatePage() {
       } catch (err: unknown) {
         const error = err as { response?: { status?: number; data?: { detail?: string } } }
         if (error.response?.status === 404) {
-          setError('Link non valido o già utilizzato')
+          setError(t('activate.invalid_link'))
         } else if (error.response?.status === 410) {
-          setError('Il link di attivazione è scaduto')
+          setError(t('activate.expired_link'))
         } else {
-          setError(error.response?.data?.detail || 'Errore nel caricamento')
+          setError(error.response?.data?.detail || t('activate.load_error'))
         }
       } finally {
         setLoading(false)
@@ -69,8 +71,8 @@ export default function ActivatePage() {
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
       toast({
-        title: 'Password copiata',
-        description: 'La password è stata copiata negli appunti',
+        title: t('activate.password_copied_title'),
+        description: t('activate.password_copied_body'),
       })
     }
   }
@@ -81,8 +83,8 @@ export default function ActivatePage() {
     if (newPassword !== confirmPassword) {
       toast({
         variant: 'destructive',
-        title: 'Errore',
-        description: 'Le password non corrispondono',
+        title: t('common.error'),
+        description: t('activate.password_mismatch'),
       })
       return
     }
@@ -90,8 +92,8 @@ export default function ActivatePage() {
     if (newPassword.length < 8) {
       toast({
         variant: 'destructive',
-        title: 'Errore',
-        description: 'La password deve essere di almeno 8 caratteri',
+        title: t('common.error'),
+        description: t('activate.password_too_short'),
       })
       return
     }
@@ -105,15 +107,15 @@ export default function ActivatePage() {
 
       setPasswordChanged(true)
       toast({
-        title: 'Password aggiornata',
-        description: 'Ora puoi accedere con la nuova password',
+        title: t('activate.password_updated_title'),
+        description: t('activate.password_updated_body'),
       })
     } catch (err: unknown) {
       const error = err as { response?: { data?: { detail?: string } } }
       toast({
         variant: 'destructive',
-        title: 'Errore',
-        description: error.response?.data?.detail || 'Errore nel cambio password',
+        title: t('common.error'),
+        description: error.response?.data?.detail || t('activate.password_change_error'),
       })
     } finally {
       setChangingPassword(false)
@@ -126,7 +128,7 @@ export default function ActivatePage() {
         <Card className="w-full max-w-md">
           <CardContent className="pt-6 flex flex-col items-center gap-4">
             <Loader2 className="h-8 w-8 animate-spin text-primary" />
-            <p className="text-muted-foreground">Caricamento...</p>
+            <p className="text-muted-foreground">{t('common.loading')}</p>
           </CardContent>
         </Card>
       </AppBackground>
@@ -138,12 +140,12 @@ export default function ActivatePage() {
       <AppBackground className="min-h-screen flex items-center justify-center p-4">
         <Card className="w-full max-w-md">
           <CardHeader>
-            <CardTitle className="text-destructive">Errore</CardTitle>
+            <CardTitle className="text-destructive">{t('common.error')}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <p className="text-muted-foreground">{error}</p>
             <Button onClick={() => navigate('/login')} className="w-full">
-              Vai al login
+              {t('activate.go_to_login')}
             </Button>
           </CardContent>
         </Card>
@@ -161,14 +163,14 @@ export default function ActivatePage() {
                 <Check className="h-8 w-8 text-green-600" />
               </div>
             </div>
-            <CardTitle className="text-center">Password Aggiornata!</CardTitle>
+            <CardTitle className="text-center">{t('activate.success_title')}</CardTitle>
             <CardDescription className="text-center">
-              Il tuo account è pronto. Ora puoi accedere con la nuova password.
+              {t('activate.success_desc')}
             </CardDescription>
           </CardHeader>
           <CardContent>
             <Button onClick={() => navigate('/login')} className="w-full">
-              Vai al login
+              {t('activate.go_to_login')}
             </Button>
           </CardContent>
         </Card>
@@ -182,25 +184,25 @@ export default function ActivatePage() {
         <div className="text-center">
           <div className="flex items-center justify-center gap-4 mb-2">
             <LogoMark className="h-12 w-12" />
-            <span className="text-[28px] leading-[1.15] tracking-wide text-left pb-[1px]">
+            <span className="text-[28px] leading-[1.15] tracking-tight text-left pb-[1px]" style={{ fontFamily: '"SofiaPro"' }}>
               <span className="font-bold text-[#2d2d2d]/85">
                 Golinelli
               </span>
               <span className="font-black text-[#e85c8d]">.ai</span>
             </span>
           </div>
-          <h1 className="text-3xl font-bold text-gray-900">Attivazione Account</h1>
-          <p className="text-gray-600 mt-2">Benvenuto/a, {info?.first_name}!</p>
+          <h1 className="text-3xl font-bold text-gray-900">{t('activate.title')}</h1>
+          <p className="text-gray-600 mt-2">{t('activate.welcome', { name: info?.first_name })}</p>
         </div>
 
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <KeyRound className="h-5 w-5" />
-              Le tue credenziali
+              {t('activate.credentials_title')}
             </CardTitle>
             <CardDescription>
-              Queste sono le credenziali per accedere alla piattaforma
+              {t('activate.credentials_desc')}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -212,7 +214,7 @@ export default function ActivatePage() {
             </div>
 
             <div className="space-y-2">
-              <Label>Password temporanea</Label>
+              <Label>{t('activate.temp_password')}</Label>
               <div className="flex gap-2">
                 <div className="flex-1 p-3 bg-muted rounded-md font-mono text-sm flex items-center">
                   {showPassword ? info?.temporary_password : '••••••••••••'}
@@ -236,7 +238,7 @@ export default function ActivatePage() {
 
             {info?.is_used && (
               <p className="text-sm text-amber-600 bg-amber-50 p-3 rounded-md">
-                ⚠️ La password è già stata cambiata. Puoi comunque cambiarla di nuovo.
+                ⚠️ {t('activate.password_already_changed')}
               </p>
             )}
           </CardContent>
@@ -244,32 +246,32 @@ export default function ActivatePage() {
 
         <Card>
           <CardHeader>
-            <CardTitle>Cambia Password</CardTitle>
+            <CardTitle>{t('activate.change_password_title')}</CardTitle>
             <CardDescription>
-              Ti consigliamo di impostare una password personale
+              {t('activate.change_password_desc')}
             </CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleChangePassword} className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="newPassword">Nuova password</Label>
+                <Label htmlFor="newPassword">{t('activate.new_password_label')}</Label>
                 <Input
                   id="newPassword"
                   type="password"
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
-                  placeholder="Minimo 8 caratteri"
+                  placeholder={t('activate.min_chars')}
                   required
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="confirmPassword">Conferma password</Label>
+                <Label htmlFor="confirmPassword">{t('activate.confirm_password_label')}</Label>
                 <Input
                   id="confirmPassword"
                   type="password"
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
-                  placeholder="Ripeti la password"
+                  placeholder={t('activate.repeat_password')}
                   required
                 />
               </div>
@@ -277,10 +279,10 @@ export default function ActivatePage() {
                 {changingPassword ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Aggiornamento...
+                    {t('activate.updating')}
                   </>
                 ) : (
-                  'Cambia Password'
+                  t('activate.change_password_btn')
                 )}
               </Button>
             </form>
@@ -288,12 +290,12 @@ export default function ActivatePage() {
         </Card>
 
         <p className="text-center text-sm text-muted-foreground">
-          Puoi anche accedere direttamente con la password temporanea.{' '}
+          {t('activate.temp_login_hint')}{' '}
           <button
             onClick={() => navigate('/login')}
             className="text-primary hover:underline"
           >
-            Vai al login
+            {t('activate.go_to_login')}
           </button>
         </p>
       </div>
