@@ -1,4 +1,4 @@
-export type TeacherAccentId = 'pink' | 'slate' | 'black' | 'indigo'
+export type TeacherAccentId = 'pink' | 'slate' | 'black' | 'indigo' | 'purple'
 
 export interface TeacherAccentTheme {
   id: TeacherAccentId
@@ -53,6 +53,16 @@ export const TEACHER_ACCENTS: Record<TeacherAccentId, TeacherAccentTheme> = {
     softMid: '#e0e7ff',
     softStrong: '#c7d2fe',
     border: '#a5b4fc',
+  },
+  purple: {
+    id: 'purple',
+    label: 'Dark Purple',
+    accent: '#7c3aed',
+    text: '#6d28d9',
+    soft: '#f5f3ff',
+    softMid: '#ede9fe',
+    softStrong: '#ddd6fe',
+    border: '#c4b5fd',
   },
 }
 

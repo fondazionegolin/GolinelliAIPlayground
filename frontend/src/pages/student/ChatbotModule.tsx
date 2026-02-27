@@ -1540,7 +1540,15 @@ export default function ChatbotModule({ sessionId, initialTeacherbotId, onInputF
                 className="flex items-center gap-2 px-4 py-2 rounded-full text-xs font-bold transition-all shadow-sm hover:opacity-90 border"
                 style={selectedSoftStyle}
               >
-                <Bot className="h-3.5 w-3.5" />
+                {effectiveSelectedModel?.provider === 'openai' ? (
+                  <img src="/icone_ai/OpenAI_logo_2025_(symbol).svg.png" alt="OpenAI" className="h-3.5 w-3.5 object-contain" />
+                ) : effectiveSelectedModel?.provider === 'anthropic' ? (
+                  <img src="/icone_ai/anthropic.svg" alt="Anthropic" className="h-3.5 w-3.5 object-contain" />
+                ) : effectiveSelectedModel?.provider === 'deepseek' ? (
+                  <img src="/icone_ai/deepseek-logo-icon.svg" alt="DeepSeek" className="h-3.5 w-3.5 object-contain" />
+                ) : (
+                  <Bot className="h-3.5 w-3.5" />
+                )}
                 <span>{effectiveSelectedModel?.name || 'Modello AI'}</span>
                 <ChevronDown className={`h-3 w-3 transition-transform ${showModelMenu ? 'rotate-180' : ''}`} />
               </button>
@@ -1557,9 +1565,22 @@ export default function ChatbotModule({ sessionId, initialTeacherbotId, onInputF
                         style={selected ? selectedSoftStyle : undefined}
                         onClick={() => handleChangeModel(m)}
                       >
-                        <div className="min-w-0">
-                          <div className="text-sm font-semibold truncate">{m.name}</div>
-                          <div className="text-[10px] text-slate-400">{m.provider}</div>
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <div className={`p-1.5 rounded-md ${selected ? '' : 'bg-slate-100'}`} style={selected ? { backgroundColor: 'rgba(255,255,255,0.3)' } : undefined}>
+                            {m.provider === 'openai' ? (
+                              <img src="/icone_ai/OpenAI_logo_2025_(symbol).svg.png" alt="OpenAI" className="h-4 w-4 object-contain" />
+                            ) : m.provider === 'anthropic' ? (
+                              <img src="/icone_ai/anthropic.svg" alt="Anthropic" className="h-4 w-4 object-contain" />
+                            ) : m.provider === 'deepseek' ? (
+                              <img src="/icone_ai/deepseek-logo-icon.svg" alt="DeepSeek" className="h-4 w-4 object-contain" />
+                            ) : (
+                              <Bot className="h-4 w-4" />
+                            )}
+                          </div>
+                          <div className="min-w-0">
+                            <div className="text-sm font-semibold truncate">{m.name}</div>
+                            <div className="text-[10px] text-slate-400 capitalize">{m.provider}</div>
+                          </div>
                         </div>
                         <button
                           className={`w-4 h-4 rounded border flex items-center justify-center ${isDefault ? '' : 'border-slate-300'}`}

@@ -501,9 +501,20 @@ export default function SessionLivePage() {
                                   onChange={() => updateDefaultModelMutation.mutate({ provider: m.provider, model: m.model })}
                                   className="w-4 h-4 text-violet-600 focus:ring-violet-500"
                                 />
+                                <div className={`p-1.5 rounded-md ${isSelected ? 'bg-violet-100' : 'bg-slate-100'}`}>
+                                  {m.provider === 'openai' ? (
+                                    <img src="/icone_ai/OpenAI_logo_2025_(symbol).svg.png" alt="OpenAI" className="h-4 w-4 object-contain" />
+                                  ) : m.provider === 'anthropic' ? (
+                                    <img src="/icone_ai/anthropic.svg" alt="Anthropic" className="h-4 w-4 object-contain" />
+                                  ) : m.provider === 'deepseek' ? (
+                                    <img src="/icone_ai/deepseek-logo-icon.svg" alt="DeepSeek" className="h-4 w-4 object-contain" />
+                                  ) : (
+                                    <Bot className="h-4 w-4 text-slate-500" />
+                                  )}
+                                </div>
                                 <div className="flex-1">
                                   <span className="font-medium text-sm">{m.name}</span>
-                                  <span className="text-xs text-muted-foreground ml-2">({m.provider})</span>
+                                  <span className="text-xs text-muted-foreground ml-2 capitalize">{m.provider}</span>
                                 </div>
                                 {isSelected && <Check className="h-4 w-4 text-violet-600" />}
                               </label>

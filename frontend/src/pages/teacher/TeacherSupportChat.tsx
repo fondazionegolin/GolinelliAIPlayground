@@ -402,31 +402,14 @@ export default function TeacherSupportChat() {
   // Model Icons Components
   const ModelIcon = ({ provider, modelId: _modelId, className = "h-4 w-4" }: { provider: string, modelId?: string, className?: string }) => {
     if (provider === 'openai') {
-      return (
-        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className={className}>
-          <path d="M22.2819 9.8211a5.9847 5.9847 0 0 0-.5157-4.9108 6.0462 6.0462 0 0 0-6.5098-2.9A6.0651 6.0651 0 0 0 4.9807 4.1818a5.9847 5.9847 0 0 0-3.9977 2.9 6.0462 6.0462 0 0 0 .7427 7.0966 5.98 5.98 0 0 0 .511 4.9107 6.051 6.051 0 0 0 6.5146 2.9001A5.9847 5.9847 0 0 0 13.2599 24a6.0557 6.0557 0 0 0 5.7718-4.2058 5.9894 5.9894 0 0 0 3.9977-2.9001 6.0557 6.0557 0 0 0-.7475-7.0729zm-9.022 12.6081a4.4755 4.4755 0 0 1-2.8764-1.0408l.1419-.0804 3.5687-2.0594.2152-.1245v2.967A4.5422 4.5422 0 0 1 13.26 22.4292zm-6.6-4.5936a4.4255 4.4255 0 0 1-1.3976-2.5833l2.8436 1.6413.2199.1245.5415 3.129a4.5707 4.5707 0 0 1-2.2074-2.3115zm-2.4349-7.5941a4.5279 4.5279 0 0 1 2.3734-2.145l1.6746 2.8953-.2152.1245-3.5687 2.0594a4.5089 4.5089 0 0 1-.2641-2.9342zm11.9705-3.5687a4.5184 4.5184 0 0 1 2.2122 2.3163l-2.8436-1.646-.2152-.1245-.5415-3.1238a4.5327 4.5327 0 0 1 1.3881 2.578zm2.4349 7.5893a4.5231 4.5231 0 0 1-2.3686 2.1402l-1.6746-2.8905.2152-.1245 3.5687-2.0594a4.4994 4.4994 0 0 1 .2593 2.9342zm-3.5355 4.3035l-1.6841-2.8953a1.4727 1.4727 0 0 0 2.217.0095l-1.6373 2.9048a1.5155 1.5155 0 0 0 1.1044-.019zM6.9234 10.9788l1.6841 2.8953a1.487 1.487 0 0 0 0-2.588L6.9234 8.3908a1.5583 1.5583 0 0 0 0 2.588zm2.0981-6.101l1.6373 2.9048a1.487 1.487 0 0 0 2.217-.0095l-3.3213-1.9216a1.5964 1.5964 0 0 0-.533 1.0263z" fill="currentColor" />
-        </svg>
-      )
+      return <img src="/icone_ai/OpenAI_logo_2025_(symbol).svg.png" alt="OpenAI" className={className} style={{ objectFit: 'contain' }} />
     }
     if (provider === 'anthropic') {
-      return (
-        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className={className}>
-          <path d="M17.4224 18.2526H19.7618L13.7844 4H10.1983L4.22095 18.2526H6.57762L7.90076 14.8687H16.082L17.4224 18.2526ZM8.79093 12.6378L11.973 4.54897L15.1913 12.6378H8.79093Z" fill="currentColor" />
-        </svg>
-      )
+      return <img src="/icone_ai/anthropic.svg" alt="Anthropic" className={className} style={{ objectFit: 'contain' }} />
     }
     if (provider === 'deepseek') {
-      return <img src="/icons/deepseek.png" alt="DeepSeek" className={className} />
+      return <img src="/icone_ai/deepseek-logo-icon.svg" alt="DeepSeek" className={className} style={{ objectFit: 'contain' }} />
     }
-    if (provider === 'ollama') { // Generic or Mistral/DeepSeek if specific provider key matches
-      return (
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
-          <path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2v10l5-5" />
-        </svg>
-      )
-    }
-    // DeepSeek & Mistral specific overrides if provider is ollama but id contains string?
-    // Let's refine based on explicit ID or enhanced provider map?
     return <Bot className={className} />
   }
 

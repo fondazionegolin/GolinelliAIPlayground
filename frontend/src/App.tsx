@@ -10,6 +10,7 @@ import ActivatePage from '@/pages/ActivatePage'
 import AdminDashboard from '@/pages/admin/AdminDashboard'
 import TeacherDashboard from '@/pages/teacher/TeacherDashboard'
 import StudentDashboard from '@/pages/student/StudentDashboard'
+import PrivacyPage from '@/pages/PrivacyPage'
 
 function ProtectedRoute({ children, allowedRoles }: { children: React.ReactNode; allowedRoles: string[] }) {
   const { user, isAuthenticated } = useAuthStore()
@@ -41,6 +42,7 @@ function App() {
       <Routes>
         <Route path="/login" element={<LandingPage />} />
         <Route path="/join" element={<StudentJoinPage />} />
+        <Route path="/privacy" element={<PrivacyPage />} />
         <Route path="/teacher-request" element={<TeacherRequestPage />} />
         <Route path="/activate/:token" element={<ActivatePage />} />
         

@@ -353,12 +353,15 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
                   <ChevronDown className={`h-3 w-3 ml-0.5 text-slate-400 transition-transform flex-shrink-0 ${showSessionsMenu ? 'rotate-180' : ''}`} />
                 </button>
                 <button
-                  className={`hidden lg:flex items-center justify-center h-11 w-11 rounded-full border transition-all shadow-sm backdrop-blur-md ${chatSidebarOpen ? '' : 'bg-white/60 text-[var(--teacher-accent-text)] border-slate-200 hover:bg-white/80'}`}
-                  style={chatSidebarOpen ? { backgroundColor: `${accentTheme.accent}15`, borderColor: `${accentTheme.accent}40`, color: accentTheme.text } : undefined}
+                  className={`hidden lg:flex items-center gap-2 lg:px-3 xl:px-4 py-2.5 rounded-full border transition-all shadow-sm backdrop-blur-md font-semibold text-xs`}
+                  style={chatSidebarOpen
+                    ? { backgroundColor: accentTheme.accent, borderColor: accentTheme.accent, color: '#fff' }
+                    : { backgroundColor: `${accentTheme.accent}18`, borderColor: `${accentTheme.accent}50`, color: accentTheme.text }}
                   onClick={onToggleChatSidebar}
                   title={chatSidebarOpen ? t('navbar.hide_class_chat') : t('navbar.show_class_chat')}
                 >
-                  <MessageSquare className="h-5 w-5" />
+                  <MessageSquare className="h-4 w-4 flex-shrink-0" />
+                  <span className="hidden xl:inline">{chatSidebarOpen ? t('navbar.hide_class_chat') : t('navbar.show_class_chat')}</span>
                 </button>
 
                 {/* Sessions Dropdown Menu */}

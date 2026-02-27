@@ -47,6 +47,7 @@ export function StudentNavbar({
   const [profile, setProfile] = useState<StudentProfile>({
     nickname: 'Studente'
   })
+  const { t } = useTranslation()
   const accentTheme = getStudentAccentTheme(accent)
   const accentVars = {
     '--student-accent': accentTheme.accent,
@@ -195,14 +196,15 @@ export function StudentNavbar({
               )}
 
               <button
-                className={`hidden lg:flex items-center justify-center h-11 w-11 rounded-full border transition shadow-sm ${chatSidebarOpen ? 'text-white' : 'bg-white hover:bg-slate-50'}`}
+                className={`hidden lg:flex items-center gap-2 lg:px-3 xl:px-4 py-2.5 rounded-full border transition-all shadow-sm font-semibold text-xs`}
                 style={chatSidebarOpen
-                  ? { backgroundColor: accentTheme.accent, borderColor: accentTheme.accent }
-                  : { borderColor: accentTheme.border, color: accentTheme.text }}
+                  ? { backgroundColor: accentTheme.accent, borderColor: accentTheme.accent, color: '#fff' }
+                  : { backgroundColor: `${accentTheme.accent}18`, borderColor: `${accentTheme.accent}50`, color: accentTheme.text }}
                 onClick={onToggleChatSidebar}
-                title={chatSidebarOpen ? 'Nascondi chat di classe' : 'Mostra chat di classe'}
+                title={chatSidebarOpen ? t('navbar.hide_class_chat') : t('navbar.show_class_chat')}
               >
-                <MessageSquare className="h-4 w-4" />
+                <MessageSquare className="h-4 w-4 flex-shrink-0" />
+                <span className="hidden xl:inline">{chatSidebarOpen ? t('navbar.hide_class_chat') : t('navbar.show_class_chat')}</span>
               </button>
 
               {/* Avatar Dropdown */}

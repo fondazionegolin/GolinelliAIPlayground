@@ -15,7 +15,7 @@ type AssistAction = 'expand' | 'reformat' | 'generate' | 'custom'
 
 export function AITextAssistPanel({
   selectedText,
-  position,
+  position: _position,
   onClose,
   onApply,
   context,
@@ -28,35 +28,6 @@ export function AITextAssistPanel({
   const [customInstruction, setCustomInstruction] = useState('')
   const panelRef = useRef<HTMLDivElement>(null)
 
-  // Adjust position to stay within viewport
-  const [adjustedPosition, setAdjustedPosition] = useState(position || { x: 20, y: 80 })
-
-  useEffect(() => {
-    if (variant !== 'floating') return
-    if (!position) return
-    if (panelRef.current) {
-      const rect = panelRef.current.getBoundingClientRect()
-      const viewportWidth = window.innerWidth
-      const viewportHeight = window.innerHeight
-
-      let newX = position.x
-      let newY = position.y
-
-      // Keep panel within horizontal bounds
-      if (position.x + rect.width > viewportWidth - 20) {
-        newX = viewportWidth - rect.width - 20
-      }
-      if (newX < 20) newX = 20
-
-      // Keep panel within vertical bounds
-      if (position.y + rect.height > viewportHeight - 20) {
-        newY = position.y - rect.height - 10
-      }
-      if (newY < 80) newY = 80
-
-      setAdjustedPosition({ x: newX, y: newY })
-    }
-  }, [position, variant])
 
   // Close on outside click
   useEffect(() => {
@@ -295,15 +266,11 @@ ${/converti in formula|formula|latex/i.test(customInstruction)
   }
 
   return (
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/20 backdrop-blur-sm">
     <div
       ref={panelRef}
-      className='fixed z-[9999] bg-white rounded-xl shadow-2xl border border-slate-200 overflow-hidden'
-      style={{
-          left: adjustedPosition.x,
-          top: adjustedPosition.y,
-          minWidth: 280,
-          maxWidth: 400,
-        }}
+      className='bg-white rounded-xl shadow-2xl border border-slate-200 overflow-hidden w-full'
+      style={{ minWidth: 280, maxWidth: 420 }}
     >
       {/* Header */}
       <div className='bg-gradient-to-r from-violet-500 to-indigo-500 px-4 py-2 flex items-center justify-between'>
@@ -448,6 +415,7 @@ ${/converti in formula|formula|latex/i.test(customInstruction)
           </div>
         </div>
       )}
+    </div>
     </div>
   )
 }

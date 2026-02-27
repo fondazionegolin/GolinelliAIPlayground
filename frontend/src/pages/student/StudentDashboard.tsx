@@ -310,7 +310,7 @@ export default function StudentDashboard() {
       {/* Main Layout with Chat Sidebar */}
       <div className={`flex flex-1 overflow-hidden ${isMobile ? 'pt-14' : ''}`}>
         {/* Main Content Area */}
-        <main className={`flex-1 relative ${activeModule === 'chatbot' || activeModule === 'classe' ? 'overflow-hidden' : 'overflow-y-auto'}`}>
+        <main className={`flex-1 relative ${activeModule === 'chatbot' || activeModule === 'classe' || activeModule === 'documents' ? 'overflow-hidden' : 'overflow-y-auto'}`}>
           <AnimatePresence mode="wait">
             <motion.div
               key={activeModule || 'home'}
@@ -319,7 +319,7 @@ export default function StudentDashboard() {
               animate="animate"
               exit="exit"
               transition={{ duration: 0.2, ease: 'easeInOut' }}
-              className={`${activeModule === 'chatbot' || activeModule === 'classe' || activeModule === 'documents' ? 'p-0 md:p-6 h-full' : 'p-4 md:p-6'}`}
+              className={`${activeModule === 'chatbot' || activeModule === 'classe' || activeModule === 'documents' ? 'p-0 h-full' : 'p-4 md:p-6'}`}
               style={swipeState.isActive ? { transform: `translateX(${swipeState.x}px)` } : undefined}
             >
               {!activeModule ? (

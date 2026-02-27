@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
@@ -14,7 +14,8 @@ import {
   FlaskConical
 } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth'
-import { authApi } from '@/lib/api'
+import { authApi, studentApi } from '@/lib/api'
+import { connectSocket } from '@/lib/socket'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -22,27 +23,107 @@ import { useToast } from '@/components/ui/use-toast'
 import { useTranslation } from 'react-i18next'
 import { LanguageSwitcher } from '@/components/LanguageSwitcher'
 
-// --- Animated Background Component ---
-const AnimatedBackground = () => (
-  <div className="absolute inset-0 overflow-hidden -z-10 bg-slate-50">
-    <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-sky-100 via-slate-50 to-white opacity-80" />
-    <motion.div
-      animate={{ scale: [1, 1.2, 1], rotate: [0, 90, 0], x: [0, 100, 0], y: [0, -50, 0] }}
-      transition={{ duration: 20, repeat: Infinity, ease: "linear" }}
-      className="absolute -top-20 -right-20 w-96 h-96 bg-purple-200 rounded-full mix-blend-multiply filter blur-3xl opacity-30"
+// --- Dotted Grid Background with "ball under paper" deformation ---
+const DottedGridBackground = () => {
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+
+    const SPACING = 32      // grid dot spacing
+    const DOT_R = 1.6       // base dot radius
+    const INFLUENCE = 150   // ball influence radius (px)
+    const STRENGTH = 50     // max displacement (px)
+
+    // Each ball follows an elliptical orbit defined in normalised [0..1] coordinates
+    const balls = [
+      { cx: 0.22, cy: 0.38, rx: 190, ry: 140, wx: 0.13, wy: 0.08, ph: 0.0 },
+      { cx: 0.78, cy: 0.62, rx: 160, ry: 190, wx: 0.09, wy: 0.14, ph: 2.1 },
+      { cx: 0.58, cy: 0.18, rx: 210, ry: 110, wx: 0.06, wy: 0.19, ph: 0.8 },
+      { cx: 0.38, cy: 0.82, rx: 130, ry: 175, wx: 0.17, wy: 0.10, ph: 3.5 },
+      { cx: 0.88, cy: 0.25, rx: 140, ry: 155, wx: 0.11, wy: 0.07, ph: 1.4 },
+    ]
+
+    let rafId: number
+    let t0: number | null = null
+
+    const resize = () => {
+      canvas.width = window.innerWidth
+      canvas.height = window.innerHeight
+    }
+    resize()
+    window.addEventListener('resize', resize)
+
+    const frame = (now: number) => {
+      if (t0 === null) t0 = now
+      const t = (now - t0) * 0.001   // seconds
+
+      ctx.clearRect(0, 0, canvas.width, canvas.height)
+
+      // World positions of balls
+      const bPos = balls.map(b => ({
+        x: b.cx * canvas.width  + b.rx * Math.sin(b.wx * t + b.ph),
+        y: b.cy * canvas.height + b.ry * Math.cos(b.wy * t + b.ph * 0.7),
+      }))
+
+      // Draw displaced grid dots
+      const cols = Math.ceil(canvas.width  / SPACING) + 2
+      const rows = Math.ceil(canvas.height / SPACING) + 2
+
+      for (let r = -1; r < rows; r++) {
+        for (let c = -1; c < cols; c++) {
+          const gx = c * SPACING
+          const gy = r * SPACING
+
+          // Sum displacements from all balls (repulsion radially outward)
+          let dx = 0, dy = 0
+          for (const bp of bPos) {
+            const ex = gx - bp.x
+            const ey = gy - bp.y
+            const d = Math.sqrt(ex * ex + ey * ey)
+            if (d < INFLUENCE && d > 0) {
+              const f = STRENGTH * (1 - d / INFLUENCE) ** 2
+              dx += (ex / d) * f
+              dy += (ey / d) * f
+            }
+          }
+
+          const dotX = gx + dx
+          const dotY = gy + dy
+          const disp  = Math.sqrt(dx * dx + dy * dy)
+
+          // Slightly enlarge and brighten dots that are displaced
+          const radius = Math.min(DOT_R * (1 + disp * 0.045), DOT_R * 3.5)
+          const alpha  = Math.min(0.28 + disp * 0.007, 0.68)
+
+          ctx.beginPath()
+          ctx.arc(dotX, dotY, radius, 0, Math.PI * 2)
+          ctx.fillStyle = `rgba(148, 163, 184, ${alpha})`
+          ctx.fill()
+        }
+      }
+
+      rafId = requestAnimationFrame(frame)
+    }
+
+    rafId = requestAnimationFrame(frame)
+    return () => {
+      cancelAnimationFrame(rafId)
+      window.removeEventListener('resize', resize)
+    }
+  }, [])
+
+  return (
+    <canvas
+      ref={canvasRef}
+      className="absolute inset-0 -z-10"
+      style={{ background: '#f8fafc' }}
     />
-    <motion.div
-      animate={{ scale: [1, 1.1, 1], rotate: [0, -60, 0], x: [0, -50, 0], y: [0, 100, 0] }}
-      transition={{ duration: 15, repeat: Infinity, ease: "linear" }}
-      className="absolute top-40 -left-20 w-72 h-72 bg-sky-200 rounded-full mix-blend-multiply filter blur-3xl opacity-30"
-    />
-    <motion.div
-      animate={{ scale: [1, 1.3, 1], x: [0, 50, 0], y: [0, 50, 0] }}
-      transition={{ duration: 18, repeat: Infinity, ease: "linear" }}
-      className="absolute bottom-20 right-20 w-80 h-80 bg-teal-200 rounded-full mix-blend-multiply filter blur-3xl opacity-30"
-    />
-  </div>
-)
+  )
+}
 
 export default function LandingPage() {
   const { t } = useTranslation()
@@ -56,7 +137,7 @@ export default function LandingPage() {
 
   return (
     <div className="relative min-h-screen w-full flex flex-col font-sans text-slate-900">
-      <AnimatedBackground />
+      <DottedGridBackground />
 
       {/* --- Navbar --- */}
       <nav className="sticky top-0 z-50 w-full backdrop-blur-md bg-white/70 border-b border-white/50 px-6 py-4 flex items-center justify-between">
@@ -70,12 +151,19 @@ export default function LandingPage() {
 
         {/* Desktop Menu */}
         <div className="hidden md:flex items-center gap-1 bg-slate-100/50 p-1 rounded-full border border-slate-200/50">
-          <TabButton active={activeTab === 'home'} onClick={() => switchTab('home')}>{t('landing.nav_explore')}</TabButton>
-          <TabButton active={activeTab === 'teachers'} onClick={() => switchTab('teachers')}>{t('landing.nav_teachers')}</TabButton>
-          <TabButton active={activeTab === 'students'} onClick={() => switchTab('students')}>{t('landing.nav_students')}</TabButton>
+          <TabButton active={activeTab === 'home'} onClick={() => switchTab('home')} color="#e85c8d">{t('landing.nav_explore')}</TabButton>
+          <TabButton active={activeTab === 'teachers'} onClick={() => switchTab('teachers')} color="#2d2d2d">{t('landing.nav_teachers')}</TabButton>
+          <TabButton active={activeTab === 'students'} onClick={() => switchTab('students')} color="#0d9488">{t('landing.nav_students')}</TabButton>
         </div>
 
-        <div className="hidden md:flex items-center">
+        <div className="hidden md:flex items-center gap-3">
+          <Link
+            to="/privacy"
+            className="flex items-center gap-1.5 text-xs font-medium text-slate-500 hover:text-[#e85c8d] transition-colors px-2 py-1"
+          >
+            <ShieldCheck size={13} />
+            Privacy
+          </Link>
           <LanguageSwitcher variant="row" />
         </div>
 
@@ -97,6 +185,9 @@ export default function LandingPage() {
             <Button variant={activeTab === 'home' ? 'default' : 'ghost'} onClick={() => switchTab('home')} className="w-full justify-start">{t('landing.nav_explore')}</Button>
             <Button variant={activeTab === 'teachers' ? 'default' : 'ghost'} onClick={() => switchTab('teachers')} className="w-full justify-start">{t('landing.nav_teacher_area')}</Button>
             <Button variant={activeTab === 'students' ? 'default' : 'ghost'} onClick={() => switchTab('students')} className="w-full justify-start">{t('landing.nav_student_area')}</Button>
+            <Link to="/privacy" className="flex items-center gap-2 px-3 py-2 text-sm text-slate-600 hover:text-[#e85c8d] transition-colors">
+              <ShieldCheck size={15} /> Privacy Policy
+            </Link>
             <div className="pt-1"><LanguageSwitcher variant="full" /></div>
           </motion.div>
         )}
@@ -114,12 +205,22 @@ export default function LandingPage() {
       {/* --- Footer --- */}
       <footer className="py-6 text-center text-sm text-slate-500 bg-white/40 backdrop-blur-sm border-t border-white/50">
         <p>{t('landing.footer_copyright')}</p>
+        <p className="mt-2">
+          <Link to="/privacy" className="text-xs text-slate-400 hover:text-[#e85c8d] transition-colors underline underline-offset-2">
+            Privacy Policy & AI Act Compliance
+          </Link>
+        </p>
       </footer>
     </div>
   )
 }
 
-function TabButton({ active, children, onClick }: { active: boolean, children: React.ReactNode, onClick: () => void }) {
+function TabButton({ active, children, onClick, color = '#1e293b' }: {
+  active: boolean
+  children: React.ReactNode
+  onClick: () => void
+  color?: string
+}) {
   return (
     <button
       onClick={onClick}
@@ -130,7 +231,8 @@ function TabButton({ active, children, onClick }: { active: boolean, children: R
       {active && (
         <motion.div
           layoutId="activeTab"
-          className="absolute inset-0 bg-slate-900 rounded-full"
+          className="absolute inset-0 rounded-full"
+          style={{ backgroundColor: color }}
           transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
         />
       )}
@@ -200,6 +302,16 @@ function HomeSection({ onCta }: { onCta: () => void }) {
               Scopri di più
             </Button>
           </a>
+        </div>
+
+        <div className="flex justify-center md:justify-start">
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 text-emerald-700 text-xs font-medium border border-emerald-200">
+            <span className="relative flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+            </span>
+            Beta Pubblica — accesso libero per studenti
+          </span>
         </div>
       </div>
 
@@ -318,6 +430,33 @@ function TeachersSection() {
 
 function StudentsSection() {
   const { t } = useTranslation()
+  const [joinCode, setJoinCode] = useState('')
+  const [nickname, setNickname] = useState('')
+  const [loading, setLoading] = useState(false)
+  const navigate = useNavigate()
+  const { setStudentSession } = useAuthStore()
+  const { toast } = useToast()
+
+  const handleJoin = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setLoading(true)
+    try {
+      const response = await studentApi.join(joinCode.toUpperCase(), nickname)
+      const { join_token, student_id, session_id, session_title } = response.data
+      setStudentSession({ student_id, session_id, session_title, nickname }, join_token)
+      connectSocket(join_token)
+      navigate('/student')
+    } catch (error: unknown) {
+      const err = error as { response?: { data?: { detail?: string } } }
+      toast({
+        variant: 'destructive',
+        title: t('common.error'),
+        description: err.response?.data?.detail || 'Impossibile partecipare alla sessione',
+      })
+    } finally {
+      setLoading(false)
+    }
+  }
 
   return (
     <motion.div
@@ -330,14 +469,44 @@ function StudentsSection() {
           <h2 className="text-2xl font-bold">{t('landing.nav_student_area')}</h2>
           <p className="text-emerald-50 text-sm">{t('student_join.subtitle')}</p>
         </div>
-        <div className="p-8 text-center">
-          <p className="text-slate-600 mb-6">{t('student_join.code_intro')}</p>
-          <Link to="/join">
-            <Button size="lg" className="w-full h-14 text-lg bg-teal-600 hover:bg-teal-700 shadow-lg shadow-teal-200 group">
-              {t('student_join.join_btn')}
-              <ArrowRight className="ml-2 w-5 h-5 group-hover:translate-x-1 transition-transform" />
+
+        <div className="p-8">
+          <form onSubmit={handleJoin} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="joinCode">{t('student_join.code_label')}</Label>
+              <Input
+                id="joinCode"
+                type="text"
+                placeholder={t('student_join.code_placeholder')}
+                value={joinCode}
+                onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
+                maxLength={5}
+                className="text-center text-2xl tracking-widest font-mono bg-slate-50 border-slate-200 focus:ring-teal-500"
+                required
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="nickname">{t('student_join.nickname_label')}</Label>
+              <Input
+                id="nickname"
+                type="text"
+                placeholder={t('student_join.nickname_placeholder')}
+                value={nickname}
+                onChange={(e) => setNickname(e.target.value)}
+                maxLength={20}
+                className="bg-slate-50 border-slate-200 focus:ring-teal-500"
+                required
+              />
+            </div>
+            <Button
+              type="submit"
+              className="w-full h-11 text-base bg-teal-600 hover:bg-teal-700 shadow-lg shadow-teal-200 group"
+              disabled={loading}
+            >
+              {loading ? t('student_join.joining') : t('student_join.join_btn')}
+              {!loading && <ArrowRight className="ml-2 w-4 h-4 group-hover:translate-x-1 transition-transform" />}
             </Button>
-          </Link>
+          </form>
         </div>
       </div>
     </motion.div>
