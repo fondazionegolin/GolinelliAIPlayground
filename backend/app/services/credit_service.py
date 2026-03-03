@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional, List
 from sqlalchemy import select, or_, and_
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -60,7 +60,7 @@ class CreditService:
         limits = await self.get_applicable_limits(db, tenant_id, teacher_id, class_id, session_id, student_id)
         
         allowed = True
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         
         for limit in limits:
             # check limits
@@ -124,7 +124,7 @@ class CreditService:
         # 2. Update Limits
         limits = await self.get_applicable_limits(db, tenant_id, teacher_id, class_id, session_id, student_id)
         
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         for limit in limits:
              # Lazy reset check again (just in case check_availability wasn't called or race condition)
             if limit.reset_frequency == "MONTHLY" and limit.period_end and now > limit.period_end:

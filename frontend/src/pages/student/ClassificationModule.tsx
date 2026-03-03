@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useEffect, lazy, Suspense } from 'react'
+import { useState, useRef, useCallback, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -9,10 +9,7 @@ import {
   TrendingUp, Tags, AlertCircle, Lightbulb
 } from 'lucide-react'
 import * as tf from '@tensorflow/tfjs'
-import { ScatterChart, Scatter, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, BarChart, Bar, Legend } from 'recharts'
-
-// Lazy load Plotly for 3D charts
-const Plot = lazy(() => import('react-plotly.js'))
+import { DataVisualizationPanel } from '@/components/DataVisualizationPanel'
 
 type ClassificationMode = 'images' | 'text' | 'data'
 
@@ -991,11 +988,6 @@ function DataClassification() {
   const [targetColumn, setTargetColumn] = useState<string | null>(null)
   const [suggestedTask, setSuggestedTask] = useState<TaskType>(null)
   const [taskExplanation, setTaskExplanation] = useState<string>('')
-  const [xAxis, setXAxis] = useState<string | null>(null)
-  const [yAxis, setYAxis] = useState<string | null>(null) // backward compatibility for prediction explanation flow
-  const [selectedYAxes, setSelectedYAxes] = useState<string[]>([])
-  const [chartType, setChartType] = useState<'scatter' | 'line' | 'bar' | 'scatter3d'>('scatter')
-  const [zAxis, setZAxis] = useState<string | null>(null)
   const [model, setModel] = useState<tf.LayersModel | null>(null)
   const [isTraining, setIsTraining] = useState(false)
   const [prediction, setPrediction] = useState<{ value: string | number; confidence: number; explanation: string } | null>(null)
@@ -1003,7 +995,6 @@ function DataClassification() {
   const [labelEncoder, setLabelEncoder] = useState<Map<string, number>>(new Map())
   const [featureScalers, setFeatureScalers] = useState<{ min: number[]; max: number[] }>({ min: [], max: [] })
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const SERIES_COLORS = ['#7c3aed', '#0ea5e9', '#10b981', '#f59e0b', '#ef4444', '#6366f1', '#14b8a6']
 
   const analyzeColumn = (values: (string | number)[]): ColumnInfo => {
     const uniqueValues = new Set(values)
@@ -1055,23 +1046,6 @@ function DataClassification() {
     setPrediction(null)
     setInputValues({})
 
-    const numericCols = columnInfos.filter(c => c.type === 'numeric').map(c => c.name)
-    const allCols = columnInfos.map(c => c.name)
-    if (allCols.length > 0) setXAxis(allCols[0])
-    if (numericCols.length > 0) {
-      setYAxis(numericCols[0])
-      setSelectedYAxes(numericCols.slice(0, Math.min(3, numericCols.length)))
-    } else {
-      setYAxis(allCols[1] || allCols[0] || null)
-      setSelectedYAxes([])
-    }
-    if (numericCols.length >= 3) {
-      setZAxis(numericCols[2])
-      setChartType('scatter3d')
-    } else {
-      setZAxis(numericCols[0] || null)
-      setChartType('scatter')
-    }
   }
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1305,45 +1279,6 @@ function DataClassification() {
     pred.dispose()
   }
 
-  const numericColumns = columns.filter(c => c.type === 'numeric')
-  const numericColumnNames = numericColumns.map(c => c.name)
-  const columnNames = columns.map(c => c.name)
-  const previewRows = data.slice(0, 300)
-  const safeX = xAxis || columnNames[0] || null
-  const safeScatterX = safeX && numericColumnNames.includes(safeX)
-    ? safeX
-    : (numericColumnNames[0] || null)
-  const effectiveYAxes = selectedYAxes.length > 0
-    ? selectedYAxes
-    : (yAxis ? [yAxis] : (numericColumns[0] ? [numericColumns[0].name] : []))
-  const safeZ = zAxis && numericColumnNames.includes(zAxis)
-    ? zAxis
-    : (numericColumnNames[2] || numericColumnNames[1] || numericColumnNames[0] || null)
-
-  const lineBarData = previewRows.map((row, idx) => {
-    const point: Record<string, string | number> = {
-      x: safeX ? String(row[safeX]) : String(idx + 1),
-      index: idx + 1,
-      label: targetColumn ? String(row[targetColumn]) : '',
-    }
-    effectiveYAxes.forEach((col) => {
-      const n = Number(row[col])
-      point[col] = Number.isFinite(n) ? n : 0
-    })
-    return point
-  })
-
-  const scatterSeries = effectiveYAxes.map((col) => ({
-    key: col,
-    data: previewRows
-      .map((row) => ({
-        x: safeScatterX ? Number(row[safeScatterX]) : NaN,
-        y: Number(row[col]),
-        label: targetColumn ? String(row[targetColumn]) : '',
-      }))
-      .filter((p) => Number.isFinite(p.x) && Number.isFinite(p.y)),
-  }))
-
   return (
     <div className="space-y-4">
       {/* Upload Panel */}
@@ -1459,204 +1394,9 @@ function DataClassification() {
         </CardContent>
       </Card>
 
-      {/* Visualization Panel */}
-      {data.length > 0 && columnNames.length >= 2 && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base flex items-center gap-2">
-              <BarChart3 className="h-5 w-5" />
-              Visualizzazione Dati
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="mb-4 p-3 border rounded-lg bg-muted/20">
-              <p className="text-sm font-medium">Workflow guidato</p>
-              <p className="text-xs text-muted-foreground mt-1">
-                1) scegli tipo grafico, 2) scegli asse X, 3) seleziona una o piu serie Y. Lo Scatter 3D e disponibile quando ci sono almeno 3 colonne numeriche.
-              </p>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-              <div>
-                <label className="text-sm font-medium">Tipo grafico</label>
-                <select
-                  className="w-full mt-1 p-2 border rounded"
-                  value={chartType}
-                  onChange={(e) => setChartType(e.target.value as 'scatter' | 'line' | 'bar' | 'scatter3d')}
-                >
-                  <option value="scatter">Scatter 2D</option>
-                  <option value="line">Linee multi-serie</option>
-                  <option value="bar">Barre multi-serie</option>
-                  {numericColumnNames.length >= 3 && <option value="scatter3d">Scatter 3D</option>}
-                </select>
-              </div>
-              <div>
-                <label className="text-sm font-medium">Asse X</label>
-                <select
-                  className="w-full mt-1 p-2 border rounded"
-                  value={safeX || ''}
-                  onChange={(e) => setXAxis(e.target.value)}
-                >
-                  {columnNames.map((name) => (
-                    <option key={name} value={name}>{name}</option>
-                  ))}
-                </select>
-              </div>
-              {chartType === 'scatter3d' && (
-                <div>
-                  <label className="text-sm font-medium">Asse Z (numerico)</label>
-                  <select
-                    className="w-full mt-1 p-2 border rounded"
-                    value={safeZ || ''}
-                    onChange={(e) => setZAxis(e.target.value)}
-                  >
-                    {numericColumnNames.map((name) => (
-                      <option key={name} value={name}>{name}</option>
-                    ))}
-                  </select>
-                </div>
-              )}
-            </div>
-
-            <div className="mb-4">
-              <label className="text-sm font-medium">Serie Y (numeriche)</label>
-              <div className="mt-2 flex flex-wrap gap-2">
-                {numericColumnNames.map((name) => {
-                  const checked = effectiveYAxes.includes(name)
-                  return (
-                    <Button
-                      key={name}
-                      type="button"
-                      size="sm"
-                      variant={checked ? 'default' : 'outline'}
-                      onClick={() => {
-                        const next = checked
-                          ? effectiveYAxes.filter((c) => c !== name)
-                          : [...effectiveYAxes, name]
-                        setSelectedYAxes(next)
-                        setYAxis(next[0] || null)
-                      }}
-                    >
-                      {name}
-                    </Button>
-                  )
-                })}
-              </div>
-            </div>
-
-            {chartType === 'scatter3d' ? (
-              <div className="h-80">
-                {numericColumnNames.length < 3 || !safeX || !safeZ || effectiveYAxes.length === 0 ? (
-                  <div className="h-full flex items-center justify-center text-sm text-muted-foreground border rounded-lg">
-                    Servono almeno 3 colonne numeriche e una serie Y selezionata per lo scatter 3D.
-                  </div>
-                ) : (
-                  <Suspense fallback={<div className="flex items-center justify-center h-full"><Loader2 className="h-8 w-8 animate-spin" /></div>}>
-                    <Plot
-                      data={[{
-                        x: previewRows.map(row => Number(row[safeX])),
-                        y: previewRows.map(row => Number(row[effectiveYAxes[0]])),
-                        z: previewRows.map(row => Number(row[safeZ])),
-                        mode: 'markers',
-                        type: 'scatter3d',
-                        marker: {
-                          size: 5,
-                          color: previewRows.map((_, i) => i),
-                          colorscale: 'Viridis',
-                          opacity: 0.8
-                        }
-                      }]}
-                      layout={{
-                        autosize: true,
-                        margin: { l: 0, r: 0, b: 0, t: 0 },
-                        scene: {
-                          xaxis: { title: { text: safeX } },
-                          yaxis: { title: { text: effectiveYAxes[0] } },
-                          zaxis: { title: { text: safeZ } }
-                        }
-                      }}
-                      config={{ responsive: true, displayModeBar: false }}
-                      style={{ width: '100%', height: '100%' }}
-                    />
-                  </Suspense>
-                )}
-              </div>
-            ) : chartType === 'scatter' ? (
-              <div className="h-64">
-                {!safeScatterX || effectiveYAxes.length === 0 ? (
-                  <div className="h-full flex items-center justify-center text-sm text-muted-foreground border rounded-lg">
-                    Seleziona almeno una colonna numerica per X e una per Y.
-                  </div>
-                ) : (
-                  <ResponsiveContainer width="100%" height="100%">
-                    <ScatterChart margin={{ top: 10, right: 10, bottom: 20, left: 20 }}>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="x" name={safeScatterX} type="number" fontSize={12} />
-                      <YAxis dataKey="y" name="Y" type="number" fontSize={12} />
-                      <Tooltip cursor={{ strokeDasharray: '3 3' }} />
-                      <Legend />
-                      {scatterSeries.map((series, idx) => (
-                        <Scatter
-                          key={series.key}
-                          name={series.key}
-                          data={series.data}
-                          fill={SERIES_COLORS[idx % SERIES_COLORS.length]}
-                        />
-                      ))}
-                    </ScatterChart>
-                  </ResponsiveContainer>
-                )}
-              </div>
-            ) : chartType === 'line' ? (
-              <div className="h-64">
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={lineBarData} margin={{ top: 10, right: 10, bottom: 20, left: 20 }}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="x" fontSize={12} />
-                    <YAxis fontSize={12} />
-                    <Tooltip />
-                    <Legend />
-                    {effectiveYAxes.map((series, idx) => (
-                      <Line
-                        key={series}
-                        type="monotone"
-                        dataKey={series}
-                        stroke={SERIES_COLORS[idx % SERIES_COLORS.length]}
-                        dot={false}
-                        strokeWidth={2}
-                      />
-                    ))}
-                  </LineChart>
-                </ResponsiveContainer>
-              </div>
-            ) : (
-              <div className="h-64">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={lineBarData} margin={{ top: 10, right: 10, bottom: 20, left: 20 }}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="x" fontSize={12} />
-                    <YAxis fontSize={12} />
-                    <Tooltip />
-                    <Legend />
-                    {effectiveYAxes.map((series, idx) => (
-                      <Bar
-                        key={series}
-                        dataKey={series}
-                        fill={SERIES_COLORS[idx % SERIES_COLORS.length]}
-                      />
-                    ))}
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            )}
-
-            {chartType === 'scatter' && safeX && !numericColumnNames.includes(safeX) && (
-              <p className="text-xs text-amber-600 mt-3">
-                Nota: nello scatter 2D l'asse X deve essere numerico. Uso automaticamente "{safeScatterX}".
-              </p>
-            )}
-          </CardContent>
-        </Card>
+      {/* Advanced Visualization Panel */}
+      {data.length > 0 && (
+        <DataVisualizationPanel rows={data} columns={columns} />
       )}
 
       {/* Target Selection */}

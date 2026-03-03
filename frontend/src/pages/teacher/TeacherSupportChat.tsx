@@ -14,6 +14,7 @@ import remarkMath from 'remark-math'
 import rehypeKatex from 'rehype-katex'
 import 'katex/dist/katex.min.css'
 import { ContentEditorModal } from '@/components/ContentEditorModal'
+import { DataVisualizationPanel } from '@/components/DataVisualizationPanel'
 import TeacherbotsPanel from '@/components/teacher/TeacherbotsPanel'
 import { DEFAULT_TEACHER_ACCENT, getTeacherAccentTheme } from '@/lib/teacherAccent'
 import { VoiceRecorder } from '@/components/VoiceRecorder'
@@ -260,6 +261,7 @@ export default function TeacherSupportChat() {
   const { toast } = useToast()
   const [activeTab, setActiveTab] = useState<'chat' | 'teacherbots'>('chat')
   const [messages, setMessages] = useState<Message[]>([])
+  const messagesRef = useRef<Message[]>([])
   const [inputText, setInputText] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [defaultModel, setDefaultModel] = useState(localStorage.getItem('default_model') || FALLBACK_MODELS[0].id)
@@ -648,16 +650,16 @@ export default function TeacherSupportChat() {
             timestamp: new Date(m.created_at)
           }))
 
-          const localMessages = cachedMessages || []
+          const localMessages = cachedMessages || messagesRef.current || []
           const localLast = localMessages[localMessages.length - 1]?.timestamp?.getTime() || 0
           const serverLast = serverMessages[serverMessages.length - 1]?.timestamp?.getTime() || 0
-          
-          // Only replace if server has more messages OR server has same number but newer last message
-          // OR if local is empty
-          const shouldReplace = 
-            (serverMessages.length > localMessages.length) || 
-            (serverMessages.length === localMessages.length && serverLast > localLast) ||
-            (localMessages.length === 0 && serverMessages.length > 0)
+
+          // Only replace if server has strictly more messages OR same count but newer last message.
+          // Do NOT replace when local is empty but server has data — local may hold in-progress interview
+          // messages not yet persisted to the server.
+          const shouldReplace =
+            (serverMessages.length > localMessages.length) ||
+            (serverMessages.length === localMessages.length && serverLast > localLast)
 
           if (shouldReplace) {
             setMessages(serverMessages)
@@ -674,6 +676,8 @@ export default function TeacherSupportChat() {
     }
     loadMessages()
   }, [currentConversationId])
+
+  useEffect(() => { messagesRef.current = messages }, [messages])
 
   useEffect(() => {
     if (!currentConversationId) return
@@ -3014,6 +3018,7 @@ function MessageContent({ content, onPublish, onEdit, onInput, toast, darkMode =
       )}
 
       {csv && (
+        <>
         <div
           className="mt-3 border border-purple-200 rounded-lg overflow-hidden cursor-grab"
           draggable
@@ -3048,11 +3053,13 @@ function MessageContent({ content, onPublish, onEdit, onInput, toast, darkMode =
               </Button>
             </div>
           </div>
-          <pre className="bg-slate-900 text-slate-100 p-3 text-xs font-mono overflow-x-auto max-h-48">
-            {csv.split('\n').slice(0, 10).join('\n')}
-            {csv.split('\n').length > 10 && '\n...'}
+          <pre className="bg-slate-900 text-slate-100 p-3 text-xs font-mono overflow-x-auto max-h-32">
+            {csv.split('\n').slice(0, 6).join('\n')}
+            {csv.split('\n').length > 6 && '\n...'}
           </pre>
         </div>
+        <DataVisualizationPanel csvText={csv} />
+        </>
       )}
 
       {quiz && (
