@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
+import { useMobile } from '@/hooks/useMobile'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
@@ -98,6 +99,7 @@ const parseCanvasContent = (raw?: string) => {
 
 export default function TeacherDocumentsPage() {
   const { toast } = useToast()
+  const { isMobile } = useMobile()
   const [draftId, setDraftId] = useState<string | null>(null)
   const draftIdRef = useRef<string | null>(null)
   const pendingDraftPayloadRef = useRef<{ title: string; doc_type: string; content_json: string } | null>(null)
@@ -782,10 +784,69 @@ export default function TeacherDocumentsPage() {
     return () => window.removeEventListener('resize', updateAnchor)
   }, [mode, showSidebar])
 
+  // ── Mobile simplified view ────────────────────────────────────────────────
+  if (isMobile) {
+    const docTypeLabel: Record<string, string> = {
+      presentation: '📊 Presentazione',
+      document: '📄 Documento',
+      sheet: '📋 Foglio',
+      canvas: '🎨 Canvas',
+    }
+    return (
+      <div className="flex flex-col h-full bg-slate-50 p-4 gap-4 overflow-y-auto">
+        <div className="flex items-center justify-between">
+          <h1 className="text-base font-bold text-slate-800 flex items-center gap-2">
+            <FileText className="h-5 w-5 text-slate-500" />
+            Documenti
+          </h1>
+          <p className="text-[10px] text-slate-400 text-right">
+            Editor disponibile<br />solo su desktop
+          </p>
+        </div>
+
+        {storedDocuments.length === 0 && draftDocuments.length === 0 && (
+          <div className="text-center py-12 text-slate-400 text-sm">
+            Nessun documento trovato
+          </div>
+        )}
+
+        {draftDocuments.length > 0 && (
+          <div>
+            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Bozze</p>
+            <div className="space-y-2">
+              {draftDocuments.map(doc => (
+                <div key={doc.id} className="bg-white rounded-xl border border-slate-200 px-4 py-3 flex items-center justify-between shadow-sm">
+                  <div>
+                    <p className="text-sm font-semibold text-slate-800 truncate max-w-[200px]">{doc.title}</p>
+                    <p className="text-xs text-slate-400">{docTypeLabel[doc.type] || doc.type} · {new Date(doc.updatedAt).toLocaleDateString()}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {storedDocuments.length > 0 && (
+          <div>
+            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Pubblicati</p>
+            <div className="space-y-2">
+              {storedDocuments.map(doc => (
+                <div key={doc.id} className="bg-white rounded-xl border border-slate-200 px-4 py-3 shadow-sm">
+                  <p className="text-sm font-semibold text-slate-800 truncate">{doc.title}</p>
+                  <p className="text-xs text-slate-400">{docTypeLabel[doc.type] || doc.type} · {doc.sessionName} · {new Date(doc.updatedAt).toLocaleDateString()}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    )
+  }
+
   return (
     <>
-      <div className="h-full flex flex-col bg-slate-100 overflow-hidden"> 
-        
+      <div className="h-full flex flex-col bg-slate-100 overflow-hidden">
+
         {/* Header / Meta-Toolbar */}
         <div className="h-14 bg-white border-b flex items-center justify-between px-4 z-20 shadow-sm shrink-0">
           <div className="flex items-center gap-4">

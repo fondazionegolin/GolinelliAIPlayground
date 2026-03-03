@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useMemo, type CSSProperties } from 'react'
+import { useMobile } from '@/hooks/useMobile'
 import { Button } from '@/components/ui/button'
 import {
   Send, Bot, Paperclip, X, Trash2, Plus, File, Image as ImageIcon, Loader2,
@@ -259,7 +260,9 @@ interface QuizInterviewState {
 export default function TeacherSupportChat() {
   const { t } = useTranslation()
   const { toast } = useToast()
+  const { isMobile } = useMobile()
   const [activeTab, setActiveTab] = useState<'chat' | 'teacherbots'>('chat')
+  const [mobileHistoryOpen, setMobileHistoryOpen] = useState(false)
   const [messages, setMessages] = useState<Message[]>([])
   const messagesRef = useRef<Message[]>([])
   const [inputText, setInputText] = useState('')
@@ -1863,36 +1866,72 @@ REGOLE IMPORTANTI:
     <>
       <div className="h-full flex flex-col bg-transparent font-sans" style={accentVars} onDragOver={(e) => e.preventDefault()} onDrop={handleDrop}>
         
-        {/* Top Navigation - Centered Segmented Control */}
-        <div className="flex items-center justify-center pt-6 pb-4 shrink-0">
+        {/* Top Navigation */}
+        <div className={`flex items-center justify-center shrink-0 ${isMobile ? 'pt-2 pb-1.5' : 'pt-6 pb-4'}`}>
           <div className="bg-white/50 backdrop-blur-md border border-slate-200 p-1 rounded-2xl flex gap-1 shadow-sm">
              <button
                onClick={() => setActiveTab('chat')}
-               className={`flex items-center gap-2 px-6 py-2 rounded-xl text-xs font-bold transition-all ${activeTab === 'chat' ? 'bg-[var(--teacher-accent-soft)] text-[var(--teacher-accent-text)] border border-[var(--teacher-accent-border)]/50 shadow-sm backdrop-blur-md' : 'text-slate-500 hover:text-slate-900 hover:bg-white/50'}`}
+               className={`flex items-center gap-1.5 rounded-xl text-xs font-bold transition-all ${isMobile ? 'px-4 py-1.5' : 'px-6 py-2'} ${activeTab === 'chat' ? 'bg-[var(--teacher-accent-soft)] text-[var(--teacher-accent-text)] border border-[var(--teacher-accent-border)]/50 shadow-sm backdrop-blur-md' : 'text-slate-500 hover:text-slate-900 hover:bg-white/50'}`}
              >
                <MessageCircle className="h-3.5 w-3.5" />
                Chat AI
              </button>
              <button
                onClick={() => setActiveTab('teacherbots')}
-               className={`flex items-center gap-2 px-6 py-2 rounded-xl text-xs font-bold transition-all ${activeTab === 'teacherbots' ? 'bg-[var(--teacher-accent-soft)] text-[var(--teacher-accent-text)] border border-[var(--teacher-accent-border)]/50 shadow-sm backdrop-blur-md' : 'text-slate-500 hover:text-slate-900 hover:bg-white/50'}`}
+               className={`flex items-center gap-1.5 rounded-xl text-xs font-bold transition-all ${isMobile ? 'px-4 py-1.5' : 'px-6 py-2'} ${activeTab === 'teacherbots' ? 'bg-[var(--teacher-accent-soft)] text-[var(--teacher-accent-text)] border border-[var(--teacher-accent-border)]/50 shadow-sm backdrop-blur-md' : 'text-slate-500 hover:text-slate-900 hover:bg-white/50'}`}
              >
                <Sparkles className="h-3.5 w-3.5" />
-               Teacherbots
+               {isMobile ? 'Bots' : 'Teacherbots'}
              </button>
           </div>
         </div>
 
+        {/* Mobile history slide-over */}
+        {isMobile && mobileHistoryOpen && (
+          <div className="fixed inset-0 z-50 flex" onClick={() => setMobileHistoryOpen(false)}>
+            <div className="w-72 bg-white h-full shadow-2xl flex flex-col" onClick={e => e.stopPropagation()}>
+              <div className="p-4 border-b border-slate-100 flex items-center justify-between">
+                <h2 className="text-sm font-semibold text-slate-800">Cronologia</h2>
+                <div className="flex gap-1">
+                  <Button variant="ghost" size="sm" onClick={handleNewChat} className="h-8 w-8 p-0 hover:bg-slate-100">
+                    <Plus className="h-4 w-4 text-slate-600" />
+                  </Button>
+                  <Button variant="ghost" size="sm" onClick={() => setMobileHistoryOpen(false)} className="h-8 w-8 p-0 hover:bg-slate-100">
+                    <X className="h-4 w-4 text-slate-400" />
+                  </Button>
+                </div>
+              </div>
+              <div className="flex-1 overflow-y-auto p-2 space-y-1">
+                {conversations.map(conv => (
+                  <button
+                    key={conv.id}
+                    onClick={() => { setCurrentConversationId(conv.id); setMobileHistoryOpen(false) }}
+                    className={`w-full text-left p-3 rounded-lg text-sm transition-all border ${currentConversationId === conv.id ? 'font-medium' : 'text-slate-600 border-transparent hover:bg-slate-50'}`}
+                    style={currentConversationId === conv.id ? selectedSoftStyle : undefined}
+                  >
+                    <div className="truncate">{conv.title}</div>
+                    <span className="text-xs text-slate-400">{conv.createdAt.toLocaleDateString()}</span>
+                  </button>
+                ))}
+                {conversations.length === 0 && (
+                  <p className="text-xs text-slate-400 text-center py-8">Nessuna conversazione</p>
+                )}
+              </div>
+            </div>
+            <div className="flex-1 bg-black/30 backdrop-blur-sm" />
+          </div>
+        )}
+
         {/* Main Content Area */}
-        <div className="flex-1 overflow-hidden px-6 pb-6">
+        <div className={`flex-1 overflow-hidden ${isMobile ? 'px-0 pb-0' : 'px-6 pb-6'}`}>
            {activeTab === 'teacherbots' ? (
-              <div className="h-full bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden p-6 relative">
+              <div className={`h-full bg-white ${isMobile ? '' : 'rounded-2xl'} border border-slate-200 shadow-sm overflow-hidden ${isMobile ? 'p-3' : 'p-6'} relative`}>
                  <TeacherbotsPanel />
               </div>
            ) : (
-              <div className="flex h-full gap-6 max-w-7xl mx-auto w-full">
-                 {/* Sidebar Card */}
-                 <aside className={`${isSidebarCollapsed ? 'w-16' : 'w-80'} bg-white rounded-2xl border border-slate-200 shadow-sm flex flex-col transition-all duration-300 flex-shrink-0 overflow-hidden`}>
+              <div className={`flex h-full ${isMobile ? '' : 'gap-6 max-w-7xl mx-auto w-full'}`}>
+                 {/* Sidebar Card — desktop only */}
+                 <aside className={`${isMobile ? 'hidden' : ''} ${isSidebarCollapsed ? 'w-16' : 'w-80'} bg-white rounded-2xl border border-slate-200 shadow-sm flex flex-col transition-all duration-300 flex-shrink-0 overflow-hidden`}>
                   <div className={`p-4 border-b border-slate-100 flex items-center ${isSidebarCollapsed ? 'justify-center' : 'justify-between'}`}>
                     {!isSidebarCollapsed && <h2 className="text-sm font-semibold text-slate-800 tracking-tight">Cronologia</h2>}
                     <div className="flex gap-1">
@@ -1981,9 +2020,38 @@ REGOLE IMPORTANTI:
                 </aside>
 
                  {/* Chat Main Card */}
-                 <main className="flex-1 bg-white rounded-2xl border border-slate-200 shadow-sm flex flex-col relative overflow-hidden" style={chatBg ? { backgroundColor: chatBg } : undefined}>
+                 <main className={`flex-1 bg-white ${isMobile ? '' : 'rounded-2xl border border-slate-200 shadow-sm'} flex flex-col relative overflow-hidden`} style={chatBg ? { backgroundColor: chatBg } : undefined}>
 
-                  <header className="px-3 py-2 md:px-4 md:py-3 border-b border-slate-200 bg-white/80 backdrop-blur-sm sticky top-0 z-10 flex items-center justify-between shrink-0">
+                  <header className="px-3 py-2 border-b border-slate-200 bg-white/80 backdrop-blur-sm sticky top-0 z-10 flex items-center justify-between shrink-0">
+                    {isMobile ? (
+                      /* Mobile header — essential only */
+                      <>
+                        <button
+                          onClick={() => setMobileHistoryOpen(true)}
+                          className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg hover:bg-slate-100 transition-colors"
+                        >
+                          <MessageCircle className="h-4 w-4 text-slate-500" />
+                          <span className="text-xs text-slate-500 font-medium">Storico</span>
+                        </button>
+
+                        <div className="flex items-center gap-2">
+                          <div className="w-7 h-7 rounded-full flex items-center justify-center shadow-sm" style={{ backgroundColor: accentTheme.accent }}>
+                            <Bot className="h-3.5 w-3.5 text-white" />
+                          </div>
+                          <span className="text-sm font-bold text-slate-800">AI Docente</span>
+                        </div>
+
+                        <button
+                          onClick={handleNewChat}
+                          className="flex items-center gap-1 px-2 py-1.5 rounded-lg hover:bg-slate-100 transition-colors"
+                        >
+                          <Plus className="h-4 w-4 text-slate-500" />
+                          <span className="text-xs text-slate-500 font-medium">Nuova</span>
+                        </button>
+                      </>
+                    ) : (
+                      /* Desktop header — full controls */
+                      <>
                     <div className="flex items-center gap-3">
                       <div className="w-8 h-8 rounded-full flex items-center justify-center shadow-md" style={{ backgroundColor: accentTheme.accent }}>
                         <Bot className="h-4 w-4 text-white translate-y-[1px]" />
@@ -2203,10 +2271,31 @@ REGOLE IMPORTANTI:
                         </div>
                       </div>
                     </div>
+                      </>
+                    )}
                   </header>
 
+                  {/* Mobile: agent mode pills row */}
+                  {isMobile && (
+                    <div className="flex gap-1.5 overflow-x-auto px-3 py-2 border-b border-slate-100 scrollbar-none shrink-0">
+                      {AGENT_MODES.map(m => {
+                        const isActive = agentMode === m.id
+                        return (
+                          <button
+                            key={m.id}
+                            onClick={() => handleChangeAgentMode(m.id)}
+                            className={`flex-shrink-0 px-3 py-1 rounded-full text-xs font-semibold transition-colors border ${isActive ? 'text-white border-transparent shadow-sm' : 'text-slate-500 border-slate-200 bg-white hover:bg-slate-50'}`}
+                            style={isActive ? { backgroundColor: accentTheme.accent, borderColor: accentTheme.accent } : undefined}
+                          >
+                            {m.id === 'image' ? t('teacher_chat.mode_image') : m.label}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  )}
+
                   <div
-                    className={`flex-1 overflow-y-auto px-3 py-3 md:px-4 md:py-6 ${chatBgIsDark ? 'text-white' : ''}`}
+                    className={`flex-1 overflow-y-auto ${isMobile ? 'px-3 py-3' : 'px-4 py-6'} ${chatBgIsDark ? 'text-white' : ''}`}
                     style={{ WebkitOverflowScrolling: 'touch', scrollBehavior: 'smooth' }}
                   >
                     <div className="max-w-3xl mx-auto w-full space-y-3 md:space-y-6 min-h-full flex flex-col">
@@ -2408,15 +2497,15 @@ REGOLE IMPORTANTI:
                     </div>
                   </div>
 
-                  <div className="p-4 bg-white border-t border-slate-200">
-                    <div className="max-w-3xl mx-auto">
+                  <div className={`${isMobile ? 'p-2' : 'p-4'} bg-white border-t border-slate-200`} style={isMobile ? { paddingBottom: 'calc(0.5rem + env(safe-area-inset-bottom))' } : undefined}>
+                    <div className={isMobile ? '' : 'max-w-3xl mx-auto'}>
 
                       {attachedFiles.length > 0 && (
                         <div className="flex flex-wrap gap-2 mb-2">
                           {attachedFiles.map((f, i) => (
-                            <div key={i} className="bg-slate-50/50 backdrop-blur-sm px-3 py-1.5 rounded-full text-xs flex items-center gap-2 text-slate-600 border border-slate-200 shadow-sm transition-all hover:bg-white/80">
+                            <div key={i} className="bg-slate-50/50 backdrop-blur-sm px-3 py-1.5 rounded-full text-xs flex items-center gap-2 text-slate-600 border border-slate-200 shadow-sm">
                               {f.type === 'image' ? <ImageIcon className="h-3 w-3" /> : <File className="h-3 w-3" />}
-                              <span className="max-w-[150px] truncate">{f.file.name}</span>
+                              <span className="max-w-[120px] truncate">{f.file.name}</span>
                               <button onClick={() => removeFile(i)} className="text-slate-400 hover:text-red-500">
                                 <X className="h-3 w-3" />
                               </button>
@@ -2425,50 +2514,52 @@ REGOLE IMPORTANTI:
                         </div>
                       )}
 
-                      {/* Input Pill Container */}
-                      <div className="relative flex items-center gap-2 bg-white border border-slate-200 shadow-sm rounded-[24px] p-2 focus-within:ring-2 focus-within:ring-slate-200 focus-within:border-slate-300 transition-all">
+                      {/* Input Pill */}
+                      <div className="relative flex items-center gap-1.5 bg-white border border-slate-200 shadow-sm rounded-[24px] p-1.5 focus-within:ring-2 focus-within:ring-slate-200 transition-all">
                         <input type="file" ref={fileInputRef} className="hidden" multiple onChange={handleFileSelect} />
 
-                        {/* Mode Selector - Left */}
-                        <div className="relative flex-shrink-0 mb-0.5" ref={modeMenuRef}>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-8 rounded-full px-2 text-slate-500 hover:bg-slate-100 hover:text-slate-900 gap-1.5"
-                            onClick={() => setShowModeMenu(v => !v)}
-                            title="Cambia modalità"
-                          >
-                            <Sparkles className="h-4 w-4" />
-                            <ChevronDown className={`h-3 w-3 transition-transform ${showModeMenu ? 'rotate-180' : ''}`} />
-                          </Button>
-                          {showModeMenu && (
-                            <div className="absolute bottom-10 left-0 z-40 w-48 rounded-xl border border-slate-200 bg-white/80 backdrop-blur-lg p-1.5 shadow-xl animate-in slide-in-from-bottom-2 fade-in duration-200">
-                              {AGENT_MODES.map(m => {
-                                const icon = m.id === 'default'
-                                  ? <MessageSquare className="h-3.5 w-3.5" />
-                                  : m.id === 'report'
-                                    ? <FileText className="h-3.5 w-3.5" />
-                                    : m.id === 'quiz'
-                                      ? <CheckSquare className="h-3.5 w-3.5" />
-                                      : m.id === 'image'
-                                        ? <ImageIcon className="h-3.5 w-3.5" />
-                                        : <Database className="h-3.5 w-3.5" />
-                                const isSelected = agentMode === m.id
-                                return (
-                                  <button
-                                    key={m.id}
-                                    onClick={() => handleChangeAgentMode(m.id)}
-                                    className={`w-full flex items-center gap-2 rounded-lg px-2.5 py-2 text-xs font-medium transition-colors ${isSelected ? '' : 'text-slate-600 hover:bg-slate-100'}`}
-                                    style={isSelected ? selectedSoftStyle : undefined}
-                                  >
-                                    {icon}
-                                    {m.id === 'image' ? t('teacher_chat.mode_image') : m.label}
-                                  </button>
-                                )
-                              })}
-                            </div>
-                          )}
-                        </div>
+                        {/* Mode Selector — desktop only (mobile uses pills above) */}
+                        {!isMobile && (
+                          <div className="relative flex-shrink-0 mb-0.5" ref={modeMenuRef}>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-8 rounded-full px-2 text-slate-500 hover:bg-slate-100 hover:text-slate-900 gap-1.5"
+                              onClick={() => setShowModeMenu(v => !v)}
+                              title="Cambia modalità"
+                            >
+                              <Sparkles className="h-4 w-4" />
+                              <ChevronDown className={`h-3 w-3 transition-transform ${showModeMenu ? 'rotate-180' : ''}`} />
+                            </Button>
+                            {showModeMenu && (
+                              <div className="absolute bottom-10 left-0 z-40 w-48 rounded-xl border border-slate-200 bg-white/80 backdrop-blur-lg p-1.5 shadow-xl animate-in slide-in-from-bottom-2 fade-in duration-200">
+                                {AGENT_MODES.map(m => {
+                                  const icon = m.id === 'default'
+                                    ? <MessageSquare className="h-3.5 w-3.5" />
+                                    : m.id === 'report'
+                                      ? <FileText className="h-3.5 w-3.5" />
+                                      : m.id === 'quiz'
+                                        ? <CheckSquare className="h-3.5 w-3.5" />
+                                        : m.id === 'image'
+                                          ? <ImageIcon className="h-3.5 w-3.5" />
+                                          : <Database className="h-3.5 w-3.5" />
+                                  const isSelected = agentMode === m.id
+                                  return (
+                                    <button
+                                      key={m.id}
+                                      onClick={() => handleChangeAgentMode(m.id)}
+                                      className={`w-full flex items-center gap-2 rounded-lg px-2.5 py-2 text-xs font-medium transition-colors ${isSelected ? '' : 'text-slate-600 hover:bg-slate-100'}`}
+                                      style={isSelected ? selectedSoftStyle : undefined}
+                                    >
+                                      {icon}
+                                      {m.id === 'image' ? t('teacher_chat.mode_image') : m.label}
+                                    </button>
+                                  )
+                                })}
+                              </div>
+                            )}
+                          </div>
+                        )}
 
                         <VoiceRecorder
                           onInsertText={(text) => setInputText((prev) => prev ? prev + ' ' + text : text)}
@@ -2477,9 +2568,9 @@ REGOLE IMPORTANTI:
                         <Button
                           variant="ghost"
                           size="icon"
-                          className="h-8 w-8 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-full flex-shrink-0 mb-0.5"
+                          className="h-8 w-8 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-full flex-shrink-0"
                           onClick={() => fileInputRef.current?.click()}
-                          title="Allega file"
+                          title="Allega"
                         >
                           <Paperclip className="h-4 w-4" />
                         </Button>
@@ -2488,7 +2579,7 @@ REGOLE IMPORTANTI:
                           value={inputText}
                           onChange={(e) => setInputText(e.target.value)}
                           onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
-                          placeholder={hasActiveInterview ? 'Rispondi alla domanda corrente...' : 'Scrivi o trascina file qui...'}
+                          placeholder={hasActiveInterview ? 'Rispondi...' : isMobile ? 'Scrivi...' : 'Scrivi o trascina file qui...'}
                           className="flex-1 bg-transparent border-none focus:ring-0 focus:outline-none outline-none resize-none py-2 px-2 text-sm text-slate-800 placeholder:text-slate-400 max-h-32 min-h-[36px] leading-relaxed"
                           rows={1}
                           style={{ overflow: 'hidden' }}
@@ -2499,17 +2590,19 @@ REGOLE IMPORTANTI:
                           }}
                         />
 
-                        {/* Active Mode Tag */}
-                        <div className={`flex items-center self-center mb-1 rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide border backdrop-blur-md ${
-                          selectedModeMeta.id === 'default' ? 'bg-slate-100/50 text-slate-500 border-slate-200' :
-                          selectedModeMeta.id === 'report' ? 'bg-blue-50/50 text-blue-600 border-blue-200' :
-                          selectedModeMeta.id === 'quiz' ? 'bg-amber-50/50 text-amber-600 border-amber-200' :
-                          selectedModeMeta.id === 'image' ? 'bg-purple-50/50 text-purple-600 border-purple-200' :
-                          selectedModeMeta.id === 'dataset' ? 'bg-emerald-50/50 text-emerald-600 border-emerald-200' :
-                          'bg-slate-100/50 text-slate-600 border-slate-200'
-                        }`}>
-                          {selectedModeMeta.label}
-                        </div>
+                        {/* Mode tag — desktop only */}
+                        {!isMobile && (
+                          <div className={`flex items-center self-center mb-1 rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide border backdrop-blur-md ${
+                            selectedModeMeta.id === 'default' ? 'bg-slate-100/50 text-slate-500 border-slate-200' :
+                            selectedModeMeta.id === 'report' ? 'bg-blue-50/50 text-blue-600 border-blue-200' :
+                            selectedModeMeta.id === 'quiz' ? 'bg-amber-50/50 text-amber-600 border-amber-200' :
+                            selectedModeMeta.id === 'image' ? 'bg-purple-50/50 text-purple-600 border-purple-200' :
+                            selectedModeMeta.id === 'dataset' ? 'bg-emerald-50/50 text-emerald-600 border-emerald-200' :
+                            'bg-slate-100/50 text-slate-600 border-slate-200'
+                          }`}>
+                            {selectedModeMeta.label}
+                          </div>
+                        )}
 
                         <Button
                           onClick={handleSend}

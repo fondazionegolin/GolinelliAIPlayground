@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Routes, Route, useLocation } from 'react-router-dom'
+import { Routes, Route, useLocation, Link } from 'react-router-dom'
+import { MessageSquare, Users, PlayCircle, Bot } from 'lucide-react'
 import ClassesPage from './ClassesPage'
 import SessionsPage from './SessionsPage'
 import SessionLivePage from './SessionLivePage'
@@ -13,29 +14,30 @@ import { teacherApi } from '@/lib/api'
 import { AppBackground } from '@/components/ui/AppBackground'
 import { getTeacherAccentTheme, DEFAULT_TEACHER_ACCENT, type TeacherAccentId } from '@/lib/teacherAccent'
 import { getAppBackgroundGradient } from '@/lib/theme'
+import { useMobile } from '@/hooks/useMobile'
 
-// Width below which the right class chat sidebar auto-hides.
-// Increase this value if you want earlier collapse.
 const CHATBAR_AUTO_HIDE_BREAKPOINT = 1280
+
+const MOBILE_NAV = [
+  { path: '/teacher',          label: 'Chat',     icon: MessageSquare, exact: true },
+  { path: '/teacher/classes',  label: 'Classi',   icon: Users },
+  { path: '/teacher/sessions', label: 'Sessioni', icon: PlayCircle },
+]
 
 export default function TeacherDashboard() {
   const { t } = useTranslation()
   const location = useLocation()
+  const { isMobile } = useMobile()
 
-  // Sidebar State - always visible and pinned
   const [teacherProfile, setTeacherProfile] = useState<{ id: string, name: string, uiAccent?: TeacherAccentId } | null>(null)
   const [sidebarWidth, setSidebarWidth] = useState(380)
   const [showSidebar, setShowSidebar] = useState(false)
 
-  // Load persisted session from localStorage
   const getPersistedSession = (): { id: string, name: string, className: string } | null => {
     try {
       const stored = localStorage.getItem('teacher_selected_session')
-      if (stored) {
-        return JSON.parse(stored)
-      }
+      if (stored) return JSON.parse(stored)
     } catch {
-      // Invalid JSON, clear it
       localStorage.removeItem('teacher_selected_session')
     }
     return null
@@ -44,13 +46,11 @@ export default function TeacherDashboard() {
   const [currentSession, setCurrentSession] = useState<{ id: string, name: string, className: string } | null>(getPersistedSession)
   const [activeSessionId, setActiveSessionId] = useState<string | null>(currentSession?.id || null)
 
-  // Detect session ID from URL or use persisted session
   useEffect(() => {
     const match = location.pathname.match(/\/sessions\/([^\/]+)/)
     const urlSessionId = match?.[1]
 
     if (urlSessionId) {
-      // URL has a session ID - load its info and set it as current
       setActiveSessionId(urlSessionId)
       teacherApi.getSessionLive(urlSessionId).then((res: { data: { session: { name?: string; title?: string; class_name?: string } } }) => {
         const sessionInfo = {
@@ -59,10 +59,8 @@ export default function TeacherDashboard() {
           className: res.data.session?.class_name || t('navbar.nav_classes')
         }
         setCurrentSession(sessionInfo)
-        // Persist the session
         localStorage.setItem('teacher_selected_session', JSON.stringify(sessionInfo))
       }).catch(() => {
-        // Session not found, but keep the persisted one if available
         const persisted = getPersistedSession()
         if (persisted) {
           setCurrentSession(persisted)
@@ -73,10 +71,8 @@ export default function TeacherDashboard() {
         }
       })
     } else if (currentSession?.id) {
-      // No URL session, but we have a persisted one - validate it still exists
       setActiveSessionId(currentSession.id)
       teacherApi.getSessionLive(currentSession.id).catch(() => {
-        // Session no longer valid, clear it
         localStorage.removeItem('teacher_selected_session')
         setCurrentSession(null)
         setActiveSessionId(null)
@@ -124,21 +120,39 @@ export default function TeacherDashboard() {
   const bgGradient = getAppBackgroundGradient(teacherTheme)
 
   return (
-    <AppBackground className="h-screen flex flex-col overflow-hidden" gradient={bgGradient}>
-      <TeacherNavbar
-        currentSession={currentSession}
-        onSessionChange={(session) => {
-          setCurrentSession(session)
-          setActiveSessionId(session.id)
-          // Persist session selection
-          localStorage.setItem('teacher_selected_session', JSON.stringify(session))
-        }}
-        chatSidebarOpen={showSidebar}
-        onToggleChatSidebar={() => setShowSidebar(v => !v)}
-      />
+    <AppBackground className="h-[100dvh] flex flex-col overflow-hidden" gradient={bgGradient}>
 
-      <div className="flex-1 flex overflow-hidden pt-16">
-        {/* Main Content */}
+      {/* ── Desktop Navbar ── */}
+      {!isMobile && (
+        <TeacherNavbar
+          currentSession={currentSession}
+          onSessionChange={(session) => {
+            setCurrentSession(session)
+            setActiveSessionId(session.id)
+            localStorage.setItem('teacher_selected_session', JSON.stringify(session))
+          }}
+          chatSidebarOpen={showSidebar}
+          onToggleChatSidebar={() => setShowSidebar(v => !v)}
+        />
+      )}
+
+      {/* ── Mobile Top Bar ── */}
+      {isMobile && (
+        <div
+          className="fixed top-0 inset-x-0 z-50 h-12 flex items-center px-4 border-b border-white/20 backdrop-blur-md"
+          style={{ backgroundColor: `${teacherTheme.soft}ee` }}
+        >
+          <div className="w-7 h-7 rounded-full flex items-center justify-center mr-2.5 shadow-sm" style={{ backgroundColor: teacherTheme.accent }}>
+            <Bot className="h-4 w-4 text-white" />
+          </div>
+          <span className="text-sm font-bold flex-1" style={{ color: teacherTheme.text }}>
+            {teacherProfile?.name || 'Docente AI'}
+          </span>
+        </div>
+      )}
+
+      {/* ── Main Content ── */}
+      <div className={`flex-1 flex overflow-hidden ${isMobile ? 'pt-12 pb-16' : 'pt-16'}`}>
         <main className="flex-1 overflow-y-auto relative">
           <Routes>
             <Route index element={<TeacherSupportChat />} />
@@ -150,7 +164,8 @@ export default function TeacherDashboard() {
           </Routes>
         </main>
 
-        {showSidebar ? (
+        {/* Right chat sidebar — desktop only */}
+        {!isMobile && showSidebar && (
           <div
             className="border-l border-slate-200 bg-white h-full flex-shrink-0 relative"
             style={{ width: `${sidebarWidth}px` }}
@@ -180,8 +195,33 @@ export default function TeacherDashboard() {
               </div>
             )}
           </div>
-        ) : null}
+        )}
       </div>
+
+      {/* ── Mobile Bottom Nav ── */}
+      {isMobile && (
+        <nav
+          className="fixed bottom-0 inset-x-0 z-50 h-16 bg-white/90 backdrop-blur-md border-t border-slate-200 flex items-center justify-around"
+          style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
+        >
+          {MOBILE_NAV.map(({ path, label, icon: Icon, exact }) => {
+            const isActive = exact
+              ? location.pathname === path
+              : location.pathname.startsWith(path) && location.pathname !== '/teacher'
+            return (
+              <Link
+                key={path}
+                to={path}
+                className="flex flex-col items-center gap-0.5 px-5 py-1 rounded-xl transition-colors"
+                style={isActive ? { color: teacherTheme.text } : { color: '#94a3b8' }}
+              >
+                <Icon className="h-5 w-5" />
+                <span className="text-[10px] font-semibold">{label}</span>
+              </Link>
+            )
+          })}
+        </nav>
+      )}
     </AppBackground>
   )
 }
