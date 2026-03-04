@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, lazy, Suspense } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -10,10 +10,10 @@ import {
   Bot, Brain, Award, MessageSquare, FileEdit,
   Loader2, ChevronRight, Sparkles, ClipboardList, FileText
 } from 'lucide-react'
-import ChatbotModule from './ChatbotModule'
-import TasksModule from './TasksModule'
-import ClassificationModule from './ClassificationModule'
-import StudentDocumentsModule from './StudentDocumentsModule'
+const ChatbotModule         = lazy(() => import('./ChatbotModule'))
+const TasksModule           = lazy(() => import('./TasksModule'))
+const ClassificationModule  = lazy(() => import('./ClassificationModule'))
+const StudentDocumentsModule = lazy(() => import('./StudentDocumentsModule'))
 import ChatSidebar from '@/components/ChatSidebar'
 import { MobileNav } from '@/components/student/MobileNav'
 import { MobileHeader } from '@/components/student/MobileHeader'
@@ -345,21 +345,27 @@ export default function StudentDashboard() {
                     </div>
                   )}
 
-                  <ModuleView
-                    moduleKey={activeModule}
-                    sessionId={sessionInfo.session.id}
-                    openTaskId={openTaskId}
-                    studentId={sessionInfo.student.id}
-                    studentName={sessionInfo.student.nickname}
-                    onTeacherbotNotificationClick={handleNotificationClick}
-                    selectedTeacherbotId={selectedTeacherbotId}
-                    studentAccent={studentAccent}
-                    openDocumentTaskId={openDocumentTaskId}
-                    onOpenDocument={(taskId) => {
-                      setOpenDocumentTaskId(taskId)
-                      setActiveModule('documents')
-                    }}
-                  />
+                  <Suspense fallback={
+                    <div className="flex items-center justify-center h-full min-h-[40vh]">
+                      <Loader2 className="h-6 w-6 animate-spin text-slate-400" />
+                    </div>
+                  }>
+                    <ModuleView
+                      moduleKey={activeModule}
+                      sessionId={sessionInfo.session.id}
+                      openTaskId={openTaskId}
+                      studentId={sessionInfo.student.id}
+                      studentName={sessionInfo.student.nickname}
+                      onTeacherbotNotificationClick={handleNotificationClick}
+                      selectedTeacherbotId={selectedTeacherbotId}
+                      studentAccent={studentAccent}
+                      openDocumentTaskId={openDocumentTaskId}
+                      onOpenDocument={(taskId) => {
+                        setOpenDocumentTaskId(taskId)
+                        setActiveModule('documents')
+                      }}
+                    />
+                  </Suspense>
                 </div>
               )}
             </motion.div>
