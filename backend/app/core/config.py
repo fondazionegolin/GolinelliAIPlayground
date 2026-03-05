@@ -52,11 +52,13 @@ class Settings(BaseSettings):
     # CORS
     CORS_ORIGINS: list[str] = [
         "http://localhost:3000",
-        "http://localhost:5173", 
+        "http://localhost:5173",
         "http://localhost",
         "http://localhost:80",
         "https://playground.golinelli.ai",
         "http://playground.golinelli.ai",
+        "https://golinelli.ai",
+        "http://golinelli.ai",
     ]
     
     # Email SMTP (Google Workspace)

@@ -256,11 +256,13 @@ export function useSocket(sessionId?: string): UseSocketReturn {
     const socket = io(window.location.origin, {
       path: '/socket.io',
       auth: { token: authToken },
-      transports: ['websocket', 'polling'],
+      // polling first: avoids hammering the browser with failed WebSocket retries
+      // when wss:// is blocked by a proxy. Upgrades to WebSocket automatically if available.
+      transports: ['polling', 'websocket'],
       reconnection: true,
-      reconnectionAttempts: 10,
-      reconnectionDelay: 1000,
-      reconnectionDelayMax: 5000,
+      reconnectionAttempts: Infinity,
+      reconnectionDelay: 2000,
+      reconnectionDelayMax: 30000,
       timeout: 20000,
     })
 

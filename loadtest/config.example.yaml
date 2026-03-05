@@ -1,0 +1,25 @@
+journey_mode: "api"
+base_url: "http://localhost:5173"
+join_code: "XYLAS"
+message: "come faccio a calcolare la radice quadrata di un numero"
+csv_path: "dataset_1772097045952.csv"
+
+# Carico
+planned_users: 60
+start_concurrency: 3
+max_concurrency: 20
+ramp_step_users: 2
+ramp_every_seconds: 10
+
+# Browser
+action_timeout_seconds: 30
+headless: true
+slow_mo_ms: 0
+
+# Journey
+wait_chat_response_seconds: 45
+wait_training_seconds: 40
+
+# Monitor
+refresh_hz: 4
+recent_events_limit: 18

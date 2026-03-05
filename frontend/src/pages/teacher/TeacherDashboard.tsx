@@ -1,15 +1,13 @@
-import { useState, useEffect, lazy, Suspense } from 'react'
+import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Routes, Route, useLocation, Link, useNavigate } from 'react-router-dom'
-import { MessageSquare, Users, PlayCircle, Bot, Loader2, LogOut, FlaskConical } from 'lucide-react'
-import { useAuthStore } from '@/stores/auth'
-// All pages lazy-loaded to keep main bundle lean
-const TeacherSupportChat = lazy(() => import('./TeacherSupportChat'))
-const ClassesPage        = lazy(() => import('./ClassesPage'))
-const SessionsPage      = lazy(() => import('./SessionsPage'))
-const SessionLivePage   = lazy(() => import('./SessionLivePage'))
-const TeacherDocumentsPage = lazy(() => import('./TeacherDocumentsPage'))
-const TeacherMLLabPage  = lazy(() => import('./TeacherMLLabPage'))
+import { Routes, Route, useLocation, Link } from 'react-router-dom'
+import { MessageSquare, Users, PlayCircle, Bot } from 'lucide-react'
+import ClassesPage from './ClassesPage'
+import SessionsPage from './SessionsPage'
+import SessionLivePage from './SessionLivePage'
+import TeacherSupportChat from './TeacherSupportChat'
+import TeacherDocumentsPage from './TeacherDocumentsPage'
+import TeacherMLLabPage from './TeacherMLLabPage'
 import { TeacherNavbar } from '@/components/TeacherNavbar'
 import ChatSidebar from '@/components/ChatSidebar'
 import { teacherApi } from '@/lib/api'
@@ -24,15 +22,12 @@ const MOBILE_NAV = [
   { path: '/teacher',          label: 'Chat',     icon: MessageSquare, exact: true },
   { path: '/teacher/classes',  label: 'Classi',   icon: Users },
   { path: '/teacher/sessions', label: 'Sessioni', icon: PlayCircle },
-  { path: '/teacher/ml-lab',   label: 'ML Lab',   icon: FlaskConical },
 ]
 
 export default function TeacherDashboard() {
   const { t } = useTranslation()
   const location = useLocation()
-  const navigate = useNavigate()
   const { isMobile } = useMobile()
-  const { logout } = useAuthStore()
 
   const [teacherProfile, setTeacherProfile] = useState<{ id: string, name: string, uiAccent?: TeacherAccentId } | null>(null)
   const [sidebarWidth, setSidebarWidth] = useState(380)
@@ -144,45 +139,29 @@ export default function TeacherDashboard() {
       {/* ── Mobile Top Bar ── */}
       {isMobile && (
         <div
-          className="fixed top-0 inset-x-0 z-50 h-12 flex items-center px-4 border-b border-slate-200"
-          style={{ backgroundColor: teacherTheme.soft }}
+          className="fixed top-0 inset-x-0 z-50 h-12 flex items-center px-4 border-b border-white/20 backdrop-blur-md"
+          style={{ backgroundColor: `${teacherTheme.soft}ee` }}
         >
-          <div
-            className="w-7 h-7 rounded-xl flex items-center justify-center mr-2.5 shadow-sm flex-shrink-0"
-            style={{ background: `linear-gradient(135deg, ${teacherTheme.accent}, ${teacherTheme.text})` }}
-          >
+          <div className="w-7 h-7 rounded-full flex items-center justify-center mr-2.5 shadow-sm" style={{ backgroundColor: teacherTheme.accent }}>
             <Bot className="h-4 w-4 text-white" />
           </div>
           <span className="text-sm font-bold flex-1" style={{ color: teacherTheme.text }}>
             {teacherProfile?.name || 'Docente AI'}
           </span>
-          <button
-            onClick={() => { logout(); navigate('/login') }}
-            className="flex items-center gap-1 text-xs text-slate-500 hover:text-red-500 transition-colors px-2 py-1 rounded-lg hover:bg-red-50"
-          >
-            <LogOut className="h-3.5 w-3.5" />
-            <span>Esci</span>
-          </button>
         </div>
       )}
 
       {/* ── Main Content ── */}
       <div className={`flex-1 flex overflow-hidden ${isMobile ? 'pt-12 pb-16' : 'pt-16'}`}>
         <main className="flex-1 overflow-y-auto relative">
-          <Suspense fallback={
-            <div className="flex items-center justify-center h-full min-h-[60vh]">
-              <Loader2 className="h-6 w-6 animate-spin text-slate-400" />
-            </div>
-          }>
-            <Routes>
-              <Route index element={<TeacherSupportChat />} />
-              <Route path="documents" element={<TeacherDocumentsPage />} />
-              <Route path="ml-lab" element={<TeacherMLLabPage />} />
-              <Route path="classes" element={<ClassesPage />} />
-              <Route path="sessions" element={<SessionsPage />} />
-              <Route path="sessions/:sessionId" element={<SessionLivePage />} />
-            </Routes>
-          </Suspense>
+          <Routes>
+            <Route index element={<TeacherSupportChat />} />
+            <Route path="documents" element={<TeacherDocumentsPage />} />
+            <Route path="ml-lab" element={<TeacherMLLabPage />} />
+            <Route path="classes" element={<ClassesPage />} />
+            <Route path="sessions" element={<SessionsPage />} />
+            <Route path="sessions/:sessionId" element={<SessionLivePage />} />
+          </Routes>
         </main>
 
         {/* Right chat sidebar — desktop only */}
@@ -222,7 +201,7 @@ export default function TeacherDashboard() {
       {/* ── Mobile Bottom Nav ── */}
       {isMobile && (
         <nav
-          className="fixed bottom-0 inset-x-0 z-50 h-16 bg-white border-t border-slate-200 flex items-center justify-around"
+          className="fixed bottom-0 inset-x-0 z-50 h-16 bg-white/90 backdrop-blur-md border-t border-slate-200 flex items-center justify-around"
           style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
         >
           {MOBILE_NAV.map(({ path, label, icon: Icon, exact }) => {
