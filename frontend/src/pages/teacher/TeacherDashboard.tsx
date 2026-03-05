@@ -1,7 +1,7 @@
 import { useState, useEffect, lazy, Suspense } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Routes, Route, useLocation, Link, useNavigate } from 'react-router-dom'
-import { MessageSquare, Users, PlayCircle, Bot, Loader2, LogOut } from 'lucide-react'
+import { MessageSquare, Users, PlayCircle, Bot, Loader2, LogOut, FlaskConical } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth'
 // All pages lazy-loaded to keep main bundle lean
 const TeacherSupportChat = lazy(() => import('./TeacherSupportChat'))
@@ -24,6 +24,7 @@ const MOBILE_NAV = [
   { path: '/teacher',          label: 'Chat',     icon: MessageSquare, exact: true },
   { path: '/teacher/classes',  label: 'Classi',   icon: Users },
   { path: '/teacher/sessions', label: 'Sessioni', icon: PlayCircle },
+  { path: '/teacher/ml-lab',   label: 'ML Lab',   icon: FlaskConical },
 ]
 
 export default function TeacherDashboard() {

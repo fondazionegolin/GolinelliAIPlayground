@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useMemo, lazy, Suspense, type CSSProperties } from 'react'
+import { useState, useRef, useEffect, useMemo, memo, useCallback, lazy, Suspense, type CSSProperties } from 'react'
 import { useMobile } from '@/hooks/useMobile'
 import { Button } from '@/components/ui/button'
 import {
@@ -426,6 +426,21 @@ export default function TeacherSupportChat() {
     enhancedPrompt?: string
   } | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  // Stable ref to handleSend — lets memoized children call it without stale closure
+  const handleSendRef = useRef<() => void>(() => {})
+
+  // Stable callbacks for MemoMessageBubble — setState setters are stable, so deps are []
+  const stableOnPublish = useCallback((type: 'quiz' | 'dataset', data: any) => {
+    setPublishMode('published')
+    setPublishModal({ isOpen: true, type, data })
+  }, [])
+  const stableOnEdit = useCallback((type: 'quiz' | 'dataset', data: any) => {
+    setEditorModal({ isOpen: true, type, data })
+  }, [])
+  const stableOnInput = useCallback((text: string) => {
+    setInputText(text)
+    setTimeout(() => handleSendRef.current(), 100)
+  }, [])
 
   const paletteGroups = useMemo(() => ([
     {
@@ -560,10 +575,10 @@ export default function TeacherSupportChat() {
     },
   })
 
-  // Auto-scroll
+  // Auto-scroll — use instant on mobile to avoid animation jank
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages])
+    messagesEndRef.current?.scrollIntoView({ behavior: isMobile ? 'instant' as ScrollBehavior : 'smooth' })
+  }, [messages, isMobile])
 
   // Load conversations from server
   useEffect(() => {
@@ -687,13 +702,14 @@ export default function TeacherSupportChat() {
     setConversationCache(prev => {
       const next = { ...prev, [currentConversationId]: messages }
       conversationCacheRef.current = next
-      localStorage.setItem('teacher_support_messages_cache', JSON.stringify(next))
+      // Defer localStorage write to avoid blocking the main thread on every message update
+      setTimeout(() => localStorage.setItem('teacher_support_messages_cache', JSON.stringify(next)), 0)
       return next
     })
   }, [messages, currentConversationId])
 
   useEffect(() => {
-    localStorage.setItem('teacher_support_conversations', JSON.stringify(conversations))
+    setTimeout(() => localStorage.setItem('teacher_support_conversations', JSON.stringify(conversations)), 0)
   }, [conversations])
 
   const addFiles = (files: globalThis.File[]) => {
@@ -1092,6 +1108,9 @@ Requisiti:
 
   const handleSend = async () => {
     const userInput = inputText.trim()
+
+    // Keep ref up-to-date so stableOnInput (used in MemoMessageBubble) always calls latest version
+    handleSendRef.current = handleSend
 
     // Interview handlers are pure local state operations — they must NOT be blocked by isLoading
     // (which reflects an ongoing LLM request that may still be running from a previous mode)
@@ -1551,7 +1570,8 @@ REGOLE IMPORTANTI:
     setConversationCache(prev => {
       const next = { ...prev, [convId]: [userMessage] }
       conversationCacheRef.current = next
-      localStorage.setItem('teacher_support_messages_cache', JSON.stringify(next))
+      // Defer localStorage write off the render/main thread to avoid jank
+      setTimeout(() => localStorage.setItem('teacher_support_messages_cache', JSON.stringify(next)), 0)
       return next
     })
 
@@ -2298,7 +2318,7 @@ REGOLE IMPORTANTI:
 
                   <div
                     className={`flex-1 overflow-y-auto ${isMobile ? 'px-3 py-3' : 'px-4 py-6'} ${chatBgIsDark ? 'text-white' : ''}`}
-                    style={{ WebkitOverflowScrolling: 'touch', scrollBehavior: 'smooth' }}
+                    style={{ WebkitOverflowScrolling: 'touch' }}
                   >
                     <div className="max-w-3xl mx-auto w-full space-y-3 md:space-y-6 min-h-full flex flex-col">
                     {messages.length === 0 ? (
@@ -2308,44 +2328,16 @@ REGOLE IMPORTANTI:
                       </div>
                     ) : (
                       messages.map((msg) => (
-                        <div key={msg.id} className={`flex gap-4 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                          {msg.role === 'assistant' && (
-                            <div className="w-8 h-8 rounded-full bg-white border border-slate-200 flex items-center justify-center flex-shrink-0">
-                              <Bot className="h-4 w-4 text-red-500" />
-                            </div>
-                          )}
-                          <div className={`max-w-[75%] space-y-1 ${msg.role === 'user' ? 'items-end flex flex-col' : 'items-start'}`}>
-                            <div className={`px-5 py-3 text-sm leading-relaxed shadow-sm backdrop-blur-md transition-all ${msg.role === 'user'
-                              ? `${chatBgIsDark ? 'bg-white/20 text-white border border-white/20' : 'text-white border border-transparent shadow-md'} font-medium rounded-2xl rounded-tr-sm`
-                              : `${chatBgIsDark ? 'bg-white/10 text-white border border-white/15' : 'bg-slate-50/60 text-slate-800 border border-slate-200/80'} rounded-2xl rounded-tl-sm ${chatBgIsDark ? 'prose prose-invert' : ''}`
-                              }`}
-                              style={msg.role === 'user' && !chatBgIsDark ? selectedSolidStyle : undefined}
-                            >
-                              {msg.role === 'assistant' ? (
-                                <MessageContent
-                                  content={msg.content}
-                                  onPublish={(type, data) => {
-                                    setPublishMode('published')
-                                    setPublishModal({ isOpen: true, type, data })
-                                  }}
-                                  onEdit={(type, data) => setEditorModal({ isOpen: true, type, data })}
-                                  onInput={(text) => {
-                                    setInputText(text);
-                                    // Automatically trigger send after selection
-                                    setTimeout(() => handleSend(), 100);
-                                  }}
-                                  toast={toast}
-                                  darkMode={chatBgIsDark}
-                                />
-                              ) : (
-                                <ReactMarkdown className={`prose prose-sm max-w-none prose-p:leading-relaxed prose-pre:bg-slate-800 prose-pre:text-slate-100 ${msg.role === 'user' ? '[&_*]:!text-white' : ''} [&_strong]:font-bold`}>
-                                  {convertEmoticons(msg.content)}
-                                </ReactMarkdown>
-                              )}
-                            </div>
-                            <span className={`text-[10px] px-1 ${chatBgIsDark ? 'text-white/70' : 'text-slate-400'}`}>{msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-                          </div>
-                        </div>
+                        <MemoMessageBubble
+                          key={msg.id}
+                          msg={msg}
+                          chatBgIsDark={chatBgIsDark}
+                          selectedSolidStyle={selectedSolidStyle}
+                          onPublish={stableOnPublish}
+                          onEdit={stableOnEdit}
+                          onInput={stableOnInput}
+                          toast={toast}
+                        />
                       ))
                     )}
                     {isLoading && !webSearchProgress && !imageGenerationProgress && (
@@ -2968,13 +2960,61 @@ function ActionMenu({ actions, onSelect }: { actions: any[], onSelect: (value: s
   )
 }
 
-function MessageContent({ content, onPublish, onEdit, onInput, toast, darkMode = false }: { 
-  content: string; 
-  onPublish: (type: 'quiz' | 'dataset', data: any) => void; 
-  onEdit: (type: 'quiz' | 'dataset', data: any) => void; 
+// Memoized message bubble — prevents ReactMarkdown from re-running for old messages
+// when unrelated state (isLoading, webSearchProgress, etc.) changes.
+const MemoMessageBubble = memo(function MessageBubble({ msg, chatBgIsDark, selectedSolidStyle, onPublish, onEdit, onInput, toast }: {
+  msg: Message
+  chatBgIsDark: boolean
+  selectedSolidStyle: CSSProperties | undefined
+  onPublish: (type: 'quiz' | 'dataset', data: any) => void
+  onEdit: (type: 'quiz' | 'dataset', data: any) => void
+  onInput: (text: string) => void
+  toast: any
+}) {
+  return (
+    <div className={`flex gap-4 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+      {msg.role === 'assistant' && (
+        <div className="w-8 h-8 rounded-full bg-white border border-slate-200 flex items-center justify-center flex-shrink-0">
+          <Bot className="h-4 w-4 text-red-500" />
+        </div>
+      )}
+      <div className={`max-w-[75%] space-y-1 ${msg.role === 'user' ? 'items-end flex flex-col' : 'items-start'}`}>
+        <div className={`px-5 py-3 text-sm leading-relaxed shadow-sm backdrop-blur-md transition-all ${msg.role === 'user'
+          ? `${chatBgIsDark ? 'bg-white/20 text-white border border-white/20' : 'text-white border border-transparent shadow-md'} font-medium rounded-2xl rounded-tr-sm`
+          : `${chatBgIsDark ? 'bg-white/10 text-white border border-white/15' : 'bg-slate-50/60 text-slate-800 border border-slate-200/80'} rounded-2xl rounded-tl-sm ${chatBgIsDark ? 'prose prose-invert' : ''}`
+          }`}
+          style={msg.role === 'user' && !chatBgIsDark ? selectedSolidStyle : undefined}
+        >
+          {msg.role === 'assistant' ? (
+            <MessageContent
+              content={msg.content}
+              onPublish={onPublish}
+              onEdit={onEdit}
+              onInput={onInput}
+              toast={toast}
+              darkMode={chatBgIsDark}
+            />
+          ) : (
+            <ReactMarkdown className={`prose prose-sm max-w-none prose-p:leading-relaxed prose-pre:bg-slate-800 prose-pre:text-slate-100 ${msg.role === 'user' ? '[&_*]:!text-white' : ''} [&_strong]:font-bold`}>
+              {convertEmoticons(msg.content)}
+            </ReactMarkdown>
+          )}
+        </div>
+        <span className={`text-[10px] px-1 ${chatBgIsDark ? 'text-white/70' : 'text-slate-400'}`}>
+          {msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+        </span>
+      </div>
+    </div>
+  )
+})
+
+function MessageContent({ content, onPublish, onEdit, onInput, toast, darkMode = false }: {
+  content: string;
+  onPublish: (type: 'quiz' | 'dataset', data: any) => void;
+  onEdit: (type: 'quiz' | 'dataset', data: any) => void;
   onInput: (text: string) => void;
-  toast: any; 
-  darkMode?: boolean 
+  toast: any;
+  darkMode?: boolean
 }) {
   const { quiz, csv, textContent, isGenerating, generationType, sessionSelector, studentSelector, actionMenu } = parseContentBlocks(content)
   const { cleanContent, images } = extractBase64Images(textContent)
