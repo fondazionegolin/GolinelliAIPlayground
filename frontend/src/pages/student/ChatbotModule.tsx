@@ -62,6 +62,7 @@ interface LLMModel {
 
 interface ChatbotModuleProps {
   sessionId: string
+  studentId?: string
   initialTeacherbotId?: string | null
   onInputFocusChange?: (focused: boolean) => void
 }
@@ -162,7 +163,7 @@ interface AttachedFile {
 // Mobile navigation state
 type MobileViewState = 'profiles' | 'conversations' | 'chat'
 
-export default function ChatbotModule({ sessionId, initialTeacherbotId, onInputFocusChange }: ChatbotModuleProps) {
+export default function ChatbotModule({ sessionId, studentId, initialTeacherbotId, onInputFocusChange }: ChatbotModuleProps) {
   const { t } = useTranslation()
   const FALLBACK_PROFILES = getFallbackProfiles(t)
   const PROFILE_INTERVIEWS = getProfileInterviews(t)
@@ -324,20 +325,25 @@ export default function ChatbotModule({ sessionId, initialTeacherbotId, onInputF
   const [selectedTeacherbot, setSelectedTeacherbot] = useState<Teacherbot | null>(null)
   const [teacherbotConversationId, setTeacherbotConversationId] = useState<string | null>(null)
 
-  // Save/restore last conversation
+  // Save/restore last conversation — key is per-student to avoid cross-student bleed on shared devices
+  const convStorageKey = studentId
+    ? `chatbot_last_conversation_${sessionId}_${studentId}`
+    : null
+
   useEffect(() => {
     return () => {
-      if (conversationId && selectedProfile) {
-        localStorage.setItem(`chatbot_last_conversation_${sessionId}`, JSON.stringify({
+      if (convStorageKey && conversationId && selectedProfile) {
+        localStorage.setItem(convStorageKey, JSON.stringify({
           conversationId,
           profile: selectedProfile
         }))
       }
     }
-  }, [conversationId, selectedProfile, sessionId])
+  }, [conversationId, selectedProfile, convStorageKey])
 
   useEffect(() => {
-    const saved = localStorage.getItem(`chatbot_last_conversation_${sessionId}`)
+    if (!convStorageKey) return
+    const saved = localStorage.getItem(convStorageKey)
     if (saved) {
       try {
         const { conversationId: savedConvId, profile: savedProfile } = JSON.parse(saved)
@@ -347,13 +353,21 @@ export default function ChatbotModule({ sessionId, initialTeacherbotId, onInputF
           if (isMobile) {
             setMobileView('chat')
           }
-          loadConversation(savedConvId)
+          loadConversation(savedConvId).catch(() => {
+            // Stale conversation (403/404) — clear it and start fresh
+            localStorage.removeItem(convStorageKey)
+            setConversationId(null)
+            setSelectedProfile(null)
+            setMessages([])
+            if (isMobile) setMobileView('profiles')
+          })
         }
       } catch (err) {
         console.error('Error restoring conversation:', err)
+        if (convStorageKey) localStorage.removeItem(convStorageKey)
       }
     }
-  }, [sessionId])
+  }, [convStorageKey])
 
   // Fetch chatbot profiles
   const { data: profilesData } = useQuery({
@@ -385,9 +399,9 @@ export default function ChatbotModule({ sessionId, initialTeacherbotId, onInputF
     staleTime: 1000 * 60 * 5,
   })
 
-  // Fetch conversation history
+  // Fetch conversation history — include studentId in key so different students don't share cache
   const { data: conversationsData, refetch: refetchConversations } = useQuery({
-    queryKey: ['conversations', sessionId],
+    queryKey: ['conversations', sessionId, studentId],
     queryFn: async () => {
       const res = await llmApi.getConversations(sessionId)
       return res.data as ConversationHistory[]
@@ -407,7 +421,7 @@ export default function ChatbotModule({ sessionId, initialTeacherbotId, onInputF
 
   // Fetch teacherbot conversations
   const { data: teacherbotConversationsData, refetch: refetchTeacherbotConversations } = useQuery({
-    queryKey: ['teacherbot-conversations', sessionId],
+    queryKey: ['teacherbot-conversations', sessionId, studentId],
     queryFn: async () => {
       const res = await teacherbotsApi.getConversations()
       // Map to compatible format
@@ -849,6 +863,7 @@ export default function ChatbotModule({ sessionId, initialTeacherbotId, onInputF
       }
     } catch (err) {
       console.error('Error loading conversation:', err)
+      throw err  // re-throw so callers can handle (e.g. restore effect clearing stale entry)
     }
   }
 

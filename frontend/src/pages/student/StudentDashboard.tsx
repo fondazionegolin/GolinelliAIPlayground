@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import {
   Bot, Brain, Award, MessageSquare, FileEdit,
-  Loader2, ChevronRight, Sparkles, ClipboardList, FileText
+  Loader2, ChevronRight, Sparkles, ClipboardList, FileText, LogOut
 } from 'lucide-react'
 const ChatbotModule         = lazy(() => import('./ChatbotModule'))
 const TasksModule           = lazy(() => import('./TasksModule'))
@@ -295,6 +295,24 @@ export default function StudentDashboard() {
           showBack={headerConfig.showBack}
           onBack={() => setActiveModule(null)}
           avatar={!headerConfig.showBack ? sessionInfo.student.nickname : undefined}
+          leftIcon={!headerConfig.showBack ? (
+            <div className="w-7 h-7 rounded-xl bg-gradient-to-br from-fuchsia-500 to-violet-600 flex items-center justify-center shadow-sm flex-shrink-0">
+              <Bot className="h-4 w-4 text-white" />
+            </div>
+          ) : undefined}
+          rightAction={!headerConfig.showBack ? (
+            <button
+              onClick={() => {
+                localStorage.removeItem('student_token')
+                logout()
+                navigate('/join')
+              }}
+              className="flex items-center gap-1 text-xs text-slate-500 hover:text-red-500 transition-colors px-2 py-1 rounded-lg hover:bg-red-50"
+            >
+              <LogOut className="h-3.5 w-3.5" />
+              <span>Esci</span>
+            </button>
+          ) : undefined}
         />
       )}
 
@@ -641,6 +659,7 @@ function ModuleView({ moduleKey, sessionId, openTaskId, studentId, studentName, 
       <div className="h-[calc(100dvh-7rem)] md:h-full flex flex-col overflow-y-auto">
         <ChatbotModule
           sessionId={sessionId}
+          studentId={studentId}
           initialTeacherbotId={selectedTeacherbotId}
         />
       </div>
