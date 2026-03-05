@@ -31,7 +31,7 @@ export default function TeacherDashboard() {
 
   const [teacherProfile, setTeacherProfile] = useState<{ id: string, name: string, uiAccent?: TeacherAccentId } | null>(null)
   const [sidebarWidth, setSidebarWidth] = useState(380)
-  const [showSidebar, setShowSidebar] = useState(false)
+  const [showSidebar, setShowSidebar] = useState(true)
 
   const getPersistedSession = (): { id: string, name: string, className: string } | null => {
     try {

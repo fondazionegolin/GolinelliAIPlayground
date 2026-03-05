@@ -79,6 +79,7 @@ def _features_table(s: dict[str, Any]) -> Panel:
 
     keys = [
         "students_joined",
+        "socket_connected",
         "class_chat_messages",
         "chat_requests",
         "csv_uploaded",

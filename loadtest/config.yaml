@@ -3,15 +3,15 @@ base_url: "https://golinelli.ai"
 join_code: "XYLAS"
 message: "come faccio a calcolare la radice quadrata di un numero"
 csv_path: "loadtest/dataset_1772097045952.csv"
-planned_users: 1
-start_concurrency: 1
-max_concurrency: 1
-ramp_step_users: 1
-ramp_every_seconds: 10
-action_timeout_seconds: 25
+planned_users: 60
+start_concurrency: 8
+max_concurrency: 20
+ramp_step_users: 2
+ramp_every_seconds: 6
+action_timeout_seconds: 40
 headless: true
 slow_mo_ms: 0
-wait_chat_response_seconds: 35
-wait_training_seconds: 20
+wait_chat_response_seconds: 50
+wait_training_seconds: 35
 refresh_hz: 4
 recent_events_limit: 18

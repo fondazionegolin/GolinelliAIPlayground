@@ -19,6 +19,8 @@ Modalita journey:
 - `api` (default): usa endpoint backend direttamente, piu stabile e scalabile su produzione.
 - `ui`: usa Playwright per click UI end-to-end.
 
+Nella modalita `api` il runner usa anche Socket.IO (connessione studente, `join_session`, `heartbeat_activity`, `chat_public_message`) per rendere visibili presenza e movimenti in tempo reale lato docente.
+
 ## Setup
 
 ```bash

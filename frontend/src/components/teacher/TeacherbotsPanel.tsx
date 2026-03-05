@@ -135,14 +135,14 @@ export default function TeacherbotsPanel() {
 
   return (
     <div className="h-full flex flex-col">
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-3">
         <div>
-          <h2 className="text-lg font-bold text-slate-800">I tuoi Teacherbots</h2>
-          <p className="text-sm text-slate-500">Crea assistenti AI personalizzati per i tuoi studenti</p>
+          <h2 className="text-base font-bold text-slate-800">I tuoi Teacherbots</h2>
+          <p className="text-xs text-slate-500">Assistenti personalizzati per la classe</p>
         </div>
-        <Button onClick={() => setViewMode('create')} className="bg-[#181b1e] hover:bg-[#0f1113]">
-          <Plus className="h-4 w-4 mr-2" />
-          Nuovo Teacherbot
+        <Button onClick={() => setViewMode('create')} size="sm" className="bg-[#181b1e] hover:bg-[#0f1113] h-8 px-3 text-xs">
+          <Plus className="h-3.5 w-3.5 mr-1.5" />
+          Nuovo
         </Button>
       </div>
 
@@ -151,84 +151,85 @@ export default function TeacherbotsPanel() {
           <Loader2 className="h-8 w-8 animate-spin text-[#181b1e]" />
         </div>
       ) : teacherbots && teacherbots.length > 0 ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="space-y-2">
           {teacherbots.map((bot) => (
             <div
               key={bot.id}
-              className="bg-white rounded-xl border border-slate-200 p-4 hover:shadow-lg hover:border-[#181b1e]/20 transition-all group"
+              className="bg-white rounded-lg border border-slate-200 p-3 hover:shadow-sm hover:border-[#181b1e]/20 transition-all group"
             >
-              <div className="flex items-start gap-3 mb-3">
-                <div className={`w-10 h-10 rounded-lg ${getColorClass(bot.color)} flex items-center justify-center flex-shrink-0`}>
-                  <Bot className="h-5 w-5 text-white" />
+              <div className="flex items-start gap-2.5">
+                <div className={`w-8 h-8 rounded-md ${getColorClass(bot.color)} flex items-center justify-center flex-shrink-0`}>
+                  <Bot className="h-4 w-4 text-white" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <h3 className="font-semibold text-slate-800 truncate">{bot.name}</h3>
+                  <div className="flex items-center gap-1.5">
+                    <h3 className="font-semibold text-sm text-slate-800 truncate">{bot.name}</h3>
                     {getStatusBadge(bot.status)}
                   </div>
-                  <p className="text-sm text-slate-500 truncate">{bot.synopsis || 'Nessuna descrizione'}</p>
+                  <p className="text-xs text-slate-500 line-clamp-1">{bot.synopsis || 'Nessuna descrizione'}</p>
+
+                  <div className="flex items-center gap-2.5 text-[11px] text-slate-400 mt-1">
+                    {bot.is_proactive && (
+                      <span className="flex items-center gap-1">
+                        <span className="w-1.5 h-1.5 rounded-full bg-green-500"></span>
+                        Proattivo
+                      </span>
+                    )}
+                    {bot.enable_reporting && (
+                      <span className="flex items-center gap-1">
+                        <FileText className="h-3 w-3" />
+                        Report
+                      </span>
+                    )}
+                    {bot.publication_count > 0 && (
+                      <span className="flex items-center gap-1">
+                        <Globe className="h-3 w-3" />
+                        {bot.publication_count}
+                      </span>
+                    )}
+                  </div>
                 </div>
-              </div>
 
-              <div className="flex items-center gap-4 text-xs text-slate-400 mb-4">
-                {bot.is_proactive && (
-                  <span className="flex items-center gap-1">
-                    <span className="w-1.5 h-1.5 rounded-full bg-green-500"></span>
-                    Proattivo
-                  </span>
-                )}
-                {bot.enable_reporting && (
-                  <span className="flex items-center gap-1">
-                    <FileText className="h-3 w-3" />
-                    Report
-                  </span>
-                )}
-                {bot.publication_count > 0 && (
-                  <span className="flex items-center gap-1">
-                    <Globe className="h-3 w-3" />
-                    {bot.publication_count} classi
-                  </span>
-                )}
-              </div>
-
-              <div className="flex items-center gap-2 pt-3 border-t border-slate-100">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="flex-1 text-slate-600 hover:text-[#181b1e] hover:bg-[#181b1e]/5"
-                  onClick={() => handleEdit(bot.id)}
-                >
-                  <Settings className="h-4 w-4 mr-1" />
-                  Modifica
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="flex-1 text-slate-600 hover:text-[#181b1e] hover:bg-[#181b1e]/5"
-                  onClick={() => handleTest(bot.id)}
-                >
-                  <Eye className="h-4 w-4 mr-1" />
-                  Testa
-                </Button>
-                {bot.enable_reporting && bot.conversation_count > 0 && (
+                <div className="flex items-center gap-1.5 ml-1">
                   <Button
                     variant="ghost"
                     size="sm"
-                    className="flex-1 text-slate-600 hover:text-[#181b1e] hover:bg-[#181b1e]/5"
-                    onClick={() => handleReports(bot.id)}
+                    className="h-7 w-7 p-0 text-slate-500 hover:text-[#181b1e] hover:bg-[#181b1e]/5"
+                    onClick={() => handleEdit(bot.id)}
+                    title="Modifica"
                   >
-                    <FileText className="h-4 w-4 mr-1" />
-                    Report
+                    <Settings className="h-3.5 w-3.5" />
                   </Button>
-                )}
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="text-slate-400 hover:text-red-600 hover:bg-red-50"
-                  onClick={() => handleDelete(bot.id, bot.name)}
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 w-7 p-0 text-slate-500 hover:text-[#181b1e] hover:bg-[#181b1e]/5"
+                    onClick={() => handleTest(bot.id)}
+                    title="Testa"
+                  >
+                    <Eye className="h-3.5 w-3.5" />
+                  </Button>
+                  {bot.enable_reporting && bot.conversation_count > 0 && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 w-7 p-0 text-slate-500 hover:text-[#181b1e] hover:bg-[#181b1e]/5"
+                      onClick={() => handleReports(bot.id)}
+                      title="Report"
+                    >
+                      <FileText className="h-3.5 w-3.5" />
+                    </Button>
+                  )}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 w-7 p-0 text-slate-400 hover:text-red-600 hover:bg-red-50"
+                    onClick={() => handleDelete(bot.id, bot.name)}
+                    title="Elimina"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
               </div>
             </div>
           ))}

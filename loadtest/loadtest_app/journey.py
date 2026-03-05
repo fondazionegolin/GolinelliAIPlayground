@@ -10,6 +10,7 @@ import time
 from typing import Callable, Awaitable
 
 import httpx
+import socketio
 from playwright.async_api import Browser, Page
 
 from .config import LoadTestConfig
@@ -113,6 +114,8 @@ async def run_user_journey_api(user_id: int, cfg: LoadTestConfig, metrics: Metri
     student_token = ""
     dataset_id = ""
     experiment_id = ""
+    conversation_id = ""
+    sio_client: socketio.AsyncClient | None = None
 
     async with httpx.AsyncClient(timeout=cfg.action_timeout_seconds + 10.0, follow_redirects=True) as client:
         try:
@@ -131,8 +134,11 @@ async def run_user_journey_api(user_id: int, cfg: LoadTestConfig, metrics: Metri
 
             await _step(metrics, user_id, "join", join_step)
             await metrics.add_feature("students_joined", 1)
+            sio_client = await _connect_student_socket(base, student_token, session_id)
+            await metrics.add_feature("socket_connected", 1)
 
             async def class_chat_step() -> None:
+                chat_text = f"[LOADTEST] {name} entrato in sessione e pronto."
                 await _api_json(
                     client,
                     metrics,
@@ -141,36 +147,77 @@ async def run_user_journey_api(user_id: int, cfg: LoadTestConfig, metrics: Metri
                     endpoint_key="/api/v1/chat/session/{session_id}/messages",
                     headers={"student-token": student_token},
                     json={
-                        "text": f"[LOADTEST] {name} entrato in sessione e pronto.",
+                        "text": chat_text,
                         "attachments": [],
                     },
                 )
+                if sio_client and sio_client.connected:
+                    await sio_client.emit(
+                        "chat_public_message",
+                        {
+                            "session_id": session_id,
+                            "text": chat_text,
+                            "attachments": [],
+                        },
+                    )
+                await _emit_activity(sio_client, "classe", "chat_pubblica")
 
             await _step(metrics, user_id, "class_chat_message", class_chat_step)
             await metrics.add_feature("class_chat_messages", 1)
 
-            await _step(metrics, user_id, "open_chatbot", _noop)
+            async def open_chatbot_step() -> None:
+                await _emit_activity(sio_client, "chatbot", "open")
+
+            await _step(metrics, user_id, "open_chatbot", open_chatbot_step)
 
             async def chat_step() -> None:
+                nonlocal conversation_id
+                conv = await _api_json(
+                    client,
+                    metrics,
+                    "POST",
+                    f"{api_base}/llm/conversations",
+                    endpoint_key="/api/v1/llm/conversations",
+                    headers={"student-token": student_token},
+                    json={
+                        "session_id": session_id,
+                        "profile_key": "tutor",
+                        "title": f"Loadtest {name}",
+                    },
+                )
+                conversation_id = str(conv["id"])
+                if sio_client and sio_client.connected:
+                    await sio_client.emit(
+                        "llm_prompt_submitted",
+                        {
+                            "conversation_id": conversation_id,
+                            "preview": cfg.message[:200],
+                        },
+                    )
                 await _api_json(
                     client,
                     metrics,
                     "POST",
-                    f"{api_base}/llm/student/chat",
-                    endpoint_key="/api/v1/llm/student/chat",
+                    f"{api_base}/llm/conversations/{conversation_id}/message",
+                    endpoint_key="/api/v1/llm/conversations/{id}/message",
                     headers={"student-token": student_token},
                     json={
                         "content": cfg.message,
-                        "history": [],
-                        "profile_key": "tutor",
                     },
                 )
+                await _emit_activity(sio_client, "chatbot", "message_sent")
 
             await _step(metrics, user_id, "chat_message", chat_step)
             await metrics.add_feature("chat_requests", 1)
 
-            await _step(metrics, user_id, "open_ml_lab", _noop)
-            await _step(metrics, user_id, "select_data_mode", _noop)
+            async def open_ml_lab_step() -> None:
+                await _emit_activity(sio_client, "classification", "open_ml_lab")
+
+            async def select_data_mode_step() -> None:
+                await _emit_activity(sio_client, "classification", "data_mode")
+
+            await _step(metrics, user_id, "open_ml_lab", open_ml_lab_step)
+            await _step(metrics, user_id, "select_data_mode", select_data_mode_step)
 
             async def upload_step() -> None:
                 nonlocal dataset_id
@@ -182,6 +229,7 @@ async def run_user_journey_api(user_id: int, cfg: LoadTestConfig, metrics: Metri
                     session_id=session_id,
                     csv_path=cfg.csv_path,
                 )
+                await _emit_activity(sio_client, "classification", "dataset_uploaded")
 
             await _step(metrics, user_id, "upload_csv", upload_step)
             await metrics.add_feature("csv_uploaded", 1)
@@ -204,6 +252,7 @@ async def run_user_journey_api(user_id: int, cfg: LoadTestConfig, metrics: Metri
                     json=payload,
                 )
                 experiment_id = str(res["id"])
+                await _emit_activity(sio_client, "classification", "training_started")
 
             await _step(metrics, user_id, "start_training", training_step)
             await metrics.add_feature("training_started", 1)
@@ -217,6 +266,7 @@ async def run_user_journey_api(user_id: int, cfg: LoadTestConfig, metrics: Metri
                     experiment_id=experiment_id,
                     wait_seconds=cfg.wait_training_seconds,
                 )
+                await _emit_activity(sio_client, "classification", "training_status_checked")
 
             await _step(metrics, user_id, "wait_training_result", wait_training_step)
             await metrics.add_feature("training_completed", 1)
@@ -226,6 +276,12 @@ async def run_user_journey_api(user_id: int, cfg: LoadTestConfig, metrics: Metri
         except Exception as e:  # noqa: BLE001
             await metrics.mark_finished(user_id, ok=False, note=str(e))
             return UserResult(user_id=user_id, ok=False, note=str(e))
+        finally:
+            if sio_client and sio_client.connected:
+                try:
+                    await sio_client.disconnect()
+                except Exception:
+                    pass
 
 
 async def _step(
@@ -247,6 +303,36 @@ async def _step(
 
 async def _noop() -> None:
     return
+
+
+async def _connect_student_socket(base_url: str, student_token: str, session_id: str) -> socketio.AsyncClient:
+    sio_client = socketio.AsyncClient(reconnection=False, logger=False, engineio_logger=False)
+    await sio_client.connect(
+        base_url,
+        socketio_path="socket.io",
+        auth={"token": student_token},
+        transports=["polling", "websocket"],
+        wait_timeout=15,
+    )
+    try:
+        await sio_client.call("join_session", {"session_id": session_id}, timeout=10)
+    except Exception:
+        # connect already places students in room; join_session call is best-effort.
+        pass
+    return sio_client
+
+
+async def _emit_activity(sio_client: socketio.AsyncClient | None, module_key: str, step: str) -> None:
+    if not sio_client or not sio_client.connected:
+        return
+    await sio_client.emit(
+        "heartbeat_activity",
+        {
+            "module_key": module_key,
+            "step": step,
+            "context": {},
+        },
+    )
 
 
 async def _api_json(

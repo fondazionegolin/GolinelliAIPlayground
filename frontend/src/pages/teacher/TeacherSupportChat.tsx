@@ -1866,25 +1866,7 @@ REGOLE IMPORTANTI:
     <>
       <div className="h-full flex flex-col bg-transparent font-sans" style={accentVars} onDragOver={(e) => e.preventDefault()} onDrop={handleDrop}>
         
-        {/* Top Navigation */}
-        <div className={`flex items-center justify-center shrink-0 ${isMobile ? 'pt-2 pb-1.5' : 'pt-6 pb-4'}`}>
-          <div className="bg-white/50 backdrop-blur-md border border-slate-200 p-1 rounded-2xl flex gap-1 shadow-sm">
-             <button
-               onClick={() => setActiveTab('chat')}
-               className={`flex items-center gap-1.5 rounded-xl text-xs font-bold transition-all ${isMobile ? 'px-4 py-1.5' : 'px-6 py-2'} ${activeTab === 'chat' ? 'bg-[var(--teacher-accent-soft)] text-[var(--teacher-accent-text)] border border-[var(--teacher-accent-border)]/50 shadow-sm backdrop-blur-md' : 'text-slate-500 hover:text-slate-900 hover:bg-white/50'}`}
-             >
-               <MessageCircle className="h-3.5 w-3.5" />
-               Chat AI
-             </button>
-             <button
-               onClick={() => setActiveTab('teacherbots')}
-               className={`flex items-center gap-1.5 rounded-xl text-xs font-bold transition-all ${isMobile ? 'px-4 py-1.5' : 'px-6 py-2'} ${activeTab === 'teacherbots' ? 'bg-[var(--teacher-accent-soft)] text-[var(--teacher-accent-text)] border border-[var(--teacher-accent-border)]/50 shadow-sm backdrop-blur-md' : 'text-slate-500 hover:text-slate-900 hover:bg-white/50'}`}
-             >
-               <Sparkles className="h-3.5 w-3.5" />
-               {isMobile ? 'Bots' : 'Teacherbots'}
-             </button>
-          </div>
-        </div>
+
 
         {/* Mobile history slide-over */}
         {isMobile && mobileHistoryOpen && (
@@ -1923,104 +1905,123 @@ REGOLE IMPORTANTI:
         )}
 
         {/* Main Content Area */}
-        <div className={`flex-1 overflow-hidden ${isMobile ? 'px-0 pb-0' : 'px-6 pb-6'}`}>
-           {activeTab === 'teacherbots' ? (
-              <div className={`h-full bg-white ${isMobile ? '' : 'rounded-2xl'} border border-slate-200 shadow-sm overflow-hidden ${isMobile ? 'p-3' : 'p-6'} relative`}>
-                 <TeacherbotsPanel />
-              </div>
-           ) : (
-              <div className={`flex h-full ${isMobile ? '' : 'gap-6 max-w-7xl mx-auto w-full'}`}>
-                 {/* Sidebar Card — desktop only */}
-                 <aside className={`${isMobile ? 'hidden' : ''} ${isSidebarCollapsed ? 'w-16' : 'w-80'} bg-white rounded-2xl border border-slate-200 shadow-sm flex flex-col transition-all duration-300 flex-shrink-0 overflow-hidden`}>
-                  <div className={`p-4 border-b border-slate-100 flex items-center ${isSidebarCollapsed ? 'justify-center' : 'justify-between'}`}>
-                    {!isSidebarCollapsed && <h2 className="text-sm font-semibold text-slate-800 tracking-tight">Cronologia</h2>}
-                    <div className="flex gap-1">
-                      {!isSidebarCollapsed && (
-                        <Button variant="ghost" size="sm" onClick={handleNewChat} className="h-8 w-8 p-0 hover:bg-slate-100" title="Nuova chat">
-                          <Plus className="h-4 w-4 text-slate-600" />
-                        </Button>
-                      )}
-                      {!isSidebarCollapsed && (
-                        <Button variant="ghost" size="sm" onClick={handleClearAllConversations} className="h-8 w-8 p-0 hover:bg-slate-100" title="Pulisci cronologia">
-                          <Trash2 className="h-4 w-4 text-slate-600" />
-                        </Button>
-                      )}
+        <div className={`flex-1 overflow-hidden ${isMobile ? 'px-0 pb-0' : 'px-6 pt-6 pb-6'}`}>
+              <div className={`flex h-full ${isMobile ? '' : 'max-w-7xl mx-auto w-full'}`}>
+                {/* Unified card: sidebar + chat together */}
+                <div className={`flex-1 flex h-full overflow-hidden ${isMobile ? '' : 'bg-white rounded-2xl border border-slate-200 shadow-sm'}`}>
+                 {/* Sidebar — desktop only */}
+                 <aside className={`${isMobile ? 'hidden' : ''} ${isSidebarCollapsed ? 'w-12' : 'w-64'} flex flex-col transition-all duration-300 flex-shrink-0 overflow-hidden border-r border-slate-100`}>
+                  {isSidebarCollapsed ? (
+                    /* Collapsed: just expand button */
+                    <div className="p-2 flex flex-col items-center gap-3 pt-3">
                       <Button
                         variant="ghost"
                         size="sm"
-                        onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+                        onClick={() => setIsSidebarCollapsed(false)}
                         className="h-8 w-8 p-0 hover:bg-slate-100"
-                        title={isSidebarCollapsed ? "Espandi cronologia" : "Comprimi cronologia"}
+                        title="Espandi"
                       >
-                        {isSidebarCollapsed ? <ChevronRight className="h-4 w-4 text-slate-600" /> : <ChevronDown className="h-4 w-4 text-slate-400 rotate-90" />}
+                        <ChevronRight className="h-4 w-4 text-slate-600" />
                       </Button>
                     </div>
-                  </div>
-
-                  <div className="flex-1 overflow-y-auto p-3 space-y-1">
-                    {!isSidebarCollapsed ? (
-                      conversations.map(conv => (
+                  ) : (
+                    <>
+                      {/* Section tabs */}
+                      <div className="flex items-center border-b border-slate-100 shrink-0">
                         <button
-                          key={conv.id}
-                          onClick={() => { setCurrentConversationId(conv.id); }}
-                          className={`w-full text-left p-3 rounded-lg text-sm transition-all group border ${currentConversationId === conv.id
-                            ? 'font-medium'
-                            : 'text-slate-600 border-transparent hover:bg-slate-50'
-                            }`}
-                          style={currentConversationId === conv.id ? selectedSoftStyle : undefined}
+                          onClick={() => setActiveTab('chat')}
+                          className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 text-xs font-semibold transition-colors border-b-2 ${activeTab === 'chat' ? 'text-[var(--teacher-accent-text)] border-[var(--teacher-accent-border)]' : 'text-slate-400 hover:text-slate-600 border-transparent'}`}
                         >
-                          <div className="truncate">{conv.title}</div>
-                          <div className="flex items-center justify-between mt-1">
-                            <span className="text-xs text-slate-400">{conv.createdAt.toLocaleDateString()}</span>
-                            <button
-                              className="text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity p-1"
-                              style={{ color: currentConversationId === conv.id ? accentTheme.text : undefined }}
-                              onClick={async (e) => {
-                                e.stopPropagation()
-                                if (confirm('Eliminare questa conversazione?')) {
-                                  try {
-                                    await teacherApi.deleteConversation(conv.id)
-                                  } catch (err) {
-                                    console.error('Failed to delete conv:', err)
-                                  }
-                                  setConversations(prev => prev.filter(c => c.id !== conv.id))
-                                  setConversationCache(prev => {
-                                    const next = { ...prev }
-                                    delete next[conv.id]
-                                    conversationCacheRef.current = next
-                                    localStorage.setItem('teacher_support_messages_cache', JSON.stringify(next))
-                                    return next
-                                  })
-                                  if (currentConversationId === conv.id) handleNewChat()
-                                }
-                              }}
-                            >
-                              <Trash2 className="h-3 w-3" />
-                            </button>
-                          </div>
+                          <MessageCircle className="h-3.5 w-3.5" />
+                          Cronologia
                         </button>
-                      ))
-                    ) : (
-                      <div className="flex flex-col gap-2 items-center">
-                        <Button variant="ghost" size="icon" onClick={handleNewChat} title="Nuova chat" className="p-0">
-                          <Plus className="h-5 w-5" style={{ color: accentTheme.text }} />
+                        <button
+                          onClick={() => setActiveTab('teacherbots')}
+                          className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 text-xs font-semibold transition-colors border-b-2 ${activeTab === 'teacherbots' ? 'text-[var(--teacher-accent-text)] border-[var(--teacher-accent-border)]' : 'text-slate-400 hover:text-slate-600 border-transparent'}`}
+                        >
+                          <Sparkles className="h-3.5 w-3.5" />
+                          Teacherbots
+                        </button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setIsSidebarCollapsed(true)}
+                          className="h-8 w-8 p-0 hover:bg-slate-100 mr-1 flex-shrink-0"
+                          title="Comprimi"
+                        >
+                          <ChevronDown className="h-4 w-4 text-slate-400 rotate-90" />
                         </Button>
-                        {conversations.map(conv => (
-                          <div
-                            key={conv.id}
-                            className={`w-2 h-2 rounded-full cursor-pointer ${currentConversationId === conv.id ? '' : 'bg-slate-300'}`}
-                            style={currentConversationId === conv.id ? { backgroundColor: accentTheme.accent } : undefined}
-                            title={conv.title}
-                            onClick={() => { setCurrentConversationId(conv.id); }}
-                          />
-                        ))}
                       </div>
-                    )}
-                  </div>
+
+                      {activeTab === 'chat' ? (
+                        <>
+                          {/* Action bar */}
+                          <div className="px-3 py-2 flex gap-1 border-b border-slate-50 shrink-0">
+                            <Button variant="ghost" size="sm" onClick={handleNewChat} className="h-7 w-7 p-0 hover:bg-slate-100" title="Nuova chat">
+                              <Plus className="h-4 w-4 text-slate-600" />
+                            </Button>
+                            <Button variant="ghost" size="sm" onClick={handleClearAllConversations} className="h-7 w-7 p-0 hover:bg-slate-100" title="Pulisci cronologia">
+                              <Trash2 className="h-4 w-4 text-slate-600" />
+                            </Button>
+                          </div>
+                          <div className="flex-1 overflow-y-auto p-3 space-y-1">
+                            {conversations.map(conv => (
+                              <button
+                                key={conv.id}
+                                onClick={() => { setCurrentConversationId(conv.id); }}
+                                className={`w-full text-left p-3 rounded-lg text-sm transition-all group border ${currentConversationId === conv.id
+                                  ? 'font-medium'
+                                  : 'text-slate-600 border-transparent hover:bg-slate-50'
+                                  }`}
+                                style={currentConversationId === conv.id ? selectedSoftStyle : undefined}
+                              >
+                                <div className="truncate">{conv.title}</div>
+                                <div className="flex items-center justify-between mt-1">
+                                  <span className="text-xs text-slate-400">{conv.createdAt.toLocaleDateString()}</span>
+                                  <button
+                                    className="text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity p-1"
+                                    style={{ color: currentConversationId === conv.id ? accentTheme.text : undefined }}
+                                    onClick={async (e) => {
+                                      e.stopPropagation()
+                                      if (confirm('Eliminare questa conversazione?')) {
+                                        try {
+                                          await teacherApi.deleteConversation(conv.id)
+                                        } catch (err) {
+                                          console.error('Failed to delete conv:', err)
+                                        }
+                                        setConversations(prev => prev.filter(c => c.id !== conv.id))
+                                        setConversationCache(prev => {
+                                          const next = { ...prev }
+                                          delete next[conv.id]
+                                          conversationCacheRef.current = next
+                                          localStorage.setItem('teacher_support_messages_cache', JSON.stringify(next))
+                                          return next
+                                        })
+                                        if (currentConversationId === conv.id) handleNewChat()
+                                      }
+                                    }}
+                                  >
+                                    <Trash2 className="h-3 w-3" />
+                                  </button>
+                                </div>
+                              </button>
+                            ))}
+                            {conversations.length === 0 && (
+                              <p className="text-xs text-slate-400 text-center py-8">Nessuna conversazione</p>
+                            )}
+                          </div>
+                        </>
+                      ) : (
+                        <div className="flex-1 overflow-y-auto">
+                          <TeacherbotsPanel />
+                        </div>
+                      )}
+                    </>
+                  )}
                 </aside>
 
-                 {/* Chat Main Card */}
-                 <main className={`flex-1 bg-white ${isMobile ? '' : 'rounded-2xl border border-slate-200 shadow-sm'} flex flex-col relative overflow-hidden`} style={chatBg ? { backgroundColor: chatBg } : undefined}>
+                 {/* Chat Main */}
+                 <main className={`flex-1 flex flex-col relative overflow-hidden`} style={chatBg ? { backgroundColor: chatBg } : undefined}>
 
                   <header className="px-3 py-2 border-b border-slate-200 bg-white/80 backdrop-blur-sm sticky top-0 z-10 flex items-center justify-between shrink-0">
                     {isMobile ? (
@@ -2619,8 +2620,8 @@ REGOLE IMPORTANTI:
                     </div>
                   </div>
                 </main>
+                </div>{/* end unified card */}
               </div>
-            )}
         </div>
       </div>
 

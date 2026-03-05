@@ -353,15 +353,14 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
                   <ChevronDown className={`h-3 w-3 ml-0.5 text-slate-400 transition-transform flex-shrink-0 ${showSessionsMenu ? 'rotate-180' : ''}`} />
                 </button>
                 <button
-                  className={`hidden lg:flex items-center gap-2 lg:px-3 xl:px-4 py-2.5 rounded-full border transition-all shadow-sm backdrop-blur-md font-semibold text-xs`}
+                  className={`hidden lg:flex items-center justify-center p-2.5 rounded-full border transition-all shadow-sm backdrop-blur-md`}
                   style={chatSidebarOpen
                     ? { backgroundColor: accentTheme.accent, borderColor: accentTheme.accent, color: '#fff' }
                     : { backgroundColor: `${accentTheme.accent}18`, borderColor: `${accentTheme.accent}50`, color: accentTheme.text }}
                   onClick={onToggleChatSidebar}
                   title={chatSidebarOpen ? t('navbar.hide_class_chat') : t('navbar.show_class_chat')}
                 >
-                  <MessageSquare className="h-4 w-4 flex-shrink-0" />
-                  <span className="hidden xl:inline">{chatSidebarOpen ? t('navbar.hide_class_chat') : t('navbar.show_class_chat')}</span>
+                  <MessageSquare className="h-4 w-4" />
                 </button>
 
                 {/* Sessions Dropdown Menu */}

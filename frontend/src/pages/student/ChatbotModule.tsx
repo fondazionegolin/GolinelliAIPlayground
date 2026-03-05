@@ -1010,19 +1010,23 @@ export default function ChatbotModule({ sessionId, studentId, initialTeacherbotI
               <Wand2 className="h-4 w-4 text-indigo-600" />
               Teacherbots del Docente
             </h3>
-            <div className="grid grid-cols-2 gap-2.5">
+            <div className="space-y-2.5">
               {availableTeacherbots.map((bot) => (
                 <motion.button
                   key={bot.id}
                   whileTap={{ scale: 0.97 }}
                   onClick={() => handleSelectTeacherbot(bot)}
-                  className="text-left p-3 rounded-xl border border-indigo-200 bg-white shadow-sm active:shadow-none transition-all"
+                  className="w-full text-left p-3 rounded-xl border border-indigo-200 bg-white shadow-sm active:shadow-none transition-all"
                 >
-                  <div className={`inline-flex items-center justify-center w-8 h-8 rounded-lg mb-1.5 ${getTeacherbotColorClass(bot.color)}`}>
-                    <Wand2 className="h-4 w-4 text-white" />
+                  <div className="flex items-start gap-3">
+                    <div className={`inline-flex items-center justify-center w-8 h-8 rounded-lg flex-shrink-0 ${getTeacherbotColorClass(bot.color)}`}>
+                      <Wand2 className="h-4 w-4 text-white" />
+                    </div>
+                    <div className="min-w-0">
+                      <h3 className="font-semibold text-sm text-slate-800">{bot.name}</h3>
+                      <p className="text-xs text-slate-500 line-clamp-2 mt-0.5">{bot.synopsis || bot.description}</p>
+                    </div>
                   </div>
-                  <h3 className="font-semibold text-sm text-slate-800">{bot.name}</h3>
-                  <p className="text-xs text-slate-500 line-clamp-1 mt-0.5">{bot.synopsis}</p>
                 </motion.button>
               ))}
             </div>
@@ -1125,19 +1129,23 @@ export default function ChatbotModule({ sessionId, studentId, initialTeacherbotI
               <Wand2 className="h-5 w-5 text-indigo-600" />
               Teacherbots del Docente
             </h3>
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+            <div className="space-y-3">
               {availableTeacherbots.map((bot) => (
                 <motion.button
                   key={bot.id}
                   whileTap={{ scale: 0.98 }}
-                  className="text-left p-3 rounded-xl border border-indigo-200 bg-white shadow-sm hover:shadow-md transition-all"
+                  className="w-full text-left p-3 rounded-xl border border-indigo-200 bg-white shadow-sm hover:shadow-md transition-all"
                   onClick={() => handleSelectTeacherbot(bot)}
                 >
-                  <div className={`inline-flex items-center justify-center w-9 h-9 rounded-lg mb-1.5 ${getTeacherbotColorClass(bot.color)}`}>
-                    <Wand2 className="h-4.5 w-4.5 text-white" />
+                  <div className="flex items-start gap-3">
+                    <div className={`inline-flex items-center justify-center w-9 h-9 rounded-lg flex-shrink-0 ${getTeacherbotColorClass(bot.color)}`}>
+                      <Wand2 className="h-4.5 w-4.5 text-white" />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-sm font-semibold text-slate-800 leading-tight">{bot.name}</div>
+                      <div className="text-xs text-slate-500 line-clamp-2 mt-0.5">{bot.synopsis || bot.description}</div>
+                    </div>
                   </div>
-                  <div className="text-sm font-semibold text-slate-800 leading-tight">{bot.name}</div>
-                  <div className="text-xs text-slate-500 line-clamp-2 mt-0.5">{bot.synopsis || bot.description}</div>
                 </motion.button>
               ))}
             </div>
