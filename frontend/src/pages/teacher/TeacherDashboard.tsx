@@ -144,8 +144,8 @@ export default function TeacherDashboard() {
       {/* ── Mobile Top Bar ── */}
       {isMobile && (
         <div
-          className="fixed top-0 inset-x-0 z-50 h-12 flex items-center px-4 border-b border-white/20 backdrop-blur-md"
-          style={{ backgroundColor: `${teacherTheme.soft}ee` }}
+          className="fixed top-0 inset-x-0 z-50 h-12 flex items-center px-4 border-b border-slate-200"
+          style={{ backgroundColor: teacherTheme.soft }}
         >
           <div
             className="w-7 h-7 rounded-xl flex items-center justify-center mr-2.5 shadow-sm flex-shrink-0"
@@ -222,7 +222,7 @@ export default function TeacherDashboard() {
       {/* ── Mobile Bottom Nav ── */}
       {isMobile && (
         <nav
-          className="fixed bottom-0 inset-x-0 z-50 h-16 bg-white/90 backdrop-blur-md border-t border-slate-200 flex items-center justify-around"
+          className="fixed bottom-0 inset-x-0 z-50 h-16 bg-white border-t border-slate-200 flex items-center justify-around"
           style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
         >
           {MOBILE_NAV.map(({ path, label, icon: Icon, exact }) => {

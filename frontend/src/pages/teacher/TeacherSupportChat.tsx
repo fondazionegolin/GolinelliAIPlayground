@@ -1888,17 +1888,17 @@ REGOLE IMPORTANTI:
         
         {/* Top Navigation */}
         <div className={`flex items-center justify-center shrink-0 ${isMobile ? 'pt-2 pb-1.5' : 'pt-6 pb-4'}`}>
-          <div className="bg-white/50 backdrop-blur-md border border-slate-200 p-1 rounded-2xl flex gap-1 shadow-sm">
+          <div className="bg-white border border-slate-200 p-1 rounded-2xl flex gap-1 shadow-sm">
              <button
                onClick={() => setActiveTab('chat')}
-               className={`flex items-center gap-1.5 rounded-xl text-xs font-bold transition-all ${isMobile ? 'px-4 py-1.5' : 'px-6 py-2'} ${activeTab === 'chat' ? 'bg-[var(--teacher-accent-soft)] text-[var(--teacher-accent-text)] border border-[var(--teacher-accent-border)]/50 shadow-sm backdrop-blur-md' : 'text-slate-500 hover:text-slate-900 hover:bg-white/50'}`}
+               className={`flex items-center gap-1.5 rounded-xl text-xs font-bold transition-all ${isMobile ? 'px-4 py-1.5' : 'px-6 py-2'} ${activeTab === 'chat' ? 'bg-[var(--teacher-accent-soft)] text-[var(--teacher-accent-text)] border border-[var(--teacher-accent-border)]/50 shadow-sm' : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100'}`}
              >
                <MessageCircle className="h-3.5 w-3.5" />
                Chat AI
              </button>
              <button
                onClick={() => setActiveTab('teacherbots')}
-               className={`flex items-center gap-1.5 rounded-xl text-xs font-bold transition-all ${isMobile ? 'px-4 py-1.5' : 'px-6 py-2'} ${activeTab === 'teacherbots' ? 'bg-[var(--teacher-accent-soft)] text-[var(--teacher-accent-text)] border border-[var(--teacher-accent-border)]/50 shadow-sm backdrop-blur-md' : 'text-slate-500 hover:text-slate-900 hover:bg-white/50'}`}
+               className={`flex items-center gap-1.5 rounded-xl text-xs font-bold transition-all ${isMobile ? 'px-4 py-1.5' : 'px-6 py-2'} ${activeTab === 'teacherbots' ? 'bg-[var(--teacher-accent-soft)] text-[var(--teacher-accent-text)] border border-[var(--teacher-accent-border)]/50 shadow-sm' : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100'}`}
              >
                <Sparkles className="h-3.5 w-3.5" />
                {isMobile ? 'Bots' : 'Teacherbots'}
@@ -1938,7 +1938,7 @@ REGOLE IMPORTANTI:
                 )}
               </div>
             </div>
-            <div className="flex-1 bg-black/30 backdrop-blur-sm" />
+            <div className="flex-1 bg-black/30" />
           </div>
         )}
 
@@ -2044,7 +2044,7 @@ REGOLE IMPORTANTI:
                  {/* Chat Main Card */}
                  <main className={`flex-1 bg-white ${isMobile ? '' : 'rounded-2xl border border-slate-200 shadow-sm'} flex flex-col relative overflow-hidden`} style={chatBg ? { backgroundColor: chatBg } : undefined}>
 
-                  <header className="px-3 py-2 border-b border-slate-200 bg-white/80 backdrop-blur-sm sticky top-0 z-10 flex items-center justify-between shrink-0">
+                  <header className="px-3 py-2 border-b border-slate-200 bg-white sticky top-0 z-10 flex items-center justify-between shrink-0">
                     {isMobile ? (
                       /* Mobile header — essential only */
                       <>
@@ -2979,9 +2979,9 @@ const MemoMessageBubble = memo(function MessageBubble({ msg, chatBgIsDark, selec
         </div>
       )}
       <div className={`max-w-[75%] space-y-1 ${msg.role === 'user' ? 'items-end flex flex-col' : 'items-start'}`}>
-        <div className={`px-5 py-3 text-sm leading-relaxed shadow-sm backdrop-blur-md transition-all ${msg.role === 'user'
+        <div className={`px-5 py-3 text-sm leading-relaxed shadow-sm ${msg.role === 'user'
           ? `${chatBgIsDark ? 'bg-white/20 text-white border border-white/20' : 'text-white border border-transparent shadow-md'} font-medium rounded-2xl rounded-tr-sm`
-          : `${chatBgIsDark ? 'bg-white/10 text-white border border-white/15' : 'bg-slate-50/60 text-slate-800 border border-slate-200/80'} rounded-2xl rounded-tl-sm ${chatBgIsDark ? 'prose prose-invert' : ''}`
+          : `${chatBgIsDark ? 'bg-white/10 text-white border border-white/15' : 'bg-slate-50 text-slate-800 border border-slate-200'} rounded-2xl rounded-tl-sm ${chatBgIsDark ? 'prose prose-invert' : ''}`
           }`}
           style={msg.role === 'user' && !chatBgIsDark ? selectedSolidStyle : undefined}
         >
