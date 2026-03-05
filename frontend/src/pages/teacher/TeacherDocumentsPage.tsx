@@ -1176,9 +1176,18 @@ export default function TeacherDocumentsPage() {
                   <div
                     className="flex-1 flex flex-col relative z-10"
                     style={{ minHeight: FORMAT_DIMENSIONS.a4.height - docMargins.vertical * 2 }}
-                    onMouseDown={(e) => {
+                    onClick={(e) => {
                       if (e.target !== e.currentTarget) return
                       if (editor && mode === 'document') {
+                        // Try to position cursor near click; fall back to end
+                        const view = (editor as any).view
+                        if (view) {
+                          const pos = view.posAtCoords({ left: e.clientX, top: e.clientY })
+                          if (pos) {
+                            editor.chain().focus().setTextSelection(pos.pos).run()
+                            return
+                          }
+                        }
                         editor.chain().focus('end').run()
                       }
                     }}
@@ -1187,6 +1196,7 @@ export default function TeacherDocumentsPage() {
                       content={document.textContent || ''}
                       onChange={(html) => setDocument(d => ({ ...d, textContent: html }))}
                       onEditorReady={setEditor}
+                      autoFocus
                       contentClassName="h-full min-h-full max-w-none focus:outline-none p-0 cursor-text [&_.ProseMirror]:min-h-full [&_.ProseMirror]:h-full [&_.ProseMirror]:text-[16px] [&_.ProseMirror]:leading-7 [&_.ProseMirror_p]:m-0 [&_.ProseMirror_h1]:m-0 [&_.ProseMirror_h2]:m-0 [&_.ProseMirror_h3]:m-0 [&_.ProseMirror_ul]:my-0 [&_.ProseMirror_ol]:my-0"
                       aiPanelAnchor={aiPanelAnchor}
                       aiOpenRequestId={aiOpenRequestId}

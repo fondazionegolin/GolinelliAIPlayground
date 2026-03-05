@@ -7,6 +7,7 @@ import Link from '@tiptap/extension-link'
 import { TextStyle } from '@tiptap/extension-text-style'
 import { Color } from '@tiptap/extension-color'
 import FontFamily from '@tiptap/extension-font-family'
+import { Mathematics } from '@tiptap/extension-mathematics'
 import { useEffect, useState, useCallback } from 'react'
 import { AITextAssistPanel } from './AITextAssistPanel'
 import { looksLikeMarkdown, renderMarkdownToHtml } from '@/lib/markdown'
@@ -21,6 +22,7 @@ interface RichTextEditorProps {
   aiPanelAnchor?: { x: number; y: number } | null
   aiOpenRequestId?: number
   onMissingSelectionForAI?: () => void
+  autoFocus?: boolean
 }
 
 interface SelectionState {
@@ -57,7 +59,8 @@ export function RichTextEditor({
   contentClassName,
   aiPanelAnchor,
   aiOpenRequestId = 0,
-  onMissingSelectionForAI
+  onMissingSelectionForAI,
+  autoFocus = false,
 }: RichTextEditorProps) {
   const [selection, setSelection] = useState<SelectionState | null>(null)
   const [lastValidSelection, setLastValidSelection] = useState<SelectionState | null>(null)
@@ -80,9 +83,11 @@ export function RichTextEditor({
         openOnClick: false,
       }),
       LinkShortcut,
+      Mathematics,
     ],
     content: content,
     editable: !readOnly,
+    autofocus: autoFocus ? 'start' : false,
     onCreate: ({ editor }) => {
       onEditorReady?.(editor)
     },
@@ -174,12 +179,52 @@ export function RichTextEditor({
     }
   }, [content, editor])
 
-  // Apply AI-generated text
+  // Apply AI-generated text (with math formula support)
   const handleApplyAIText = useCallback((newText: string) => {
     if (!editor || !selection) return
 
     const { from, to } = selection
-    const nextContent = looksLikeMarkdown(newText) ? renderMarkdownToHtml(newText) : newText
+    const trimmed = newText.trim()
+
+    // Detect block math: $$...$$
+    const blockMatch = trimmed.match(/^\$\$([\s\S]+)\$\$$/)
+    if (blockMatch) {
+      const latex = blockMatch[1].trim()
+      editor.chain().focus().deleteRange({ from, to })
+        .insertBlockMath({ latex })
+        .run()
+      setSelection(null)
+      setLastValidSelection(null)
+      return
+    }
+
+    // Detect inline math: $...$
+    const inlineMatch = trimmed.match(/^\$([^$]+)\$$/)
+    if (inlineMatch) {
+      const latex = inlineMatch[1].trim()
+      editor.chain().focus().deleteRange({ from, to })
+        .insertInlineMath({ latex })
+        .run()
+      setSelection(null)
+      setLastValidSelection(null)
+      return
+    }
+
+    // Multiple inline formulas on one line — detect $...$ patterns within normal text
+    if (/\$[^$]+\$/.test(trimmed)) {
+      // Insert as HTML letting the Mathematics extension's parseHTML handle it
+      const htmlWithMath = trimmed.replace(/\$\$([^$]+)\$\$/g, (_m, latex) => {
+        return `<span data-type="blockMath" data-latex="${latex.trim()}"></span>`
+      }).replace(/\$([^$]+)\$/g, (_m, latex) => {
+        return `<span data-type="inlineMath" data-latex="${latex.trim()}"></span>`
+      })
+      editor.chain().focus().deleteRange({ from, to }).insertContent(htmlWithMath).run()
+      setSelection(null)
+      setLastValidSelection(null)
+      return
+    }
+
+    const nextContent = looksLikeMarkdown(trimmed) ? renderMarkdownToHtml(trimmed) : trimmed
     editor.chain().focus().deleteRange({ from, to }).insertContent(nextContent).run()
     setSelection(null)
     setLastValidSelection(null)

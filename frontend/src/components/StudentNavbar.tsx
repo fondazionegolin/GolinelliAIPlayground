@@ -196,7 +196,7 @@ export function StudentNavbar({
               )}
 
               <button
-                className={`hidden lg:flex items-center gap-2 lg:px-3 xl:px-4 py-2.5 rounded-full border transition-all shadow-sm font-semibold text-xs`}
+                className={`hidden lg:flex items-center justify-center w-10 h-10 rounded-full border transition-all shadow-sm`}
                 style={chatSidebarOpen
                   ? { backgroundColor: accentTheme.accent, borderColor: accentTheme.accent, color: '#fff' }
                   : { backgroundColor: `${accentTheme.accent}18`, borderColor: `${accentTheme.accent}50`, color: accentTheme.text }}
@@ -204,7 +204,6 @@ export function StudentNavbar({
                 title={chatSidebarOpen ? t('navbar.hide_class_chat') : t('navbar.show_class_chat')}
               >
                 <MessageSquare className="h-4 w-4 flex-shrink-0" />
-                <span className="hidden xl:inline">{chatSidebarOpen ? t('navbar.hide_class_chat') : t('navbar.show_class_chat')}</span>
               </button>
 
               {/* Avatar Dropdown */}

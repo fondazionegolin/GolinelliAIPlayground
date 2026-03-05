@@ -11,7 +11,7 @@ interface AITextAssistPanelProps {
   variant?: 'floating' | 'docked'
 }
 
-type AssistAction = 'expand' | 'reformat' | 'generate' | 'custom'
+type AssistAction = 'expand' | 'reformat' | 'generate' | 'formula' | 'custom'
 
 export function AITextAssistPanel({
   selectedText,
@@ -96,6 +96,17 @@ ${selectedText}
 
 Rispondi SOLO con il contenuto generato, senza introduzioni. Sii conciso e diretto.`
         break
+      case 'formula':
+        prompt = `Converti il seguente testo in una o più formule LaTeX valide. Rispondi SOLO con la formula LaTeX racchiusa tra $...$ per formule inline oppure $$...$$ per formule in blocco separato. Non aggiungere testo introduttivo né spiegazioni.
+
+Testo da convertire:
+"""
+${selectedText}
+"""
+
+Rispondi SOLO con la formula LaTeX (es: $E = mc^2$ oppure $$\\frac{d}{dx}[x^n] = nx^{n-1}$$).`
+        break
+
       case 'custom':
         prompt = `Applica ESATTAMENTE l'istruzione seguente al testo selezionato, come se fosse una trasformazione diretta del documento. Non aggiungere commenti o spiegazioni.${contextInfo}
 
@@ -184,6 +195,14 @@ ${/converti in formula|formula|latex/i.test(customInstruction)
                 >
                   <span className="block text-xs font-medium leading-tight">Genera</span>
                   <span className="block text-[10px] leading-tight text-slate-300">Nuovo testo</span>
+                </button>
+                <button
+                  onClick={() => handleAction('formula')}
+                  className="rounded-md bg-violet-600/80 px-2.5 py-1.5 text-left text-white transition-colors hover:bg-violet-500"
+                  title="Converti il testo selezionato in una formula KaTeX"
+                >
+                  <span className="block text-xs font-medium leading-tight">∑ Formula</span>
+                  <span className="block text-[10px] leading-tight text-violet-200">KaTeX</span>
                 </button>
                 <button
                   onClick={() => setActiveAction(activeAction === 'custom' ? null : 'custom')}
