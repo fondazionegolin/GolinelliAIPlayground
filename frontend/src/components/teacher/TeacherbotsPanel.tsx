@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Button } from '@/components/ui/button'
-import { Plus, Bot, Settings, Eye, Trash2, Globe, FileText, Loader2 } from 'lucide-react'
+import { Plus, Bot, Settings, Eye, Trash2, FileText, Loader2 } from 'lucide-react'
 import { useToast } from '@/components/ui/use-toast'
 import { teacherbotsApi } from '@/lib/api'
 import TeacherbotForm from './TeacherbotForm'
@@ -25,7 +25,13 @@ interface Teacherbot {
 
 type ViewMode = 'list' | 'create' | 'edit' | 'test' | 'reports'
 
-export default function TeacherbotsPanel() {
+interface TeacherbotsPanelProps {
+  /** Called when the user clicks the settings button on a bot.
+   *  If provided the panel won't switch to edit view internally. */
+  onOpenSettings?: (botId: string) => void
+}
+
+export default function TeacherbotsPanel({ onOpenSettings }: TeacherbotsPanelProps = {}) {
   const { toast } = useToast()
   const queryClient = useQueryClient()
   const [viewMode, setViewMode] = useState<ViewMode>('list')
@@ -57,6 +63,10 @@ export default function TeacherbotsPanel() {
   }
 
   const handleEdit = (id: string) => {
+    if (onOpenSettings) {
+      onOpenSettings(id)
+      return
+    }
     setSelectedBot(id)
     setViewMode('edit')
   }
@@ -151,85 +161,57 @@ export default function TeacherbotsPanel() {
           <Loader2 className="h-8 w-8 animate-spin text-[#181b1e]" />
         </div>
       ) : teacherbots && teacherbots.length > 0 ? (
-        <div className="space-y-2">
+        <div className="space-y-2 px-1">
           {teacherbots.map((bot) => (
             <div
               key={bot.id}
-              className="bg-white rounded-lg border border-slate-200 p-3 hover:shadow-sm hover:border-[#181b1e]/20 transition-all group"
+              className="rounded-xl border border-slate-200 bg-white/70 p-3 hover:border-[#181b1e]/25 hover:bg-white transition-all group"
             >
-              <div className="flex items-start gap-2.5">
-                <div className={`w-8 h-8 rounded-md ${getColorClass(bot.color)} flex items-center justify-center flex-shrink-0`}>
-                  <Bot className="h-4 w-4 text-white" />
+              <div className="flex items-center gap-2.5">
+                <div className={`w-9 h-9 rounded-xl ${getColorClass(bot.color)} flex items-center justify-center flex-shrink-0 shadow-sm`}>
+                  <Bot className="h-4.5 w-4.5 text-white" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-1.5">
-                    <h3 className="font-semibold text-sm text-slate-800 truncate">{bot.name}</h3>
+                  <div className="flex items-center gap-1.5 mb-0.5">
+                    <span className="font-semibold text-sm text-slate-800 truncate">{bot.name}</span>
                     {getStatusBadge(bot.status)}
                   </div>
-                  <p className="text-xs text-slate-500 line-clamp-1">{bot.synopsis || 'Nessuna descrizione'}</p>
-
-                  <div className="flex items-center gap-2.5 text-[11px] text-slate-400 mt-1">
-                    {bot.is_proactive && (
-                      <span className="flex items-center gap-1">
-                        <span className="w-1.5 h-1.5 rounded-full bg-green-500"></span>
-                        Proattivo
-                      </span>
-                    )}
-                    {bot.enable_reporting && (
-                      <span className="flex items-center gap-1">
-                        <FileText className="h-3 w-3" />
-                        Report
-                      </span>
-                    )}
-                    {bot.publication_count > 0 && (
-                      <span className="flex items-center gap-1">
-                        <Globe className="h-3 w-3" />
-                        {bot.publication_count}
-                      </span>
-                    )}
-                  </div>
+                  <p className="text-[11px] text-slate-400 leading-tight line-clamp-2">
+                    {bot.synopsis || 'Nessuna descrizione'}
+                  </p>
                 </div>
-
-                <div className="flex items-center gap-1.5 ml-1">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 w-7 p-0 text-slate-500 hover:text-[#181b1e] hover:bg-[#181b1e]/5"
-                    onClick={() => handleEdit(bot.id)}
-                    title="Modifica"
+                <button
+                  className="h-7 w-7 flex items-center justify-center rounded-lg text-slate-400 hover:text-[#181b1e] hover:bg-slate-100 transition-colors flex-shrink-0"
+                  onClick={() => handleEdit(bot.id)}
+                  title="Configura"
+                >
+                  <Settings className="h-3.5 w-3.5" />
+                </button>
+              </div>
+              {/* Secondary actions */}
+              <div className="flex items-center gap-1 mt-2 pt-2 border-t border-slate-100">
+                <button
+                  className="flex items-center gap-1 px-2 py-1 rounded-md text-[11px] text-slate-500 hover:text-[#181b1e] hover:bg-slate-100 transition-colors"
+                  onClick={() => handleTest(bot.id)}
+                >
+                  <Eye className="h-3 w-3" />
+                  Test
+                </button>
+                {bot.enable_reporting && bot.conversation_count > 0 && (
+                  <button
+                    className="flex items-center gap-1 px-2 py-1 rounded-md text-[11px] text-slate-500 hover:text-[#181b1e] hover:bg-slate-100 transition-colors"
+                    onClick={() => handleReports(bot.id)}
                   >
-                    <Settings className="h-3.5 w-3.5" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 w-7 p-0 text-slate-500 hover:text-[#181b1e] hover:bg-[#181b1e]/5"
-                    onClick={() => handleTest(bot.id)}
-                    title="Testa"
-                  >
-                    <Eye className="h-3.5 w-3.5" />
-                  </Button>
-                  {bot.enable_reporting && bot.conversation_count > 0 && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-7 w-7 p-0 text-slate-500 hover:text-[#181b1e] hover:bg-[#181b1e]/5"
-                      onClick={() => handleReports(bot.id)}
-                      title="Report"
-                    >
-                      <FileText className="h-3.5 w-3.5" />
-                    </Button>
-                  )}
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 w-7 p-0 text-slate-400 hover:text-red-600 hover:bg-red-50"
-                    onClick={() => handleDelete(bot.id, bot.name)}
-                    title="Elimina"
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </Button>
-                </div>
+                    <FileText className="h-3 w-3" />
+                    Report
+                  </button>
+                )}
+                <button
+                  className="ml-auto flex items-center gap-1 px-2 py-1 rounded-md text-[11px] text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                  onClick={() => handleDelete(bot.id, bot.name)}
+                >
+                  <Trash2 className="h-3 w-3" />
+                </button>
               </div>
             </div>
           ))}

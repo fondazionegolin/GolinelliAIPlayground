@@ -22,7 +22,6 @@ interface RichTextEditorProps {
   aiPanelAnchor?: { x: number; y: number } | null
   aiOpenRequestId?: number
   onMissingSelectionForAI?: () => void
-  autoFocus?: boolean
 }
 
 interface SelectionState {
@@ -60,7 +59,6 @@ export function RichTextEditor({
   aiPanelAnchor,
   aiOpenRequestId = 0,
   onMissingSelectionForAI,
-  autoFocus = false,
 }: RichTextEditorProps) {
   const [selection, setSelection] = useState<SelectionState | null>(null)
   const [lastValidSelection, setLastValidSelection] = useState<SelectionState | null>(null)
@@ -87,7 +85,6 @@ export function RichTextEditor({
     ],
     content: content,
     editable: !readOnly,
-    autofocus: autoFocus ? 'start' : false,
     onCreate: ({ editor }) => {
       onEditorReady?.(editor)
     },

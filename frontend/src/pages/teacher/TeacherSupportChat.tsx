@@ -17,6 +17,7 @@ import 'katex/dist/katex.min.css'
 import { ContentEditorModal } from '@/components/ContentEditorModal'
 import { DataVisualizationPanel } from '@/components/DataVisualizationPanel'
 import TeacherbotsPanel from '@/components/teacher/TeacherbotsPanel'
+import TeacherbotForm from '@/components/teacher/TeacherbotForm'
 import { DEFAULT_TEACHER_ACCENT, getTeacherAccentTheme } from '@/lib/teacherAccent'
 import { VoiceRecorder } from '@/components/VoiceRecorder'
 import { useTranslation } from 'react-i18next'
@@ -262,6 +263,7 @@ export default function TeacherSupportChat() {
   const { toast } = useToast()
   const { isMobile } = useMobile()
   const [activeTab, setActiveTab] = useState<'chat' | 'teacherbots'>('chat')
+  const [botConfigId, setBotConfigId] = useState<string | null>(null)
   const [mobileHistoryOpen, setMobileHistoryOpen] = useState(false)
   const [messages, setMessages] = useState<Message[]>([])
   const messagesRef = useRef<Message[]>([])
@@ -2013,7 +2015,7 @@ REGOLE IMPORTANTI:
                         </>
                       ) : (
                         <div className="flex-1 overflow-y-auto">
-                          <TeacherbotsPanel />
+                          <TeacherbotsPanel onOpenSettings={(id) => { setBotConfigId(id) }} />
                         </div>
                       )}
                     </>
@@ -2022,6 +2024,17 @@ REGOLE IMPORTANTI:
 
                  {/* Chat Main */}
                  <main className={`flex-1 flex flex-col relative overflow-hidden`} style={chatBg ? { backgroundColor: chatBg } : undefined}>
+
+                  {/* Teacherbot config view — absolute overlay replaces chat */}
+                  {botConfigId && (
+                    <div className="absolute inset-0 z-20 bg-white overflow-y-auto">
+                      <TeacherbotForm
+                        teacherbotId={botConfigId}
+                        onBack={() => setBotConfigId(null)}
+                        onSaved={() => setBotConfigId(null)}
+                      />
+                    </div>
+                  )}
 
                   <header className="px-3 py-2 border-b border-slate-200 bg-white/80 backdrop-blur-sm sticky top-0 z-10 flex items-center justify-between shrink-0">
                     {isMobile ? (
