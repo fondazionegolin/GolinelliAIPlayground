@@ -3007,12 +3007,14 @@ function MessageContent({ content, onPublish, onEdit, onInput, toast, darkMode =
     URL.revokeObjectURL(url)
   }
 
+  const hasMath = /\$[\s\S]*?\$|\\\[[\s\S]*?\\\]/.test(cleanContent)
+
   return (
     <div className={`prose prose-sm max-w-none ${darkMode ? 'prose-invert text-white' : 'text-slate-800'} ${darkMode ? '' : 'prose-p:text-slate-700'}`}>
       {cleanContent && (
         <ReactMarkdown
-          remarkPlugins={[remarkGfm, remarkMath]}
-          rehypePlugins={[rehypeKatex]}
+          remarkPlugins={hasMath ? [remarkGfm, remarkMath] : [remarkGfm]}
+          rehypePlugins={hasMath ? [rehypeKatex] : []}
           components={{
             p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
             code: ({ className, children, ...props }) => {

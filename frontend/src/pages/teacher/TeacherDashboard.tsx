@@ -3,10 +3,9 @@ import { useTranslation } from 'react-i18next'
 import { Routes, Route, useLocation, Link, useNavigate } from 'react-router-dom'
 import { MessageSquare, Users, PlayCircle, Bot, Loader2, LogOut } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth'
-// TeacherSupportChat is the landing route — kept eager
-import TeacherSupportChat from './TeacherSupportChat'
-// All other pages lazy-loaded: they contain heavy deps (Tiptap, Canvas, etc.)
-const ClassesPage       = lazy(() => import('./ClassesPage'))
+// All pages lazy-loaded to keep main bundle lean
+const TeacherSupportChat = lazy(() => import('./TeacherSupportChat'))
+const ClassesPage        = lazy(() => import('./ClassesPage'))
 const SessionsPage      = lazy(() => import('./SessionsPage'))
 const SessionLivePage   = lazy(() => import('./SessionLivePage'))
 const TeacherDocumentsPage = lazy(() => import('./TeacherDocumentsPage'))
