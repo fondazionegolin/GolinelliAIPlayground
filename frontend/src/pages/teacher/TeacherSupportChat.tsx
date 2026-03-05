@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useMemo, type CSSProperties } from 'react'
+import { useState, useRef, useEffect, useMemo, lazy, Suspense, type CSSProperties } from 'react'
 import { useMobile } from '@/hooks/useMobile'
 import { Button } from '@/components/ui/button'
 import {
@@ -14,9 +14,9 @@ import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
 import rehypeKatex from 'rehype-katex'
 import 'katex/dist/katex.min.css'
-import { ContentEditorModal } from '@/components/ContentEditorModal'
-import { DataVisualizationPanel } from '@/components/DataVisualizationPanel'
-import TeacherbotsPanel from '@/components/teacher/TeacherbotsPanel'
+const ContentEditorModal = lazy(() => import('@/components/ContentEditorModal').then(m => ({ default: m.ContentEditorModal })))
+const DataVisualizationPanel = lazy(() => import('@/components/DataVisualizationPanel').then(m => ({ default: m.DataVisualizationPanel })))
+const TeacherbotsPanel = lazy(() => import('@/components/teacher/TeacherbotsPanel'))
 import { DEFAULT_TEACHER_ACCENT, getTeacherAccentTheme } from '@/lib/teacherAccent'
 import { VoiceRecorder } from '@/components/VoiceRecorder'
 import { useTranslation } from 'react-i18next'
@@ -1926,7 +1926,9 @@ REGOLE IMPORTANTI:
         <div className={`flex-1 overflow-hidden ${isMobile ? 'px-0 pb-0' : 'px-6 pb-6'}`}>
            {activeTab === 'teacherbots' ? (
               <div className={`h-full bg-white ${isMobile ? '' : 'rounded-2xl'} border border-slate-200 shadow-sm overflow-hidden ${isMobile ? 'p-3' : 'p-6'} relative`}>
-                 <TeacherbotsPanel />
+                 <Suspense fallback={<div className="flex items-center justify-center h-full"><Loader2 className="h-5 w-5 animate-spin text-slate-400" /></div>}>
+                   <TeacherbotsPanel />
+                 </Suspense>
               </div>
            ) : (
               <div className={`flex h-full ${isMobile ? '' : 'gap-6 max-w-7xl mx-auto w-full'}`}>
@@ -2690,17 +2692,19 @@ REGOLE IMPORTANTI:
       {/* Editor Modal for editing quiz before publishing */}
       {
         editorModal.isOpen && editorModal.data && (
-          <ContentEditorModal
-            content={editorModal.data}
-            type={editorModal.type === 'quiz' ? 'quiz' : 'exercise'}
-            onSave={(editedData) => {
-              // After editing, open publish modal with edited data
-              setEditorModal({ isOpen: false, type: 'quiz', data: null })
-              setPublishMode('published')
-              setPublishModal({ isOpen: true, type: editorModal.type, data: editedData })
-            }}
-            onCancel={() => setEditorModal({ isOpen: false, type: 'quiz', data: null })}
-          />
+          <Suspense fallback={null}>
+            <ContentEditorModal
+              content={editorModal.data}
+              type={editorModal.type === 'quiz' ? 'quiz' : 'exercise'}
+              onSave={(editedData) => {
+                // After editing, open publish modal with edited data
+                setEditorModal({ isOpen: false, type: 'quiz', data: null })
+                setPublishMode('published')
+                setPublishModal({ isOpen: true, type: editorModal.type, data: editedData })
+              }}
+              onCancel={() => setEditorModal({ isOpen: false, type: 'quiz', data: null })}
+            />
+          </Suspense>
         )
       }
     </>
@@ -3151,7 +3155,7 @@ function MessageContent({ content, onPublish, onEdit, onInput, toast, darkMode =
             {csv.split('\n').length > 6 && '\n...'}
           </pre>
         </div>
-        <DataVisualizationPanel csvText={csv} />
+        <Suspense fallback={null}><DataVisualizationPanel csvText={csv} /></Suspense>
         </>
       )}
 
