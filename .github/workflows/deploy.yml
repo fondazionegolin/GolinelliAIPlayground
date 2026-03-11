@@ -1,0 +1,120 @@
+name: Deploy
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: production-deploy
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Install cloudflared
+        run: |
+          curl -fsSL https://pkg.cloudflare.com/cloudflare-main.gpg \
+            | sudo gpg --dearmor -o /usr/share/keyrings/cloudflare-main.gpg
+          echo "deb [signed-by=/usr/share/keyrings/cloudflare-main.gpg] https://pkg.cloudflare.com/cloudflared any main" \
+            | sudo tee /etc/apt/sources.list.d/cloudflared.list >/dev/null
+          sudo apt-get update
+          sudo apt-get install -y cloudflared
+
+      - name: Prepare SSH config
+        env:
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_PRIVATE_KEY: ${{ secrets.DEPLOY_SSH_PRIVATE_KEY }}
+          DEPLOY_SSH_KNOWN_HOSTS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+
+          mkdir -p "$HOME/.ssh"
+          chmod 700 "$HOME/.ssh"
+
+          printf '%s\n' "$DEPLOY_SSH_PRIVATE_KEY" > "$HOME/.ssh/deploy_key"
+          chmod 600 "$HOME/.ssh/deploy_key"
+
+          if [ -n "${DEPLOY_SSH_KNOWN_HOSTS:-}" ]; then
+            printf '%s\n' "$DEPLOY_SSH_KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
+          else
+            ssh-keyscan -H ssh.golinelli.ai > "$HOME/.ssh/known_hosts"
+          fi
+          chmod 644 "$HOME/.ssh/known_hosts"
+
+          cat > "$HOME/.ssh/config" <<EOF
+          Host ssh.golinelli.ai
+            HostName ssh.golinelli.ai
+            User ${DEPLOY_USER}
+            IdentityFile $HOME/.ssh/deploy_key
+            IdentitiesOnly yes
+            StrictHostKeyChecking yes
+            UserKnownHostsFile $HOME/.ssh/known_hosts
+            ProxyCommand cloudflared access ssh --hostname %h
+          EOF
+          chmod 600 "$HOME/.ssh/config"
+
+      - name: Deploy over SSH
+        env:
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+          DEPLOY_SUDO_PASSWORD: ${{ secrets.DEPLOY_SUDO_PASSWORD }}
+        run: |
+          set -euo pipefail
+
+          REMOTE_DEPLOY_PATH=$(printf '%q' "$DEPLOY_PATH")
+          REMOTE_DEPLOY_SUDO_PASSWORD=$(printf '%q' "$DEPLOY_SUDO_PASSWORD")
+
+          ssh ssh.golinelli.ai \
+            "DEPLOY_PATH=$REMOTE_DEPLOY_PATH DEPLOY_SUDO_PASSWORD=$REMOTE_DEPLOY_SUDO_PASSWORD bash -se" <<'EOF'
+          set -euo pipefail
+
+          REPO_DIR="${DEPLOY_PATH}"
+          DATA_DIR="$REPO_DIR/data"
+          BACKUP_ROOT="/backup"
+          BACKUP_TIMESTAMP="$(date '+%Y%m%d-%H%M%S')"
+          BACKUP_DIR="$BACKUP_ROOT/deploy-$BACKUP_TIMESTAMP"
+
+          if [ ! -d "$REPO_DIR/.git" ]; then
+            echo "Repository not found at $REPO_DIR"
+            exit 1
+          fi
+
+          if [ ! -d "$DATA_DIR" ]; then
+            echo "Data directory not found at $DATA_DIR"
+            exit 1
+          fi
+
+          if [ ! -d "$BACKUP_ROOT" ]; then
+            echo "Backup root not found at $BACKUP_ROOT"
+            exit 1
+          fi
+
+          cd "$REPO_DIR"
+
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "Remote repository has uncommitted changes. Refusing to deploy."
+            git status --short
+            exit 1
+          fi
+
+          printf '%s\n' "$DEPLOY_SUDO_PASSWORD" | sudo -S -p '' -v
+
+          sudo mkdir -p "$BACKUP_DIR"
+          sudo chown "$USER:$USER" "$BACKUP_DIR"
+
+          printf 'created_at=%s\nrepo_dir=%s\nsource_commit=%s\n' \
+            "$BACKUP_TIMESTAMP" "$REPO_DIR" "$(git rev-parse HEAD)" > "$BACKUP_DIR/deploy-info.txt"
+
+          sudo cp -a "$DATA_DIR" "$BACKUP_DIR/data"
+
+          git fetch origin main
+          git checkout main
+          git pull --ff-only origin main
+
+          docker compose up -d --build --remove-orphans
+          sudo -k
+          EOF
