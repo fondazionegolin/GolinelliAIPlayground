@@ -33,7 +33,7 @@
 ### Infrastruttura
 
 **Nuovi Volumi Docker:**
-- `golinelliaiplayground_chat_uploads` - Storage persistente per file chat
+- `./data/chat_uploads` - Storage persistente per file chat
   - Montato su: `/app/uploads` nel container API
   - Permessi: 777 (read/write per tutti)
   - Directory: `/app/uploads/chat/` creata e pronta
@@ -108,7 +108,7 @@ $ curl http://localhost/health
    - ✅ Auto-creazione directory uploads
 
 4. **docker-compose.yml**
-   - ✅ Volume chat_uploads dichiarato
+   - ✅ Bind mount `./data/chat_uploads` dichiarato
    - ✅ Volume montato su container API
 
 5. **nginx.conf**
@@ -164,7 +164,7 @@ $ curl http://localhost/health
 - Startup time: <5s
 
 **Storage:**
-- Volume chat_uploads: Vuoto (0 MB iniziale)
+- Cartella `./data/chat_uploads`: Vuota (0 MB iniziale)
 - Max upload size: 50 MB (nginx)
 - Formati supportati: immagini, PDF, documenti
 
@@ -189,13 +189,12 @@ $ curl http://localhost/health
 ### Backup
 I file della chat sono in volume Docker persistente:
 ```bash
-docker volume inspect golinelliaiplayground_chat_uploads
+ls -lah ./data/chat_uploads
 ```
 
 Backup manuale:
 ```bash
-docker run --rm -v golinelliaiplayground_chat_uploads:/data \
-  -v $(pwd):/backup alpine tar czf /backup/chat_uploads_backup.tar.gz /data
+tar czf ./chat_uploads_backup.tar.gz ./data/chat_uploads
 ```
 
 ### Monitoring
@@ -210,7 +209,7 @@ docker logs -f golinelliaiplayground-frontend-1
 docker logs -f golinelliaiplayground-nginx-1
 
 # Dimensione upload volume
-docker system df -v | grep chat_uploads
+du -sh ./data/chat_uploads
 ```
 
 ### Troubleshooting

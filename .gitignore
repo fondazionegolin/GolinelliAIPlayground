@@ -34,6 +34,10 @@ logs/
 # Docker
 *.tar
 
+# Container bind mounts
+data/*
+!data/.gitkeep
+
 # Python
 .venv/
 venv/

@@ -14,7 +14,7 @@
 - [x] Backend API buildato e deployato
 - [x] Worker buildato e deployato
 - [x] Nginx configurato per /uploads
-- [x] Volume chat_uploads creato e montato
+- [x] Bind mount `./data/chat_uploads` creato e montato
 - [x] Directory /app/uploads/chat creata
 - [x] Permessi upload directory impostati
 - [x] Health check OK
@@ -200,15 +200,15 @@ docker compose up -d
 - [ ] Numero upload file/giorno
 - [ ] Dimensione media file
 - [ ] Errori upload
-- [ ] Spazio disco volume chat_uploads
+- [ ] Spazio disco cartella `./data/chat_uploads`
 - [ ] Tempo risposta endpoint /uploads
 - [ ] Errori WebSocket
 - [ ] CPU/RAM container API
 
 ### Tools
 ```bash
-# Spazio volume
-docker system df -v | grep chat_uploads
+# Spazio cartella bind mount
+du -sh ./data/chat_uploads
 
 # Stats container
 docker stats golinelliaiplayground-api-1
