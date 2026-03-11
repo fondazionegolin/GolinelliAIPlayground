@@ -65,14 +65,12 @@ jobs:
         run: |
           set -euo pipefail
 
-          REMOTE_DEPLOY_PATH=$(printf '%q' "$DEPLOY_PATH")
-          REMOTE_DEPLOY_SUDO_PASSWORD=$(printf '%q' "$DEPLOY_SUDO_PASSWORD")
-
-          ssh ssh.golinelli.ai \
-            "DEPLOY_PATH=$REMOTE_DEPLOY_PATH DEPLOY_SUDO_PASSWORD=$REMOTE_DEPLOY_SUDO_PASSWORD bash -se" <<'EOF'
-          set -euo pipefail
-
-          REPO_DIR="${DEPLOY_PATH}"
+          {
+            printf 'set -euo pipefail\n'
+            printf 'DEPLOY_PATH=%q\n' "$DEPLOY_PATH"
+            printf 'DEPLOY_SUDO_PASSWORD=%q\n' "$DEPLOY_SUDO_PASSWORD"
+            cat <<'EOF'
+          REPO_DIR="$DEPLOY_PATH"
           DATA_DIR="$REPO_DIR/data"
           BACKUP_ROOT="/backup"
           BACKUP_TIMESTAMP="$(date '+%Y%m%d-%H%M%S')"
@@ -94,6 +92,10 @@ jobs:
           fi
 
           cd "$REPO_DIR"
+
+          if ! git config --global --get-all safe.directory | grep -Fx "$REPO_DIR" >/dev/null 2>&1; then
+            git config --global --add safe.directory "$REPO_DIR"
+          fi
 
           if [ -n "$(git status --porcelain)" ]; then
             echo "Remote repository has uncommitted changes. Refusing to deploy."
@@ -118,3 +120,4 @@ jobs:
           docker compose up -d --build --remove-orphans
           sudo -k
           EOF
+          } | ssh ssh.golinelli.ai 'bash -se'
