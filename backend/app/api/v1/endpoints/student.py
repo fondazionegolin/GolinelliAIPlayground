@@ -10,6 +10,8 @@ from app.core.database import get_db
 from app.core.security import create_student_join_token
 from app.api.deps import get_current_student
 from app.models.session import Session, SessionStudent, SessionModule
+from app.models.credits import CreditLimit
+from app.models.enums import LimitLevel
 from app.models.task import Task, TaskSubmission, TaskStatus
 from app.models.document_draft import DocumentDraft
 from app.models.session_canvas import SessionCanvas
@@ -107,7 +109,25 @@ async def join_session(
     # Generate actual token
     join_token = create_student_join_token(str(session.id), str(student.id), student.nickname)
     student.join_token = join_token
-    
+
+    # Create default monthly credit limit for student (2€/month)
+    from datetime import timezone as _tz
+    _now = datetime.now(_tz.utc)
+    try:
+        _limit_end = _now.replace(month=_now.month + 1, day=1)
+    except ValueError:
+        _limit_end = _now.replace(year=_now.year + 1, month=1, day=1)
+    db.add(CreditLimit(
+        tenant_id=session.tenant_id,
+        level=LimitLevel.STUDENT,
+        student_id=student.id,
+        amount_cap=2.0,
+        current_usage=0.0,
+        period_start=_now,
+        period_end=_limit_end,
+        reset_frequency="MONTHLY",
+    ))
+
     await db.commit()
     await db.refresh(student)
     

@@ -284,7 +284,7 @@ export default function TeacherSupportChat() {
   const [chatBg, setChatBg] = useState<string>('')
   const [chatBgDefault, setChatBgDefault] = useState<string>('')
   const [showBgPalette, setShowBgPalette] = useState(false)
-  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(true)
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => window.innerWidth < CHAT_HISTORY_COLLAPSE_BREAKPOINT)
   const [webSearchProgress, setWebSearchProgress] = useState<WebSearchProgress | null>(null)
   const [datasetInterview, setDatasetInterview] = useState<DatasetInterviewState>({
     active: false,
@@ -365,6 +365,14 @@ export default function TeacherSupportChat() {
     () => AGENT_MODES.find(m => m.id === agentMode) || AGENT_MODES[0],
     [agentMode]
   )
+
+  useEffect(() => {
+    const handleResize = () => {
+      setIsSidebarCollapsed(window.innerWidth < CHAT_HISTORY_COLLAPSE_BREAKPOINT)
+    }
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
+  }, [])
 
   useEffect(() => {
     if (!availableModels.length) return

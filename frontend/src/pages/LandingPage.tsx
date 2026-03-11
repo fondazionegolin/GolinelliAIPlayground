@@ -141,19 +141,30 @@ export default function LandingPage() {
 
       {/* --- Navbar --- */}
       <nav className="sticky top-0 z-50 w-full backdrop-blur-md bg-white/70 border-b border-white/50 px-6 py-4 flex items-center justify-between">
-        <div className="flex items-center gap-3 cursor-pointer" onClick={() => switchTab('home')}>
-          <img src="/logo_new.png" alt="Golinelli AI" className="h-10 w-auto shadow-sm rounded-md" />
-          <span className="text-2xl tracking-tight" style={{ fontFamily: '"SofiaPro"' }}>
-            <span className="font-bold text-[#2d2d2d]/85">Golinelli</span>
-            <span className="font-black text-[#e85c8d]">.ai</span>
-          </span>
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 cursor-pointer" onClick={() => switchTab('home')}>
+            <img src="/logo_new.png" alt="Golinelli AI" className="h-10 w-auto shadow-sm rounded-md" />
+            <span className="text-2xl tracking-tight" style={{ fontFamily: '"SofiaPro"' }}>
+              <span className="font-bold text-[#2d2d2d]/85">Golinelli</span>
+              <span className="font-black text-[#e85c8d]">.ai</span>
+            </span>
+          </div>
+          <div className="hidden md:block h-7 w-px bg-slate-200 mx-1" />
+          <a
+            href="https://www.fondazionegolinelli.it"
+            target="_blank"
+            rel="noreferrer"
+            className="hidden md:flex items-center gap-2 group"
+          >
+            <img src="/golinelli-logo.svg" alt="Fondazione Golinelli" className="h-8 w-auto opacity-70 group-hover:opacity-100 transition-opacity" />
+          </a>
         </div>
 
         {/* Desktop Menu */}
         <div className="hidden md:flex items-center gap-1 bg-slate-100/50 p-1 rounded-full border border-slate-200/50">
           <TabButton active={activeTab === 'home'} onClick={() => switchTab('home')} color="#e85c8d">{t('landing.nav_explore')}</TabButton>
-          <TabButton active={activeTab === 'teachers'} onClick={() => switchTab('teachers')} color="#2d2d2d">{t('landing.nav_teachers')}</TabButton>
-          <TabButton active={activeTab === 'students'} onClick={() => switchTab('students')} color="#0d9488">{t('landing.nav_students')}</TabButton>
+          <TabButton active={activeTab === 'teachers'} onClick={() => switchTab('teachers')} color="#a855f7">{t('landing.nav_teachers')}</TabButton>
+          <TabButton active={activeTab === 'students'} onClick={() => switchTab('students')} color="#38bdf8">{t('landing.nav_students')}</TabButton>
         </div>
 
         <div className="hidden md:flex items-center gap-3">
@@ -205,6 +216,17 @@ export default function LandingPage() {
       {/* --- Footer --- */}
       <footer className="py-6 text-center text-sm text-slate-500 bg-white/40 backdrop-blur-sm border-t border-white/50">
         <p>{t('landing.footer_copyright')}</p>
+        <p className="mt-2 flex items-center justify-center gap-1.5 text-xs text-slate-400">
+          un progetto di{' '}
+          <a
+            href="https://www.fondazionegolinelli.it"
+            target="_blank"
+            rel="noreferrer"
+            className="font-semibold text-slate-500 hover:text-[#e85c8d] transition-colors"
+          >
+            Fondazione Golinelli
+          </a>
+        </p>
         <p className="mt-2">
           <Link to="/privacy" className="text-xs text-slate-400 hover:text-[#e85c8d] transition-colors underline underline-offset-2">
             Privacy Policy & AI Act Compliance

@@ -1,434 +1,217 @@
 import { useState } from 'react'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { adminApi, creditsApi } from '@/lib/api'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent } from '@/components/ui/card'
+import { useQuery } from '@tanstack/react-query'
+import { adminApi } from '@/lib/api'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { useToast } from '@/components/ui/use-toast'
-import { User, Key, Copy, X, Shield, GraduationCap, Trash2, Mail, UserPlus, RotateCcw } from 'lucide-react'
+import {
+  ResponsiveContainer, LineChart, Line, CartesianGrid, XAxis, YAxis, Tooltip, Legend,
+} from 'recharts'
+import { TrendingUp, Server, Cpu, GraduationCap } from 'lucide-react'
 
-interface UserData {
-  id: string
-  email: string
-  first_name: string | null
-  last_name: string | null
-  role: string
-  tenant_id: string | null
-  is_verified: boolean
-  is_active: boolean
-  deactivated_at: string | null
-  created_at: string | null
+type OverviewData = {
+  summary: { total_cost_period: number; total_api_calls_period: number; period_days: number }
+  provider_breakdown: Array<{ provider: string; cost: number; calls: number }>
+  model_breakdown: Array<{ model: string; cost: number; calls: number }>
+  daily_history: Array<{ date: string; cost: number; calls: number }>
 }
 
-interface ResetResult {
+type TopConsumer = {
+  teacher_id: string
+  name: string
   email: string
-  temporary_password: string
+  institution?: string | null
+  cost: number
+  calls: number
 }
 
-export default function UsersPage() {
-  const queryClient = useQueryClient()
-  const { toast } = useToast()
-  const [resetResult, setResetResult] = useState<ResetResult | null>(null)
-  const [roleFilter, setRoleFilter] = useState<string>('')
-  const [includeInactive, setIncludeInactive] = useState(false)
-  const [inviteEmail, setInviteEmail] = useState('')
-  const [inviteFirstName, setInviteFirstName] = useState('')
-  const [inviteLastName, setInviteLastName] = useState('')
-  const [inviteSchool, setInviteSchool] = useState('')
-  const [bulkInviteText, setBulkInviteText] = useState('')
+const formatCurrencyShort = (v: number) => `€ ${Number(v || 0).toFixed(2)}`
 
-  const { data: users, isLoading } = useQuery<UserData[]>({
-    queryKey: ['users', roleFilter, includeInactive],
-    queryFn: async () => {
-      const res = await adminApi.getUsers(roleFilter || undefined, includeInactive)
-      return res.data
-    },
+export default function CostsPage() {
+  const [days, setDays] = useState(30)
+
+  const { data: overview } = useQuery<OverviewData>({
+    queryKey: ['admin-dashboard-overview', days],
+    queryFn: async () => (await adminApi.getDashboardOverview(days)).data,
   })
 
-  const { data: invitations } = useQuery<any[]>({
-    queryKey: ['admin-platform-invitations-users-page'],
-    queryFn: async () => (await creditsApi.getInvitations()).data,
+  const { data: topConsumers } = useQuery<{ items: TopConsumer[] }>({
+    queryKey: ['admin-top-consumers', days],
+    queryFn: async () => (await adminApi.getTopConsumers(days, 25)).data,
   })
 
-  const resetMutation = useMutation({
-    mutationFn: (userId: string) => adminApi.resetPassword(userId),
-    onSuccess: (response) => {
-      queryClient.invalidateQueries({ queryKey: ['users'] })
-      setResetResult({
-        email: response.data.email,
-        temporary_password: response.data.temporary_password,
-      })
-    },
-    onError: () => {
-      toast({ variant: 'destructive', title: 'Errore nel reset password' })
-    },
-  })
-
-  const deleteMutation = useMutation({
-    mutationFn: (userId: string) => adminApi.deleteUser(userId),
-    onSuccess: (response) => {
-      queryClient.invalidateQueries({ queryKey: ['users'] })
-      toast({ title: 'Utente eliminato', description: response.data.message })
-    },
-    onError: (error: Error & { response?: { data?: { detail?: string } } }) => {
-      toast({ 
-        variant: 'destructive', 
-        title: 'Errore', 
-        description: error.response?.data?.detail || 'Impossibile eliminare l\'utente' 
-      })
-    },
-  })
-
-  const reactivateMutation = useMutation({
-    mutationFn: (userId: string) => adminApi.reactivateUser(userId),
-    onSuccess: (response) => {
-      queryClient.invalidateQueries({ queryKey: ['users'] })
-      toast({ title: 'Utente riattivato', description: response.data.message })
-    },
-    onError: (error: Error & { response?: { data?: { detail?: string } } }) => {
-      toast({
-        variant: 'destructive',
-        title: 'Errore',
-        description: error.response?.data?.detail || 'Impossibile riattivare l\'utente',
-      })
-    },
-  })
-
-  const inviteMutation = useMutation({
-    mutationFn: (payload: { email: string; firstName?: string; lastName?: string; school?: string }) =>
-      creditsApi.inviteTeacher(payload.email, payload.firstName, payload.lastName, payload.school),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['admin-platform-invitations-users-page'] })
-      queryClient.invalidateQueries({ queryKey: ['users'] })
-      toast({ title: 'Invito inviato', description: 'Il docente ricevera una email per completare la registrazione.' })
-    },
-    onError: (error: Error & { response?: { data?: { detail?: string } } }) => {
-      toast({
-        variant: 'destructive',
-        title: 'Invito fallito',
-        description: error.response?.data?.detail || 'Impossibile inviare l\'invito',
-      })
-    },
-  })
-
-  const bulkInviteMutation = useMutation({
-    mutationFn: async (rows: Array<{ email: string; firstName?: string; lastName?: string; school?: string }>) => {
-      const results = await Promise.allSettled(
-        rows.map((row) => creditsApi.inviteTeacher(row.email, row.firstName, row.lastName, row.school))
-      )
-      const failed = results.filter((r) => r.status === 'rejected').length
-      return { total: rows.length, failed, success: rows.length - failed }
-    },
-    onSuccess: ({ total, success, failed }) => {
-      queryClient.invalidateQueries({ queryKey: ['admin-platform-invitations-users-page'] })
-      queryClient.invalidateQueries({ queryKey: ['users'] })
-      toast({
-        title: 'Inviti multipli completati',
-        description: `Totale ${total}, inviati ${success}, falliti ${failed}`,
-      })
-    },
-    onError: () => {
-      toast({ variant: 'destructive', title: 'Inviti multipli falliti' })
-    },
-  })
-
-  const handleDelete = (user: UserData) => {
-    if (confirm(`Sei sicuro di voler eliminare l'utente ${user.first_name} ${user.last_name} (${user.email})?`)) {
-      deleteMutation.mutate(user.id)
-    }
-  }
-
-  const copyToClipboard = (text: string) => {
-    navigator.clipboard.writeText(text)
-    toast({ title: 'Copiato negli appunti!' })
-  }
-
-  const getRoleIcon = (role: string) => {
-    switch (role) {
-      case 'ADMIN':
-        return <Shield className="h-4 w-4 text-red-500" />
-      case 'TEACHER':
-        return <GraduationCap className="h-4 w-4 text-blue-500" />
-      default:
-        return <User className="h-4 w-4 text-gray-500" />
-    }
-  }
-
-  const getRoleBadge = (role: string) => {
-    const colors: Record<string, string> = {
-      ADMIN: 'bg-red-100 text-red-800',
-      TEACHER: 'bg-blue-100 text-blue-800',
-    }
-    return colors[role] || 'bg-gray-100 text-gray-800'
-  }
-
-  const parsedBulkRows = bulkInviteText
-    .split('\n')
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .map((line) => {
-      const parts = line.split(/[;,]/).map((part) => part.trim())
-      return {
-        email: parts[0] || '',
-        firstName: parts[1] || undefined,
-        lastName: parts[2] || undefined,
-        school: parts[3] || undefined,
-      }
-    })
-    .filter((row) => row.email.includes('@'))
+  const dailyHistory = overview?.daily_history || []
+  const providerBreakdown = overview?.provider_breakdown || []
+  const modelBreakdown = overview?.model_breakdown || []
+  const topConsumerRows = topConsumers?.items || []
+  const totalCost = overview?.summary?.total_cost_period || 0
+  const totalCalls = overview?.summary?.total_api_calls_period || 0
 
   return (
-    <div>
-      <div className="flex items-center justify-between mb-6">
-        <h2 className="text-2xl font-bold">Gestione Utenti</h2>
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-900">Costi & Consumi</h1>
+          <p className="text-sm text-slate-500 mt-0.5">Breakdown per provider, modello e docente.</p>
+        </div>
         <div className="flex items-center gap-2">
-          <Button
-            variant={includeInactive ? 'secondary' : 'outline'}
-            size="sm"
-            onClick={() => setIncludeInactive((v) => !v)}
-          >
-            {includeInactive ? 'Nascondi disattivati' : 'Includi disattivati'}
-          </Button>
-          <Button
-            variant={roleFilter === '' ? 'default' : 'outline'}
-            size="sm"
-            onClick={() => setRoleFilter('')}
-          >
-            Tutti
-          </Button>
-          <Button
-            variant={roleFilter === 'ADMIN' ? 'default' : 'outline'}
-            size="sm"
-            onClick={() => setRoleFilter('ADMIN')}
-          >
-            Admin
-          </Button>
-          <Button
-            variant={roleFilter === 'TEACHER' ? 'default' : 'outline'}
-            size="sm"
-            onClick={() => setRoleFilter('TEACHER')}
-          >
-            Docenti
-          </Button>
+          <Label htmlFor="cost-days" className="text-xs text-slate-500 whitespace-nowrap">Periodo</Label>
+          <Input
+            id="cost-days"
+            type="number"
+            min={1}
+            max={180}
+            value={days}
+            onChange={(e) => setDays(Math.max(1, Math.min(180, Number(e.target.value || 30))))}
+            className="h-8 w-20 text-sm"
+          />
+          <span className="text-xs text-slate-500">giorni</span>
         </div>
       </div>
 
-      {resetResult && (
-        <Card className="mb-6 border-green-200 bg-green-50">
-          <CardContent className="p-4">
-            <div className="flex items-start gap-3">
-              <Key className="h-6 w-6 text-green-600 mt-1" />
-              <div className="flex-1">
-                <h4 className="font-semibold text-green-800">Password Resettata!</h4>
-                <p className="text-sm text-green-700 mb-3">
-                  Nuove credenziali per l'utente:
-                </p>
-                <div className="bg-white rounded p-3 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-gray-600">Email:</span>
-                    <div className="flex items-center gap-2">
-                      <code className="bg-gray-100 px-2 py-1 rounded text-sm">{resetResult.email}</code>
-                      <Button size="sm" variant="ghost" onClick={() => copyToClipboard(resetResult.email)}>
-                        <Copy className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-gray-600">Nuova Password:</span>
-                    <div className="flex items-center gap-2">
-                      <code className="bg-gray-100 px-2 py-1 rounded text-sm font-mono">{resetResult.temporary_password}</code>
-                      <Button size="sm" variant="ghost" onClick={() => copyToClipboard(resetResult.temporary_password)}>
-                        <Copy className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-              <Button size="sm" variant="ghost" onClick={() => setResetResult(null)}>
-                <X className="h-4 w-4" />
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      <div className="grid gap-4 mb-6 md:grid-cols-3">
-        <Card className="md:col-span-1 border-sky-200 bg-sky-50/70">
-          <CardContent className="p-4 space-y-3">
-            <div className="flex items-center gap-2 text-sky-900 font-semibold">
-              <Mail className="h-4 w-4" />
-              Invita docente
-            </div>
-            <div className="space-y-1">
-              <Label>Email</Label>
-              <Input value={inviteEmail} onChange={(e) => setInviteEmail(e.target.value)} placeholder="docente@scuola.it" />
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              <div className="space-y-1">
-                <Label>Nome</Label>
-                <Input value={inviteFirstName} onChange={(e) => setInviteFirstName(e.target.value)} />
-              </div>
-              <div className="space-y-1">
-                <Label>Cognome</Label>
-                <Input value={inviteLastName} onChange={(e) => setInviteLastName(e.target.value)} />
-              </div>
-            </div>
-            <div className="space-y-1">
-              <Label>Scuola</Label>
-              <Input value={inviteSchool} onChange={(e) => setInviteSchool(e.target.value)} placeholder="Istituto..." />
-            </div>
-            <Button
-              className="w-full"
-              disabled={!inviteEmail || inviteMutation.isPending}
-              onClick={() => {
-                inviteMutation.mutate({
-                  email: inviteEmail.trim(),
-                  firstName: inviteFirstName.trim() || undefined,
-                  lastName: inviteLastName.trim() || undefined,
-                  school: inviteSchool.trim() || undefined,
-                })
-                setInviteEmail('')
-                setInviteFirstName('')
-                setInviteLastName('')
-                setInviteSchool('')
-              }}
-            >
-              <UserPlus className="h-4 w-4 mr-2" />
-              Invia invito
-            </Button>
-          </CardContent>
-        </Card>
-
-        <Card className="md:col-span-2 border-violet-200 bg-violet-50/70">
-          <CardContent className="p-4 space-y-3">
-            <div className="flex items-center justify-between">
-              <h3 className="font-semibold text-violet-900">Invito multiplo rapido</h3>
-              <span className="text-xs text-violet-700">{parsedBulkRows.length} validi</span>
-            </div>
-            <textarea
-              value={bulkInviteText}
-              onChange={(e) => setBulkInviteText(e.target.value)}
-              className="w-full min-h-32 rounded-md border border-violet-200 p-3 text-sm bg-white"
-              placeholder={'email;nome;cognome;scuola\nmaria@scuola.it;Maria;Rossi;Liceo Galilei'}
-            />
-            <div className="flex justify-end">
-              <Button
-                disabled={parsedBulkRows.length === 0 || bulkInviteMutation.isPending}
-                onClick={() => {
-                  bulkInviteMutation.mutate(parsedBulkRows)
-                  setBulkInviteText('')
-                }}
-              >
-                Invia inviti multipli
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+      {/* Summary pills */}
+      <div className="grid grid-cols-2 gap-3">
+        <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 flex items-center gap-3">
+          <TrendingUp className="h-5 w-5 text-rose-500 flex-shrink-0" />
+          <div>
+            <p className="text-xs text-slate-500">Costo totale</p>
+            <p className="text-xl font-bold text-slate-900">{formatCurrencyShort(totalCost)}</p>
+          </div>
+        </div>
+        <div className="rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-3 flex items-center gap-3">
+          <Cpu className="h-5 w-5 text-indigo-500 flex-shrink-0" />
+          <div>
+            <p className="text-xs text-slate-500">Chiamate API</p>
+            <p className="text-xl font-bold text-slate-900">{totalCalls.toLocaleString('it-IT')}</p>
+          </div>
+        </div>
       </div>
 
-      <Card className="mb-6">
-        <CardContent className="p-4">
-          <h3 className="font-semibold mb-3">Storico inviti docenti</h3>
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[760px] text-sm">
-              <thead className="text-left text-xs uppercase text-muted-foreground">
-                <tr>
-                  <th className="pb-2">Email</th>
-                  <th className="pb-2">Stato</th>
-                  <th className="pb-2">Creato</th>
-                  <th className="pb-2">Scadenza</th>
-                </tr>
-              </thead>
-              <tbody>
-                {(invitations || []).map((inv: any) => (
-                  <tr key={inv.id} className="border-t">
-                    <td className="py-2">{inv.email}</td>
-                    <td className="py-2">{inv.status}</td>
-                    <td className="py-2">{inv.created_at ? new Date(inv.created_at).toLocaleString('it-IT') : 'N/D'}</td>
-                    <td className="py-2">{inv.expires_at ? new Date(inv.expires_at).toLocaleString('it-IT') : 'N/D'}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+      {/* Chart */}
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm font-semibold">Andamento giornaliero</CardTitle>
+        </CardHeader>
+        <CardContent className="h-60">
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={dailyHistory}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+              <XAxis dataKey="date" tick={{ fontSize: 11 }} />
+              <YAxis yAxisId="left" tick={{ fontSize: 11 }} />
+              <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 11 }} />
+              <Tooltip />
+              <Legend />
+              <Line yAxisId="left" type="monotone" dataKey="calls" stroke="#6366f1" strokeWidth={2} dot={false} name="Chiamate" />
+              <Line yAxisId="right" type="monotone" dataKey="cost" stroke="#e85c8d" strokeWidth={2} dot={false} name="Costo €" />
+            </LineChart>
+          </ResponsiveContainer>
         </CardContent>
       </Card>
 
-      {isLoading ? (
-        <p>Caricamento...</p>
-      ) : !users?.length ? (
-        <p className="text-muted-foreground">Nessun utente trovato</p>
-      ) : (
-        <div className="grid gap-3">
-          {users.map((user) => (
-            <Card key={user.id}>
-              <CardContent className="flex items-center justify-between p-4">
-                <div className="flex items-center gap-4">
-                  <div className="bg-gray-100 rounded-full p-2">
-                    {getRoleIcon(user.role)}
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <h4 className="font-semibold">
-                        {user.first_name && user.last_name
-                          ? `${user.first_name} ${user.last_name}`
-                          : user.email}
-                      </h4>
-                      <span className={`px-2 py-0.5 rounded text-xs ${getRoleBadge(user.role)}`}>
-                        {user.role}
-                      </span>
+      {/* Provider + Model breakdown */}
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-semibold flex items-center gap-2">
+              <Server className="h-4 w-4 text-slate-500" />
+              Per provider
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {providerBreakdown.length === 0 ? (
+              <p className="text-xs text-slate-400">Nessun dato</p>
+            ) : (
+              providerBreakdown.map((item) => {
+                const pct = totalCost > 0 ? (item.cost / totalCost) * 100 : 0
+                return (
+                  <div key={item.provider} className="space-y-1">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="font-medium capitalize text-slate-700">{item.provider}</span>
+                      <span className="font-semibold text-slate-900">{formatCurrencyShort(item.cost)}</span>
                     </div>
-                    <p className="text-sm text-muted-foreground">{user.email}</p>
-                    {!user.is_active && (
-                      <p className="text-xs text-red-600">Utente disattivato</p>
-                    )}
+                    <div className="h-1.5 rounded-full bg-slate-100 overflow-hidden">
+                      <div
+                        className="h-full rounded-full bg-[#e85c8d]"
+                        style={{ width: `${pct}%` }}
+                      />
+                    </div>
                   </div>
+                )
+              })
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-semibold flex items-center gap-2">
+              <Cpu className="h-4 w-4 text-slate-500" />
+              Per modello
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {modelBreakdown.length === 0 ? (
+              <p className="text-xs text-slate-400">Nessun dato</p>
+            ) : (
+              modelBreakdown.map((item) => (
+                <div key={item.model} className="flex items-center justify-between rounded-lg border border-slate-100 bg-slate-50 px-3 py-2">
+                  <span className="font-mono text-xs text-slate-600 truncate max-w-[65%]">{item.model}</span>
+                  <span className="text-xs font-semibold text-slate-800">{formatCurrencyShort(item.cost)}</span>
                 </div>
-                <div className="flex items-center gap-2">
-                  {user.created_at && (
-                    <span className="text-sm text-muted-foreground mr-4">
-                      {new Date(user.created_at).toLocaleDateString('it-IT')}
-                    </span>
-                  )}
-                  {user.is_active ? (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => resetMutation.mutate(user.id)}
-                      disabled={resetMutation.isPending}
-                    >
-                      <Key className="h-4 w-4 mr-1" />
-                      Reset Password
-                    </Button>
-                  ) : (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => reactivateMutation.mutate(user.id)}
-                      disabled={reactivateMutation.isPending}
-                    >
-                      <RotateCcw className="h-4 w-4 mr-1" />
-                      Riattiva
-                    </Button>
-                  )}
-                  {user.role !== 'ADMIN' && user.is_active && (
-                    <Button
-                      size="sm"
-                      variant="destructive"
-                      onClick={() => handleDelete(user)}
-                      disabled={deleteMutation.isPending}
-                    >
-                      <Trash2 className="h-4 w-4 mr-1" />
-                      Elimina
-                    </Button>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      )}
+              ))
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Top consumers */}
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm font-semibold flex items-center gap-2">
+            <GraduationCap className="h-4 w-4 text-slate-500" />
+            Top consumatori — docenti
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="p-0">
+          {topConsumerRows.length === 0 ? (
+            <p className="px-4 py-6 text-xs text-slate-400">Nessun dato</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[560px] text-sm">
+                <thead>
+                  <tr className="border-b border-slate-100 text-[11px] uppercase text-slate-400">
+                    <th className="px-4 py-3 text-left font-medium">Docente</th>
+                    <th className="px-3 py-3 text-left font-medium">Scuola</th>
+                    <th className="px-3 py-3 text-right font-medium">Chiamate</th>
+                    <th className="px-4 py-3 text-right font-medium">Costo</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {topConsumerRows.map((c, i) => (
+                    <tr key={c.teacher_id} className="border-t border-slate-100 hover:bg-slate-50">
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-2">
+                          <span className="w-5 h-5 rounded-full bg-slate-100 text-slate-500 text-[10px] font-bold flex items-center justify-center">
+                            {i + 1}
+                          </span>
+                          <div>
+                            <p className="font-medium text-slate-800">{c.name}</p>
+                            <p className="text-xs text-slate-400">{c.email}</p>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-3 py-3 text-xs text-slate-500">{c.institution || '—'}</td>
+                      <td className="px-3 py-3 text-right text-xs text-slate-600">{c.calls.toLocaleString('it-IT')}</td>
+                      <td className="px-4 py-3 text-right font-semibold text-slate-800">{formatCurrencyShort(c.cost)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   )
 }

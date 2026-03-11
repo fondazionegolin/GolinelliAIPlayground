@@ -113,6 +113,9 @@ export const adminApi = {
     api.post(`/admin/email-templates/${templateKey}/reset-default`),
   getEmailTemplateHistory: (templateKey: string, limit = 20) =>
     api.get('/admin/email-templates/history', { params: { template_key: templateKey, limit } }),
+  setTeacherCreditLimit: (teacherId: string, amountCap: number) =>
+    api.put(`/admin/teachers/${teacherId}/credit-limit`, { amount_cap: amountCap }),
+  getAdminClasses: () => api.get('/admin/classes'),
 }
 
 export const teacherApi = {

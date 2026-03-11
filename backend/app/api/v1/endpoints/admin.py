@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, status, Query, Request, Body
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, desc
 from typing import Annotated, Optional
@@ -14,11 +14,11 @@ from app.api.deps import get_current_admin
 from app.models.user import User, TeacherRequest, ActivationToken
 from app.models.tenant import Tenant
 from app.models.template_version import TenantTemplateVersion
-from app.models.session import Session, SessionStudent
+from app.models.session import Session, SessionStudent, Class as TeacherClass
 from app.models.llm import ConversationMessage, TeacherConversation, TeacherConversationMessage
-from app.models.credits import CreditTransaction
+from app.models.credits import CreditLimit, CreditTransaction
 from app.models.invitation import PlatformInvitation
-from app.models.enums import UserRole, TeacherRequestStatus, TenantStatus
+from app.models.enums import UserRole, TeacherRequestStatus, TenantStatus, LimitLevel
 from app.schemas.tenant import TenantCreate, TenantUpdate, TenantResponse
 from app.schemas.auth import TeacherRequestResponse
 from app.services.email_service import email_service
@@ -245,11 +245,29 @@ async def approve_teacher_request(
     )
     db.add(token_record)
     
+    # Create default monthly credit limit for teacher (3€/month)
+    now_utc = datetime.now(timezone.utc)
+    try:
+        limit_end = now_utc.replace(month=now_utc.month + 1, day=1)
+    except ValueError:
+        limit_end = now_utc.replace(year=now_utc.year + 1, month=1, day=1)
+    teacher_limit = CreditLimit(
+        tenant_id=user.tenant_id,
+        level=LimitLevel.TEACHER,
+        teacher_id=user.id,
+        amount_cap=3.0,
+        current_usage=0.0,
+        period_start=now_utc,
+        period_end=limit_end,
+        reset_frequency="MONTHLY",
+    )
+    db.add(teacher_limit)
+
     # Update request
     teacher_request.status = TeacherRequestStatus.APPROVED
     teacher_request.reviewed_by_admin_id = admin.id
     teacher_request.reviewed_at = datetime.now(timezone.utc)
-    
+
     await db.commit()
     
     tenant = (await db.execute(select(Tenant).where(Tenant.id == teacher_request.tenant_id))).scalar_one_or_none()
@@ -666,6 +684,44 @@ async def get_teachers_status(
         for teacher_id, cost, calls in aggregates
     }
 
+    sessions_agg = (
+        await db.execute(
+            select(
+                TeacherClass.teacher_id,
+                func.count(Session.id).label("session_count"),
+            )
+            .join(Session, Session.class_id == TeacherClass.id)
+            .where(TeacherClass.tenant_id == admin.tenant_id)
+            .group_by(TeacherClass.teacher_id)
+        )
+    ).all()
+    sessions_by_teacher = {str(tid): int(cnt) for tid, cnt in sessions_agg}
+
+    students_agg = (
+        await db.execute(
+            select(
+                TeacherClass.teacher_id,
+                func.count(SessionStudent.id).label("student_count"),
+            )
+            .join(Session, Session.class_id == TeacherClass.id)
+            .join(SessionStudent, SessionStudent.session_id == Session.id)
+            .where(TeacherClass.tenant_id == admin.tenant_id)
+            .group_by(TeacherClass.teacher_id)
+        )
+    ).all()
+    students_by_teacher = {str(tid): int(cnt) for tid, cnt in students_agg}
+
+    limits_rows = (
+        await db.execute(
+            select(CreditLimit).where(
+                CreditLimit.tenant_id == admin.tenant_id,
+                CreditLimit.level == LimitLevel.TEACHER,
+                CreditLimit.teacher_id.in_([t.id for t in teachers]),
+            )
+        )
+    ).scalars().all()
+    limits_by_teacher = {str(lim.teacher_id): lim for lim in limits_rows}
+
     return {
         "items": [
             {
@@ -679,10 +735,152 @@ async def get_teachers_status(
                 "last_login_at": t.last_login_at.isoformat() if t.last_login_at else None,
                 "period_cost": by_teacher.get(str(t.id), {}).get("cost", 0.0),
                 "period_calls": by_teacher.get(str(t.id), {}).get("calls", 0),
+                "session_count": sessions_by_teacher.get(str(t.id), 0),
+                "total_student_count": students_by_teacher.get(str(t.id), 0),
+                "monthly_cap": float(limits_by_teacher[str(t.id)].amount_cap) if str(t.id) in limits_by_teacher else 3.0,
+                "monthly_usage": float(limits_by_teacher[str(t.id)].current_usage) if str(t.id) in limits_by_teacher else 0.0,
+                "limit_id": str(limits_by_teacher[str(t.id)].id) if str(t.id) in limits_by_teacher else None,
             }
             for t in teachers
         ]
     }
+
+
+@router.put("/teachers/{teacher_id}/credit-limit")
+async def set_teacher_credit_limit(
+    teacher_id: UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    admin: Annotated[User, Depends(get_current_admin)],
+    amount_cap: float = Body(..., embed=True),
+):
+    existing = (
+        await db.execute(
+            select(CreditLimit).where(
+                CreditLimit.teacher_id == teacher_id,
+                CreditLimit.level == LimitLevel.TEACHER,
+                CreditLimit.tenant_id == admin.tenant_id,
+            )
+        )
+    ).scalar_one_or_none()
+
+    now_utc = datetime.now(timezone.utc)
+    if existing:
+        existing.amount_cap = amount_cap
+        db.add(existing)
+    else:
+        try:
+            limit_end = now_utc.replace(month=now_utc.month + 1, day=1)
+        except ValueError:
+            limit_end = now_utc.replace(year=now_utc.year + 1, month=1, day=1)
+        db.add(CreditLimit(
+            tenant_id=admin.tenant_id,
+            level=LimitLevel.TEACHER,
+            teacher_id=teacher_id,
+            amount_cap=amount_cap,
+            current_usage=0.0,
+            period_start=now_utc,
+            period_end=limit_end,
+            reset_frequency="MONTHLY",
+        ))
+    await db.commit()
+    return {"ok": True, "amount_cap": amount_cap}
+
+
+@router.get("/classes")
+async def list_admin_classes(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    admin: Annotated[User, Depends(get_current_admin)],
+):
+    classes_rows = (
+        await db.execute(
+            select(TeacherClass, User)
+            .join(User, User.id == TeacherClass.teacher_id)
+            .where(TeacherClass.tenant_id == admin.tenant_id)
+            .order_by(TeacherClass.created_at.desc())
+        )
+    ).all()
+
+    if not classes_rows:
+        return {"items": []}
+
+    class_ids = [cls.id for cls, _ in classes_rows]
+
+    sessions = (
+        await db.execute(
+            select(Session)
+            .where(Session.class_id.in_(class_ids))
+            .order_by(Session.created_at.desc())
+        )
+    ).scalars().all()
+
+    sessions_by_class: dict = {}
+    for s in sessions:
+        sessions_by_class.setdefault(str(s.class_id), []).append(s)
+
+    session_ids = [s.id for s in sessions]
+    students: list = []
+    cost_by_session: dict = {}
+
+    if session_ids:
+        students = (
+            await db.execute(
+                select(SessionStudent).where(SessionStudent.session_id.in_(session_ids))
+            )
+        ).scalars().all()
+
+        credit_agg = (
+            await db.execute(
+                select(
+                    CreditTransaction.session_id,
+                    func.coalesce(func.sum(CreditTransaction.cost), 0.0).label("total_cost"),
+                )
+                .where(
+                    CreditTransaction.session_id.in_(session_ids),
+                    CreditTransaction.tenant_id == admin.tenant_id,
+                )
+                .group_by(CreditTransaction.session_id)
+            )
+        ).all()
+        cost_by_session = {str(sid): float(cost) for sid, cost in credit_agg}
+
+    students_by_session: dict = {}
+    for s in students:
+        students_by_session.setdefault(str(s.session_id), []).append(s)
+
+    result = []
+    for cls, teacher in classes_rows:
+        sess_list = []
+        for sess in sessions_by_class.get(str(cls.id), []):
+            sess_students = students_by_session.get(str(sess.id), [])
+            sess_list.append({
+                "session_id": str(sess.id),
+                "title": sess.title,
+                "status": sess.status.value if hasattr(sess.status, "value") else str(sess.status),
+                "join_code": sess.join_code,
+                "student_count": len(sess_students),
+                "period_cost": cost_by_session.get(str(sess.id), 0.0),
+                "students": [
+                    {
+                        "id": str(s.id),
+                        "nickname": s.nickname,
+                        "created_at": s.created_at.isoformat() if s.created_at else None,
+                        "last_seen_at": s.last_seen_at.isoformat() if s.last_seen_at else None,
+                    }
+                    for s in sess_students
+                ],
+            })
+        result.append({
+            "class_id": str(cls.id),
+            "class_name": cls.name,
+            "school_grade": cls.school_grade,
+            "teacher_id": str(teacher.id),
+            "teacher_name": f"{teacher.first_name or ''} {teacher.last_name or ''}".strip() or teacher.email,
+            "teacher_email": teacher.email,
+            "session_count": len(sess_list),
+            "sessions": sess_list,
+        })
+
+    return {"items": result}
 
 
 @router.get("/realtime/status")

@@ -11,7 +11,7 @@ export interface TeacherAccentTheme {
   border: string
 }
 
-export const DEFAULT_TEACHER_ACCENT: TeacherAccentId = 'pink'
+export const DEFAULT_TEACHER_ACCENT: TeacherAccentId = 'slate'
 
 export const TEACHER_ACCENTS: Record<TeacherAccentId, TeacherAccentTheme> = {
   pink: {

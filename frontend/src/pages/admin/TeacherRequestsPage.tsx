@@ -1,195 +1,273 @@
-import { useState } from 'react'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useEffect, useState } from 'react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { adminApi } from '@/lib/api'
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent } from '@/components/ui/card'
+import { Textarea } from '@/components/ui/textarea'
 import { useToast } from '@/components/ui/use-toast'
-import { Check, X, Clock, User, Copy, Key } from 'lucide-react'
+import { RotateCcw, Save, Eye, Clock } from 'lucide-react'
 
-interface TeacherRequest {
-  id: string
-  email: string
-  first_name: string
-  last_name: string
-  status: string
-  tenant_id: string
-  created_at: string
+type TemplateEntry = {
+  label: string
+  description: string
+  placeholders: string[]
+  subject: string
+  html: string
+  text: string
+}
+type EmailTemplatesPayload = Record<string, TemplateEntry>
+type TemplateHistoryResponse = {
+  template_key: string
+  items: Array<{
+    id: string
+    version: number
+    subject: string
+    html: string
+    text: string
+    created_at?: string | null
+    updated_by?: { id?: string | null; email?: string | null; name?: string | null }
+  }>
 }
 
-interface ApprovalResult {
-  email: string
-  message: string
-  email_sent: boolean
+const formatDateTime = (raw?: string | null) => {
+  if (!raw) return '—'
+  const d = new Date(raw)
+  if (Number.isNaN(d.getTime())) return '—'
+  return d.toLocaleString('it-IT')
 }
 
-export default function TeacherRequestsPage() {
+export default function EmailPage() {
   const queryClient = useQueryClient()
   const { toast } = useToast()
-  const [approvalResult, setApprovalResult] = useState<ApprovalResult | null>(null)
 
-  const { data: requests, isLoading } = useQuery<TeacherRequest[]>({
-    queryKey: ['teacher-requests'],
-    queryFn: async () => {
-      const res = await adminApi.getTeacherRequests()
-      return res.data
+  const [templateKey, setTemplateKey] = useState('teacher_activation')
+  const [templateDrafts, setTemplateDrafts] = useState<EmailTemplatesPayload>({})
+
+  const { data: emailTemplates } = useQuery<EmailTemplatesPayload>({
+    queryKey: ['admin-email-templates'],
+    queryFn: async () => (await adminApi.getEmailTemplates()).data,
+  })
+
+  const { data: templateHistory } = useQuery<TemplateHistoryResponse>({
+    queryKey: ['admin-email-templates-history', templateKey],
+    queryFn: async () => (await adminApi.getEmailTemplateHistory(templateKey, 15)).data,
+    enabled: Boolean(templateKey),
+  })
+
+  useEffect(() => {
+    if (!emailTemplates) return
+    setTemplateDrafts(emailTemplates)
+    if (!emailTemplates[templateKey]) {
+      const firstKey = Object.keys(emailTemplates)[0]
+      if (firstKey) setTemplateKey(firstKey)
+    }
+  }, [emailTemplates])
+
+  const saveTemplatesMutation = useMutation({
+    mutationFn: () => adminApi.updateEmailTemplates(templateDrafts as any),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['admin-email-templates'] })
+      await queryClient.invalidateQueries({ queryKey: ['admin-email-templates-history', templateKey] })
+      toast({ title: 'Template salvato' })
+    },
+    onError: (error: any) => {
+      toast({
+        variant: 'destructive',
+        title: 'Errore salvataggio',
+        description: error?.response?.data?.detail || 'Impossibile salvare',
+      })
     },
   })
 
-  const approveMutation = useMutation({
-    mutationFn: (id: string) => adminApi.approveTeacher(id),
-    onSuccess: (response) => {
-      queryClient.invalidateQueries({ queryKey: ['teacher-requests'] })
-      setApprovalResult({
-        email: response.data.email,
-        message: response.data.message,
-        email_sent: response.data.email_sent,
-      })
-    },
-    onError: (error: Error) => {
-      toast({ 
-        title: 'Errore', 
-        description: error.message || 'Impossibile approvare la richiesta',
-        variant: 'destructive'
-      })
+  const resetTemplateMutation = useMutation({
+    mutationFn: () => adminApi.resetEmailTemplate(templateKey),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['admin-email-templates'] })
+      await queryClient.invalidateQueries({ queryKey: ['admin-email-templates-history', templateKey] })
+      toast({ title: 'Template ripristinato' })
     },
   })
 
-  const copyToClipboard = (text: string) => {
-    navigator.clipboard.writeText(text)
-    toast({ title: 'Copiato negli appunti!' })
+  const selectedTemplate = templateDrafts[templateKey]
+  const updateSelected = (patch: Partial<TemplateEntry>) => {
+    if (!selectedTemplate) return
+    setTemplateDrafts((prev) => ({ ...prev, [templateKey]: { ...prev[templateKey], ...patch } }))
   }
 
-  const rejectMutation = useMutation({
-    mutationFn: (id: string) => adminApi.rejectTeacher(id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['teacher-requests'] })
-      toast({ title: 'Richiesta rifiutata' })
-    },
-  })
-
-  const pendingRequests = requests?.filter(r => r.status === 'pending') || []
-  const processedRequests = requests?.filter(r => r.status !== 'pending') || []
-
   return (
-    <div>
-      <h2 className="text-2xl font-bold mb-6">Richieste Docenti</h2>
-
-      {approvalResult && (
-        <Card className={`mb-6 ${approvalResult.email_sent ? 'border-green-200 bg-green-50' : 'border-yellow-200 bg-yellow-50'}`}>
-          <CardContent className="p-4">
-            <div className="flex items-start gap-3">
-              <Key className={`h-6 w-6 mt-1 ${approvalResult.email_sent ? 'text-green-600' : 'text-yellow-600'}`} />
-              <div className="flex-1">
-                <h4 className={`font-semibold ${approvalResult.email_sent ? 'text-green-800' : 'text-yellow-800'}`}>
-                  Docente Approvato!
-                </h4>
-                <p className={`text-sm mb-3 ${approvalResult.email_sent ? 'text-green-700' : 'text-yellow-700'}`}>
-                  {approvalResult.email_sent 
-                    ? `Email di attivazione inviata a ${approvalResult.email}`
-                    : `Attenzione: email non inviata. Verifica la configurazione SMTP.`
-                  }
-                </p>
-                <div className="bg-white rounded p-3 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-gray-600">Email:</span>
-                    <div className="flex items-center gap-2">
-                      <code className="bg-gray-100 px-2 py-1 rounded text-sm">{approvalResult.email}</code>
-                      <Button size="sm" variant="ghost" onClick={() => copyToClipboard(approvalResult.email)}>
-                        <Copy className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-                <p className={`text-xs mt-2 ${approvalResult.email_sent ? 'text-green-600' : 'text-yellow-600'}`}>
-                  {approvalResult.email_sent 
-                    ? 'Il docente riceverà un link per attivare il proprio account e impostare la password.'
-                    : 'Configura SMTP_PASSWORD nel file .env per abilitare l\'invio email.'
-                  }
-                </p>
-              </div>
-              <Button size="sm" variant="ghost" onClick={() => setApprovalResult(null)}>
-                <X className="h-4 w-4" />
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      <div className="mb-8">
-        <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
-          <Clock className="h-5 w-5" />
-          In attesa ({pendingRequests.length})
-        </h3>
-        
-        {isLoading ? (
-          <p>Caricamento...</p>
-        ) : pendingRequests.length === 0 ? (
-          <p className="text-muted-foreground">Nessuna richiesta in attesa</p>
-        ) : (
-          <div className="grid gap-4">
-            {pendingRequests.map((request) => (
-              <Card key={request.id}>
-                <CardContent className="flex items-center justify-between p-4">
-                  <div className="flex items-center gap-4">
-                    <div className="bg-primary/10 rounded-full p-2">
-                      <User className="h-5 w-5 text-primary" />
-                    </div>
-                    <div>
-                      <h4 className="font-semibold">
-                        {request.first_name} {request.last_name}
-                      </h4>
-                      <p className="text-sm text-muted-foreground">{request.email}</p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm text-muted-foreground mr-4">
-                      {new Date(request.created_at).toLocaleDateString('it-IT')}
-                    </span>
-                    <Button
-                      size="sm"
-                      onClick={() => approveMutation.mutate(request.id)}
-                      disabled={approveMutation.isPending}
-                    >
-                      <Check className="h-4 w-4 mr-1" />
-                      Approva
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => rejectMutation.mutate(request.id)}
-                      disabled={rejectMutation.isPending}
-                    >
-                      <X className="h-4 w-4 mr-1" />
-                      Rifiuta
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        )}
+    <div className="space-y-6">
+      {/* Header */}
+      <div>
+        <h1 className="text-2xl font-bold text-slate-900">Email & Messaggi</h1>
+        <p className="text-sm text-slate-500 mt-0.5">
+          Personalizza le email automatiche e il disclaimer beta.
+        </p>
       </div>
 
-      <div>
-        <h3 className="text-lg font-semibold mb-4">Storico</h3>
-        <div className="grid gap-2">
-          {processedRequests.map((request) => (
-            <Card key={request.id} className="bg-gray-50">
-              <CardContent className="flex items-center justify-between p-3">
-                <div className="flex items-center gap-3">
-                  <User className="h-4 w-4 text-muted-foreground" />
-                  <span className="text-sm">
-                    {request.first_name} {request.last_name} - {request.email}
-                  </span>
-                </div>
-                <span className={`px-2 py-1 rounded text-xs ${
-                  request.status === 'approved' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
-                }`}>
-                  {request.status === 'approved' ? 'Approvato' : 'Rifiutato'}
-                </span>
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
+        {/* Left: editor */}
+        <div className="xl:col-span-2 space-y-4">
+          {/* Template selector */}
+          <Card>
+            <CardContent className="p-4 space-y-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold uppercase text-slate-500 tracking-wide">
+                  Caso d'uso
+                </Label>
+                <select
+                  className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-1 focus:ring-[#e85c8d]"
+                  value={templateKey}
+                  onChange={(e) => setTemplateKey(e.target.value)}
+                >
+                  {Object.entries(templateDrafts).map(([key, tpl]) => (
+                    <option key={key} value={key}>{tpl.label}</option>
+                  ))}
+                </select>
+                {selectedTemplate?.description && (
+                  <p className="text-xs text-slate-500">{selectedTemplate.description}</p>
+                )}
+                {selectedTemplate?.placeholders?.length ? (
+                  <p className="text-xs text-slate-500">
+                    Variabili disponibili:{' '}
+                    {selectedTemplate.placeholders.map((p) => (
+                      <code key={p} className="mx-0.5 rounded bg-slate-100 px-1 py-0.5 text-[11px] font-mono text-slate-700">
+                        {p}
+                      </code>
+                    ))}
+                  </p>
+                ) : null}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Subject */}
+          {templateKey !== 'beta_disclaimer' && (
+            <Card>
+              <CardContent className="p-4 space-y-1.5">
+                <Label className="text-xs font-semibold uppercase text-slate-500 tracking-wide">
+                  Oggetto email
+                </Label>
+                <Input
+                  value={selectedTemplate?.subject || ''}
+                  onChange={(e) => updateSelected({ subject: e.target.value })}
+                  placeholder="Inserisci l'oggetto…"
+                  className="text-sm"
+                />
               </CardContent>
             </Card>
-          ))}
+          )}
+
+          {/* HTML editor */}
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-semibold">HTML</CardTitle>
+              <CardDescription className="text-xs">Supporta CSS inline e blocchi style.</CardDescription>
+            </CardHeader>
+            <CardContent className="p-4 pt-0">
+              <Textarea
+                className="min-h-[240px] font-mono text-xs resize-y"
+                value={selectedTemplate?.html || ''}
+                onChange={(e) => updateSelected({ html: e.target.value })}
+              />
+            </CardContent>
+          </Card>
+
+          {/* Plain text */}
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-semibold">Testo piano</CardTitle>
+              <CardDescription className="text-xs">Fallback per client email senza HTML.</CardDescription>
+            </CardHeader>
+            <CardContent className="p-4 pt-0">
+              <Textarea
+                className="min-h-[120px] font-mono text-xs resize-y"
+                value={selectedTemplate?.text || ''}
+                onChange={(e) => updateSelected({ text: e.target.value })}
+              />
+            </CardContent>
+          </Card>
+
+          {/* Actions */}
+          <div className="flex justify-between gap-2">
+            <Button
+              variant="outline"
+              className="gap-2"
+              onClick={() => resetTemplateMutation.mutate()}
+              disabled={resetTemplateMutation.isPending}
+            >
+              <RotateCcw className="h-4 w-4" />
+              {resetTemplateMutation.isPending ? 'Ripristino…' : 'Ripristina default'}
+            </Button>
+            <Button
+              className="gap-2"
+              style={{ backgroundColor: '#e85c8d' }}
+              onClick={() => saveTemplatesMutation.mutate()}
+              disabled={
+                saveTemplatesMutation.isPending ||
+                (templateKey !== 'beta_disclaimer' && !selectedTemplate?.subject?.trim())
+              }
+            >
+              <Save className="h-4 w-4" />
+              {saveTemplatesMutation.isPending ? 'Salvataggio…' : 'Salva template'}
+            </Button>
+          </div>
+        </div>
+
+        {/* Right: preview + history */}
+        <div className="space-y-4">
+          {/* Live preview */}
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                <Eye className="h-4 w-4 text-slate-500" />
+                Anteprima
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-0">
+              <div className="max-h-[360px] overflow-auto p-4">
+                <div
+                  className="prose prose-sm max-w-none text-sm"
+                  dangerouslySetInnerHTML={{
+                    __html: selectedTemplate?.html || '<p class="text-slate-400 text-xs">Nessun contenuto HTML</p>',
+                  }}
+                />
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Version history */}
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                <Clock className="h-4 w-4 text-slate-500" />
+                Storico versioni
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-4 pt-0">
+              <div className="max-h-[300px] space-y-1.5 overflow-auto">
+                {(templateHistory?.items || []).length === 0 ? (
+                  <p className="text-xs text-slate-400">Nessuna versione salvata</p>
+                ) : (
+                  (templateHistory?.items || []).map((item) => (
+                    <div
+                      key={item.id}
+                      className="rounded-lg border border-slate-100 bg-slate-50 px-3 py-2"
+                    >
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="font-semibold text-slate-700">v{item.version}</span>
+                        <span className="text-slate-400">{formatDateTime(item.created_at)}</span>
+                      </div>
+                      <p className="mt-0.5 truncate text-[11px] text-slate-500">
+                        {item.updated_by?.email || item.updated_by?.name || 'sistema'}
+                      </p>
+                    </div>
+                  ))
+                )}
+              </div>
+            </CardContent>
+          </Card>
         </div>
       </div>
     </div>

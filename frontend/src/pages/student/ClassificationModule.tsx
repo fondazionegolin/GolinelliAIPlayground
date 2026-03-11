@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
+import { motion } from 'framer-motion'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -55,6 +56,12 @@ export default function ClassificationModule() {
   )
 }
 
+const MODE_TILE_COLORS: Record<string, string> = {
+  images: 'bg-rose-500 hover:bg-rose-600',
+  text: 'bg-blue-600 hover:bg-blue-700',
+  data: 'bg-emerald-500 hover:bg-emerald-600',
+}
+
 function ModeSelector({ onSelect }: { onSelect: (mode: ClassificationMode) => void }) {
   const { t } = useTranslation()
   const modes = [
@@ -63,45 +70,63 @@ function ModeSelector({ onSelect }: { onSelect: (mode: ClassificationMode) => vo
       icon: Camera,
       title: t('classification.mode_images'),
       description: t('classification.mode_images_desc'),
-      color: 'bg-rose-100 text-rose-600 border-rose-200'
     },
     {
       key: 'text' as const,
       icon: Type,
       title: t('classification.mode_text'),
       description: t('classification.mode_text_desc'),
-      color: 'bg-blue-100 text-blue-600 border-blue-200'
     },
     {
       key: 'data' as const,
       icon: Database,
       title: t('classification.mode_data'),
       description: t('classification.mode_data_desc'),
-      color: 'bg-emerald-100 text-emerald-600 border-emerald-200'
     },
   ]
 
   return (
-    <div className="p-6">
-      <h2 className="text-xl font-bold mb-2">{t('classification.title')}</h2>
-      <p className="text-muted-foreground mb-6">{t('classification.subtitle')}</p>
-      
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {modes.map((m) => (
-          <Card 
-            key={m.key}
-            className={`cursor-pointer hover:shadow-xl transition-all duration-300 border border-slate-200 bg-white/60 backdrop-blur-md group hover:-translate-y-1`}
-            onClick={() => onSelect(m.key)}
-          >
-            <CardContent className="p-6 text-center">
-              <div className={`w-16 h-16 mx-auto mb-4 rounded-2xl flex items-center justify-center transition-colors ${m.color.split(' ')[0]} ${m.color.split(' ')[1]}`}>
-                <m.icon className="h-8 w-8" />
+    <div className="h-full overflow-y-auto p-4 md:p-6">
+      <div className="max-w-xl mx-auto">
+        <h2 className="text-sm font-bold text-slate-700 mb-0.5">{t('classification.title')}</h2>
+        <p className="text-xs text-slate-400 mb-4">{t('classification.subtitle')}</p>
+
+        {/* Educational context banner */}
+        <div className="mb-5 rounded-2xl bg-gradient-to-r from-indigo-50 to-violet-50 border border-indigo-100 p-4 flex gap-3">
+          <div className="flex-shrink-0 w-9 h-9 rounded-xl bg-indigo-500 flex items-center justify-center">
+            <Lightbulb className="h-5 w-5 text-white" />
+          </div>
+          <div>
+            <p className="text-sm font-semibold text-indigo-800 mb-1">Come usare il ML Lab</p>
+            <ul className="text-xs text-indigo-700 space-y-0.5">
+              <li className="flex items-start gap-1.5">
+                <span className="mt-0.5 inline-block w-1.5 h-1.5 rounded-full bg-indigo-400 flex-shrink-0" />
+                Puoi <strong>generare dataset</strong> nella sezione Chatbot (assistente Dataset Generator) e usarli qui per la classificazione testo e dati.
+              </li>
+              <li className="flex items-start gap-1.5">
+                <span className="mt-0.5 inline-block w-1.5 h-1.5 rounded-full bg-violet-400 flex-shrink-0" />
+                Puoi <strong>classificare immagini</strong> addestrando un modello direttamente dalla tua fotocamera!
+              </li>
+            </ul>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-3 gap-3">
+          {modes.map((m) => (
+            <motion.button
+              key={m.key}
+              whileTap={{ scale: 0.97 }}
+              className={`aspect-square flex flex-col items-center justify-center p-4 rounded-2xl text-white shadow-sm hover:shadow-md transition-all ${MODE_TILE_COLORS[m.key] || 'bg-slate-600 hover:bg-slate-700'}`}
+              onClick={() => onSelect(m.key)}
+            >
+              <div className="w-11 h-11 rounded-xl bg-white/20 flex items-center justify-center mb-2.5">
+                <m.icon className="h-6 w-6" />
               </div>
-              <h3 className="font-bold text-lg mb-2 text-slate-800">{m.title}</h3>
-              <p className="text-sm text-slate-500 leading-relaxed">{m.description}</p>
-            </CardContent>
-          </Card>
-        ))}
+              <span className="text-xs font-bold leading-tight text-center">{m.title}</span>
+              <span className="text-[10px] opacity-75 leading-tight mt-1 text-center line-clamp-2">{m.description}</span>
+            </motion.button>
+          ))}
+        </div>
       </div>
     </div>
   )

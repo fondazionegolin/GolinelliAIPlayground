@@ -12,7 +12,7 @@ export interface StudentAccentTheme {
 }
 
 export const STUDENT_ACCENT_STORAGE_KEY = 'student_ui_accent'
-export const DEFAULT_STUDENT_ACCENT: StudentAccentId = 'pink'
+export const DEFAULT_STUDENT_ACCENT: StudentAccentId = 'slate'
 
 export const STUDENT_ACCENTS: Record<StudentAccentId, StudentAccentTheme> = {
   pink: {

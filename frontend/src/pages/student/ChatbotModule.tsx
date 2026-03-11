@@ -76,13 +76,14 @@ const PROFILE_ICONS: Record<string, React.ReactNode> = {
   'math_coach': <Lightbulb className="h-6 w-6" />,
 }
 
-const PROFILE_COLORS: Record<string, string> = {
-  'tutor': 'bg-emerald-50 text-emerald-600 border-emerald-200',
-  'quiz': 'bg-rose-50 text-rose-600 border-rose-200',
-  'interview': 'bg-violet-50 text-violet-600 border-violet-200',
-  'oral_exam': 'bg-amber-50 text-amber-600 border-amber-200',
-  'dataset_generator': 'bg-sky-50 text-sky-600 border-sky-200',
-  'math_coach': 'bg-cyan-50 text-cyan-600 border-cyan-200',
+
+const PROFILE_TILE_COLORS: Record<string, string> = {
+  'tutor': 'bg-emerald-500 hover:bg-emerald-600',
+  'quiz': 'bg-rose-500 hover:bg-rose-600',
+  'interview': 'bg-violet-500 hover:bg-violet-600',
+  'oral_exam': 'bg-amber-500 hover:bg-amber-600',
+  'dataset_generator': 'bg-sky-500 hover:bg-sky-600',
+  'math_coach': 'bg-blue-600 hover:bg-blue-700',
 }
 
 function getFallbackProfiles(t: (key: string) => string): ChatbotProfile[] {
@@ -985,48 +986,44 @@ export default function ChatbotModule({ sessionId, studentId, initialTeacherbotI
   if (isMobile && mobileView === 'profiles') {
     return (
       <div className="h-full overflow-y-auto p-4 pb-20">
-        <h2 className="text-lg font-bold text-slate-800 mb-4">Scegli un assistente AI</h2>
-        <div className="grid grid-cols-2 gap-2.5">
+        <h2 className="text-sm font-bold text-slate-700 mb-0.5">Assistenti AI</h2>
+        <p className="text-[11px] text-slate-400 mb-3">Scegli il tipo di sessione</p>
+        <div className="grid grid-cols-3 gap-2">
           {profiles.map((profile) => (
             <motion.button
               key={profile.key}
-              whileTap={{ scale: 0.97 }}
+              whileTap={{ scale: 0.95 }}
               onClick={() => handleSelectProfile(profile.key)}
-              className={`text-left p-3 rounded-xl border ${PROFILE_COLORS[profile.key] || 'border-gray-200'} bg-white shadow-sm active:shadow-none transition-all`}
+              className={`aspect-square flex flex-col items-center justify-center p-3 rounded-2xl text-white shadow-sm active:shadow-none transition-all ${PROFILE_TILE_COLORS[profile.key] || 'bg-slate-600'}`}
             >
-              <div className={`inline-flex items-center justify-center w-8 h-8 rounded-lg mb-1.5 ${PROFILE_COLORS[profile.key]?.split(' ').slice(0, 2).join(' ') || 'bg-gray-100'}`}>
-                {PROFILE_ICONS[profile.key] || <Bot className="h-4 w-4" />}
+              <div className="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center mb-1.5">
+                {PROFILE_ICONS[profile.key] || <Bot className="h-5 w-5" />}
               </div>
-              <h3 className="font-semibold text-sm text-slate-800">{profile.name}</h3>
-              <p className="text-xs text-slate-500 line-clamp-1 mt-0.5">{profile.description}</p>
+              <span className="text-[11px] font-bold leading-tight text-center">{profile.name}</span>
             </motion.button>
           ))}
         </div>
 
         {/* Teacherbots section - Mobile */}
         {availableTeacherbots.length > 0 && (
-          <div className="mt-6">
-            <h3 className="text-base font-semibold text-slate-700 mb-3 flex items-center gap-2">
-              <Wand2 className="h-4 w-4 text-indigo-600" />
+          <div className="mt-5">
+            <h2 className="text-sm font-bold text-slate-700 mb-0.5 flex items-center gap-1.5">
+              <Wand2 className="h-3.5 w-3.5 text-indigo-500" />
               Teacherbots del Docente
-            </h3>
-            <div className="space-y-2.5">
+            </h2>
+            <p className="text-[11px] text-slate-400 mb-3">Assistenti personalizzati dal tuo docente</p>
+            <div className="grid grid-cols-3 gap-2">
               {availableTeacherbots.map((bot) => (
                 <motion.button
                   key={bot.id}
-                  whileTap={{ scale: 0.97 }}
+                  whileTap={{ scale: 0.95 }}
                   onClick={() => handleSelectTeacherbot(bot)}
-                  className="w-full text-left p-3 rounded-xl border border-indigo-200 bg-white shadow-sm active:shadow-none transition-all"
+                  className={`aspect-square flex flex-col items-center justify-center p-3 rounded-2xl text-white shadow-sm active:shadow-none transition-all ${getTeacherbotColorClass(bot.color)}`}
                 >
-                  <div className="flex items-start gap-3">
-                    <div className={`inline-flex items-center justify-center w-8 h-8 rounded-lg flex-shrink-0 ${getTeacherbotColorClass(bot.color)}`}>
-                      <Wand2 className="h-4 w-4 text-white" />
-                    </div>
-                    <div className="min-w-0">
-                      <h3 className="font-semibold text-sm text-slate-800">{bot.name}</h3>
-                      <p className="text-xs text-slate-500 line-clamp-2 mt-0.5">{bot.synopsis || bot.description}</p>
-                    </div>
+                  <div className="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center mb-1.5">
+                    <Wand2 className="h-5 w-5" />
                   </div>
+                  <span className="text-[11px] font-bold leading-tight text-center line-clamp-2">{bot.name}</span>
                 </motion.button>
               ))}
             </div>
@@ -1104,53 +1101,54 @@ export default function ChatbotModule({ sessionId, studentId, initialTeacherbotI
   // Profile selection screen (Desktop)
   if (!selectedProfile && !selectedTeacherbot) {
     return (
-      <div className="h-full overflow-y-auto p-6 scrollbar-thin scrollbar-thumb-indigo-200 scrollbar-track-transparent">
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+      <div className="h-full overflow-y-auto p-4 md:p-6 scrollbar-thin scrollbar-thumb-indigo-200 scrollbar-track-transparent">
+        <div className="max-w-xl mx-auto">
+        <h2 className="text-sm font-bold text-slate-700 mb-0.5">Assistenti AI</h2>
+        <p className="text-xs text-slate-400 mb-4">Scegli il tipo di sessione di apprendimento</p>
+        <div className="grid grid-cols-3 gap-3">
           {profiles.map((profile) => (
             <motion.button
               key={profile.key}
-              whileTap={{ scale: 0.98 }}
-              className={`text-left p-3 rounded-xl border bg-white shadow-sm hover:shadow-md transition-all ${PROFILE_COLORS[profile.key] || 'border-gray-200'}`}
+              whileTap={{ scale: 0.97 }}
+              className={`aspect-square flex flex-col items-center justify-center p-4 rounded-2xl text-white shadow-sm hover:shadow-md transition-all ${PROFILE_TILE_COLORS[profile.key] || 'bg-slate-600 hover:bg-slate-700'}`}
               onClick={() => handleSelectProfile(profile.key)}
             >
-              <div className={`inline-flex items-center justify-center w-9 h-9 rounded-lg mb-1.5 ${PROFILE_COLORS[profile.key]?.split(' ').slice(0, 2).join(' ') || 'bg-gray-100'}`}>
-                {PROFILE_ICONS[profile.key] || <Bot className="h-4.5 w-4.5" />}
+              <div className="w-11 h-11 rounded-xl bg-white/20 flex items-center justify-center mb-2.5">
+                {PROFILE_ICONS[profile.key] || <Bot className="h-6 w-6" />}
               </div>
-              <div className="text-sm font-semibold text-slate-800 leading-tight">{profile.name}</div>
-              <div className="text-xs text-slate-500 line-clamp-2 mt-0.5">{profile.description}</div>
+              <span className="text-xs font-bold leading-tight text-center">{profile.name}</span>
+              <span className="text-[10px] opacity-75 leading-tight mt-1 text-center line-clamp-2">{profile.description}</span>
             </motion.button>
           ))}
         </div>
 
         {/* Teacherbots section - Desktop */}
         {availableTeacherbots.length > 0 && (
-          <div className="mt-8 pb-8">
-            <h3 className="text-lg font-semibold text-slate-700 mb-4 flex items-center gap-2">
-              <Wand2 className="h-5 w-5 text-indigo-600" />
+          <div className="mt-6 pb-8">
+            <h2 className="text-sm font-bold text-slate-700 mb-0.5 flex items-center gap-1.5">
+              <Wand2 className="h-3.5 w-3.5 text-indigo-500" />
               Teacherbots del Docente
-            </h3>
-            <div className="space-y-3">
+            </h2>
+            <p className="text-xs text-slate-400 mb-4">Assistenti personalizzati dal tuo docente</p>
+            <div className="grid grid-cols-3 gap-3">
               {availableTeacherbots.map((bot) => (
                 <motion.button
                   key={bot.id}
-                  whileTap={{ scale: 0.98 }}
-                  className="w-full text-left p-3 rounded-xl border border-indigo-200 bg-white shadow-sm hover:shadow-md transition-all"
+                  whileTap={{ scale: 0.97 }}
+                  className={`aspect-square flex flex-col items-center justify-center p-4 rounded-2xl text-white shadow-sm hover:shadow-md transition-all ${getTeacherbotColorClass(bot.color)}`}
                   onClick={() => handleSelectTeacherbot(bot)}
                 >
-                  <div className="flex items-start gap-3">
-                    <div className={`inline-flex items-center justify-center w-9 h-9 rounded-lg flex-shrink-0 ${getTeacherbotColorClass(bot.color)}`}>
-                      <Wand2 className="h-4.5 w-4.5 text-white" />
-                    </div>
-                    <div className="min-w-0">
-                      <div className="text-sm font-semibold text-slate-800 leading-tight">{bot.name}</div>
-                      <div className="text-xs text-slate-500 line-clamp-2 mt-0.5">{bot.synopsis || bot.description}</div>
-                    </div>
+                  <div className="w-11 h-11 rounded-xl bg-white/20 flex items-center justify-center mb-2.5">
+                    <Wand2 className="h-6 w-6" />
                   </div>
+                  <span className="text-xs font-bold leading-tight text-center">{bot.name}</span>
+                  <span className="text-[10px] opacity-75 leading-tight mt-1 text-center line-clamp-2">{bot.synopsis || bot.description}</span>
                 </motion.button>
               ))}
             </div>
           </div>
         )}
+        </div>
       </div>
     )
   }

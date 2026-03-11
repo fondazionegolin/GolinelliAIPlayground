@@ -145,6 +145,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId }: 
   const [draggingMargin, setDraggingMargin] = useState<'left' | 'right' | null>(null)
   const [aiPanelAnchor, setAiPanelAnchor] = useState<{ x: number; y: number } | null>(null)
   const [aiOpenRequestId, setAiOpenRequestId] = useState(0)
+  const [viewMode, setViewMode] = useState<'list' | 'editor'>('list')
 
   const currentSlide = document.slides?.[currentSlideIndex] || { id: 'fallback', title: 'Slide', blocks: [] }
   const selectedBlock = currentSlide.blocks.find(b => b.id === selectedBlockId)
@@ -169,6 +170,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId }: 
     setDraftId(null)
     setIsReadOnlyLesson(false)
     setActiveLessonTaskId(null)
+    setViewMode('editor')
   }
 
   const createNewPresentation = () => {
@@ -190,6 +192,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId }: 
     setDraftId(null)
     setIsReadOnlyLesson(false)
     setActiveLessonTaskId(null)
+    setViewMode('editor')
   }
 
   const upsertDraft = async (titleOverride?: string) => {
@@ -247,15 +250,13 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId }: 
 
   const handleDeleteDraft = async (e: React.MouseEvent, id: string) => {
     e.stopPropagation()
-    if (!window.confirm('Sei sicuro di voler eliminare questa bozza?')) return
     try {
       await studentApi.deleteDocumentDraft(id)
       setDraftDocuments(prev => prev.filter(d => d.id !== id))
       if (draftId === id) {
         setDraftId(null)
-        createNewDocument()
+        setViewMode('list')
       }
-      toast({ title: 'Bozza eliminata' })
     } catch (e) {
       toast({ title: 'Errore durante l\'eliminazione', variant: 'destructive' })
     }
@@ -314,14 +315,24 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId }: 
   }, [])
 
   useEffect(() => {
+    if (viewMode !== 'editor') return
     if (isReadOnlyLesson) return
     if (mode === 'canvas') return
+    if (!draftId) {
+      const html = document.textContent || ''
+      const stripped = html.replace(/<[^>]*>/g, '').trim()
+      const isEmpty =
+        mode === 'document' ? stripped.length === 0 :
+        mode === 'slides' ? document.slides.every(s => !s.blocks || s.blocks.length === 0) :
+        false
+      if (isEmpty) return
+    }
     const timer = setTimeout(() => {
       upsertDraft()
     }, 400)
     return () => clearTimeout(timer)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [document, mode, docMargins, isReadOnlyLesson])
+  }, [document, mode, docMargins, isReadOnlyLesson, viewMode])
 
   const loadDocumentFromJson = (
     doc: { id: string; title: string; type: 'presentation' | 'document' | 'sheet' | 'canvas'; contentJson: string },
@@ -400,6 +411,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId }: 
           canvasContent: DEFAULT_CANVAS_CONTENT,
         })
       }
+      setViewMode('editor')
     } catch (e) {
       console.error(e)
     }
@@ -632,6 +644,128 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId }: 
     return () => window.removeEventListener('resize', updateAnchor)
   }, [mode, showSidebar])
 
+  if (viewMode === 'list') {
+    const docIcon = (type: string) => {
+      if (type === 'presentation') return <Monitor className="h-5 w-5" />
+      if (type === 'sheet') return <FileSpreadsheet className="h-5 w-5" />
+      if (type === 'canvas') return <PenTool className="h-5 w-5" />
+      return <FileText className="h-5 w-5" />
+    }
+    const docColor = (type: string) => {
+      if (type === 'presentation') return 'bg-indigo-500 text-white'
+      if (type === 'sheet') return 'bg-sky-500 text-white'
+      if (type === 'canvas') return 'bg-amber-500 text-white'
+      return 'bg-emerald-500 text-white'
+    }
+    return (
+      <>
+        <div className="h-full flex flex-col bg-slate-50 overflow-hidden">
+          <div className="h-14 bg-white border-b flex items-center justify-between px-6 z-20 shadow-sm shrink-0">
+            <div className="flex items-center gap-2">
+              <FileText className="h-4 w-4 text-slate-500" />
+              <h1 className="text-base font-bold text-slate-800">I miei Documenti</h1>
+            </div>
+            <Button onClick={() => setShowNewModal(true)} className="bg-slate-900 text-white hover:bg-slate-800">
+              <Plus className="h-4 w-4 mr-2" />
+              Nuovo
+            </Button>
+          </div>
+
+          <div className="flex-1 overflow-y-auto p-6">
+            <div className="max-w-5xl mx-auto space-y-8">
+
+              {draftDocuments.length === 0 && lessonDocuments.length === 0 && (
+                <div className="flex flex-col items-center justify-center py-24 text-center">
+                  <div className="w-20 h-20 rounded-full bg-slate-100 flex items-center justify-center mb-5">
+                    <FileText className="h-10 w-10 text-slate-300" />
+                  </div>
+                  <h3 className="text-lg font-bold text-slate-700 mb-1">Nessun documento</h3>
+                  <p className="text-sm text-slate-400 mb-6">Crea il tuo primo documento per iniziare</p>
+                  <Button onClick={() => setShowNewModal(true)} className="bg-slate-900 text-white hover:bg-slate-800">
+                    <Plus className="h-4 w-4 mr-2" />
+                    Crea documento
+                  </Button>
+                </div>
+              )}
+
+              {draftDocuments.length > 0 && (
+                <section>
+                  <h2 className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-3">Le mie Bozze</h2>
+                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                    {draftDocuments.map(doc => (
+                      <div
+                        key={doc.id}
+                        onClick={() => loadDraft(doc)}
+                        className="group cursor-pointer bg-white rounded-2xl border border-slate-200 p-4 hover:border-indigo-200 hover:shadow-md transition-all"
+                      >
+                        <div className={`w-10 h-10 rounded-xl mb-3 flex items-center justify-center ${docColor(doc.type)}`}>
+                          {docIcon(doc.type)}
+                        </div>
+                        <p className="text-sm font-bold text-slate-800 truncate mb-1">{doc.title}</p>
+                        <p className="text-[10px] text-slate-400">{new Date(doc.updatedAt).toLocaleDateString('it-IT', { day: 'numeric', month: 'short', year: 'numeric' })}</p>
+                        <button
+                          onClick={(e) => handleDeleteDraft(e, doc.id)}
+                          className="mt-2 opacity-0 group-hover:opacity-100 text-slate-300 hover:text-red-500 transition-all"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              )}
+
+              {lessonDocuments.length > 0 && (
+                <section>
+                  <h2 className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-3">Materiali del Docente</h2>
+                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                    {lessonDocuments.map(doc => (
+                      <div
+                        key={doc.id}
+                        onClick={() => loadLesson(doc)}
+                        className="group cursor-pointer bg-white rounded-2xl border border-slate-200 p-4 hover:border-emerald-200 hover:shadow-md transition-all"
+                      >
+                        <div className={`w-10 h-10 rounded-xl mb-3 flex items-center justify-center ${docColor(doc.type)}`}>
+                          {docIcon(doc.type)}
+                        </div>
+                        <p className="text-sm font-bold text-slate-800 truncate mb-1">{doc.title}</p>
+                        <p className="text-[10px] text-slate-400">{doc.authorName} · {new Date(doc.updatedAt).toLocaleDateString('it-IT', { day: 'numeric', month: 'short', year: 'numeric' })}</p>
+                        <div className="mt-2 flex items-center gap-1 text-[10px] text-emerald-600 font-semibold">
+                          <BookOpen className="h-3 w-3" />
+                          Sola lettura
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {showNewModal && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-lg p-6 w-full max-w-md mx-4 shadow-xl">
+              <h3 className="text-lg font-semibold mb-2">Crea nuovo</h3>
+              <p className="text-sm text-gray-600 mb-4">Scegli se creare un nuovo documento o una nuova presentazione.</p>
+              <div className="flex flex-col gap-3">
+                <Button className="w-full justify-center bg-emerald-600 hover:bg-emerald-700 text-white" onClick={() => { createNewDocument(); setShowNewModal(false) }}>
+                  <FileText className="h-4 w-4 mr-2" />Nuovo documento
+                </Button>
+                <Button className="w-full justify-center bg-indigo-600 hover:bg-indigo-700 text-white" onClick={() => { createNewPresentation(); setShowNewModal(false) }}>
+                  <Monitor className="h-4 w-4 mr-2" />Nuova presentazione
+                </Button>
+              </div>
+              <div className="flex justify-end mt-4">
+                <Button variant="outline" onClick={() => setShowNewModal(false)}>Annulla</Button>
+              </div>
+            </div>
+          </div>
+        )}
+      </>
+    )
+  }
+
   return (
     <>
       <div className="h-full flex flex-col bg-slate-100 overflow-hidden">
@@ -639,6 +773,16 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId }: 
         {/* Header / Meta-Toolbar */}
         <div className="h-14 bg-white border-b flex items-center justify-between px-4 z-20 shadow-sm shrink-0">
           <div className="flex items-center gap-4">
+             <Button
+               variant="ghost"
+               size="sm"
+               onClick={() => setViewMode('list')}
+               className="text-slate-500 gap-1"
+             >
+               <ChevronLeft className="h-4 w-4" />
+               Documenti
+             </Button>
+
              <Button
                variant="ghost"
                size="sm"

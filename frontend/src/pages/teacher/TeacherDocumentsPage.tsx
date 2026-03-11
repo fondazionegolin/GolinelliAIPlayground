@@ -148,6 +148,7 @@ export default function TeacherDocumentsPage() {
   const [publishMode, setPublishMode] = useState<'published' | 'draft'>('published')
   const [showNewModal, setShowNewModal] = useState(false)
   const [draftSaveState, setDraftSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
+  const [viewMode, setViewMode] = useState<'list' | 'editor'>('list')
   const [aiPanelAnchor, setAiPanelAnchor] = useState<{ x: number; y: number } | null>(null)
   const [aiOpenRequestId, setAiOpenRequestId] = useState(0)
   const [draggingMargin, setDraggingMargin] = useState<'left' | 'right' | null>(null)
@@ -173,6 +174,7 @@ export default function TeacherDocumentsPage() {
     setSelectedBlockId(null)
     setDraftId(null)
     draftIdRef.current = null
+    setViewMode('editor')
   }
 
   const createNewPresentation = () => {
@@ -192,6 +194,7 @@ export default function TeacherDocumentsPage() {
     setSelectedBlockId(null)
     setDraftId(null)
     draftIdRef.current = null
+    setViewMode('editor')
   }
 
   const createNewCanvas = () => {
@@ -211,6 +214,7 @@ export default function TeacherDocumentsPage() {
     setSelectedBlockId(null)
     setDraftId(null)
     draftIdRef.current = null
+    setViewMode('editor')
   }
 
   const buildDraftPayload = () => {
@@ -287,16 +291,14 @@ export default function TeacherDocumentsPage() {
 
   const handleDeleteDraft = async (e: React.MouseEvent, id: string) => {
     e.stopPropagation()
-    if (!window.confirm('Eliminare questa bozza?')) return
     try {
       await teacherApi.deleteDocumentDraft(id)
       setDraftDocuments(prev => prev.filter(d => d.id !== id))
       if (draftId === id) {
         setDraftId(null)
         draftIdRef.current = null
-        createNewDocument()
+        setViewMode('list')
       }
-      toast({ title: 'Bozza eliminata' })
     } catch (e) {
       toast({ title: 'Errore eliminazione', variant: 'destructive' })
     }
@@ -304,14 +306,12 @@ export default function TeacherDocumentsPage() {
 
   const handleDeletePublished = async (e: React.MouseEvent, doc: StoredDocument) => {
     e.stopPropagation()
-    if (!window.confirm(`Eliminare "${doc.title}" dalla sessione? Gli studenti non potranno più vederlo.`)) return
     try {
       await teacherApi.deleteTask(doc.sessionId, doc.id)
       setStoredDocuments(prev => prev.filter(d => d.id !== doc.id))
       if (document.id === doc.id) {
-        createNewDocument()
+        setViewMode('list')
       }
-      toast({ title: 'Documento rimosso dalla sessione' })
     } catch (e) {
       toast({ title: 'Errore eliminazione', variant: 'destructive' })
     }
@@ -405,12 +405,24 @@ export default function TeacherDocumentsPage() {
   }, [draftId])
 
   useEffect(() => {
+    if (viewMode !== 'editor') return
+    // Don't create a new draft for empty documents
+    if (!draftIdRef.current) {
+      const html = document.textContent || ''
+      const stripped = html.replace(/<[^>]*>/g, '').trim()
+      const isEmpty =
+        mode === 'document' ? stripped.length === 0 :
+        mode === 'slides' ? document.slides.every(s => !s.blocks || s.blocks.length === 0) :
+        mode === 'canvas' ? parseCanvasContent(document.canvasContent).items.length === 0 :
+        false
+      if (isEmpty) return
+    }
     const timer = setTimeout(() => {
       queueDraftSave()
     }, 600)
     return () => clearTimeout(timer)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [document, mode, docMargins])
+  }, [document, mode, docMargins, viewMode])
 
   // Load document
   const loadDocument = (doc: StoredDocument) => {
@@ -489,7 +501,7 @@ export default function TeacherDocumentsPage() {
         })
       }
       
-      toast({ title: "Documento caricato", description: `Hai aperto "${doc.title}"` })
+      setViewMode('editor')
     } catch (e) {
       console.error(e)
       toast({ title: "Errore caricamento", description: "Impossibile aprire questo documento.", variant: "destructive" })
@@ -570,6 +582,7 @@ export default function TeacherDocumentsPage() {
           canvasContent: DEFAULT_CANVAS_CONTENT,
         })
       }
+      setViewMode('editor')
     } catch (e) {
       console.error(e)
     }
@@ -784,6 +797,134 @@ export default function TeacherDocumentsPage() {
     return () => window.removeEventListener('resize', updateAnchor)
   }, [mode, showSidebar])
 
+  // ── Document list view (default) ─────────────────────────────────────────
+  if (!isMobile && viewMode === 'list') {
+    const docIcon = (type: string) => {
+      if (type === 'presentation') return <Monitor className="h-5 w-5" />
+      if (type === 'sheet') return <FileSpreadsheet className="h-5 w-5" />
+      if (type === 'canvas') return <PenTool className="h-5 w-5" />
+      return <FileText className="h-5 w-5" />
+    }
+    const docColor = (type: string) => {
+      if (type === 'presentation') return 'bg-indigo-500 text-white'
+      if (type === 'sheet') return 'bg-sky-500 text-white'
+      if (type === 'canvas') return 'bg-amber-500 text-white'
+      return 'bg-emerald-500 text-white'
+    }
+    return (
+      <>
+        <div className="h-full flex flex-col bg-slate-50 overflow-hidden">
+          <div className="h-14 bg-white border-b flex items-center justify-between px-6 z-20 shadow-sm shrink-0">
+            <div className="flex items-center gap-2">
+              <FileText className="h-4 w-4 text-slate-500" />
+              <h1 className="text-base font-bold text-slate-800">Documenti</h1>
+            </div>
+            <Button onClick={() => setShowNewModal(true)} className="bg-red-500 text-white hover:bg-red-600">
+              <Plus className="h-4 w-4 mr-2" />
+              Nuovo
+            </Button>
+          </div>
+
+          <div className="flex-1 overflow-y-auto p-6">
+            <div className="max-w-5xl mx-auto space-y-8">
+
+              {draftDocuments.length === 0 && storedDocuments.length === 0 && (
+                <div className="flex flex-col items-center justify-center py-24 text-center">
+                  <div className="w-20 h-20 rounded-full bg-slate-100 flex items-center justify-center mb-5">
+                    <FileText className="h-10 w-10 text-slate-300" />
+                  </div>
+                  <h3 className="text-lg font-bold text-slate-700 mb-1">Nessun documento</h3>
+                  <p className="text-sm text-slate-400 mb-6">Crea il tuo primo documento per iniziare</p>
+                  <Button onClick={() => setShowNewModal(true)} className="bg-red-500 text-white hover:bg-red-600">
+                    <Plus className="h-4 w-4 mr-2" />
+                    Crea documento
+                  </Button>
+                </div>
+              )}
+
+              {draftDocuments.length > 0 && (
+                <section>
+                  <h2 className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-3">Le mie Bozze</h2>
+                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                    {draftDocuments.map(doc => (
+                      <div
+                        key={doc.id}
+                        onClick={() => loadDraft(doc)}
+                        className="group cursor-pointer bg-white rounded-2xl border border-slate-200 p-4 hover:border-violet-200 hover:shadow-md transition-all"
+                      >
+                        <div className={`w-10 h-10 rounded-xl mb-3 flex items-center justify-center ${docColor(doc.type)}`}>
+                          {docIcon(doc.type)}
+                        </div>
+                        <p className="text-sm font-bold text-slate-800 truncate mb-1">{doc.title}</p>
+                        <p className="text-[10px] text-slate-400">{new Date(doc.updatedAt).toLocaleDateString('it-IT', { day: 'numeric', month: 'short', year: 'numeric' })}</p>
+                        <button
+                          onClick={(e) => handleDeleteDraft(e, doc.id)}
+                          className="mt-2 opacity-0 group-hover:opacity-100 text-slate-300 hover:text-red-500 transition-all"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              )}
+
+              {storedDocuments.length > 0 && (
+                <section>
+                  <h2 className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-3">Pubblicati nelle Sessioni</h2>
+                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                    {storedDocuments.map(doc => (
+                      <div
+                        key={doc.id}
+                        onClick={() => loadDocument(doc)}
+                        className="group cursor-pointer bg-white rounded-2xl border border-slate-200 p-4 hover:border-violet-200 hover:shadow-md transition-all"
+                      >
+                        <div className={`w-10 h-10 rounded-xl mb-3 flex items-center justify-center ${docColor(doc.type)}`}>
+                          {docIcon(doc.type)}
+                        </div>
+                        <p className="text-sm font-bold text-slate-800 truncate mb-1">{doc.title}</p>
+                        <p className="text-[10px] text-slate-400">{doc.className} · {new Date(doc.updatedAt).toLocaleDateString('it-IT', { day: 'numeric', month: 'short', year: 'numeric' })}</p>
+                        <button
+                          onClick={(e) => handleDeletePublished(e, doc)}
+                          className="mt-2 opacity-0 group-hover:opacity-100 text-slate-300 hover:text-red-500 transition-all"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {showNewModal && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-lg p-6 w-full max-w-md mx-4 shadow-xl">
+              <h3 className="text-lg font-semibold mb-2">Crea nuovo</h3>
+              <p className="text-sm text-gray-600 mb-4">Scegli il tipo di contenuto da creare.</p>
+              <div className="flex flex-col gap-3">
+                <Button className="w-full justify-center bg-red-500 hover:bg-red-600 text-white" onClick={() => { createNewDocument(); setShowNewModal(false) }}>
+                  <FileText className="h-4 w-4 mr-2" />Nuovo documento
+                </Button>
+                <Button className="w-full justify-center bg-red-500 hover:bg-red-600 text-white" onClick={() => { createNewPresentation(); setShowNewModal(false) }}>
+                  <Monitor className="h-4 w-4 mr-2" />Nuova presentazione
+                </Button>
+                <Button className="w-full justify-center bg-red-500 hover:bg-red-600 text-white" onClick={() => { createNewCanvas(); setShowNewModal(false) }}>
+                  <PenTool className="h-4 w-4 mr-2" />Nuova lavagna
+                </Button>
+              </div>
+              <div className="flex justify-end mt-4">
+                <Button variant="outline" onClick={() => setShowNewModal(false)}>Annulla</Button>
+              </div>
+            </div>
+          </div>
+        )}
+      </>
+    )
+  }
+
   // ── Mobile simplified view ────────────────────────────────────────────────
   if (isMobile) {
     const docTypeLabel: Record<string, string> = {
@@ -850,8 +991,18 @@ export default function TeacherDocumentsPage() {
         {/* Header / Meta-Toolbar */}
         <div className="h-14 bg-white border-b flex items-center justify-between px-4 z-20 shadow-sm shrink-0">
           <div className="flex items-center gap-4">
-             <Button 
-               variant="ghost" 
+             <Button
+               variant="ghost"
+               size="sm"
+               onClick={() => setViewMode('list')}
+               className="text-slate-500 gap-1"
+             >
+               <ChevronLeft className="h-4 w-4" />
+               Documenti
+             </Button>
+
+             <Button
+               variant="ghost"
                size="sm"
                onClick={() => setShowSidebar(!showSidebar)}
                className="mr-2 text-slate-500"
