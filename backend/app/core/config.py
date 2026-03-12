@@ -35,6 +35,7 @@ class Settings(BaseSettings):
     DEEPSEEK_BASE_URL: str = "https://api.deepseek.com"
     OLLAMA_BASE_URL: str = "http://localhost:11434"
     GOLINELLI_IMAGE_API_KEY: Optional[str] = None
+    GOLINELLI_IMAGE_API_URL: str = "https://image.golinelli.ai/api/v1"
     BFL_API_KEY: Optional[str] = None
     
     # Default LLM settings
@@ -60,6 +61,11 @@ class Settings(BaseSettings):
         "https://golinelli.ai",
         "http://golinelli.ai",
     ]
+    EXTRA_CORS_ORIGINS: list[str] = []  # Additional origins (e.g. staging URLs) via env var
+
+    @property
+    def all_cors_origins(self) -> list[str]:
+        return self.CORS_ORIGINS + self.EXTRA_CORS_ORIGINS
     
     # Email SMTP (Google Workspace)
     SMTP_HOST: str = "smtp.gmail.com"

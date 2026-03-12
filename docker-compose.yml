@@ -37,29 +37,16 @@ services:
       - "host.docker.internal:host-gateway"
     volumes:
       - ./data/chat_uploads:/app/uploads
+    env_file:
+      - .env
     environment:
+      # These override .env values with docker-internal hostnames
       - DATABASE_URL=postgresql+asyncpg://eduai:${DB_PASSWORD}@postgres:5432/eduai
       - REDIS_URL=redis://redis:6379/0
       - CELERY_BROKER_URL=redis://redis:6379/1
       - CELERY_RESULT_BACKEND=redis://redis:6379/2
       - MINIO_ENDPOINT=minio:9000
-      - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY}
-      - MINIO_SECRET_KEY=${MINIO_SECRET_KEY}
-      - SECRET_KEY=${SECRET_KEY}
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
-      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY}
-      - DEEPSEEK_BASE_URL=${DEEPSEEK_BASE_URL:-https://api.deepseek.com}
-      - GOLINELLI_IMAGE_API_KEY=${GOLINELLI_IMAGE_API_KEY}
-      - BFL_API_KEY=${BFL_API_KEY}
       - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
-      - SMTP_HOST=${SMTP_HOST:-smtp.gmail.com}
-      - SMTP_PORT=${SMTP_PORT:-587}
-      - SMTP_USER=${SMTP_USER}
-      - SMTP_PASSWORD=${SMTP_PASSWORD}
-      - SMTP_FROM_EMAIL=${SMTP_FROM_EMAIL}
-      - SMTP_FROM_NAME=${SMTP_FROM_NAME:-EduAI Platform}
-      - FRONTEND_URL=${FRONTEND_URL:-https://playground.golinelli.ai}
     depends_on:
       postgres:
         condition: service_healthy
@@ -77,18 +64,15 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     command: celery -A app.workers.celery_app worker --loglevel=info --concurrency=4
+    env_file:
+      - .env
     environment:
+      # These override .env values with docker-internal hostnames
       - DATABASE_URL=postgresql+asyncpg://eduai:${DB_PASSWORD}@postgres:5432/eduai
       - REDIS_URL=redis://redis:6379/0
       - CELERY_BROKER_URL=redis://redis:6379/1
       - CELERY_RESULT_BACKEND=redis://redis:6379/2
       - MINIO_ENDPOINT=minio:9000
-      - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY}
-      - MINIO_SECRET_KEY=${MINIO_SECRET_KEY}
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - BFL_API_KEY=${BFL_API_KEY}
-      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY}
-      - DEEPSEEK_BASE_URL=${DEEPSEEK_BASE_URL:-https://api.deepseek.com}
     depends_on:
       - api
       - redis

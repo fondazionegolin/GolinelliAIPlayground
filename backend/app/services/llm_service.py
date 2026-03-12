@@ -587,7 +587,7 @@ class LLMService:
         
         async with httpx.AsyncClient(timeout=120.0) as client:
             response = await client.post(
-                "https://image.golinelli.ai/api/v1/generate/text2img",
+                f"{settings.GOLINELLI_IMAGE_API_URL}/generate/text2img",
                 headers={
                     "X-API-Key": settings.GOLINELLI_IMAGE_API_KEY or "",
                     "Content-Type": "application/json",
