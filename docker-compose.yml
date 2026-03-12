@@ -1,4 +1,4 @@
-name: golinelliaiplayground
+name: ${COMPOSE_PROJECT_NAME:-golinelliaiplayground}
 
 services:
   # Reverse Proxy
