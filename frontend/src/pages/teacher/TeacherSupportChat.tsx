@@ -125,7 +125,7 @@ export default function TeacherSupportChat() {
   const conversationCacheRef = useRef<Record<string, Message[]>>({})
   const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([])
   const [agentMode, setAgentMode] = useState<AgentMode>('default')
-  const [imageProvider, setImageProvider] = useState<'dall-e' | 'flux-schnell' | 'flux-dev' | 'flux-pro' | 'flux-pro-1.1' | 'flux-2-pro' | 'flux-2-klein'>('flux-schnell')
+  const [imageProvider, setImageProvider] = useState<'dall-e' | 'flux-schnell'>('dall-e')
   const [imageSize, setImageSize] = useState<string>('1024x1024')
   const [chatBg, setChatBg] = useState<string>('')
   const [chatBgDefault, setChatBgDefault] = useState<string>('')
@@ -1191,7 +1191,7 @@ REGOLE IMPORTANTI:
                               <Trash2 className="h-4 w-4 text-slate-600" />
                             </Button>
                           </div>
-                          <div className="flex-1 overflow-y-auto p-3 space-y-1">
+                          <div className="flex-1 overflow-y-auto px-3 py-3 space-y-1">
                             {conversations.map(conv => (
                               <button
                                 key={conv.id}
@@ -1239,7 +1239,7 @@ REGOLE IMPORTANTI:
                           </div>
                         </>
                       ) : (
-                        <div className="flex-1 overflow-y-auto">
+                        <div className="flex-1 overflow-y-auto px-3 py-2">
                           <TeacherbotsPanel onOpenSettings={(id) => { setBotConfigId(id) }} />
                         </div>
                       )}
@@ -1311,15 +1311,13 @@ REGOLE IMPORTANTI:
                         {agentMode === 'image' && (
                           <>
                             <div className="flex items-center bg-slate-100/80 rounded-full p-1 border border-slate-200">
-                              {[
-                                { id: 'flux-schnell', label: '1.0 Fast' },
-                                { id: 'flux-pro-1.1', label: '1.1 Pro' },
-                                { id: 'flux-2-klein', label: '2.0 Fast' },
-                                { id: 'flux-2-pro', label: '2.0 Pro' },
-                              ].map((m) => (
+                              {([
+                                { id: 'dall-e', label: '🎨 DALL-E 3' },
+                                { id: 'flux-schnell', label: '⚡ Flux Fast' },
+                              ] as { id: 'dall-e' | 'flux-schnell'; label: string }[]).map((m) => (
                                 <button
                                   key={m.id}
-                                  onClick={() => setImageProvider(m.id as any)}
+                                  onClick={() => setImageProvider(m.id)}
                                   className={`px-3 py-1 text-[10px] rounded-full transition-all flex items-center gap-1 ${imageProvider === m.id
                                     ? 'bg-white shadow-sm font-bold'
                                     : 'text-slate-500 hover:text-slate-700'
@@ -1329,16 +1327,6 @@ REGOLE IMPORTANTI:
                                   {m.label}
                                 </button>
                               ))}
-                              <button
-                                onClick={() => setImageProvider('dall-e' as any)}
-                                className={`px-3 py-1 text-[10px] rounded-full transition-all flex items-center gap-1 ${imageProvider === 'dall-e'
-                                  ? 'bg-white shadow-sm font-bold'
-                                  : 'text-slate-500 hover:text-slate-700'
-                                  }`}
-                                style={imageProvider === 'dall-e' ? { color: accentTheme.text } : undefined}
-                              >
-                                🎨 DALL-E
-                              </button>
                             </div>
 
                             {/* Formato */}

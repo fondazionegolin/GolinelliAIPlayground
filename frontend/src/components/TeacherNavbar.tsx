@@ -23,6 +23,7 @@ interface SessionInfo {
   id: string
   name: string
   className: string
+  joinCode?: string
 }
 
 interface ActiveSession {
@@ -30,6 +31,7 @@ interface ActiveSession {
   name: string
   className: string
   studentCount?: number
+  joinCode?: string
 }
 
 interface TeacherNavbarProps {
@@ -212,11 +214,12 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
               console.log(`[TeacherNavbar] Session "${session.title}" status:`, session.status)
               return session.status === 'active'  // Fixed: was 'ACTIVE', should be 'active'
             })
-            .map((session: { id: string; title: string; student_count?: number }) => ({
+            .map((session: { id: string; title: string; student_count?: number; join_code?: string }) => ({
               id: session.id,
               name: session.title,
               className: cls.name,
               studentCount: session.student_count || 0,
+              joinCode: session.join_code,
             }))
 
           console.log(`[TeacherNavbar] Found ${activeSessions.length} active sessions in class "${cls.name}"`)
@@ -282,7 +285,7 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
         const sessionInfo = {
           id: notification.session_id,
           name: notification.session_name || t('navbar.no_session'),
-          className: notification.class_name || t('navbar.nav_classes')
+          className: notification.class_name || t('navbar.nav_classes'),
         }
         onSessionChange?.(sessionInfo)
         localStorage.setItem('teacher_selected_session', JSON.stringify(sessionInfo))
@@ -348,7 +351,10 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
                 >
                   <div className={`w-2 h-2 rounded-full flex-shrink-0 ${currentSession ? 'bg-green-500 animate-pulse shadow-sm shadow-green-300' : 'bg-slate-300'}`} />
                   <div className="text-left min-w-0">
-                    <span className="text-sm font-bold text-[var(--teacher-accent-text)] truncate max-w-[140px]">{currentSession ? currentSession.name : t('navbar.no_session')}</span>
+                    <span className="text-sm font-bold text-[var(--teacher-accent-text)] truncate max-w-[140px] block">{currentSession ? currentSession.name : t('navbar.no_session')}</span>
+                    {currentSession?.joinCode && (
+                      <span className="text-[10px] font-mono font-bold tracking-widest" style={{ color: accentTheme.accent }}>{currentSession.joinCode}</span>
+                    )}
                   </div>
                   <ChevronDown className={`h-3 w-3 ml-0.5 text-slate-400 transition-transform flex-shrink-0 ${showSessionsMenu ? 'rotate-180' : ''}`} />
                 </button>
@@ -390,7 +396,7 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
                               <button
                                 key={session.id}
                                 onClick={() => {
-                                  const sessionInfo = { id: session.id, name: session.name, className: session.className }
+                                  const sessionInfo = { id: session.id, name: session.name, className: session.className, joinCode: session.joinCode }
                                   onSessionChange?.(sessionInfo)
                                   // Persist complete session info
                                   localStorage.setItem('teacher_selected_session', JSON.stringify(sessionInfo))
