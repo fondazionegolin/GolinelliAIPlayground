@@ -49,7 +49,7 @@ export function AppBackground({ className = "", gradient = DEFAULT_GRADIENT, chi
                             pointerEvents: 'none',
                         }}
                     />
-                    {/* Dark mode overlay — dims the gradient so accent bleeds through subtly */}
+                    {/* Dark mode overlay — deep violet wash, brand accent bleeds through subtly */}
                     <div
                         aria-hidden="true"
                         className="hidden dark:block"
@@ -57,7 +57,8 @@ export function AppBackground({ className = "", gradient = DEFAULT_GRADIENT, chi
                             position: 'fixed',
                             inset: 0,
                             zIndex: -1,
-                            backgroundColor: 'rgba(10,10,10,0.78)',
+                            /* #0D0618 = rgb(13,6,24) — viola quasi-nero brand */
+                            backgroundColor: 'rgba(13,6,24,0.84)',
                             pointerEvents: 'none',
                         }}
                     />

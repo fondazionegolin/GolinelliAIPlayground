@@ -12,7 +12,10 @@
     <script>
       (function() {
         var stored = localStorage.getItem('dark_mode');
-        if (stored === 'true') document.documentElement.classList.add('dark');
+        if (stored === 'true') {
+          document.documentElement.classList.add('dark');
+          document.documentElement.setAttribute('data-theme', 'dark');
+        }
       })();
     </script>
     <div id="root"></div>
