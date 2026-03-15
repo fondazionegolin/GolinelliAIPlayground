@@ -49,6 +49,18 @@ export function AppBackground({ className = "", gradient = DEFAULT_GRADIENT, chi
                             pointerEvents: 'none',
                         }}
                     />
+                    {/* Dark mode overlay — dims the gradient so accent bleeds through subtly */}
+                    <div
+                        aria-hidden="true"
+                        className="hidden dark:block"
+                        style={{
+                            position: 'fixed',
+                            inset: 0,
+                            zIndex: -1,
+                            backgroundColor: 'rgba(10,10,10,0.78)',
+                            pointerEvents: 'none',
+                        }}
+                    />
                 </>
             )}
             <div className="relative z-0 h-full flex flex-col">

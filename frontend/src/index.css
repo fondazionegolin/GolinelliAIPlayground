@@ -50,25 +50,26 @@
   }
 
   .dark {
-    --background: 222 47% 11%;
-    --foreground: 210 40% 98%;
-    --card: 217 33% 17%;
-    --card-foreground: 210 40% 98%;
-    --popover: 217 33% 17%;
-    --popover-foreground: 210 40% 98%;
-    --primary: 243 100% 70%;
-    --primary-foreground: 222 47.4% 11.2%;
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 212.7 26.8% 83.9%;
+    /* Pure neutral dark gray — not slate/navy */
+    --background: 0 0% 8%;        /* #141414 */
+    --foreground: 0 0% 93%;       /* #ededed */
+    --card: 0 0% 11%;             /* #1c1c1c */
+    --card-foreground: 0 0% 93%;
+    --popover: 0 0% 11%;
+    --popover-foreground: 0 0% 93%;
+    --primary: 243 75% 65%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 0 0% 15%;        /* #262626 */
+    --secondary-foreground: 0 0% 90%;
+    --muted: 0 0% 15%;
+    --muted-foreground: 0 0% 55%; /* #8c8c8c */
+    --accent: 0 0% 15%;
+    --accent-foreground: 0 0% 90%;
+    --destructive: 0 62% 45%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 0 0% 19%;           /* #303030 */
+    --input: 0 0% 19%;
+    --ring: 243 75% 65%;
   }
 }
 
@@ -110,3 +111,93 @@
   50% { background-position: 100% 50% }
   100% { background-position: 0% 50% }
 }
+
+/* ============================================================
+   DARK MODE — Tailwind utility overrides
+   Specificity: .dark .utility (0,2,0) beats .utility (0,1,0)
+   ============================================================ */
+
+/* Solid backgrounds */
+.dark .bg-white          { background-color: #1c1c1c !important; }
+.dark .bg-slate-50       { background-color: #1a1a1a !important; }
+.dark .bg-slate-100      { background-color: #222222 !important; }
+.dark .bg-slate-200      { background-color: #2a2a2a !important; }
+.dark .bg-gray-50        { background-color: #1a1a1a !important; }
+.dark .bg-gray-100       { background-color: #222222 !important; }
+.dark .bg-gray-200       { background-color: #2a2a2a !important; }
+
+/* Semi-transparent whites → dark glass */
+.dark .bg-white\/95      { background-color: rgba(28,28,28,0.97) !important; }
+.dark .bg-white\/90      { background-color: rgba(28,28,28,0.93) !important; }
+.dark .bg-white\/80      { background-color: rgba(28,28,28,0.86) !important; }
+.dark .bg-white\/70      { background-color: rgba(28,28,28,0.78) !important; }
+.dark .bg-white\/60      { background-color: rgba(28,28,28,0.72) !important; }
+.dark .bg-white\/50      { background-color: rgba(28,28,28,0.65) !important; }
+.dark .bg-white\/40      { background-color: rgba(28,28,28,0.50) !important; }
+.dark .bg-white\/30      { background-color: rgba(255,255,255,0.08) !important; }
+.dark .bg-white\/20      { background-color: rgba(255,255,255,0.06) !important; }
+.dark .bg-white\/10      { background-color: rgba(255,255,255,0.04) !important; }
+.dark .bg-slate-100\/80  { background-color: rgba(34,34,34,0.82) !important; }
+
+/* Hover backgrounds */
+.dark .hover\:bg-white:hover         { background-color: #262626 !important; }
+.dark .hover\:bg-slate-50:hover      { background-color: #202020 !important; }
+.dark .hover\:bg-slate-100:hover     { background-color: #2a2a2a !important; }
+.dark .hover\:bg-gray-50:hover       { background-color: #202020 !important; }
+.dark .hover\:bg-white\/80:hover     { background-color: rgba(40,40,40,0.9) !important; }
+.dark .hover\:bg-white\/20:hover     { background-color: rgba(255,255,255,0.1) !important; }
+.dark .hover\:bg-slate-100\/50:hover { background-color: rgba(40,40,40,0.5) !important; }
+
+/* Text */
+.dark .text-slate-900  { color: #f0f0f0 !important; }
+.dark .text-slate-800  { color: #e5e5e5 !important; }
+.dark .text-slate-700  { color: #d0d0d0 !important; }
+.dark .text-slate-600  { color: #b0b0b0 !important; }
+.dark .text-slate-500  { color: #909090 !important; }
+.dark .text-slate-400  { color: #737373 !important; }
+.dark .text-gray-900   { color: #f0f0f0 !important; }
+.dark .text-gray-800   { color: #e5e5e5 !important; }
+.dark .text-gray-700   { color: #d0d0d0 !important; }
+.dark .text-gray-600   { color: #b0b0b0 !important; }
+.dark .text-gray-500   { color: #909090 !important; }
+.dark .text-gray-400   { color: #737373 !important; }
+.dark .text-black      { color: #e8e8e8 !important; }
+
+/* Borders */
+.dark .border-slate-50  { border-color: #252525 !important; }
+.dark .border-slate-100 { border-color: #2a2a2a !important; }
+.dark .border-slate-200 { border-color: #333333 !important; }
+.dark .border-slate-300 { border-color: #3d3d3d !important; }
+.dark .border-gray-100  { border-color: #2a2a2a !important; }
+.dark .border-gray-200  { border-color: #333333 !important; }
+.dark .border-gray-300  { border-color: #3d3d3d !important; }
+.dark .border-white\/20 { border-color: rgba(255,255,255,0.10) !important; }
+.dark .border-white\/30 { border-color: rgba(255,255,255,0.12) !important; }
+.dark .border-white\/40 { border-color: rgba(255,255,255,0.15) !important; }
+
+/* Dividers */
+.dark .divide-slate-100 > * + * { border-color: #2a2a2a !important; }
+.dark .divide-slate-200 > * + * { border-color: #333333 !important; }
+
+/* Form elements */
+.dark input:not([class*="bg-"]),
+.dark textarea:not([class*="bg-"]),
+.dark select:not([class*="bg-"]) {
+  background-color: #1e1e1e;
+  color: #e5e5e5;
+  border-color: #333;
+}
+.dark input::placeholder,
+.dark textarea::placeholder { color: #666; }
+
+/* Shadow softening in dark mode */
+.dark .shadow-sm  { box-shadow: 0 1px 3px rgba(0,0,0,0.5) !important; }
+.dark .shadow     { box-shadow: 0 2px 6px rgba(0,0,0,0.5) !important; }
+.dark .shadow-md  { box-shadow: 0 4px 12px rgba(0,0,0,0.5) !important; }
+.dark .shadow-lg  { box-shadow: 0 8px 24px rgba(0,0,0,0.6) !important; }
+.dark .shadow-xl  { box-shadow: 0 12px 32px rgba(0,0,0,0.7) !important; }
+
+/* Scrollbars */
+.dark ::-webkit-scrollbar-track { background: #1a1a1a; }
+.dark ::-webkit-scrollbar-thumb { background: #3a3a3a; border-radius: 4px; }
+.dark ::-webkit-scrollbar-thumb:hover { background: #4a4a4a; }
