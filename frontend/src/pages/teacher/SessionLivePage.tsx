@@ -586,6 +586,7 @@ export default function SessionLivePage() {
                 </TabsContent>
 
                 <TabsContent value="history">
+                  <AnalyticsPanel sessionId={sessionId!} />
                   <ConversationHistoryView
                     sessionId={sessionId!}
                     selectedConversationId={selectedConversationId}
@@ -880,6 +881,108 @@ interface MessageData {
   provider: string | null
   model: string | null
   created_at: string
+}
+
+function AnalyticsPanel({ sessionId }: { sessionId: string }) {
+  const { data: conversations } = useQuery<ConversationData[]>({
+    queryKey: ['session-conversations', sessionId],
+    queryFn: async () => {
+      const res = await llmApi.getSessionConversations(sessionId)
+      return res.data
+    },
+    refetchInterval: 10000,
+  })
+
+  if (!conversations || conversations.length === 0) return null
+
+  // Student activity: rank by total message count
+  const studentActivity = Object.values(
+    conversations.reduce((acc, conv) => {
+      if (!acc[conv.student_id]) {
+        acc[conv.student_id] = { nickname: conv.student_nickname, messageCount: 0, convCount: 0 }
+      }
+      acc[conv.student_id].messageCount += conv.message_count
+      acc[conv.student_id].convCount += 1
+      return acc
+    }, {} as Record<string, { nickname: string; messageCount: number; convCount: number }>)
+  ).sort((a, b) => b.messageCount - a.messageCount).slice(0, 5)
+
+  // Word frequency from conversation titles
+  const stopWords = new Set(['il', 'la', 'lo', 'i', 'le', 'gli', 'un', 'una', 'uno', 'di', 'da', 'in', 'con', 'su', 'per', 'tra', 'fra', 'e', 'o', 'ma', 'se', 'che', 'come', 'cosa', 'the', 'a', 'an', 'is', 'it', 'of', 'to', 'and', 'or', 'how', 'what', 'mi', 'ti', 'si', 'ci', 'vi', 'me', 'te', 'non', 'ho', 'ha', 'hai', 'del', 'dei', 'delle', 'degli', 'al', 'ai', 'alle', 'agli', 'nel', 'nei', 'nelle', 'negli', 'dal', 'dai'])
+  const wordFreq: Record<string, number> = {}
+  conversations.forEach(conv => {
+    if (!conv.title) return
+    conv.title.toLowerCase().split(/\s+/).forEach(word => {
+      const clean = word.replace(/[^a-zA-ZàèéìòùÀÈÉÌÒÙ]/g, '')
+      if (clean.length > 3 && !stopWords.has(clean)) {
+        wordFreq[clean] = (wordFreq[clean] || 0) + 1
+      }
+    })
+  })
+  const topWords = Object.entries(wordFreq).sort((a, b) => b[1] - a[1]).slice(0, 20)
+  const maxFreq = topWords[0]?.[1] || 1
+
+  return (
+    <Card className="mb-4 border-indigo-100">
+      <CardHeader className="pb-3">
+        <CardTitle className="text-base flex items-center gap-2">
+          <Brain className="h-4 w-4 text-indigo-500" />
+          Analisi Pedagogica
+          <span className="text-xs font-normal text-slate-400 ml-1">{conversations.length} conversazioni • {Object.keys(studentActivity).length} studenti</span>
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* Student activity ranking */}
+          <div>
+            <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">Studenti più attivi</h4>
+            <div className="space-y-2.5">
+              {studentActivity.map((s, i) => (
+                <div key={s.nickname} className="flex items-center gap-2">
+                  <span className="text-xs text-slate-300 w-4 font-mono">{i + 1}</span>
+                  <div className="flex-1">
+                    <div className="flex justify-between items-center mb-1">
+                      <span className="text-sm text-slate-700 font-medium">{s.nickname}</span>
+                      <span className="text-xs text-slate-400">{s.messageCount} msg · {s.convCount} conv</span>
+                    </div>
+                    <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                      <div
+                        className="h-full rounded-full bg-indigo-400"
+                        style={{ width: `${(s.messageCount / (studentActivity[0]?.messageCount || 1)) * 100}%` }}
+                      />
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Argomenti frequenti (tag cloud) */}
+          <div>
+            <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">Argomenti frequenti</h4>
+            <div className="flex flex-wrap gap-1.5">
+              {topWords.map(([word, count]) => (
+                <span
+                  key={word}
+                  className="px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-100 cursor-default"
+                  style={{
+                    fontSize: `${Math.max(10, Math.min(16, 10 + (count / maxFreq) * 6))}px`,
+                    opacity: 0.4 + (count / maxFreq) * 0.6,
+                  }}
+                  title={`${count} occorrenze`}
+                >
+                  {word}
+                </span>
+              ))}
+              {topWords.length === 0 && (
+                <p className="text-xs text-slate-400">Nessun titolo disponibile per l'analisi</p>
+              )}
+            </div>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  )
 }
 
 interface ConversationHistoryViewProps {

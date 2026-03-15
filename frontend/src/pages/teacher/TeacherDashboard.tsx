@@ -44,7 +44,7 @@ export default function TeacherDashboard() {
     return null
   }
 
-  const [currentSession, setCurrentSession] = useState<{ id: string, name: string, className: string } | null>(getPersistedSession)
+  const [currentSession, setCurrentSession] = useState<{ id: string, name: string, className: string, joinCode?: string } | null>(getPersistedSession)
   const [activeSessionId, setActiveSessionId] = useState<string | null>(currentSession?.id || null)
 
   useEffect(() => {
@@ -53,11 +53,12 @@ export default function TeacherDashboard() {
 
     if (urlSessionId) {
       setActiveSessionId(urlSessionId)
-      teacherApi.getSessionLive(urlSessionId).then((res: { data: { session: { name?: string; title?: string; class_name?: string } } }) => {
+      teacherApi.getSessionLive(urlSessionId).then((res: { data: { session: { name?: string; title?: string; class_name?: string; join_code?: string } } }) => {
         const sessionInfo = {
           id: urlSessionId,
           name: res.data.session?.name || res.data.session?.title || t('navbar.no_session'),
-          className: res.data.session?.class_name || t('navbar.nav_classes')
+          className: res.data.session?.class_name || t('navbar.nav_classes'),
+          joinCode: res.data.session?.join_code,
         }
         setCurrentSession(sessionInfo)
         localStorage.setItem('teacher_selected_session', JSON.stringify(sessionInfo))
@@ -157,9 +158,13 @@ export default function TeacherDashboard() {
 
         {/* ── Session Context Strip (left, desktop only) ── */}
         {!isMobile && currentSession && (
+          <div className="flex-shrink-0 flex items-center pl-2 py-2 z-10">
           <div
-            className="w-12 border-r flex flex-col items-center py-3 gap-1 flex-shrink-0"
-            style={{ backgroundColor: `${teacherTheme.soft}cc`, borderColor: `${teacherTheme.accent}30` }}
+            className="flex flex-col items-center py-3 px-1.5 gap-1 rounded-2xl shadow-lg border backdrop-blur-md"
+            style={{
+              backgroundColor: `${teacherTheme.soft}e0`,
+              borderColor: `${teacherTheme.accent}30`,
+            }}
           >
             {/* Session live */}
             <button
@@ -226,6 +231,7 @@ export default function TeacherDashboard() {
             >
               <MessageSquare className="h-4 w-4" />
             </button>
+          </div>
           </div>
         )}
 
