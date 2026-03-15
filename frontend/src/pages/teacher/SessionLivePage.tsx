@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { useParams, Link } from 'react-router-dom'
+import { useState, useEffect } from 'react'
+import { useParams, Link, useSearchParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { teacherApi } from '@/lib/api'
 import { Button } from '@/components/ui/button'
@@ -61,7 +61,16 @@ export default function SessionLivePage() {
   const { toast } = useToast()
   useAuthStore() // Keep store connection for auth state
   const [autoRefresh] = useState(true)
-  const [activeTab, setActiveTab] = useState('modules')
+  const [searchParams] = useSearchParams()
+  const [activeTab, setActiveTab] = useState(() => {
+    const tab = searchParams.get('tab')
+    return tab === 'tasks' || tab === 'history' ? tab : 'modules'
+  })
+
+  useEffect(() => {
+    const tab = searchParams.get('tab')
+    if (tab === 'tasks' || tab === 'history') setActiveTab(tab)
+  }, [searchParams])
   const [showOfflineStudents, setShowOfflineStudents] = useState(false)
   const [showTaskBuilder, setShowTaskBuilder] = useState(false)
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null)
