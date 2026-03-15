@@ -123,8 +123,6 @@ services:
       - MINIO_ROOT_PASSWORD=${MINIO_SECRET_KEY}
     volumes:
       - ./data/minio:/data
-    ports:
-      - "9001:9001"
     networks:
       - eduai-network
     restart: unless-stopped
@@ -169,7 +167,7 @@ services:
       - ./data/grafana:/var/lib/grafana
       - ./infrastructure/grafana/provisioning:/etc/grafana/provisioning:ro
     ports:
-      - "3002:3000"
+      - "${GRAFANA_PORT:-3000}:3000"
     depends_on:
       - prometheus
     networks:

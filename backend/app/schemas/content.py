@@ -13,6 +13,7 @@ class TeacherIntent(str, Enum):
     QUIZ_GENERATION = "quiz_generation"
     LESSON_GENERATION = "lesson_generation"
     EXERCISE_GENERATION = "exercise_generation"
+    DATASET_GENERATION = "dataset_generation"
     PRESENTATION_GENERATION = "presentation_generation"
     WEB_SEARCH = "web_search"
     ANALYTICS = "analytics"
