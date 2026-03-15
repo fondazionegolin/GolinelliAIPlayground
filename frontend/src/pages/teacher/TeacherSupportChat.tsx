@@ -125,7 +125,7 @@ export default function TeacherSupportChat() {
   const conversationCacheRef = useRef<Record<string, Message[]>>({})
   const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([])
   const [agentMode, setAgentMode] = useState<AgentMode>('default')
-  const [imageProvider, setImageProvider] = useState<'dall-e' | 'flux-schnell'>('dall-e')
+  const [imageProvider, setImageProvider] = useState<'dall-e' | 'gpt-image-1'>('dall-e')
   const [imageSize, setImageSize] = useState<string>('1024x1024')
   const [chatBg, setChatBg] = useState<string>('')
   const [chatBgDefault, setChatBgDefault] = useState<string>('')
@@ -790,7 +790,7 @@ export default function TeacherSupportChat() {
     try {
       if (agentMode === 'image') {
         // IMAGE GENERATION FLOW
-        const providerLabel = imageProvider === 'dall-e' ? 'DALL-E 3' : 'Flux Schnell'
+        const providerLabel = imageProvider === 'dall-e' ? 'DALL-E 3' : 'GPT Image 1'
 
         // Step 1: Show connecting status
         setImageGenerationProgress({
@@ -1250,14 +1250,16 @@ REGOLE IMPORTANTI:
                  {/* Chat Main */}
                  <main className={`flex-1 flex flex-col relative overflow-hidden`} style={chatBg ? { backgroundColor: chatBg } : undefined}>
 
-                  {/* Teacherbot config view — absolute overlay replaces chat */}
+                  {/* Teacherbot config modal — full-screen centered modal */}
                   {botConfigId && (
-                    <div className="absolute inset-0 z-20 bg-white overflow-y-auto">
-                      <TeacherbotForm
-                        teacherbotId={botConfigId}
-                        onBack={() => setBotConfigId(null)}
-                        onSaved={() => setBotConfigId(null)}
-                      />
+                    <div className="fixed inset-0 z-[80] bg-black/40 backdrop-blur-sm flex items-start justify-center overflow-y-auto p-6">
+                      <div className="bg-white rounded-2xl w-full max-w-2xl my-8 shadow-2xl overflow-hidden">
+                        <TeacherbotForm
+                          teacherbotId={botConfigId}
+                          onBack={() => setBotConfigId(null)}
+                          onSaved={() => setBotConfigId(null)}
+                        />
+                      </div>
                     </div>
                   )}
 
@@ -1313,8 +1315,8 @@ REGOLE IMPORTANTI:
                             <div className="flex items-center bg-slate-100/80 rounded-full p-1 border border-slate-200">
                               {([
                                 { id: 'dall-e', label: '🎨 DALL-E 3' },
-                                { id: 'flux-schnell', label: '⚡ Flux Fast' },
-                              ] as { id: 'dall-e' | 'flux-schnell'; label: string }[]).map((m) => (
+                                { id: 'gpt-image-1', label: '✨ GPT Image 1' },
+                              ] as { id: 'dall-e' | 'gpt-image-1'; label: string }[]).map((m) => (
                                 <button
                                   key={m.id}
                                   onClick={() => setImageProvider(m.id)}
@@ -1895,7 +1897,7 @@ REGOLE IMPORTANTI:
                     className="w-full text-left p-3 rounded-lg border border-slate-200 hover:border-red-400 hover:bg-red-50 transition-all flex items-center justify-between group"
                   >
                     <div>
-                      <div className="font-semibold text-sm group-hover:text-red-700">{session.name}</div>
+                      <div className="font-semibold text-sm group-hover:text-red-700">{session.title}</div>
                       <div className="text-xs text-slate-500">{session.class_name}</div>
                     </div>
                     <ChevronRight className="h-4 w-4 text-slate-300 group-hover:text-red-500" />

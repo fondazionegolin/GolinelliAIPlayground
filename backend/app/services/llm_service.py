@@ -385,7 +385,10 @@ class LLMService:
         
         if provider == "dall-e":
             return await self._generate_image_dalle(prompt, size, quality, style)
-            
+
+        if provider == "gpt-image-1":
+            return await self._generate_image_gpt_image_1(prompt, size)
+
         # Fallback to BFL schnell
         return await self._generate_image_bfl(prompt, size, model="flux-schnell")
 
@@ -563,6 +566,45 @@ class LLMService:
         # Fallback to temporary URL if saving fails
         return temp_url
     
+    async def _generate_image_gpt_image_1(
+        self,
+        prompt: str,
+        size: str = "1024x1024",
+    ) -> str:
+        """Generate an image using GPT-Image-1 (OpenAI). Returns b64_json, saved locally."""
+        if not self.openai_client:
+            raise RuntimeError("OpenAI client not configured for image generation")
+
+        # gpt-image-1 supported sizes
+        valid_sizes = {"1024x1024", "1536x1024", "1024x1536"}
+        gpt_size = size if size in valid_sizes else "1024x1024"
+
+        response = await self.openai_client.images.generate(
+            model="gpt-image-1",
+            prompt=prompt,
+            n=1,
+            size=gpt_size,
+        )
+
+        # gpt-image-1 returns base64 encoded PNG
+        b64_data = response.data[0].b64_json
+        if not b64_data:
+            raise RuntimeError("GPT-Image-1 returned no image data")
+
+        try:
+            import base64 as _base64
+            upload_dir = Path("/app/uploads/generated")
+            upload_dir.mkdir(parents=True, exist_ok=True)
+            filename = f"{uuid.uuid4()}.png"
+            file_path = upload_dir / filename
+            img_bytes = _base64.b64decode(b64_data)
+            async with aiofiles.open(file_path, 'wb') as f:
+                await f.write(img_bytes)
+            return f"/uploads/generated/{filename}"
+        except Exception as e:
+            logger.error(f"Failed to save GPT-Image-1 result: {e}")
+            return f"data:image/png;base64,{b64_data}"
+
     async def _generate_image_flux(
         self,
         prompt: str,

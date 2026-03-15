@@ -49,19 +49,6 @@ export function AppBackground({ className = "", gradient = DEFAULT_GRADIENT, chi
                             pointerEvents: 'none',
                         }}
                     />
-                    {/* Dark mode overlay — deep violet wash, brand accent bleeds through subtly */}
-                    <div
-                        aria-hidden="true"
-                        className="hidden dark:block"
-                        style={{
-                            position: 'fixed',
-                            inset: 0,
-                            zIndex: -1,
-                            /* #0D0618 = rgb(13,6,24) — viola quasi-nero brand */
-                            backgroundColor: 'rgba(13,6,24,0.84)',
-                            pointerEvents: 'none',
-                        }}
-                    />
                 </>
             )}
             <div className="relative z-0 h-full flex flex-col">
