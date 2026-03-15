@@ -1024,11 +1024,11 @@ export default function ChatSidebar({
               color: messageAccentTheme.text 
             } : undefined}
           >
-            {isMe ? linkify(content, messageAccentTheme ? 'text-white/90 hover:text-white underline break-all' : undefined) : (
+            {isMe ? linkify(content, messageAccentTheme ? 'underline break-all' : undefined) : (
               // For received messages, basic linkify with darker link color
               content.split(/(https?:\/\/[^\s]+)/g).map((part: string, i: number) => {
                 if (part.match(/(https?:\/\/[^\s]+)/g)) {
-                  return <a key={i} href={part} target="_blank" rel="noopener noreferrer" className={messageAccentTheme ? 'text-white/90 hover:text-white underline break-all' : 'text-red-600 hover:text-red-700 underline break-all'}>{part}</a>
+                  return <a key={i} href={part} target="_blank" rel="noopener noreferrer" className={messageAccentTheme ? 'underline break-all' : 'text-red-600 hover:text-red-700 underline break-all'}>{part}</a>
                 }
                 return part
               })

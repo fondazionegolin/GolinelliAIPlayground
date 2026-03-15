@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Routes, Route, useLocation, Link } from 'react-router-dom'
-import { MessageSquare, Users, PlayCircle, Bot } from 'lucide-react'
+import { Routes, Route, useLocation, Link, useNavigate } from 'react-router-dom'
+import { MessageSquare, Users, PlayCircle, Bot, ClipboardList, History, Monitor } from 'lucide-react'
 import ClassesPage from './ClassesPage'
 import SessionsPage from './SessionsPage'
 import SessionLivePage from './SessionLivePage'
@@ -27,6 +27,7 @@ const MOBILE_NAV = [
 export default function TeacherDashboard() {
   const { t } = useTranslation()
   const location = useLocation()
+  const navigate = useNavigate()
   const { isMobile } = useMobile()
 
   const [teacherProfile, setTeacherProfile] = useState<{ id: string, name: string, uiAccent?: TeacherAccentId } | null>(null)
@@ -153,6 +154,81 @@ export default function TeacherDashboard() {
 
       {/* ── Main Content ── */}
       <div className={`flex-1 flex overflow-hidden ${isMobile ? 'pt-12 pb-16' : 'pt-16'}`}>
+
+        {/* ── Session Context Strip (left, desktop only) ── */}
+        {!isMobile && currentSession && (
+          <div
+            className="w-12 border-r flex flex-col items-center py-3 gap-1 flex-shrink-0"
+            style={{ backgroundColor: `${teacherTheme.soft}cc`, borderColor: `${teacherTheme.accent}30` }}
+          >
+            {/* Session live */}
+            <button
+              title={currentSession.name}
+              onClick={() => navigate(`/teacher/sessions/${currentSession.id}`)}
+              className="w-9 h-9 rounded-lg flex items-center justify-center transition-colors hover:opacity-80"
+              style={{
+                backgroundColor: location.pathname.includes(`/sessions/${currentSession.id}`) && !location.search
+                  ? teacherTheme.accent
+                  : `${teacherTheme.accent}20`,
+                color: location.pathname.includes(`/sessions/${currentSession.id}`) && !location.search
+                  ? 'white'
+                  : teacherTheme.accent,
+              }}
+            >
+              <Monitor className="h-4 w-4" />
+            </button>
+
+            {/* Tasks */}
+            <button
+              title="Compiti"
+              onClick={() => navigate(`/teacher/sessions/${currentSession.id}?tab=tasks`)}
+              className="w-9 h-9 rounded-lg flex items-center justify-center transition-colors hover:opacity-80"
+              style={{
+                backgroundColor: location.search === '?tab=tasks'
+                  ? teacherTheme.accent
+                  : `${teacherTheme.accent}20`,
+                color: location.search === '?tab=tasks'
+                  ? 'white'
+                  : teacherTheme.accent,
+              }}
+            >
+              <ClipboardList className="h-4 w-4" />
+            </button>
+
+            {/* History */}
+            <button
+              title="Storico chat"
+              onClick={() => navigate(`/teacher/sessions/${currentSession.id}?tab=history`)}
+              className="w-9 h-9 rounded-lg flex items-center justify-center transition-colors hover:opacity-80"
+              style={{
+                backgroundColor: location.search === '?tab=history'
+                  ? teacherTheme.accent
+                  : `${teacherTheme.accent}20`,
+                color: location.search === '?tab=history'
+                  ? 'white'
+                  : teacherTheme.accent,
+              }}
+            >
+              <History className="h-4 w-4" />
+            </button>
+
+            <div className="flex-1" />
+
+            {/* Toggle chat sidebar */}
+            <button
+              title="Chat di classe"
+              onClick={() => setShowSidebar(v => !v)}
+              className="w-9 h-9 rounded-lg flex items-center justify-center transition-colors hover:opacity-80"
+              style={{
+                backgroundColor: showSidebar ? teacherTheme.accent : `${teacherTheme.accent}20`,
+                color: showSidebar ? 'white' : teacherTheme.accent,
+              }}
+            >
+              <MessageSquare className="h-4 w-4" />
+            </button>
+          </div>
+        )}
+
         <main className="flex-1 overflow-y-auto relative">
           <Routes>
             <Route index element={<TeacherSupportChat />} />
