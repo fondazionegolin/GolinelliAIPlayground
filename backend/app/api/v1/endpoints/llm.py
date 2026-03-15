@@ -813,8 +813,10 @@ async def generate_image(
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
     # Track Usage (non-blocking)
-    real_provider = "openai" if provider == "dall-e" else "flux"
-    real_model = "dall-e-3" if provider == "dall-e" else "flux-schnell"
+    openai_providers = {"dall-e", "gpt-image-1"}
+    real_provider = "openai" if provider in openai_providers else "flux"
+    model_map = {"dall-e": "dall-e-3", "gpt-image-1": "gpt-image-1"}
+    real_model = model_map.get(provider, "flux-schnell")
     cost = credit_service.calculate_cost_for_model(real_provider, real_model, 0, 0, image_count=1)
     await safe_track_usage(
         db, tenant_id, real_provider, real_model, cost,
