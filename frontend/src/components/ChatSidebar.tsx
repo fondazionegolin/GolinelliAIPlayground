@@ -1708,62 +1708,60 @@ export default function ChatSidebar({
         </div>
       </div>
 
-      {/* Tabs */}
-      <div className="flex border-b border-slate-100 bg-white/50 backdrop-blur-md">
-        <button
-          onClick={() => setActiveTab('session')}
-          onDragEnter={(e) => {
-            const types = Array.from(e.dataTransfer.types || [])
-            if (types.includes('application/x-session-file') || types.includes('Files')) {
-              setActiveTab('session')
-            }
-          }}
-          className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 text-[10px] font-bold uppercase tracking-wider transition-all ${activeTab === 'session'
-            ? 'text-[#181b1e] border-b-2 border-[#181b1e] bg-[#181b1e]/5'
-            : 'text-slate-400 hover:text-slate-600 hover:bg-white/50'
-            }`}
-        >
-          <MessageSquare className="h-3.5 w-3.5" />
-          Sessione
-        </button>
+      {/* Tabs — pill switcher */}
+      <div className="px-2.5 pt-2 pb-1.5 bg-white border-b border-slate-100 shrink-0">
+        <div className="flex items-center gap-0.5 bg-slate-100/80 p-0.5 rounded-xl">
+          <button
+            onClick={() => setActiveTab('session')}
+            onDragEnter={(e) => {
+              const types = Array.from(e.dataTransfer.types || [])
+              if (types.includes('application/x-session-file') || types.includes('Files')) {
+                setActiveTab('session')
+              }
+            }}
+            className={`flex-1 flex items-center justify-center gap-1 py-1.5 text-[10px] font-bold rounded-lg transition-all duration-200 ${activeTab === 'session'
+              ? 'bg-white shadow-sm text-[#181b1e]'
+              : 'text-slate-400 hover:text-slate-500'}`}
+          >
+            <MessageSquare className="h-3 w-3" />
+            Sessione
+          </button>
 
-        <button
-          onClick={() => setActiveTab('private')}
-          className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 text-[10px] font-bold uppercase tracking-wider transition-all relative ${activeTab === 'private'
-            ? 'text-[#181b1e] border-b-2 border-[#181b1e] bg-[#181b1e]/5'
-            : 'text-slate-400 hover:text-slate-600 hover:bg-white/50'
-            }`}
-        >
-          <MessagesSquare className="h-3.5 w-3.5" />
-          Private
-          {totalUnreadPrivate > 0 && (
-            <span className="ml-1 px-1.5 py-0.5 text-[8px] bg-red-500 text-white rounded-full">
-              {totalUnreadPrivate > 9 ? '9+' : totalUnreadPrivate}
-            </span>
-          )}
-        </button>
+          <button
+            onClick={() => setActiveTab('private')}
+            className={`flex-1 flex items-center justify-center gap-1 py-1.5 text-[10px] font-bold rounded-lg transition-all duration-200 relative ${activeTab === 'private'
+              ? 'bg-white shadow-sm text-[#181b1e]'
+              : 'text-slate-400 hover:text-slate-500'}`}
+          >
+            <MessagesSquare className="h-3 w-3" />
+            Private
+            {totalUnreadPrivate > 0 && (
+              <span className="ml-0.5 px-1 py-0.5 text-[8px] bg-red-500 text-white rounded-full leading-none">
+                {totalUnreadPrivate > 9 ? '9+' : totalUnreadPrivate}
+              </span>
+            )}
+          </button>
 
-        <button
-          onClick={() => setActiveTab('files')}
-          className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 text-[10px] font-bold uppercase tracking-wider transition-all ${activeTab === 'files'
-            ? 'text-[#181b1e] border-b-2 border-[#181b1e] bg-[#181b1e]/5'
-            : 'text-slate-400 hover:text-slate-600 hover:bg-white/50'
-            }`}
-        >
-          <Folder className="h-3.5 w-3.5" />
-          File
-        </button>
+          <button
+            onClick={() => setActiveTab('files')}
+            className={`flex-1 flex items-center justify-center gap-1 py-1.5 text-[10px] font-bold rounded-lg transition-all duration-200 ${activeTab === 'files'
+              ? 'bg-white shadow-sm text-[#181b1e]'
+              : 'text-slate-400 hover:text-slate-500'}`}
+          >
+            <Folder className="h-3 w-3" />
+            File
+          </button>
 
-        <button
-          onClick={() => setActiveTab('users')}
-          className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 text-[10px] font-bold uppercase tracking-wider transition-all ${activeTab === 'users'
-            ? 'text-[#181b1e] border-b-2 border-[#181b1e] bg-[#181b1e]/5'
-            : 'text-slate-400 hover:text-slate-600 hover:bg-white/50'
-            }`}
-        >
-          <Users className="h-3.5 w-3.5" />
-          Utenti
-        </button>
+          <button
+            onClick={() => setActiveTab('users')}
+            className={`flex-1 flex items-center justify-center gap-1 py-1.5 text-[10px] font-bold rounded-lg transition-all duration-200 ${activeTab === 'users'
+              ? 'bg-white shadow-sm text-[#181b1e]'
+              : 'text-slate-400 hover:text-slate-500'}`}
+          >
+            <Users className="h-3 w-3" />
+            Utenti
+          </button>
+        </div>
       </div>
 
       {/* Tab content */}

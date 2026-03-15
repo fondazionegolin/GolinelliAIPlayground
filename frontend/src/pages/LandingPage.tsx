@@ -393,12 +393,11 @@ function TeachersSection() {
       exit={{ opacity: 0, x: -20 }} className="max-w-md w-full"
     >
       <div className="bg-white/80 backdrop-blur-xl rounded-3xl shadow-2xl border border-white/50 overflow-hidden">
-        <div className="bg-slate-900 p-6 text-white text-center relative overflow-hidden">
-          <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-br from-indigo-600 to-slate-900 opacity-90"></div>
+        <div className="p-6 text-white text-center relative overflow-hidden" style={{ background: 'linear-gradient(135deg, #a855f7 0%, #7c3aed 100%)' }}>
           <div className="relative z-10">
             <School className="w-12 h-12 mx-auto mb-3 opacity-80" />
             <h2 className="text-2xl font-bold">{t('landing.nav_teacher_area')}</h2>
-            <p className="text-indigo-200 text-sm">{t('login.subtitle')}</p>
+            <p className="text-purple-200 text-sm">{t('login.subtitle')}</p>
           </div>
         </div>
 
@@ -426,7 +425,7 @@ function TeachersSection() {
                 required
               />
             </div>
-            <Button type="submit" className="w-full bg-indigo-600 hover:bg-indigo-700 h-11 text-base shadow-lg shadow-indigo-200" disabled={loading}>
+            <Button type="submit" className="w-full h-11 text-base shadow-lg shadow-purple-200" style={{ backgroundColor: '#a855f7' }} disabled={loading}>
               {loading ? t('login.logging_in') : t('login.login_btn')}
             </Button>
           </form>
@@ -434,7 +433,7 @@ function TeachersSection() {
           <div className="mt-8 pt-6 border-t border-slate-100 text-center">
             <p className="text-sm text-slate-500 mb-3">Non hai ancora un account?</p>
             <Link to="/teacher-request">
-              <Button variant="outline" className="w-full border-indigo-200 text-indigo-700 hover:bg-indigo-50 hover:text-indigo-800">
+              <Button variant="outline" className="w-full border-purple-200 text-purple-700 hover:bg-purple-50 hover:text-purple-800">
                 {t('teacher_request.title')}
               </Button>
             </Link>
@@ -486,10 +485,10 @@ function StudentsSection() {
       exit={{ opacity: 0, x: 20 }} className="max-w-md w-full"
     >
       <div className="bg-white/80 backdrop-blur-xl rounded-3xl shadow-2xl border border-white/50 overflow-hidden">
-        <div className="bg-gradient-to-r from-teal-500 to-emerald-600 p-6 text-white text-center">
-          <GraduationCap className="w-12 h-12 mx-auto mb-3 text-emerald-100" />
+        <div className="p-6 text-white text-center" style={{ background: 'linear-gradient(135deg, #38bdf8 0%, #0ea5e9 100%)' }}>
+          <GraduationCap className="w-12 h-12 mx-auto mb-3 text-sky-100" />
           <h2 className="text-2xl font-bold">{t('landing.nav_student_area')}</h2>
-          <p className="text-emerald-50 text-sm">{t('student_join.subtitle')}</p>
+          <p className="text-sky-50 text-sm">{t('student_join.subtitle')}</p>
         </div>
 
         <div className="p-8">
@@ -522,7 +521,8 @@ function StudentsSection() {
             </div>
             <Button
               type="submit"
-              className="w-full h-11 text-base bg-teal-600 hover:bg-teal-700 shadow-lg shadow-teal-200 group"
+              className="w-full h-11 text-base shadow-lg shadow-sky-200 group"
+              style={{ backgroundColor: '#0ea5e9' }}
               disabled={loading}
             >
               {loading ? t('student_join.joining') : t('student_join.join_btn')}
