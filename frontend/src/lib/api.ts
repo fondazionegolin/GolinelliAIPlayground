@@ -31,8 +31,12 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
-      localStorage.removeItem('student_token')
-      window.location.href = '/login'
+      const url: string = error.config?.url ?? ''
+      // Don't redirect if the 401 came from the login endpoint itself
+      if (!url.includes('/auth/login')) {
+        localStorage.removeItem('student_token')
+        window.location.href = '/login'
+      }
     }
     return Promise.reject(error)
   }
