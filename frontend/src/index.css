@@ -8,7 +8,7 @@
 @layer base {
   :root {
     --font-family: 'Lexend', system-ui, sans-serif;
-    
+
     /* Cool Light Gray Background (SaaS standard) */
     --background: 210 40% 98%;
     /* Deep Navy Text */
@@ -17,7 +17,7 @@
     /* Pure White Surface */
     --card: 0 0% 100%;
     --card-foreground: 222 47% 11%;
-    
+
     --popover: 0 0% 100%;
     --popover-foreground: 222 47% 11%;
 
@@ -31,7 +31,7 @@
 
     --muted: 210 40% 96%;
     --muted-foreground: 215 16% 47%;
-    
+
     --accent: 243 75% 96%; /* Very light indigo */
     --accent-foreground: 243 75% 59%;
 
@@ -41,35 +41,46 @@
     /* Subtle Borders */
     --border: 214 32% 91%;
     --input: 214 32% 91%;
-    
+
     /* Modern Focus Ring */
     --ring: 243 75% 59%;
-    
+
     /* Modern standard radius */
     --radius: 0.75rem;
   }
 
   .dark {
-    /* Pure neutral dark gray — not slate/navy */
-    --background: 0 0% 8%;        /* #141414 */
-    --foreground: 0 0% 93%;       /* #ededed */
-    --card: 0 0% 11%;             /* #1c1c1c */
-    --card-foreground: 0 0% 93%;
-    --popover: 0 0% 11%;
-    --popover-foreground: 0 0% 93%;
-    --primary: 243 75% 65%;
-    --primary-foreground: 0 0% 100%;
-    --secondary: 0 0% 15%;        /* #262626 */
-    --secondary-foreground: 0 0% 90%;
-    --muted: 0 0% 15%;
-    --muted-foreground: 0 0% 55%; /* #8c8c8c */
-    --accent: 0 0% 15%;
-    --accent-foreground: 0 0% 90%;
+    /* ─── Purple-toned dark palette ───────────────────────────────
+       Non invertire: stratificare superfici viola profondo.
+       Il viola brand (#5B2D8E) diventa la base cromatica degli sfondi.
+       Mai usare il nero puro — il viola scuro è percepito come più caldo.
+       ─────────────────────────────────────────────────────────── */
+
+    /* Backgrounds (dal più scuro al più chiaro)
+       #0D0618 → bg-base     fondo pagina
+       #150D24 → bg-surface  card / pannelli
+       #1E1235 → bg-elevated modal / dropdown / navbar
+       #2A1A47 → bg-overlay  hover states
+       #3D2866 → bg-border   bordi / divisori            */
+    --background: 263 60% 6%;       /* #0D0618 */
+    --foreground: 262 40% 94%;      /* #EDE8F5 — bianco leggermente viola */
+    --card: 261 47% 10%;            /* #150D24 */
+    --card-foreground: 262 40% 94%;
+    --popover: 261 49% 14%;         /* #1E1235 */
+    --popover-foreground: 262 40% 94%;
+    --primary: 265 63% 65%;         /* #9B6DDE — viola schiarito */
+    --primary-foreground: 263 60% 6%;
+    --secondary: 262 46% 19%;       /* #2A1A47 */
+    --secondary-foreground: 262 40% 94%;
+    --muted: 261 47% 10%;
+    --muted-foreground: 261 31% 68%; /* #A695C7 */
+    --accent: 261 49% 14%;
+    --accent-foreground: 262 40% 94%;
     --destructive: 0 62% 45%;
-    --destructive-foreground: 0 0% 98%;
-    --border: 0 0% 19%;           /* #303030 */
-    --input: 0 0% 19%;
-    --ring: 243 75% 65%;
+    --destructive-foreground: 262 40% 94%;
+    --border: 260 44% 28%;           /* #3D2866 */
+    --input: 261 49% 14%;
+    --ring: 265 63% 65%;
   }
 }
 
@@ -94,7 +105,7 @@
   .card-modern {
     @apply bg-white/95 backdrop-blur-sm rounded-2xl border border-white/40 shadow-[0_8px_30px_rgb(0,0,0,0.12)];
   }
-  
+
   /* Update default border radius classes globally if needed */
   .rounded-lg {
     border-radius: var(--radius) !important;
@@ -113,91 +124,127 @@
 }
 
 /* ============================================================
+   DARK MODE — Smooth theme transition
+   Applica transizioni fluide solo quando si cambia tema,
+   non durante il caricamento iniziale (gestito da .theme-ready)
+   ============================================================ */
+.theme-ready *,
+.theme-ready *::before,
+.theme-ready *::after {
+  transition:
+    background-color 0.22s ease,
+    border-color 0.18s ease,
+    color 0.15s ease,
+    box-shadow 0.22s ease !important;
+}
+
+/* ============================================================
    DARK MODE — Tailwind utility overrides
-   Specificity: .dark .utility (0,2,0) beats .utility (0,1,0)
+   Palette: viola brand stratificato (NO grigio neutro)
+     #0D0618  bg-base     (fondo)
+     #150D24  bg-surface  (card)
+     #1E1235  bg-elevated (modal/dropdown)
+     #2A1A47  bg-overlay  (hover)
+     #3D2866  bg-border   (bordi)
+   Specificity (0,2,0) batte le utility Tailwind (0,1,0)
    ============================================================ */
 
-/* Solid backgrounds */
-.dark .bg-white          { background-color: #1c1c1c !important; }
-.dark .bg-slate-50       { background-color: #1a1a1a !important; }
-.dark .bg-slate-100      { background-color: #222222 !important; }
-.dark .bg-slate-200      { background-color: #2a2a2a !important; }
-.dark .bg-gray-50        { background-color: #1a1a1a !important; }
-.dark .bg-gray-100       { background-color: #222222 !important; }
-.dark .bg-gray-200       { background-color: #2a2a2a !important; }
+/* ── Solid backgrounds ── */
+.dark .bg-white          { background-color: #1E1235 !important; }
+.dark .bg-slate-50       { background-color: #150D24 !important; }
+.dark .bg-slate-100      { background-color: #1E1235 !important; }
+.dark .bg-slate-200      { background-color: #2A1A47 !important; }
+.dark .bg-slate-300      { background-color: #3D2866 !important; }
+.dark .bg-gray-50        { background-color: #150D24 !important; }
+.dark .bg-gray-100       { background-color: #1E1235 !important; }
+.dark .bg-gray-200       { background-color: #2A1A47 !important; }
 
-/* Semi-transparent whites → dark glass */
-.dark .bg-white\/95      { background-color: rgba(28,28,28,0.97) !important; }
-.dark .bg-white\/90      { background-color: rgba(28,28,28,0.93) !important; }
-.dark .bg-white\/80      { background-color: rgba(28,28,28,0.86) !important; }
-.dark .bg-white\/70      { background-color: rgba(28,28,28,0.78) !important; }
-.dark .bg-white\/60      { background-color: rgba(28,28,28,0.72) !important; }
-.dark .bg-white\/50      { background-color: rgba(28,28,28,0.65) !important; }
-.dark .bg-white\/40      { background-color: rgba(28,28,28,0.50) !important; }
-.dark .bg-white\/30      { background-color: rgba(255,255,255,0.08) !important; }
-.dark .bg-white\/20      { background-color: rgba(255,255,255,0.06) !important; }
-.dark .bg-white\/10      { background-color: rgba(255,255,255,0.04) !important; }
-.dark .bg-slate-100\/80  { background-color: rgba(34,34,34,0.82) !important; }
+/* ── Glassmorphism whites → viola glass ──
+   rgba(30, 18, 53) = #1E1235               */
+.dark .bg-white\/95      { background-color: rgba(30,18,53,0.97) !important; }
+.dark .bg-white\/90      { background-color: rgba(30,18,53,0.93) !important; }
+.dark .bg-white\/80      { background-color: rgba(30,18,53,0.86) !important; }
+.dark .bg-white\/70      { background-color: rgba(30,18,53,0.78) !important; }
+.dark .bg-white\/60      { background-color: rgba(30,18,53,0.72) !important; }
+.dark .bg-white\/50      { background-color: rgba(30,18,53,0.65) !important; }
+.dark .bg-white\/40      { background-color: rgba(30,18,53,0.50) !important; }
+.dark .bg-white\/30      { background-color: rgba(155,109,222,0.10) !important; }
+.dark .bg-white\/20      { background-color: rgba(155,109,222,0.08) !important; }
+.dark .bg-white\/10      { background-color: rgba(155,109,222,0.05) !important; }
+.dark .bg-slate-100\/80  { background-color: rgba(42,26,71,0.82) !important; }
 
-/* Hover backgrounds */
-.dark .hover\:bg-white:hover         { background-color: #262626 !important; }
-.dark .hover\:bg-slate-50:hover      { background-color: #202020 !important; }
-.dark .hover\:bg-slate-100:hover     { background-color: #2a2a2a !important; }
-.dark .hover\:bg-gray-50:hover       { background-color: #202020 !important; }
-.dark .hover\:bg-white\/80:hover     { background-color: rgba(40,40,40,0.9) !important; }
-.dark .hover\:bg-white\/20:hover     { background-color: rgba(255,255,255,0.1) !important; }
-.dark .hover\:bg-slate-100\/50:hover { background-color: rgba(40,40,40,0.5) !important; }
+/* ── Hover backgrounds ── */
+.dark .hover\:bg-white:hover         { background-color: #2A1A47 !important; }
+.dark .hover\:bg-slate-50:hover      { background-color: #1E1235 !important; }
+.dark .hover\:bg-slate-100:hover     { background-color: #2A1A47 !important; }
+.dark .hover\:bg-gray-50:hover       { background-color: #1E1235 !important; }
+.dark .hover\:bg-white\/80:hover     { background-color: rgba(42,26,71,0.90) !important; }
+.dark .hover\:bg-white\/20:hover     { background-color: rgba(155,109,222,0.12) !important; }
+.dark .hover\:bg-slate-100\/50:hover { background-color: rgba(42,26,71,0.50) !important; }
 
-/* Text */
-.dark .text-slate-900  { color: #f0f0f0 !important; }
-.dark .text-slate-800  { color: #e5e5e5 !important; }
-.dark .text-slate-700  { color: #d0d0d0 !important; }
-.dark .text-slate-600  { color: #b0b0b0 !important; }
-.dark .text-slate-500  { color: #909090 !important; }
-.dark .text-slate-400  { color: #737373 !important; }
-.dark .text-gray-900   { color: #f0f0f0 !important; }
-.dark .text-gray-800   { color: #e5e5e5 !important; }
-.dark .text-gray-700   { color: #d0d0d0 !important; }
-.dark .text-gray-600   { color: #b0b0b0 !important; }
-.dark .text-gray-500   { color: #909090 !important; }
-.dark .text-gray-400   { color: #737373 !important; }
-.dark .text-black      { color: #e8e8e8 !important; }
+/* ── Text — bianco leggermente violaceo, non puro ── */
+.dark .text-slate-900  { color: #EDE8F5 !important; }
+.dark .text-slate-800  { color: #EDE8F5 !important; }
+.dark .text-slate-700  { color: #D8CFF0 !important; }
+.dark .text-slate-600  { color: #A695C7 !important; }
+.dark .text-slate-500  { color: #8A7AAD !important; }
+.dark .text-slate-400  { color: #6B5A8E !important; }
+.dark .text-slate-300  { color: #9B8BBF !important; }
+.dark .text-gray-900   { color: #EDE8F5 !important; }
+.dark .text-gray-800   { color: #EDE8F5 !important; }
+.dark .text-gray-700   { color: #D8CFF0 !important; }
+.dark .text-gray-600   { color: #A695C7 !important; }
+.dark .text-gray-500   { color: #8A7AAD !important; }
+.dark .text-gray-400   { color: #6B5A8E !important; }
+.dark .text-black      { color: #EDE8F5 !important; }
+/* Muted text specifico */
+.dark .text-muted-foreground { color: #A695C7 !important; }
 
-/* Borders */
-.dark .border-slate-50  { border-color: #252525 !important; }
-.dark .border-slate-100 { border-color: #2a2a2a !important; }
-.dark .border-slate-200 { border-color: #333333 !important; }
-.dark .border-slate-300 { border-color: #3d3d3d !important; }
-.dark .border-gray-100  { border-color: #2a2a2a !important; }
-.dark .border-gray-200  { border-color: #333333 !important; }
-.dark .border-gray-300  { border-color: #3d3d3d !important; }
-.dark .border-white\/20 { border-color: rgba(255,255,255,0.10) !important; }
-.dark .border-white\/30 { border-color: rgba(255,255,255,0.12) !important; }
-.dark .border-white\/40 { border-color: rgba(255,255,255,0.15) !important; }
+/* ── Borders ── */
+.dark .border-slate-50  { border-color: #2A1A47 !important; }
+.dark .border-slate-100 { border-color: #2A1A47 !important; }
+.dark .border-slate-200 { border-color: #3D2866 !important; }
+.dark .border-slate-300 { border-color: #4A3370 !important; }
+.dark .border-gray-100  { border-color: #2A1A47 !important; }
+.dark .border-gray-200  { border-color: #3D2866 !important; }
+.dark .border-gray-300  { border-color: #4A3370 !important; }
+.dark .border-white\/20 { border-color: rgba(155,109,222,0.18) !important; }
+.dark .border-white\/30 { border-color: rgba(155,109,222,0.22) !important; }
+.dark .border-white\/40 { border-color: rgba(155,109,222,0.28) !important; }
 
-/* Dividers */
-.dark .divide-slate-100 > * + * { border-color: #2a2a2a !important; }
-.dark .divide-slate-200 > * + * { border-color: #333333 !important; }
+/* ── Dividers ── */
+.dark .divide-slate-100 > * + * { border-color: #2A1A47 !important; }
+.dark .divide-slate-200 > * + * { border-color: #3D2866 !important; }
 
-/* Form elements */
+/* ── Form elements ──
+   Sfondo: #1E1235 (elevated), testo: #EDE8F5, bordo: #3D2866 */
 .dark input:not([class*="bg-"]),
 .dark textarea:not([class*="bg-"]),
 .dark select:not([class*="bg-"]) {
-  background-color: #1e1e1e;
-  color: #e5e5e5;
-  border-color: #333;
+  background-color: #1E1235;
+  color: #EDE8F5;
+  border-color: #3D2866;
 }
 .dark input::placeholder,
-.dark textarea::placeholder { color: #666; }
+.dark textarea::placeholder { color: #6B5A8E; }
 
-/* Shadow softening in dark mode */
-.dark .shadow-sm  { box-shadow: 0 1px 3px rgba(0,0,0,0.5) !important; }
-.dark .shadow     { box-shadow: 0 2px 6px rgba(0,0,0,0.5) !important; }
-.dark .shadow-md  { box-shadow: 0 4px 12px rgba(0,0,0,0.5) !important; }
-.dark .shadow-lg  { box-shadow: 0 8px 24px rgba(0,0,0,0.6) !important; }
-.dark .shadow-xl  { box-shadow: 0 12px 32px rgba(0,0,0,0.7) !important; }
+/* ── Shadows — eliminate heavy shadows, replace with subtle borders ── */
+.dark .shadow-sm  { box-shadow: 0 1px 0 #3D2866, 0 2px 8px rgba(0,0,0,0.4) !important; }
+.dark .shadow     { box-shadow: 0 1px 0 #3D2866, 0 4px 12px rgba(0,0,0,0.5) !important; }
+.dark .shadow-md  { box-shadow: 0 1px 0 #3D2866, 0 6px 18px rgba(0,0,0,0.5) !important; }
+.dark .shadow-lg  { box-shadow: 0 0 0 1px #3D2866, 0 8px 24px rgba(0,0,0,0.55) !important; }
+.dark .shadow-xl  { box-shadow: 0 0 0 1px #3D2866, 0 12px 32px rgba(0,0,0,0.65) !important; }
 
-/* Scrollbars */
-.dark ::-webkit-scrollbar-track { background: #1a1a1a; }
-.dark ::-webkit-scrollbar-thumb { background: #3a3a3a; border-radius: 4px; }
-.dark ::-webkit-scrollbar-thumb:hover { background: #4a4a4a; }
+/* ── Status badge overrides (semantic colors preserved, muted background) ── */
+.dark .bg-emerald-100  { background-color: rgba(74,222,128,0.12) !important; }
+.dark .bg-amber-100    { background-color: rgba(251,191,36,0.12) !important; }
+.dark .bg-red-100      { background-color: rgba(248,113,113,0.12) !important; }
+.dark .bg-blue-100     { background-color: rgba(96,165,250,0.12) !important; }
+.dark .bg-indigo-50    { background-color: rgba(155,109,222,0.12) !important; }
+.dark .bg-indigo-100   { background-color: rgba(155,109,222,0.15) !important; }
+.dark .bg-violet-100   { background-color: rgba(155,109,222,0.15) !important; }
+
+/* ── Scrollbars ── */
+.dark ::-webkit-scrollbar-track { background: #0D0618; }
+.dark ::-webkit-scrollbar-thumb { background: #3D2866; border-radius: 4px; }
+.dark ::-webkit-scrollbar-thumb:hover { background: #4A3370; }
