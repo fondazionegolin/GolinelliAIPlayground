@@ -8,6 +8,13 @@
     <title>Golinelli AI Playground</title>
   </head>
   <body>
+    <!-- Dark mode init — must run before React to avoid flash -->
+    <script>
+      (function() {
+        var stored = localStorage.getItem('dark_mode');
+        if (stored === 'true') document.documentElement.classList.add('dark');
+      })();
+    </script>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, type CSSProperties } from 'react'
 import { Link, useNavigate, useLocation } from 'react-router-dom'
-import { User, Settings, LogOut, ChevronDown, Users, MessageSquare, FileText, Check, Brain } from 'lucide-react'
+import { User, Settings, LogOut, ChevronDown, Users, MessageSquare, FileText, Check, Brain, Moon, Sun } from 'lucide-react'
 import { Button } from './ui/button'
 import { LogoMark } from './LogoMark'
 import { teacherApi } from '@/lib/api'
@@ -10,6 +10,7 @@ import { useSocket } from '@/hooks/useSocket'
 import { DEFAULT_TEACHER_ACCENT, getTeacherAccentTheme, TEACHER_ACCENTS, type TeacherAccentId } from '@/lib/teacherAccent'
 import { useTranslation } from 'react-i18next'
 import { LanguageSwitcher } from '@/components/LanguageSwitcher'
+import { useDarkMode } from '@/hooks/useDarkMode'
 
 interface TeacherProfile {
   firstName: string
@@ -44,6 +45,8 @@ interface TeacherNavbarProps {
 export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen = false, onToggleChatSidebar }: TeacherNavbarProps) {
   const location = useLocation()
   const navigate = useNavigate()
+
+  const { isDark, toggle: toggleDark } = useDarkMode()
 
   const [profile, setProfile] = useState<TeacherProfile>({ firstName: '', lastName: '', email: '', avatarUrl: '', uiAccent: DEFAULT_TEACHER_ACCENT })
   const [activeSessions, setActiveSessions] = useState<ActiveSession[]>([])
@@ -334,6 +337,19 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
             </div>
 
             <div className="flex items-center gap-3">
+              {/* Dark mode toggle */}
+              <button
+                onClick={toggleDark}
+                title={isDark ? 'Passa alla modalità chiara' : 'Passa alla modalità scura'}
+                className="hidden lg:flex items-center justify-center w-8 h-8 rounded-full border transition-all shadow-sm backdrop-blur-md"
+                style={isDark
+                  ? { backgroundColor: `${accentTheme.accent}25`, borderColor: `${accentTheme.accent}60`, color: accentTheme.accent }
+                  : { backgroundColor: 'rgba(255,255,255,0.5)', borderColor: 'rgba(0,0,0,0.12)', color: '#555' }
+                }
+              >
+                {isDark ? <Sun className="h-3.5 w-3.5" /> : <Moon className="h-3.5 w-3.5" />}
+              </button>
+
               {/* Teacher Notifications (unified) */}
               <TeacherNotifications
                 notifications={teacherNotifications}
