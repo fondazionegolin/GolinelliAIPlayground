@@ -29,17 +29,19 @@ INTENT_CLASSIFIER_PROMPT = """Sei un classificatore di intenti per l'Assistente 
 Il tuo compito è distinguere tra richieste di strumenti specifici e dialogo libero di supporto/brainstorming.
 
 INTENTI DISPONIBILI:
-1. quiz_generation - Il docente chiede ESPLICITAMENTE di creare un quiz o una verifica.
+1. quiz_generation - Il docente chiede ESPLICITAMENTE di creare un quiz, una verifica o domande a scelta multipla.
 2. exercise_generation - Il docente chiede ESPLICITAMENTE di creare esercizi o attività pratiche.
-3. report_generation - Il docente chiede dati, statistiche o report sull'andamento di sessioni o studenti.
-4. web_search - Il docente chiede di cercare informazioni aggiornate online.
-5. action_menu - Il docente chiede aiuto, opzioni o cosa può fare l'assistente.
-6. analytics - (DEFAULT / CHAT LIBERA) Il docente vuole dialogare, fare brainstorming, progettare lezioni, discutere di pedagogia o chiedere consigli generali. Usa questo intento per ogni interazione che non sia una richiesta tecnica esplicita di generazione contenuti.
+3. dataset_generation - Il docente chiede di creare/generare un dataset, file CSV o tabella di dati sintetici.
+4. report_generation - Il docente chiede dati, statistiche o report sull'andamento di sessioni o studenti.
+5. web_search - Il docente chiede di cercare informazioni aggiornate online.
+6. action_menu - Il docente chiede aiuto, opzioni o cosa può fare l'assistente.
+7. analytics - (DEFAULT / CHAT LIBERA) Il docente vuole dialogare, fare brainstorming, progettare lezioni, discutere di pedagogia o chiedere consigli generali. Usa questo intento per ogni interazione che non sia una richiesta tecnica esplicita di generazione contenuti.
 
 REGOLE DI CLASSIFICAZIONE:
 - Se il messaggio è colloquiale, riflessivo o di progettazione ("Cosa ne pensi di...", "Aiutami a ideare...", "Come posso spiegare...") → usa analytics.
 - Non forzare l'uso di quiz/esercizi se il docente sta solo esplorando un tema.
 - Se il docente chiede di "progettare una lezione" senza chiedere i dati strutturati finali → usa analytics per il brainstorming.
+- "dataset", "CSV", "tabella dati", "dati sintetici" → dataset_generation.
 - In caso di dubbio o ambiguità → analytics.
 
 FORMATO OUTPUT:
@@ -87,6 +89,12 @@ def classify_intent_by_keywords(message: str) -> IntentResult:
     # Action menu keywords
     menu_keywords = [
         "menu", "opzioni", "cosa puoi fare", "aiutami", "comandi", "funzioni"
+    ]
+
+    # Dataset keywords
+    dataset_keywords = [
+        "dataset", "csv", "dati sintetici", "tabella dati", "genera dataset",
+        "crea dataset", "file csv", "crea csv", "righe dati"
     ]
 
     # Document keywords
@@ -151,6 +159,16 @@ def classify_intent_by_keywords(message: str) -> IntentResult:
                 extracted_params=message
             )
 
+    # Check for dataset
+    for keyword in dataset_keywords:
+        if keyword in message_lower:
+            logger.info(f"Intent classified by keywords: dataset_generation")
+            return IntentResult(
+                intent=TeacherIntent.DATASET_GENERATION,
+                confidence=0.85,
+                extracted_params=message
+            )
+
     # Check for document
     for keyword in document_keywords:
         if keyword in message_lower:
@@ -177,12 +195,14 @@ async def classify_intent(message: str, history: list[dict]) -> IntentResult:
     Falls back to keyword-based classification if LLM is unavailable.
     """
     try:
-        # Check for forced mode prefixes
+        # Check for forced mode prefixes — these are injected by the frontend
+        # and must ALWAYS route to the correct intent without LLM classification.
         mode_prefixes = {
             ("RICERCA WEB:", "🌐"): TeacherIntent.WEB_SEARCH,
-            ("CREA QUIZ:", "❓"): TeacherIntent.QUIZ_GENERATION,
-            ("CREA ESERCIZIO:", "💪"): TeacherIntent.EXERCISE_GENERATION,
-            ("GENERA REPORT:", "📈"): TeacherIntent.ANALYTICS,
+            ("CREA QUIZ:", "GENERA QUIZ:", "❓"): TeacherIntent.QUIZ_GENERATION,
+            ("CREA ESERCIZIO:", "GENERA ESERCIZIO:", "💪"): TeacherIntent.EXERCISE_GENERATION,
+            ("GENERA DATASET:", "📊"): TeacherIntent.DATASET_GENERATION,
+            ("GENERA REPORT:", "📈"): TeacherIntent.REPORT_GENERATION,
             ("EDITOR_AI:", "✍️"): TeacherIntent.TEXT_EDITOR,
         }
 
@@ -764,6 +784,56 @@ async def generate_exercise_without_tools(messages: list[dict], provider: str, m
 
 
 # ============================================================================
+# DATASET GENERATOR
+# ============================================================================
+
+DATASET_AGENT_PROMPT = """Sei un esperto generatore di dataset CSV sintetici per docenti.
+
+IL TUO COMPITO:
+Crea un dataset CSV realistico e coerente basandoti sulla descrizione del docente.
+
+FORMATO OUTPUT OBBLIGATORIO:
+1. Breve introduzione (1-2 frasi)
+2. Il blocco ```csv (OBBLIGATORIO)
+3. Breve nota esplicativa (max 5 righe)
+
+ESEMPIO RISPOSTA:
+
+Ho generato un dataset con 50 studenti e i loro voti in 3 materie, con correlazione positiva matematica-scienze.
+
+```csv
+nome,matematica,italiano,scienze,media
+Alice Rossi,8.5,7.0,9.0,8.17
+Marco Bianchi,6.0,8.5,6.5,7.0
+...
+```
+
+Nota: la correlazione tra matematica e scienze è stata impostata con r≈0.7.
+
+REGOLE RIGIDE:
+- Il blocco ```csv è OBBLIGATORIO
+- La prima riga DEVE contenere le intestazioni
+- Usa la virgola come separatore (formato CSV standard)
+- Dati realistici e coerenti con il contesto
+- Se l'utente specifica correlazioni, rispettarle
+- Non superare 100 righe a meno che non esplicitamente richiesto
+- NON omettere mai il blocco csv"""
+
+
+async def generate_dataset(messages: list[dict], provider: str, model: str) -> str:
+    """Generate a CSV dataset based on teacher's description."""
+    response = await llm_service.generate(
+        messages=messages,
+        system_prompt=DATASET_AGENT_PROMPT,
+        provider=provider,
+        model=model,
+        temperature=0.7,
+        max_tokens=4096,
+    )
+    return response.content
+
+
+# ============================================================================
 # WEB SEARCH GENERATOR
 # ============================================================================
 
@@ -1105,6 +1175,10 @@ async def run_teacher_agent(
         elif intent_result.intent == TeacherIntent.EXERCISE_GENERATION:
             logger.info("Routing to exercise generator")
             return await generate_exercise_with_tools(messages, provider, model)
+
+        elif intent_result.intent == TeacherIntent.DATASET_GENERATION:
+            logger.info("Routing to dataset generator")
+            return await generate_dataset(messages, provider, model)
 
         elif intent_result.intent == TeacherIntent.REPORT_GENERATION:
             if actor_type == "STUDENT":

@@ -1360,6 +1360,7 @@ async def teacher_chat_stream(
             generate_with_web_search_streaming,
             generate_quiz_with_tools,
             generate_exercise_with_tools,
+            generate_dataset,
             generate_with_analytics,
             TeacherIntent,
         )
@@ -1393,6 +1394,13 @@ async def teacher_chat_stream(
                 yield f"data: {json.dumps({'type': 'status', 'message': '⏳ Creazione esercizio...'})}\n\n"
 
                 result = await generate_exercise_with_tools(messages, provider, model)
+                yield f"data: {json.dumps({'type': 'done', 'content': result})}\n\n"
+
+            elif intent_result.intent == TeacherIntent.DATASET_GENERATION:
+                yield f"data: {json.dumps({'type': 'status', 'message': '📊 Modalità: Generazione Dataset'})}\n\n"
+                yield f"data: {json.dumps({'type': 'status', 'message': '⏳ Creazione dataset CSV...'})}\n\n"
+
+                result = await generate_dataset(messages, provider, model)
                 yield f"data: {json.dumps({'type': 'done', 'content': result})}\n\n"
 
             elif intent_result.intent == TeacherIntent.REPORT_GENERATION:
