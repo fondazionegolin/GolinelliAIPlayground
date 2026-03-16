@@ -62,12 +62,18 @@ class Task(Base):
     
     # Relationships
     submissions = relationship("TaskSubmission", back_populates="task", cascade="all, delete-orphan")
-    # UDA child tasks
+    # UDA child tasks (self-referential: parent has many children)
     uda_children = relationship(
         "Task",
         foreign_keys="Task.parent_uda_id",
-        backref="parent_uda",
+        back_populates="parent_uda",
         cascade="all, delete-orphan",
+    )
+    parent_uda = relationship(
+        "Task",
+        foreign_keys="Task.parent_uda_id",
+        back_populates="uda_children",
+        remote_side="Task.id",
     )
 
 
