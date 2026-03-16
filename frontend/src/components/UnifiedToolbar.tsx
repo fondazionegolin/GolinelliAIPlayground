@@ -153,9 +153,9 @@ export function UnifiedToolbar({
       className="flex items-center gap-1 p-2 border-b border-slate-200 bg-white sticky top-0 z-20 shadow-sm h-14 overflow-x-auto"
       onMouseDown={(e) => {
         // Prevent editor from losing focus when clicking any toolbar button.
-        // select/input elements are excluded so their native behaviour is preserved.
+        // select/input/textarea elements are excluded so their native behaviour is preserved.
         const tag = (e.target as HTMLElement).tagName
-        if (tag !== 'SELECT' && tag !== 'INPUT') e.preventDefault()
+        if (tag !== 'SELECT' && tag !== 'INPUT' && tag !== 'TEXTAREA') e.preventDefault()
       }}
     >
       

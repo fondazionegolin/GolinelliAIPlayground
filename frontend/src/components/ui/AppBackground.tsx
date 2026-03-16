@@ -14,39 +14,32 @@ export function AppBackground({ className = "", gradient = DEFAULT_GRADIENT, chi
             <style>
                 {`
                 @keyframes mesh-shift {
-                    0% { background-position: 0% 0%; }
-                    33% { background-position: 100% 50%; }
-                    66% { background-position: 50% 100%; }
-                    100% { background-position: 0% 0%; }
+                    0%   { transform: translate(0%, 0%); }
+                    33%  { transform: translate(-12%, -8%); }
+                    66%  { transform: translate(-8%, -15%); }
+                    100% { transform: translate(0%, 0%); }
                 }
                 .animate-mesh {
                     animation: mesh-shift 60s ease-in-out infinite;
+                    will-change: transform;
                 }
                 `}
             </style>
             {gradient && (
                 <>
+                    {/* Oversized so translate() never exposes edges */}
                     <div
                         aria-hidden="true"
                         className="animate-mesh"
                         style={{
                             position: 'fixed',
-                            inset: -100,
+                            top: '-20%',
+                            left: '-20%',
+                            width: '140%',
+                            height: '140%',
                             zIndex: -1,
                             background: gradient,
-                            backgroundSize: '200% 200%',
                             opacity: 0.9,
-                        }}
-                    />
-                    {/* Vignetta molto sottile per guidare l'occhio senza appesantire */}
-                    <div
-                        aria-hidden="true"
-                        style={{
-                            position: 'fixed',
-                            inset: 0,
-                            zIndex: -1,
-                            background: 'radial-gradient(circle at center, transparent 40%, rgba(0,0,0,0.015) 100%)',
-                            pointerEvents: 'none',
                         }}
                     />
                 </>

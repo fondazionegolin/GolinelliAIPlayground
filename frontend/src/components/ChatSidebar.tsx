@@ -537,19 +537,25 @@ export default function ChatSidebar({
     const viewport = scrollRef.current
     if (!viewport) return
 
+    let rafPending = false
     const onScroll = () => {
-      const distanceFromBottom = viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight
-      const scrolledUp = distanceFromBottom > 200
-      setIsUserScrolledUp(scrolledUp)
-      if (!scrolledUp) setUnreadWhileScrolled(0)
+      if (rafPending) return
+      rafPending = true
+      requestAnimationFrame(() => {
+        rafPending = false
+        const distanceFromBottom = viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight
+        const scrolledUp = distanceFromBottom > 200
+        setIsUserScrolledUp(scrolledUp)
+        if (!scrolledUp) setUnreadWhileScrolled(0)
 
-      if (viewport.scrollTop > 120) return
-      if (!hasMorePublicMessages || loadingOlderPublicMessages) return
-      prependScrollHeightRef.current = viewport.scrollHeight
-      void loadOlderPublicMessages()
+        if (viewport.scrollTop > 120) return
+        if (!hasMorePublicMessages || loadingOlderPublicMessages) return
+        prependScrollHeightRef.current = viewport.scrollHeight
+        void loadOlderPublicMessages()
+      })
     }
 
-    viewport.addEventListener('scroll', onScroll)
+    viewport.addEventListener('scroll', onScroll, { passive: true })
     return () => viewport.removeEventListener('scroll', onScroll)
   }, [activeTab, hasMorePublicMessages, loadingOlderPublicMessages, loadOlderPublicMessages])
 

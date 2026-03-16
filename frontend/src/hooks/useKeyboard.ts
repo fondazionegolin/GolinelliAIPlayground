@@ -21,19 +21,25 @@ export function useKeyboard(): KeyboardState & { dismiss: () => void } {
       return
     }
 
+    let rafPending = false
     const handleViewportResize = () => {
-      const viewportHeight = window.visualViewport!.height
-      const windowHeight = window.innerHeight
+      if (rafPending) return
+      rafPending = true
+      requestAnimationFrame(() => {
+        rafPending = false
+        const viewportHeight = window.visualViewport!.height
+        const windowHeight = window.innerHeight
 
-      // Calculate keyboard height as difference between window and viewport
-      const keyboardHeight = windowHeight - viewportHeight
+        // Calculate keyboard height as difference between window and viewport
+        const keyboardHeight = windowHeight - viewportHeight
 
-      // Consider keyboard open if difference is significant (> 150px)
-      const isKeyboardOpen = keyboardHeight > 150
+        // Consider keyboard open if difference is significant (> 150px)
+        const isKeyboardOpen = keyboardHeight > 150
 
-      setState({
-        isOpen: isKeyboardOpen,
-        height: isKeyboardOpen ? keyboardHeight : 0,
+        setState({
+          isOpen: isKeyboardOpen,
+          height: isKeyboardOpen ? keyboardHeight : 0,
+        })
       })
     }
 

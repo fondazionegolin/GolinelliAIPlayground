@@ -95,12 +95,12 @@ async def list_available_models():
             {"provider": "anthropic", "model": "claude-haiku-4-5-20251001", "name": "Claude Haiku 4.5", "description": "Veloce e leggero", "icon": "anthropic"},
         ])
 
-    # DeepSeek models
-    if settings.DEEPSEEK_API_KEY:
-        models.extend([
-            {"provider": "deepseek", "model": "deepseek-chat", "name": "DeepSeek Chat (V3.2)", "description": "Bilanciato, conversazione e produzione testo", "icon": "deepseek"},
-            {"provider": "deepseek", "model": "deepseek-reasoner", "name": "DeepSeek Reasoner (V3.2)", "description": "Ragionamento avanzato", "icon": "deepseek"},
-        ])
+    # DeepSeek models — hidden from UI (provider available but not shown to users)
+    # if settings.DEEPSEEK_API_KEY:
+    #     models.extend([
+    #         {"provider": "deepseek", "model": "deepseek-chat", ...},
+    #         {"provider": "deepseek", "model": "deepseek-reasoner", ...},
+    #     ])
     
     # Ollama models - fetch dynamically from Ollama API
     if settings.OLLAMA_BASE_URL:
@@ -114,8 +114,9 @@ async def list_available_models():
                     # Add configured Ollama models if available
                     if "mistral-nemo" in available_ollama or "mistral-nemo:latest" in [m["name"] for m in ollama_data.get("models", [])]:
                         models.append({"provider": "ollama", "model": available_ollama.get("mistral-nemo", "mistral-nemo"), "name": "Mistral Nemo", "description": "12B locale, veloce", "icon": "mistral"})
-                    if "deepseek-r1" in available_ollama:
-                        models.append({"provider": "ollama", "model": available_ollama.get("deepseek-r1", "deepseek-r1:8b"), "name": "DeepSeek R1 8B", "description": "Ragionamento avanzato", "icon": "deepseek"})
+                    # DeepSeek R1 via Ollama — hidden from UI
+                    # if "deepseek-r1" in available_ollama:
+                    #     models.append({"provider": "ollama", "model": ..., "name": "DeepSeek R1 8B", ...})
                     if "mistral" in available_ollama:
                         models.append({"provider": "ollama", "model": available_ollama.get("mistral", "mistral"), "name": "Mistral 7B", "description": "Modello locale efficiente", "icon": "mistral"})
         except Exception:

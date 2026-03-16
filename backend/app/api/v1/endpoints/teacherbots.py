@@ -335,6 +335,7 @@ async def publish_teacherbot(
             select(ChatRoom)
             .where(ChatRoom.session_id == session.id)
             .where(ChatRoom.room_type == ChatRoomType.PUBLIC)
+            .limit(1)
         )
         room = room_result.scalar_one_or_none()
         if not room:

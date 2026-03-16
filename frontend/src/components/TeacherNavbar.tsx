@@ -321,9 +321,9 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
               {navItems.map((item) => (
                 <Link key={item.path} to={item.path}>
                   <button
-                    className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-[12px] font-bold transition-all duration-200 ${isActive(item.path)
-                      ? 'bg-[var(--teacher-accent-soft)] text-[var(--teacher-accent-text)] border border-[var(--teacher-accent-border)]/50 shadow-sm backdrop-blur-md'
-                      : 'text-slate-600 hover:bg-slate-100/50 hover:text-[var(--teacher-accent-text)] border border-transparent'
+                    className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-[12px] transition-all duration-200 ${isActive(item.path)
+                      ? 'bg-[var(--teacher-accent)] text-white font-bold border border-[var(--teacher-accent-border)]/50 shadow-sm'
+                      : 'font-normal text-slate-600 hover:bg-slate-100/50 hover:text-[var(--teacher-accent-text)] border border-transparent'
                       }`}
                   >
                     <item.icon className="h-4 w-4" />

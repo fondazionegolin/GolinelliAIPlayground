@@ -21,11 +21,17 @@ const DottedGridBackground = () => {
       { cx: 0.50, cy: 0.15, rx: 220, ry: 120, wx: 0.05, wy: 0.17, ph: 0.8 },
       { cx: 0.30, cy: 0.85, rx: 140, ry: 180, wx: 0.15, wy: 0.09, ph: 3.5 },
     ]
-    let rafId: number, t0: number | null = null
+    let rafId: number, t0: number | null = null, lastFrameTime = 0
+    const FRAME_INTERVAL = 1000 / 30
+    const INFLUENCE_SQ = INFLUENCE * INFLUENCE
     const resize = () => { canvas.width = window.innerWidth; canvas.height = window.innerHeight }
     resize()
     window.addEventListener('resize', resize)
     const frame = (now: number) => {
+      rafId = requestAnimationFrame(frame)
+      if (document.hidden) return
+      if (now - lastFrameTime < FRAME_INTERVAL) return
+      lastFrameTime = now
       if (t0 === null) t0 = now
       const t = (now - t0) * 0.001
       ctx.clearRect(0, 0, canvas.width, canvas.height)
@@ -41,8 +47,8 @@ const DottedGridBackground = () => {
           let dx = 0, dy = 0
           for (const bp of bPos) {
             const ex = gx - bp.x, ey = gy - bp.y
-            const d = Math.sqrt(ex * ex + ey * ey)
-            if (d < INFLUENCE && d > 0) { const f = STRENGTH * (1 - d / INFLUENCE) ** 2; dx += (ex / d) * f; dy += (ey / d) * f }
+            const dSq = ex * ex + ey * ey
+            if (dSq < INFLUENCE_SQ && dSq > 0) { const d = Math.sqrt(dSq); const f = STRENGTH * (1 - d / INFLUENCE) ** 2; dx += (ex / d) * f; dy += (ey / d) * f }
           }
           const disp = Math.sqrt(dx * dx + dy * dy)
           ctx.beginPath()
@@ -51,7 +57,6 @@ const DottedGridBackground = () => {
           ctx.fill()
         }
       }
-      rafId = requestAnimationFrame(frame)
     }
     rafId = requestAnimationFrame(frame)
     return () => { cancelAnimationFrame(rafId); window.removeEventListener('resize', resize) }

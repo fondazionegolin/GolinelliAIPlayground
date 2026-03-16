@@ -6,12 +6,46 @@ Phases: briefing → kb → plan → generating → review
 
 import json
 import logging
+import re
 import uuid
 from typing import Optional, AsyncGenerator
 
 from app.services.llm_service import llm_service
 
 logger = logging.getLogger(__name__)
+
+
+def _extract_json(text: str) -> dict:
+    """
+    Robustly extract a JSON object from an LLM response.
+    Handles:  raw JSON, ```json ... ```, text before/after the JSON block.
+    """
+    text = text.strip()
+
+    # 1. Try direct parse first (fastest path)
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        pass
+
+    # 2. Strip code fences: ```json ... ``` or ``` ... ```
+    fence = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", text, re.DOTALL)
+    if fence:
+        try:
+            return json.loads(fence.group(1))
+        except json.JSONDecodeError:
+            pass
+
+    # 3. Find the first { ... } block in the text (handles preamble/postamble)
+    start = text.find("{")
+    end = text.rfind("}")
+    if start != -1 and end != -1 and end > start:
+        try:
+            return json.loads(text[start:end + 1])
+        except json.JSONDecodeError:
+            pass
+
+    raise ValueError(f"No valid JSON found in LLM response: {text[:200]}")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -138,13 +172,7 @@ async def generate_kb(
         max_tokens=2048,
     )
 
-    raw = response.content.strip()
-    # Strip markdown code fences if present
-    if raw.startswith("```"):
-        raw = raw.split("```")[1]
-        if raw.startswith("json"):
-            raw = raw[4:]
-    return json.loads(raw)
+    return _extract_json(response.content)
 
 
 async def generate_plan(
@@ -163,12 +191,7 @@ async def generate_plan(
         max_tokens=2048,
     )
 
-    raw = response.content.strip()
-    if raw.startswith("```"):
-        raw = raw.split("```")[1]
-        if raw.startswith("json"):
-            raw = raw[4:]
-    return json.loads(raw)
+    return _extract_json(response.content)
 
 
 async def generate_item_content(
@@ -215,10 +238,21 @@ async def chat_iterate(
     """Free-form UDA chat: user can ask to modify KB, plan, or individual items."""
     system = (
         "Sei un assistente didattico specializzato nella progettazione di Unità Didattiche (UDA).\n"
-        "Hai accesso allo stato corrente dell'UDA. Interpreta la richiesta del docente e:\n"
-        "- Se chiede di modificare la KB, rispondi con JSON iniziante con {\"action\":\"update_kb\", \"kb\": {...}}\n"
-        "- Se chiede di modificare il piano, rispondi con JSON iniziante con {\"action\":\"update_plan\", \"plan\": {...}}\n"
-        "- Se chiede domande generali, rispondi in testo libero (senza JSON)\n\n"
+        "Hai accesso allo stato corrente dell'UDA (KB, piano, contenuti generati).\n"
+        "Interpreta la richiesta del docente e rispondi SOLO con JSON (senza testo prima o dopo) se deve essere eseguita un'azione:\n\n"
+        "AZIONI DISPONIBILI:\n"
+        "1. Modificare la Knowledge Base:\n"
+        "   {\"action\":\"update_kb\", \"kb\": {...}}\n\n"
+        "2. Modificare il piano (lista degli item):\n"
+        "   {\"action\":\"update_plan\", \"plan\": {...}}\n\n"
+        "3. Modificare il contenuto di un item già generato (usa l'id esatto dall'elenco children):\n"
+        "   {\"action\":\"update_item\", \"item_id\":\"<uuid>\", \"title\":\"<opzionale>\", \"content\": <contenuto nel formato corretto>}\n"
+        "   Formati contenuto per tipo:\n"
+        "   - lesson:       {\"html\": \"<html completo>\"}\n"
+        "   - quiz:         {\"questions\": [{\"question\":\"...\",\"options\":[...],\"correct\":0,\"explanation\":\"...\"}]}\n"
+        "   - exercise:     {\"instructions\":\"...\",\"questions\":[{\"question\":\"...\",\"hint\":\"...\"}],\"evaluation_rubric\":\"...\"}\n"
+        "   - presentation: {\"slides\": [{\"title\":\"...\",\"content\":\"...\",\"notes\":\"...\"}]}\n\n"
+        "Se la richiesta è solo una domanda o richiede risposta testuale, rispondi liberamente in testo (NO JSON).\n\n"
         f"STATO UDA CORRENTE:\n{json.dumps(uda_state, ensure_ascii=False, indent=2)}"
     )
     msgs = list(history) + [{"role": "user", "content": user_message}]
@@ -228,6 +262,6 @@ async def chat_iterate(
         provider=provider,
         model=model,
         temperature=0.5,
-        max_tokens=2048,
+        max_tokens=4096,
     )
     return response.content.strip()

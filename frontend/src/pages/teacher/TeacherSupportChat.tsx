@@ -27,9 +27,7 @@ const FALLBACK_MODELS = [
   { id: 'gpt-5-mini', name: 'GPT-5 Mini', provider: 'openai' },
   { id: 'gpt-5-nano', name: 'GPT-5 Nano', provider: 'openai' },
   { id: 'claude-haiku-4-5-20251001', name: 'Claude Haiku 4.5', provider: 'anthropic' },
-  { id: 'deepseek-chat', name: 'DeepSeek Chat (V3.2)', provider: 'deepseek' },
   { id: 'mistral-nemo', name: 'Mistral Nemo', provider: 'ollama' },
-  { id: 'deepseek-r1:8b', name: 'DeepSeek R1', provider: 'ollama' },
 ]
 
 const AGENT_MODES = [
