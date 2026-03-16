@@ -133,7 +133,7 @@ ${/converti in formula|formula|latex/i.test(customInstruction)
       const response = await chatFn(
         prompt,
         [],
-        isStudent ? 'tutor' : 'teacher_support',
+        isStudent ? 'tutor' : 'document_assist',
         isStudent ? undefined : 'anthropic',
         isStudent ? undefined : 'claude-haiku-4-5-20251001'
       )
