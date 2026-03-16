@@ -8,6 +8,8 @@ import SessionLivePage from './SessionLivePage'
 import TeacherSupportChat from './TeacherSupportChat'
 import TeacherDocumentsPage from './TeacherDocumentsPage'
 import TeacherMLLabPage from './TeacherMLLabPage'
+import UDAListPage from './UDAListPage'
+import UDACreatorPage from './UDACreatorPage'
 import { TeacherNavbar } from '@/components/TeacherNavbar'
 import ChatSidebar from '@/components/ChatSidebar'
 import { teacherApi } from '@/lib/api'
@@ -243,6 +245,8 @@ export default function TeacherDashboard() {
             <Route path="classes" element={<ClassesPage />} />
             <Route path="sessions" element={<SessionsPage />} />
             <Route path="sessions/:sessionId" element={<SessionLivePage />} />
+            <Route path="classes/:classId/uda" element={<UDAListPage />} />
+            <Route path="classes/:classId/uda/:udaId" element={<UDACreatorPage />} />
           </Routes>
         </main>
 

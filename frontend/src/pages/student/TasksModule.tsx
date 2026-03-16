@@ -3,13 +3,13 @@ import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'framer-motion'
-import { studentApi } from '@/lib/api'
+import { studentApi, udaApi } from '@/lib/api'
 import { useToast } from '@/components/ui/use-toast'
 import {
   ClipboardList, Check, Clock, Send, Lightbulb,
-  ChevronLeft, ChevronRight, X, 
+  ChevronLeft, ChevronRight, X,
   Award, CheckCircle2,
-  Monitor, PenTool, BookOpen
+  Monitor, PenTool, BookOpen, FolderOpen, ChevronDown, ChevronUp
 } from 'lucide-react'
 import { loadStudentAccent, getStudentAccentTheme } from '@/lib/studentAccent'
 
@@ -50,6 +50,21 @@ interface TaskData {
 }
 
 
+interface UdaChild {
+  id: string
+  title: string
+  task_type: string
+  status: string
+  content?: object
+}
+
+interface UdaData {
+  id: string
+  title: string
+  uda_phase: string
+  children: UdaChild[]
+}
+
 interface TasksModuleProps {
   openTaskId?: string | null
   onOpenDocument?: (taskId: string) => void
@@ -65,6 +80,14 @@ export default function TasksModule({ openTaskId, onOpenDocument }: TasksModuleP
     queryKey: ['student-tasks'],
     queryFn: async () => {
       const res = await studentApi.getTasks()
+      return res.data
+    },
+  })
+
+  const { data: udas = [] } = useQuery<UdaData[]>({
+    queryKey: ['student-udas'],
+    queryFn: async () => {
+      const res = await udaApi.getStudentUdas()
       return res.data
     },
   })
@@ -130,6 +153,16 @@ export default function TasksModule({ openTaskId, onOpenDocument }: TasksModuleP
             </div>
           </div>
 
+          {/* UDA Folders */}
+          {udas.length > 0 && (
+            <div className="mb-6 space-y-3">
+              <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wide">Unità Didattiche</h3>
+              {udas.map(uda => (
+                <UdaFolder key={uda.id} uda={uda} accentColor={accentTheme.accent} onOpenDocument={onOpenDocument} onOpenTask={setSelectedTaskId} />
+              ))}
+            </div>
+          )}
+
           <div className="grid grid-cols-3 gap-3">
             {tasks.map((task) => (
               <TaskCard
@@ -174,6 +207,82 @@ const TASK_TILE_STYLES: Record<string, { card: string; iconBg: string; icon: str
   presentation: { card: 'bg-indigo-50/80 border border-indigo-200/70 hover:border-indigo-300/80 hover:bg-indigo-50',     iconBg: 'bg-indigo-100',  icon: 'text-indigo-700',  badge: 'bg-indigo-200 text-indigo-700', time: 'text-indigo-500' },
   exercise:     { card: 'bg-amber-50/80 border border-amber-200/70 hover:border-amber-300/80 hover:bg-amber-50',         iconBg: 'bg-amber-100',   icon: 'text-amber-700',   badge: 'bg-amber-200 text-amber-700',  time: 'text-amber-600' },
   default:      { card: 'bg-slate-50/80 border border-slate-200/70 hover:border-slate-300/80 hover:bg-slate-50',         iconBg: 'bg-slate-100',   icon: 'text-slate-600',   badge: 'bg-slate-200 text-slate-600',  time: 'text-slate-500' },
+}
+
+const UDA_TYPE_LABELS: Record<string, string> = {
+  lesson: 'Documento',
+  quiz: 'Quiz',
+  exercise: 'Esercizio',
+  presentation: 'Presentazione',
+}
+
+function UdaFolder({
+  uda,
+  accentColor,
+  onOpenDocument,
+  onOpenTask,
+}: {
+  uda: UdaData
+  accentColor: string
+  onOpenDocument?: (id: string) => void
+  onOpenTask: (id: string) => void
+}) {
+  const [open, setOpen] = useState(false)
+
+  return (
+    <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+      <button
+        className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-slate-50 transition-colors"
+        onClick={() => setOpen(o => !o)}
+      >
+        <div className="w-8 h-8 rounded-xl bg-indigo-100 flex items-center justify-center flex-shrink-0">
+          <FolderOpen className="h-4 w-4 text-indigo-600" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-semibold text-slate-800 truncate">{uda.title}</p>
+          <p className="text-xs text-slate-400">{uda.children.length} contenuti</p>
+        </div>
+        {open ? <ChevronUp className="h-4 w-4 text-slate-400 flex-shrink-0" /> : <ChevronDown className="h-4 w-4 text-slate-400 flex-shrink-0" />}
+      </button>
+
+      <AnimatePresence>
+        {open && (
+          <motion.div
+            initial={{ height: 0 }}
+            animate={{ height: 'auto' }}
+            exit={{ height: 0 }}
+            className="overflow-hidden"
+          >
+            <div className="px-4 pb-3 space-y-2">
+              {uda.children.map(child => (
+                <button
+                  key={child.id}
+                  className="w-full flex items-center gap-3 bg-slate-50 hover:bg-slate-100 rounded-xl px-3 py-2.5 text-left transition-colors"
+                  onClick={() => {
+                    if ((child.task_type === 'lesson' || child.task_type === 'presentation') && onOpenDocument) {
+                      onOpenDocument(child.id)
+                    } else {
+                      onOpenTask(child.id)
+                    }
+                  }}
+                >
+                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                    child.task_type === 'quiz' ? 'bg-amber-100 text-amber-700' :
+                    child.task_type === 'exercise' ? 'bg-emerald-100 text-emerald-700' :
+                    child.task_type === 'presentation' ? 'bg-purple-100 text-purple-700' :
+                    'bg-blue-100 text-blue-700'
+                  }`}>
+                    {UDA_TYPE_LABELS[child.task_type] || child.task_type}
+                  </span>
+                  <span className="text-sm text-slate-700 flex-1 truncate">{child.title}</span>
+                </button>
+              ))}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  )
 }
 
 function TaskCard({ task, onClick }: { task: TaskData; onClick: () => void; accentColor: string }) {

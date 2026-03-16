@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
-import { useParams, Link, useSearchParams } from 'react-router-dom'
+import { useParams, Link, useSearchParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import type { Socket } from 'socket.io-client'
 import { teacherApi } from '@/lib/api'
@@ -11,7 +11,7 @@ import { useToast } from '@/components/ui/use-toast'
 import {
   ArrowLeft, Users, Copy, Play, Square,
   Snowflake, Sun, Bot, Brain, MessageSquare,
-  ClipboardList, Plus, Trash2, Check, Eye, ChevronDown, ChevronUp, History, User
+  ClipboardList, Plus, Trash2, Check, Eye, ChevronDown, ChevronUp, History, User, BookOpen
 } from 'lucide-react'
 import { llmApi } from '@/lib/api'
 import TaskBuilder from '@/components/TaskBuilder'
@@ -59,6 +59,7 @@ interface SessionLiveData {
 export default function SessionLivePage() {
   const { sessionId } = useParams<{ sessionId: string }>()
   const queryClient = useQueryClient()
+  const navigate = useNavigate()
   const { toast } = useToast()
   useAuthStore() // Keep store connection for auth state
   const [searchParams] = useSearchParams()
@@ -573,12 +574,25 @@ export default function SessionLivePage() {
                           <ClipboardList className="h-5 w-5" />
                           Compiti e Attività
                         </span>
-                        {!showTaskBuilder && (
-                          <Button size="sm" onClick={() => setShowTaskBuilder(true)}>
-                            <Plus className="h-4 w-4 mr-1" />
-                            Nuovo
-                          </Button>
-                        )}
+                        <div className="flex gap-2">
+                          {data?.session?.class_id && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => navigate(`/teacher/classes/${data.session.class_id}/uda`)}
+                              className="text-indigo-600 border-indigo-200 hover:bg-indigo-50"
+                            >
+                              <BookOpen className="h-4 w-4 mr-1" />
+                              UDA
+                            </Button>
+                          )}
+                          {!showTaskBuilder && (
+                            <Button size="sm" onClick={() => setShowTaskBuilder(true)}>
+                              <Plus className="h-4 w-4 mr-1" />
+                              Nuovo
+                            </Button>
+                          )}
+                        </div>
                       </CardTitle>
                     </CardHeader>
                     <CardContent>

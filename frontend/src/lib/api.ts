@@ -218,6 +218,43 @@ export const teacherApi = {
     api.put(`/teacher/sessions/${sessionId}/canvas`, data),
 }
 
+export const udaApi = {
+  // Teacher
+  listUdas: (classId: string) =>
+    api.get(`/teacher/classes/${classId}/udas`),
+  createUda: (classId: string, title: string) => {
+    const fd = new FormData()
+    fd.append('title', title)
+    return api.post(`/teacher/classes/${classId}/udas`, fd)
+  },
+  generateKb: (classId: string, udaId: string, prompt: string, files: File[] = []) => {
+    const fd = new FormData()
+    fd.append('prompt', prompt)
+    files.forEach(f => fd.append('files', f))
+    return api.post(`/teacher/classes/${classId}/udas/${udaId}/generate-kb`, fd)
+  },
+  generatePlan: (classId: string, udaId: string) =>
+    api.post(`/teacher/classes/${classId}/udas/${udaId}/generate-plan`),
+  updateKb: (classId: string, udaId: string, kb: object) =>
+    api.put(`/teacher/classes/${classId}/udas/${udaId}/kb`, kb),
+  updatePlan: (classId: string, udaId: string, plan: object) =>
+    api.put(`/teacher/classes/${classId}/udas/${udaId}/plan`, plan),
+  generateContent: (classId: string, udaId: string) =>
+    `/api/v1/teacher/classes/${classId}/udas/${udaId}/generate-content`, // returns SSE URL
+  chat: (classId: string, udaId: string, message: string) =>
+    api.post(`/teacher/classes/${classId}/udas/${udaId}/chat`, { message }),
+  updateChild: (classId: string, udaId: string, childId: string, data: object) =>
+    api.patch(`/teacher/classes/${classId}/udas/${udaId}/children/${childId}`, data),
+  deleteChild: (classId: string, udaId: string, childId: string) =>
+    api.delete(`/teacher/classes/${classId}/udas/${udaId}/children/${childId}`),
+  publishUda: (classId: string, udaId: string) =>
+    api.post(`/teacher/classes/${classId}/udas/${udaId}/publish`),
+  deleteUda: (classId: string, udaId: string) =>
+    api.delete(`/teacher/classes/${classId}/udas/${udaId}`),
+  // Student
+  getStudentUdas: () => api.get('/student/udas'),
+}
+
 export const chatApi = {
   getRooms: (sessionId: string) =>
     api.get('/chat/rooms', { params: { session_id: sessionId } }),
