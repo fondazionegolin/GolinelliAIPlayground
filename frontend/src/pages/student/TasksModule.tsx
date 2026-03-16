@@ -74,6 +74,7 @@ export default function TasksModule({ openTaskId, onOpenDocument }: TasksModuleP
   const { t } = useTranslation()
   const queryClient = useQueryClient()
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(openTaskId || null)
+  const [selectedUdaChild, setSelectedUdaChild] = useState<UdaChild | null>(null)
   const [accentTheme] = useState(getStudentAccentTheme(loadStudentAccent()))
 
   const { data: tasks, isLoading, refetch } = useQuery<TaskData[]>({
@@ -158,7 +159,7 @@ export default function TasksModule({ openTaskId, onOpenDocument }: TasksModuleP
             <div className="mb-6 space-y-3">
               <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wide">Unità Didattiche</h3>
               {udas.map(uda => (
-                <UdaFolder key={uda.id} uda={uda} accentColor={accentTheme.accent} onOpenDocument={onOpenDocument} onOpenTask={setSelectedTaskId} />
+                <UdaFolder key={uda.id} uda={uda} onOpenChild={setSelectedUdaChild} />
               ))}
             </div>
           )}
@@ -196,6 +197,16 @@ export default function TasksModule({ openTaskId, onOpenDocument }: TasksModuleP
         </AnimatePresence>,
         document.body
       )}
+
+      {/* UDA Child Viewer Modal */}
+      {selectedUdaChild && createPortal(
+        <UdaChildViewerModal
+          child={selectedUdaChild}
+          accentTheme={accentTheme}
+          onClose={() => setSelectedUdaChild(null)}
+        />,
+        document.body
+      )}
     </div>
   )
 }
@@ -218,15 +229,22 @@ const UDA_TYPE_LABELS: Record<string, string> = {
 
 function UdaFolder({
   uda,
-  onOpenDocument,
-  onOpenTask,
+  onOpenChild,
 }: {
   uda: UdaData
-  accentColor?: string
-  onOpenDocument?: (id: string) => void
-  onOpenTask: (id: string) => void
+  onOpenChild: (child: UdaChild) => void
 }) {
   const [open, setOpen] = useState(false)
+
+  const typeChip = (type: string) => {
+    const map: Record<string, string> = {
+      lesson: 'bg-blue-100 text-blue-700',
+      quiz: 'bg-rose-100 text-rose-700',
+      exercise: 'bg-amber-100 text-amber-700',
+      presentation: 'bg-purple-100 text-purple-700',
+    }
+    return map[type] ?? 'bg-slate-100 text-slate-600'
+  }
 
   return (
     <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
@@ -256,24 +274,14 @@ function UdaFolder({
               {uda.children.map(child => (
                 <button
                   key={child.id}
-                  className="w-full flex items-center gap-3 bg-slate-50 hover:bg-slate-100 rounded-xl px-3 py-2.5 text-left transition-colors"
-                  onClick={() => {
-                    if ((child.task_type === 'lesson' || child.task_type === 'presentation') && onOpenDocument) {
-                      onOpenDocument(child.id)
-                    } else {
-                      onOpenTask(child.id)
-                    }
-                  }}
+                  className="w-full flex items-center gap-3 bg-slate-50 hover:bg-indigo-50 hover:border-indigo-100 border border-transparent rounded-xl px-3 py-2.5 text-left transition-colors"
+                  onClick={() => onOpenChild(child)}
                 >
-                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                    child.task_type === 'quiz' ? 'bg-amber-100 text-amber-700' :
-                    child.task_type === 'exercise' ? 'bg-emerald-100 text-emerald-700' :
-                    child.task_type === 'presentation' ? 'bg-purple-100 text-purple-700' :
-                    'bg-blue-100 text-blue-700'
-                  }`}>
+                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium flex-shrink-0 ${typeChip(child.task_type)}`}>
                     {UDA_TYPE_LABELS[child.task_type] || child.task_type}
                   </span>
                   <span className="text-sm text-slate-700 flex-1 truncate">{child.title}</span>
+                  <ChevronRight className="h-3.5 w-3.5 text-slate-300 flex-shrink-0" />
                 </button>
               ))}
             </div>
@@ -752,6 +760,319 @@ function ListChecksIcon(props: any) {
       <path d="M13 12h8" />
       <path d="M13 18h8" />
     </svg>
+  )
+}
+
+function ExerciseUdaContent({ content }: { content: Record<string, unknown> | undefined }) {
+  const instructions = typeof content?.instructions === 'string' ? content.instructions : ''
+  const questions = Array.isArray(content?.questions)
+    ? (content.questions as { question: string; hint?: string }[])
+    : []
+  const rubric = typeof content?.evaluation_rubric === 'string' ? content.evaluation_rubric : ''
+
+  return (
+    <div className="max-w-2xl mx-auto space-y-5">
+      {instructions && (
+        <div className="bg-amber-50 border border-amber-100 rounded-xl p-4">
+          <p className="text-xs font-semibold text-amber-600 uppercase mb-1">Istruzioni</p>
+          <p className="text-sm text-amber-800 leading-relaxed">{instructions}</p>
+        </div>
+      )}
+      {questions.map((q, i) => (
+        <div key={i} className="bg-white border border-slate-100 rounded-xl p-4 shadow-sm">
+          <p className="text-sm font-medium text-slate-800">{i + 1}. {q.question}</p>
+          {q.hint && <p className="text-xs text-indigo-400 mt-1 italic">💡 {q.hint}</p>}
+        </div>
+      ))}
+      {rubric && (
+        <div className="bg-slate-50 border border-slate-100 rounded-xl p-4">
+          <p className="text-xs font-semibold text-slate-500 uppercase mb-1">Criteri di valutazione</p>
+          <p className="text-sm text-slate-600">{rubric}</p>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── UDA Child Viewer Modal ───────────────────────────────────────────────────
+// Renders UDA child content directly from the embedded object — no task-list lookup needed.
+
+function UdaChildViewerModal({
+  child,
+  accentTheme,
+  onClose,
+}: {
+  child: UdaChild
+  accentTheme: ReturnType<typeof getStudentAccentTheme>
+  onClose: () => void
+}) {
+  const TYPE_BADGE: Record<string, { bg: string; text: string; label: string }> = {
+    lesson:       { bg: 'bg-blue-100',    text: 'text-blue-700',    label: 'Documento' },
+    quiz:         { bg: 'bg-rose-100',    text: 'text-rose-700',    label: 'Quiz' },
+    exercise:     { bg: 'bg-amber-100',   text: 'text-amber-700',   label: 'Esercizio' },
+    presentation: { bg: 'bg-purple-100',  text: 'text-purple-700',  label: 'Presentazione' },
+  }
+  const badge = TYPE_BADGE[child.task_type] ?? { bg: 'bg-slate-100', text: 'text-slate-600', label: child.task_type }
+  const content = child.content as Record<string, unknown> | undefined
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 z-[60] bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-0 md:p-4"
+    >
+      <motion.div
+        initial={{ y: 30, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        exit={{ y: 30, opacity: 0 }}
+        transition={{ type: 'spring', stiffness: 320, damping: 32 }}
+        className="w-full h-full md:h-[90vh] md:max-w-3xl md:rounded-2xl overflow-hidden flex flex-col shadow-2xl border border-white/40"
+        style={{ backgroundColor: 'rgba(248,250,252,0.97)', backdropFilter: 'blur(24px)' }}
+      >
+        {/* Header */}
+        <div className="px-5 py-3.5 flex items-center gap-3 border-b border-slate-200/60 bg-white/50 backdrop-blur-sm flex-shrink-0">
+          <button
+            onClick={onClose}
+            className="w-8 h-8 rounded-xl hover:bg-slate-100 flex items-center justify-center text-slate-400 hover:text-slate-700 transition-colors flex-shrink-0"
+          >
+            <X className="h-4 w-4" />
+          </button>
+          <div className="flex-1 min-w-0">
+            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${badge.bg} ${badge.text}`}>
+              {badge.label}
+            </span>
+            <h2 className="font-bold text-base text-slate-900 leading-tight line-clamp-1 mt-0.5">{child.title}</h2>
+          </div>
+        </div>
+
+        {/* Body */}
+        <div className="flex-1 overflow-y-auto p-5 md:p-8">
+          {child.task_type === 'lesson' && (
+            <div
+              className="prose prose-sm max-w-none text-slate-700"
+              dangerouslySetInnerHTML={{ __html: (content?.html as string) ?? '<p>Nessun contenuto disponibile.</p>' }}
+            />
+          )}
+
+          {child.task_type === 'quiz' && (
+            <UdaQuizViewer
+              questions={normalizeQuizQuestions(content?.questions as RawQuizQuestion[] ?? [])}
+              accentTheme={accentTheme}
+            />
+          )}
+
+          {child.task_type === 'exercise' && (
+            <ExerciseUdaContent content={content} />
+          )}
+
+          {child.task_type === 'presentation' && (
+            <UdaSlidesViewer slides={(content?.slides as { title: string; content: string; notes?: string }[]) ?? []} />
+          )}
+        </div>
+      </motion.div>
+    </motion.div>
+  )
+}
+
+// Raw quiz question as it comes from the backend (uses "correct" not "correctIndex")
+interface RawQuizQuestion {
+  question: string
+  options: string[]
+  correct: number
+  explanation?: string
+}
+
+function normalizeQuizQuestions(raw: RawQuizQuestion[]): QuizQuestion[] {
+  return raw.map(q => ({
+    question: q.question,
+    options: q.options,
+    correctIndex: q.correct,      // backend field "correct" → viewer field "correctIndex"
+  }))
+}
+
+function UdaQuizViewer({
+  questions,
+  accentTheme,
+}: {
+  questions: QuizQuestion[]
+  accentTheme: ReturnType<typeof getStudentAccentTheme>
+}) {
+  const [index, setIndex] = useState(0)
+  const [answers, setAnswers] = useState<Record<number, number>>({})
+  const [submitted, setSubmitted] = useState(false)
+
+  if (questions.length === 0) return <p className="text-slate-400 text-sm">Nessuna domanda disponibile.</p>
+
+  const q = questions[index]
+  const total = questions.length
+  const correct = submitted
+    ? questions.filter((qq, i) => answers[i] === qq.correctIndex).length
+    : 0
+
+  if (submitted) {
+    return (
+      <div className="max-w-2xl mx-auto space-y-4">
+        <div className="text-center py-6">
+          <p className="text-3xl font-bold" style={{ color: accentTheme.accent }}>{correct}/{total}</p>
+          <p className="text-slate-500 text-sm mt-1">risposte corrette</p>
+        </div>
+        {questions.map((qq, i) => {
+          const chosen = answers[i]
+          const isRight = chosen === qq.correctIndex
+          return (
+            <div key={i} className={`rounded-xl border p-4 ${isRight ? 'border-emerald-200 bg-emerald-50' : 'border-red-200 bg-red-50'}`}>
+              <p className="text-sm font-medium text-slate-800 mb-2">{i + 1}. {qq.question}</p>
+              {qq.options.map((opt, oi) => (
+                <div key={oi} className={`text-xs px-3 py-1.5 rounded-lg mb-1 ${
+                  oi === qq.correctIndex ? 'bg-emerald-100 text-emerald-700 font-medium' :
+                  oi === chosen && !isRight ? 'bg-red-100 text-red-600' :
+                  'bg-white/60 text-slate-500'
+                }`}>
+                  {opt}
+                </div>
+              ))}
+            </div>
+          )
+        })}
+      </div>
+    )
+  }
+
+  return (
+    <div className="max-w-2xl mx-auto space-y-4">
+      {/* Progress */}
+      <div className="flex items-center gap-3">
+        <div className="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+          <div
+            className="h-full rounded-full transition-all"
+            style={{ width: `${((index + 1) / total) * 100}%`, backgroundColor: accentTheme.accent }}
+          />
+        </div>
+        <span className="text-xs text-slate-400">{index + 1}/{total}</span>
+      </div>
+
+      {/* Question */}
+      <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
+        <p className="text-base font-semibold text-slate-800 mb-4">{q.question}</p>
+        <div className="space-y-2">
+          {q.options.map((opt, oi) => {
+            const selected = answers[index] === oi
+            return (
+              <button
+                key={oi}
+                onClick={() => setAnswers(a => ({ ...a, [index]: oi }))}
+                className={`w-full text-left text-sm px-4 py-3 rounded-xl border transition-all ${
+                  selected
+                    ? 'border-transparent text-white'
+                    : 'border-slate-100 bg-slate-50 text-slate-700 hover:border-slate-200 hover:bg-white'
+                }`}
+                style={selected ? { backgroundColor: accentTheme.accent, borderColor: accentTheme.accent } : {}}
+              >
+                {opt}
+              </button>
+            )
+          })}
+        </div>
+      </div>
+
+      {/* Navigation */}
+      <div className="flex gap-3">
+        <button
+          onClick={() => setIndex(i => i - 1)}
+          disabled={index === 0}
+          className="flex-1 h-11 rounded-xl border border-slate-200 text-sm text-slate-500 disabled:opacity-30 hover:bg-slate-50 transition-colors"
+        >
+          ← Precedente
+        </button>
+        {index < total - 1 ? (
+          <button
+            onClick={() => setIndex(i => i + 1)}
+            disabled={answers[index] === undefined}
+            className="flex-1 h-11 rounded-xl text-sm font-semibold text-white disabled:opacity-40 transition-colors"
+            style={{ backgroundColor: accentTheme.accent }}
+          >
+            Avanti →
+          </button>
+        ) : (
+          <button
+            onClick={() => setSubmitted(true)}
+            disabled={Object.keys(answers).length < total}
+            className="flex-1 h-11 rounded-xl text-sm font-semibold text-white disabled:opacity-40 transition-colors"
+            style={{ backgroundColor: accentTheme.accent }}
+          >
+            Vedi risultati
+          </button>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function UdaSlidesViewer({ slides }: { slides: { title: string; content: string; notes?: string }[] }) {
+  const [index, setIndex] = useState(0)
+  if (slides.length === 0) return <p className="text-slate-400 text-sm">Nessuna slide disponibile.</p>
+  const slide = slides[index]
+  return (
+    <div className="max-w-2xl mx-auto space-y-4">
+      {/* Slide */}
+      <div className="rounded-2xl overflow-hidden border border-slate-100 shadow-sm">
+        <div className="bg-indigo-600 px-6 py-5">
+          <h3 className="text-xl font-bold text-white">{slide.title}</h3>
+        </div>
+        <div className="bg-white p-6 min-h-[180px]">
+          <p className="text-sm text-slate-700 whitespace-pre-line leading-relaxed">{slide.content}</p>
+        </div>
+        {slide.notes && (
+          <div className="bg-slate-50 px-6 py-3 border-t border-slate-100">
+            <p className="text-xs text-slate-400 italic">Note docente: {slide.notes}</p>
+          </div>
+        )}
+      </div>
+
+      {/* Navigation */}
+      <div className="flex items-center gap-3">
+        <button
+          onClick={() => setIndex(i => i - 1)}
+          disabled={index === 0}
+          className="w-10 h-10 rounded-xl border border-slate-200 flex items-center justify-center text-slate-400 disabled:opacity-30 hover:bg-slate-50 transition-colors"
+        >
+          <ChevronLeft className="h-4 w-4" />
+        </button>
+        <div className="flex-1 flex gap-1 justify-center flex-wrap">
+          {slides.map((_, i) => (
+            <button
+              key={i}
+              onClick={() => setIndex(i)}
+              className={`w-2 h-2 rounded-full transition-colors ${i === index ? 'bg-indigo-500' : 'bg-slate-200 hover:bg-slate-300'}`}
+            />
+          ))}
+        </div>
+        <button
+          onClick={() => setIndex(i => i + 1)}
+          disabled={index === slides.length - 1}
+          className="w-10 h-10 rounded-xl border border-slate-200 flex items-center justify-center text-slate-400 disabled:opacity-30 hover:bg-slate-50 transition-colors"
+        >
+          <ChevronRight className="h-4 w-4" />
+        </button>
+      </div>
+
+      {/* Thumbnails */}
+      <div className="flex gap-2 overflow-x-auto pb-1">
+        {slides.map((s, i) => (
+          <button
+            key={i}
+            onClick={() => setIndex(i)}
+            className={`flex-shrink-0 w-24 h-14 rounded-lg border text-left px-2 py-1 overflow-hidden transition-colors ${
+              i === index ? 'border-indigo-400 bg-indigo-50' : 'border-slate-100 bg-white hover:border-slate-300'
+            }`}
+          >
+            <span className="block text-[9px] text-slate-400">{i + 1}</span>
+            <span className="block text-[10px] font-medium text-slate-600 leading-tight line-clamp-2">{s.title}</span>
+          </button>
+        ))}
+      </div>
+    </div>
   )
 }
 
