@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from app.api.v1.endpoints import auth, admin, teacher, student, chat, llm, rag, ml, assessment, files, teacherbots, admin_credits, alerts, stt
+from app.api.v1.endpoints import auth, admin, teacher, student, chat, llm, rag, ml, assessment, files, teacherbots, admin_credits, alerts, stt, uda
 
 api_router = APIRouter()
 
@@ -18,3 +18,4 @@ api_router.include_router(teacherbots.router, tags=["teacherbots"])
 api_router.include_router(admin_credits.router, prefix="/credits", tags=["credits"])
 api_router.include_router(alerts.router, prefix="/alerts", tags=["alerts"])
 api_router.include_router(stt.router, prefix="/stt", tags=["stt"])
+api_router.include_router(uda.router, tags=["uda"])

@@ -16,7 +16,8 @@ import {
   Clock,
   MoreVertical,
   UserPlus,
-  MonitorPlay
+  MonitorPlay,
+  BookOpen
 } from 'lucide-react'
 import {
   DropdownMenu,
@@ -384,17 +385,27 @@ function ClassContainer({ classData }: { classData: ClassData }) {
                 <MonitorPlay className="h-5 w-5 text-violet-500" />
                 Attività Recenti
               </h3>
-              <Button
-                onClick={() => {
-                  setIsCreatingSession(true)
-                  createSessionMutation.mutate()
-                }}
-                disabled={isCreatingSession}
-                className="bg-violet-600 hover:bg-violet-700 shadow-violet-100 text-white"
-              >
-                {isCreatingSession ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Play className="h-4 w-4 mr-2 fill-current" />}
-                Nuova Sessione
-              </Button>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  onClick={() => navigate(`/teacher/classes/${classData.id}/uda`)}
+                  className="border-indigo-200 text-indigo-600 hover:bg-indigo-50"
+                >
+                  <BookOpen className="h-4 w-4 mr-2" />
+                  UDA
+                </Button>
+                <Button
+                  onClick={() => {
+                    setIsCreatingSession(true)
+                    createSessionMutation.mutate()
+                  }}
+                  disabled={isCreatingSession}
+                  className="bg-violet-600 hover:bg-violet-700 shadow-violet-100 text-white"
+                >
+                  {isCreatingSession ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Play className="h-4 w-4 mr-2 fill-current" />}
+                  Nuova Sessione
+                </Button>
+              </div>
             </div>
 
             {/* Latest Active Session Highlight */}

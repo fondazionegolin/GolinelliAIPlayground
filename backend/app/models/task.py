@@ -24,6 +24,7 @@ class TaskType(str, enum.Enum):
     LESSON = "lesson"
     PRESENTATION = "presentation"
     STUDENT_SUBMISSION = "student_submission"  # Document submitted by student
+    UDA = "uda"  # Unità Didattica — class-level container task
 
 
 class Task(Base):
@@ -31,7 +32,14 @@ class Task(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     tenant_id = Column(UUID(as_uuid=True), ForeignKey("tenants.id"), nullable=False)
-    session_id = Column(UUID(as_uuid=True), ForeignKey("sessions.id"), nullable=False)
+    # session_id is nullable: UDA tasks live at class level
+    session_id = Column(UUID(as_uuid=True), ForeignKey("sessions.id"), nullable=True)
+    # class_id for class-level tasks (UDAs propagate to all sessions in the class)
+    class_id = Column(UUID(as_uuid=True), ForeignKey("classes.id"), nullable=True, index=True)
+    # parent_uda_id for child tasks inside a UDA
+    parent_uda_id = Column(UUID(as_uuid=True), ForeignKey("tasks.id"), nullable=True, index=True)
+    # uda_phase tracks the UDA workflow: briefing | kb | plan | generating | review | published
+    uda_phase = Column(String(50), nullable=True)
     
     title = Column(String(255), nullable=False)
     description = Column(Text, nullable=True)
@@ -54,6 +62,13 @@ class Task(Base):
     
     # Relationships
     submissions = relationship("TaskSubmission", back_populates="task", cascade="all, delete-orphan")
+    # UDA child tasks
+    uda_children = relationship(
+        "Task",
+        foreign_keys="Task.parent_uda_id",
+        backref="parent_uda",
+        cascade="all, delete-orphan",
+    )
 
 
 class TaskSubmission(Base):
