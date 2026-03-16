@@ -239,155 +239,130 @@ export default function SessionLivePage() {
   const onlineStudents = useMemo(() => students.filter(s => onlineStudentIds.has(s.id)), [students, onlineStudentIds])
   const offlineStudents = useMemo(() => students.filter(s => !onlineStudentIds.has(s.id)), [students, onlineStudentIds])
 
+  const statusConfig = {
+    active: { dot: 'bg-emerald-500 animate-pulse', badge: 'bg-emerald-100 text-emerald-700', label: 'Attiva' },
+    paused: { dot: 'bg-amber-500', badge: 'bg-amber-100 text-amber-700', label: 'In Pausa' },
+    ended:  { dot: 'bg-red-400',   badge: 'bg-red-100 text-red-700',     label: 'Terminata' },
+    draft:  { dot: 'bg-slate-400', badge: 'bg-slate-100 text-slate-600', label: 'Bozza' },
+  }
+  const sc = statusConfig[session.status as keyof typeof statusConfig] ?? statusConfig.draft
+
   return (
     <>
-      <div className="min-h-screen">
-        {/* Modern Unified Header */}
-        <div className="bg-indigo-600 text-white shadow-lg">
-          <div className="max-w-7xl mx-auto px-4 py-3">
-            <div className="flex items-center justify-between gap-4">
-              {/* Left: Back + Session Info */}
-              <div className="flex items-center gap-4 min-w-0">
-                <Link to="/teacher/classes" className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white/10 hover:bg-white/20 transition-colors">
-                  <ArrowLeft className="h-4 w-4" />
-                  <span className="hidden sm:inline text-sm font-medium">Indietro</span>
-                </Link>
-                <div className="min-w-0">
-                  <h1 className="text-lg md:text-xl font-bold truncate">{session.title}</h1>
-                  <div className="flex items-center gap-2">
-                    <p className="text-sm text-white/80 truncate">{session.class_name}</p>
-                    {session.class_school_grade && (
-                      <span className="text-[11px] px-2 py-0.5 rounded-full bg-white/20 border border-white/30">
-                        {session.class_school_grade}
-                      </span>
-                    )}
-                  </div>
+      <div>
+        {/* Header */}
+        <div className="bg-white border-b border-slate-200 px-6 md:px-8 py-4">
+          <div className="max-w-6xl mx-auto flex items-center justify-between gap-4 flex-wrap">
+            {/* Left: back + title */}
+            <div className="flex items-center gap-3 min-w-0">
+              <Link
+                to="/teacher/classes"
+                className="flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-800 transition-colors flex-shrink-0"
+              >
+                <ArrowLeft className="h-4 w-4" />
+                <span className="hidden sm:inline">Classi</span>
+              </Link>
+              <span className="text-slate-300">/</span>
+              <div className="min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h1 className="text-lg font-bold text-slate-900 truncate">{session.title}</h1>
+                  <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold ${sc.badge}`}>
+                    <span className={`w-1.5 h-1.5 rounded-full ${sc.dot}`} />
+                    {sc.label}
+                  </span>
                 </div>
+                <p className="text-sm text-slate-500 truncate">
+                  {session.class_name}
+                  {session.class_school_grade && <span className="ml-2 text-slate-400">· {session.class_school_grade}</span>}
+                </p>
               </div>
+            </div>
 
-              {/* Center: Code + Status */}
-              <div className="hidden md:flex items-center gap-4">
-                <div className="flex items-center gap-2 px-4 py-2 rounded-lg bg-white/10">
-                  <span className="text-sm text-white/80">Codice:</span>
-                  <code className="text-lg font-mono font-bold tracking-wider">{session.join_code}</code>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 w-7 p-0 text-white hover:bg-white/20"
-                    onClick={() => copyCode(session.join_code)}
-                  >
-                    <Copy className="h-3.5 w-3.5" />
-                  </Button>
-                </div>
-                <span className={`px-3 py-1.5 rounded-full text-sm font-semibold ${session.status === 'active' ? 'bg-emerald-400/90 text-emerald-900' :
-                  session.status === 'paused' ? 'bg-amber-400/90 text-amber-900' :
-                    session.status === 'ended' ? 'bg-red-400/90 text-red-900' :
-                      'bg-slate-300/90 text-slate-700'
-                  }`}>
-                  {session.status === 'active' ? 'Attiva' :
-                    session.status === 'paused' ? 'In Pausa' :
-                      session.status === 'ended' ? 'Terminata' : 'Bozza'}
-                </span>
-              </div>
+            {/* Center: join code */}
+            <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
+              <span className="text-xs text-slate-500">Codice:</span>
+              <code className="font-mono font-bold text-base text-slate-800 tracking-wider">{session.join_code}</code>
+              <button
+                onClick={() => copyCode(session.join_code)}
+                className="ml-1 text-slate-400 hover:text-slate-700 transition-colors"
+                title="Copia codice"
+              >
+                <Copy className="h-3.5 w-3.5" />
+              </button>
+            </div>
 
-              {/* Right: Controls */}
-              <div className="flex items-center gap-2">
-                {session.status === 'draft' && (
-                  <Button
-                    size="sm"
-                    className="bg-emerald-500 hover:bg-emerald-600 text-white border-0"
-                    onClick={() => updateStatusMutation.mutate('active')}
-                  >
-                    <Play className="h-4 w-4 mr-1" />
-                    <span className="hidden sm:inline">Avvia</span>
+            {/* Right: actions */}
+            <div className="flex items-center gap-2">
+              {session.status === 'draft' && (
+                <Button size="sm" onClick={() => updateStatusMutation.mutate('active')}>
+                  <Play className="h-3.5 w-3.5 mr-1.5" />
+                  Avvia
+                </Button>
+              )}
+              {session.status === 'active' && (
+                <>
+                  <Button size="sm" variant="outline" onClick={() => updateStatusMutation.mutate('paused')}>
+                    <Square className="h-3.5 w-3.5 mr-1.5" />
+                    Pausa
                   </Button>
-                )}
-                {session.status === 'active' && (
-                  <>
-                    <Button
-                      size="sm"
-                      className="bg-white/20 hover:bg-white/30 text-white border-0"
-                      onClick={() => updateStatusMutation.mutate('paused')}
-                    >
-                      <Square className="h-4 w-4 mr-1" />
-                      <span className="hidden sm:inline">Pausa</span>
-                    </Button>
-                    <Button
-                      size="sm"
-                      className="bg-red-500/80 hover:bg-red-600 text-white border-0"
-                      onClick={() => updateStatusMutation.mutate('ended')}
-                    >
-                      <span className="hidden sm:inline">Termina</span>
-                      <span className="sm:hidden">Stop</span>
-                    </Button>
-                  </>
-                )}
-                {session.status === 'paused' && (
-                  <Button
-                    size="sm"
-                    className="bg-emerald-500 hover:bg-emerald-600 text-white border-0"
-                    onClick={() => updateStatusMutation.mutate('active')}
-                  >
-                    <Play className="h-4 w-4 mr-1" />
-                    <span className="hidden sm:inline">Riprendi</span>
+                  <Button size="sm" variant="destructive" onClick={() => updateStatusMutation.mutate('ended')}>
+                    Termina
                   </Button>
-                )}
-              </div>
+                </>
+              )}
+              {session.status === 'paused' && (
+                <Button size="sm" onClick={() => updateStatusMutation.mutate('active')}>
+                  <Play className="h-3.5 w-3.5 mr-1.5" />
+                  Riprendi
+                </Button>
+              )}
             </div>
           </div>
         </div>
 
-        {/* Mobile Code Display */}
-        <div className="md:hidden bg-white border-b px-4 py-2 flex items-center justify-center gap-3">
-          <span className="text-sm text-muted-foreground">Codice:</span>
-          <code className="text-lg font-mono font-bold text-violet-600">{session.join_code}</code>
-          <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => copyCode(session.join_code)}>
-            <Copy className="h-3.5 w-3.5" />
-          </Button>
-        </div>
-
         {/* Main Layout: Sidebar + Content */}
-        <div className="max-w-7xl mx-auto p-4 md:p-6">
+        <div className="max-w-6xl mx-auto p-6 md:p-8">
           <div className="flex flex-col lg:flex-row gap-6">
 
             {/* Left Sidebar: Students */}
             <div className="lg:w-72 xl:w-80 shrink-0">
-              <Card className="sticky top-20">
-                <CardHeader className="pb-3">
-                  <CardTitle className="flex items-center justify-between text-base">
-                    <div className="flex items-center gap-2">
-                      <Users className="h-5 w-5 text-violet-600" />
-                      <span>Studenti</span>
-                      <span className="ml-1 px-2 py-0.5 bg-emerald-100 text-emerald-700 text-xs font-semibold rounded-full">
-                        {onlineStudents.length} online
-                      </span>
-                    </div>
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="pt-0">
+              <div className="sticky top-6 bg-white rounded-xl border border-slate-200">
+                <div className="px-5 py-4 border-b border-slate-100">
+                  <div className="flex items-center gap-2">
+                    <Users className="h-4 w-4 text-slate-500" />
+                    <span className="text-sm font-semibold text-slate-800">Studenti</span>
+                    <span className="ml-auto px-2 py-0.5 bg-emerald-100 text-emerald-700 text-xs font-semibold rounded-full">
+                      {onlineStudents.length} online
+                    </span>
+                  </div>
+                </div>
+                <div className="p-3">
                   {students.length === 0 ? (
-                    <div className="text-center py-6 text-muted-foreground">
-                      <Users className="h-10 w-10 mx-auto mb-2 opacity-30" />
-                      <p className="text-sm">Nessuno studente connesso</p>
-                      <p className="text-xs mt-1">Condividi il codice <strong className="text-violet-600">{session.join_code}</strong></p>
+                    <div className="text-center py-8">
+                      <Users className="h-8 w-8 mx-auto mb-2 text-slate-300" />
+                      <p className="text-sm text-slate-500">Nessuno studente</p>
+                      <p className="text-xs text-slate-400 mt-1">Codice: <strong className="text-slate-600">{session.join_code}</strong></p>
                     </div>
                   ) : (
-                    <div className="space-y-1.5 max-h-[60vh] overflow-y-auto">
+                    <div className="space-y-1 max-h-[60vh] overflow-y-auto">
                       {/* Online Students */}
                       {onlineStudents.map((student) => (
                         <div
                           key={student.id}
-                          className={`flex items-center justify-between p-2 rounded-lg transition-colors ${student.is_frozen ? 'bg-blue-50 border border-blue-200' : 'bg-gray-50 hover:bg-gray-100'
-                            }`}
+                          className={`flex items-center justify-between px-3 py-2 rounded-lg transition-colors ${
+                            student.is_frozen
+                              ? 'bg-blue-50 border border-blue-100'
+                              : 'hover:bg-slate-50'
+                          }`}
                         >
                           <div className="flex items-center gap-2 min-w-0">
-                            <div className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" title="Online" />
-                            <span className="font-medium text-sm truncate">{student.nickname}</span>
+                            <div className="w-2 h-2 rounded-full bg-emerald-500 shrink-0 animate-pulse" />
+                            <span className="text-sm font-medium text-slate-800 truncate">{student.nickname}</span>
                             {student.is_frozen && (
                               <Snowflake className="h-3 w-3 text-blue-500 shrink-0" />
                             )}
                           </div>
-                          <div className="flex gap-1 shrink-0">
+                          <div className="flex gap-0.5 shrink-0">
                             <Button
                               size="sm"
                               variant="ghost"
@@ -399,7 +374,7 @@ export default function SessionLivePage() {
                               }}
                               title="Chat Diretta"
                             >
-                              <MessageSquare className="h-3.5 w-3.5 text-gray-400 hover:text-emerald-500" />
+                              <MessageSquare className="h-3.5 w-3.5 text-slate-400" />
                             </Button>
                             <Button
                               size="sm"
@@ -413,9 +388,9 @@ export default function SessionLivePage() {
                               title={student.is_frozen ? 'Sblocca' : 'Blocca'}
                             >
                               {student.is_frozen ? (
-                                <Sun className="h-3.5 w-3.5 text-yellow-500" />
+                                <Sun className="h-3.5 w-3.5 text-amber-500" />
                               ) : (
-                                <Snowflake className="h-3.5 w-3.5 text-blue-400" />
+                                <Snowflake className="h-3.5 w-3.5 text-slate-400" />
                               )}
                             </Button>
                           </div>
@@ -427,37 +402,36 @@ export default function SessionLivePage() {
                         <>
                           <button
                             onClick={() => setShowOfflineStudents(!showOfflineStudents)}
-                            className="w-full flex items-center justify-between px-2 py-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
+                            className="w-full flex items-center justify-between px-3 py-2 text-xs text-slate-400 hover:text-slate-600 transition-colors mt-1"
                           >
                             <span className="flex items-center gap-2">
-                              <User className="h-4 w-4" />
+                              <User className="h-3.5 w-3.5" />
                               Disconnessi ({offlineStudents.length})
                             </span>
                             {showOfflineStudents ? (
-                              <ChevronUp className="h-4 w-4" />
+                              <ChevronUp className="h-3.5 w-3.5" />
                             ) : (
-                              <ChevronDown className="h-4 w-4" />
+                              <ChevronDown className="h-3.5 w-3.5" />
                             )}
                           </button>
 
                           {showOfflineStudents && offlineStudents.map((student) => (
                             <div
                               key={student.id}
-                              className="flex items-center justify-between p-2 rounded-lg bg-gray-50/50 opacity-60"
+                              className="flex items-center justify-between px-3 py-2 rounded-lg opacity-50"
                             >
                               <div className="flex items-center gap-2 min-w-0">
-                                <div className="w-2 h-2 rounded-full bg-gray-300 shrink-0" title="Offline" />
-                                <span className="text-sm truncate">{student.nickname}</span>
+                                <div className="w-2 h-2 rounded-full bg-slate-300 shrink-0" title="Offline" />
+                                <span className="text-sm text-slate-500 truncate">{student.nickname}</span>
                               </div>
-                              <span className="text-xs text-gray-400">offline</span>
                             </div>
                           ))}
                         </>
                       )}
                     </div>
                   )}
-                </CardContent>
-              </Card>
+                </div>
+              </div>
             </div>
 
             {/* Main Content Area */}
@@ -487,12 +461,15 @@ export default function SessionLivePage() {
                       <p className="text-sm text-muted-foreground mb-4">
                         Attiva o disattiva i moduli disponibili per gli studenti in questa sessione.
                       </p>
-                      <div className="space-y-3">
+                      <div className="space-y-2">
                         {modules.map((mod) => (
                           <div
                             key={mod.module_key}
-                            className={`flex items-center justify-between p-4 rounded-lg border ${mod.is_enabled ? 'bg-green-50 border-green-200' : 'bg-gray-50 border-gray-200'
-                              }`}
+                            className={`flex items-center justify-between px-4 py-3 rounded-lg border transition-colors ${
+                              mod.is_enabled
+                                ? 'bg-emerald-50 border-emerald-200'
+                                : 'bg-slate-50 border-slate-200'
+                            }`}
                           >
                             <div className="flex items-center gap-3">
                               {getModuleIcon(mod.module_key)}
@@ -644,7 +621,6 @@ export default function SessionLivePage() {
           </div>
         </div>
       </div>
-
     </>
   )
 }
@@ -743,36 +719,43 @@ function TaskCard({ task, sessionId, isExpanded, onToggle, onPublish, onDelete }
   })
 
   return (
-    <div className={`rounded-lg border ${task.status === 'published' ? 'bg-green-50 border-green-200' : 'bg-gray-50 border-gray-200'}`}>
-      <div className="flex items-center justify-between p-4">
-        <div className="flex-1">
-          <div className="flex items-center gap-2">
-            <span className="font-medium">{task.title}</span>
-            <span className={`text-xs px-2 py-0.5 rounded ${task.status === 'published' ? 'bg-green-100 text-green-700' : 'bg-gray-200 text-gray-600'
-              }`}>
+    <div className={`rounded-xl border transition-colors ${
+      task.status === 'published'
+        ? 'bg-emerald-50/50 border-emerald-200'
+        : 'bg-white border-slate-200'
+    }`}>
+      <div className="flex items-center justify-between px-4 py-3 gap-3">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-sm font-semibold text-slate-800 truncate">{task.title}</span>
+            <span className={`text-[11px] px-2 py-0.5 rounded-full font-medium flex-shrink-0 ${
+              task.status === 'published'
+                ? 'bg-emerald-100 text-emerald-700'
+                : 'bg-slate-100 text-slate-600'
+            }`}>
               {task.status === 'published' ? 'Pubblicato' : 'Bozza'}
             </span>
-            <span className="text-xs px-2 py-0.5 rounded bg-blue-100 text-blue-700 capitalize">
+            <span className="text-[11px] px-2 py-0.5 rounded-full bg-sky-100 text-sky-700 font-medium capitalize flex-shrink-0">
               {task.task_type}
             </span>
           </div>
           {task.description && (
-            <p className="text-sm text-muted-foreground mt-1">{task.description}</p>
+            <p className="text-xs text-slate-500 mt-0.5 truncate">{task.description}</p>
           )}
         </div>
-        <div className="flex gap-2">
-          <Button size="sm" variant="outline" onClick={onToggle}>
-            {isExpanded ? <ChevronUp className="h-4 w-4 mr-1" /> : <ChevronDown className="h-4 w-4 mr-1" />}
-            {isExpanded ? 'Chiudi' : (task.status === 'published' ? 'Dettagli / Risposte' : 'Dettagli')}
+        <div className="flex gap-1.5 shrink-0">
+          <Button size="sm" variant="outline" onClick={onToggle} className="text-xs">
+            {isExpanded ? <ChevronUp className="h-3.5 w-3.5 mr-1" /> : <ChevronDown className="h-3.5 w-3.5 mr-1" />}
+            {isExpanded ? 'Chiudi' : 'Dettagli'}
           </Button>
           {task.status === 'draft' && (
-            <Button size="sm" variant="outline" onClick={onPublish}>
-              <Check className="h-4 w-4 mr-1" />
+            <Button size="sm" variant="outline" onClick={onPublish} className="text-xs">
+              <Check className="h-3.5 w-3.5 mr-1" />
               Pubblica
             </Button>
           )}
-          <Button size="sm" variant="ghost" onClick={onDelete}>
-            <Trash2 className="h-4 w-4 text-red-500" />
+          <Button size="sm" variant="ghost" onClick={onDelete} className="h-8 w-8 p-0">
+            <Trash2 className="h-3.5 w-3.5 text-red-400" />
           </Button>
         </div>
       </div>

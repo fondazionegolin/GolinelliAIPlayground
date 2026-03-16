@@ -571,23 +571,15 @@ function HomeView({
     )
   }
 
-  // Desktop view - original layout
+  // Desktop view
   return (
-    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500 max-w-5xl mx-auto w-full pt-4">
-      {/* Welcome Banner Mobile */}
-      <div className="md:hidden bg-gradient-to-br from-fuchsia-600 to-purple-600 rounded-3xl p-6 text-white shadow-lg shadow-fuchsia-200 mb-8">
-        <h2 className="text-2xl font-bold mb-2">{t('student_dashboard.welcome', { name: sessionInfo.student.nickname })}!</h2>
-        <p className="text-fuchsia-100 opacity-90 text-sm">
-          {t('student_dashboard.welcome_desktop')}
-        </p>
+    <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 max-w-5xl mx-auto w-full p-6 md:p-8">
+      <div className="mb-8">
+        <h1 className="text-2xl font-bold text-slate-900">{t('student_dashboard.tools_title')}</h1>
+        <p className="text-slate-500 text-sm mt-1">{t('student_dashboard.tools_subtitle')}</p>
       </div>
 
-      <div className="px-1">
-        <h2 className="text-2xl font-bold text-slate-800 mb-2">{t('student_dashboard.tools_title')}</h2>
-        <p className="text-slate-500 mb-6">{t('student_dashboard.tools_subtitle')}</p>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {enabledModules.map((moduleKey) => {
           const config = moduleConfig[moduleKey] || {
             label: moduleKey,
@@ -601,28 +593,20 @@ function HomeView({
           const Icon = config.icon
 
           return (
-            <Card
+            <button
               key={moduleKey}
-              className={`cursor-pointer transition-all duration-200 group border rounded-2xl backdrop-blur-sm bg-white/70 hover:bg-white/90 hover:shadow-md ${config.borderClass} ${config.shadowClass}`}
               onClick={() => onNavigate(moduleKey)}
+              className={`group text-left bg-white/80 backdrop-blur-sm rounded-xl border p-6 flex items-start gap-4 hover:shadow-md hover:bg-white transition-all duration-200 ${config.borderClass}`}
             >
-              <CardContent className="p-6 flex flex-col items-start gap-4 h-full">
-                <div className={`w-12 h-12 rounded-xl ${config.bgClass} flex items-center justify-center ${config.colorClass}`}>
-                  <Icon className="h-6 w-6" />
-                </div>
-
-                <div className="space-y-1.5">
-                  <h3 className={`font-bold text-base ${config.colorClass}`}>{config.label}</h3>
-                  <p className="text-slate-500 text-sm leading-relaxed">
-                    {config.description}
-                  </p>
-                </div>
-
-                <div className={`mt-auto flex items-center gap-1 text-xs font-semibold opacity-0 group-hover:opacity-100 transition-all translate-y-1 group-hover:translate-y-0 ${config.colorClass}`}>
-                  {t('student_dashboard.start_now')} →
-                </div>
-              </CardContent>
-            </Card>
+              <div className={`w-12 h-12 rounded-xl ${config.bgClass} flex items-center justify-center ${config.colorClass} flex-shrink-0`}>
+                <Icon className="h-6 w-6" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <h3 className={`font-bold text-base ${config.colorClass} mb-1`}>{config.label}</h3>
+                <p className="text-slate-500 text-sm leading-relaxed">{config.description}</p>
+              </div>
+              <ChevronRight className={`h-5 w-5 mt-0.5 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-all ${config.colorClass}`} />
+            </button>
           )
         })}
       </div>
