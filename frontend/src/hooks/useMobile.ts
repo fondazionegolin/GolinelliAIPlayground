@@ -39,20 +39,26 @@ export function useMobile(): MobileState {
     }
 
     // Detect keyboard using visualViewport API (more reliable than resize)
+    let vvRafPending = false
     const handleVisualViewportResize = () => {
-      if (!window.visualViewport) return
+      if (vvRafPending) return
+      vvRafPending = true
+      requestAnimationFrame(() => {
+        vvRafPending = false
+        if (!window.visualViewport) return
 
-      const viewportHeight = window.visualViewport.height
-      const windowHeight = window.innerHeight
-      const keyboardHeight = windowHeight - viewportHeight
-      const isKeyboardOpen = keyboardHeight > 150 // Threshold to detect keyboard
+        const viewportHeight = window.visualViewport.height
+        const windowHeight = window.innerHeight
+        const keyboardHeight = windowHeight - viewportHeight
+        const isKeyboardOpen = keyboardHeight > 150 // Threshold to detect keyboard
 
-      setState(prev => ({
-        ...prev,
-        isKeyboardOpen,
-        keyboardHeight: isKeyboardOpen ? keyboardHeight : 0,
-        viewportHeight: viewportHeight,
-      }))
+        setState(prev => ({
+          ...prev,
+          isKeyboardOpen,
+          keyboardHeight: isKeyboardOpen ? keyboardHeight : 0,
+          viewportHeight: viewportHeight,
+        }))
+      })
     }
 
     // Get safe area insets from CSS environment variables
@@ -100,14 +106,20 @@ export function useKeyboard() {
   useEffect(() => {
     if (!window.visualViewport) return
 
+    let rafPending = false
     const handleResize = () => {
-      const viewportHeight = window.visualViewport!.height
-      const windowHeight = window.innerHeight
-      const keyboardHeight = windowHeight - viewportHeight
-      const keyboardOpen = keyboardHeight > 150
+      if (rafPending) return
+      rafPending = true
+      requestAnimationFrame(() => {
+        rafPending = false
+        const viewportHeight = window.visualViewport!.height
+        const windowHeight = window.innerHeight
+        const keyboardHeight = windowHeight - viewportHeight
+        const keyboardOpen = keyboardHeight > 150
 
-      setIsOpen(keyboardOpen)
-      setHeight(keyboardOpen ? keyboardHeight : 0)
+        setIsOpen(keyboardOpen)
+        setHeight(keyboardOpen ? keyboardHeight : 0)
+      })
     }
 
     window.visualViewport.addEventListener('resize', handleResize)

@@ -100,6 +100,9 @@ export function useSocket(sessionId?: string): UseSocketReturn {
   const onlineUsersRef = useRef<OnlineUser[]>([])
   const nextCursorRef = useRef<string | null>(null)
   const hasMoreRef = useRef(true)
+  // Batching for high-frequency activity updates
+  const pendingActivityUpdatesRef = useRef<Map<string, { module_key?: string; step?: string }>>(new Map())
+  const activityFlushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const { accessToken } = useAuthStore()
   const studentToken = typeof window !== 'undefined' ? localStorage.getItem('student_token') : null
@@ -256,9 +259,8 @@ export function useSocket(sessionId?: string): UseSocketReturn {
     const socket = io(window.location.origin, {
       path: '/socket.io',
       auth: { token: authToken },
-      // polling first: avoids hammering the browser with failed WebSocket retries
-      // when wss:// is blocked by a proxy. Upgrades to WebSocket automatically if available.
-      transports: ['polling', 'websocket'],
+      // websocket first: much lower CPU than HTTP polling. Falls back to polling if blocked.
+      transports: ['websocket', 'polling'],
       reconnection: true,
       reconnectionAttempts: Infinity,
       reconnectionDelay: 2000,
@@ -383,11 +385,18 @@ export function useSocket(sessionId?: string): UseSocketReturn {
     })
 
     socket.on('activity_update', (data: { student_id: string; module_key?: string; step?: string }) => {
-      setOnlineUsers(prev => prev.map(u =>
-        u.student_id === data.student_id
-          ? { ...u, activity: { module_key: data.module_key, step: data.step } }
-          : u
-      ))
+      // Batch activity updates: accumulate for 150ms then flush in one setState
+      pendingActivityUpdatesRef.current.set(data.student_id, { module_key: data.module_key, step: data.step })
+      if (activityFlushTimerRef.current) clearTimeout(activityFlushTimerRef.current)
+      activityFlushTimerRef.current = setTimeout(() => {
+        const updates = pendingActivityUpdatesRef.current
+        if (updates.size === 0) return
+        pendingActivityUpdatesRef.current = new Map()
+        setOnlineUsers(prev => prev.map(u => {
+          const upd = updates.get(u.student_id)
+          return upd ? { ...u, activity: upd } : u
+        }))
+      }, 150)
     })
 
     socket.on('task_published', (data: { task_id: string; title: string; task_type: string }) => {

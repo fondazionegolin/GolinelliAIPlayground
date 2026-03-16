@@ -1,6 +1,7 @@
+import json
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, or_
 from typing import Annotated
 from datetime import datetime
 from uuid import UUID
@@ -12,7 +13,7 @@ from app.api.deps import get_current_student
 from app.models.session import Session, SessionStudent, SessionModule
 from app.models.credits import CreditLimit
 from app.models.enums import LimitLevel
-from app.models.task import Task, TaskSubmission, TaskStatus
+from app.models.task import Task, TaskSubmission, TaskStatus, TaskType
 from app.models.document_draft import DocumentDraft
 from app.models.session_canvas import SessionCanvas
 from app.schemas.document_draft import DocumentDraftCreate, DocumentDraftUpdate
@@ -421,15 +422,61 @@ async def upsert_session_canvas(
     return payload
 
 
+def _normalize_uda_content(task_type: str, raw_json: str | None) -> str | None:
+    """Convert UDA-generated content_json to the format expected by existing student viewers."""
+    if not raw_json:
+        return raw_json
+    try:
+        c = json.loads(raw_json)
+    except Exception:
+        return raw_json
+
+    if task_type == "lesson":
+        # {html: "..."} → {type: "document_v1", htmlContent: "..."}
+        if "html" in c and "type" not in c:
+            return json.dumps({"type": "document_v1", "htmlContent": c["html"]})
+
+    elif task_type == "presentation":
+        # {slides: [...]} → {type: "presentation_v2", slides: [...]}
+        if "slides" in c and "type" not in c:
+            return json.dumps({"type": "presentation_v2", "slides": c["slides"]})
+
+    elif task_type == "quiz":
+        # questions[].correct → questions[].correctIndex
+        if "questions" in c:
+            for q in c["questions"]:
+                if "correct" in q and "correctIndex" not in q:
+                    q["correctIndex"] = q.pop("correct")
+            return json.dumps(c)
+
+    elif task_type == "exercise":
+        # {instructions, questions:[{question,hint}], evaluation_rubric}
+        # → {text: combined, hint: rubric}  (ExerciseViewer reads text+hint)
+        if "instructions" in c and "text" not in c:
+            parts = []
+            if c.get("instructions"):
+                parts.append(c["instructions"])
+            for i, q in enumerate(c.get("questions", []), 1):
+                parts.append(f"{i}. {q.get('question', '')}")
+            rubric = c.get("evaluation_rubric", "")
+            result = {"text": "\n\n".join(parts)}
+            if rubric:
+                result["hint"] = rubric
+            return json.dumps(result)
+
+    return raw_json
+
+
 @router.get("/tasks")
 async def get_student_tasks(
     db: Annotated[AsyncSession, Depends(get_db)],
     student: Annotated[SessionStudent, Depends(get_current_student)],
 ):
-    """Get all published tasks for the student's session"""
+    """Get all published tasks for the student's session, including UDA children for the class."""
     from app.models.user import User
     from app.models.session import Class
 
+    # ── 1. Session-level tasks ──────────────────────────────────────────────
     result = await db.execute(
         select(Task, User.first_name, User.last_name)
         .join(Session, Task.session_id == Session.id)
@@ -437,20 +484,47 @@ async def get_student_tasks(
         .join(User, Class.teacher_id == User.id)
         .where(Task.session_id == student.session_id)
         .where(Task.status == TaskStatus.PUBLISHED)
+        .where(Task.task_type != TaskType.UDA)
         .order_by(Task.created_at.desc())
     )
     rows = result.all()
-    
-    # Get student's submissions
-    task_ids = [t.id for t, _, _ in rows]
-    submissions = {}
-    if task_ids:
-        result = await db.execute(
+
+    # ── 2. UDA children (class-level) ────────────────────────────────────────
+    sess_result = await db.execute(select(Session).where(Session.id == student.session_id))
+    session = sess_result.scalar_one_or_none()
+    uda_rows: list = []
+    uda_parent_titles: dict[str, str] = {}
+
+    if session:
+        uda_result = await db.execute(
+            select(Task, User.first_name, User.last_name)
+            .join(Class, Task.class_id == Class.id)
+            .join(User, Class.teacher_id == User.id)
+            .where(Task.class_id == session.class_id)
+            .where(Task.parent_uda_id.is_not(None))
+            .where(Task.task_type != TaskType.UDA)
+            .where(Task.status == TaskStatus.PUBLISHED)
+            .order_by(Task.created_at)
+        )
+        uda_rows = uda_result.all()
+
+        # Fetch parent UDA titles for folder grouping
+        parent_ids = list({t.parent_uda_id for t, _, _ in uda_rows if t.parent_uda_id})
+        if parent_ids:
+            parents_res = await db.execute(select(Task).where(Task.id.in_(parent_ids)))
+            for p in parents_res.scalars().all():
+                uda_parent_titles[str(p.id)] = p.title
+
+    # ── 3. Submissions lookup ────────────────────────────────────────────────
+    all_task_ids = [t.id for t, _, _ in rows] + [t.id for t, _, _ in uda_rows]
+    submissions: dict = {}
+    if all_task_ids:
+        subs_result = await db.execute(
             select(TaskSubmission)
-            .where(TaskSubmission.task_id.in_(task_ids))
+            .where(TaskSubmission.task_id.in_(all_task_ids))
             .where(TaskSubmission.student_id == student.id)
         )
-        for sub in result.scalars().all():
+        for sub in subs_result.scalars().all():
             submissions[str(sub.task_id)] = {
                 "id": str(sub.id),
                 "content": sub.content,
@@ -459,22 +533,35 @@ async def get_student_tasks(
                 "score": sub.score,
                 "feedback": sub.feedback,
             }
-    
-    return [
-        {
+
+    # ── 4. Build response ────────────────────────────────────────────────────
+    def _task_dict(t: Task, fn: str, ln: str, uda_folder: str | None = None) -> dict:
+        task_type = t.task_type.value if t.task_type else "exercise"
+        content_json = t.content_json
+        if uda_folder:
+            content_json = _normalize_uda_content(task_type, content_json)
+        row: dict = {
             "id": str(t.id),
             "title": t.title,
             "description": t.description,
-            "task_type": t.task_type.value if t.task_type else "exercise",
+            "task_type": task_type,
             "due_at": t.due_at.isoformat() if t.due_at else None,
             "points": t.points,
-            "content_json": t.content_json,
+            "content_json": content_json,
             "created_at": t.created_at.isoformat(),
             "author_name": f"{fn} {ln}".strip() or "Docente",
             "submission": submissions.get(str(t.id)),
         }
-        for t, fn, ln in rows
+        if uda_folder:
+            row["uda_folder"] = uda_folder
+        return row
+
+    session_tasks = [_task_dict(t, fn, ln) for t, fn, ln in rows]
+    uda_tasks = [
+        _task_dict(t, fn, ln, uda_folder=uda_parent_titles.get(str(t.parent_uda_id), "UDA"))
+        for t, fn, ln in uda_rows
     ]
+    return session_tasks + uda_tasks
 
 
 @router.post("/tasks/{task_id}/submit")
@@ -486,11 +573,22 @@ async def submit_task(
     content_json: str | None = None,
 ):
     """Submit a task response"""
-    # Verify task exists and is published
+    # Resolve class_id so we can also accept class-level UDA children
+    sess_res = await db.execute(select(Session).where(Session.id == student.session_id))
+    student_session = sess_res.scalar_one_or_none()
+
+    # Accept session-level tasks OR class-level UDA children
+    task_cond = Task.session_id == student.session_id
+    if student_session and student_session.class_id:
+        task_cond = or_(
+            task_cond,
+            (Task.class_id == student_session.class_id) & Task.parent_uda_id.isnot(None),
+        )
+
     result = await db.execute(
         select(Task)
         .where(Task.id == task_id)
-        .where(Task.session_id == student.session_id)
+        .where(task_cond)
         .where(Task.status == TaskStatus.PUBLISHED)
     )
     task = result.scalar_one_or_none()

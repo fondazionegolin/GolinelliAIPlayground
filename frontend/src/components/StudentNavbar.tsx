@@ -172,9 +172,9 @@ export function StudentNavbar({
                   <button
                     key={item.label}
                     onClick={() => onNavigate(item.key)}
-                    className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-[12px] font-bold transition-all duration-200 ${activeModule === item.key
-                        ? 'bg-[var(--student-accent-soft)] text-[var(--student-accent-text)] border border-[var(--student-accent-border)]/50 shadow-sm backdrop-blur-md'
-                        : 'text-slate-600 hover:bg-slate-100/50 hover:text-[var(--student-accent-text)] border border-transparent'
+                    className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-[12px] transition-all duration-200 ${activeModule === item.key
+                        ? 'bg-[var(--student-accent)] text-white font-bold border border-[var(--student-accent-border)]/50 shadow-sm'
+                        : 'font-normal text-slate-600 hover:bg-slate-100/50 hover:text-[var(--student-accent-text)] border border-transparent'
                       }`}
                   >
                     <item.icon className="h-4 w-4" />

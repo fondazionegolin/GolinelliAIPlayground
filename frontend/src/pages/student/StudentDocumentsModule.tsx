@@ -59,6 +59,7 @@ interface LessonDocument {
   updatedAt: string
   contentJson: string
   authorName: string
+  udaFolder?: string
 }
 
 interface StudentTask {
@@ -68,6 +69,7 @@ interface StudentTask {
   content_json: string | null
   created_at: string
   author_name?: string
+  uda_folder?: string
 }
 
 // Format dimensions
@@ -281,29 +283,31 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId }: 
 
         const lessons: LessonDocument[] = ((tasksRes.data || []) as StudentTask[])
           .filter((task) => task.task_type === 'lesson' || task.task_type === 'presentation')
-          .map((task) => {
-            if (!task.content_json) return null
+          .reduce<LessonDocument[]>((acc, task) => {
+            if (!task.content_json) return acc
             try {
               const parsed = JSON.parse(task.content_json)
               const type: 'presentation' | 'document' | 'canvas' | null =
                 parsed?.type === 'presentation_v2'
                   ? 'presentation'
                   : (parsed?.type === 'document_v1' ? 'document' : parsed?.type === 'canvas_v1' ? 'canvas' : null)
-              if (!type) return null
-              return {
+              if (!type) return acc
+              const doc: LessonDocument = {
                 id: `lesson-${task.id}`,
                 taskId: task.id,
                 title: task.title,
                 type,
                 updatedAt: task.created_at,
                 contentJson: task.content_json,
-                authorName: task.author_name || 'Docente'
+                authorName: task.author_name || 'Docente',
               }
+              if (task.uda_folder) doc.udaFolder = task.uda_folder
+              acc.push(doc)
             } catch {
-              return null
+              // skip malformed
             }
-          })
-          .filter((item): item is LessonDocument => item !== null)
+            return acc
+          }, [])
           .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
 
         setLessonDocuments(lessons)
@@ -715,30 +719,56 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId }: 
                 </section>
               )}
 
-              {lessonDocuments.length > 0 && (
-                <section>
-                  <h2 className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-3">Materiali del Docente</h2>
-                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-                    {lessonDocuments.map(doc => (
-                      <div
-                        key={doc.id}
-                        onClick={() => loadLesson(doc)}
-                        className="group cursor-pointer bg-white rounded-2xl border border-slate-200 p-4 hover:border-emerald-200 hover:shadow-md transition-all"
-                      >
-                        <div className={`w-10 h-10 rounded-xl mb-3 flex items-center justify-center ${docColor(doc.type)}`}>
-                          {docIcon(doc.type)}
-                        </div>
-                        <p className="text-sm font-bold text-slate-800 truncate mb-1">{doc.title}</p>
-                        <p className="text-[10px] text-slate-400">{doc.authorName} · {new Date(doc.updatedAt).toLocaleDateString('it-IT', { day: 'numeric', month: 'short', year: 'numeric' })}</p>
-                        <div className="mt-2 flex items-center gap-1 text-[10px] text-emerald-600 font-semibold">
-                          <BookOpen className="h-3 w-3" />
-                          Sola lettura
-                        </div>
-                      </div>
-                    ))}
+              {lessonDocuments.length > 0 && (() => {
+                // Group by udaFolder; non-UDA docs go under undefined key
+                const udaFolders: Record<string, LessonDocument[]> = {}
+                const regularLessons: LessonDocument[] = []
+                lessonDocuments.forEach(doc => {
+                  if (doc.udaFolder) {
+                    if (!udaFolders[doc.udaFolder]) udaFolders[doc.udaFolder] = []
+                    udaFolders[doc.udaFolder].push(doc)
+                  } else {
+                    regularLessons.push(doc)
+                  }
+                })
+                const LessonCard = ({ doc }: { doc: LessonDocument }) => (
+                  <div
+                    key={doc.id}
+                    onClick={() => loadLesson(doc)}
+                    className="group cursor-pointer bg-white rounded-2xl border border-slate-200 p-4 hover:border-emerald-200 hover:shadow-md transition-all"
+                  >
+                    <div className={`w-10 h-10 rounded-xl mb-3 flex items-center justify-center ${docColor(doc.type)}`}>
+                      {docIcon(doc.type)}
+                    </div>
+                    <p className="text-sm font-bold text-slate-800 truncate mb-1">{doc.title}</p>
+                    <p className="text-[10px] text-slate-400">{doc.authorName} · {new Date(doc.updatedAt).toLocaleDateString('it-IT', { day: 'numeric', month: 'short', year: 'numeric' })}</p>
+                    <div className="mt-2 flex items-center gap-1 text-[10px] text-emerald-600 font-semibold">
+                      <BookOpen className="h-3 w-3" />
+                      Sola lettura
+                    </div>
                   </div>
-                </section>
-              )}
+                )
+                return (
+                  <>
+                    {regularLessons.length > 0 && (
+                      <section>
+                        <h2 className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-3">Materiali del Docente</h2>
+                        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                          {regularLessons.map(doc => <LessonCard key={doc.id} doc={doc} />)}
+                        </div>
+                      </section>
+                    )}
+                    {Object.entries(udaFolders).map(([folderName, docs]) => (
+                      <section key={folderName}>
+                        <h2 className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-3">📁 {folderName}</h2>
+                        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                          {docs.map(doc => <LessonCard key={doc.id} doc={doc} />)}
+                        </div>
+                      </section>
+                    ))}
+                  </>
+                )
+              })()}
             </div>
           </div>
         </div>
@@ -993,7 +1023,14 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId }: 
                       <p className="text-[10px] font-medium text-slate-400">Nessun materiale condiviso dal docente</p>
                     </div>
                   )}
-                  {lessonDocuments.map((doc) => (
+                  {/* UDA folder headers inline in the list */}
+                  {(() => {
+                    const seen = new Set<string>()
+                    return lessonDocuments.map((doc) => (
+                      <>
+                        {doc.udaFolder && !seen.has(doc.udaFolder) && (() => { seen.add(doc.udaFolder!); return (
+                          <p key={`folder-${doc.udaFolder}`} className="text-[10px] font-bold uppercase tracking-widest text-indigo-400 mt-3 mb-1 px-1">📁 {doc.udaFolder}</p>
+                        ) })()}
                     <div
                       key={doc.id}
                       onClick={() => loadLesson(doc)}
@@ -1038,7 +1075,9 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId }: 
                         </div>
                       </div>
                     </div>
-                  ))}
+                    </>
+                  ))
+                  })()}
                 </div>
               </section>
             </div>

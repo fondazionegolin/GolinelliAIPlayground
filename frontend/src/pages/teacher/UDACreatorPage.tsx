@@ -182,7 +182,7 @@ export default function UDACreatorPage() {
     mutationFn: (message: string) => udaApi.chat(classId!, udaId!, message),
     onSuccess: (res) => {
       setChatMessages(prev => [...prev, { role: 'assistant', content: res.data.reply }])
-      if (res.data.updated_kb || res.data.updated_plan) {
+      if (res.data.updated_kb || res.data.updated_plan || res.data.updated_item) {
         queryClient.invalidateQueries({ queryKey: ['uda', classId, udaId] })
       }
     },

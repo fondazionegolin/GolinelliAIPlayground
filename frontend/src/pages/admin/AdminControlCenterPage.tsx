@@ -62,7 +62,8 @@ export default function AdminOverviewPage() {
   const { data: realtime } = useQuery<RealtimeStatus>({
     queryKey: ['admin-realtime-status'],
     queryFn: async () => (await adminApi.getRealtimeStatus()).data,
-    refetchInterval: 3000,
+    refetchInterval: 15000,
+    refetchOnWindowFocus: false,
   })
 
   const summary = overview?.summary

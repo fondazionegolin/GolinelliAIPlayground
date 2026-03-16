@@ -45,6 +45,15 @@ interface QuizData {
   time_limit_minutes?: number
 }
 
+interface ExerciseData {
+  title: string
+  description: string
+  instructions: string
+  examples?: string[]
+  hint?: string
+  difficulty?: string
+}
+
 interface ChatbotProfile {
   key: string
   name: string
@@ -464,24 +473,10 @@ export default function ChatbotModule({ sessionId, studentId, initialTeacherbotI
   }, [profilesData])
 
   const typewriterEffect = (fullContent: string, messageId: string) => {
-    let currentIndex = 0
-    const chunkSize = 3
-    isGeneratingRef.current = true
-    const interval = setInterval(() => {
-      currentIndex += chunkSize
-      if (currentIndex >= fullContent.length) {
-        currentIndex = fullContent.length
-        clearInterval(interval)
-        isGeneratingRef.current = false
-        setMessages(prev => prev.map(m =>
-          m.id === messageId ? { ...m, content: fullContent } : m
-        ))
-      } else {
-        setMessages(prev => prev.map(m =>
-          m.id === messageId ? { ...m, content: fullContent.substring(0, currentIndex) } : m
-        ))
-      }
-    }, 15)
+    isGeneratingRef.current = false
+    setMessages(prev => prev.map(m =>
+      m.id === messageId ? { ...m, content: fullContent } : m
+    ))
   }
 
   const currentProfile = profiles.find(p => p.key === selectedProfile)
@@ -2041,7 +2036,7 @@ function MessageContent({ content, onQuizSubmit, onInput, darkMode = false }: {
   darkMode?: boolean
 }) {
   const { t } = useTranslation()
-  const { quiz, csv, textContent, isGenerating, generationType, actionMenu, sessionSelector, studentSelector } = parseContentBlocks(content)
+  const { quiz, exercise, csv, textContent, isGenerating, generationType, actionMenu, sessionSelector, studentSelector } = parseContentBlocks(content)
   const { cleanContent, images } = extractBase64Images(textContent)
 
   if (isGenerating) {
@@ -2205,6 +2200,11 @@ function MessageContent({ content, onQuizSubmit, onInput, darkMode = false }: {
           <InteractiveQuiz quiz={quiz} onSubmitAnswers={onQuizSubmit} />
         </div>
       )}
+      {exercise && (
+        <div className="mt-3">
+          <InteractiveExercise exercise={exercise} />
+        </div>
+      )}
       {actionMenu && (
         <ActionMenu 
           actions={actionMenu} 
@@ -2239,23 +2239,67 @@ function MessageContent({ content, onQuizSubmit, onInput, darkMode = false }: {
   )
 }
 
-interface QuizQuestion {
-  question: string
-  options: string[]
-  correctIndex: number
-  explanation?: string
+function InteractiveExercise({ exercise }: { exercise: ExerciseData }) {
+  const [showHint, setShowHint] = useState(false)
+
+  const difficultyLabel: Record<string, string> = {
+    easy: 'Facile', medium: 'Medio', hard: 'Difficile'
+  }
+  const difficultyColor: Record<string, string> = {
+    easy: 'bg-green-100 text-green-700', medium: 'bg-amber-100 text-amber-700', hard: 'bg-red-100 text-red-700'
+  }
+  const diff = exercise.difficulty || 'medium'
+
+  return (
+    <div className="bg-gradient-to-br from-sky-50 to-indigo-50 rounded-xl p-4 border border-sky-200">
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="font-bold text-lg text-sky-800">{exercise.title}</h3>
+        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${difficultyColor[diff] || difficultyColor.medium}`}>
+          {difficultyLabel[diff] || diff}
+        </span>
+      </div>
+      <p className="text-sm text-slate-600 mb-3">{exercise.description}</p>
+      <div className="bg-white rounded-lg p-3 mb-3 shadow-sm">
+        <p className="text-xs font-semibold text-sky-700 mb-1 uppercase tracking-wide">Istruzioni</p>
+        <div className="text-sm text-slate-700 whitespace-pre-wrap">{exercise.instructions}</div>
+      </div>
+      {exercise.examples && exercise.examples.length > 0 && (
+        <div className="mb-3">
+          <p className="text-xs font-semibold text-sky-700 mb-1 uppercase tracking-wide">Esempi</p>
+          <ul className="space-y-1">
+            {exercise.examples.map((ex, i) => (
+              <li key={i} className="text-sm bg-white rounded-lg px-3 py-2 shadow-sm text-slate-700">
+                <span className="text-sky-500 font-medium mr-1">{i + 1}.</span>{ex}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {exercise.hint && (
+        <div>
+          <button
+            onClick={() => setShowHint(h => !h)}
+            className="text-xs text-amber-600 hover:text-amber-700 font-medium underline"
+          >
+            {showHint ? 'Nascondi suggerimento' : '💡 Mostra suggerimento'}
+          </button>
+          {showHint && (
+            <div className="mt-2 p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800">
+              {exercise.hint}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
 }
 
-interface QuizData {
-  title: string
-  questions: QuizQuestion[]
-}
-
-function parseContentBlocks(content: string): { 
-  quiz: QuizData | null; 
-  csv: string | null; 
-  textContent: string; 
-  isGenerating: boolean; 
+function parseContentBlocks(content: string): {
+  quiz: QuizData | null;
+  exercise: ExerciseData | null;
+  csv: string | null;
+  textContent: string;
+  isGenerating: boolean;
   generationType: string | null;
   sessionSelector: any[] | null;
   studentSelector: any[] | null;
@@ -2263,6 +2307,7 @@ function parseContentBlocks(content: string): {
 } {
   let textContent = content
   let quiz: QuizData | null = null
+  let exercise: ExerciseData | null = null
   let csv: string | null = null
   let sessionSelector: any[] | null = null
   let studentSelector: any[] | null = null
@@ -2282,7 +2327,7 @@ function parseContentBlocks(content: string): {
 
   const hasBase64Image = content.includes('data:image') && content.includes('base64')
   if (hasBase64Image) {
-    return { quiz, csv, textContent, isGenerating: false, generationType: null, actionMenu, sessionSelector, studentSelector }
+    return { quiz, exercise, csv, textContent, isGenerating: false, generationType: null, actionMenu, sessionSelector, studentSelector }
   }
 
   if (hasIncompleteQuiz || (generatingQuizPattern.test(content) && content.length < 200)) {
@@ -2352,9 +2397,24 @@ function parseContentBlocks(content: string): {
     } catch (e) { console.error("Error parsing student selector", e) }
   }
 
+  // Extract Exercise
+  const exerciseMatch = content.match(/```exercise_data\s*([\s\S]*?)```/)
+  if (exerciseMatch) {
+    try {
+      const parsed = JSON.parse(exerciseMatch[1].trim())
+      if (parsed && parsed.title && parsed.instructions) {
+        exercise = parsed
+        textContent = textContent.replace(/```exercise_data[\s\S]*?```/, '').trim()
+        isGenerating = false
+      }
+    } catch (e) {
+      // partial block — ignore
+    }
+  }
+
   textContent = textContent.replace(/```json[\s\S]*?```/g, '').trim()
 
-  return { quiz, csv, textContent, isGenerating, generationType, actionMenu, sessionSelector, studentSelector }
+  return { quiz, exercise, csv, textContent, isGenerating, generationType, actionMenu, sessionSelector, studentSelector }
 }
 
 function InteractiveQuiz({ quiz, onSubmitAnswers }: { quiz: QuizData; onSubmitAnswers: (answers: string) => void }) {

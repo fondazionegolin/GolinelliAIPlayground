@@ -234,9 +234,10 @@ export default function SessionLivePage() {
 
   const { session, students, modules } = data
 
-  // Separate online and offline students
-  const onlineStudents = students.filter(s => onlineUsers.some(u => u.student_id === s.id))
-  const offlineStudents = students.filter(s => !onlineUsers.some(u => u.student_id === s.id))
+  // Separate online and offline students - memoized to avoid O(n²) per render
+  const onlineStudentIds = useMemo(() => new Set(onlineUsers.map(u => u.student_id)), [onlineUsers])
+  const onlineStudents = useMemo(() => students.filter(s => onlineStudentIds.has(s.id)), [students, onlineStudentIds])
+  const offlineStudents = useMemo(() => students.filter(s => !onlineStudentIds.has(s.id)), [students, onlineStudentIds])
 
   return (
     <>

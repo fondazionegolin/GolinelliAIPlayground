@@ -21,7 +21,7 @@ from app.api.deps import get_current_teacher, get_current_student
 from app.models.user import User
 from app.models.session import Class, Session, SessionStudent
 from app.models.task import Task, TaskStatus, TaskType
-from app.services.uda_agent import generate_kb, generate_plan, generate_item_content, chat_iterate
+from app.services.uda_agent import generate_kb, generate_plan, generate_item_content, chat_iterate, _extract_json
 from app.services.document_processor import DocumentProcessor
 
 logger = logging.getLogger(__name__)
@@ -318,16 +318,11 @@ async def api_generate_content(
                 if task_type == TaskType.LESSON:
                     task_content = json.dumps({"html": raw_content})
                 else:
-                    # Strip code fences if present
-                    stripped = raw_content.strip()
-                    if stripped.startswith("```"):
-                        stripped = stripped.split("```")[1]
-                        if stripped.startswith("json"):
-                            stripped = stripped[4:]
                     try:
-                        parsed = json.loads(stripped)
+                        parsed = _extract_json(raw_content)
                         task_content = json.dumps(parsed, ensure_ascii=False)
-                    except Exception:
+                    except Exception as parse_err:
+                        logger.error(f"JSON parse failed for {item.get('type')} item '{item.get('title')}': {parse_err}\nRaw: {raw_content[:300]}")
                         task_content = json.dumps({"raw": raw_content})
 
                 child = Task(
@@ -383,7 +378,20 @@ async def uda_chat(
         raise HTTPException(status_code=400, detail="Message required")
 
     content = json.loads(uda.content_json or "{}")
-    uda_state = {"kb": content.get("kb", {}), "plan": content.get("plan", {}), "phase": uda.uda_phase}
+
+    # Load children to include in UDA state so the model knows what items exist
+    cr = await db.execute(
+        select(Task).where(Task.parent_uda_id == uda.id).order_by(Task.created_at)
+    )
+    children = cr.scalars().all()
+
+    uda_state = {
+        "title": uda.title,
+        "phase": uda.uda_phase,
+        "kb": content.get("kb", {}),
+        "plan": content.get("plan", {}),
+        "children": [_child_to_dict(c) for c in children],
+    }
     history = content.get("chat_history", [])
 
     reply = await chat_iterate(user_message, uda_state, history)
@@ -391,6 +399,7 @@ async def uda_chat(
     # Check if model returned a structured action
     updated_kb = None
     updated_plan = None
+    updated_item = None
     reply_text = reply
     if reply.strip().startswith("{"):
         try:
@@ -406,10 +415,35 @@ async def uda_chat(
                 content["plan"] = updated_plan
                 uda.uda_phase = "plan"
                 reply_text = "Ho aggiornato il piano come richiesto."
+            elif action == "update_item":
+                item_id = action_data.get("item_id")
+                if item_id:
+                    child_res = await db.execute(
+                        select(Task).where(
+                            Task.id == uuid_module.UUID(item_id),
+                            Task.parent_uda_id == uda.id,
+                        )
+                    )
+                    child = child_res.scalar_one_or_none()
+                    if child:
+                        if "title" in action_data:
+                            child.title = action_data["title"]
+                        if "content" in action_data:
+                            new_content = action_data["content"]
+                            child.content_json = (
+                                json.dumps(new_content, ensure_ascii=False)
+                                if isinstance(new_content, dict)
+                                else new_content
+                            )
+                        child.updated_at = datetime.utcnow()
+                        updated_item = _child_to_dict(child)
+                        reply_text = f"Ho modificato '{child.title}' come richiesto."
+                    else:
+                        reply_text = "Item non trovato. Verifica di aver indicato l'ID corretto."
         except Exception:
-            pass
+            pass  # keep reply_text = raw reply if JSON parse fails
 
-    # Persist chat history (keep last 20 turns)
+    # Persist chat history (keep last 40 messages = 20 turns)
     history.append({"role": "user", "content": user_message})
     history.append({"role": "assistant", "content": reply_text})
     content["chat_history"] = history[-40:]
@@ -422,6 +456,7 @@ async def uda_chat(
         "reply": reply_text,
         "updated_kb": updated_kb,
         "updated_plan": updated_plan,
+        "updated_item": updated_item,
         "uda_phase": uda.uda_phase,
     }
 

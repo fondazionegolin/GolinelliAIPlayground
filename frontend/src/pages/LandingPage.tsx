@@ -49,6 +49,9 @@ const DottedGridBackground = () => {
 
     let rafId: number
     let t0: number | null = null
+    let lastFrameTime = 0
+    const TARGET_FPS = 30
+    const FRAME_INTERVAL = 1000 / TARGET_FPS
 
     const resize = () => {
       canvas.width = window.innerWidth
@@ -58,6 +61,15 @@ const DottedGridBackground = () => {
     window.addEventListener('resize', resize)
 
     const frame = (now: number) => {
+      rafId = requestAnimationFrame(frame)
+
+      // Pause when tab is hidden
+      if (document.hidden) return
+
+      // Throttle to ~30fps
+      if (now - lastFrameTime < FRAME_INTERVAL) return
+      lastFrameTime = now
+
       if (t0 === null) t0 = now
       const t = (now - t0) * 0.001   // seconds
 
@@ -73,6 +85,8 @@ const DottedGridBackground = () => {
       const cols = Math.ceil(canvas.width  / SPACING) + 2
       const rows = Math.ceil(canvas.height / SPACING) + 2
 
+      const INFLUENCE_SQ = INFLUENCE * INFLUENCE
+
       for (let r = -1; r < rows; r++) {
         for (let c = -1; c < cols; c++) {
           const gx = c * SPACING
@@ -83,8 +97,9 @@ const DottedGridBackground = () => {
           for (const bp of bPos) {
             const ex = gx - bp.x
             const ey = gy - bp.y
-            const d = Math.sqrt(ex * ex + ey * ey)
-            if (d < INFLUENCE && d > 0) {
+            const dSq = ex * ex + ey * ey
+            if (dSq < INFLUENCE_SQ && dSq > 0) {
+              const d = Math.sqrt(dSq)
               const f = STRENGTH * (1 - d / INFLUENCE) ** 2
               dx += (ex / d) * f
               dy += (ey / d) * f
@@ -105,8 +120,6 @@ const DottedGridBackground = () => {
           ctx.fill()
         }
       }
-
-      rafId = requestAnimationFrame(frame)
     }
 
     rafId = requestAnimationFrame(frame)

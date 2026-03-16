@@ -26,6 +26,7 @@ async def get_or_create_public_room(db: AsyncSession, session_id: UUID, tenant_i
         select(ChatRoom)
         .where(ChatRoom.session_id == session_id)
         .where(ChatRoom.room_type == ChatRoomType.PUBLIC)
+        .limit(1)
     )
     room = result.scalar_one_or_none()
     if not room:
@@ -249,6 +250,7 @@ async def clear_session_messages(
         select(ChatRoom)
         .where(ChatRoom.session_id == session_id)
         .where(ChatRoom.room_type == ChatRoomType.PUBLIC)
+        .limit(1)
     )
     room = result.scalar_one_or_none()
     

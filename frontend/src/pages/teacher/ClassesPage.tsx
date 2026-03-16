@@ -206,7 +206,8 @@ function ClassContainer({ classData }: { classData: ClassData }) {
   const { data: sessionsResponse } = useQuery({
     queryKey: ['sessions', classData.id],
     queryFn: () => teacherApi.getSessions(classData.id),
-    refetchInterval: 3000 // Frequent polling for real-time dashboard feel
+    refetchInterval: 10000,
+    refetchOnWindowFocus: false,
   })
 
   const sessions = (sessionsResponse?.data || []) as SessionData[]
