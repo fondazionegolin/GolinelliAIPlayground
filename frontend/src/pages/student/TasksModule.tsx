@@ -218,12 +218,11 @@ const UDA_TYPE_LABELS: Record<string, string> = {
 
 function UdaFolder({
   uda,
-  accentColor,
   onOpenDocument,
   onOpenTask,
 }: {
   uda: UdaData
-  accentColor: string
+  accentColor?: string
   onOpenDocument?: (id: string) => void
   onOpenTask: (id: string) => void
 }) {

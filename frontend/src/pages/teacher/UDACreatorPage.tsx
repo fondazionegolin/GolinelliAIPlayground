@@ -6,15 +6,24 @@ import { Button } from '@/components/ui/button'
 import { useToast } from '@/components/ui/use-toast'
 import {
   ArrowLeft, BookOpen, Lightbulb, List, Zap, Eye, Send,
-  Pencil, Trash2, CheckCircle, Loader2, Plus, ChevronDown, ChevronUp,
+  Pencil, Trash2, CheckCircle, Loader2, ChevronDown, ChevronUp,
   Upload, Bot
 } from 'lucide-react'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
-interface UdaItem {
+// Items inside the plan JSON (pre-generation, from uda_agent)
+interface PlanItem {
   id: string
-  task_id?: string
+  type: string
+  title: string
+  description?: string
+  purpose?: string
+}
+
+// Actual child Task records (post-generation)
+interface ChildTask {
+  id: string
   title: string
   task_type: string
   status: string
@@ -28,8 +37,8 @@ interface Uda {
   status: string
   uda_phase: string
   kb: Record<string, unknown>
-  plan: { items?: UdaItem[] }
-  children: UdaItem[]
+  plan: { items?: PlanItem[] }
+  children: ChildTask[]
   created_at: string
 }
 
