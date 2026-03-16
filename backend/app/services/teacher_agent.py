@@ -21,6 +21,94 @@ logger = logging.getLogger(__name__)
 
 
 # ============================================================================
+# PLATFORM KNOWLEDGE BASE
+# Injected into teacher chat so the assistant can guide teachers on features
+# ============================================================================
+
+PLATFORM_KNOWLEDGE_BASE = """
+## CONOSCENZA DELLA PIATTAFORMA GOLINELLI AI PLAYGROUND
+
+Sei esperto di tutte le funzionalità della piattaforma. Usale per guidare attivamente il docente.
+
+### STRUTTURA DELLA PIATTAFORMA
+La piattaforma è organizzata in **Classi** → **Sessioni** → **Contenuti**.
+- **Classe**: gruppo di studenti (es. "3A Liceo Scientifico"). Ogni classe ha un codice di invito per gli studenti.
+- **Sessione**: spazio di lavoro attivo all'interno di una classe, con chat di classe, chatbot, compiti e documenti.
+- **Studenti**: si uniscono tramite codice sessione e scelgono un nickname. Non serve registrazione.
+
+### FUNZIONALITÀ PER IL DOCENTE
+
+**1. CHAT DI CLASSE**
+- Chat in tempo reale tra docente e studenti della sessione
+- Il docente può pubblicare messaggi, link e **notifiche** (quiz, compiti, documenti) direttamente in chat
+- Le notifiche cliccabili aprono automaticamente il contenuto pubblicato nell'interfaccia dello studente
+
+**2. TEACHERBOT (Chatbot AI personalizzati)**
+- Il docente crea chatbot AI con personalità, tono e obiettivi didattici personalizzati
+- Ogni teacherbot ha: nome, colore, prompt di sistema, modello AI scelto
+- I teacherbot vengono pubblicati nella sessione e gli studenti possono chattare con loro
+- Il docente può **creare report automatici** sulle conversazioni degli studenti con il teacherbot
+- Profili studente standard: Tutor, Quiz, Intervista, Esame Orale, Dataset Generator, Math Coach
+
+**3. COMPITI (Tasks)**
+- Tipi disponibili: **Quiz** (scelta multipla), **Esercizio** (risposta aperta), **Lezione** (documento HTML), **Presentazione** (slides)
+- I compiti vengono creati dall'assistente AI e poi pubblicati nella sessione
+- Gli studenti vedono i compiti nella sezione "Compiti" e ricevono una notifica in chat
+- Il docente può visualizzare le consegne degli studenti e inserire voti/feedback
+- Per creare un quiz: chiedere all'assistente "CREA QUIZ: [argomento]"
+- Per creare un esercizio: chiedere "CREA ESERCIZIO: [testo esercizio]"
+
+**4. DOCUMENTI**
+- Il docente può caricare documenti (PDF, immagini) nella sessione
+- I documenti sono accessibili dagli studenti nella sezione "Documenti"
+- L'assistente può generare lezioni HTML o presentazioni da pubblicare come documenti
+
+**5. ML LAB (Machine Learning)**
+- Modulo per classificazione con AI: immagini, testo, dati CSV
+- Gli studenti possono sperimentare con modelli di classificazione direttamente nel browser
+- Utile per introdurre concetti di machine learning in modo pratico
+
+**6. GENERAZIONE IMMAGINI**
+- I teacherbot possono generare immagini con DALL-E 3 o GPT Image 1
+- Le immagini generate possono essere trascinate nella chat di classe
+- Attivare la generazione immagini nel profilo del chatbot studente
+
+**7. REPORT E ANALYTICS**
+- Report automatici sulle conversazioni studente-teacherbot
+- Statistiche di partecipazione per sessione
+- Andamento dei compiti e delle consegne
+- Per generare un report: chiedere "Voglio un report della sessione [nome]"
+
+**8. LIMITE CREDITI**
+- Ogni docente ha un budget mensile di utilizzo AI (default: 3€/mese)
+- Ogni studente ha un budget di 1€/mese + eventuale bonus di classe (max 5€ totale)
+- L'admin può modificare i limiti del docente; il docente può impostare il bonus studenti
+
+### WORKFLOW CONSIGLIATI
+
+**Creare una lezione interattiva:**
+1. Crea una sessione per la classe
+2. Crea un teacherbot come "guida" alla lezione con istruzioni specifiche sull'argomento
+3. Genera una lezione HTML o presentazione con l'assistente
+4. Pubblica il materiale nella chat di classe
+5. Gli studenti interagiscono con il teacherbot e accedono ai documenti
+6. A fine sessione, genera report sulle conversazioni
+
+**Condurre una verifica:**
+1. Chiedi all'assistente "CREA QUIZ: [argomento] con N domande"
+2. Modifica il quiz se necessario
+3. Pubblica nella chat di classe (notifica automatica agli studenti)
+4. Visualizza le consegne e inserisci voti/feedback
+
+**Progettare un'Unità Didattica (UDA):**
+1. Descrivi l'UDA all'assistente (argomento, obiettivi, ore disponibili, classe)
+2. L'assistente suggerirà struttura, attività, materiali
+3. Genera quiz, esercizi e documenti per ciascuna fase
+4. Crea teacherbot specifici per accompagnare ogni modulo
+"""
+
+
+# ============================================================================
 # INTENT CLASSIFICATION
 # ============================================================================
 
@@ -1185,7 +1273,11 @@ async def run_teacher_agent(
                 # Students don't get report widgets, fallback to generic
                 return await generate_generic_response(messages, provider, model, profile_key)
             logger.info("Routing to report generator (widgets)")
-            return await generate_report_widgets(last_message, structured_context)
+            return await generate_report_widgets(
+                last_message, structured_context,
+                full_context=context, messages=messages,
+                provider=provider, model=model,
+            )
 
         elif intent_result.intent == TeacherIntent.ACTION_MENU:
             logger.info("Routing to action menu generator")
@@ -1243,35 +1335,107 @@ async def generate_generic_response(
     return response.content
 
 
-async def generate_report_widgets(message: str, structured_context: Optional[dict]) -> str:
+async def generate_report_widgets(
+    message: str,
+    structured_context: Optional[dict],
+    full_context: str = "",
+    messages: Optional[list] = None,
+    provider: str = "openai",
+    model: str = "gpt-4o-mini",
+) -> str:
     """
     Generate specialized markdown blocks for session/student selection widgets.
+    If a session or students have already been selected (detected by UUID or
+    explicit follow-up pattern), generate the actual LLM report directly.
     """
+    import re
+
     if not structured_context:
         return "Non ho dati sufficienti per mostrarti i selettori. Assicurati di avere classi e sessioni attive."
 
+    # ---------------------------------------------------------------
+    # Detect if a session has already been selected (UUID in parens)
+    # Frontend sends: "Generami un report per la sessione: Title (UUID)"
+    # ---------------------------------------------------------------
+    uuid_match = re.search(r"\(([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\)", message, re.IGNORECASE)
+    if uuid_match:
+        session_id = uuid_match.group(1)
+        # Find session in structured_context
+        sessions = structured_context.get("active_sessions", [])
+        session_info = next((s for s in sessions if s.get("id") == session_id), None)
+        session_label = session_info["title"] if session_info else session_id
+
+        report_system = f"""Sei un assistente specializzato nell'analisi delle sessioni didattiche.
+Il docente ha richiesto un report dettagliato per la sessione: **{session_label}**.
+
+Hai accesso ai seguenti dati reali della piattaforma:
+{full_context}
+
+Genera un report professionale e dettagliato per questa specifica sessione con le sezioni:
+## 📊 Report: {session_label}
+### Panoramica
+### Partecipazione Studenti
+### Compiti e Consegne
+### Andamento della Chat
+### Osservazioni e Suggerimenti
+
+Usa tabelle markdown dove utile. Sii preciso, basati esclusivamente sui dati forniti."""
+
+        report_messages = [{"role": "user", "content": f"Genera il report completo per la sessione '{session_label}' (ID: {session_id})."}]
+        response = await llm_service.generate(
+            messages=report_messages,
+            system_prompt=report_system,
+            provider=provider,
+            model=model,
+            temperature=0.4,
+            max_tokens=2048,
+        )
+        return response.content
+
+    # ---------------------------------------------------------------
+    # Detect student follow-up: "Generami un report per questi studenti: names"
+    # ---------------------------------------------------------------
+    if "questi studenti:" in message.lower():
+        student_section = message.lower().split("questi studenti:")[-1].strip()
+        students_all = structured_context.get("students", [])
+
+        report_system = f"""Sei un assistente specializzato nell'analisi delle performance degli studenti.
+Il docente ha richiesto un report per specifici studenti: {student_section}
+
+Hai accesso ai seguenti dati reali della piattaforma:
+{full_context}
+
+Genera un report strutturato per ciascuno degli studenti richiesti con:
+## 👥 Report Studenti
+Per ogni studente includi: sessione di appartenenza, partecipazione alla chat, consegne effettuate, voti ottenuti, osservazioni.
+
+Usa tabelle markdown dove utile. Sii preciso, basati esclusivamente sui dati forniti."""
+
+        report_messages = [{"role": "user", "content": f"Genera il report per questi studenti: {student_section}"}]
+        response = await llm_service.generate(
+            messages=report_messages,
+            system_prompt=report_system,
+            provider=provider,
+            model=model,
+            temperature=0.4,
+            max_tokens=2048,
+        )
+        return response.content
+
+    # ---------------------------------------------------------------
+    # No selection yet — show the widget for the user to pick
+    # ---------------------------------------------------------------
     message_lower = message.lower()
-    
-    # Check if asking for students
     is_student_report = any(kw in message_lower for kw in ["studente", "studenti", "ragazz"])
-    
-    response = "Certamente! Per procedere con il report, per favore seleziona gli elementi di tuo interesse tramite il widget qui sotto:\n\n"
-    
+
+    response = "Certamente! Per procedere con il report, seleziona gli elementi di tuo interesse:\n\n"
+
     if is_student_report:
         students = structured_context.get("students", [])
         if not students:
             return "Non ho trovato studenti connessi in nessuna sessione al momento."
-        
-        # Group students by session
-        sessions_students = {}
-        for s in students:
-            s_title = s["session_title"]
-            if s_title not in sessions_students:
-                sessions_students[s_title] = []
-            sessions_students[s_title].append(s)
-            
         response += "### Selezione Studenti\n"
-        response += "Puoi selezionare uno o più studenti dalle sessioni attive per generare un report mirato.\n\n"
+        response += "Seleziona uno o più studenti per generare un report mirato.\n\n"
         response += "```student_selector\n"
         response += json.dumps(students, indent=2, ensure_ascii=False)
         response += "\n```"
@@ -1279,14 +1443,13 @@ async def generate_report_widgets(message: str, structured_context: Optional[dic
         sessions = structured_context.get("active_sessions", [])
         if not sessions:
             return "Al momento non ci sono sessioni attive da analizzare."
-            
         response += "### Selezione Sessione\n"
-        response += "Seleziona la sessione per la quale desideri generare il report dettagliato.\n\n"
+        response += "Seleziona la sessione per la quale vuoi il report dettagliato.\n\n"
         response += "```session_selector\n"
         response += json.dumps(sessions, indent=2, ensure_ascii=False)
         response += "\n```"
-        
-    response += "\n\nUna volta effettuata la selezione, clicca sul tasto 'Genera Report' per procedere."
+
+    response += "\n\nUna volta effettuata la selezione, clicca su 'Genera Report' per procedere."
     return response
 
 
@@ -1357,8 +1520,10 @@ async def generate_with_analytics(
     profile = get_profile("teacher_support")
     base_prompt = profile["system_prompt"]
 
-    # Enhance system prompt with database context
+    # Enhance system prompt with platform knowledge + database context
     enhanced_prompt = f"""{base_prompt}
+
+{PLATFORM_KNOWLEDGE_BASE}
 
 HAI ACCESSO AI SEGUENTI DATI REALI DEL DOCENTE:
 

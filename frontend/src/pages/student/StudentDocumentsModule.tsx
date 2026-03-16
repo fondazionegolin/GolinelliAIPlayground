@@ -652,10 +652,10 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId }: 
       return <FileText className="h-5 w-5" />
     }
     const docColor = (type: string) => {
-      if (type === 'presentation') return 'bg-indigo-500 text-white'
-      if (type === 'sheet') return 'bg-sky-500 text-white'
-      if (type === 'canvas') return 'bg-amber-500 text-white'
-      return 'bg-emerald-500 text-white'
+      if (type === 'presentation') return 'bg-indigo-100 text-indigo-700'
+      if (type === 'sheet') return 'bg-sky-100 text-sky-700'
+      if (type === 'canvas') return 'bg-amber-100 text-amber-700'
+      return 'bg-emerald-100 text-emerald-700'
     }
     return (
       <>
@@ -748,13 +748,15 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId }: 
             <div className="bg-white rounded-lg p-6 w-full max-w-md mx-4 shadow-xl">
               <h3 className="text-lg font-semibold mb-2">Crea nuovo</h3>
               <p className="text-sm text-gray-600 mb-4">Scegli se creare un nuovo documento o una nuova presentazione.</p>
-              <div className="flex flex-col gap-3">
-                <Button className="w-full justify-center bg-emerald-600 hover:bg-emerald-700 text-white" onClick={() => { createNewDocument(); setShowNewModal(false) }}>
-                  <FileText className="h-4 w-4 mr-2" />Nuovo documento
-                </Button>
-                <Button className="w-full justify-center bg-indigo-600 hover:bg-indigo-700 text-white" onClick={() => { createNewPresentation(); setShowNewModal(false) }}>
-                  <Monitor className="h-4 w-4 mr-2" />Nuova presentazione
-                </Button>
+              <div className="flex flex-col gap-2">
+                <button className="w-full flex items-center gap-3 p-3 rounded-xl border border-emerald-200/70 bg-emerald-50/80 hover:bg-emerald-50 hover:border-emerald-300/80 transition-all text-left" onClick={() => { createNewDocument(); setShowNewModal(false) }}>
+                  <div className="w-9 h-9 rounded-lg bg-emerald-100 flex items-center justify-center text-emerald-700 flex-shrink-0"><FileText className="h-4 w-4" /></div>
+                  <span className="text-sm font-semibold text-slate-800">Nuovo documento</span>
+                </button>
+                <button className="w-full flex items-center gap-3 p-3 rounded-xl border border-indigo-200/70 bg-indigo-50/80 hover:bg-indigo-50 hover:border-indigo-300/80 transition-all text-left" onClick={() => { createNewPresentation(); setShowNewModal(false) }}>
+                  <div className="w-9 h-9 rounded-lg bg-indigo-100 flex items-center justify-center text-indigo-700 flex-shrink-0"><Monitor className="h-4 w-4" /></div>
+                  <span className="text-sm font-semibold text-slate-800">Nuova presentazione</span>
+                </button>
               </div>
               <div className="flex justify-end mt-4">
                 <Button variant="outline" onClick={() => setShowNewModal(false)}>Annulla</Button>
@@ -1003,10 +1005,10 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId }: 
                       `}
                     >
                       <div className="flex items-center gap-3 mb-2">
-                        <div className={`p-2 rounded-xl shadow-sm ${
-                          doc.type === 'presentation' ? 'bg-indigo-500 text-white' : 
-                          doc.type === 'canvas' ? 'bg-amber-500 text-white' : 
-                          'bg-emerald-500 text-white'
+                        <div className={`p-2 rounded-xl ${
+                          doc.type === 'presentation' ? 'bg-indigo-100 text-indigo-700' :
+                          doc.type === 'canvas' ? 'bg-amber-100 text-amber-700' :
+                          'bg-emerald-100 text-emerald-700'
                         }`}>
                           {doc.type === 'presentation' ? <Monitor className="h-4 w-4" /> : 
                            doc.type === 'canvas' ? <PenTool className="h-4 w-4" /> : 

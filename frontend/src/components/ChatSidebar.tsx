@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input'
 import {
   Send, MessageSquare, Bell, Paperclip, X, Image as ImageIcon,
   MessagesSquare, MessageCircle, Pin, PinOff,
-  FileText, FileSpreadsheet, File, Download, ExternalLink, Wand2, Users, Folder, Search, Upload, List, Grid2X2, Minus, Plus
+  FileText, FileSpreadsheet, File, Download, ExternalLink, Wand2, Users, Folder, Search, Upload, List, Grid2X2, Minus, Plus, ChevronDown
 } from 'lucide-react'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { DEFAULT_STUDENT_ACCENT, getStudentAccentTheme, type StudentAccentId } from '@/lib/studentAccent'
@@ -330,6 +330,8 @@ export default function ChatSidebar({
   const libraryFileInputRef = useRef<HTMLInputElement>(null)
   const dragCounter = useRef(0)
   const prevMessagesCountRef = useRef(0)
+  const [isUserScrolledUp, setIsUserScrolledUp] = useState(false)
+  const [unreadWhileScrolled, setUnreadWhileScrolled] = useState(0)
 
   const {
     connected,
@@ -519,14 +521,16 @@ export default function ChatSidebar({
       const delta = container.scrollHeight - previousHeight
       container.scrollTop = Math.max(0, container.scrollTop + delta)
     } else if (currentCount > prevCount) {
-      const nearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 120
-      if (nearBottom || prevCount === 0) {
+      if (!isUserScrolledUp || prevCount === 0) {
         container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' })
+        setUnreadWhileScrolled(0)
+      } else {
+        setUnreadWhileScrolled(prev => prev + (currentCount - prevCount))
       }
     }
 
     prevMessagesCountRef.current = currentCount
-  }, [messages, activePrivateChat, privateChats])
+  }, [messages, activePrivateChat, privateChats, isUserScrolledUp])
 
   useEffect(() => {
     if (activeTab !== 'session') return
@@ -534,6 +538,11 @@ export default function ChatSidebar({
     if (!viewport) return
 
     const onScroll = () => {
+      const distanceFromBottom = viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight
+      const scrolledUp = distanceFromBottom > 200
+      setIsUserScrolledUp(scrolledUp)
+      if (!scrolledUp) setUnreadWhileScrolled(0)
+
       if (viewport.scrollTop > 120) return
       if (!hasMorePublicMessages || loadingOlderPublicMessages) return
       prependScrollHeightRef.current = viewport.scrollHeight
@@ -543,6 +552,18 @@ export default function ChatSidebar({
     viewport.addEventListener('scroll', onScroll)
     return () => viewport.removeEventListener('scroll', onScroll)
   }, [activeTab, hasMorePublicMessages, loadingOlderPublicMessages, loadOlderPublicMessages])
+
+  // Scroll to bottom when switching to session tab
+  useEffect(() => {
+    if (activeTab !== 'session') return
+    const viewport = scrollRef.current
+    if (!viewport) return
+    requestAnimationFrame(() => {
+      viewport.scrollTo({ top: viewport.scrollHeight, behavior: 'smooth' })
+      setIsUserScrolledUp(false)
+      setUnreadWhileScrolled(0)
+    })
+  }, [activeTab])
 
   // Mark private chat as read when viewing
   useEffect(() => {
@@ -1180,24 +1201,40 @@ export default function ChatSidebar({
 
   const renderSessionChat = () => {
     return (
-      <div
-        className="flex-1 overflow-y-auto p-4 space-y-6 bg-slate-50/30 scroll-smooth overscroll-contain"
-        ref={scrollRef}
-      >
-        {loadingOlderPublicMessages && (
-          <div className="text-center text-[10px] text-slate-400 uppercase tracking-wider">{t('chat_sidebar.loading_history')}</div>
-        )}
-        {!hasMorePublicMessages && messages.length > 0 && (
-          <div className="text-center text-[10px] text-slate-300 uppercase tracking-wider">{t('chat_sidebar.chat_start')}</div>
-        )}
-        {messages.length === 0 && (
-          <div className="h-full flex flex-col items-center justify-center text-slate-300 opacity-50">
-            <MessageSquare className="h-8 w-8 mb-2" />
-            <p className="text-[10px] font-medium uppercase">{t('chat_sidebar.no_messages')}</p>
-          </div>
-        )}
+      <div className="flex-1 overflow-hidden relative">
+        <div
+          className="h-full overflow-y-auto p-4 space-y-6 bg-slate-50/30 scroll-smooth overscroll-contain"
+          ref={scrollRef}
+        >
+          {loadingOlderPublicMessages && (
+            <div className="text-center text-[10px] text-slate-400 uppercase tracking-wider">{t('chat_sidebar.loading_history')}</div>
+          )}
+          {!hasMorePublicMessages && messages.length > 0 && (
+            <div className="text-center text-[10px] text-slate-300 uppercase tracking-wider">{t('chat_sidebar.chat_start')}</div>
+          )}
+          {messages.length === 0 && (
+            <div className="h-full flex flex-col items-center justify-center text-slate-300 opacity-50">
+              <MessageSquare className="h-8 w-8 mb-2" />
+              <p className="text-[10px] font-medium uppercase">{t('chat_sidebar.no_messages')}</p>
+            </div>
+          )}
 
-        {messages.map((msg, idx) => renderMessage(msg, idx, messages))}
+          {messages.map((msg, idx) => renderMessage(msg, idx, messages))}
+        </div>
+        {isUserScrolledUp && (
+          <button
+            className="absolute bottom-3 left-1/2 -translate-x-1/2 flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#181b1e] text-white text-[11px] font-medium shadow-lg hover:bg-[#181b1e]/80 transition-all z-10"
+            onClick={() => {
+              const container = scrollRef.current
+              if (container) container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' })
+              setIsUserScrolledUp(false)
+              setUnreadWhileScrolled(0)
+            }}
+          >
+            <ChevronDown className="h-3.5 w-3.5" />
+            {unreadWhileScrolled > 0 ? `${unreadWhileScrolled} nuovi messaggi` : 'Scorri in basso'}
+          </button>
+        )}
       </div>
     )
   }

@@ -849,7 +849,6 @@ async def send_teacherbot_message_with_files(
             except:
                 extracted_text = file_data.decode("latin-1", errors="ignore")
         elif mime_type == "application/pdf" or filename.endswith(".pdf"):
-            # Try to extract text from PDF
             try:
                 import fitz  # PyMuPDF
                 pdf_doc = fitz.open(stream=file_data, filetype="pdf")
@@ -861,6 +860,32 @@ async def send_teacherbot_message_with_files(
                 extracted_text = "[PDF content - PyMuPDF not installed]"
             except Exception as e:
                 extracted_text = f"[Error reading PDF: {str(e)}]"
+        elif (
+            mime_type in (
+                "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+                "application/vnd.ms-powerpoint",
+            )
+            or filename.lower().endswith((".pptx", ".ppt"))
+        ):
+            try:
+                import io as _io
+                from pptx import Presentation
+                prs = Presentation(_io.BytesIO(file_data))
+                slide_texts: list[str] = []
+                for i, slide in enumerate(prs.slides, 1):
+                    parts: list[str] = []
+                    for shape in slide.shapes:
+                        if not shape.has_text_frame:
+                            continue
+                        for para in shape.text_frame.paragraphs:
+                            line = " ".join(run.text for run in para.runs if run.text.strip())
+                            if line.strip():
+                                parts.append(line.strip())
+                    if parts:
+                        slide_texts.append(f"## Slide {i}\n" + "\n".join(parts))
+                extracted_text = "\n\n".join(slide_texts)
+            except Exception as e:
+                extracted_text = f"[Error reading PPTX: {str(e)}]"
         elif mime_type.startswith("image/"):
             # For images, we'll use vision API if available
             try:

@@ -477,6 +477,7 @@ async def toggle_module(
         db.add(module)
     
     await db.commit()
+    await sio.emit("module_toggled", {"module_key": module_key, "is_enabled": is_enabled}, room=f"session:{session_id}")
     return {"message": f"Module {module_key} {'enabled' if is_enabled else 'disabled'}", "module_key": module_key, "is_enabled": is_enabled}
 
 
@@ -503,7 +504,7 @@ async def freeze_student(
     
     student.is_frozen = True
     student.frozen_reason = reason
-    
+
     # Log audit event
     audit = AuditEvent(
         tenant_id=student.tenant_id,
@@ -514,8 +515,9 @@ async def freeze_student(
         payload_json={"student_id": str(student_id), "reason": reason},
     )
     db.add(audit)
-    
+
     await db.commit()
+    await sio.emit("student_frozen_status", {"student_id": str(student_id), "is_frozen": True}, room=f"session:{session_id}")
     return {"message": "Student frozen", "student_id": str(student_id)}
 
 
@@ -541,8 +543,9 @@ async def unfreeze_student(
     
     student.is_frozen = False
     student.frozen_reason = None
-    
+
     await db.commit()
+    await sio.emit("student_frozen_status", {"student_id": str(student_id), "is_frozen": False}, room=f"session:{session_id}")
     return {"message": "Student unfrozen", "student_id": str(student_id)}
 
 

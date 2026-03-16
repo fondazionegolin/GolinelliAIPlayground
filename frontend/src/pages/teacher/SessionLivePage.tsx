@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useParams, Link, useSearchParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import type { Socket } from 'socket.io-client'
 import { teacherApi } from '@/lib/api'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -60,7 +61,6 @@ export default function SessionLivePage() {
   const queryClient = useQueryClient()
   const { toast } = useToast()
   useAuthStore() // Keep store connection for auth state
-  const [autoRefresh] = useState(true)
   const [searchParams] = useSearchParams()
   const [activeTab, setActiveTab] = useState(() => {
     const tab = searchParams.get('tab')
@@ -86,8 +86,8 @@ export default function SessionLivePage() {
     staleTime: 1000 * 60 * 10,
   })
 
-  // Get online users
-  const { onlineUsers } = useSocket(sessionId || '')
+  // Get online users + socket for real-time updates
+  const { onlineUsers, socket } = useSocket(sessionId || '')
 
   const { data: tasksData } = useQuery<TaskData[]>({
     queryKey: ['session-tasks', sessionId],
@@ -105,8 +105,38 @@ export default function SessionLivePage() {
       return res.data
     },
     enabled: !!sessionId,
-    refetchInterval: autoRefresh ? 5000 : false,
+    // No polling — updates arrive via socket events (student_frozen_status, module_toggled)
   })
+
+  // Real-time: update session-live cache when backend pushes changes
+  useEffect(() => {
+    if (!socket || !sessionId) return
+
+    const handleFrozenStatus = (d: { student_id: string; is_frozen: boolean }) => {
+      queryClient.setQueryData(['session-live', sessionId], (old: SessionLiveData | undefined) => {
+        if (!old) return old
+        return { ...old, students: old.students.map(s => s.id === d.student_id ? { ...s, is_frozen: d.is_frozen } : s) }
+      })
+    }
+
+    const handleModuleToggled = (d: { module_key: string; is_enabled: boolean }) => {
+      queryClient.setQueryData(['session-live', sessionId], (old: SessionLiveData | undefined) => {
+        if (!old) return old
+        const exists = old.modules.some(m => m.module_key === d.module_key)
+        const modules = exists
+          ? old.modules.map(m => m.module_key === d.module_key ? { ...m, is_enabled: d.is_enabled } : m)
+          : [...old.modules, { module_key: d.module_key, is_enabled: d.is_enabled }]
+        return { ...old, modules }
+      })
+    }
+
+    socket.on('student_frozen_status', handleFrozenStatus)
+    socket.on('module_toggled', handleModuleToggled)
+    return () => {
+      socket.off('student_frozen_status', handleFrozenStatus)
+      socket.off('module_toggled', handleModuleToggled)
+    }
+  }, [socket, sessionId, queryClient])
 
   const updateStatusMutation = useMutation({
     mutationFn: (status: string) => teacherApi.updateSession(sessionId!, { status }),
@@ -586,11 +616,12 @@ export default function SessionLivePage() {
                 </TabsContent>
 
                 <TabsContent value="history">
-                  <AnalyticsPanel sessionId={sessionId!} />
+                  <AnalyticsPanel sessionId={sessionId!} socket={socket} />
                   <ConversationHistoryView
                     sessionId={sessionId!}
                     selectedConversationId={selectedConversationId}
                     onSelectConversation={setSelectedConversationId}
+                    socket={socket}
                   />
                 </TabsContent>
               </Tabs>
@@ -883,44 +914,63 @@ interface MessageData {
   created_at: string
 }
 
-function AnalyticsPanel({ sessionId }: { sessionId: string }) {
+const STOP_WORDS = new Set(['il', 'la', 'lo', 'i', 'le', 'gli', 'un', 'una', 'uno', 'di', 'da', 'in', 'con', 'su', 'per', 'tra', 'fra', 'e', 'o', 'ma', 'se', 'che', 'come', 'cosa', 'the', 'a', 'an', 'is', 'it', 'of', 'to', 'and', 'or', 'how', 'what', 'mi', 'ti', 'si', 'ci', 'vi', 'me', 'te', 'non', 'ho', 'ha', 'hai', 'del', 'dei', 'delle', 'degli', 'al', 'ai', 'alle', 'agli', 'nel', 'nei', 'nelle', 'negli', 'dal', 'dai'])
+
+function AnalyticsPanel({ sessionId, socket }: { sessionId: string; socket: Socket | null }) {
+  const queryClient = useQueryClient()
   const { data: conversations } = useQuery<ConversationData[]>({
     queryKey: ['session-conversations', sessionId],
     queryFn: async () => {
       const res = await llmApi.getSessionConversations(sessionId)
       return res.data
     },
-    refetchInterval: 10000,
+    // No polling — updates come via socket
   })
+
+  // Socket: invalidate conversations when new ones arrive or get updated
+  useEffect(() => {
+    if (!socket) return
+    const invalidate = () => queryClient.invalidateQueries({ queryKey: ['session-conversations', sessionId] })
+    socket.on('conversation_created', invalidate)
+    socket.on('conversation_updated', invalidate)
+    return () => {
+      socket.off('conversation_created', invalidate)
+      socket.off('conversation_updated', invalidate)
+    }
+  }, [socket, sessionId, queryClient])
+
+  // ALL hooks must be before any conditional return — memoize on the possibly-empty array
+  const studentActivity = useMemo(() => {
+    if (!conversations || conversations.length === 0) return []
+    return Object.values(
+      conversations.reduce((acc, conv) => {
+        if (!acc[conv.student_id]) {
+          acc[conv.student_id] = { nickname: conv.student_nickname, messageCount: 0, convCount: 0 }
+        }
+        acc[conv.student_id].messageCount += conv.message_count
+        acc[conv.student_id].convCount += 1
+        return acc
+      }, {} as Record<string, { nickname: string; messageCount: number; convCount: number }>)
+    ).sort((a, b) => b.messageCount - a.messageCount).slice(0, 5)
+  }, [conversations])
+
+  const { topWords, maxFreq } = useMemo(() => {
+    if (!conversations || conversations.length === 0) return { topWords: [], maxFreq: 1 }
+    const wordFreq: Record<string, number> = {}
+    conversations.forEach(conv => {
+      if (!conv.title) return
+      conv.title.toLowerCase().split(/\s+/).forEach(word => {
+        const clean = word.replace(/[^a-zA-ZàèéìòùÀÈÉÌÒÙ]/g, '')
+        if (clean.length > 3 && !STOP_WORDS.has(clean)) {
+          wordFreq[clean] = (wordFreq[clean] || 0) + 1
+        }
+      })
+    })
+    const top = Object.entries(wordFreq).sort((a, b) => b[1] - a[1]).slice(0, 20)
+    return { topWords: top, maxFreq: top[0]?.[1] || 1 }
+  }, [conversations])
 
   if (!conversations || conversations.length === 0) return null
-
-  // Student activity: rank by total message count
-  const studentActivity = Object.values(
-    conversations.reduce((acc, conv) => {
-      if (!acc[conv.student_id]) {
-        acc[conv.student_id] = { nickname: conv.student_nickname, messageCount: 0, convCount: 0 }
-      }
-      acc[conv.student_id].messageCount += conv.message_count
-      acc[conv.student_id].convCount += 1
-      return acc
-    }, {} as Record<string, { nickname: string; messageCount: number; convCount: number }>)
-  ).sort((a, b) => b.messageCount - a.messageCount).slice(0, 5)
-
-  // Word frequency from conversation titles
-  const stopWords = new Set(['il', 'la', 'lo', 'i', 'le', 'gli', 'un', 'una', 'uno', 'di', 'da', 'in', 'con', 'su', 'per', 'tra', 'fra', 'e', 'o', 'ma', 'se', 'che', 'come', 'cosa', 'the', 'a', 'an', 'is', 'it', 'of', 'to', 'and', 'or', 'how', 'what', 'mi', 'ti', 'si', 'ci', 'vi', 'me', 'te', 'non', 'ho', 'ha', 'hai', 'del', 'dei', 'delle', 'degli', 'al', 'ai', 'alle', 'agli', 'nel', 'nei', 'nelle', 'negli', 'dal', 'dai'])
-  const wordFreq: Record<string, number> = {}
-  conversations.forEach(conv => {
-    if (!conv.title) return
-    conv.title.toLowerCase().split(/\s+/).forEach(word => {
-      const clean = word.replace(/[^a-zA-ZàèéìòùÀÈÉÌÒÙ]/g, '')
-      if (clean.length > 3 && !stopWords.has(clean)) {
-        wordFreq[clean] = (wordFreq[clean] || 0) + 1
-      }
-    })
-  })
-  const topWords = Object.entries(wordFreq).sort((a, b) => b[1] - a[1]).slice(0, 20)
-  const maxFreq = topWords[0]?.[1] || 1
 
   return (
     <Card className="mb-4 border-indigo-100">
@@ -989,9 +1039,11 @@ interface ConversationHistoryViewProps {
   sessionId: string
   selectedConversationId: string | null
   onSelectConversation: (id: string | null) => void
+  socket: Socket | null
 }
 
-function ConversationHistoryView({ sessionId, selectedConversationId, onSelectConversation }: ConversationHistoryViewProps) {
+function ConversationHistoryView({ sessionId, selectedConversationId, onSelectConversation, socket }: ConversationHistoryViewProps) {
+  const queryClient = useQueryClient()
   const [expandedStudents, setExpandedStudents] = useState<Set<string>>(new Set())
 
   const toggleStudent = (studentId: string) => {
@@ -1012,7 +1064,7 @@ function ConversationHistoryView({ sessionId, selectedConversationId, onSelectCo
       const res = await llmApi.getSessionConversations(sessionId)
       return res.data
     },
-    refetchInterval: 3000, // Poll every 3 seconds for new conversations
+    // No polling — socket events drive updates
   })
 
   const { data: messages, isLoading: loadingMessages } = useQuery<MessageData[]>({
@@ -1022,8 +1074,41 @@ function ConversationHistoryView({ sessionId, selectedConversationId, onSelectCo
       return res.data
     },
     enabled: !!selectedConversationId,
-    refetchInterval: 2000, // Poll every 2 seconds for new messages
+    // No polling — invalidated by socket when conversation_updated fires
   })
+
+  // Socket: update conversations list and messages in real-time
+  useEffect(() => {
+    if (!socket) return
+
+    const handleConvCreated = (conv: ConversationData) => {
+      queryClient.setQueryData(['session-conversations', sessionId], (old: ConversationData[] | undefined) => {
+        if (!old) return [conv]
+        if (old.find(c => c.id === conv.id)) return old
+        return [conv, ...old]
+      })
+    }
+
+    const handleConvUpdated = (d: { conversation_id: string; message_count: number; updated_at: string }) => {
+      queryClient.setQueryData(['session-conversations', sessionId], (old: ConversationData[] | undefined) =>
+        old?.map(c => c.id === d.conversation_id
+          ? { ...c, message_count: d.message_count, updated_at: d.updated_at }
+          : c
+        )
+      )
+      // If this conversation is open, refresh its messages
+      if (d.conversation_id === selectedConversationId) {
+        queryClient.invalidateQueries({ queryKey: ['conversation-messages', selectedConversationId] })
+      }
+    }
+
+    socket.on('conversation_created', handleConvCreated)
+    socket.on('conversation_updated', handleConvUpdated)
+    return () => {
+      socket.off('conversation_created', handleConvCreated)
+      socket.off('conversation_updated', handleConvUpdated)
+    }
+  }, [socket, sessionId, selectedConversationId, queryClient])
 
   const selectedConversation = conversations?.find(c => c.id === selectedConversationId)
 
