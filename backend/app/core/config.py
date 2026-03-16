@@ -60,6 +60,8 @@ class Settings(BaseSettings):
         "http://playground.golinelli.ai",
         "https://golinelli.ai",
         "http://golinelli.ai",
+        "https://dev.golinelli.ai",
+        "http://dev.golinelli.ai",
     ]
     EXTRA_CORS_ORIGINS: list[str] = []  # Additional origins (e.g. staging URLs) via env var
 
@@ -86,6 +88,8 @@ class Settings(BaseSettings):
     ALLOWED_MIME_TYPES: list[str] = [
         "application/pdf",
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        "application/vnd.ms-powerpoint",
         "text/plain",
         "text/csv",
         "image/png",

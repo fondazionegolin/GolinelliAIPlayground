@@ -56,10 +56,10 @@ export default function ClassificationModule() {
   )
 }
 
-const MODE_TILE_COLORS: Record<string, string> = {
-  images: 'bg-rose-500 hover:bg-rose-600',
-  text: 'bg-blue-600 hover:bg-blue-700',
-  data: 'bg-emerald-500 hover:bg-emerald-600',
+const MODE_TILE_STYLES: Record<string, { card: string; iconBg: string; icon: string }> = {
+  images: { card: 'bg-rose-50/80 border border-rose-200/70 hover:border-rose-300/80 hover:bg-rose-50 hover:shadow-rose-100/60',         iconBg: 'bg-rose-100',    icon: 'text-rose-700' },
+  text:   { card: 'bg-blue-50/80 border border-blue-200/70 hover:border-blue-300/80 hover:bg-blue-50 hover:shadow-blue-100/60',           iconBg: 'bg-blue-100',    icon: 'text-blue-800' },
+  data:   { card: 'bg-emerald-50/80 border border-emerald-200/70 hover:border-emerald-300/80 hover:bg-emerald-50 hover:shadow-emerald-100/60', iconBg: 'bg-emerald-100', icon: 'text-emerald-700' },
 }
 
 function ModeSelector({ onSelect }: { onSelect: (mode: ClassificationMode) => void }) {
@@ -112,20 +112,23 @@ function ModeSelector({ onSelect }: { onSelect: (mode: ClassificationMode) => vo
         </div>
 
         <div className="grid grid-cols-3 gap-3">
-          {modes.map((m) => (
-            <motion.button
-              key={m.key}
-              whileTap={{ scale: 0.97 }}
-              className={`aspect-square flex flex-col items-center justify-center p-4 rounded-2xl text-white shadow-sm hover:shadow-md transition-all ${MODE_TILE_COLORS[m.key] || 'bg-slate-600 hover:bg-slate-700'}`}
-              onClick={() => onSelect(m.key)}
-            >
-              <div className="w-11 h-11 rounded-xl bg-white/20 flex items-center justify-center mb-2.5">
-                <m.icon className="h-6 w-6" />
-              </div>
-              <span className="text-xs font-bold leading-tight text-center">{m.title}</span>
-              <span className="text-[10px] opacity-75 leading-tight mt-1 text-center line-clamp-2">{m.description}</span>
-            </motion.button>
-          ))}
+          {modes.map((m) => {
+            const s = MODE_TILE_STYLES[m.key] ?? { card: 'bg-slate-50/80 border border-slate-200/70 hover:bg-slate-50', iconBg: 'bg-slate-100', icon: 'text-slate-600' }
+            return (
+              <motion.button
+                key={m.key}
+                whileTap={{ scale: 0.97 }}
+                className={`aspect-square flex flex-col items-center justify-center p-4 rounded-2xl shadow-sm hover:shadow-md transition-all backdrop-blur-sm ${s.card}`}
+                onClick={() => onSelect(m.key)}
+              >
+                <div className={`w-11 h-11 rounded-xl ${s.iconBg} ${s.icon} flex items-center justify-center mb-2.5`}>
+                  <m.icon className="h-6 w-6" />
+                </div>
+                <span className="text-xs font-semibold leading-tight text-center text-slate-800">{m.title}</span>
+                <span className="text-[10px] text-slate-500 leading-tight mt-1 text-center line-clamp-2">{m.description}</span>
+              </motion.button>
+            )
+          })}
         </div>
       </div>
     </div>

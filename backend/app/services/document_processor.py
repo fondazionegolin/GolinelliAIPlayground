@@ -116,6 +116,16 @@ class DocumentProcessor:
             text = self._extract_docx(file_bytes, steps)
             return text, 1, []
 
+        if (
+            mime_type in (
+                "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+                "application/vnd.ms-powerpoint",
+            )
+            or fn_lower.endswith((".pptx", ".ppt"))
+        ):
+            text = self._extract_pptx(file_bytes, steps)
+            return text, 1, []
+
         if mime_type.startswith("text/") or fn_lower.endswith((".txt", ".md", ".csv")):
             try:
                 text = file_bytes.decode("utf-8", errors="ignore")
@@ -200,6 +210,30 @@ class DocumentProcessor:
             return text
         except Exception as e:
             steps.append(f"Errore DOCX: {e}")
+            return ""
+
+    def _extract_pptx(self, file_bytes: bytes, steps: list) -> str:
+        try:
+            from pptx import Presentation
+            from pptx.util import Pt
+            prs = Presentation(io.BytesIO(file_bytes))
+            slide_texts: list[str] = []
+            for i, slide in enumerate(prs.slides, 1):
+                parts: list[str] = []
+                for shape in slide.shapes:
+                    if not shape.has_text_frame:
+                        continue
+                    for para in shape.text_frame.paragraphs:
+                        line = " ".join(run.text for run in para.runs if run.text.strip())
+                        if line.strip():
+                            parts.append(line.strip())
+                if parts:
+                    slide_texts.append(f"## Slide {i}\n" + "\n".join(parts))
+            text = "\n\n".join(slide_texts)[:MAX_TEXT_CHARS]
+            steps.append(f"PPTX estratto: {len(prs.slides)} slide, {len(text)} caratteri")
+            return text
+        except Exception as e:
+            steps.append(f"Errore PPTX: {e}")
             return ""
 
     # -------------------------------------------------------------------------

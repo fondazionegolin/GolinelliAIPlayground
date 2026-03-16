@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback, lazy, Suspense } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -57,47 +58,47 @@ function getModuleConfig(t: (key: string) => string): Record<string, ModuleConfi
     label: t('student_dashboard.chat_label'),
     description: t('student_dashboard.chat_desc'),
     icon: MessageSquare,
-    colorClass: 'text-sky-600',
-    bgClass: 'bg-sky-500/5',
-    borderClass: 'border-sky-500/20',
-    shadowClass: 'shadow-sky-100/30',
+    colorClass: 'text-sky-700',
+    bgClass: 'bg-sky-100',
+    borderClass: 'border-sky-200/70',
+    shadowClass: 'shadow-sky-100/40',
   }
   return {
     chatbot: {
       label: t('student_dashboard.chatbot_label'),
       description: t('student_dashboard.chatbot_desc'),
       icon: Bot,
-      colorClass: 'text-indigo-600',
-      bgClass: 'bg-indigo-500/5 hover:bg-indigo-500/10',
-      borderClass: 'border-indigo-500/20 hover:border-indigo-500/40',
-      shadowClass: 'shadow-indigo-100/30',
+      colorClass: 'text-indigo-700',
+      bgClass: 'bg-indigo-100',
+      borderClass: 'border-indigo-200/70',
+      shadowClass: 'shadow-indigo-100/40',
     },
     classification: {
       label: t('student_dashboard.ml_label'),
       description: t('student_dashboard.ml_desc'),
       icon: Brain,
-      colorClass: 'text-emerald-600',
-      bgClass: 'bg-emerald-500/5 hover:bg-emerald-500/10',
-      borderClass: 'border-emerald-500/20 hover:border-emerald-500/40',
-      shadowClass: 'shadow-emerald-100/30',
+      colorClass: 'text-emerald-700',
+      bgClass: 'bg-emerald-100',
+      borderClass: 'border-emerald-200/70',
+      shadowClass: 'shadow-emerald-100/40',
     },
     documents: {
       label: t('student_dashboard.docs_label'),
       description: t('student_dashboard.docs_desc'),
       icon: FileEdit,
-      colorClass: 'text-violet-600',
-      bgClass: 'bg-violet-500/5 hover:bg-violet-500/10',
-      borderClass: 'border-violet-500/20 hover:border-violet-500/40',
-      shadowClass: 'shadow-violet-100/30',
+      colorClass: 'text-violet-700',
+      bgClass: 'bg-violet-100',
+      borderClass: 'border-violet-200/70',
+      shadowClass: 'shadow-violet-100/40',
     },
     self_assessment: {
       label: t('student_dashboard.quiz_label'),
       description: t('student_dashboard.quiz_desc'),
       icon: Award,
-      colorClass: 'text-orange-600',
-      bgClass: 'bg-orange-500/5 hover:bg-orange-500/10',
-      borderClass: 'border-orange-500/20 hover:border-orange-500/40',
-      shadowClass: 'shadow-orange-100/30',
+      colorClass: 'text-amber-700',
+      bgClass: 'bg-amber-100',
+      borderClass: 'border-amber-200/70',
+      shadowClass: 'shadow-amber-100/40',
     },
     chat: chatEntry,
     classe: chatEntry,
@@ -116,6 +117,7 @@ export default function StudentDashboard() {
   const moduleConfig = getModuleConfig(t)
   const { studentSession, logout } = useAuthStore()
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const location = useLocation()
   const [sessionInfo, setSessionInfo] = useState<SessionInfo | null>(null)
   const [loading, setLoading] = useState(true)
@@ -145,38 +147,50 @@ export default function StudentDashboard() {
         ? JSON.parse(notification.notification_data)
         : notification.notification_data
 
-      const notifType = notification.notification_type
-      const effectiveType = (data?.task_type || notifType || '').toString().toLowerCase()
+      const notifType = (notification.notification_type || '').toString().toLowerCase()
+      const taskType = (data?.task_type || '').toString().toLowerCase()
+      const effectiveType = taskType || notifType
+
+      // Teacherbot
+      if (notifType === 'teacherbot_published') {
+        const teacherbotId = data?.teacherbot_id
+        if (teacherbotId) {
+          setSelectedTeacherbotId(teacherbotId)
+          setActiveModule('chatbot')
+        }
+        return
+      }
+
       const taskId = data?.task_id
-      if (taskId && (effectiveType === 'quiz' || effectiveType === 'exercise' || effectiveType === 'task')) {
-        setOpenTaskId(null)
-        setTimeout(() => setOpenTaskId(taskId), 0)
-        setActiveModule('self_assessment')
-        navigate({ search: `?taskId=${taskId}&jump=${Date.now()}` }, { replace: false })
+      const DOCUMENT_TYPES = new Set(['lesson', 'presentation', 'presentation_v2', 'document_v1', 'document'])
+
+      if (taskId) {
+        if (DOCUMENT_TYPES.has(effectiveType)) {
+          // lesson / presentation → Documents module
+          queryClient.invalidateQueries({ queryKey: ['student-tasks'] })
+          setOpenDocumentTaskId(null)
+          setTimeout(() => setOpenDocumentTaskId(taskId), 0)
+          setActiveModule('documents')
+        } else {
+          // quiz / exercise / discussion / any other task → Tasks module
+          // Invalidate so the fresh task appears immediately after module mounts
+          queryClient.invalidateQueries({ queryKey: ['student-tasks'] })
+          setOpenTaskId(null)
+          setTimeout(() => setOpenTaskId(taskId), 0)
+          setActiveModule('self_assessment')
+          navigate({ search: `?taskId=${taskId}&jump=${Date.now()}` }, { replace: false })
+        }
         return
       }
 
-      if (taskId && (effectiveType === 'lesson' || effectiveType === 'presentation' || effectiveType === 'document')) {
-        setOpenDocumentTaskId(null)
-        setTimeout(() => setOpenDocumentTaskId(taskId), 0)
+      // Document upload notification (document_id without task_id)
+      if (data?.document_id || effectiveType === 'document') {
         setActiveModule('documents')
-        return
-      }
-
-      if (effectiveType === 'document') {
-        setActiveModule('documents')
-        return
-      }
-
-      const teacherbotId = data?.teacherbot_id
-      if (notifType === 'teacherbot_published' && teacherbotId) {
-        setSelectedTeacherbotId(teacherbotId)
-        setActiveModule('chatbot')
       }
     } catch {
       // Ignore malformed notification data
     }
-  }, [navigate])
+  }, [navigate, queryClient])
 
   const swipeState = useSwipeBack({
     onSwipeBack: handleSwipeBack,
@@ -539,16 +553,16 @@ function HomeView({
                 key={moduleKey}
                 whileTap={{ scale: 0.98 }}
                 onClick={() => onNavigate(moduleKey)}
-                className={`w-full flex items-center gap-4 p-4 rounded-xl border backdrop-blur-md transition-all shadow-sm active:scale-95 ${config.borderClass} ${config.bgClass} text-left`}
+                className={`w-full flex items-center gap-4 p-4 rounded-xl border backdrop-blur-sm bg-white/70 transition-all shadow-sm active:scale-95 active:bg-white/90 ${config.borderClass} text-left`}
               >
-                <div className={`w-12 h-12 rounded-xl bg-white/80 shadow-sm flex items-center justify-center ${config.colorClass}`}>
-                  <Icon className="h-6 w-6" />
+                <div className={`w-11 h-11 rounded-xl ${config.bgClass} flex items-center justify-center ${config.colorClass} flex-shrink-0`}>
+                  <Icon className="h-5 w-5" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <h4 className={`font-bold ${config.colorClass}`}>{config.label}</h4>
-                  <p className="text-xs text-slate-500 line-clamp-1">{config.description}</p>
+                  <h4 className="font-semibold text-slate-800 text-sm">{config.label}</h4>
+                  <p className="text-xs text-slate-500 line-clamp-1 mt-0.5">{config.description}</p>
                 </div>
-                <ChevronRight className="h-5 w-5 text-slate-300" />
+                <ChevronRight className="h-4 w-4 text-slate-300 flex-shrink-0" />
               </motion.button>
             )
           })}
@@ -589,30 +603,23 @@ function HomeView({
           return (
             <Card
               key={moduleKey}
-              className={`cursor-pointer transition-all duration-300 group relative overflow-hidden border-2 rounded-3xl backdrop-blur-md ${config.borderClass} ${config.bgClass} hover:shadow-xl ${config.shadowClass}`}
+              className={`cursor-pointer transition-all duration-200 group border rounded-2xl backdrop-blur-sm bg-white/70 hover:bg-white/90 hover:shadow-md ${config.borderClass} ${config.shadowClass}`}
               onClick={() => onNavigate(moduleKey)}
             >
-              <div className={`absolute top-0 right-0 p-3 opacity-10 group-hover:opacity-20 transition-opacity ${config.colorClass}`}>
-                <Icon className="w-32 h-32 -mr-10 -mt-10 transform group-hover:rotate-12 transition-transform duration-500" />
-              </div>
-
-              <CardContent className="p-6 sm:p-8 flex flex-col items-start gap-4 relative z-10 h-full">
-                <div className={`w-14 h-14 rounded-2xl bg-white shadow-sm flex items-center justify-center ${config.colorClass} ring-4 ring-white/50`}>
-                  <Icon className="h-7 w-7" />
+              <CardContent className="p-6 flex flex-col items-start gap-4 h-full">
+                <div className={`w-12 h-12 rounded-xl ${config.bgClass} flex items-center justify-center ${config.colorClass}`}>
+                  <Icon className="h-6 w-6" />
                 </div>
 
-                <div className="space-y-2">
-                  <h3 className={`font-bold text-xl ${config.colorClass}`}>{config.label}</h3>
-                  <p className="text-slate-600 font-medium leading-relaxed">
+                <div className="space-y-1.5">
+                  <h3 className={`font-bold text-base ${config.colorClass}`}>{config.label}</h3>
+                  <p className="text-slate-500 text-sm leading-relaxed">
                     {config.description}
                   </p>
                 </div>
 
-                <div className="mt-auto pt-4 flex items-center text-sm font-semibold opacity-0 group-hover:opacity-100 transition-all transform translate-y-2 group-hover:translate-y-0">
-                  <span className={config.colorClass}>{t('student_dashboard.start_now')}</span>
-                  <svg className={`w-4 h-4 ml-2 ${config.colorClass}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8l4 4m0 0l-4 4m4-4H3" />
-                  </svg>
+                <div className={`mt-auto flex items-center gap-1 text-xs font-semibold opacity-0 group-hover:opacity-100 transition-all translate-y-1 group-hover:translate-y-0 ${config.colorClass}`}>
+                  {t('student_dashboard.start_now')} →
                 </div>
               </CardContent>
             </Card>

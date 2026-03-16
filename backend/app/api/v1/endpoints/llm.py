@@ -30,7 +30,7 @@ from app.services.education_level import get_school_grade_instruction
 from app.services.document_processor import document_processor
 from app.services.moderation_service import moderation_service
 from app.models.alert import ContentAlert
-from app.realtime.gateway import notify_teacher_content_alert
+from app.realtime.gateway import notify_teacher_content_alert, sio
 
 logger = logging.getLogger(__name__)
 
@@ -177,6 +177,19 @@ async def create_conversation(
     db.add(conversation)
     await db.commit()
     await db.refresh(conversation)
+    # Notify teacher's session room that a new conversation started
+    await sio.emit("conversation_created", {
+        "id": str(conversation.id),
+        "student_id": str(student.id),
+        "student_nickname": student.nickname or "Studente",
+        "profile_key": conversation.profile_key,
+        "title": conversation.title,
+        "llm_provider": conversation.llm_provider,
+        "llm_model": conversation.llm_model,
+        "message_count": 0,
+        "created_at": conversation.created_at.isoformat(),
+        "updated_at": conversation.updated_at.isoformat(),
+    }, room=f"session:{request.session_id}")
     return conversation
 
 
@@ -596,27 +609,30 @@ async def send_message(
 
             prompt_extraction = await llm_service.generate(
                 messages=extraction_messages,
-                system_prompt="You are a helpful assistant that extracts and refines image descriptions for FLUX models. Respond only with the detailed image description in English.",
+                system_prompt="You are a helpful assistant that extracts and refines image generation prompts. Respond only with the detailed image description in English.",
                 temperature=0.3,
                 max_tokens=300,
             )
             image_prompt = prompt_extraction.content.strip()
             
             # Generate the image using selected provider and size
-            image_provider = request.image_provider or "flux-schnell"
+            image_provider = request.image_provider or "dall-e"
             image_size = request.image_size or "1024x1024"
-            
+
             # Call generation
             image_url = await llm_service.generate_image(
-                image_prompt, 
-                size=image_size, 
+                image_prompt,
+                size=image_size,
                 provider=image_provider,
                 image_base64=image_base64
             )
-            provider_label = "DALL-E 3" if image_provider == "dall-e" else "Flux Schnell"
+            openai_providers = {"dall-e", "gpt-image-1"}
+            provider_labels = {"dall-e": "DALL-E 3", "gpt-image-1": "GPT Image 1"}
+            provider_label = provider_labels.get(image_provider, image_provider)
             assistant_content = f"🎨 Ecco l'immagine che hai richiesto:\n\n![Immagine generata]({image_url})\n\n*Generata con {provider_label} - Prompt: {image_prompt}*"
-            provider = "openai" if image_provider == "dall-e" else "flux"
-            model = "dall-e-3" if image_provider == "dall-e" else "flux-schnell"
+            provider = "openai" if image_provider in openai_providers else "flux"
+            model_map = {"dall-e": "dall-e-3", "gpt-image-1": "gpt-image-1"}
+            model = model_map.get(image_provider, image_provider)
             token_usage = {"prompt_tokens": 0, "completion_tokens": 0}
             
             # TRACK IMAGE COST
@@ -683,6 +699,20 @@ async def send_message(
 
     await db.commit()
     await db.refresh(assistant_message)
+
+    # Notify teacher that this conversation has new messages
+    from sqlalchemy import func as sql_func
+    count_result = await db.execute(
+        select(sql_func.count()).select_from(ConversationMessage)
+        .where(ConversationMessage.conversation_id == conversation_id)
+    )
+    msg_count = count_result.scalar_one() or 0
+    await sio.emit("conversation_updated", {
+        "conversation_id": str(conversation_id),
+        "session_id": str(conversation.session_id),
+        "message_count": msg_count,
+        "updated_at": conversation.updated_at.isoformat(),
+    }, room=f"session:{conversation.session_id}")
 
     return assistant_message
 
@@ -1406,11 +1436,15 @@ async def teacher_chat_stream(
                 yield f"data: {json.dumps({'type': 'done', 'content': result})}\n\n"
 
             elif intent_result.intent == TeacherIntent.REPORT_GENERATION:
-                yield f"data: {json.dumps({'type': 'status', 'message': '📊 Modalità: Selezione Report'})}\n\n"
-                
+                yield f"data: {json.dumps({'type': 'status', 'message': '📊 Modalità: Generazione Report'})}\n\n"
+
                 from app.services.teacher_agent import generate_report_widgets
-                _, structured_context = await load_teacher_context(db, teacher)
-                result = await generate_report_widgets(content, structured_context)
+                full_ctx, structured_context = await load_teacher_context(db, teacher)
+                result = await generate_report_widgets(
+                    content, structured_context,
+                    full_context=full_ctx, messages=messages,
+                    provider=provider, model=model,
+                )
                 yield f"data: {json.dumps({'type': 'done', 'content': result})}\n\n"
 
             elif intent_result.intent == TeacherIntent.ACTION_MENU:

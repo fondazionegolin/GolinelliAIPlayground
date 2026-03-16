@@ -274,7 +274,7 @@ export function ChatConversationView({
           <input
             ref={fileInputRef}
             type="file"
-            accept="image/*,.pdf,.txt,.md"
+            accept="image/*,.pdf,.pptx,.ppt,.txt,.md,.docx"
             multiple
             className="hidden"
             onChange={(e) => handleFileSelect(e.target.files)}
