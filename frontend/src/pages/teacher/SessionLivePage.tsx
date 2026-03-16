@@ -224,20 +224,34 @@ export default function SessionLivePage() {
     return icons[key] || null
   }
 
+  // All hooks must be before any conditional returns (Rules of Hooks)
+  const onlineStudentIds = useMemo(() => new Set(onlineUsers.map(u => u.student_id)), [onlineUsers])
+  const onlineStudents = useMemo(
+    () => (data?.students || []).filter(s => onlineStudentIds.has(s.id)),
+    [data?.students, onlineStudentIds]
+  )
+  const offlineStudents = useMemo(
+    () => (data?.students || []).filter(s => !onlineStudentIds.has(s.id)),
+    [data?.students, onlineStudentIds]
+  )
+
   if (isLoading) {
-    return <p>Caricamento...</p>
+    return (
+      <div className="flex items-center justify-center h-full min-h-[40vh] text-sm text-slate-400">
+        Caricamento sessione...
+      </div>
+    )
   }
 
   if (!data) {
-    return <p>Sessione non trovata</p>
+    return (
+      <div className="flex items-center justify-center h-full min-h-[40vh] text-sm text-slate-400">
+        Sessione non trovata
+      </div>
+    )
   }
 
   const { session, students, modules } = data
-
-  // Separate online and offline students - memoized to avoid O(n²) per render
-  const onlineStudentIds = useMemo(() => new Set(onlineUsers.map(u => u.student_id)), [onlineUsers])
-  const onlineStudents = useMemo(() => students.filter(s => onlineStudentIds.has(s.id)), [students, onlineStudentIds])
-  const offlineStudents = useMemo(() => students.filter(s => !onlineStudentIds.has(s.id)), [students, onlineStudentIds])
 
   const statusConfig = {
     active: { dot: 'bg-emerald-500 animate-pulse', badge: 'bg-emerald-100 text-emerald-700', label: 'Attiva' },
