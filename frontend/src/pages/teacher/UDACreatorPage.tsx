@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { udaApi } from '@/lib/api'
@@ -7,7 +8,7 @@ import { useToast } from '@/components/ui/use-toast'
 import {
   ArrowLeft, BookOpen, Lightbulb, List, Zap, Eye, Send,
   Pencil, Trash2, CheckCircle, Loader2, ChevronDown, ChevronUp,
-  Upload, Bot
+  Upload, Bot, X, Save, ChevronLeft, ChevronRight
 } from 'lucide-react'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -21,13 +22,24 @@ interface PlanItem {
   purpose?: string
 }
 
+// Typed content shapes per task type
+interface LessonContent { html: string }
+interface QuizQuestion { question: string; options: string[]; correct: number; explanation?: string }
+interface QuizContent { questions: QuizQuestion[] }
+interface ExerciseQuestion { question: string; hint?: string }
+interface ExerciseContent { instructions: string; questions: ExerciseQuestion[]; evaluation_rubric?: string }
+interface Slide { title: string; content: string; notes?: string }
+interface PresentationContent { slides: Slide[] }
+
+type ChildContent = LessonContent | QuizContent | ExerciseContent | PresentationContent | Record<string, unknown>
+
 // Actual child Task records (post-generation)
 interface ChildTask {
   id: string
   title: string
   task_type: string
   status: string
-  content?: object
+  content?: ChildContent
 }
 
 interface Uda {
@@ -90,6 +102,7 @@ export default function UDACreatorPage() {
   const [planDraft, setPlanDraft] = useState('')
   const [uploadFiles, setUploadFiles] = useState<File[]>([])
   const [briefingPrompt, setBriefingPrompt] = useState('')
+  const [previewChild, setPreviewChild] = useState<ChildTask | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const chatEndRef = useRef<HTMLDivElement>(null)
 
@@ -464,19 +477,29 @@ export default function UDACreatorPage() {
             <PhaseCard title="Contenuti Generati" icon={<Eye />} active={phase === 'review'} collapsible defaultOpen>
               <div className="space-y-2">
                 {uda.children.map((child) => (
-                  <div key={child.id} className="flex items-center gap-3 bg-white rounded-lg px-3 py-3 border border-slate-100 shadow-sm">
-                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${typeColor(child.task_type)}`}>
+                  <div key={child.id} className="flex items-center gap-3 bg-white rounded-lg px-3 py-3 border border-slate-100 shadow-sm hover:border-indigo-200 transition-colors">
+                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium flex-shrink-0 ${typeColor(child.task_type)}`}>
                       {TYPE_LABELS[child.task_type] || child.task_type}
                     </span>
-                    <span className="text-sm flex-1 font-medium">{child.title}</span>
-                    <span className={`text-xs px-2 py-0.5 rounded-full ${child.status === 'published' ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'}`}>
+                    <span className="text-sm flex-1 font-medium truncate">{child.title}</span>
+                    <span className={`text-xs px-2 py-0.5 rounded-full flex-shrink-0 ${child.status === 'published' ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'}`}>
                       {child.status === 'published' ? 'Pubblicato' : 'Bozza'}
                     </span>
+                    {/* Preview/Edit button — always visible */}
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 w-7 p-0 text-indigo-400 hover:text-indigo-600 hover:bg-indigo-50 flex-shrink-0"
+                      title="Anteprima e modifica"
+                      onClick={() => setPreviewChild(child)}
+                    >
+                      <Eye className="h-3.5 w-3.5" />
+                    </Button>
                     {phase === 'review' && (
                       <Button
                         variant="ghost"
                         size="sm"
-                        className="h-7 w-7 p-0 text-red-400 hover:text-red-600"
+                        className="h-7 w-7 p-0 text-red-400 hover:text-red-600 flex-shrink-0"
                         onClick={() => deleteChildMutation.mutate(child.id)}
                       >
                         <Trash2 className="h-3.5 w-3.5" />
@@ -558,6 +581,22 @@ export default function UDACreatorPage() {
           </div>
         </div>
       </div>
+
+      {/* Child preview/edit modal — portal to escape transforms */}
+      {previewChild && createPortal(
+        <ChildPreviewModal
+          child={previewChild}
+          classId={classId!}
+          udaId={udaId!}
+          readOnly={phase === 'published'}
+          onClose={() => setPreviewChild(null)}
+          onSaved={(updated) => {
+            setPreviewChild(updated)
+            queryClient.invalidateQueries({ queryKey: ['uda', classId, udaId] })
+          }}
+        />,
+        document.body
+      )}
     </div>
   )
 }
@@ -647,4 +686,330 @@ function typeColor(type: string): string {
     presentation: 'bg-purple-100 text-purple-700',
   }
   return map[type] || 'bg-slate-100 text-slate-600'
+}
+
+// ─── Child Preview / Edit Modal ───────────────────────────────────────────────
+
+function ChildPreviewModal({
+  child,
+  classId,
+  udaId,
+  readOnly,
+  onClose,
+  onSaved,
+}: {
+  child: ChildTask
+  classId: string
+  udaId: string
+  readOnly: boolean
+  onClose: () => void
+  onSaved: (updated: ChildTask) => void
+}) {
+  const { toast } = useToast()
+  const [editing, setEditing] = useState(false)
+  const [titleDraft, setTitleDraft] = useState(child.title)
+
+  // Per-type edit state
+  const [lessonHtml, setLessonHtml] = useState(
+    (child.content as { html?: string })?.html ?? ''
+  )
+  const [quizQuestions, setQuizQuestions] = useState<QuizQuestion[]>(
+    (child.content as { questions?: QuizQuestion[] })?.questions ?? []
+  )
+  const [exerciseDraft, setExerciseDraft] = useState<ExerciseContent>({
+    instructions: (child.content as ExerciseContent)?.instructions ?? '',
+    questions: (child.content as ExerciseContent)?.questions ?? [],
+    evaluation_rubric: (child.content as ExerciseContent)?.evaluation_rubric ?? '',
+  })
+  const [slides, setSlides] = useState<Slide[]>(
+    (child.content as { slides?: Slide[] })?.slides ?? []
+  )
+  const [slideIndex, setSlideIndex] = useState(0)
+
+  const saveMutation = useMutation({
+    mutationFn: async () => {
+      let newContent: ChildContent
+      if (child.task_type === 'lesson') newContent = { html: lessonHtml }
+      else if (child.task_type === 'quiz') newContent = { questions: quizQuestions }
+      else if (child.task_type === 'exercise') newContent = exerciseDraft
+      else if (child.task_type === 'presentation') newContent = { slides }
+      else newContent = child.content ?? {}
+      return udaApi.updateChild(classId, udaId, child.id, { title: titleDraft, content: newContent })
+    },
+    onSuccess: (res) => {
+      toast({ title: 'Modifiche salvate' })
+      setEditing(false)
+      onSaved({ ...child, title: titleDraft, content: res.data.content ?? child.content })
+    },
+    onError: () => toast({ title: 'Errore salvataggio', variant: 'destructive' }),
+  })
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
+      {/* Backdrop */}
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
+
+      {/* Panel */}
+      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-3xl mx-4 max-h-[90vh] flex flex-col">
+        {/* Header */}
+        <div className="flex items-center gap-3 px-6 py-4 border-b border-slate-100">
+          <span className={`text-xs px-2 py-0.5 rounded-full font-medium flex-shrink-0 ${typeColor(child.task_type)}`}>
+            {TYPE_LABELS[child.task_type] || child.task_type}
+          </span>
+          {editing ? (
+            <input
+              className="flex-1 text-sm font-semibold border-b border-indigo-300 focus:outline-none px-1"
+              value={titleDraft}
+              onChange={e => setTitleDraft(e.target.value)}
+            />
+          ) : (
+            <h2 className="flex-1 text-sm font-semibold text-slate-800 truncate">{child.title}</h2>
+          )}
+          <div className="flex gap-2 flex-shrink-0">
+            {!readOnly && !editing && (
+              <Button size="sm" variant="outline" onClick={() => setEditing(true)} className="h-8 text-xs">
+                <Pencil className="h-3.5 w-3.5 mr-1" />Modifica
+              </Button>
+            )}
+            {editing && (
+              <>
+                <Button size="sm" variant="ghost" onClick={() => setEditing(false)} className="h-8 text-xs">
+                  Annulla
+                </Button>
+                <Button
+                  size="sm"
+                  className="h-8 text-xs bg-indigo-600 hover:bg-indigo-700 text-white"
+                  disabled={saveMutation.isPending}
+                  onClick={() => saveMutation.mutate()}
+                >
+                  {saveMutation.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : <Save className="h-3.5 w-3.5 mr-1" />}
+                  Salva
+                </Button>
+              </>
+            )}
+            <Button size="sm" variant="ghost" onClick={onClose} className="h-8 w-8 p-0">
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+
+        {/* Body */}
+        <div className="flex-1 overflow-auto p-6">
+          {child.task_type === 'lesson' && (
+            editing ? (
+              <div className="space-y-2">
+                <p className="text-xs text-slate-400">Modifica il contenuto HTML del documento</p>
+                <textarea
+                  className="w-full font-mono text-xs border border-slate-200 rounded-lg p-3 resize-none focus:outline-none focus:ring-1 focus:ring-indigo-400 min-h-[400px]"
+                  value={lessonHtml}
+                  onChange={e => setLessonHtml(e.target.value)}
+                />
+              </div>
+            ) : (
+              <div
+                className="prose prose-sm max-w-none text-slate-700"
+                dangerouslySetInnerHTML={{ __html: lessonHtml }}
+              />
+            )
+          )}
+
+          {child.task_type === 'quiz' && (
+            <div className="space-y-4">
+              {quizQuestions.map((q, qi) => (
+                <div key={qi} className="border border-slate-100 rounded-xl p-4 space-y-2">
+                  {editing ? (
+                    <>
+                      <input
+                        className="w-full text-sm font-medium border-b border-slate-200 focus:outline-none pb-1"
+                        value={q.question}
+                        onChange={e => {
+                          const updated = [...quizQuestions]
+                          updated[qi] = { ...q, question: e.target.value }
+                          setQuizQuestions(updated)
+                        }}
+                      />
+                      {q.options.map((opt, oi) => (
+                        <div key={oi} className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            className={`w-5 h-5 rounded-full border-2 flex-shrink-0 ${q.correct === oi ? 'border-green-500 bg-green-500' : 'border-slate-300'}`}
+                            onClick={() => {
+                              const updated = [...quizQuestions]
+                              updated[qi] = { ...q, correct: oi }
+                              setQuizQuestions(updated)
+                            }}
+                          />
+                          <input
+                            className="flex-1 text-sm border-b border-slate-100 focus:outline-none"
+                            value={opt}
+                            onChange={e => {
+                              const updated = [...quizQuestions]
+                              const opts = [...q.options]
+                              opts[oi] = e.target.value
+                              updated[qi] = { ...q, options: opts }
+                              setQuizQuestions(updated)
+                            }}
+                          />
+                        </div>
+                      ))}
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-sm font-medium text-slate-800">{qi + 1}. {q.question}</p>
+                      <div className="grid grid-cols-2 gap-2 mt-2">
+                        {q.options.map((opt, oi) => (
+                          <div key={oi} className={`text-xs px-3 py-2 rounded-lg border ${oi === q.correct ? 'bg-green-50 border-green-200 text-green-700 font-medium' : 'bg-slate-50 border-slate-100 text-slate-600'}`}>
+                            {opt}
+                          </div>
+                        ))}
+                      </div>
+                      {q.explanation && (
+                        <p className="text-xs text-slate-400 mt-1 italic">💡 {q.explanation}</p>
+                      )}
+                    </>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {child.task_type === 'exercise' && (
+            <div className="space-y-4">
+              <div className={`rounded-xl p-4 ${editing ? 'border border-slate-200' : 'bg-slate-50'}`}>
+                <p className="text-xs font-semibold text-slate-500 uppercase mb-1">Istruzioni</p>
+                {editing ? (
+                  <textarea
+                    className="w-full text-sm border-0 focus:outline-none resize-none bg-transparent"
+                    rows={3}
+                    value={exerciseDraft.instructions}
+                    onChange={e => setExerciseDraft(d => ({ ...d, instructions: e.target.value }))}
+                  />
+                ) : (
+                  <p className="text-sm text-slate-700">{exerciseDraft.instructions}</p>
+                )}
+              </div>
+              {exerciseDraft.questions.map((q, qi) => (
+                <div key={qi} className="border border-slate-100 rounded-xl p-4">
+                  <p className="text-xs font-semibold text-slate-400 mb-1">{qi + 1}.</p>
+                  {editing ? (
+                    <input
+                      className="w-full text-sm border-b border-slate-200 focus:outline-none pb-1"
+                      value={q.question}
+                      onChange={e => {
+                        const updated = [...exerciseDraft.questions]
+                        updated[qi] = { ...q, question: e.target.value }
+                        setExerciseDraft(d => ({ ...d, questions: updated }))
+                      }}
+                    />
+                  ) : (
+                    <p className="text-sm text-slate-800">{q.question}</p>
+                  )}
+                  {q.hint && <p className="text-xs text-indigo-400 mt-1 italic">💡 {q.hint}</p>}
+                </div>
+              ))}
+              {exerciseDraft.evaluation_rubric && (
+                <div className="bg-amber-50 border border-amber-100 rounded-xl p-4">
+                  <p className="text-xs font-semibold text-amber-600 mb-1">Criteri di valutazione</p>
+                  {editing ? (
+                    <textarea
+                      className="w-full text-sm border-0 focus:outline-none resize-none bg-transparent"
+                      rows={2}
+                      value={exerciseDraft.evaluation_rubric}
+                      onChange={e => setExerciseDraft(d => ({ ...d, evaluation_rubric: e.target.value }))}
+                    />
+                  ) : (
+                    <p className="text-sm text-amber-700">{exerciseDraft.evaluation_rubric}</p>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {child.task_type === 'presentation' && slides.length > 0 && (
+            <div className="space-y-4">
+              {/* Slide navigator */}
+              <div className="flex items-center justify-between bg-slate-50 rounded-xl px-4 py-2">
+                <Button
+                  variant="ghost" size="sm"
+                  disabled={slideIndex === 0}
+                  onClick={() => setSlideIndex(i => i - 1)}
+                  className="h-8 w-8 p-0"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                <span className="text-sm font-medium text-slate-600">
+                  Slide {slideIndex + 1} / {slides.length}
+                </span>
+                <Button
+                  variant="ghost" size="sm"
+                  disabled={slideIndex === slides.length - 1}
+                  onClick={() => setSlideIndex(i => i + 1)}
+                  className="h-8 w-8 p-0"
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+
+              {/* Slide content */}
+              {slides[slideIndex] && (
+                <div className="border border-slate-200 rounded-xl overflow-hidden">
+                  <div className="bg-indigo-600 px-6 py-4">
+                    {editing ? (
+                      <input
+                        className="w-full text-lg font-bold text-white bg-transparent border-b border-white/40 focus:outline-none"
+                        value={slides[slideIndex].title}
+                        onChange={e => {
+                          const updated = [...slides]
+                          updated[slideIndex] = { ...updated[slideIndex], title: e.target.value }
+                          setSlides(updated)
+                        }}
+                      />
+                    ) : (
+                      <h3 className="text-lg font-bold text-white">{slides[slideIndex].title}</h3>
+                    )}
+                  </div>
+                  <div className="p-6 min-h-[200px]">
+                    {editing ? (
+                      <textarea
+                        className="w-full text-sm text-slate-700 border-0 focus:outline-none resize-none bg-transparent min-h-[150px]"
+                        value={slides[slideIndex].content}
+                        onChange={e => {
+                          const updated = [...slides]
+                          updated[slideIndex] = { ...updated[slideIndex], content: e.target.value }
+                          setSlides(updated)
+                        }}
+                      />
+                    ) : (
+                      <p className="text-sm text-slate-700 whitespace-pre-line">{slides[slideIndex].content}</p>
+                    )}
+                  </div>
+                  {slides[slideIndex].notes && (
+                    <div className="px-6 py-3 bg-slate-50 border-t border-slate-100">
+                      <p className="text-xs text-slate-400 italic">Note: {slides[slideIndex].notes}</p>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Slide thumbnails */}
+              <div className="flex gap-2 overflow-x-auto pb-1">
+                {slides.map((s, i) => (
+                  <button
+                    key={i}
+                    onClick={() => setSlideIndex(i)}
+                    className={`flex-shrink-0 w-24 h-16 rounded-lg border text-xs font-medium px-2 text-left overflow-hidden transition-colors ${
+                      i === slideIndex ? 'border-indigo-400 bg-indigo-50 text-indigo-700' : 'border-slate-100 bg-white text-slate-500 hover:border-slate-300'
+                    }`}
+                  >
+                    <span className="block text-[10px] text-slate-400">{i + 1}</span>
+                    <span className="block truncate leading-tight">{s.title}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
 }
