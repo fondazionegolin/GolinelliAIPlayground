@@ -1950,34 +1950,55 @@ async def get_teacher_conversation(
     conversation_id: UUID,
     db: Annotated[AsyncSession, Depends(get_db)],
     teacher: Annotated[User, Depends(get_current_teacher)],
+    limit: int = Query(30, ge=1, le=200),
+    before_id: Optional[str] = Query(None),
 ):
-    """Get a conversation with all its messages"""
+    """Get a conversation with its most recent messages (paginated).
+    Pass before_id to load messages older than that message id.
+    """
     from app.models import TeacherConversation, TeacherConversationMessage
-    
+
     result = await db.execute(
         select(TeacherConversation)
         .where(TeacherConversation.id == conversation_id)
         .where(TeacherConversation.teacher_id == teacher.id)
     )
     conversation = result.scalar_one_or_none()
-    
+
     if not conversation:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found")
-    
-    # Get messages
-    msg_result = await db.execute(
+
+    # Build base query
+    msg_query = (
         select(TeacherConversationMessage)
         .where(TeacherConversationMessage.conversation_id == conversation_id)
-        .order_by(TeacherConversationMessage.created_at.asc())
+        .order_by(TeacherConversationMessage.created_at.desc())
+        .limit(limit + 1)  # fetch one extra to know if there are more
     )
-    messages = msg_result.scalars().all()
-    
+
+    if before_id:
+        # Find the created_at of the cursor message
+        cursor_result = await db.execute(
+            select(TeacherConversationMessage.created_at)
+            .where(TeacherConversationMessage.id == UUID(before_id))
+        )
+        cursor_ts = cursor_result.scalar_one_or_none()
+        if cursor_ts:
+            msg_query = msg_query.where(TeacherConversationMessage.created_at < cursor_ts)
+
+    msg_result = await db.execute(msg_query)
+    rows = msg_result.scalars().all()
+
+    has_more = len(rows) > limit
+    messages = list(reversed(rows[:limit]))  # return in chronological order
+
     return {
         "id": conversation.id,
         "title": conversation.title,
         "agent_mode": conversation.agent_mode,
         "created_at": conversation.created_at,
         "updated_at": conversation.updated_at,
+        "has_more": has_more,
         "messages": [
             {
                 "id": str(m.id),
