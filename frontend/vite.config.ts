@@ -29,8 +29,6 @@ export default defineConfig({
           'vendor-react': ['react', 'react-dom', 'react-router-dom'],
           'vendor-query': ['@tanstack/react-query'],
           'vendor-ui': ['framer-motion', 'lucide-react'],
-          'vendor-tensorflow': ['@tensorflow/tfjs'],
-          'vendor-plotly': ['react-plotly.js', 'plotly.js'],
           'vendor-i18n': ['react-i18next', 'i18next'],
         },
       },
