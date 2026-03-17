@@ -18,6 +18,7 @@ import { getTeacherAccentTheme, type TeacherAccentId } from '@/lib/teacherAccent
 import { getAppBackgroundGradient } from '@/lib/theme'
 import { useMobile } from '@/hooks/useMobile'
 import { useTeacherProfile } from '@/hooks/useTeacherProfile'
+import { FloatingHelper } from '@/components/FloatingHelper'
 
 const CHATBAR_AUTO_HIDE_BREAKPOINT = 1280
 
@@ -295,6 +296,7 @@ export default function TeacherDashboard() {
           })}
         </nav>
       )}
+      <FloatingHelper />
     </AppBackground>
   )
 }

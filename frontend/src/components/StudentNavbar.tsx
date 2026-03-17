@@ -145,12 +145,15 @@ export function StudentNavbar({
             {/* Logo/Brand */}
             <div className="flex items-center gap-3 cursor-pointer" onClick={() => onNavigate?.(null)}>
               <LogoMark className="h-9 w-9" />
-              <span className="pb-[1px] text-[18px] leading-[1.15] tracking-tight" style={{ fontFamily: '"SofiaPro"' }}>
-                <span className="font-bold text-[#2d2d2d]/85">
-                  Golinelli
+              <div className="flex items-center gap-2">
+                <span className="pb-[1px] text-[18px] leading-[1.15] tracking-tight" style={{ fontFamily: '"SofiaPro"' }}>
+                  <span className="font-bold text-[#2d2d2d]/85">
+                    Golinelli
+                  </span>
+                  <span className="font-black text-[#e85c8d]">.ai</span>
                 </span>
-                <span className="font-black text-[#e85c8d]">.ai</span>
-              </span>
+                <span className="text-[9px] font-extrabold uppercase tracking-widest px-1.5 py-0.5 rounded-md bg-amber-50 text-amber-500 border border-amber-200 leading-none">BETA</span>
+              </div>
             </div>
 
             {/* Mobile Menu Button - Hidden since MobileNav handles navigation */}

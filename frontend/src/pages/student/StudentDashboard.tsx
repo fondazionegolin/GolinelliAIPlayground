@@ -22,6 +22,7 @@ import { StudentNavbar } from '@/components/StudentNavbar'
 import { useMobile, useKeyboard } from '@/hooks/useMobile'
 import { useSwipeBack } from '@/hooks/useSwipeBack'
 import { AppBackground } from '@/components/ui/AppBackground'
+import { FloatingHelper } from '@/components/FloatingHelper'
 import { getStudentAccentTheme, loadStudentAccent, type StudentAccentId } from '@/lib/studentAccent'
 import { getAppBackgroundGradient } from '@/lib/theme'
 
@@ -433,6 +434,7 @@ export default function StudentDashboard() {
         onNavigate={setActiveModule}
         hidden={isKeyboardOpen}
       />
+      <FloatingHelper module={activeModule} />
     </AppBackground>
   )
 }

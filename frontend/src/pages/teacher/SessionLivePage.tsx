@@ -11,7 +11,7 @@ import { useToast } from '@/components/ui/use-toast'
 import {
   ArrowLeft, Users, Copy, Play, Square,
   Snowflake, Sun, Bot, Brain, MessageSquare,
-  ClipboardList, Plus, Trash2, Check, Eye, ChevronDown, ChevronUp, History, User, BookOpen
+  ClipboardList, Plus, Trash2, Check, Eye, ChevronDown, ChevronUp, History, User, BookOpen, Search, X
 } from 'lucide-react'
 import { llmApi } from '@/lib/api'
 import TaskBuilder from '@/components/TaskBuilder'
@@ -75,6 +75,7 @@ export default function SessionLivePage() {
   const [showOfflineStudents, setShowOfflineStudents] = useState(false)
   const [showTaskBuilder, setShowTaskBuilder] = useState(false)
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null)
+  const [taskSearch, setTaskSearch] = useState('')
   const [selectedConversationId, setSelectedConversationId] = useState<string | null>(null)
 
   // Fetch available LLM models
@@ -598,25 +599,60 @@ export default function SessionLivePage() {
                         </div>
                       )}
 
+                      {tasksData && tasksData.length > 0 && (
+                        <div className="mb-4">
+                          <div className="relative max-w-sm">
+                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
+                            <input
+                              type="text"
+                              placeholder="Cerca compiti..."
+                              value={taskSearch}
+                              onChange={e => setTaskSearch(e.target.value)}
+                              className="w-full pl-9 pr-8 py-2 text-sm bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-300 focus:border-slate-400 transition-colors"
+                            />
+                            {taskSearch && (
+                              <button onClick={() => setTaskSearch('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                                <X className="h-3.5 w-3.5" />
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
                       {!tasksData || tasksData.length === 0 ? (
                         <p className="text-center text-muted-foreground py-8">
                           Nessun compito assegnato. Crea il primo compito sopra.
                         </p>
-                      ) : (
-                        <div className="space-y-3">
-                          {tasksData.map((task) => (
-                            <TaskCard
-                              key={task.id}
-                              task={task}
-                              sessionId={sessionId!}
-                              isExpanded={expandedTaskId === task.id}
-                              onToggle={() => setExpandedTaskId(expandedTaskId === task.id ? null : task.id)}
-                              onPublish={() => publishTaskMutation.mutate(task.id)}
-                              onDelete={() => deleteTaskMutation.mutate(task.id)}
-                            />
-                          ))}
-                        </div>
-                      )}
+                      ) : (() => {
+                        const filtered = tasksData.filter(t => {
+                          if (!taskSearch.trim()) return true
+                          const terms = taskSearch.toLowerCase().split(/\s+/).filter(Boolean)
+                          const target = [t.title, t.description || '', t.task_type].join(' ').toLowerCase()
+                          return terms.every(term => target.includes(term))
+                        })
+                        if (filtered.length === 0) return (
+                          <div className="flex flex-col items-center py-10 text-center">
+                            <Search className="h-7 w-7 text-slate-200 mb-2" />
+                            <p className="text-sm text-slate-400">Nessun compito corrisponde a <strong>"{taskSearch}"</strong></p>
+                          </div>
+                        )
+                        return (
+                          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+                            {filtered.map((task) => (
+                              <div key={task.id} className={expandedTaskId === task.id ? 'col-span-full' : ''}>
+                                <TaskCard
+                                  task={task}
+                                  sessionId={sessionId!}
+                                  isExpanded={expandedTaskId === task.id}
+                                  onToggle={() => setExpandedTaskId(expandedTaskId === task.id ? null : task.id)}
+                                  onPublish={() => publishTaskMutation.mutate(task.id)}
+                                  onDelete={() => deleteTaskMutation.mutate(task.id)}
+                                />
+                              </div>
+                            ))}
+                          </div>
+                        )
+                      })()}
                     </CardContent>
                   </Card>
                 </TabsContent>
