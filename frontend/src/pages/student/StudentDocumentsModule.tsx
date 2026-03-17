@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
-  Plus, Trash2, Monitor, FileText, ChevronLeft, ChevronRight, Send, CheckCircle, FileSpreadsheet, BookOpen, PenTool, Share2, User, Clock, MonitorPlay
+  Plus, Trash2, Monitor, FileText, ChevronLeft, ChevronRight, Send, CheckCircle, FileSpreadsheet, BookOpen, PenTool, Share2, User, Clock, MonitorPlay, Search, X
 } from 'lucide-react'
 import { studentApi } from '@/lib/api'
 import { useToast } from '@/components/ui/use-toast'
@@ -121,6 +121,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId }: 
   const [submitted, setSubmitted] = useState(false)
   const [draftDocuments, setDraftDocuments] = useState<DraftDocument[]>([])
   const [lessonDocuments, setLessonDocuments] = useState<LessonDocument[]>([])
+  const [docSearch, setDocSearch] = useState('')
   const [draftId, setDraftId] = useState<string | null>(null)
   const [isReadOnlyLesson, setIsReadOnlyLesson] = useState(false)
   const [activeLessonTaskId, setActiveLessonTaskId] = useState<string | null>(null)
@@ -649,6 +650,14 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId }: 
   }, [mode, showSidebar])
 
   if (viewMode === 'list') {
+    const fuzzyMatch = (query: string, ...fields: string[]) => {
+      if (!query.trim()) return true
+      const terms = query.toLowerCase().split(/\s+/).filter(Boolean)
+      const target = fields.join(' ').toLowerCase()
+      return terms.every(term => target.includes(term))
+    }
+    const filteredDrafts = draftDocuments.filter(d => fuzzyMatch(docSearch, d.title, d.type))
+    const filteredLessons = lessonDocuments.filter(d => fuzzyMatch(docSearch, d.title, d.type, d.authorName || ''))
     const docIcon = (type: string) => {
       if (type === 'presentation') return <Monitor className="h-5 w-5" />
       if (type === 'sheet') return <FileSpreadsheet className="h-5 w-5" />
@@ -664,12 +673,27 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId }: 
     return (
       <>
         <div className="h-full flex flex-col bg-slate-50 overflow-hidden">
-          <div className="h-14 bg-white border-b flex items-center justify-between px-6 z-20 shadow-sm shrink-0">
-            <div className="flex items-center gap-2">
+          <div className="h-14 bg-white border-b flex items-center justify-between px-6 z-20 shadow-sm shrink-0 gap-3">
+            <div className="flex items-center gap-2 shrink-0">
               <FileText className="h-4 w-4 text-slate-500" />
               <h1 className="text-base font-bold text-slate-800">I miei Documenti</h1>
             </div>
-            <Button onClick={() => setShowNewModal(true)} className="bg-slate-900 text-white hover:bg-slate-800">
+            <div className="relative flex-1 max-w-xs">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400 pointer-events-none" />
+              <input
+                type="text"
+                value={docSearch}
+                onChange={e => setDocSearch(e.target.value)}
+                placeholder="Cerca documenti..."
+                className="w-full pl-9 pr-8 py-1.5 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-300 placeholder:text-slate-400"
+              />
+              {docSearch && (
+                <button onClick={() => setDocSearch('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </div>
+            <Button onClick={() => setShowNewModal(true)} className="bg-slate-900 text-white hover:bg-slate-800 shrink-0">
               <Plus className="h-4 w-4 mr-2" />
               Nuovo
             </Button>
@@ -678,7 +702,11 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId }: 
           <div className="flex-1 overflow-y-auto p-6">
             <div className="max-w-5xl mx-auto space-y-8">
 
-              {draftDocuments.length === 0 && lessonDocuments.length === 0 && (
+              {docSearch && filteredDrafts.length === 0 && filteredLessons.length === 0 && (
+                <p className="text-center text-sm text-slate-400 py-12">Nessun documento corrisponde a "{docSearch}"</p>
+              )}
+
+              {!docSearch && draftDocuments.length === 0 && lessonDocuments.length === 0 && (
                 <div className="flex flex-col items-center justify-center py-24 text-center">
                   <div className="w-20 h-20 rounded-full bg-slate-100 flex items-center justify-center mb-5">
                     <FileText className="h-10 w-10 text-slate-300" />
@@ -692,11 +720,11 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId }: 
                 </div>
               )}
 
-              {draftDocuments.length > 0 && (
+              {filteredDrafts.length > 0 && (
                 <section>
                   <h2 className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-3">Le mie Bozze</h2>
                   <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-                    {draftDocuments.map(doc => (
+                    {filteredDrafts.map(doc => (
                       <div
                         key={doc.id}
                         onClick={() => loadDraft(doc)}
@@ -719,11 +747,11 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId }: 
                 </section>
               )}
 
-              {lessonDocuments.length > 0 && (() => {
+              {filteredLessons.length > 0 && (() => {
                 // Group by udaFolder; non-UDA docs go under undefined key
                 const udaFolders: Record<string, LessonDocument[]> = {}
                 const regularLessons: LessonDocument[] = []
-                lessonDocuments.forEach(doc => {
+                filteredLessons.forEach(doc => {
                   if (doc.udaFolder) {
                     if (!udaFolders[doc.udaFolder]) udaFolders[doc.udaFolder] = []
                     udaFolders[doc.udaFolder].push(doc)

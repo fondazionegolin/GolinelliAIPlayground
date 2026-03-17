@@ -304,6 +304,7 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
                 </span>
                 <span className="font-black text-[#e85c8d]">.ai</span>
               </span>
+              <span className="text-[9px] font-extrabold uppercase tracking-widest px-1.5 py-0.5 rounded-md bg-amber-50 text-amber-500 border border-amber-200">BETA</span>
             </div>
 
             <div className="hidden md:flex items-center gap-1 h-11 bg-white/50 backdrop-blur-sm p-1 rounded-2xl border border-slate-200 shadow-sm">
