@@ -122,37 +122,109 @@ function getSessionLiveHelp(tab: string): HelpContent {
   return tabs[tab] || tabs.modules
 }
 
-function getHelp(pathname: string, search: string): HelpContent | null {
+const STUDENT_MODULE_HELP: Record<string, HelpContent> = {
+  chatbot: {
+    title: 'Chatbot AI',
+    subtitle: 'Fai domande, chiedi spiegazioni, esercitati con argomenti del programma.',
+    steps: [
+      { icon: <MessageSquare className="h-4 w-4" />, title: 'Scrivi una domanda', detail: 'Digita qualsiasi dubbio: "Spiegami la fotosintesi" o "Aiutami con questo esercizio".' },
+      { icon: <Bot className="h-4 w-4" />, title: 'L\'AI risponde', detail: 'Ricevi una spiegazione personalizzata. Puoi chiedere di ripetere in modo più semplice.' },
+      { icon: <Layers className="h-4 w-4" />, title: 'Cambia modalità', detail: 'Dal menu in basso puoi scegliere: risposta diretta, quiz, immagine o analisi.' },
+      { icon: <ChevronRight className="h-4 w-4" />, title: 'Storico chat', detail: 'Le conversazioni passate sono salvate — scorrile per rivedere le risposte.' },
+    ],
+    tip: 'Esempio: "Crea 5 domande per interrogarmi sulla Seconda Guerra Mondiale."',
+  },
+  tasks: {
+    title: 'Compiti',
+    subtitle: 'Visualizza, svolgi e consegna i compiti assegnati dal docente.',
+    steps: [
+      { icon: <ClipboardList className="h-4 w-4" />, title: 'Scegli un compito', detail: 'Clicca su una tessera per aprire il compito. I completati mostrano una spunta verde.' },
+      { icon: <Brain className="h-4 w-4" />, title: 'Tipologie', detail: 'Quiz (scelta multipla con punteggio automatico), Esercizio (risposta libera), Documento.' },
+      { icon: <ChevronRight className="h-4 w-4" />, title: 'Consegna', detail: 'Scrivi la tua risposta e clicca "Consegna" — il docente la vedrà subito.' },
+      { icon: <Users className="h-4 w-4" />, title: 'Cerca', detail: 'Usa il campo di ricerca in alto per trovare un compito per nome o tipo.' },
+    ],
+    tip: 'I quiz vengono corretti automaticamente: vedi il tuo punteggio subito dopo la consegna.',
+  },
+  documents: {
+    title: 'Documenti',
+    subtitle: 'Accedi ai materiali del docente e crea i tuoi documenti personali.',
+    steps: [
+      { icon: <FileText className="h-4 w-4" />, title: 'Materiali del docente', detail: 'Trovi presentazioni, documenti e fogli condivisi dal docente in sola lettura.' },
+      { icon: <BookOpen className="h-4 w-4" />, title: 'Le mie bozze', detail: 'Crea presentazioni, documenti, fogli di calcolo o canvas collaborativi.' },
+      { icon: <Brain className="h-4 w-4" />, title: 'Editor integrato', detail: 'Clicca su un documento per aprire l\'editor — hai testo, immagini e blocchi AI.' },
+      { icon: <ChevronRight className="h-4 w-4" />, title: 'Cerca', detail: 'Usa la barra di ricerca in alto per trovare documenti per titolo o tipo.' },
+    ],
+    tip: 'I materiali del docente sono in sola lettura; puoi creare copie personali con "Nuovo".',
+  },
+  ml_lab: {
+    title: 'ML Lab',
+    subtitle: 'Impara il Machine Learning sperimentando direttamente nel browser.',
+    steps: [
+      { icon: <Brain className="h-4 w-4" />, title: 'Scegli un modulo', detail: 'Classificazione immagini (CNN), testi o dati tabellari.' },
+      { icon: <Layers className="h-4 w-4" />, title: 'Carica esempi', detail: 'Aggiungi immagini o dati per addestrare il modello.' },
+      { icon: <PlayCircle className="h-4 w-4" />, title: 'Addestra', detail: 'Clicca "Addestra" — il modello impara direttamente nel tuo browser.' },
+      { icon: <ChevronRight className="h-4 w-4" />, title: 'Testa', detail: 'Prova il modello su nuovi esempi e vedi la confidenza della predizione.' },
+    ],
+    tip: 'Più esempi fornisci per ogni categoria, migliore sarà il modello.',
+  },
+  chat: {
+    title: 'Chat di Classe',
+    subtitle: 'Comunicazione in tempo reale con il docente e i compagni.',
+    steps: [
+      { icon: <MessageSquare className="h-4 w-4" />, title: 'Messaggio pubblico', detail: 'Scrivi per inviare un messaggio a tutta la classe.' },
+      { icon: <Users className="h-4 w-4" />, title: 'Messaggio privato', detail: 'Clicca sul nome del docente o di un compagno per aprire una chat privata.' },
+      { icon: <ChevronRight className="h-4 w-4" />, title: 'Carica file', detail: 'Trascina un file nella chat per condividerlo con la classe.' },
+      { icon: <Bot className="h-4 w-4" />, title: 'Notifiche', detail: 'Ricevi una notifica per ogni messaggio ricevuto, anche da altri moduli.' },
+    ],
+    tip: 'Il docente può inviarti messaggi privati — controlla la chat anche durante le attività.',
+  },
+}
+
+function getStudentHelp(module: string | null | undefined): HelpContent {
+  if (module === 'chatbot' || module === 'ai') return STUDENT_MODULE_HELP.chatbot
+  if (module === 'tasks' || module === 'compiti') return STUDENT_MODULE_HELP.tasks
+  if (module === 'documents' || module === 'documenti') return STUDENT_MODULE_HELP.documents
+  if (module === 'ml-lab' || module === 'classification' || module === 'ml') return STUDENT_MODULE_HELP.ml_lab
+  if (module === 'chat' || module === 'classe') return STUDENT_MODULE_HELP.chat
+  // Overview / no module selected
+  return {
+    title: 'Dashboard Studente',
+    subtitle: 'Scegli un modulo dal menu in basso per iniziare.',
+    steps: [
+      { icon: <Bot className="h-4 w-4" />, title: 'Chatbot AI', detail: 'Fai domande e ricevi spiegazioni personalizzate dall\'intelligenza artificiale.' },
+      { icon: <ClipboardList className="h-4 w-4" />, title: 'Compiti', detail: 'Svolgi e consegna i compiti assegnati dal tuo docente.' },
+      { icon: <FileText className="h-4 w-4" />, title: 'Documenti', detail: 'Leggi i materiali del docente e crea i tuoi documenti personali.' },
+      { icon: <MessageSquare className="h-4 w-4" />, title: 'Chat di classe', detail: 'Comunicazione in tempo reale con docente e compagni.' },
+    ],
+    tip: 'Clicca su ogni modulo nella barra in basso per accedere alle funzioni specifiche.',
+  }
+}
+
+function getHelp(pathname: string, search: string, module?: string | null): HelpContent | null {
   // Session live page — tab-specific
   if (/\/teacher\/sessions\/[^/]+$/.test(pathname)) {
     const params = new URLSearchParams(search)
     const tab = params.get('tab') || 'modules'
     return getSessionLiveHelp(tab)
   }
-  // Exact or prefix match
+  // Exact or prefix match for teacher pages
   const entry = Object.entries(HELP_MAP).find(([route]) => pathname === route || pathname.startsWith(route + '/'))
   if (entry) return entry[1]
-  // Student pages
+  // Student pages — module-aware
   if (pathname.startsWith('/student')) {
-    return {
-      title: 'Dashboard Studente',
-      subtitle: 'Accedi ai moduli della tua sessione e partecipa alle attività.',
-      steps: [
-        { icon: <Bot className="h-4 w-4" />, title: 'Chatbot', detail: 'Chatta con l\'AI per fare domande e ricevere spiegazioni personalizzate.' },
-        { icon: <ClipboardList className="h-4 w-4" />, title: 'Compiti', detail: 'Trovi qui i compiti assegnati dal docente — rispondi e consegna.' },
-        { icon: <Brain className="h-4 w-4" />, title: 'ML Lab', detail: 'Sperimenta con Machine Learning: addestra modelli su immagini, testi e dati.' },
-        { icon: <MessageSquare className="h-4 w-4" />, title: 'Chat di classe', detail: 'Partecipa alla chat pubblica della sessione o scrivi in privato al docente.' },
-      ],
-      tip: 'Usa il menu in basso per passare tra i moduli disponibili.',
-    }
+    return getStudentHelp(module)
   }
   return null
 }
 
-export function FloatingHelper() {
+export interface FloatingHelperProps {
+  module?: string | null
+}
+
+export function FloatingHelper({ module }: FloatingHelperProps = {}) {
   const [open, setOpen] = useState(false)
   const location = useLocation()
-  const help = getHelp(location.pathname, location.search)
+  const help = getHelp(location.pathname, location.search, module)
 
   if (!help) return null
 
@@ -161,7 +233,7 @@ export function FloatingHelper() {
       {/* Floating button */}
       <button
         onClick={() => setOpen(true)}
-        className="fixed bottom-5 left-5 z-40 w-11 h-11 rounded-full bg-white border border-slate-200 shadow-lg flex items-center justify-center text-slate-500 hover:text-slate-800 hover:shadow-xl hover:scale-105 transition-all duration-200"
+        className="fixed bottom-20 left-4 sm:bottom-5 sm:left-5 z-40 w-11 h-11 rounded-full bg-white border border-slate-200 shadow-lg flex items-center justify-center text-slate-500 hover:text-slate-800 hover:shadow-xl hover:scale-105 transition-all duration-200"
         title="Guida alla pagina"
         aria-label="Apri guida"
       >

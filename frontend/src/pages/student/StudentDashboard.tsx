@@ -434,7 +434,7 @@ export default function StudentDashboard() {
         onNavigate={setActiveModule}
         hidden={isKeyboardOpen}
       />
-      <FloatingHelper />
+      <FloatingHelper module={activeModule} />
     </AppBackground>
   )
 }

@@ -151,6 +151,7 @@ export function StudentNavbar({
                 </span>
                 <span className="font-black text-[#e85c8d]">.ai</span>
               </span>
+              <span className="text-[9px] font-extrabold uppercase tracking-widest px-1.5 py-0.5 rounded-md bg-amber-50 text-amber-500 border border-amber-200">BETA</span>
             </div>
 
             {/* Mobile Menu Button - Hidden since MobileNav handles navigation */}
