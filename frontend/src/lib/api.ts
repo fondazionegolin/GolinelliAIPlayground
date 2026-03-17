@@ -171,6 +171,11 @@ export const teacherApi = {
   getProfile: () => api.get('/teacher/profile'),
   updateProfile: (data: { first_name?: string; last_name?: string; institution?: string; avatar_url?: string; ui_accent?: string }) =>
     api.put('/teacher/profile', data),
+  uploadAvatar: (file: File) => {
+    const formData = new FormData()
+    formData.append('file', file)
+    return api.post('/teacher/avatar', formData, { headers: { 'Content-Type': 'multipart/form-data' } })
+  },
   // Invitations
   getInvitations: () => api.get('/teacher/invitations'),
   respondToClassInvitation: (invitationId: string, accept: boolean) =>

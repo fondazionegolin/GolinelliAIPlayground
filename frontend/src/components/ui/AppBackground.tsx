@@ -23,6 +23,11 @@ export function AppBackground({ className = "", gradient = DEFAULT_GRADIENT, chi
                     animation: mesh-shift 60s ease-in-out infinite;
                     will-change: transform;
                 }
+                @media (prefers-reduced-motion: reduce) {
+                    .animate-mesh {
+                        animation: none;
+                    }
+                }
                 `}
             </style>
             {gradient && (
