@@ -72,6 +72,7 @@ interface UseSocketReturn {
   loadOlderPublicMessages: () => Promise<void>
   hasMorePublicMessages: boolean
   loadingOlderPublicMessages: boolean
+  loadingInitialMessages: boolean
 }
 
 const dedupeById = (messages: ChatMessage[]): ChatMessage[] => {
@@ -95,6 +96,7 @@ export function useSocket(sessionId?: string): UseSocketReturn {
   const [currentUserId, setCurrentUserId] = useState<string | null>(null)
   const [hasMorePublicMessages, setHasMorePublicMessages] = useState(true)
   const [loadingOlderPublicMessages, setLoadingOlderPublicMessages] = useState(false)
+  const [loadingInitialMessages, setLoadingInitialMessages] = useState(!!sessionId)
 
   const currentUserIdRef = useRef<string | null>(null)
   const onlineUsersRef = useRef<OnlineUser[]>([])
@@ -149,15 +151,19 @@ export function useSocket(sessionId?: string): UseSocketReturn {
 
   const loadInitialPublicMessages = useCallback(async () => {
     if (!sessionId) return
+    setLoadingInitialMessages(true)
 
+    // Show from in-memory cache instantly (no spinner needed)
     const cached = PUBLIC_CHAT_CACHE.get(sessionId)
     if (cached && Date.now() - cached.updatedAt < CACHE_TTL_MS) {
       setMessages(cached.messages)
       nextCursorRef.current = cached.nextCursor
       setHasMorePublicMessages(cached.hasMore)
+      setLoadingInitialMessages(false)
       return
     }
 
+    // Show from localStorage cache while fetching fresh data
     try {
       const raw = localStorage.getItem(getPersistedCacheKey(sessionId))
       if (raw) {
@@ -166,6 +172,7 @@ export function useSocket(sessionId?: string): UseSocketReturn {
           setMessages(parsed.messages)
           nextCursorRef.current = parsed.nextCursor || null
           setHasMorePublicMessages(Boolean(parsed.hasMore))
+          setLoadingInitialMessages(false) // cache hit — hide skeleton
         }
       }
     } catch {
@@ -183,6 +190,8 @@ export function useSocket(sessionId?: string): UseSocketReturn {
       updatePublicCache(list, nextCursor, hasMore)
     } catch (err) {
       console.error('Failed to load chat messages:', err)
+    } finally {
+      setLoadingInitialMessages(false)
     }
   }, [sessionId, updatePublicCache])
 
@@ -597,5 +606,6 @@ export function useSocket(sessionId?: string): UseSocketReturn {
     loadOlderPublicMessages,
     hasMorePublicMessages,
     loadingOlderPublicMessages,
+    loadingInitialMessages,
   }
 }

@@ -346,7 +346,8 @@ export default function ChatSidebar({
     onlineUsers,
     loadOlderPublicMessages,
     hasMorePublicMessages,
-    loadingOlderPublicMessages
+    loadingOlderPublicMessages,
+    loadingInitialMessages
   } = useSocket(sessionId)
 
   const getRelativePath = (file: File) => {
@@ -1213,16 +1214,38 @@ export default function ChatSidebar({
           ref={scrollRef}
         >
           {loadingOlderPublicMessages && (
-            <div className="text-center text-[10px] text-slate-400 uppercase tracking-wider">{t('chat_sidebar.loading_history')}</div>
+            <div className="flex justify-center py-2">
+              <div className="flex items-center gap-1.5 text-[10px] text-slate-400 bg-white/80 px-3 py-1 rounded-full border border-slate-100">
+                <span className="w-1.5 h-1.5 rounded-full bg-slate-300 animate-bounce" style={{ animationDelay: '0ms' }} />
+                <span className="w-1.5 h-1.5 rounded-full bg-slate-300 animate-bounce" style={{ animationDelay: '150ms' }} />
+                <span className="w-1.5 h-1.5 rounded-full bg-slate-300 animate-bounce" style={{ animationDelay: '300ms' }} />
+              </div>
+            </div>
           )}
           {!hasMorePublicMessages && messages.length > 0 && (
             <div className="text-center text-[10px] text-slate-300 uppercase tracking-wider">{t('chat_sidebar.chat_start')}</div>
           )}
           {messages.length === 0 && (
-            <div className="h-full flex flex-col items-center justify-center text-slate-300 opacity-50">
-              <MessageSquare className="h-8 w-8 mb-2" />
-              <p className="text-[10px] font-medium uppercase">{t('chat_sidebar.no_messages')}</p>
-            </div>
+            loadingInitialMessages ? (
+              /* Skeleton while initial messages load */
+              <div className="space-y-4 pt-2 pointer-events-none select-none">
+                {[60, 80, 45, 70, 55].map((w, i) => (
+                  <div key={i} className={`flex gap-2 ${i % 2 === 1 ? 'justify-end' : 'justify-start'}`}>
+                    {i % 2 === 0 && <div className="w-6 h-6 rounded-full bg-slate-200 animate-pulse flex-shrink-0 self-end" />}
+                    <div className="flex flex-col gap-1" style={{ alignItems: i % 2 === 1 ? 'flex-end' : 'flex-start' }}>
+                      <div className="h-8 rounded-2xl bg-slate-200 animate-pulse" style={{ width: `${w * 2.2}px`, animationDelay: `${i * 100}ms` }} />
+                      <div className="h-2.5 rounded bg-slate-100 animate-pulse" style={{ width: `${w}px`, animationDelay: `${i * 100 + 50}ms` }} />
+                    </div>
+                    {i % 2 === 1 && <div className="w-6 h-6 rounded-full bg-slate-200 animate-pulse flex-shrink-0 self-end" />}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="h-full flex flex-col items-center justify-center text-slate-300 opacity-50">
+                <MessageSquare className="h-8 w-8 mb-2" />
+                <p className="text-[10px] font-medium uppercase">{t('chat_sidebar.no_messages')}</p>
+              </div>
+            )
           )}
 
           {messages.map((msg, idx) => renderMessage(msg, idx, messages))}
