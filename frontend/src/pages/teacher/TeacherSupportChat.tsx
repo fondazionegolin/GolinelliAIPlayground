@@ -118,6 +118,7 @@ export default function TeacherSupportChat() {
   const [showModelMenu, setShowModelMenu] = useState(false)
   const [showModeMenu, setShowModeMenu] = useState(false)
   const [conversations, setConversations] = useState<Conversation[]>([])
+  const [loadingConversations, setLoadingConversations] = useState(true)
   const [currentConversationId, setCurrentConversationId] = useState<string | null>(null)
   const [, setConversationCache] = useState<Record<string, Message[]>>({})
   const conversationCacheRef = useRef<Record<string, Message[]>>({})
@@ -431,6 +432,8 @@ export default function TeacherSupportChat() {
             })))
           } catch (parseErr) { console.error(parseErr) }
         }
+      } finally {
+        setLoadingConversations(false)
       }
     }
     loadConversations()
@@ -1536,10 +1539,46 @@ REGOLE IMPORTANTI:
                   >
                     <div className="max-w-3xl mx-auto w-full space-y-3 md:space-y-6 min-h-full flex flex-col">
                     {messages.length === 0 ? (
-                      <div className="h-full flex flex-col items-center justify-center opacity-50">
-                        <Bot className="h-12 w-12 text-slate-300 mb-4" />
-                        <p className="text-slate-400 font-medium">Inizia una nuova conversazione</p>
-                      </div>
+                      loadingConversations ? (
+                        /* Buffering skeleton while conversations load */
+                        <div className="h-full flex flex-col justify-end gap-4 pb-2 pointer-events-none select-none">
+                          {/* Fake assistant messages */}
+                          {[72, 52, 88, 44].map((w, i) => (
+                            <div key={i} className={`flex gap-3 ${i % 2 === 1 ? 'justify-end' : 'justify-start'}`}>
+                              {i % 2 === 0 && (
+                                <div className="w-8 h-8 rounded-full bg-slate-100 animate-pulse flex-shrink-0" />
+                              )}
+                              <div className={`flex flex-col gap-1.5 ${i % 2 === 1 ? 'items-end' : 'items-start'}`}>
+                                <div
+                                  className="h-9 rounded-2xl bg-slate-100 animate-pulse"
+                                  style={{ width: `${w * 3}px`, animationDelay: `${i * 120}ms` }}
+                                />
+                                <div
+                                  className="h-3 rounded bg-slate-100 animate-pulse"
+                                  style={{ width: `${w * 1.2}px`, animationDelay: `${i * 120 + 60}ms` }}
+                                />
+                              </div>
+                              {i % 2 === 1 && (
+                                <div className="w-8 h-8 rounded-full bg-slate-100 animate-pulse flex-shrink-0" />
+                              )}
+                            </div>
+                          ))}
+                          {/* Typing indicator */}
+                          <div className="flex gap-3 justify-start">
+                            <div className="w-8 h-8 rounded-full bg-slate-100 animate-pulse flex-shrink-0" />
+                            <div className="bg-slate-100 rounded-2xl rounded-tl-sm px-4 py-3 flex items-center gap-1.5">
+                              <span className="w-2 h-2 rounded-full bg-slate-300 animate-bounce" style={{ animationDelay: '0ms' }} />
+                              <span className="w-2 h-2 rounded-full bg-slate-300 animate-bounce" style={{ animationDelay: '150ms' }} />
+                              <span className="w-2 h-2 rounded-full bg-slate-300 animate-bounce" style={{ animationDelay: '300ms' }} />
+                            </div>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="h-full flex flex-col items-center justify-center opacity-50">
+                          <Bot className="h-12 w-12 text-slate-300 mb-4" />
+                          <p className="text-slate-400 font-medium">Inizia una nuova conversazione</p>
+                        </div>
+                      )
                     ) : (
                       messages.map((msg) => (
                         <div key={msg.id} className={`flex gap-4 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
