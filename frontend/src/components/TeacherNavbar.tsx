@@ -10,6 +10,8 @@ import { useSocket } from '@/hooks/useSocket'
 import { DEFAULT_TEACHER_ACCENT, getTeacherAccentTheme, TEACHER_ACCENTS, type TeacherAccentId } from '@/lib/teacherAccent'
 import { useTranslation } from 'react-i18next'
 import { LanguageSwitcher } from '@/components/LanguageSwitcher'
+import { useTeacherProfile, useInvalidateTeacherProfile, TEACHER_PROFILE_KEY } from '@/hooks/useTeacherProfile'
+import { useQueryClient } from '@tanstack/react-query'
 
 interface TeacherProfile {
   firstName: string
@@ -45,7 +47,10 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
   const location = useLocation()
   const navigate = useNavigate()
 
-  const [profile, setProfile] = useState<TeacherProfile>({ firstName: '', lastName: '', email: '', avatarUrl: '', uiAccent: DEFAULT_TEACHER_ACCENT })
+  const { data: profileData } = useTeacherProfile()
+  const invalidateProfile = useInvalidateTeacherProfile()
+  const queryClient = useQueryClient()
+  const profile: TeacherProfile = profileData ?? { firstName: '', lastName: '', email: '', avatarUrl: '', uiAccent: DEFAULT_TEACHER_ACCENT }
   const [activeSessions, setActiveSessions] = useState<ActiveSession[]>([])
   const [showDropdown, setShowDropdown] = useState(false)
   const [showSessionsMenu, setShowSessionsMenu] = useState(false)
@@ -149,7 +154,6 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
   }
 
   useEffect(() => {
-    loadProfile()
     loadActiveSessions()
 
     // Load saved session from localStorage and sync with parent
@@ -176,21 +180,6 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
     document.addEventListener('mousedown', handleClickOutside)
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
-
-  const loadProfile = async () => {
-    try {
-      const res = await teacherApi.getProfile()
-      setProfile({
-        firstName: res.data.first_name || '',
-        lastName: res.data.last_name || '',
-        email: res.data.email,
-        avatarUrl: res.data.avatar_url || '',
-        uiAccent: res.data.ui_accent || DEFAULT_TEACHER_ACCENT,
-      })
-    } catch (error) {
-      console.error('Failed to load profile', error)
-    }
-  }
 
   const loadActiveSessions = async () => {
     try {
@@ -303,7 +292,7 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
 
   return (
     <>
-      <nav className="fixed top-0 left-0 right-0 z-50 backdrop-blur-md border-b shadow-sm" style={accentVars}>
+      <nav className="fixed top-0 left-0 right-0 z-50 bg-white/98 border-b shadow-sm" style={accentVars}>
         <div className="max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             {/* Logo/Brand */}
@@ -523,11 +512,11 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
         <SettingsModal
           profile={profile}
           onSave={async (updated) => {
-            // Optimistic update
-            setProfile(updated)
+            // Optimistic update in React Query cache
+            queryClient.setQueryData(TEACHER_PROFILE_KEY, updated)
             window.dispatchEvent(new CustomEvent('teacherProfileUpdated', { detail: updated }))
             setShowSettings(false)
-            
+
             try {
               await teacherApi.updateProfile({
                 first_name: updated.firstName,
@@ -535,9 +524,11 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
                 avatar_url: updated.avatarUrl,
                 ui_accent: updated.uiAccent,
               })
+              // Refetch to sync canonical data
+              invalidateProfile()
             } catch (err) {
               console.error('Failed to save profile:', err)
-              // We could revert here, but for "fast" feeling, we'll just log
+              invalidateProfile()
             }
           }}
           onClose={() => setShowSettings(false)}
@@ -558,28 +549,32 @@ function SettingsModal({ profile, onSave, onClose }: SettingsModalProps) {
   const { t } = useTranslation()
   const [formData, setFormData] = useState(profile)
   const [previewUrl, setPreviewUrl] = useState(profile.avatarUrl || '')
+  const [isUploading, setIsUploading] = useState(false)
   const modalAccentTheme = getTeacherAccentTheme(formData.uiAccent)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
-    if (file) {
-      if (!file.type.startsWith('image/')) {
-        alert('Per favore seleziona un file immagine')
-        return
-      }
-      if (file.size > 5 * 1024 * 1024) {
-        alert('Il file deve essere inferiore a 5MB')
-        return
-      }
-
-      const reader = new FileReader()
-      reader.onload = (ev) => {
-        const dataUrl = ev.target?.result as string
-        setPreviewUrl(dataUrl)
-        setFormData({ ...formData, avatarUrl: dataUrl })
-      }
-      reader.readAsDataURL(file)
+    if (!file) return
+    if (!file.type.startsWith('image/')) {
+      alert('Per favore seleziona un file immagine')
+      return
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      alert('Il file deve essere inferiore a 2MB')
+      return
+    }
+    // Show instant local preview
+    setPreviewUrl(URL.createObjectURL(file))
+    // Upload to MinIO via backend
+    setIsUploading(true)
+    try {
+      const res = await teacherApi.uploadAvatar(file)
+      setFormData(fd => ({ ...fd, avatarUrl: res.data.avatar_url }))
+    } catch {
+      alert('Errore durante il caricamento dell\'immagine')
+    } finally {
+      setIsUploading(false)
     }
   }
 
@@ -625,10 +620,11 @@ function SettingsModal({ profile, onSave, onClose }: SettingsModalProps) {
               type="button"
               variant="outline"
               size="sm"
-              onClick={() => fileInputRef.current?.click()}
+              onClick={() => !isUploading && fileInputRef.current?.click()}
               className="text-xs"
+              disabled={isUploading}
             >
-              {t('navbar.change_photo')}
+              {isUploading ? 'Caricamento...' : t('navbar.change_photo')}
             </Button>
           </div>
 
@@ -702,7 +698,7 @@ function SettingsModal({ profile, onSave, onClose }: SettingsModalProps) {
             <Button type="button" variant="ghost" onClick={onClose} className="flex-1 text-slate-500 hover:text-slate-700 hover:bg-slate-100">
               {t('common.cancel')}
             </Button>
-            <Button type="submit" className="flex-1 text-white shadow-lg" style={{ backgroundColor: modalAccentTheme.accent }}>
+            <Button type="submit" className="flex-1 text-white shadow-lg" style={{ backgroundColor: modalAccentTheme.accent }} disabled={isUploading}>
               {t('common.save')}
             </Button>
           </div>

@@ -139,9 +139,9 @@ export default function TeacherSupportChat() {
     staleTime: 60_000,
   })
   const { data: teacherProfileResponse } = useQuery({
-    queryKey: ['teacher-profile-chat-accent'],
+    queryKey: ['teacher-profile'],
     queryFn: () => teacherApi.getProfile(),
-    staleTime: 60_000,
+    staleTime: 5 * 60 * 1000,
   })
   const availableModels = useMemo<AvailableModel[]>(() => {
     const modelsFromApi = (availableModelsResponse?.data?.models || [])

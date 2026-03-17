@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Query, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, status, Query, BackgroundTasks, UploadFile, File
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, or_
 from sqlalchemy.orm import selectinload
@@ -47,6 +47,7 @@ from app.schemas.invitation import (
     TeacherBasicInfo,
 )
 from app.services.education_level import SCHOOL_GRADE_OPTIONS
+from app.services.storage_service import storage_service
 
 router = APIRouter()
 TEACHER_ACCENTS = {"pink", "slate", "black", "indigo"}
@@ -124,6 +125,31 @@ async def update_profile(
         avatar_url=teacher.avatar_url,
         ui_accent=teacher.ui_accent,
     )
+
+@router.post("/avatar")
+async def upload_avatar(
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+    teacher: User = Depends(get_current_teacher),
+):
+    """Upload teacher avatar to MinIO and store URL in profile."""
+    if not file.content_type or not file.content_type.startswith('image/'):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="File must be an image")
+    data = await file.read()
+    if len(data) > 2 * 1024 * 1024:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Image must be under 2MB")
+
+    ext = (file.filename or 'avatar.jpg').rsplit('.', 1)[-1].lower()
+    if ext not in ('jpg', 'jpeg', 'png', 'webp', 'gif'):
+        ext = 'jpg'
+    storage_key = f"avatars/{teacher.id}.{ext}"
+    storage_service.upload_file(storage_key, data, file.content_type or 'image/jpeg')
+
+    avatar_url = f"/api/v1/media/avatar/{storage_key}"
+    teacher.avatar_url = avatar_url
+    await db.commit()
+    return {"avatar_url": avatar_url}
+
 
 DEFAULT_MODULES = ["chatbot", "classification", "self_assessment", "chat"]
 

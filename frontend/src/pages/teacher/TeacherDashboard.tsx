@@ -14,9 +14,10 @@ import { TeacherNavbar } from '@/components/TeacherNavbar'
 import ChatSidebar from '@/components/ChatSidebar'
 import { teacherApi } from '@/lib/api'
 import { AppBackground } from '@/components/ui/AppBackground'
-import { getTeacherAccentTheme, DEFAULT_TEACHER_ACCENT, type TeacherAccentId } from '@/lib/teacherAccent'
+import { getTeacherAccentTheme, type TeacherAccentId } from '@/lib/teacherAccent'
 import { getAppBackgroundGradient } from '@/lib/theme'
 import { useMobile } from '@/hooks/useMobile'
+import { useTeacherProfile } from '@/hooks/useTeacherProfile'
 
 const CHATBAR_AUTO_HIDE_BREAKPOINT = 1280
 
@@ -32,6 +33,7 @@ export default function TeacherDashboard() {
   const navigate = useNavigate()
   const { isMobile } = useMobile()
 
+  const { data: teacherProfileData } = useTeacherProfile()
   const [teacherProfile, setTeacherProfile] = useState<{ id: string, name: string, uiAccent?: TeacherAccentId } | null>(null)
   const [sidebarWidth, setSidebarWidth] = useState(380)
   const [showSidebar, setShowSidebar] = useState(true)
@@ -85,29 +87,14 @@ export default function TeacherDashboard() {
   }, [location.pathname])
 
   useEffect(() => {
-    const loadProfile = async () => {
-      try {
-        const res = await teacherApi.getProfile()
-        setTeacherProfile({
-          id: res.data.id,
-          name: `${res.data.first_name} ${res.data.last_name}`,
-          uiAccent: res.data.ui_accent || DEFAULT_TEACHER_ACCENT,
-        })
-      } catch (e) { console.error(e) }
+    if (teacherProfileData) {
+      setTeacherProfile(prev => ({
+        id: prev?.id || '',
+        name: `${teacherProfileData.firstName} ${teacherProfileData.lastName}`,
+        uiAccent: teacherProfileData.uiAccent,
+      }))
     }
-    loadProfile()
-
-    const handleProfileUpdate = (e: any) => {
-      const updated = e.detail
-      setTeacherProfile(prev => prev ? ({
-        ...prev,
-        name: `${updated.firstName} ${updated.lastName}`,
-        uiAccent: updated.uiAccent
-      }) : null)
-    }
-    window.addEventListener('teacherProfileUpdated', handleProfileUpdate)
-    return () => window.removeEventListener('teacherProfileUpdated', handleProfileUpdate)
-  }, [])
+  }, [teacherProfileData])
 
   useEffect(() => {
     const handleResize = () => {
