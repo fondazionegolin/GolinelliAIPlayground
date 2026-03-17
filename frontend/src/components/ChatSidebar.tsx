@@ -523,7 +523,16 @@ export default function ChatSidebar({
       container.scrollTop = Math.max(0, container.scrollTop + delta)
     } else if (currentCount > prevCount) {
       if (!isUserScrolledUp || prevCount === 0) {
-        container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' })
+        // Use rAF so scroll fires after DOM paint (avoids stale scrollHeight)
+        requestAnimationFrame(() => {
+          if (!scrollRef.current) return
+          // Instant for initial load, smooth for new messages
+          if (prevCount === 0) {
+            scrollRef.current.scrollTop = scrollRef.current.scrollHeight
+          } else {
+            scrollRef.current.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })
+          }
+        })
         setUnreadWhileScrolled(0)
       } else {
         setUnreadWhileScrolled(prev => prev + (currentCount - prevCount))

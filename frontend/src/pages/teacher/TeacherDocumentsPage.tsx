@@ -3,7 +3,7 @@ import { useMobile } from '@/hooks/useMobile'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
-  Plus, Trash2, Upload, Monitor, FileText, ChevronLeft, ChevronRight, FileSpreadsheet, PenTool, Share2, User, Clock, MonitorPlay, Calendar, BookOpen
+  Plus, Trash2, Upload, Monitor, FileText, ChevronLeft, ChevronRight, FileSpreadsheet, PenTool, Share2, User, Clock, MonitorPlay, Calendar, BookOpen, Search, X
 } from 'lucide-react'
 import { teacherApi } from '@/lib/api'
 import { useToast } from '@/components/ui/use-toast'
@@ -125,6 +125,7 @@ export default function TeacherDocumentsPage() {
   const [showSidebar, setShowSidebar] = useState(true)
   const [storedDocuments, setStoredDocuments] = useState<StoredDocument[]>([])
   const [draftDocuments, setDraftDocuments] = useState<DraftDocument[]>([])
+  const [docSearch, setDocSearch] = useState('')
 
   // Editor State
   const [editor, setEditor] = useState<Editor | null>(null)
@@ -797,8 +798,18 @@ export default function TeacherDocumentsPage() {
     return () => window.removeEventListener('resize', updateAnchor)
   }, [mode, showSidebar])
 
+  // ── Fuzzy search helper ───────────────────────────────────────────────────
+  const fuzzyMatch = (query: string, ...fields: string[]) => {
+    if (!query.trim()) return true
+    const terms = query.toLowerCase().split(/\s+/).filter(Boolean)
+    const target = fields.join(' ').toLowerCase()
+    return terms.every(term => target.includes(term))
+  }
+
   // ── Document list view (default) ─────────────────────────────────────────
   if (!isMobile && viewMode === 'list') {
+    const filteredDrafts = draftDocuments.filter(d => fuzzyMatch(docSearch, d.title, d.type))
+    const filteredStored = storedDocuments.filter(d => fuzzyMatch(docSearch, d.title, d.sessionName, d.className))
     const docIcon = (type: string) => {
       if (type === 'presentation') return <Monitor className="h-5 w-5" />
       if (type === 'sheet') return <FileSpreadsheet className="h-5 w-5" />
@@ -828,6 +839,25 @@ export default function TeacherDocumentsPage() {
           <div className="flex-1 overflow-y-auto p-6">
             <div className="max-w-5xl mx-auto space-y-8">
 
+              {/* Search */}
+              {(draftDocuments.length > 0 || storedDocuments.length > 0) && (
+                <div className="relative max-w-sm">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
+                  <input
+                    type="text"
+                    placeholder="Cerca documenti..."
+                    value={docSearch}
+                    onChange={e => setDocSearch(e.target.value)}
+                    className="w-full pl-9 pr-8 py-2 text-sm bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-300 focus:border-slate-400 transition-colors"
+                  />
+                  {docSearch && (
+                    <button onClick={() => setDocSearch('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                </div>
+              )}
+
               {draftDocuments.length === 0 && storedDocuments.length === 0 && (
                 <div className="flex flex-col items-center justify-center py-24 text-center">
                   <div className="w-20 h-20 rounded-full bg-slate-100 flex items-center justify-center mb-5">
@@ -842,11 +872,11 @@ export default function TeacherDocumentsPage() {
                 </div>
               )}
 
-              {draftDocuments.length > 0 && (
+              {filteredDrafts.length > 0 && (
                 <section>
-                  <h2 className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-3">Le mie Bozze</h2>
+                  <h2 className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-3">Le mie Bozze {docSearch && <span className="normal-case font-normal">({filteredDrafts.length})</span>}</h2>
                   <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-                    {draftDocuments.map(doc => (
+                    {filteredDrafts.map(doc => (
                       <div
                         key={doc.id}
                         onClick={() => loadDraft(doc)}
@@ -869,11 +899,18 @@ export default function TeacherDocumentsPage() {
                 </section>
               )}
 
-              {storedDocuments.length > 0 && (
+              {docSearch && filteredDrafts.length === 0 && filteredStored.length === 0 && (
+                <div className="flex flex-col items-center justify-center py-16 text-center">
+                  <Search className="h-8 w-8 text-slate-200 mb-3" />
+                  <p className="text-sm text-slate-400">Nessun documento corrisponde a <strong>"{docSearch}"</strong></p>
+                </div>
+              )}
+
+              {filteredStored.length > 0 && (
                 <section>
-                  <h2 className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-3">Pubblicati nelle Sessioni</h2>
+                  <h2 className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-3">Pubblicati nelle Sessioni {docSearch && <span className="normal-case font-normal">({filteredStored.length})</span>}</h2>
                   <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-                    {storedDocuments.map(doc => (
+                    {filteredStored.map(doc => (
                       <div
                         key={doc.id}
                         onClick={() => loadDocument(doc)}
