@@ -119,6 +119,12 @@ export default function TeacherSupportChat() {
   const [showModeMenu, setShowModeMenu] = useState(false)
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [loadingConversations, setLoadingConversations] = useState(true)
+  const [loadingMessages, setLoadingMessages] = useState(false)
+  const [hasMoreMessages, setHasMoreMessages] = useState(false)
+  const [oldestMessageId, setOldestMessageId] = useState<string | null>(null)
+  const [isLoadingOlder, setIsLoadingOlder] = useState(false)
+  const chatScrollRef = useRef<HTMLDivElement>(null)
+  const currentConversationId_ref = useRef<string | null>(null)
   const [currentConversationId, setCurrentConversationId] = useState<string | null>(null)
   const [, setConversationCache] = useState<Record<string, Message[]>>({})
   const conversationCacheRef = useRef<Record<string, Message[]>>({})
@@ -454,11 +460,20 @@ export default function TeacherSupportChat() {
     }
   }, [currentConversationId])
 
-  // Load messages when selecting a conversation
+  // Load messages when selecting a conversation (last 30 only)
   useEffect(() => {
+    currentConversationId_ref.current = currentConversationId
+    if (!currentConversationId) {
+      setHasMoreMessages(false)
+      setOldestMessageId(null)
+      return
+    }
     const loadMessages = async () => {
-      if (!currentConversationId) return
+      setLoadingMessages(true)
+      setHasMoreMessages(false)
+      setOldestMessageId(null)
       try {
+        // Show cached while fetching
         const cachedMessages = conversationCacheRef.current[currentConversationId]
         if (cachedMessages && cachedMessages.length > 0) {
           setMessages(cachedMessages)
@@ -466,40 +481,57 @@ export default function TeacherSupportChat() {
 
         const response = await teacherApi.getConversation(currentConversationId)
         const conv = response.data
-        if (conv?.messages) {
+        if (conv?.messages && currentConversationId_ref.current === currentConversationId) {
           const serverMessages = conv.messages.map((m: any) => ({
             id: m.id,
             role: m.role,
             content: m.content,
             timestamp: new Date(m.created_at)
           }))
-
-          const localMessages = cachedMessages || messagesRef.current || []
-          const localLast = localMessages[localMessages.length - 1]?.timestamp?.getTime() || 0
-          const serverLast = serverMessages[serverMessages.length - 1]?.timestamp?.getTime() || 0
-
-          // Only replace if server has strictly more messages OR same count but newer last message.
-          // Do NOT replace when local is empty but server has data — local may hold in-progress interview
-          // messages not yet persisted to the server.
-          const shouldReplace =
-            (serverMessages.length > localMessages.length) ||
-            (serverMessages.length === localMessages.length && serverLast > localLast)
-
-          if (shouldReplace) {
-            setMessages(serverMessages)
-            setConversationCache(prev => {
-              const next = { ...prev, [currentConversationId]: serverMessages }
-              conversationCacheRef.current = next
-              return next
-            })
-          }
+          setMessages(serverMessages)
+          setHasMoreMessages(conv.has_more ?? false)
+          setOldestMessageId(serverMessages[0]?.id ?? null)
+          setConversationCache(prev => {
+            const next = { ...prev, [currentConversationId]: serverMessages }
+            conversationCacheRef.current = next
+            return next
+          })
         }
       } catch (e) {
         console.error('Failed to load messages:', e)
+      } finally {
+        if (currentConversationId_ref.current === currentConversationId) {
+          setLoadingMessages(false)
+        }
       }
     }
     loadMessages()
   }, [currentConversationId])
+
+  // Load older messages when user scrolls to top
+  const loadOlderMessages = async () => {
+    if (!currentConversationId || !hasMoreMessages || isLoadingOlder || !oldestMessageId) return
+    setIsLoadingOlder(true)
+    try {
+      const response = await teacherApi.getConversation(currentConversationId, oldestMessageId)
+      const conv = response.data
+      if (conv?.messages) {
+        const older = conv.messages.map((m: any) => ({
+          id: m.id,
+          role: m.role,
+          content: m.content,
+          timestamp: new Date(m.created_at)
+        }))
+        setMessages(prev => [...older, ...prev])
+        setHasMoreMessages(conv.has_more ?? false)
+        setOldestMessageId(older[0]?.id ?? oldestMessageId)
+      }
+    } catch (e) {
+      console.error('Failed to load older messages:', e)
+    } finally {
+      setIsLoadingOlder(false)
+    }
+  }
 
   useEffect(() => { messagesRef.current = messages }, [messages])
 
@@ -1534,12 +1566,36 @@ REGOLE IMPORTANTI:
                   )}
 
                   <div
+                    ref={chatScrollRef}
                     className={`flex-1 overflow-y-auto ${isMobile ? 'px-3 py-3' : 'px-4 py-6'} ${chatBgIsDark ? 'text-white' : ''}`}
                     style={{ WebkitOverflowScrolling: 'touch', scrollBehavior: 'smooth' }}
+                    onScroll={(e) => {
+                      if (e.currentTarget.scrollTop < 80 && hasMoreMessages && !isLoadingOlder) {
+                        loadOlderMessages()
+                      }
+                    }}
                   >
+                    {/* Load older indicator */}
+                    {isLoadingOlder && (
+                      <div className="flex justify-center py-3">
+                        <div className="flex items-center gap-2 text-xs text-slate-400 bg-white/80 px-3 py-1.5 rounded-full border border-slate-100 shadow-sm">
+                          <span className="w-1.5 h-1.5 rounded-full bg-slate-300 animate-bounce" style={{ animationDelay: '0ms' }} />
+                          <span className="w-1.5 h-1.5 rounded-full bg-slate-300 animate-bounce" style={{ animationDelay: '150ms' }} />
+                          <span className="w-1.5 h-1.5 rounded-full bg-slate-300 animate-bounce" style={{ animationDelay: '300ms' }} />
+                          <span className="ml-1">Caricamento messaggi precedenti</span>
+                        </div>
+                      </div>
+                    )}
+                    {hasMoreMessages && !isLoadingOlder && (
+                      <div className="flex justify-center py-2">
+                        <button onClick={loadOlderMessages} className="text-xs text-slate-400 hover:text-slate-600 underline">
+                          Carica messaggi precedenti
+                        </button>
+                      </div>
+                    )}
                     <div className="max-w-3xl mx-auto w-full space-y-3 md:space-y-6 min-h-full flex flex-col">
                     {messages.length === 0 ? (
-                      loadingConversations ? (
+                      (loadingConversations || loadingMessages) ? (
                         /* Buffering skeleton while conversations load */
                         <div className="h-full flex flex-col justify-end gap-4 pb-2 pointer-events-none select-none">
                           {/* Fake assistant messages */}

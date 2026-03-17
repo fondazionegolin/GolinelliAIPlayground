@@ -200,8 +200,8 @@ export const teacherApi = {
   getConversations: () => api.get('/teacher/conversations'),
   createConversation: (data: { title?: string; agent_mode?: string }) =>
     api.post('/teacher/conversations', data),
-  getConversation: (conversationId: string) =>
-    api.get(`/teacher/conversations/${conversationId}`),
+  getConversation: (conversationId: string, beforeId?: string) =>
+    api.get(`/teacher/conversations/${conversationId}`, { params: beforeId ? { before_id: beforeId, limit: 30 } : { limit: 30 } }),
   deleteConversation: (conversationId: string) =>
     api.delete(`/teacher/conversations/${conversationId}`),
   deleteAllConversations: () =>
