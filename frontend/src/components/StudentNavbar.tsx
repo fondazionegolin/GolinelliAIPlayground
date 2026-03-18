@@ -5,6 +5,7 @@ import { Button } from './ui/button'
 import { LogoMark } from './LogoMark'
 import { studentApi } from '@/lib/api'
 import { DEFAULT_STUDENT_ACCENT, getStudentAccentTheme, saveStudentAccent, STUDENT_ACCENTS, type StudentAccentId } from '@/lib/studentAccent'
+import { NavTab } from '@/components/ui/NavTab'
 import { useTranslation } from 'react-i18next'
 import { LanguageSwitcher } from '@/components/LanguageSwitcher'
 import { useAuthStore } from '@/stores/auth'
@@ -170,19 +171,17 @@ export function StudentNavbar({
 
             {/* Desktop Navigation */}
             {onNavigate && (
-              <div className="hidden md:flex items-center gap-1 h-11 bg-white/50 backdrop-blur-sm p-1 rounded-2xl border border-slate-200 shadow-sm">
+              <div className="hidden md:flex items-center gap-0.5 h-10 bg-white p-0.5 rounded-2xl border border-slate-200 shadow-sm">
                 {navItems.map((item) => (
-                  <button
+                  <NavTab
                     key={item.label}
+                    icon={item.icon}
+                    label={item.label}
+                    isActive={activeModule === item.key}
                     onClick={() => onNavigate(item.key)}
-                    className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-[12px] transition-all duration-200 ${activeModule === item.key
-                        ? 'bg-[var(--student-accent)] text-white font-bold border border-[var(--student-accent-border)]/50 shadow-sm'
-                        : 'font-normal text-slate-600 hover:bg-slate-100/50 hover:text-[var(--student-accent-text)] border border-transparent'
-                      }`}
-                  >
-                    <item.icon className="h-4 w-4" />
-                    {item.label}
-                  </button>
+                    accentClass="bg-[var(--student-accent)]"
+                    accentTextClass="text-white"
+                  />
                 ))}
               </div>
             )}
@@ -190,7 +189,7 @@ export function StudentNavbar({
             <div className="flex items-center gap-2">
               {/* Session Info - Always visible */}
               {sessionTitle && (
-                <div className="hidden lg:flex items-center gap-2 h-9 px-3 rounded-xl border bg-white/60 backdrop-blur-md border-slate-200 shadow-sm">
+                <div className="hidden lg:flex items-center gap-2 h-9 px-3 rounded-xl border bg-white border-slate-200 shadow-sm">
                   <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse shadow-sm shadow-green-300" />
                   <div className="text-left min-w-0">
                     <span className="text-sm font-bold text-[var(--student-accent-text)] truncate max-w-[120px]">{sessionTitle}</span>
@@ -199,7 +198,7 @@ export function StudentNavbar({
               )}
 
               <button
-                className={`hidden lg:flex items-center justify-center w-10 h-10 rounded-full border transition-all shadow-sm`}
+                className={`hidden lg:flex items-center justify-center w-10 h-10 rounded-full border transition-colors duration-150 shadow-sm`}
                 style={chatSidebarOpen
                   ? { backgroundColor: accentTheme.accent, borderColor: accentTheme.accent, color: '#fff' }
                   : { backgroundColor: `${accentTheme.accent}18`, borderColor: `${accentTheme.accent}50`, color: accentTheme.text }}
@@ -213,7 +212,8 @@ export function StudentNavbar({
               <div className="relative" ref={dropdownRef}>
                 <button
                   onClick={() => setShowDropdown(!showDropdown)}
-                  className="flex items-center gap-3 hover:bg-slate-100 rounded-full pl-1 pr-3 py-1 transition-colors border border-transparent hover:border-slate-300"
+                  className="flex items-center gap-1 hover:bg-slate-100 rounded-full p-1 transition-colors border border-transparent hover:border-slate-200"
+                  title={profile.nickname}
                 >
                   {profile.avatarUrl ? (
                     <img
@@ -230,10 +230,7 @@ export function StudentNavbar({
                       {getInitials()}
                     </div>
                   )}
-                  <div className="hidden md:block text-left">
-                    <p className="text-xs font-medium text-slate-900 leading-none">{profile.nickname}</p>
-                  </div>
-                  <ChevronDown className={`h-3 w-3 text-slate-700 transition-transform ${showDropdown ? 'rotate-180' : ''}`} />
+                  <ChevronDown className={`h-3 w-3 text-slate-400 transition-transform ${showDropdown ? 'rotate-180' : ''}`} />
                 </button>
 
                 {/* Dropdown Menu - Modern Floating Style */}

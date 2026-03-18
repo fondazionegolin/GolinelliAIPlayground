@@ -8,6 +8,7 @@ import { useAuthStore } from '@/stores/auth'
 import TeacherNotifications, { TeacherNotification } from './TeacherNotifications'
 import { useSocket } from '@/hooks/useSocket'
 import { DEFAULT_TEACHER_ACCENT, getTeacherAccentTheme, TEACHER_ACCENTS, type TeacherAccentId } from '@/lib/teacherAccent'
+import { NavTab } from '@/components/ui/NavTab'
 import { useTranslation } from 'react-i18next'
 import { LanguageSwitcher } from '@/components/LanguageSwitcher'
 import { useTeacherProfile, useInvalidateTeacherProfile, TEACHER_PROFILE_KEY } from '@/hooks/useTeacherProfile'
@@ -313,15 +314,13 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
             <div className="hidden md:flex items-center gap-0.5 h-10 bg-white p-0.5 rounded-2xl border border-slate-200 shadow-sm">
               {navItems.map((item) => (
                 <Link key={item.path} to={item.path}>
-                  <button
-                    className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-[12px] transition-colors duration-150 ${isActive(item.path)
-                      ? 'bg-[var(--teacher-accent)] text-white font-bold border border-[var(--teacher-accent-border)]/50 shadow-sm'
-                      : 'font-normal text-slate-600 hover:bg-slate-100 hover:text-[var(--teacher-accent-text)] border border-transparent'
-                      }`}
-                  >
-                    <item.icon className="h-4 w-4" />
-                    {item.label}
-                  </button>
+                  <NavTab
+                    icon={item.icon}
+                    label={item.label}
+                    isActive={isActive(item.path)}
+                    accentClass="bg-[var(--teacher-accent)]"
+                    accentTextClass="text-white"
+                  />
                 </Link>
               ))}
             </div>
