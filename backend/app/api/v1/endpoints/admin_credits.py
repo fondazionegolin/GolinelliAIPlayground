@@ -23,7 +23,7 @@ from app.schemas.credits import (
     CreditLimitResponse, CreditLimitUpdate, CreditLimitBase,
     CreditTransactionResponse, ConsumptionStats,
     CreditRequestResponse, CreditRequestReview,
-    PlatformInvitationCreate, PlatformInvitationResponse
+    PlatformInvitationCreate, PlatformInvitationResponse, BulkInvitationCreate
 )
 
 router = APIRouter()
@@ -301,6 +301,8 @@ async def invite_teacher(
         first_name=invitation.first_name,
         last_name=invitation.last_name,
         school=invitation.school,
+        group_tag=invitation.group_tag,
+        custom_message=invitation.custom_message,
         role="TEACHER",
         token=token,
         status="pending",
@@ -318,11 +320,13 @@ async def invite_teacher(
         to_email=invitation.email,
         first_name=invitation.first_name or "Docente",
         link=activation_link,
+        custom_message=invitation.custom_message,
+        group_tag=invitation.group_tag,
         subject_template=templates.get("subject_template"),
         html_template=templates.get("html_template"),
         text_template=templates.get("text_template"),
     )
-    
+
     return inv
 
 @router.post("/invitations/bulk", response_model=List[PlatformInvitationResponse])
@@ -426,6 +430,117 @@ async def bulk_invite_teachers(
                 pass
 
     return [inv for inv, _activation_token in invitations]
+
+@router.post("/invitations/bulk-json", response_model=List[PlatformInvitationResponse])
+async def bulk_invite_teachers_json(
+    payload: BulkInvitationCreate,
+    request: Request,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    admin: Annotated[User, Depends(get_current_admin)],
+):
+    """Bulk invite teachers from parsed JSON (CSV parsed client-side).
+    Accepts group_tag and custom_message applied to all rows."""
+    group_tag = payload.group_tag
+    custom_message = payload.custom_message
+
+    tenant = (await db.execute(select(Tenant).where(Tenant.id == admin.tenant_id))).scalar_one_or_none()
+    templates = _tenant_template_args(tenant, "teacher_invitation")
+    base_frontend = resolve_frontend_url(request.headers.get("origin"))
+
+    created: list[tuple[PlatformInvitation, str]] = []
+
+    for item in payload.teachers:
+        email = str(item.email).lower().strip()
+
+        stmt = select(User).where(User.email == email).order_by(desc(User.created_at))
+        existing_user = (await db.execute(stmt)).scalar_one_or_none()
+        if existing_user and existing_user.is_active:
+            continue
+
+        stmt = select(PlatformInvitation).where(
+            PlatformInvitation.email == email,
+            PlatformInvitation.status == "pending",
+        )
+        if (await db.execute(stmt)).scalar_one_or_none():
+            continue
+
+        token = secrets.token_urlsafe(32)
+        temp_password = secrets.token_urlsafe(12)
+        activation_token = secrets.token_urlsafe(48)
+
+        if existing_user and not existing_user.is_active:
+            user = existing_user
+            user.tenant_id = admin.tenant_id
+            user.password_hash = get_password_hash(temp_password)
+            user.role = UserRole.TEACHER
+            user.first_name = item.first_name
+            user.last_name = item.last_name
+            user.institution = item.school
+            user.is_verified = True
+            user.is_active = True
+            user.deactivated_at = None
+            user.deactivated_by_admin_id = None
+            await db.flush()
+        else:
+            user = User(
+                tenant_id=admin.tenant_id,
+                email=email,
+                password_hash=get_password_hash(temp_password),
+                role=UserRole.TEACHER,
+                first_name=item.first_name,
+                last_name=item.last_name,
+                institution=item.school,
+                is_verified=True,
+            )
+            db.add(user)
+            await db.flush()
+
+        activation = ActivationToken(
+            user_id=user.id,
+            token=activation_token,
+            temporary_password=temp_password,
+            expires_at=datetime.utcnow() + timedelta(hours=72),
+        )
+        db.add(activation)
+
+        inv = PlatformInvitation(
+            tenant_id=admin.tenant_id,
+            email=email,
+            first_name=item.first_name,
+            last_name=item.last_name,
+            school=item.school,
+            group_tag=group_tag,
+            custom_message=custom_message,
+            role="TEACHER",
+            token=token,
+            status="pending",
+            invited_by_id=admin.id,
+            expires_at=datetime.utcnow() + timedelta(days=7),
+        )
+        db.add(inv)
+        created.append((inv, activation_token))
+
+    if created:
+        await db.commit()
+        for inv, act_token in created:
+            await db.refresh(inv)
+            try:
+                activation_link = f"{base_frontend}/activate/{act_token}"
+                await email_service.send_invitation_email(
+                    to_email=inv.email,
+                    first_name=inv.first_name or "Docente",
+                    link=activation_link,
+                    custom_message=custom_message,
+                    group_tag=group_tag,
+                    subject_template=templates.get("subject_template"),
+                    html_template=templates.get("html_template"),
+                    text_template=templates.get("text_template"),
+                )
+            except Exception:
+                pass
+
+    return [inv for inv, _ in created]
+
 
 @router.get("/invitations", response_model=List[PlatformInvitationResponse])
 async def list_invitations(

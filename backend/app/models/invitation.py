@@ -111,7 +111,9 @@ class PlatformInvitation(Base):
     role = Column(String, default="TEACHER") # Usually TEACHER
     
     token = Column(String, unique=True, nullable=False, index=True)
-    
+    group_tag = Column(String(120), nullable=True)       # e.g. "sperimentazione torino"
+    custom_message = Column(String, nullable=True)       # admin note shown in invite email
+
     # Kept as plain string for compatibility with legacy DB schema where this
     # column is VARCHAR (not PostgreSQL ENUM).
     status = Column(String, default=InvitationStatus.PENDING.value, nullable=False)

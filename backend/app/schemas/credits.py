@@ -83,15 +83,26 @@ class PlatformInvitationCreate(BaseModel):
     first_name: Optional[str] = None
     last_name: Optional[str] = None
     school: Optional[str] = None
+    group_tag: Optional[str] = None
+    custom_message: Optional[str] = None
+
+class BulkInvitationCreate(BaseModel):
+    teachers: List["PlatformInvitationCreate"]
+    group_tag: Optional[str] = None
+    custom_message: Optional[str] = None
 
 class PlatformInvitationResponse(BaseModel):
     id: UUID
     email: str
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    school: Optional[str] = None
+    group_tag: Optional[str] = None
     status: InvitationStatus
     token: str
     created_at: datetime
     expires_at: datetime
     invited_by_id: Optional[UUID] = None
-    
+
     class Config:
         from_attributes = True
