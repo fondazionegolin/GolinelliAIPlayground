@@ -102,6 +102,7 @@ class PlatformInvitationResponse(BaseModel):
     token: str
     created_at: datetime
     expires_at: datetime
+    responded_at: Optional[datetime] = None   # when the teacher accepted/activated
     invited_by_id: Optional[UUID] = None
 
     class Config:
