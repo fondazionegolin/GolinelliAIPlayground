@@ -1,16 +1,18 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, lazy, Suspense } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Routes, Route, useLocation, Link, useNavigate } from 'react-router-dom'
 import { MessageSquare, Users, PlayCircle, Bot, ClipboardList, History, Monitor } from 'lucide-react'
-import ClassesPage from './ClassesPage'
-import SessionsPage from './SessionsPage'
-import SessionLivePage from './SessionLivePage'
+// Heavy pages loaded lazily — only parsed when first visited
+const ClassesPage        = lazy(() => import('./ClassesPage'))
+const SessionsPage       = lazy(() => import('./SessionsPage'))
+const SessionLivePage    = lazy(() => import('./SessionLivePage'))
+const TeacherDocumentsPage = lazy(() => import('./TeacherDocumentsPage'))
+const TeacherMLLabPage   = lazy(() => import('./TeacherMLLabPage'))
+const UDAListPage        = lazy(() => import('./UDAListPage'))
+const UDACreatorPage     = lazy(() => import('./UDACreatorPage'))
+const TeacherDemoPage    = lazy(() => import('./TeacherDemoPage'))
+// TeacherSupportChat is the index route — load eagerly for fast first paint
 import TeacherSupportChat from './TeacherSupportChat'
-import TeacherDocumentsPage from './TeacherDocumentsPage'
-import TeacherMLLabPage from './TeacherMLLabPage'
-import UDAListPage from './UDAListPage'
-import UDACreatorPage from './UDACreatorPage'
-import TeacherDemoPage from './TeacherDemoPage'
 import { TeacherNavbar } from '@/components/TeacherNavbar'
 import ChatSidebar from '@/components/ChatSidebar'
 import { teacherApi } from '@/lib/api'
@@ -227,17 +229,19 @@ export default function TeacherDashboard() {
         )}
 
         <main className="flex-1 overflow-y-auto relative">
-          <Routes>
-            <Route index element={<TeacherSupportChat />} />
-            <Route path="documents" element={<TeacherDocumentsPage />} />
-            <Route path="ml-lab" element={<TeacherMLLabPage />} />
-            <Route path="classes" element={<ClassesPage />} />
-            <Route path="sessions" element={<SessionsPage />} />
-            <Route path="sessions/:sessionId" element={<SessionLivePage />} />
-            <Route path="classes/:classId/uda" element={<UDAListPage />} />
-            <Route path="classes/:classId/uda/:udaId" element={<UDACreatorPage />} />
-            <Route path="demo" element={<TeacherDemoPage />} />
-          </Routes>
+          <Suspense fallback={<div className="flex items-center justify-center h-full min-h-[40vh] text-sm text-slate-400">Caricamento...</div>}>
+            <Routes>
+              <Route index element={<TeacherSupportChat />} />
+              <Route path="documents" element={<TeacherDocumentsPage />} />
+              <Route path="ml-lab" element={<TeacherMLLabPage />} />
+              <Route path="classes" element={<ClassesPage />} />
+              <Route path="sessions" element={<SessionsPage />} />
+              <Route path="sessions/:sessionId" element={<SessionLivePage />} />
+              <Route path="classes/:classId/uda" element={<UDAListPage />} />
+              <Route path="classes/:classId/uda/:udaId" element={<UDACreatorPage />} />
+              <Route path="demo" element={<TeacherDemoPage />} />
+            </Routes>
+          </Suspense>
         </main>
 
         {/* Right chat sidebar — desktop only */}

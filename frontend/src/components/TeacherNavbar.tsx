@@ -310,13 +310,13 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
               </div>
             </div>
 
-            <div className="hidden md:flex items-center gap-1 h-11 bg-white/50 backdrop-blur-sm p-1 rounded-2xl border border-slate-200 shadow-sm">
+            <div className="hidden md:flex items-center gap-0.5 h-10 bg-white p-0.5 rounded-2xl border border-slate-200 shadow-sm">
               {navItems.map((item) => (
                 <Link key={item.path} to={item.path}>
                   <button
-                    className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-[12px] transition-all duration-200 ${isActive(item.path)
+                    className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-[12px] transition-colors duration-150 ${isActive(item.path)
                       ? 'bg-[var(--teacher-accent)] text-white font-bold border border-[var(--teacher-accent-border)]/50 shadow-sm'
-                      : 'font-normal text-slate-600 hover:bg-slate-100/50 hover:text-[var(--teacher-accent-text)] border border-transparent'
+                      : 'font-normal text-slate-600 hover:bg-slate-100 hover:text-[var(--teacher-accent-text)] border border-transparent'
                       }`}
                   >
                     <item.icon className="h-4 w-4" />
@@ -340,7 +340,7 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
               <div className="relative flex items-center gap-2" ref={sessionsMenuRef}>
                 <button
                   onClick={() => setShowSessionsMenu(!showSessionsMenu)}
-                  className="hidden lg:flex items-center gap-1.5 h-auto py-1.5 px-2.5 rounded-xl border bg-white/60 backdrop-blur-md border-slate-200 hover:bg-white/80 hover:border-slate-300 transition-all cursor-pointer shadow-sm"
+                  className="hidden lg:flex items-center gap-1.5 h-auto py-1.5 px-2.5 rounded-xl border bg-white border-slate-200 hover:bg-slate-50 hover:border-slate-300 transition-colors duration-150 cursor-pointer shadow-sm"
                 >
                   <div className={`w-2 h-2 rounded-full flex-shrink-0 ${currentSession ? 'bg-green-500 animate-pulse shadow-sm shadow-green-300' : 'bg-slate-300'}`} />
                   <div className="text-left min-w-0">
@@ -352,7 +352,7 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
                   <ChevronDown className={`h-3 w-3 ml-0.5 text-slate-400 transition-transform flex-shrink-0 ${showSessionsMenu ? 'rotate-180' : ''}`} />
                 </button>
                 <button
-                  className={`hidden lg:flex items-center justify-center p-2.5 rounded-full border transition-all shadow-sm backdrop-blur-md`}
+                  className={`hidden lg:flex items-center justify-center p-2.5 rounded-full border transition-colors duration-150 shadow-sm`}
                   style={chatSidebarOpen
                     ? { backgroundColor: accentTheme.accent, borderColor: accentTheme.accent, color: '#fff' }
                     : { backgroundColor: `${accentTheme.accent}18`, borderColor: `${accentTheme.accent}50`, color: accentTheme.text }}
@@ -438,7 +438,8 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
               <div className="relative" ref={dropdownRef}>
                 <button
                   onClick={() => setShowDropdown(!showDropdown)}
-                  className="flex items-center gap-3 hover:bg-slate-100 rounded-full pl-1 pr-3 py-1 transition-colors border border-transparent hover:border-slate-300"
+                  className="flex items-center gap-1 hover:bg-slate-100 rounded-full p-1 transition-colors border border-transparent hover:border-slate-200"
+                  title={`${profile.firstName} ${profile.lastName}`}
                 >
                   {profile.avatarUrl ? (
                     <img
@@ -452,10 +453,7 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
                       {getInitials()}
                     </div>
                   )}
-                  <div className="hidden md:block text-left">
-                    <p className="text-xs font-medium text-slate-900 leading-none">{profile.firstName}</p>
-                  </div>
-                  <ChevronDown className={`h-3 w-3 text-slate-700 transition-transform ${showDropdown ? 'rotate-180' : ''}`} />
+                  <ChevronDown className={`h-3 w-3 text-slate-400 transition-transform ${showDropdown ? 'rotate-180' : ''}`} />
                 </button>
 
                 {/* Dropdown Menu - Modern Floating Style */}
