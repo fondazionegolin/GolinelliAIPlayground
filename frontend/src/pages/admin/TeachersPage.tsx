@@ -112,6 +112,8 @@ export default function TeachersPage() {
   const { data: invitations } = useQuery<any[]>({
     queryKey: ['admin-platform-invitations'],
     queryFn: async () => (await creditsApi.getInvitations()).data,
+    refetchInterval: 20_000,   // poll ogni 20s per aggiornamenti real-time
+    staleTime: 10_000,
   })
 
   /* ── mutations ── */
@@ -196,14 +198,15 @@ export default function TeachersPage() {
     let colEmail = 0, colFirst = 1, colLast = 2, colSchool = 3
     if (hasHeader) {
       const headers = lines[0].split(sep).map(h => h.trim().toLowerCase())
-      colEmail = headers.findIndex(h => h.includes('email') || h === 'e-mail') ?? 0
-      colFirst = headers.findIndex(h => h.includes('nome') || h.includes('first') || h === 'name') ?? 1
-      colLast = headers.findIndex(h => h.includes('cognome') || h.includes('last')) ?? 2
-      colSchool = headers.findIndex(h => h.includes('scuola') || h.includes('school') || h.includes('istituto')) ?? 3
-      if (colEmail < 0) colEmail = 0
-      if (colFirst < 0) colFirst = 1
-      if (colLast < 0) colLast = 2
-      if (colSchool < 0) colSchool = 3
+      // NOTE: 'cognome'.includes('nome') === true, so check cognome BEFORE nome and use exact/negative matches
+      const ei = headers.findIndex(h => h.includes('email') || h === 'e-mail')
+      const li = headers.findIndex(h => h.includes('cognome') || h === 'last_name' || h === 'last' || h === 'surname')
+      const fi = headers.findIndex(h => (h === 'nome' || h === 'first_name' || h === 'first' || h === 'name') && !h.includes('cognome'))
+      const si = headers.findIndex(h => h.includes('scuola') || h.includes('school') || h.includes('istituto'))
+      colEmail = ei >= 0 ? ei : 0
+      colFirst = fi >= 0 ? fi : (li === 1 ? 2 : 1)   // fallback avoids colliding with lastName col
+      colLast  = li >= 0 ? li : (fi === 2 ? 1 : 2)
+      colSchool = si >= 0 ? si : 3
     }
     const rows: CsvRow[] = dataLines
       .map((line, i) => {
@@ -549,44 +552,79 @@ export default function TeachersPage() {
             )}
           </div>
 
-          {/* Invite history */}
-          {(invitations || []).length > 0 && (
-            <div className="bg-white rounded-xl border border-slate-200 p-4">
-              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">Inviti recenti</p>
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[560px] text-xs">
-                  <thead>
-                    <tr className="text-left text-[11px] uppercase text-slate-400 border-b">
-                      <th className="pb-1.5 font-medium">Email</th>
-                      <th className="pb-1.5 font-medium">Gruppo</th>
-                      <th className="pb-1.5 font-medium">Stato</th>
-                      <th className="pb-1.5 font-medium">Creato</th>
-                      <th className="pb-1.5 font-medium">Scadenza</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {(invitations || []).slice(0, 15).map((inv: any) => (
-                      <tr key={inv.id} className="border-t border-slate-100">
-                        <td className="py-1.5 font-mono">{inv.email}</td>
-                        <td className="py-1.5">
-                          {inv.group_tag ? (
-                            <span className="px-1.5 py-0.5 rounded-full bg-indigo-50 text-indigo-600 text-[10px] font-medium border border-indigo-100">{inv.group_tag}</span>
-                          ) : <span className="text-slate-300">—</span>}
-                        </td>
-                        <td className="py-1.5">
-                          <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${inv.status === 'accepted' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
-                            {inv.status}
-                          </span>
-                        </td>
-                        <td className="py-1.5 text-slate-500">{formatDate(inv.created_at)}</td>
-                        <td className="py-1.5 text-slate-500">{formatDate(inv.expires_at)}</td>
+          {/* Invite history — real-time (polls every 20s) */}
+          {(invitations || []).length > 0 && (() => {
+            // Build email→teacher map for cross-referencing login status
+            const teacherByEmail: Record<string, TeacherStatus> = {}
+            ;(teachersStatus?.items || []).forEach(t => { teacherByEmail[t.email.toLowerCase()] = t })
+            return (
+              <div className="bg-white rounded-xl border border-slate-200 p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Inviti recenti</p>
+                  <span className="text-[10px] text-slate-400 flex items-center gap-1">
+                    <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                    aggiornamento automatico
+                  </span>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[640px] text-xs">
+                    <thead>
+                      <tr className="text-left text-[11px] uppercase text-slate-400 border-b">
+                        <th className="pb-1.5 font-medium">Docente</th>
+                        <th className="pb-1.5 font-medium">Gruppo</th>
+                        <th className="pb-1.5 font-medium">Invito</th>
+                        <th className="pb-1.5 font-medium">Piattaforma</th>
+                        <th className="pb-1.5 font-medium">Inviato</th>
+                        <th className="pb-1.5 font-medium">Scadenza</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {(invitations || []).slice(0, 20).map((inv: any) => {
+                        const teacher = teacherByEmail[inv.email?.toLowerCase()]
+                        const hasLoggedIn = !!teacher?.last_login_at
+                        const isExpired = !inv.responded_at && new Date(inv.expires_at) < new Date()
+                        return (
+                          <tr key={inv.id} className="border-t border-slate-100">
+                            <td className="py-2">
+                              <div>
+                                <p className="font-medium text-slate-700">{[inv.first_name, inv.last_name].filter(Boolean).join(' ') || '—'}</p>
+                                <p className="text-[10px] text-slate-400 font-mono">{inv.email}</p>
+                              </div>
+                            </td>
+                            <td className="py-2">
+                              {inv.group_tag
+                                ? <span className="px-1.5 py-0.5 rounded-full bg-indigo-50 text-indigo-600 text-[10px] font-medium border border-indigo-100">{inv.group_tag}</span>
+                                : <span className="text-slate-300">—</span>}
+                            </td>
+                            <td className="py-2">
+                              {inv.status === 'accepted'
+                                ? <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700 text-[10px] font-semibold">
+                                    <CheckCircle2 className="h-3 w-3" />accettato
+                                    {inv.responded_at && <span className="opacity-70 font-normal">· {formatDate(inv.responded_at)}</span>}
+                                  </span>
+                                : isExpired
+                                  ? <span className="px-1.5 py-0.5 rounded-full bg-red-50 text-red-500 text-[10px] font-medium">scaduto</span>
+                                  : <span className="px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 text-[10px] font-medium">in attesa</span>}
+                            </td>
+                            <td className="py-2">
+                              {hasLoggedIn
+                                ? <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-blue-50 text-blue-700 text-[10px] font-semibold">
+                                    <LogIn className="h-3 w-3" />entrato
+                                    <span className="opacity-70 font-normal">· {formatDate(teacher!.last_login_at)}</span>
+                                  </span>
+                                : <span className="text-slate-300 text-[10px]">mai</span>}
+                            </td>
+                            <td className="py-2 text-slate-500">{formatDate(inv.created_at)}</td>
+                            <td className="py-2 text-slate-500">{formatDate(inv.expires_at)}</td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
               </div>
-            </div>
-          )}
+            )
+          })()}
         </div>
       )}
 
