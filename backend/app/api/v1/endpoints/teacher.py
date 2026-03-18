@@ -575,6 +575,68 @@ async def unfreeze_student(
     return {"message": "Student unfrozen", "student_id": str(student_id)}
 
 
+@router.post("/sessions/{session_id}/students/{student_id}/push-teacherbot")
+async def push_teacherbot_to_student(
+    session_id: UUID,
+    student_id: UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    teacher: Annotated[User, Depends(get_current_teacher)],
+    teacherbot_id: UUID = Query(...),
+):
+    """Push a teacherbot notification directly to a specific student"""
+    from app.models.teacherbot import Teacherbot
+
+    if not await teacher_can_access_session(db, teacher, session_id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
+
+    # Verify the student is in this session
+    student_result = await db.execute(
+        select(SessionStudent)
+        .where(SessionStudent.id == student_id)
+        .where(SessionStudent.session_id == session_id)
+    )
+    student = student_result.scalar_one_or_none()
+    if not student:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Student not found")
+
+    # Verify the teacherbot belongs to this teacher
+    bot_result = await db.execute(
+        select(Teacherbot)
+        .where(Teacherbot.id == teacherbot_id)
+        .where(Teacherbot.teacher_id == teacher.id)
+    )
+    bot = bot_result.scalar_one_or_none()
+    if not bot:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Teacherbot not found")
+
+    # Emit teacherbot_published notification to the specific student's room
+    await sio.emit(
+        "chat_message",
+        {
+            "room_type": "PUBLIC",
+            "session_id": str(session_id),
+            "message": {
+                "id": f"push-{student_id}-{teacherbot_id}",
+                "sender_type": "SYSTEM",
+                "text": f"Il docente ti ha inviato un assistente: {bot.name}",
+                "created_at": datetime.utcnow().isoformat(),
+                "is_notification": True,
+                "notification_type": "teacherbot_published",
+                "notification_data": {
+                    "teacherbot_id": str(bot.id),
+                    "name": bot.name,
+                    "icon": bot.icon,
+                    "color": bot.color,
+                    "synopsis": bot.synopsis,
+                },
+            },
+        },
+        room=f"student:{student_id}",
+    )
+
+    return {"message": f"Teacherbot {bot.name} pushed to student {student.nickname}"}
+
+
 @router.delete("/sessions/{session_id}/students/{student_id}")
 async def remove_student(
     session_id: UUID,

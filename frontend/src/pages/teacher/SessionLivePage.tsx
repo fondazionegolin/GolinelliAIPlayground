@@ -1,8 +1,8 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { useParams, Link, useSearchParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import type { Socket } from 'socket.io-client'
-import { teacherApi } from '@/lib/api'
+import { teacherApi, teacherbotsApi } from '@/lib/api'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Switch } from '@/components/ui/switch'
@@ -11,10 +11,12 @@ import { useToast } from '@/components/ui/use-toast'
 import {
   ArrowLeft, Users, Copy, Play, Square,
   Snowflake, Sun, Bot, Brain, MessageSquare,
-  ClipboardList, Plus, Trash2, Check, Eye, ChevronDown, ChevronUp, History, User, BookOpen, Search, X
+  ClipboardList, Plus, Trash2, Check, Eye, ChevronDown, ChevronUp, History, User, BookOpen, Search, X,
+  MonitorPlay, Send, ChevronRight
 } from 'lucide-react'
 import { llmApi } from '@/lib/api'
 import TaskBuilder from '@/components/TaskBuilder'
+import TeacherbotTestChat from '@/components/teacher/TeacherbotTestChat'
 // TeacherNotifications removed per redesign
 import { useSocket } from '@/hooks/useSocket'
 import { useAuthStore } from '@/stores/auth'
@@ -77,6 +79,23 @@ export default function SessionLivePage() {
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null)
   const [taskSearch, setTaskSearch] = useState('')
   const [selectedConversationId, setSelectedConversationId] = useState<string | null>(null)
+
+  // Demo mode: teacherbot slide-over
+  const [demoBotId, setDemoBotId] = useState<string | null>(null)
+
+  // Per-student push: which student has the bot picker open
+  const [pushBotStudentId, setPushBotStudentId] = useState<string | null>(null)
+  const pushPopoverRef = useRef<HTMLDivElement>(null)
+
+  // Fetch teacher's teacherbots for demo mode and push
+  const { data: teacherbots } = useQuery({
+    queryKey: ['teacherbots'],
+    queryFn: async () => {
+      const res = await teacherbotsApi.list()
+      return res.data as { id: string; name: string; color: string; icon: string | null; synopsis: string | null; status: string }[]
+    },
+    staleTime: 1000 * 60 * 5,
+  })
 
   // Fetch available LLM models
   const { data: modelsData } = useQuery({
@@ -208,6 +227,19 @@ export default function SessionLivePage() {
     },
   })
 
+  const pushTeacherbotMutation = useMutation({
+    mutationFn: ({ studentId, teacherbotId }: { studentId: string; teacherbotId: string }) =>
+      teacherApi.pushTeacherbotToStudent(sessionId!, studentId, teacherbotId),
+    onSuccess: (_, { studentId }) => {
+      const student = data?.students.find(s => s.id === studentId)
+      toast({ title: `Bot inviato a ${student?.nickname ?? 'studente'}` })
+      setPushBotStudentId(null)
+    },
+    onError: () => {
+      toast({ title: 'Errore invio bot', variant: 'destructive' })
+    },
+  })
+
   const copyCode = (code: string) => {
     navigator.clipboard.writeText(code)
     toast({ title: 'Codice copiato!' })
@@ -224,6 +256,18 @@ export default function SessionLivePage() {
     }
     return icons[key] || null
   }
+
+  // Close bot popover when clicking outside
+  useEffect(() => {
+    if (!pushBotStudentId) return
+    const handler = (e: MouseEvent) => {
+      if (pushPopoverRef.current && !pushPopoverRef.current.contains(e.target as Node)) {
+        setPushBotStudentId(null)
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [pushBotStudentId])
 
   // All hooks must be before any conditional returns (Rules of Hooks)
   const onlineStudentIds = useMemo(() => new Set(onlineUsers.map(u => u.student_id)), [onlineUsers])
@@ -264,6 +308,35 @@ export default function SessionLivePage() {
 
   return (
     <>
+      {/* Demo mode slide-over */}
+      {demoBotId && (
+        <div className="fixed inset-0 z-50 flex">
+          {/* Backdrop */}
+          <div className="flex-1 bg-black/30" onClick={() => setDemoBotId(null)} />
+          {/* Panel */}
+          <div className="w-full max-w-xl bg-white shadow-2xl flex flex-col h-full overflow-hidden">
+            <div className="flex items-center justify-between px-5 py-3 border-b border-slate-200 bg-slate-50">
+              <div className="flex items-center gap-2 text-sm font-semibold text-slate-700">
+                <MonitorPlay className="h-4 w-4 text-[#e85c8d]" />
+                Modalità Demo
+              </div>
+              <button
+                onClick={() => setDemoBotId(null)}
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-200 transition-colors"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="flex-1 overflow-hidden p-4">
+              <TeacherbotTestChat
+                teacherbotId={demoBotId}
+                onBack={() => setDemoBotId(null)}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
       <div>
         {/* Header */}
         <div className="bg-white border-b border-slate-200 px-6 md:px-8 py-4">
@@ -391,6 +464,47 @@ export default function SessionLivePage() {
                             >
                               <MessageSquare className="h-3.5 w-3.5 text-slate-400" />
                             </Button>
+                            {/* Bot push button */}
+                            <div className="relative">
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="h-7 w-7 p-0"
+                                onClick={() => setPushBotStudentId(pushBotStudentId === student.id ? null : student.id)}
+                                title="Invia Bot"
+                              >
+                                <Bot className="h-3.5 w-3.5 text-slate-400" />
+                              </Button>
+                              {pushBotStudentId === student.id && (
+                                <div
+                                  ref={pushPopoverRef}
+                                  className="absolute right-0 top-8 z-50 w-52 bg-white border border-slate-200 rounded-xl shadow-xl overflow-hidden"
+                                >
+                                  <div className="px-3 py-2 border-b border-slate-100 text-xs font-semibold text-slate-600 flex items-center gap-1.5">
+                                    <Send className="h-3 w-3" />
+                                    Invia bot a {student.nickname}
+                                  </div>
+                                  {!teacherbots || teacherbots.length === 0 ? (
+                                    <div className="px-3 py-3 text-xs text-slate-400 text-center">Nessun bot disponibile</div>
+                                  ) : (
+                                    <div className="max-h-48 overflow-y-auto">
+                                      {teacherbots.map(bot => (
+                                        <button
+                                          key={bot.id}
+                                          className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-slate-50 transition-colors text-left"
+                                          onClick={() => pushTeacherbotMutation.mutate({ studentId: student.id, teacherbotId: bot.id })}
+                                          disabled={pushTeacherbotMutation.isPending}
+                                        >
+                                          <BotColorDot color={bot.color} />
+                                          <span className="truncate flex-1 text-slate-800">{bot.name}</span>
+                                          <ChevronRight className="h-3 w-3 text-slate-300 shrink-0" />
+                                        </button>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                            </div>
                             <Button
                               size="sm"
                               variant="ghost"
@@ -507,6 +621,37 @@ export default function SessionLivePage() {
                           </div>
                         ))}
                       </div>
+
+                      {/* Teacher Demo Mode */}
+                      {teacherbots && teacherbots.length > 0 && (
+                        <div className="mt-6 pt-6 border-t">
+                          <h4 className="font-medium mb-2 flex items-center gap-2 text-sm">
+                            <MonitorPlay className="h-4 w-4" />
+                            Modalità Demo
+                          </h4>
+                          <p className="text-sm text-muted-foreground mb-3">
+                            Testa o dimostra un bot in classe vedendo esattamente cosa vedono gli studenti.
+                          </p>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            {teacherbots.map(bot => (
+                              <button
+                                key={bot.id}
+                                onClick={() => setDemoBotId(bot.id)}
+                                className="flex items-center gap-3 p-3 rounded-lg border border-slate-200 hover:border-slate-300 hover:bg-slate-50 transition-colors text-left"
+                              >
+                                <BotColorDot color={bot.color} large />
+                                <div className="flex-1 min-w-0">
+                                  <div className="text-sm font-medium text-slate-800 truncate">{bot.name}</div>
+                                  {bot.synopsis && (
+                                    <div className="text-xs text-slate-400 truncate">{bot.synopsis}</div>
+                                  )}
+                                </div>
+                                <Play className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
 
                       {/* Default LLM Model Selector */}
                       <div className="mt-6 pt-6 border-t">
@@ -674,6 +819,25 @@ export default function SessionLivePage() {
     </>
   )
 }
+
+// ─── Helpers ────────────────────────────────────────────────────────────────
+
+function BotColorDot({ color, large }: { color: string; large?: boolean }) {
+  const colorMap: Record<string, string> = {
+    indigo: 'bg-[#181b1e]', blue: 'bg-blue-500', green: 'bg-green-500',
+    red: 'bg-red-500', purple: 'bg-purple-500', pink: 'bg-pink-500',
+    orange: 'bg-orange-500', teal: 'bg-teal-500', cyan: 'bg-cyan-500',
+  }
+  const bg = colorMap[color] || 'bg-[#181b1e]'
+  const size = large ? 'w-8 h-8 rounded-lg' : 'w-5 h-5 rounded-md'
+  return (
+    <div className={`${size} ${bg} flex items-center justify-center shrink-0`}>
+      <Bot className={`${large ? 'h-4 w-4' : 'h-3 w-3'} text-white`} />
+    </div>
+  )
+}
+
+// ─── TaskCard ────────────────────────────────────────────────────────────────
 
 interface TaskCardProps {
   task: TaskData

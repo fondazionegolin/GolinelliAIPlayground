@@ -147,6 +147,8 @@ export const teacherApi = {
     api.post(`/teacher/sessions/${sessionId}/freeze/${studentId}`, null, { params: { reason } }),
   unfreezeStudent: (sessionId: string, studentId: string) =>
     api.post(`/teacher/sessions/${sessionId}/unfreeze/${studentId}`),
+  pushTeacherbotToStudent: (sessionId: string, studentId: string, teacherbotId: string) =>
+    api.post(`/teacher/sessions/${sessionId}/students/${studentId}/push-teacherbot`, null, { params: { teacherbot_id: teacherbotId } }),
   removeStudent: (sessionId: string, studentId: string) =>
     api.delete(`/teacher/sessions/${sessionId}/students/${studentId}`),
   deleteSession: (sessionId: string) =>
