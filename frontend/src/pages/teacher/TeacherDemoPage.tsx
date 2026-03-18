@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { teacherbotsApi } from '@/lib/api'
-import { Wand2 } from 'lucide-react'
+import { teacherApi, teacherbotsApi } from '@/lib/api'
+import { Wand2, ChevronDown } from 'lucide-react'
 import TeacherbotTestChat from '@/components/teacher/TeacherbotTestChat'
 
 interface Teacherbot {
@@ -10,6 +10,13 @@ interface Teacherbot {
   color: string
   icon: string | null
   synopsis: string | null
+  status: string
+}
+
+interface SessionOption {
+  id: string
+  title: string
+  class_name: string
   status: string
 }
 
@@ -31,14 +38,57 @@ function getTileStyle(color: string) {
 
 export default function TeacherDemoPage() {
   const [selectedBotId, setSelectedBotId] = useState<string | null>(null)
+  const [selectedSessionId, setSelectedSessionId] = useState<string>('all')
 
-  const { data: teacherbots, isLoading } = useQuery({
-    queryKey: ['teacherbots'],
+  // Fetch all classes to build session list
+  const { data: classes } = useQuery({
+    queryKey: ['classes'],
     queryFn: async () => {
-      const res = await teacherbotsApi.list()
-      return res.data as Teacherbot[]
+      const res = await teacherApi.getClasses()
+      return res.data as { id: string; name: string; sessions?: SessionOption[] }[]
     },
-    staleTime: 1000 * 60 * 5,
+    staleTime: 1000 * 60 * 2,
+  })
+
+  // Fetch sessions for each class and flatten
+  const { data: sessions } = useQuery({
+    queryKey: ['all-sessions-flat', classes?.map(c => c.id)],
+    queryFn: async () => {
+      if (!classes) return []
+      const all: SessionOption[] = []
+      await Promise.all(classes.map(async (cls) => {
+        const res = await teacherApi.getSessions(cls.id)
+        const clsSessions = (res.data as SessionOption[]).map(s => ({
+          ...s,
+          class_name: cls.name,
+        }))
+        all.push(...clsSessions)
+      }))
+      // Sort: active first, then by title
+      all.sort((a, b) => {
+        if (a.status === 'active' && b.status !== 'active') return -1
+        if (b.status === 'active' && a.status !== 'active') return 1
+        return a.title.localeCompare(b.title)
+      })
+      return all
+    },
+    enabled: !!classes && classes.length > 0,
+    staleTime: 1000 * 60 * 2,
+  })
+
+  // Fetch bots: all or session-specific
+  const { data: teacherbots, isLoading } = useQuery({
+    queryKey: ['teacherbots-demo', selectedSessionId],
+    queryFn: async () => {
+      if (selectedSessionId === 'all') {
+        const res = await teacherbotsApi.list()
+        return res.data as Teacherbot[]
+      } else {
+        const res = await teacherbotsApi.listForSession(selectedSessionId)
+        return res.data as Teacherbot[]
+      }
+    },
+    staleTime: 1000 * 60 * 2,
   })
 
   if (selectedBotId) {
@@ -52,16 +102,51 @@ export default function TeacherDemoPage() {
     )
   }
 
+  const activeSessions = sessions?.filter(s => s.status === 'active') ?? []
+  const otherSessions = sessions?.filter(s => s.status !== 'active') ?? []
+
   return (
     <div className="max-w-3xl mx-auto p-6 md:p-8">
       {/* Header */}
-      <div className="mb-8">
+      <div className="mb-6">
         <h1 className="text-2xl font-bold text-slate-800 mb-1">Vista Studente</h1>
         <p className="text-slate-500 text-sm">
-          Qui vedi gli stessi chatbot che vedono i tuoi studenti. Puoi testarli o condividere lo schermo in classe.
+          Vedi gli stessi chatbot che vedono i tuoi studenti. Ideale per condividere lo schermo in classe.
         </p>
       </div>
 
+      {/* Session selector */}
+      <div className="mb-6">
+        <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">
+          Sessione
+        </label>
+        <div className="relative inline-block">
+          <select
+            value={selectedSessionId}
+            onChange={e => { setSelectedSessionId(e.target.value); setSelectedBotId(null) }}
+            className="appearance-none pl-3 pr-8 py-2 text-sm bg-white border border-slate-200 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-slate-300 cursor-pointer"
+          >
+            <option value="all">Tutti i chatbot</option>
+            {activeSessions.length > 0 && (
+              <optgroup label="🟢 Sessioni attive">
+                {activeSessions.map(s => (
+                  <option key={s.id} value={s.id}>{s.class_name} — {s.title}</option>
+                ))}
+              </optgroup>
+            )}
+            {otherSessions.length > 0 && (
+              <optgroup label="Altre sessioni">
+                {otherSessions.map(s => (
+                  <option key={s.id} value={s.id}>{s.class_name} — {s.title}</option>
+                ))}
+              </optgroup>
+            )}
+          </select>
+          <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400 pointer-events-none" />
+        </div>
+      </div>
+
+      {/* Bot grid */}
       {isLoading ? (
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
           {[...Array(6)].map((_, i) => (
@@ -71,8 +156,17 @@ export default function TeacherDemoPage() {
       ) : !teacherbots || teacherbots.length === 0 ? (
         <div className="text-center py-20 text-slate-400">
           <Wand2 className="h-10 w-10 mx-auto mb-3 opacity-30" />
-          <p className="font-medium">Nessun chatbot creato</p>
-          <p className="text-sm mt-1">Crea dei teacherbot dalla sezione supporto</p>
+          {selectedSessionId === 'all' ? (
+            <>
+              <p className="font-medium">Nessun chatbot creato</p>
+              <p className="text-sm mt-1">Crea dei teacherbot dalla sezione supporto</p>
+            </>
+          ) : (
+            <>
+              <p className="font-medium">Nessun chatbot in questa sessione</p>
+              <p className="text-sm mt-1">Pubblica dei teacherbot sulla classe corrispondente</p>
+            </>
+          )}
         </div>
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
