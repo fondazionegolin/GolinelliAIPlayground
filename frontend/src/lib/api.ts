@@ -147,6 +147,8 @@ export const teacherApi = {
     api.post(`/teacher/sessions/${sessionId}/freeze/${studentId}`, null, { params: { reason } }),
   unfreezeStudent: (sessionId: string, studentId: string) =>
     api.post(`/teacher/sessions/${sessionId}/unfreeze/${studentId}`),
+  pushTeacherbotToStudent: (sessionId: string, studentId: string, teacherbotId: string) =>
+    api.post(`/teacher/sessions/${sessionId}/students/${studentId}/push-teacherbot`, null, { params: { teacherbot_id: teacherbotId } }),
   removeStudent: (sessionId: string, studentId: string) =>
     api.delete(`/teacher/sessions/${sessionId}/students/${studentId}`),
   deleteSession: (sessionId: string) =>
@@ -473,8 +475,8 @@ export const creditsApi = {
     api.get('/credits/requests', { params: { status } }),
   reviewRequest: (id: string, status: string, notes?: string) =>
     api.post(`/credits/requests/${id}/review`, { status, admin_notes: notes }),
-  inviteTeacher: (email: string, firstName?: string, lastName?: string, school?: string) =>
-    api.post('/credits/invitations', { email, first_name: firstName, last_name: lastName, school }),
+  inviteTeacher: (email: string, firstName?: string, lastName?: string, school?: string, groupTag?: string, customMessage?: string) =>
+    api.post('/credits/invitations', { email, first_name: firstName, last_name: lastName, school, group_tag: groupTag, custom_message: customMessage }),
   bulkInvite: (file: File) => {
     const formData = new FormData()
     formData.append('file', file)
@@ -482,5 +484,7 @@ export const creditsApi = {
       headers: { 'Content-Type': 'multipart/form-data' }
     })
   },
+  bulkInviteJson: (teachers: Array<{ email: string; first_name?: string; last_name?: string; school?: string }>, groupTag?: string, customMessage?: string) =>
+    api.post('/credits/invitations/bulk-json', { teachers, group_tag: groupTag, custom_message: customMessage }),
   getInvitations: () => api.get('/credits/invitations'),
 }
