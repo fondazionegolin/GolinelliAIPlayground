@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, type CSSProperties } from 'react'
 import { Link, useNavigate, useLocation } from 'react-router-dom'
-import { User, Settings, LogOut, ChevronDown, Users, MessageSquare, FileText, Check, Brain } from 'lucide-react'
+import { User, Settings, LogOut, ChevronDown, Users, MessageSquare, FileText, Check, Brain, MonitorPlay } from 'lucide-react'
 import { Button } from './ui/button'
 import { LogoMark } from './LogoMark'
 import { teacherApi } from '@/lib/api'
@@ -263,6 +263,7 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
   const navItems = [
     { path: '/teacher', label: t('navbar.nav_support'), icon: MessageSquare },
     { path: '/teacher/classes', label: t('navbar.nav_classes'), icon: Users },
+    { path: '/teacher/demo', label: 'Studentbot', icon: MonitorPlay },
     { path: '/teacher/documents', label: t('navbar.nav_documents'), icon: FileText },
     { path: '/teacher/ml-lab', label: 'ML Lab', icon: Brain },
   ]
