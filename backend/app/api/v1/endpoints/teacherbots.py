@@ -270,6 +270,61 @@ async def test_teacherbot(
     )
 
 
+@router.get("/teacher/sessions/{session_id}/teacherbots", response_model=list[TeacherbotListResponse])
+async def list_session_teacherbots(
+    session_id: UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    teacher: Annotated[User, Depends(get_current_teacher)],
+):
+    """Return teacherbots published to the class of this session (teacher view for demo mode)"""
+    from app.models.session import Session
+    from app.core.permissions import teacher_can_access_session
+
+    if not await teacher_can_access_session(db, teacher, session_id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
+
+    # Get the session's class_id
+    session_result = await db.execute(
+        select(Session).where(Session.id == session_id)
+    )
+    session = session_result.scalar_one_or_none()
+    if not session:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
+
+    result = await db.execute(
+        select(
+            Teacherbot,
+            func.count(TeacherbotConversation.id.distinct()).label('conversation_count')
+        )
+        .join(TeacherbotPublication, TeacherbotPublication.teacherbot_id == Teacherbot.id)
+        .outerjoin(TeacherbotConversation, TeacherbotConversation.teacherbot_id == Teacherbot.id)
+        .where(TeacherbotPublication.class_id == session.class_id)
+        .where(TeacherbotPublication.is_active == True)
+        .where(Teacherbot.tenant_id == teacher.tenant_id)
+        .group_by(Teacherbot.id)
+        .order_by(Teacherbot.name)
+    )
+    rows = result.all()
+
+    return [
+        TeacherbotListResponse(
+            id=bot.id,
+            name=bot.name,
+            synopsis=bot.synopsis,
+            icon=bot.icon,
+            color=bot.color,
+            status=bot.status.value,
+            is_proactive=bot.is_proactive,
+            enable_reporting=bot.enable_reporting,
+            created_at=bot.created_at,
+            updated_at=bot.updated_at,
+            publication_count=1,
+            conversation_count=conv_count,
+        )
+        for bot, conv_count in rows
+    ]
+
+
 @router.post("/teacherbots/{teacherbot_id}/publish", response_model=TeacherbotPublicationResponse)
 async def publish_teacherbot(
     teacherbot_id: UUID,

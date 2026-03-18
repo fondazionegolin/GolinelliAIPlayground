@@ -397,6 +397,7 @@ export const filesApi = {
 export const teacherbotsApi = {
   // Teacher endpoints
   list: () => api.get('/teacherbots'),
+  listForSession: (sessionId: string) => api.get(`/teacher/sessions/${sessionId}/teacherbots`),
   create: (data: {
     name: string
     synopsis?: string
