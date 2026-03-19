@@ -21,7 +21,7 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     command: >
-      sh -c "alembic upgrade head &&
+      sh -c "PYTHONPATH=/app python /app/scripts/init_db.py &&
              uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
     extra_hosts:
       - "host.docker.internal:host-gateway"
