@@ -675,7 +675,7 @@ function ModuleView({ moduleKey, sessionId, openTaskId, studentId, studentName, 
   if (moduleKey === 'classification') {
     return (
       <div className="pb-20 md:pb-4">
-        <ClassificationModule />
+        <ClassificationModule sessionId={sessionId} />
       </div>
     )
   }

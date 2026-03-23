@@ -97,6 +97,7 @@ class Settings(BaseSettings):
         "image/jpeg",
         "image/gif",
         "image/webp",
+        "application/json",
     ]
     
     class Config:
