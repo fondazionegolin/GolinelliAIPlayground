@@ -5,8 +5,8 @@ import { Plus, Settings, Eye, Trash2, FileText, Loader2 } from 'lucide-react'
 import { useToast } from '@/components/ui/use-toast'
 import { teacherbotsApi } from '@/lib/api'
 import TeacherbotForm from './TeacherbotForm'
-import TeacherbotTestChat from './TeacherbotTestChat'
 import TeacherbotReportsPanel from './TeacherbotReportsPanel'
+import ChatbotModule from '@/pages/student/ChatbotModule'
 
 interface Teacherbot {
   id: string
@@ -154,7 +154,23 @@ export default function TeacherbotsPanel({ onOpenSettings, onCreateNew }: Teache
   }
 
   if (viewMode === 'test' && selectedBot) {
-    return <TeacherbotTestChat teacherbotId={selectedBot} onBack={handleBack} />
+    return (
+      <div className="h-full flex flex-col">
+        <div className="flex items-center gap-2 mb-2 flex-shrink-0">
+          <button onClick={handleBack} className="flex items-center gap-1 text-sm text-slate-500 hover:text-slate-700 transition-colors">
+            ← Indietro
+          </button>
+          <span className="text-xs text-slate-400">Anteprima studente</span>
+        </div>
+        <div className="flex-1 overflow-hidden">
+          <ChatbotModule
+            sessionId="teacher-preview"
+            initialTeacherbotId={selectedBot}
+            isTeacherPreview={true}
+          />
+        </div>
+      </div>
+    )
   }
 
   if (viewMode === 'reports' && selectedBot) {

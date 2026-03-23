@@ -74,6 +74,7 @@ interface ChatbotModuleProps {
   studentId?: string
   initialTeacherbotId?: string | null
   onInputFocusChange?: (focused: boolean) => void
+  isTeacherPreview?: boolean
 }
 
 const PROFILE_ICONS: Record<string, React.ReactNode> = {
@@ -185,7 +186,7 @@ interface AttachedFile {
 // Mobile navigation state
 type MobileViewState = 'profiles' | 'conversations' | 'chat'
 
-export default function ChatbotModule({ sessionId, studentId, initialTeacherbotId, onInputFocusChange }: ChatbotModuleProps) {
+export default function ChatbotModule({ sessionId, studentId, initialTeacherbotId, onInputFocusChange, isTeacherPreview }: ChatbotModuleProps) {
   const { t } = useTranslation()
   const FALLBACK_PROFILES = getFallbackProfiles(t)
   const PROFILE_INTERVIEWS = getProfileInterviews(t)
@@ -419,6 +420,7 @@ export default function ChatbotModule({ sessionId, studentId, initialTeacherbotI
       return res.data as { session: { default_llm_provider?: string; default_llm_model?: string } }
     },
     staleTime: 1000 * 60 * 5,
+    enabled: !isTeacherPreview,
   })
 
   // Fetch conversation history — include studentId in key so different students don't share cache
@@ -429,6 +431,7 @@ export default function ChatbotModule({ sessionId, studentId, initialTeacherbotI
       return res.data as ConversationHistory[]
     },
     staleTime: 1000 * 60 * 2,
+    enabled: !isTeacherPreview,
   })
 
   // Fetch available teacherbots for this session
@@ -439,7 +442,37 @@ export default function ChatbotModule({ sessionId, studentId, initialTeacherbotI
       return res.data as Teacherbot[]
     },
     staleTime: 1000 * 60 * 2,
+    enabled: !isTeacherPreview,
   })
+
+  // In teacher preview mode, load the specific bot via teacher API
+  const { data: previewBotData } = useQuery({
+    queryKey: ['teacherbot-preview', initialTeacherbotId],
+    queryFn: async () => {
+      const res = await teacherbotsApi.get(initialTeacherbotId!)
+      return res.data as Teacherbot
+    },
+    enabled: !!isTeacherPreview && !!initialTeacherbotId,
+    staleTime: 1000 * 60 * 5,
+  })
+
+  // Auto-select the bot in teacher preview mode
+  useEffect(() => {
+    if (isTeacherPreview && previewBotData) {
+      setSelectedTeacherbot(previewBotData)
+      setSelectedProfile(null)
+      if (previewBotData.is_proactive && previewBotData.proactive_message) {
+        setMessages([{
+          id: 'proactive',
+          role: 'assistant',
+          content: previewBotData.proactive_message,
+          timestamp: new Date(),
+        }])
+      } else {
+        setMessages([])
+      }
+    }
+  }, [isTeacherPreview, previewBotData])
 
   // Fetch teacherbot conversations
   const { data: teacherbotConversationsData, refetch: refetchTeacherbotConversations } = useQuery({
@@ -456,6 +489,7 @@ export default function ChatbotModule({ sessionId, studentId, initialTeacherbotI
       }))
     },
     staleTime: 1000 * 60 * 2,
+    enabled: !isTeacherPreview,
   })
 
   const profiles: ChatbotProfile[] = useMemo(() => {
@@ -540,6 +574,13 @@ export default function ChatbotModule({ sessionId, studentId, initialTeacherbotI
     mutationFn: async ({ content, files, existingHistory }: { content: string; files: globalThis.File[]; existingHistory?: Message[] }) => {
       // TEACHERBOT MODE
       if (selectedTeacherbot) {
+        // Teacher preview: use the test endpoint (no student session needed)
+        if (isTeacherPreview) {
+          const history = messages.map(m => ({ role: m.role, content: m.content }))
+          const res = await teacherbotsApi.test(selectedTeacherbot.id, content, history)
+          return { content: res.data.content, id: Date.now().toString() }
+        }
+
         let convId = teacherbotConversationId
         if (!convId) {
           const convRes = await teacherbotsApi.startConversation(selectedTeacherbot.id, sessionId)
@@ -610,7 +651,7 @@ export default function ChatbotModule({ sessionId, studentId, initialTeacherbotI
 
       if (!selectedTeacherbot) {
         refetchConversations()
-      } else {
+      } else if (!isTeacherPreview) {
         refetchTeacherbotConversations()
       }
 

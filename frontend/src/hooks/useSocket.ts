@@ -62,8 +62,8 @@ interface UseSocketReturn {
   messages: ChatMessage[]
   onlineUsers: OnlineUser[]
   privateChats: Record<string, PrivateChat>
-  sendPublicMessage: (text: string, attachmentUrls?: string[]) => Promise<void>
-  sendPrivateMessage: (targetId: string, text: string, attachmentUrls?: string[]) => void
+  sendPublicMessage: (text: string, attachmentUrls?: string[], filenameMap?: Record<string, string>) => Promise<void>
+  sendPrivateMessage: (targetId: string, text: string, attachmentUrls?: string[], filenameMap?: Record<string, string>) => void
   startPrivateChat: (user: OnlineUser) => void
   markPrivateChatRead: (oderId: string) => void
   notifications: ChatMessage[]
