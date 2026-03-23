@@ -95,6 +95,12 @@ async def list_available_models():
             {"provider": "anthropic", "model": "claude-haiku-4-5-20251001", "name": "Claude Haiku 4.5", "description": "Veloce e leggero", "icon": "anthropic"},
         ])
 
+    # Gemini models
+    if settings.GEMINI_API_KEY:
+        models.extend([
+            {"provider": "gemini", "model": "gemini-3.1-flash-lite-preview", "name": "Gemini 3.1 Flash Lite Preview", "description": "Veloce e intelligente - Google", "icon": "google"},
+        ])
+
     # DeepSeek models — hidden from UI (provider available but not shown to users)
     # if settings.DEEPSEEK_API_KEY:
     #     models.extend([

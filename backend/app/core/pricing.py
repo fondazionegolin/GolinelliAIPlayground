@@ -30,6 +30,10 @@ PRICING_CATALOG: Dict[str, ModelPricing] = {
     "claude-3-haiku-20240307": ModelPricing(0.25, 1.25),
     "claude-3-opus-20240229": ModelPricing(15.00, 75.00),
 
+    # Google Gemini
+    "gemini-2.0-flash": ModelPricing(0.075, 0.30),
+    "gemini-2.0-flash-lite": ModelPricing(0.0375, 0.15),
+
     # DeepSeek
     "deepseek-chat": ModelPricing(0.0, 0.0),
     "deepseek-reasoner": ModelPricing(0.0, 0.0),
