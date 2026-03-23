@@ -1,0 +1,6 @@
+set v15-compat
+set from='a.saracino@fondazionegolinelli.it'
+set mta='submission://a.saracino%40fondazionegolinelli.it:rgxo%20zhav%20ljxm%20ycnj@smtp.gmail.com:587'
+set smtp-auth=login
+set smtp-use-starttls
+set sendwait

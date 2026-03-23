@@ -87,19 +87,6 @@ interface AttachedFile {
   type: 'image' | 'document'
 }
 
-interface WebSearchProgress {
-  status: string
-  sources: Array<{
-    index: number
-    title: string
-    url: string
-    status: 'fetching' | 'done' | 'error'
-    content_length?: number
-    error?: string
-  }>
-  intent?: string
-  confidence?: number
-}
 
 
 export default function TeacherSupportChat() {
@@ -136,7 +123,7 @@ export default function TeacherSupportChat() {
   const [chatBgDefault, setChatBgDefault] = useState<string>('')
   const [showBgPalette, setShowBgPalette] = useState(false)
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => window.innerWidth < CHAT_HISTORY_COLLAPSE_BREAKPOINT)
-  const [webSearchProgress, setWebSearchProgress] = useState<WebSearchProgress | null>(null)
+  const [webSearchProgress] = useState<null>(null) // web search removed
   const modelMenuRef = useRef<HTMLDivElement>(null)
   const modeMenuRef = useRef<HTMLDivElement>(null)
 
@@ -698,8 +685,6 @@ export default function TeacherSupportChat() {
   }
 
   const runStreamingRequest = async (content: string, history: Message[]): Promise<string> => {
-    setWebSearchProgress({ status: 'Inizializzazione...', sources: [] })
-
     try {
       const response = await fetch('/api/v1/llm/teacher/chat-stream', {
         method: 'POST',
@@ -735,30 +720,10 @@ export default function TeacherSupportChat() {
             try {
               data = JSON.parse(line.slice(6))
             } catch {
-              // Ignore malformed chunks
               continue
             }
 
-            if (data.type === 'status') {
-              setWebSearchProgress(prev => ({ ...prev!, status: data.message }))
-            } else if (data.type === 'intent') {
-              setWebSearchProgress(prev => ({
-                ...prev!,
-                intent: data.intent,
-                confidence: data.confidence
-              }))
-            } else if (data.type === 'source') {
-              setWebSearchProgress(prev => {
-                const sources = [...(prev?.sources || [])]
-                const existingIdx = sources.findIndex(s => s.index === data.index)
-                if (existingIdx >= 0) {
-                  sources[existingIdx] = data
-                } else {
-                  sources.push(data)
-                }
-                return { ...prev!, sources }
-              })
-            } else if (data.type === 'done') {
+            if (data.type === 'done') {
               finalContent = data.content
             } else if (data.type === 'error') {
               throw new Error(data.message || 'Errore durante lo stream')
@@ -768,8 +733,8 @@ export default function TeacherSupportChat() {
       }
 
       return finalContent || 'Nessun risultato dalla generazione.'
-    } finally {
-      setWebSearchProgress(null)
+    } catch (e) {
+      throw e
     }
   }
 
@@ -1677,7 +1642,7 @@ REGOLE IMPORTANTI:
                         </div>
                       ))
                     )}
-                    {isLoading && !webSearchProgress && !imageGenerationProgress && (
+                    {isLoading && !imageGenerationProgress && (
                       <div className="flex gap-4 justify-start">
                         <div className="w-8 h-8 rounded-full bg-white border border-slate-200 flex items-center justify-center">
                           <Bot className="h-4 w-4 text-red-500" />
@@ -1767,63 +1732,6 @@ REGOLE IMPORTANTI:
                       </div>
                     )}
 
-                    {/* Web Search/Quiz Progress Panel */}
-                    {webSearchProgress && (
-                      <div className="flex gap-4 justify-start">
-                        <div className="w-8 h-8 rounded-full bg-blue-100 border border-blue-200 flex items-center justify-center flex-shrink-0">
-                          <svg className="h-4 w-4 text-blue-600 animate-pulse" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                          </svg>
-                        </div>
-                        <div className="flex-1 max-w-[75%] bg-gradient-to-br from-red-50 to-rose-50 border border-red-200 px-5 py-4 rounded-2xl rounded-tl-sm shadow-sm">
-                          <div className="flex items-center gap-2 mb-3">
-                            <Loader2 className="h-4 w-4 animate-spin text-blue-600" />
-                            <span className="font-medium text-blue-800 text-sm">{webSearchProgress.status}</span>
-                          </div>
-
-                          {webSearchProgress.intent && (
-                            <div className="text-xs text-blue-600 mb-3 bg-blue-100 px-2 py-1 rounded inline-block">
-                              Modalità: {webSearchProgress.intent} (confidenza: {Math.round((webSearchProgress.confidence || 0) * 100)}%)
-                            </div>
-                          )}
-
-                          {webSearchProgress.sources.length > 0 && (
-                            <div className="space-y-2 mt-3 border-t border-blue-200 pt-3">
-                              <div className="text-xs font-medium text-blue-700 mb-2">📰 Fonti in fase di lettura:</div>
-                              {webSearchProgress.sources.map((source) => (
-                                <div key={source.index} className="flex items-start gap-2 text-xs">
-                                  {source.status === 'fetching' && (
-                                    <Loader2 className="h-3 w-3 animate-spin text-blue-500 mt-0.5 flex-shrink-0" />
-                                  )}
-                                  {source.status === 'done' && (
-                                    <svg className="h-3 w-3 text-green-500 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                                    </svg>
-                                  )}
-                                  {source.status === 'error' && (
-                                    <svg className="h-3 w-3 text-red-500 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                                    </svg>
-                                  )}
-                                  <div className="flex-1 min-w-0">
-                                    <div className="font-medium text-slate-700 truncate">{source.title}</div>
-                                    <a href={source.url} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline truncate block">
-                                      {source.url.substring(0, 50)}...
-                                    </a>
-                                    {source.status === 'done' && source.content_length && (
-                                      <span className="text-green-600">✓ {source.content_length} caratteri estratti</span>
-                                    )}
-                                    {source.status === 'error' && source.error && (
-                                      <span className="text-red-500">✗ {source.error}</span>
-                                    )}
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    )}
                       <div ref={messagesEndRef} />
                     </div>
                   </div>

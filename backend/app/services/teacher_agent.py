@@ -1284,8 +1284,11 @@ async def run_teacher_agent(
             return await generate_action_menu_widget(actor_type)
 
         elif intent_result.intent == TeacherIntent.WEB_SEARCH:
-            logger.info("Routing to web search generator")
-            return await generate_with_web_search(messages, context, provider, model)
+            # Web search removed — fall through to generic/analytics response
+            logger.info("WEB_SEARCH intent: web search disabled, routing to fallback")
+            if actor_type == "STUDENT":
+                return await generate_generic_response(messages, provider, model, profile_key)
+            return await generate_with_analytics(messages, context, provider, model)
 
         elif intent_result.intent == TeacherIntent.TEXT_EDITOR:
             logger.info("Routing to text editor generator")
