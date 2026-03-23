@@ -1353,6 +1353,17 @@ IMPORTANTE: Usa questi dati reali per rispondere alle domande del docente. Quand
                 max_tokens=1500,
             )
 
+            cost = credit_service.calculate_cost_for_model(
+                llm_response.provider, llm_response.model,
+                llm_response.prompt_tokens, llm_response.completion_tokens,
+            )
+            await safe_track_usage(
+                db, teacher.tenant_id, llm_response.provider, llm_response.model, cost,
+                {"type": "teacher_chat", "profile": profile_key},
+                teacher_id=teacher.id,
+                context="teacher_chat",
+            )
+
             return {
                 "response": llm_response.content,
                 "provider": llm_response.provider,
