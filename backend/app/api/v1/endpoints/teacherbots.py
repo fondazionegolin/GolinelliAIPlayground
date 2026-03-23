@@ -240,11 +240,10 @@ async def test_teacherbot(
             messages.append({"role": msg.get("role", "user"), "content": msg.get("content", "")})
     messages.append({"role": "user", "content": request.content})
 
-    # Call LLM with teacherbot's system prompt
-    grade_instruction = get_school_grade_instruction(class_obj.school_grade)
+    # Call LLM with teacherbot's system prompt (no class context in test mode)
     llm_response = await llm_service.generate(
         messages=messages,
-        system_prompt=bot.system_prompt + grade_instruction,
+        system_prompt=bot.system_prompt,
         provider=bot.llm_provider,
         model=bot.llm_model,
         temperature=bot.temperature,
