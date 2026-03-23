@@ -250,11 +250,16 @@ async def invite_teacher(
     if existing_user and existing_user.is_active:
         raise HTTPException(status_code=400, detail="User with this email already exists")
     
-    # Check if invitation already exists
+    # Check if invitation already exists — if the user was deleted/deactivated, cancel the old invite and allow re-invite
     stmt = select(PlatformInvitation).where(PlatformInvitation.email == invitation.email, PlatformInvitation.status == "pending")
     existing_inv = (await db.execute(stmt)).scalar_one_or_none()
     if existing_inv:
-        raise HTTPException(status_code=400, detail="Invitation already pending")
+        user_is_active = existing_user is not None and existing_user.is_active
+        if user_is_active:
+            raise HTTPException(status_code=400, detail="Invitation already pending")
+        # User was deleted/deactivated — cancel old invite so a new one can be sent
+        existing_inv.status = "cancelled"
+        await db.flush()
     
     token = secrets.token_urlsafe(32)
     temp_password = secrets.token_urlsafe(12)
