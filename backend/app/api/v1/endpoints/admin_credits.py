@@ -254,11 +254,8 @@ async def invite_teacher(
     stmt = select(PlatformInvitation).where(PlatformInvitation.email == invitation.email, PlatformInvitation.status == "pending")
     existing_inv = (await db.execute(stmt)).scalar_one_or_none()
     if existing_inv:
-        user_is_active = existing_user is not None and existing_user.is_active
-        if user_is_active:
-            raise HTTPException(status_code=400, detail="Invitation already pending")
-        # User was deleted/deactivated — cancel old invite so a new one can be sent
-        existing_inv.status = "cancelled"
+        # User was deleted/deactivated (we already raised above if still active) — delete the stale invite
+        await db.delete(existing_inv)
         await db.flush()
     
     token = secrets.token_urlsafe(32)

@@ -164,7 +164,11 @@ export default function TeachersPage() {
       setShowInvite(false)
     },
     onError: (error: any) => {
-      toast({ variant: 'destructive', title: 'Invito fallito', description: error.response?.data?.detail })
+      const detail = error.response?.data?.detail
+      const description = Array.isArray(detail)
+        ? detail.map((e: any) => e.msg ?? String(e)).join(', ')
+        : typeof detail === 'string' ? detail : 'Errore sconosciuto'
+      toast({ variant: 'destructive', title: 'Invito fallito', description })
     },
   })
 

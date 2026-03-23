@@ -79,7 +79,7 @@ class ConsumptionStats(BaseModel):
 
 # --- Invitations ---
 class PlatformInvitationCreate(BaseModel):
-    email: EmailStr
+    email: str
     first_name: Optional[str] = None
     last_name: Optional[str] = None
     school: Optional[str] = None
