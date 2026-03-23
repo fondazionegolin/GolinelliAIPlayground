@@ -296,6 +296,7 @@ export default function StudentDashboard() {
           onNavigate={setActiveModule}
           sessionTitle={sessionInfo.session.title}
           sessionId={sessionInfo.session.id}
+          joinCode={sessionInfo.session.join_code}
           chatSidebarOpen={showSidebar}
           onToggleChatSidebar={() => setShowSidebar(v => !v)}
           accent={studentAccent}
