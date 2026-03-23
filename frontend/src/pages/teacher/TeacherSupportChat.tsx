@@ -123,7 +123,6 @@ export default function TeacherSupportChat() {
   const [chatBgDefault, setChatBgDefault] = useState<string>('')
   const [showBgPalette, setShowBgPalette] = useState(false)
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => window.innerWidth < CHAT_HISTORY_COLLAPSE_BREAKPOINT)
-  const [webSearchProgress] = useState<null>(null) // web search removed
   const modelMenuRef = useRef<HTMLDivElement>(null)
   const modeMenuRef = useRef<HTMLDivElement>(null)
 
@@ -1642,7 +1641,7 @@ REGOLE IMPORTANTI:
                         </div>
                       ))
                     )}
-                    {isLoading && !imageGenerationProgress && (
+                    {isLoading && !imageGenerationProgress && ( // eslint-disable-line
                       <div className="flex gap-4 justify-start">
                         <div className="w-8 h-8 rounded-full bg-white border border-slate-200 flex items-center justify-center">
                           <Bot className="h-4 w-4 text-red-500" />
