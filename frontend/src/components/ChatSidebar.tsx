@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, Dispatch, SetStateAction, useCallback } from 'react'
+import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import { filesApi } from '@/lib/api'
 import { useSocket, ChatMessage, OnlineUser } from '@/hooks/useSocket'
@@ -619,7 +620,9 @@ export default function ChatSidebar({
 
     // Upload files first if any
     let uploadedUrls: string[] = []
+    let filenameMap: Record<string, string> = {}
     if (attachedFiles.length > 0) {
+      const originalNames = attachedFiles.map(f => getDisplayName(f))
       try {
         const optimizedFiles = await optimizeImagesForUpload(attachedFiles)
         const formData = new FormData()
@@ -649,6 +652,9 @@ export default function ChatSidebar({
 
         const data = await res.json()
         uploadedUrls = data.urls || []
+        uploadedUrls.forEach((url, i) => {
+          filenameMap[url] = originalNames[i] || url.split('/').pop() || 'file'
+        })
       } catch (e) {
         console.error("Failed to upload files", e)
       }
@@ -659,12 +665,12 @@ export default function ChatSidebar({
       if (activeTab === 'private' && activePrivateChat) {
         // Send private message
         if (messageText || uploadedUrls.length > 0) {
-          sendPrivateMessage(activePrivateChat, messageText || '📎 Allegato', uploadedUrls)
+          sendPrivateMessage(activePrivateChat, messageText || '📎 Allegato', uploadedUrls, filenameMap)
         }
       } else {
         // Send public message
         if (messageText || uploadedUrls.length > 0) {
-          await sendPublicMessage(messageText || '📎 Allegato', uploadedUrls)
+          await sendPublicMessage(messageText || '📎 Allegato', uploadedUrls, filenameMap)
         }
       }
       if (uploadedUrls.length > 0) {
@@ -1941,8 +1947,11 @@ export default function ChatSidebar({
         </div>
       )}
 
-      {/* File Viewer Modal */}
-      <FileViewerModal file={viewingFile} onClose={() => setViewingFile(null)} />
+      {/* File Viewer Modal - rendered via portal to escape sidebar DOM */}
+      {viewingFile && createPortal(
+        <FileViewerModal file={viewingFile} onClose={() => setViewingFile(null)} />,
+        document.body
+      )}
     </div>
   )
 }

@@ -495,7 +495,7 @@ export function useSocket(sessionId?: string): UseSocketReturn {
     }
   }, [authToken, sessionId, refreshOnlineUsers, updatePublicCache])
 
-  const sendPublicMessage = useCallback(async (text: string, attachmentUrls: string[] = []) => {
+  const sendPublicMessage = useCallback(async (text: string, attachmentUrls: string[] = [], filenameMap: Record<string, string> = {}) => {
     if (!sessionId || (!text.trim() && attachmentUrls.length === 0)) return
 
     try {
@@ -512,7 +512,7 @@ export function useSocket(sessionId?: string): UseSocketReturn {
       const attachments = attachmentUrls.map(url => ({
         type: getFileType(url),
         url,
-        filename: url.split('/').pop() || 'file'
+        filename: filenameMap[url] || url.split('/').pop() || 'file'
       }))
 
       await chatApi.sendSessionMessage(sessionId, text.trim(), attachments)
@@ -529,7 +529,7 @@ export function useSocket(sessionId?: string): UseSocketReturn {
     }
   }, [sessionId])
 
-  const sendPrivateMessage = useCallback((targetId: string, text: string, attachmentUrls: string[] = []) => {
+  const sendPrivateMessage = useCallback((targetId: string, text: string, attachmentUrls: string[] = [], filenameMap: Record<string, string> = {}) => {
     if (socketRef.current && (text.trim() || attachmentUrls.length > 0)) {
       const getFileType = (url: string): string => {
         const ext = url.split('.').pop()?.toLowerCase() || ''
@@ -544,7 +544,7 @@ export function useSocket(sessionId?: string): UseSocketReturn {
       const attachments = attachmentUrls.map(url => ({
         type: getFileType(url),
         url,
-        filename: url.split('/').pop() || 'file'
+        filename: filenameMap[url] || url.split('/').pop() || 'file'
       }))
 
       socketRef.current.emit('chat_private_message', {
