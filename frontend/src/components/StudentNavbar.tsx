@@ -22,6 +22,7 @@ interface StudentNavbarProps {
   onNavigate?: (module: string | null) => void
   sessionTitle?: string
   sessionId?: string
+  joinCode?: string
   chatSidebarOpen?: boolean
   onToggleChatSidebar?: () => void
   accent?: StudentAccentId
@@ -32,6 +33,7 @@ export function StudentNavbar({
   activeModule,
   onNavigate,
   sessionTitle,
+  joinCode,
   chatSidebarOpen = false,
   onToggleChatSidebar,
   accent = DEFAULT_STUDENT_ACCENT,
@@ -193,6 +195,9 @@ export function StudentNavbar({
                   <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse shadow-sm shadow-green-300" />
                   <div className="text-left min-w-0">
                     <span className="text-sm font-bold text-[var(--student-accent-text)] truncate max-w-[120px]">{sessionTitle}</span>
+                    {joinCode && (
+                      <span className="ml-2 text-xs font-mono font-semibold text-slate-400 tracking-wider">{joinCode}</span>
+                    )}
                   </div>
                 </div>
               )}

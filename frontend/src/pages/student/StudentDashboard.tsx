@@ -296,6 +296,7 @@ export default function StudentDashboard() {
           onNavigate={setActiveModule}
           sessionTitle={sessionInfo.session.title}
           sessionId={sessionInfo.session.id}
+          joinCode={sessionInfo.session.join_code}
           chatSidebarOpen={showSidebar}
           onToggleChatSidebar={() => setShowSidebar(v => !v)}
           accent={studentAccent}
@@ -675,7 +676,7 @@ function ModuleView({ moduleKey, sessionId, openTaskId, studentId, studentName, 
   if (moduleKey === 'classification') {
     return (
       <div className="pb-20 md:pb-4">
-        <ClassificationModule />
+        <ClassificationModule sessionId={sessionId} />
       </div>
     )
   }

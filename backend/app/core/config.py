@@ -97,6 +97,11 @@ class Settings(BaseSettings):
         "image/jpeg",
         "image/gif",
         "image/webp",
+        "application/json",
+        "application/zip",
+        "application/x-zip-compressed",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "application/vnd.ms-excel",
     ]
     
     class Config:

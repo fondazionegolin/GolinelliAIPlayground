@@ -8,10 +8,12 @@ import {
   Camera, Type, Database, Play, Square, Trash2, Plus,
   Upload, Loader2, CheckCircle, XCircle, BarChart3, Info,
   TrendingUp, Tags, AlertCircle, Lightbulb, ArrowLeft,
-  Sparkles, Download, Clipboard, ChevronRight
+  Sparkles, Download, Clipboard, ChevronRight, Paperclip, Share2, FolderOpen
 } from 'lucide-react'
 import * as tf from '@tensorflow/tfjs'
 import { DataVisualizationPanel } from '@/components/DataVisualizationPanel'
+import { chatApi } from '@/lib/api'
+import { useToast } from '@/components/ui/use-toast'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -503,7 +505,7 @@ function uid(): string {
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
-export default function ClassificationModule() {
+export default function ClassificationModule({ sessionId }: { sessionId?: string } = {}) {
   const { t } = useTranslation()
   const [mode, setMode] = useState<ClassificationMode | null>(null)
   const [showDatasetCreator, setShowDatasetCreator] = useState(false)
@@ -528,7 +530,7 @@ export default function ClassificationModule() {
   return (
     <>
       {mode === 'images' && (
-        <ImageClassification onBack={() => setMode(null)} />
+        <ImageClassification onBack={() => setMode(null)} sessionId={sessionId} />
       )}
       {mode === 'text' && (
         <TextClassification
@@ -704,8 +706,9 @@ function SubViewHeader({
 
 // ─── ImageClassification ──────────────────────────────────────────────────────
 
-function ImageClassification({ onBack }: { onBack: () => void }) {
+function ImageClassification({ onBack, sessionId }: { onBack: () => void; sessionId?: string }) {
   const { t } = useTranslation()
+  const { toast } = useToast()
   const [classes, setClasses] = useState<ImageClass[]>([
     { id: '1', name: 'Classe 1', samples: [], color: CLASS_COLORS[0] },
     { id: '2', name: 'Classe 2', samples: [], color: CLASS_COLORS[1] },
@@ -715,6 +718,10 @@ function ImageClassification({ onBack }: { onBack: () => void }) {
   const [model, setModel] = useState<tf.LayersModel | null>(null)
   const [isPredicting, setIsPredicting] = useState(false)
   const [predictions, setPredictions] = useState<{className: string, confidence: number}[]>([])
+  const [isUploadingImages, setIsUploadingImages] = useState<string | null>(null)
+  const [isSharingModel, setIsSharingModel] = useState(false)
+  const fileInputRefs = useRef<Map<string, HTMLInputElement>>(new Map())
+  const loadModelInputRef = useRef<HTMLInputElement>(null)
 
   const videoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -801,6 +808,119 @@ function ImageClassification({ onBack }: { onBack: () => void }) {
 
   const updateClassName = (id: string, name: string) => {
     setClasses(classes.map(c => c.id === id ? { ...c, name } : c))
+  }
+
+  // ── Image file upload ────────────────────────────────────────────────────────
+
+  const handleFileUpload = async (classId: string, files: FileList) => {
+    const cls = classes.find(c => c.id === classId)
+    if (!cls) return
+    const remaining = 100 - cls.samples.length
+    if (remaining <= 0) return
+    const filesToProcess = Array.from(files).slice(0, remaining)
+    setIsUploadingImages(classId)
+    const newSamples: string[] = []
+    for (const file of filesToProcess) {
+      const base64 = await new Promise<string>((resolve) => {
+        const img = new Image()
+        const url = URL.createObjectURL(file)
+        img.onload = () => {
+          const canvas = document.createElement('canvas')
+          canvas.width = 64
+          canvas.height = 64
+          const ctx = canvas.getContext('2d')!
+          // Center-crop to square, then scale to 64x64
+          const size = Math.min(img.width, img.height)
+          const sx = (img.width - size) / 2
+          const sy = (img.height - size) / 2
+          ctx.drawImage(img, sx, sy, size, size, 0, 0, 64, 64)
+          URL.revokeObjectURL(url)
+          resolve(canvas.toDataURL('image/jpeg', 0.8))
+        }
+        img.src = url
+      })
+      newSamples.push(base64)
+    }
+    setClasses(prev => prev.map(c =>
+      c.id === classId ? { ...c, samples: [...c.samples, ...newSamples].slice(0, 100) } : c
+    ))
+    setIsUploadingImages(null)
+    toast({ title: `${newSamples.length} immagini aggiunte`, description: `Classe aggiornata con ${newSamples.length} nuovi campioni.` })
+  }
+
+  // ── Model save / share / load ────────────────────────────────────────────────
+
+  const serializeModel = (): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      if (!model) { reject(new Error('No model')); return }
+      model.save(tf.io.withSaveHandler(async (artifacts) => {
+        try {
+          const weightBuffer = artifacts.weightData as ArrayBuffer
+          const bytes = new Uint8Array(weightBuffer)
+          let binary = ''
+          for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i])
+          const weightDataBase64 = btoa(binary)
+          resolve(JSON.stringify({
+            modelTopology: artifacts.modelTopology,
+            weightSpecs: artifacts.weightSpecs,
+            weightDataBase64,
+            classNames: classes.map(c => c.name),
+          }))
+        } catch (e) { reject(e) }
+        return { modelArtifactsInfo: { dateSaved: new Date(), modelTopologyType: 'JSON' as const } }
+      })).catch(reject)
+    })
+  }
+
+  const downloadModel = async () => {
+    try {
+      const json = await serializeModel()
+      const name = `classificatore-${classes.map(c => c.name).join('-')}.tfmodel.json`
+      const blob = new Blob([json], { type: 'application/json' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url; a.download = name; a.click()
+      URL.revokeObjectURL(url)
+    } catch { toast({ title: 'Errore salvataggio', variant: 'destructive' }) }
+  }
+
+  const shareModelToChat = async () => {
+    if (!model || !sessionId) return
+    setIsSharingModel(true)
+    try {
+      const json = await serializeModel()
+      const name = `classificatore-${classes.map(c => c.name).join('-')}.tfmodel.json`
+      const file = new File([json], name, { type: 'application/json' })
+      const uploadRes = await chatApi.uploadFiles(sessionId, [file])
+      const fileUrl: string = uploadRes.data.urls?.[0]
+      await chatApi.sendSessionMessage(
+        sessionId,
+        `🤖 Modello ML condiviso: *${classes.map(c => c.name).join(' / ')}*\nScarica il file e importalo nel Lab ML per usarlo direttamente.`,
+        [{ url: fileUrl, name, type: 'application/json' }]
+      )
+      toast({ title: 'Modello condiviso!', description: 'Il modello è stato inviato nella chat di classe.' })
+    } catch { toast({ title: 'Errore condivisione', variant: 'destructive' }) }
+    finally { setIsSharingModel(false) }
+  }
+
+  const loadModelFromFile = async (file: File) => {
+    try {
+      const text = await file.text()
+      const data = JSON.parse(text)
+      const binary = atob(data.weightDataBase64)
+      const bytes = new Uint8Array(binary.length)
+      for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
+      const loadedModel = await tf.loadLayersModel(tf.io.fromMemory({
+        modelTopology: data.modelTopology,
+        weightSpecs: data.weightSpecs,
+        weightData: bytes.buffer,
+      }))
+      setModel(loadedModel)
+      setClasses((data.classNames as string[]).map((name, i) => ({
+        id: String(i + 1), name, samples: [], color: CLASS_COLORS[i % CLASS_COLORS.length],
+      })))
+      toast({ title: 'Modello caricato!', description: `Classi: ${(data.classNames as string[]).join(', ')}` })
+    } catch { toast({ title: 'Errore caricamento modello', description: 'File non valido o corrotto.', variant: 'destructive' }) }
   }
 
   const trainModel = async () => {
@@ -996,6 +1116,17 @@ function ImageClassification({ onBack }: { onBack: () => void }) {
                       <><Play className="h-4 w-4 mr-2" /> {t('classification.start')}</>
                     )}
                   </Button>
+                  <div className="flex gap-2">
+                    <Button variant="outline" className="flex-1" onClick={downloadModel} title="Scarica modello">
+                      <Download className="h-4 w-4 mr-1" /> Scarica
+                    </Button>
+                    {sessionId && (
+                      <Button variant="outline" className="flex-1" onClick={shareModelToChat} disabled={isSharingModel} title="Condividi in chat di classe">
+                        {isSharingModel ? <Loader2 className="h-4 w-4 animate-spin" /> : <Share2 className="h-4 w-4 mr-1" />}
+                        Condividi
+                      </Button>
+                    )}
+                  </div>
                   <Button
                     variant="outline"
                     className="w-full"
@@ -1005,17 +1136,31 @@ function ImageClassification({ onBack }: { onBack: () => void }) {
                   </Button>
                 </div>
               ) : (
-                <Button
-                  className="w-full"
-                  onClick={trainModel}
-                  disabled={isTraining || totalSamples < 10}
-                >
-                  {isTraining ? (
-                    <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Training...</>
-                  ) : (
-                    <><BarChart3 className="h-4 w-4 mr-2" /> Addestra Modello ({totalSamples} samples)</>
-                  )}
-                </Button>
+                <div className="space-y-2">
+                  <Button
+                    className="w-full"
+                    onClick={trainModel}
+                    disabled={isTraining || totalSamples < 10}
+                  >
+                    {isTraining ? (
+                      <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Training...</>
+                    ) : (
+                      <><BarChart3 className="h-4 w-4 mr-2" /> Addestra Modello ({totalSamples} samples)</>
+                    )}
+                  </Button>
+                  <div className="relative">
+                    <input
+                      ref={loadModelInputRef}
+                      type="file"
+                      accept=".json,.tfmodel.json"
+                      className="hidden"
+                      onChange={e => { if (e.target.files?.[0]) loadModelFromFile(e.target.files[0]) }}
+                    />
+                    <Button variant="outline" className="w-full" onClick={() => loadModelInputRef.current?.click()}>
+                      <FolderOpen className="h-4 w-4 mr-2" /> Carica modello
+                    </Button>
+                  </div>
+                </div>
               )}
             </CardContent>
           </Card>
@@ -1071,7 +1216,7 @@ function ImageClassification({ onBack }: { onBack: () => void }) {
                     <Button
                       size="sm"
                       variant={isCapturing === cls.id ? "destructive" : "secondary"}
-                      className="h-12 w-full touch-manipulation"
+                      className="h-12 flex-1 touch-manipulation"
                       onMouseDown={() => startCapturing(cls.id)}
                       onMouseUp={stopCapturing}
                       onMouseLeave={stopCapturing}
@@ -1082,6 +1227,28 @@ function ImageClassification({ onBack }: { onBack: () => void }) {
                       <Camera className="h-5 w-5 mr-2" />
                       {isCapturing === cls.id ? 'Rilascia...' : 'Tieni premuto'}
                     </Button>
+                    <div className="relative">
+                      <input
+                        ref={el => { if (el) fileInputRefs.current.set(cls.id, el); else fileInputRefs.current.delete(cls.id) }}
+                        type="file"
+                        accept="image/*"
+                        multiple
+                        className="hidden"
+                        onChange={e => { if (e.target.files) handleFileUpload(cls.id, e.target.files); e.target.value = '' }}
+                      />
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-12 w-12"
+                        title="Carica immagini da file"
+                        onClick={() => fileInputRefs.current.get(cls.id)?.click()}
+                        disabled={cls.samples.length >= 100 || isUploadingImages === cls.id}
+                      >
+                        {isUploadingImages === cls.id
+                          ? <Loader2 className="h-4 w-4 animate-spin" />
+                          : <Paperclip className="h-4 w-4" />}
+                      </Button>
+                    </div>
                   </div>
 
                   <div className="flex flex-wrap gap-1 max-h-24 overflow-y-auto">

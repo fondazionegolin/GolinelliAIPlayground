@@ -1353,6 +1353,17 @@ IMPORTANTE: Usa questi dati reali per rispondere alle domande del docente. Quand
                 max_tokens=1500,
             )
 
+            cost = credit_service.calculate_cost_for_model(
+                llm_response.provider, llm_response.model,
+                llm_response.prompt_tokens, llm_response.completion_tokens,
+            )
+            await safe_track_usage(
+                db, teacher.tenant_id, llm_response.provider, llm_response.model, cost,
+                {"type": "teacher_chat", "profile": profile_key},
+                teacher_id=teacher.id,
+                context="teacher_chat",
+            )
+
             return {
                 "response": llm_response.content,
                 "provider": llm_response.provider,
@@ -1414,12 +1425,11 @@ async def teacher_chat_stream(
 
             # Step 2: Route based on intent
             if intent_result.intent == TeacherIntent.WEB_SEARCH:
-                yield f"data: {json.dumps({'type': 'status', 'message': '🌐 Modalità: Ricerca Web'})}\n\n"
-
-                # Use streaming web search
+                # Web search removed — fall through to analytics/generic response
                 context, _ = await load_teacher_context(db, teacher)
-                async for update in generate_with_web_search_streaming(messages, context, provider, model):
-                    yield f"data: {json.dumps(update)}\n\n"
+                from app.services.teacher_agent import generate_with_analytics
+                result = await generate_with_analytics(messages, context, provider, model)
+                yield f"data: {json.dumps({'type': 'done', 'content': result})}\n\n"
 
             elif intent_result.intent == TeacherIntent.QUIZ_GENERATION:
                 yield f"data: {json.dumps({'type': 'status', 'message': '❓ Modalità: Generazione Quiz'})}\n\n"
