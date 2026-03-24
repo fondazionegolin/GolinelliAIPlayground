@@ -1,291 +1,167 @@
-import { useState } from 'react'
-import { useLocation } from 'react-router-dom'
-import { HelpCircle, X, ChevronRight, BookOpen, Users, PlayCircle, MessageSquare, FileText, Brain, ClipboardList, Bot, Layers } from 'lucide-react'
+import { useState, useEffect, useRef } from 'react'
+import { MessageSquarePlus, X, Send, Loader2, CheckCircle } from 'lucide-react'
+import { feedbackApi } from '@/lib/api'
 
-interface Step {
-  icon: React.ReactNode
-  title: string
-  detail: string
-}
-
-interface HelpContent {
-  title: string
-  subtitle: string
-  steps: Step[]
-  tip?: string
-}
-
-const HELP_MAP: Record<string, HelpContent> = {
-  '/teacher': {
-    title: 'Chat di Supporto AI',
-    subtitle: 'Il tuo assistente personale per preparare lezioni, generare materiali e ricevere supporto didattico.',
-    steps: [
-      { icon: <MessageSquare className="h-4 w-4" />, title: 'Scrivi una domanda', detail: 'Digita qualsiasi richiesta: "Crea un quiz sulle frazioni per la 3a media".' },
-      { icon: <Layers className="h-4 w-4" />, title: 'Scegli la modalità', detail: 'Usa il menu in basso: modalità Default, Quiz, Dataset, Immagine o Report.' },
-      { icon: <FileText className="h-4 w-4" />, title: 'Pubblica il risultato', detail: 'Quando l\'AI genera un quiz o documento, clicca "Pubblica" per inviarlo agli studenti.' },
-      { icon: <Bot className="h-4 w-4" />, title: 'Scegli il modello AI', detail: 'Clicca sul nome del modello in basso per cambiare provider (GPT-4, Claude, Gemini…).' },
-    ],
-    tip: 'Esempio: "Genera 10 domande a scelta multipla sull\'ecosistema del lago, livello 2a media."',
-  },
-  '/teacher/classes': {
-    title: 'Gestione Classi',
-    subtitle: 'Crea le tue classi, aggiungi studenti e organizza il lavoro per gruppo.',
-    steps: [
-      { icon: <Users className="h-4 w-4" />, title: 'Crea una classe', detail: 'Clicca "+ Nuova Classe", assegna un nome e un anno scolastico.' },
-      { icon: <PlayCircle className="h-4 w-4" />, title: 'Avvia una sessione', detail: 'Da ogni classe clicca "Avvia" per aprire una sessione live con gli studenti.' },
-      { icon: <BookOpen className="h-4 w-4" />, title: 'Crea UDA', detail: 'Clicca "UDA" per creare un\'Unità Didattica con documenti e attività tematiche.' },
-      { icon: <ChevronRight className="h-4 w-4" />, title: 'Condividi il codice', detail: 'Ogni classe ha un codice univoco: condividilo con gli studenti per farli accedere.' },
-    ],
-    tip: 'Esempio: crea la classe "3B Scienze 2025/26", poi avvia una sessione e condividi il codice JOIN con la classe.',
-  },
-  '/teacher/sessions': {
-    title: 'Sessioni',
-    subtitle: 'Gestisci le sessioni delle tue classi: avviale, mettile in pausa, monitorale.',
-    steps: [
-      { icon: <PlayCircle className="h-4 w-4" />, title: 'Seleziona la classe', detail: 'Scegli la classe dal menu a tendina per vedere le sue sessioni.' },
-      { icon: <PlayCircle className="h-4 w-4" />, title: 'Crea una sessione', detail: 'Clicca "+ Nuova Sessione" e dai un titolo (es. "Lezione 15 marzo").' },
-      { icon: <MessageSquare className="h-4 w-4" />, title: 'Avvia la sessione', detail: 'Clicca "Avvia" — la sessione diventa Attiva e gli studenti possono connettersi.' },
-      { icon: <ChevronRight className="h-4 w-4" />, title: 'Monitora', detail: 'Clicca "Monitora" per vedere studenti online, chat, compiti e cronologia.' },
-    ],
-    tip: 'Una sessione può essere messa in Pausa e riattivata in qualsiasi momento.',
-  },
-  '/teacher/documents': {
-    title: 'Documenti',
-    subtitle: 'Crea e gestisci presentazioni, documenti, fogli di calcolo e canvas collaborativi.',
-    steps: [
-      { icon: <FileText className="h-4 w-4" />, title: 'Crea un documento', detail: 'Clicca "+ Nuovo" e scegli il tipo: Documento, Presentazione, Foglio o Canvas.' },
-      { icon: <Brain className="h-4 w-4" />, title: 'Usa l\'AI per scrivere', detail: 'Seleziona del testo e usa l\'assistente AI integrato per riscrivere o espandere.' },
-      { icon: <PlayCircle className="h-4 w-4" />, title: 'Pubblica in sessione', detail: 'Clicca "Pubblica" per rendere il documento visibile agli studenti della sessione.' },
-      { icon: <ChevronRight className="h-4 w-4" />, title: 'Cerca', detail: 'Usa la barra di ricerca per trovare documenti per nome, tipo o sessione.' },
-    ],
-    tip: 'Le bozze sono visibili solo a te; pubblica in una sessione per condividerle.',
-  },
-  '/teacher/ml-lab': {
-    title: 'ML Lab',
-    subtitle: 'Laboratorio di Machine Learning per sperimentare con immagini, testi e dati strutturati.',
-    steps: [
-      { icon: <Brain className="h-4 w-4" />, title: 'Scegli un modulo', detail: 'Immagini (CNN), Testi (classificazione) o Dati (regressione/classificazione tabellare).' },
-      { icon: <Layers className="h-4 w-4" />, title: 'Carica un dataset', detail: 'Trascina un file CSV o usa il Creatore Dataset per generarne uno sintetico.' },
-      { icon: <PlayCircle className="h-4 w-4" />, title: 'Addestra il modello', detail: 'Clicca "Addestra" — il modello si allena direttamente nel browser con TensorFlow.js.' },
-      { icon: <ChevronRight className="h-4 w-4" />, title: 'Testa e condividi', detail: 'Testa il modello con nuovi dati, poi condividi i risultati in chat.' },
-    ],
-    tip: 'Creatore Dataset: clicca "+ Crea Dataset", aggiungi colonne, scegli le correlazioni statistiche e genera dati sintetici.',
-  },
-}
-
-// Match for session live page
-function getSessionLiveHelp(tab: string): HelpContent {
-  const tabs: Record<string, HelpContent> = {
-    modules: {
-      title: 'Sessione Live — Moduli',
-      subtitle: 'Attiva o disattiva i moduli disponibili per gli studenti in questa sessione.',
-      steps: [
-        { icon: <Brain className="h-4 w-4" />, title: 'Attiva moduli', detail: 'Usa gli switch per abilitare Chatbot, ML Lab, Quiz autonomo e Chat.' },
-        { icon: <Bot className="h-4 w-4" />, title: 'Configura il Teacherbot', detail: 'Clicca "Configura" per personalizzare il comportamento dell\'AI per questa sessione.' },
-        { icon: <Users className="h-4 w-4" />, title: 'Monitora studenti', detail: 'Nel pannello laterale vedi chi è online e cosa sta facendo ogni studente.' },
-        { icon: <MessageSquare className="h-4 w-4" />, title: 'Chat di classe', detail: 'Usa il tab "Chat" per comunicare con tutta la classe in tempo reale.' },
-      ],
-      tip: 'Congela uno studente cliccando sull\'icona ❄️ accanto al suo nome per bloccargli l\'accesso temporaneamente.',
-    },
-    tasks: {
-      title: 'Sessione Live — Compiti',
-      subtitle: 'Crea e monitora compiti, quiz e attività per gli studenti.',
-      steps: [
-        { icon: <ClipboardList className="h-4 w-4" />, title: 'Crea un compito', detail: 'Clicca "+ Nuovo" per creare un compito scritto, quiz a scelta multipla o attività libera.' },
-        { icon: <PlayCircle className="h-4 w-4" />, title: 'Pubblica il compito', detail: 'Clicca "Pubblica" — il compito appare subito nell\'interfaccia degli studenti.' },
-        { icon: <ChevronRight className="h-4 w-4" />, title: 'Leggi le risposte', detail: 'Clicca su un compito per espanderlo e vedere tutte le consegne degli studenti.' },
-        { icon: <Brain className="h-4 w-4" />, title: 'Cerca', detail: 'Usa la barra di ricerca per trovare compiti per nome, descrizione o tipo.' },
-      ],
-      tip: 'I quiz vengono corretti automaticamente — vedi immediatamente il punteggio di ogni studente.',
-    },
-    history: {
-      title: 'Sessione Live — Cronologia',
-      subtitle: 'Visualizza tutta l\'attività degli studenti durante la sessione.',
-      steps: [
-        { icon: <Users className="h-4 w-4" />, title: 'Filtra per studente', detail: 'Clicca sul nome di uno studente per vedere solo la sua attività.' },
-        { icon: <MessageSquare className="h-4 w-4" />, title: 'Leggi le chat', detail: 'Vedi le conversazioni degli studenti con il Chatbot AI.' },
-        { icon: <ChevronRight className="h-4 w-4" />, title: 'Esporta', detail: 'Usa il pulsante Export per scaricare la cronologia in CSV.' },
-      ],
-      tip: 'La cronologia è ordinata per ora — gli eventi più recenti sono in cima.',
-    },
-    chat: {
-      title: 'Sessione Live — Chat',
-      subtitle: 'Comunicazione in tempo reale con gli studenti della sessione.',
-      steps: [
-        { icon: <MessageSquare className="h-4 w-4" />, title: 'Messaggio pubblico', detail: 'Scrivi nella chat per mandare un messaggio a tutti gli studenti online.' },
-        { icon: <Users className="h-4 w-4" />, title: 'Chat privata', detail: 'Clicca sul nome di uno studente per aprire una chat privata con lui.' },
-        { icon: <ChevronRight className="h-4 w-4" />, title: 'Carica file', detail: 'Trascina un file nella chat per condividerlo con la classe.' },
-      ],
-      tip: 'Gli studenti ricevono una notifica per ogni tuo messaggio, anche se non sono sulla chat.',
-    },
+// Collect up to N recent console errors captured since page load
+const capturedErrors: string[] = []
+const _origError = window.console.error.bind(window.console)
+window.console.error = (...args: unknown[]) => {
+  try {
+    const msg = args.map(a => (typeof a === 'object' ? JSON.stringify(a) : String(a))).join(' ')
+    if (capturedErrors.length < 20) capturedErrors.push(msg)
+  } catch {
+    // ignore serialization errors
   }
-  return tabs[tab] || tabs.modules
+  _origError(...args)
 }
+window.addEventListener('error', (e) => {
+  const msg = `${e.message} (${e.filename}:${e.lineno})`
+  if (capturedErrors.length < 20) capturedErrors.push(msg)
+})
+window.addEventListener('unhandledrejection', (e) => {
+  const msg = `Unhandled promise rejection: ${e.reason}`
+  if (capturedErrors.length < 20) capturedErrors.push(msg)
+})
 
-const STUDENT_MODULE_HELP: Record<string, HelpContent> = {
-  chatbot: {
-    title: 'Chatbot AI',
-    subtitle: 'Fai domande, chiedi spiegazioni, esercitati con argomenti del programma.',
-    steps: [
-      { icon: <MessageSquare className="h-4 w-4" />, title: 'Scrivi una domanda', detail: 'Digita qualsiasi dubbio: "Spiegami la fotosintesi" o "Aiutami con questo esercizio".' },
-      { icon: <Bot className="h-4 w-4" />, title: 'L\'AI risponde', detail: 'Ricevi una spiegazione personalizzata. Puoi chiedere di ripetere in modo più semplice.' },
-      { icon: <Layers className="h-4 w-4" />, title: 'Cambia modalità', detail: 'Dal menu in basso puoi scegliere: risposta diretta, quiz, immagine o analisi.' },
-      { icon: <ChevronRight className="h-4 w-4" />, title: 'Storico chat', detail: 'Le conversazioni passate sono salvate — scorrile per rivedere le risposte.' },
-    ],
-    tip: 'Esempio: "Crea 5 domande per interrogarmi sulla Seconda Guerra Mondiale."',
-  },
-  tasks: {
-    title: 'Compiti',
-    subtitle: 'Visualizza, svolgi e consegna i compiti assegnati dal docente.',
-    steps: [
-      { icon: <ClipboardList className="h-4 w-4" />, title: 'Scegli un compito', detail: 'Clicca su una tessera per aprire il compito. I completati mostrano una spunta verde.' },
-      { icon: <Brain className="h-4 w-4" />, title: 'Tipologie', detail: 'Quiz (scelta multipla con punteggio automatico), Esercizio (risposta libera), Documento.' },
-      { icon: <ChevronRight className="h-4 w-4" />, title: 'Consegna', detail: 'Scrivi la tua risposta e clicca "Consegna" — il docente la vedrà subito.' },
-      { icon: <Users className="h-4 w-4" />, title: 'Cerca', detail: 'Usa il campo di ricerca in alto per trovare un compito per nome o tipo.' },
-    ],
-    tip: 'I quiz vengono corretti automaticamente: vedi il tuo punteggio subito dopo la consegna.',
-  },
-  documents: {
-    title: 'Documenti',
-    subtitle: 'Accedi ai materiali del docente e crea i tuoi documenti personali.',
-    steps: [
-      { icon: <FileText className="h-4 w-4" />, title: 'Materiali del docente', detail: 'Trovi presentazioni, documenti e fogli condivisi dal docente in sola lettura.' },
-      { icon: <BookOpen className="h-4 w-4" />, title: 'Le mie bozze', detail: 'Crea presentazioni, documenti, fogli di calcolo o canvas collaborativi.' },
-      { icon: <Brain className="h-4 w-4" />, title: 'Editor integrato', detail: 'Clicca su un documento per aprire l\'editor — hai testo, immagini e blocchi AI.' },
-      { icon: <ChevronRight className="h-4 w-4" />, title: 'Cerca', detail: 'Usa la barra di ricerca in alto per trovare documenti per titolo o tipo.' },
-    ],
-    tip: 'I materiali del docente sono in sola lettura; puoi creare copie personali con "Nuovo".',
-  },
-  ml_lab: {
-    title: 'ML Lab',
-    subtitle: 'Impara il Machine Learning sperimentando direttamente nel browser.',
-    steps: [
-      { icon: <Brain className="h-4 w-4" />, title: 'Scegli un modulo', detail: 'Classificazione immagini (CNN), testi o dati tabellari.' },
-      { icon: <Layers className="h-4 w-4" />, title: 'Carica esempi', detail: 'Aggiungi immagini o dati per addestrare il modello.' },
-      { icon: <PlayCircle className="h-4 w-4" />, title: 'Addestra', detail: 'Clicca "Addestra" — il modello impara direttamente nel tuo browser.' },
-      { icon: <ChevronRight className="h-4 w-4" />, title: 'Testa', detail: 'Prova il modello su nuovi esempi e vedi la confidenza della predizione.' },
-    ],
-    tip: 'Più esempi fornisci per ogni categoria, migliore sarà il modello.',
-  },
-  chat: {
-    title: 'Chat di Classe',
-    subtitle: 'Comunicazione in tempo reale con il docente e i compagni.',
-    steps: [
-      { icon: <MessageSquare className="h-4 w-4" />, title: 'Messaggio pubblico', detail: 'Scrivi per inviare un messaggio a tutta la classe.' },
-      { icon: <Users className="h-4 w-4" />, title: 'Messaggio privato', detail: 'Clicca sul nome del docente o di un compagno per aprire una chat privata.' },
-      { icon: <ChevronRight className="h-4 w-4" />, title: 'Carica file', detail: 'Trascina un file nella chat per condividerlo con la classe.' },
-      { icon: <Bot className="h-4 w-4" />, title: 'Notifiche', detail: 'Ricevi una notifica per ogni messaggio ricevuto, anche da altri moduli.' },
-    ],
-    tip: 'Il docente può inviarti messaggi privati — controlla la chat anche durante le attività.',
-  },
-}
-
-function getStudentHelp(module: string | null | undefined): HelpContent {
-  if (module === 'chatbot' || module === 'ai') return STUDENT_MODULE_HELP.chatbot
-  if (module === 'tasks' || module === 'compiti') return STUDENT_MODULE_HELP.tasks
-  if (module === 'documents' || module === 'documenti') return STUDENT_MODULE_HELP.documents
-  if (module === 'ml-lab' || module === 'classification' || module === 'ml') return STUDENT_MODULE_HELP.ml_lab
-  if (module === 'chat' || module === 'classe') return STUDENT_MODULE_HELP.chat
-  // Overview / no module selected
+function getBrowserInfo() {
   return {
-    title: 'Dashboard Studente',
-    subtitle: 'Scegli un modulo dal menu in basso per iniziare.',
-    steps: [
-      { icon: <Bot className="h-4 w-4" />, title: 'Chatbot AI', detail: 'Fai domande e ricevi spiegazioni personalizzate dall\'intelligenza artificiale.' },
-      { icon: <ClipboardList className="h-4 w-4" />, title: 'Compiti', detail: 'Svolgi e consegna i compiti assegnati dal tuo docente.' },
-      { icon: <FileText className="h-4 w-4" />, title: 'Documenti', detail: 'Leggi i materiali del docente e crea i tuoi documenti personali.' },
-      { icon: <MessageSquare className="h-4 w-4" />, title: 'Chat di classe', detail: 'Comunicazione in tempo reale con docente e compagni.' },
-    ],
-    tip: 'Clicca su ogni modulo nella barra in basso per accedere alle funzioni specifiche.',
+    user_agent: navigator.userAgent,
+    screen_width: window.screen.width,
+    screen_height: window.screen.height,
+    viewport_width: window.innerWidth,
+    viewport_height: window.innerHeight,
+    language: navigator.language,
+    platform: navigator.platform,
   }
-}
-
-function getHelp(pathname: string, search: string, module?: string | null): HelpContent | null {
-  // Session live page — tab-specific
-  if (/\/teacher\/sessions\/[^/]+$/.test(pathname)) {
-    const params = new URLSearchParams(search)
-    const tab = params.get('tab') || 'modules'
-    return getSessionLiveHelp(tab)
-  }
-  // Exact or prefix match for teacher pages
-  const entry = Object.entries(HELP_MAP).find(([route]) => pathname === route || pathname.startsWith(route + '/'))
-  if (entry) return entry[1]
-  // Student pages — module-aware
-  if (pathname.startsWith('/student')) {
-    return getStudentHelp(module)
-  }
-  return null
 }
 
 export interface FloatingHelperProps {
   module?: string | null
 }
 
-export function FloatingHelper({ module }: FloatingHelperProps = {}) {
+export function FloatingHelper(_props: FloatingHelperProps = {}) {
   const [open, setOpen] = useState(false)
-  const location = useLocation()
-  const help = getHelp(location.pathname, location.search, module)
+  const [message, setMessage] = useState('')
+  const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle')
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
 
-  if (!help) return null
+  useEffect(() => {
+    if (open && textareaRef.current) {
+      textareaRef.current.focus()
+    }
+    if (!open) {
+      setMessage('')
+      if (status !== 'success') setStatus('idle')
+    }
+  }, [open])
+
+  // Auto-close success state after a bit and reset
+  useEffect(() => {
+    if (status === 'success') {
+      const t = setTimeout(() => {
+        setOpen(false)
+        setStatus('idle')
+        setMessage('')
+      }, 2500)
+      return () => clearTimeout(t)
+    }
+  }, [status])
+
+  const handleSubmit = async () => {
+    if (!message.trim() || status === 'loading') return
+    setStatus('loading')
+    try {
+      await feedbackApi.submit({
+        message: message.trim(),
+        page_url: window.location.href,
+        browser_info: getBrowserInfo(),
+        console_errors: [...capturedErrors],
+      })
+      setStatus('success')
+    } catch {
+      setStatus('error')
+    }
+  }
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+      e.preventDefault()
+      handleSubmit()
+    }
+  }
 
   return (
     <>
       {/* Floating button */}
       <button
-        onClick={() => setOpen(true)}
-        className="fixed bottom-20 left-4 sm:bottom-5 sm:left-5 z-40 w-11 h-11 rounded-full bg-white border border-slate-200 shadow-lg flex items-center justify-center text-slate-500 hover:text-slate-800 hover:shadow-xl hover:scale-105 transition-all duration-200"
-        title="Guida alla pagina"
-        aria-label="Apri guida"
+        onClick={() => setOpen(v => !v)}
+        className={`fixed bottom-20 left-4 sm:bottom-5 sm:left-5 z-40 w-11 h-11 rounded-full shadow-lg flex items-center justify-center transition-all duration-200 hover:shadow-xl hover:scale-105 ${
+          open ? 'bg-slate-800 text-white' : 'bg-white border border-slate-200 text-slate-500 hover:text-slate-800'
+        }`}
+        title="Segnala un problema"
+        aria-label="Apri feedback"
       >
-        <HelpCircle className="h-5 w-5" />
+        {open ? <X className="h-5 w-5" /> : <MessageSquarePlus className="h-5 w-5" />}
       </button>
 
-      {/* Modal overlay */}
+      {/* Modal */}
       {open && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-start p-4 sm:p-6">
-          <div className="absolute inset-0 bg-slate-900/20 backdrop-blur-[2px]" onClick={() => setOpen(false)} />
-
-          <div className="relative w-full max-w-sm bg-white rounded-2xl shadow-2xl border border-slate-100 overflow-hidden animate-in slide-in-from-bottom-4 duration-200">
-            {/* Header */}
-            <div className="px-5 py-4 border-b border-slate-50 flex items-start justify-between gap-3">
-              <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-xl bg-slate-100 flex items-center justify-center flex-shrink-0">
-                  <HelpCircle className="h-4 w-4 text-slate-600" />
-                </div>
-                <div>
-                  <h2 className="text-sm font-bold text-slate-900 leading-tight">{help.title}</h2>
-                  <p className="text-[11px] text-slate-400 mt-0.5 leading-snug">{help.subtitle}</p>
-                </div>
-              </div>
-              <button onClick={() => setOpen(false)} className="text-slate-300 hover:text-slate-600 transition-colors flex-shrink-0 mt-0.5">
-                <X className="h-4 w-4" />
-              </button>
+        <div className="fixed bottom-36 left-4 sm:bottom-20 sm:left-5 z-40 w-80 bg-white rounded-2xl shadow-2xl border border-slate-100 overflow-hidden animate-in slide-in-from-bottom-4 duration-200">
+          {/* Header */}
+          <div className="px-4 py-3 border-b border-slate-50 flex items-center gap-2.5">
+            <div className="w-7 h-7 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: '#fce7f3' }}>
+              <MessageSquarePlus className="h-3.5 w-3.5" style={{ color: '#e85c8d' }} />
             </div>
-
-            {/* Steps */}
-            <div className="px-5 py-4 space-y-3">
-              {help.steps.map((step, i) => (
-                <div key={i} className="flex gap-3">
-                  <div className="w-7 h-7 rounded-lg bg-slate-50 border border-slate-100 flex items-center justify-center flex-shrink-0 text-slate-500">
-                    {step.icon}
-                  </div>
-                  <div className="flex-1 min-w-0 pt-0.5">
-                    <p className="text-xs font-semibold text-slate-700">{step.title}</p>
-                    <p className="text-[11px] text-slate-400 leading-relaxed mt-0.5">{step.detail}</p>
-                  </div>
-                </div>
-              ))}
+            <div>
+              <h2 className="text-sm font-bold text-slate-900 leading-tight">Segnala un problema</h2>
+              <p className="text-[11px] text-slate-400">Descrivi il comportamento inatteso</p>
             </div>
-
-            {/* Tip */}
-            {help.tip && (
-              <div className="mx-5 mb-4 px-3.5 py-2.5 bg-amber-50 border border-amber-100 rounded-xl">
-                <p className="text-[11px] text-amber-700 leading-relaxed">
-                  <span className="font-bold">Esempio: </span>{help.tip}
-                </p>
-              </div>
-            )}
           </div>
+
+          {/* Body */}
+          {status === 'success' ? (
+            <div className="flex flex-col items-center justify-center py-8 gap-2">
+              <CheckCircle className="h-10 w-10 text-green-500" />
+              <p className="text-sm font-semibold text-slate-800">Grazie per il feedback!</p>
+              <p className="text-xs text-slate-400">La segnalazione è stata inviata.</p>
+            </div>
+          ) : (
+            <div className="p-4 space-y-3">
+              <textarea
+                ref={textareaRef}
+                value={message}
+                onChange={e => setMessage(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder="Descrivi cosa è successo... (Ctrl+Invio per inviare)"
+                rows={4}
+                className="w-full text-sm text-slate-800 placeholder:text-slate-300 border border-slate-200 rounded-xl px-3 py-2.5 resize-none focus:outline-none focus:ring-2 focus:ring-pink-200 focus:border-pink-300 transition-all"
+                disabled={status === 'loading'}
+              />
+
+              {status === 'error' && (
+                <p className="text-xs text-red-500">Errore nell'invio. Riprova.</p>
+              )}
+
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-[10px] text-slate-300">
+                  Raccoglie automaticamente info tecniche e log del browser
+                </p>
+                <button
+                  onClick={handleSubmit}
+                  disabled={!message.trim() || status === 'loading'}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium text-white transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                  style={{ backgroundColor: '#e85c8d' }}
+                >
+                  {status === 'loading' ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Send className="h-3.5 w-3.5" />
+                  )}
+                  Invia
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </>
