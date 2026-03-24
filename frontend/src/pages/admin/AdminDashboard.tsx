@@ -2,18 +2,20 @@ import { Routes, Route, useLocation, useNavigate, Navigate } from 'react-router-
 import { motion } from 'framer-motion'
 import { useAuthStore } from '@/stores/auth'
 import { AppBackground } from '@/components/ui/AppBackground'
-import { LogOut, LayoutDashboard, GraduationCap, BarChart3, Mail, School } from 'lucide-react'
+import { LogOut, LayoutDashboard, GraduationCap, BarChart3, Mail, School, Bug } from 'lucide-react'
 import AdminOverviewPage from './AdminControlCenterPage'
 import TeachersPage from './TeachersPage'
 import ClassesPage from './ClassesPage'
 import UsersPage from './UsersPage'
 import TeacherRequestsPage from './TeacherRequestsPage'
+import FeedbackPage from './FeedbackPage'
 const navItems = [
   { path: '/admin', label: 'Panoramica', icon: LayoutDashboard, exact: true },
   { path: '/admin/teachers', label: 'Docenti', icon: GraduationCap, exact: false },
   { path: '/admin/classes', label: 'Classi', icon: School, exact: false },
   { path: '/admin/costs', label: 'Costi', icon: BarChart3, exact: false },
   { path: '/admin/email', label: 'Email', icon: Mail, exact: false },
+  { path: '/admin/feedback', label: 'Feedback', icon: Bug, exact: false },
 ]
 
 export default function AdminDashboard() {
@@ -96,6 +98,7 @@ export default function AdminDashboard() {
           <Route path="classes" element={<ClassesPage />} />
           <Route path="costs" element={<UsersPage />} />
           <Route path="email" element={<TeacherRequestsPage />} />
+          <Route path="feedback" element={<FeedbackPage />} />
           {/* Legacy redirects */}
           <Route path="teacher-requests" element={<Navigate to="/admin/teachers" replace />} />
           <Route path="users" element={<Navigate to="/admin/teachers" replace />} />

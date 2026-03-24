@@ -489,3 +489,24 @@ export const creditsApi = {
     api.post('/credits/invitations/bulk-json', { teachers, group_tag: groupTag, custom_message: customMessage }),
   getInvitations: () => api.get('/credits/invitations'),
 }
+
+export const feedbackApi = {
+  submit: (data: {
+    message: string
+    page_url?: string
+    browser_info?: {
+      user_agent?: string
+      screen_width?: number
+      screen_height?: number
+      language?: string
+      platform?: string
+      viewport_width?: number
+      viewport_height?: number
+    }
+    console_errors?: string[]
+  }) => api.post('/feedback/', data),
+  list: (params?: { limit?: number; offset?: number; status_filter?: string }) =>
+    api.get('/feedback/admin', { params }),
+  updateStatus: (id: string, status: string) =>
+    api.patch(`/feedback/admin/${id}/status`, { status }),
+}
