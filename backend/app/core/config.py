@@ -33,6 +33,7 @@ class Settings(BaseSettings):
     ANTHROPIC_API_KEY: Optional[str] = None
     DEEPSEEK_API_KEY: Optional[str] = None
     DEEPSEEK_BASE_URL: str = "https://api.deepseek.com"
+    GEMINI_API_KEY: Optional[str] = None
     OLLAMA_BASE_URL: str = "http://localhost:11434"
     GOLINELLI_IMAGE_API_KEY: Optional[str] = None
     GOLINELLI_IMAGE_API_URL: str = "https://image.golinelli.ai/api/v1"
@@ -60,6 +61,8 @@ class Settings(BaseSettings):
         "http://playground.golinelli.ai",
         "https://golinelli.ai",
         "http://golinelli.ai",
+        "https://dev.golinelli.ai",
+        "http://dev.golinelli.ai",
     ]
     EXTRA_CORS_ORIGINS: list[str] = []  # Additional origins (e.g. staging URLs) via env var
 
@@ -86,6 +89,8 @@ class Settings(BaseSettings):
     ALLOWED_MIME_TYPES: list[str] = [
         "application/pdf",
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        "application/vnd.ms-powerpoint",
         "text/plain",
         "text/csv",
         "image/png",

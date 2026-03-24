@@ -1,7 +1,8 @@
-import { useState } from 'react'
-import { useParams, Link } from 'react-router-dom'
+import { useState, useEffect, useMemo, useRef } from 'react'
+import { useParams, Link, useSearchParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { teacherApi } from '@/lib/api'
+import type { Socket } from 'socket.io-client'
+import { teacherApi, teacherbotsApi } from '@/lib/api'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Switch } from '@/components/ui/switch'
@@ -10,10 +11,12 @@ import { useToast } from '@/components/ui/use-toast'
 import {
   ArrowLeft, Users, Copy, Play, Square,
   Snowflake, Sun, Bot, Brain, MessageSquare,
-  ClipboardList, Plus, Trash2, Check, Eye, ChevronDown, ChevronUp, History, User
+  ClipboardList, Plus, Trash2, Check, Eye, ChevronDown, ChevronUp, History, User, BookOpen, Search, X,
+  MonitorPlay, Send, ChevronRight
 } from 'lucide-react'
 import { llmApi } from '@/lib/api'
 import TaskBuilder from '@/components/TaskBuilder'
+import TeacherbotTestChat from '@/components/teacher/TeacherbotTestChat'
 // TeacherNotifications removed per redesign
 import { useSocket } from '@/hooks/useSocket'
 import { useAuthStore } from '@/stores/auth'
@@ -58,14 +61,41 @@ interface SessionLiveData {
 export default function SessionLivePage() {
   const { sessionId } = useParams<{ sessionId: string }>()
   const queryClient = useQueryClient()
+  const navigate = useNavigate()
   const { toast } = useToast()
   useAuthStore() // Keep store connection for auth state
-  const [autoRefresh] = useState(true)
-  const [activeTab, setActiveTab] = useState('modules')
+  const [searchParams] = useSearchParams()
+  const [activeTab, setActiveTab] = useState(() => {
+    const tab = searchParams.get('tab')
+    return tab === 'tasks' || tab === 'history' ? tab : 'modules'
+  })
+
+  useEffect(() => {
+    const tab = searchParams.get('tab')
+    if (tab === 'tasks' || tab === 'history') setActiveTab(tab)
+  }, [searchParams])
   const [showOfflineStudents, setShowOfflineStudents] = useState(false)
   const [showTaskBuilder, setShowTaskBuilder] = useState(false)
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null)
+  const [taskSearch, setTaskSearch] = useState('')
   const [selectedConversationId, setSelectedConversationId] = useState<string | null>(null)
+
+  // Demo mode: teacherbot slide-over
+  const [demoBotId, setDemoBotId] = useState<string | null>(null)
+
+  // Per-student push: which student has the bot picker open
+  const [pushBotStudentId, setPushBotStudentId] = useState<string | null>(null)
+  const pushPopoverRef = useRef<HTMLDivElement>(null)
+
+  // Fetch teacher's teacherbots for demo mode and push
+  const { data: teacherbots } = useQuery({
+    queryKey: ['teacherbots'],
+    queryFn: async () => {
+      const res = await teacherbotsApi.list()
+      return res.data as { id: string; name: string; color: string; icon: string | null; synopsis: string | null; status: string }[]
+    },
+    staleTime: 1000 * 60 * 5,
+  })
 
   // Fetch available LLM models
   const { data: modelsData } = useQuery({
@@ -77,8 +107,8 @@ export default function SessionLivePage() {
     staleTime: 1000 * 60 * 10,
   })
 
-  // Get online users
-  const { onlineUsers } = useSocket(sessionId || '')
+  // Get online users + socket for real-time updates
+  const { onlineUsers, socket } = useSocket(sessionId || '')
 
   const { data: tasksData } = useQuery<TaskData[]>({
     queryKey: ['session-tasks', sessionId],
@@ -96,8 +126,38 @@ export default function SessionLivePage() {
       return res.data
     },
     enabled: !!sessionId,
-    refetchInterval: autoRefresh ? 5000 : false,
+    // No polling — updates arrive via socket events (student_frozen_status, module_toggled)
   })
+
+  // Real-time: update session-live cache when backend pushes changes
+  useEffect(() => {
+    if (!socket || !sessionId) return
+
+    const handleFrozenStatus = (d: { student_id: string; is_frozen: boolean }) => {
+      queryClient.setQueryData(['session-live', sessionId], (old: SessionLiveData | undefined) => {
+        if (!old) return old
+        return { ...old, students: old.students.map(s => s.id === d.student_id ? { ...s, is_frozen: d.is_frozen } : s) }
+      })
+    }
+
+    const handleModuleToggled = (d: { module_key: string; is_enabled: boolean }) => {
+      queryClient.setQueryData(['session-live', sessionId], (old: SessionLiveData | undefined) => {
+        if (!old) return old
+        const exists = old.modules.some(m => m.module_key === d.module_key)
+        const modules = exists
+          ? old.modules.map(m => m.module_key === d.module_key ? { ...m, is_enabled: d.is_enabled } : m)
+          : [...old.modules, { module_key: d.module_key, is_enabled: d.is_enabled }]
+        return { ...old, modules }
+      })
+    }
+
+    socket.on('student_frozen_status', handleFrozenStatus)
+    socket.on('module_toggled', handleModuleToggled)
+    return () => {
+      socket.off('student_frozen_status', handleFrozenStatus)
+      socket.off('module_toggled', handleModuleToggled)
+    }
+  }, [socket, sessionId, queryClient])
 
   const updateStatusMutation = useMutation({
     mutationFn: (status: string) => teacherApi.updateSession(sessionId!, { status }),
@@ -167,6 +227,19 @@ export default function SessionLivePage() {
     },
   })
 
+  const pushTeacherbotMutation = useMutation({
+    mutationFn: ({ studentId, teacherbotId }: { studentId: string; teacherbotId: string }) =>
+      teacherApi.pushTeacherbotToStudent(sessionId!, studentId, teacherbotId),
+    onSuccess: (_, { studentId }) => {
+      const student = data?.students.find(s => s.id === studentId)
+      toast({ title: `Bot inviato a ${student?.nickname ?? 'studente'}` })
+      setPushBotStudentId(null)
+    },
+    onError: () => {
+      toast({ title: 'Errore invio bot', variant: 'destructive' })
+    },
+  })
+
   const copyCode = (code: string) => {
     navigator.clipboard.writeText(code)
     toast({ title: 'Codice copiato!' })
@@ -184,169 +257,200 @@ export default function SessionLivePage() {
     return icons[key] || null
   }
 
+  // Close bot popover when clicking outside
+  useEffect(() => {
+    if (!pushBotStudentId) return
+    const handler = (e: MouseEvent) => {
+      if (pushPopoverRef.current && !pushPopoverRef.current.contains(e.target as Node)) {
+        setPushBotStudentId(null)
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [pushBotStudentId])
+
+  // All hooks must be before any conditional returns (Rules of Hooks)
+  const onlineStudentIds = useMemo(() => new Set(onlineUsers.map(u => u.student_id)), [onlineUsers])
+  const onlineStudents = useMemo(
+    () => (data?.students || []).filter(s => onlineStudentIds.has(s.id)),
+    [data?.students, onlineStudentIds]
+  )
+  const offlineStudents = useMemo(
+    () => (data?.students || []).filter(s => !onlineStudentIds.has(s.id)),
+    [data?.students, onlineStudentIds]
+  )
+
   if (isLoading) {
-    return <p>Caricamento...</p>
+    return (
+      <div className="flex items-center justify-center h-full min-h-[40vh] text-sm text-slate-400">
+        Caricamento sessione...
+      </div>
+    )
   }
 
   if (!data) {
-    return <p>Sessione non trovata</p>
+    return (
+      <div className="flex items-center justify-center h-full min-h-[40vh] text-sm text-slate-400">
+        Sessione non trovata
+      </div>
+    )
   }
 
   const { session, students, modules } = data
 
-  // Separate online and offline students
-  const onlineStudents = students.filter(s => onlineUsers.some(u => u.student_id === s.id))
-  const offlineStudents = students.filter(s => !onlineUsers.some(u => u.student_id === s.id))
+  const statusConfig = {
+    active: { dot: 'bg-emerald-500 animate-pulse', badge: 'bg-emerald-100 text-emerald-700', label: 'Attiva' },
+    paused: { dot: 'bg-amber-500', badge: 'bg-amber-100 text-amber-700', label: 'In Pausa' },
+    ended:  { dot: 'bg-red-400',   badge: 'bg-red-100 text-red-700',     label: 'Terminata' },
+    draft:  { dot: 'bg-slate-400', badge: 'bg-slate-100 text-slate-600', label: 'Bozza' },
+  }
+  const sc = statusConfig[session.status as keyof typeof statusConfig] ?? statusConfig.draft
 
   return (
     <>
-      <div className="min-h-screen">
-        {/* Modern Unified Header */}
-        <div className="bg-indigo-600 text-white shadow-lg">
-          <div className="max-w-7xl mx-auto px-4 py-3">
-            <div className="flex items-center justify-between gap-4">
-              {/* Left: Back + Session Info */}
-              <div className="flex items-center gap-4 min-w-0">
-                <Link to="/teacher/classes" className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white/10 hover:bg-white/20 transition-colors">
-                  <ArrowLeft className="h-4 w-4" />
-                  <span className="hidden sm:inline text-sm font-medium">Indietro</span>
-                </Link>
-                <div className="min-w-0">
-                  <h1 className="text-lg md:text-xl font-bold truncate">{session.title}</h1>
-                  <div className="flex items-center gap-2">
-                    <p className="text-sm text-white/80 truncate">{session.class_name}</p>
-                    {session.class_school_grade && (
-                      <span className="text-[11px] px-2 py-0.5 rounded-full bg-white/20 border border-white/30">
-                        {session.class_school_grade}
-                      </span>
-                    )}
-                  </div>
-                </div>
+      {/* Demo mode slide-over */}
+      {demoBotId && (
+        <div className="fixed inset-0 z-50 flex">
+          {/* Backdrop */}
+          <div className="flex-1 bg-black/30" onClick={() => setDemoBotId(null)} />
+          {/* Panel */}
+          <div className="w-full max-w-xl bg-white shadow-2xl flex flex-col h-full overflow-hidden">
+            <div className="flex items-center justify-between px-5 py-3 border-b border-slate-200 bg-slate-50">
+              <div className="flex items-center gap-2 text-sm font-semibold text-slate-700">
+                <MonitorPlay className="h-4 w-4 text-[#e85c8d]" />
+                Modalità Demo
               </div>
+              <button
+                onClick={() => setDemoBotId(null)}
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-200 transition-colors"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="flex-1 overflow-hidden p-4">
+              <TeacherbotTestChat
+                teacherbotId={demoBotId}
+                onBack={() => setDemoBotId(null)}
+              />
+            </div>
+          </div>
+        </div>
+      )}
 
-              {/* Center: Code + Status */}
-              <div className="hidden md:flex items-center gap-4">
-                <div className="flex items-center gap-2 px-4 py-2 rounded-lg bg-white/10">
-                  <span className="text-sm text-white/80">Codice:</span>
-                  <code className="text-lg font-mono font-bold tracking-wider">{session.join_code}</code>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 w-7 p-0 text-white hover:bg-white/20"
-                    onClick={() => copyCode(session.join_code)}
-                  >
-                    <Copy className="h-3.5 w-3.5" />
-                  </Button>
+      <div>
+        {/* Header */}
+        <div className="bg-white border-b border-slate-200 px-6 md:px-8 py-4">
+          <div className="max-w-6xl mx-auto flex items-center justify-between gap-4 flex-wrap">
+            {/* Left: back + title */}
+            <div className="flex items-center gap-3 min-w-0">
+              <Link
+                to="/teacher/classes"
+                className="flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-800 transition-colors flex-shrink-0"
+              >
+                <ArrowLeft className="h-4 w-4" />
+                <span className="hidden sm:inline">Classi</span>
+              </Link>
+              <span className="text-slate-300">/</span>
+              <div className="min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h1 className="text-lg font-bold text-slate-900 truncate">{session.title}</h1>
+                  <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold ${sc.badge}`}>
+                    <span className={`w-1.5 h-1.5 rounded-full ${sc.dot}`} />
+                    {sc.label}
+                  </span>
                 </div>
-                <span className={`px-3 py-1.5 rounded-full text-sm font-semibold ${session.status === 'active' ? 'bg-emerald-400/90 text-emerald-900' :
-                  session.status === 'paused' ? 'bg-amber-400/90 text-amber-900' :
-                    session.status === 'ended' ? 'bg-red-400/90 text-red-900' :
-                      'bg-slate-300/90 text-slate-700'
-                  }`}>
-                  {session.status === 'active' ? 'Attiva' :
-                    session.status === 'paused' ? 'In Pausa' :
-                      session.status === 'ended' ? 'Terminata' : 'Bozza'}
-                </span>
+                <p className="text-sm text-slate-500 truncate">
+                  {session.class_name}
+                  {session.class_school_grade && <span className="ml-2 text-slate-400">· {session.class_school_grade}</span>}
+                </p>
               </div>
+            </div>
 
-              {/* Right: Controls */}
-              <div className="flex items-center gap-2">
-                {session.status === 'draft' && (
-                  <Button
-                    size="sm"
-                    className="bg-emerald-500 hover:bg-emerald-600 text-white border-0"
-                    onClick={() => updateStatusMutation.mutate('active')}
-                  >
-                    <Play className="h-4 w-4 mr-1" />
-                    <span className="hidden sm:inline">Avvia</span>
+            {/* Center: join code */}
+            <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
+              <span className="text-xs text-slate-500">Codice:</span>
+              <code className="font-mono font-bold text-base text-slate-800 tracking-wider">{session.join_code}</code>
+              <button
+                onClick={() => copyCode(session.join_code)}
+                className="ml-1 text-slate-400 hover:text-slate-700 transition-colors"
+                title="Copia codice"
+              >
+                <Copy className="h-3.5 w-3.5" />
+              </button>
+            </div>
+
+            {/* Right: actions */}
+            <div className="flex items-center gap-2">
+              {session.status === 'draft' && (
+                <Button size="sm" onClick={() => updateStatusMutation.mutate('active')}>
+                  <Play className="h-3.5 w-3.5 mr-1.5" />
+                  Avvia
+                </Button>
+              )}
+              {session.status === 'active' && (
+                <>
+                  <Button size="sm" variant="outline" onClick={() => updateStatusMutation.mutate('paused')}>
+                    <Square className="h-3.5 w-3.5 mr-1.5" />
+                    Pausa
                   </Button>
-                )}
-                {session.status === 'active' && (
-                  <>
-                    <Button
-                      size="sm"
-                      className="bg-white/20 hover:bg-white/30 text-white border-0"
-                      onClick={() => updateStatusMutation.mutate('paused')}
-                    >
-                      <Square className="h-4 w-4 mr-1" />
-                      <span className="hidden sm:inline">Pausa</span>
-                    </Button>
-                    <Button
-                      size="sm"
-                      className="bg-red-500/80 hover:bg-red-600 text-white border-0"
-                      onClick={() => updateStatusMutation.mutate('ended')}
-                    >
-                      <span className="hidden sm:inline">Termina</span>
-                      <span className="sm:hidden">Stop</span>
-                    </Button>
-                  </>
-                )}
-                {session.status === 'paused' && (
-                  <Button
-                    size="sm"
-                    className="bg-emerald-500 hover:bg-emerald-600 text-white border-0"
-                    onClick={() => updateStatusMutation.mutate('active')}
-                  >
-                    <Play className="h-4 w-4 mr-1" />
-                    <span className="hidden sm:inline">Riprendi</span>
+                  <Button size="sm" variant="destructive" onClick={() => updateStatusMutation.mutate('ended')}>
+                    Termina
                   </Button>
-                )}
-              </div>
+                </>
+              )}
+              {session.status === 'paused' && (
+                <Button size="sm" onClick={() => updateStatusMutation.mutate('active')}>
+                  <Play className="h-3.5 w-3.5 mr-1.5" />
+                  Riprendi
+                </Button>
+              )}
             </div>
           </div>
         </div>
 
-        {/* Mobile Code Display */}
-        <div className="md:hidden bg-white border-b px-4 py-2 flex items-center justify-center gap-3">
-          <span className="text-sm text-muted-foreground">Codice:</span>
-          <code className="text-lg font-mono font-bold text-violet-600">{session.join_code}</code>
-          <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => copyCode(session.join_code)}>
-            <Copy className="h-3.5 w-3.5" />
-          </Button>
-        </div>
-
         {/* Main Layout: Sidebar + Content */}
-        <div className="max-w-7xl mx-auto p-4 md:p-6">
+        <div className="max-w-6xl mx-auto p-6 md:p-8">
           <div className="flex flex-col lg:flex-row gap-6">
 
             {/* Left Sidebar: Students */}
             <div className="lg:w-72 xl:w-80 shrink-0">
-              <Card className="sticky top-20">
-                <CardHeader className="pb-3">
-                  <CardTitle className="flex items-center justify-between text-base">
-                    <div className="flex items-center gap-2">
-                      <Users className="h-5 w-5 text-violet-600" />
-                      <span>Studenti</span>
-                      <span className="ml-1 px-2 py-0.5 bg-emerald-100 text-emerald-700 text-xs font-semibold rounded-full">
-                        {onlineStudents.length} online
-                      </span>
-                    </div>
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="pt-0">
+              <div className="sticky top-6 bg-white rounded-xl border border-slate-200">
+                <div className="px-5 py-4 border-b border-slate-100">
+                  <div className="flex items-center gap-2">
+                    <Users className="h-4 w-4 text-slate-500" />
+                    <span className="text-sm font-semibold text-slate-800">Studenti</span>
+                    <span className="ml-auto px-2 py-0.5 bg-emerald-100 text-emerald-700 text-xs font-semibold rounded-full">
+                      {onlineStudents.length} online
+                    </span>
+                  </div>
+                </div>
+                <div className="p-3">
                   {students.length === 0 ? (
-                    <div className="text-center py-6 text-muted-foreground">
-                      <Users className="h-10 w-10 mx-auto mb-2 opacity-30" />
-                      <p className="text-sm">Nessuno studente connesso</p>
-                      <p className="text-xs mt-1">Condividi il codice <strong className="text-violet-600">{session.join_code}</strong></p>
+                    <div className="text-center py-8">
+                      <Users className="h-8 w-8 mx-auto mb-2 text-slate-300" />
+                      <p className="text-sm text-slate-500">Nessuno studente</p>
+                      <p className="text-xs text-slate-400 mt-1">Codice: <strong className="text-slate-600">{session.join_code}</strong></p>
                     </div>
                   ) : (
-                    <div className="space-y-1.5 max-h-[60vh] overflow-y-auto">
+                    <div className="space-y-1 max-h-[60vh] overflow-y-auto">
                       {/* Online Students */}
                       {onlineStudents.map((student) => (
                         <div
                           key={student.id}
-                          className={`flex items-center justify-between p-2 rounded-lg transition-colors ${student.is_frozen ? 'bg-blue-50 border border-blue-200' : 'bg-gray-50 hover:bg-gray-100'
-                            }`}
+                          className={`flex items-center justify-between px-3 py-2 rounded-lg transition-colors ${
+                            student.is_frozen
+                              ? 'bg-blue-50 border border-blue-100'
+                              : 'hover:bg-slate-50'
+                          }`}
                         >
                           <div className="flex items-center gap-2 min-w-0">
-                            <div className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" title="Online" />
-                            <span className="font-medium text-sm truncate">{student.nickname}</span>
+                            <div className="w-2 h-2 rounded-full bg-emerald-500 shrink-0 animate-pulse" />
+                            <span className="text-sm font-medium text-slate-800 truncate">{student.nickname}</span>
                             {student.is_frozen && (
                               <Snowflake className="h-3 w-3 text-blue-500 shrink-0" />
                             )}
                           </div>
-                          <div className="flex gap-1 shrink-0">
+                          <div className="flex gap-0.5 shrink-0">
                             <Button
                               size="sm"
                               variant="ghost"
@@ -358,8 +462,49 @@ export default function SessionLivePage() {
                               }}
                               title="Chat Diretta"
                             >
-                              <MessageSquare className="h-3.5 w-3.5 text-gray-400 hover:text-emerald-500" />
+                              <MessageSquare className="h-3.5 w-3.5 text-slate-400" />
                             </Button>
+                            {/* Bot push button */}
+                            <div className="relative">
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="h-7 w-7 p-0"
+                                onClick={() => setPushBotStudentId(pushBotStudentId === student.id ? null : student.id)}
+                                title="Invia Bot"
+                              >
+                                <Bot className="h-3.5 w-3.5 text-slate-400" />
+                              </Button>
+                              {pushBotStudentId === student.id && (
+                                <div
+                                  ref={pushPopoverRef}
+                                  className="absolute right-0 top-8 z-50 w-52 bg-white border border-slate-200 rounded-xl shadow-xl overflow-hidden"
+                                >
+                                  <div className="px-3 py-2 border-b border-slate-100 text-xs font-semibold text-slate-600 flex items-center gap-1.5">
+                                    <Send className="h-3 w-3" />
+                                    Invia bot a {student.nickname}
+                                  </div>
+                                  {!teacherbots || teacherbots.length === 0 ? (
+                                    <div className="px-3 py-3 text-xs text-slate-400 text-center">Nessun bot disponibile</div>
+                                  ) : (
+                                    <div className="max-h-48 overflow-y-auto">
+                                      {teacherbots.map(bot => (
+                                        <button
+                                          key={bot.id}
+                                          className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-slate-50 transition-colors text-left"
+                                          onClick={() => pushTeacherbotMutation.mutate({ studentId: student.id, teacherbotId: bot.id })}
+                                          disabled={pushTeacherbotMutation.isPending}
+                                        >
+                                          <BotColorDot color={bot.color} />
+                                          <span className="truncate flex-1 text-slate-800">{bot.name}</span>
+                                          <ChevronRight className="h-3 w-3 text-slate-300 shrink-0" />
+                                        </button>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                            </div>
                             <Button
                               size="sm"
                               variant="ghost"
@@ -372,9 +517,9 @@ export default function SessionLivePage() {
                               title={student.is_frozen ? 'Sblocca' : 'Blocca'}
                             >
                               {student.is_frozen ? (
-                                <Sun className="h-3.5 w-3.5 text-yellow-500" />
+                                <Sun className="h-3.5 w-3.5 text-amber-500" />
                               ) : (
-                                <Snowflake className="h-3.5 w-3.5 text-blue-400" />
+                                <Snowflake className="h-3.5 w-3.5 text-slate-400" />
                               )}
                             </Button>
                           </div>
@@ -386,37 +531,36 @@ export default function SessionLivePage() {
                         <>
                           <button
                             onClick={() => setShowOfflineStudents(!showOfflineStudents)}
-                            className="w-full flex items-center justify-between px-2 py-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
+                            className="w-full flex items-center justify-between px-3 py-2 text-xs text-slate-400 hover:text-slate-600 transition-colors mt-1"
                           >
                             <span className="flex items-center gap-2">
-                              <User className="h-4 w-4" />
+                              <User className="h-3.5 w-3.5" />
                               Disconnessi ({offlineStudents.length})
                             </span>
                             {showOfflineStudents ? (
-                              <ChevronUp className="h-4 w-4" />
+                              <ChevronUp className="h-3.5 w-3.5" />
                             ) : (
-                              <ChevronDown className="h-4 w-4" />
+                              <ChevronDown className="h-3.5 w-3.5" />
                             )}
                           </button>
 
                           {showOfflineStudents && offlineStudents.map((student) => (
                             <div
                               key={student.id}
-                              className="flex items-center justify-between p-2 rounded-lg bg-gray-50/50 opacity-60"
+                              className="flex items-center justify-between px-3 py-2 rounded-lg opacity-50"
                             >
                               <div className="flex items-center gap-2 min-w-0">
-                                <div className="w-2 h-2 rounded-full bg-gray-300 shrink-0" title="Offline" />
-                                <span className="text-sm truncate">{student.nickname}</span>
+                                <div className="w-2 h-2 rounded-full bg-slate-300 shrink-0" title="Offline" />
+                                <span className="text-sm text-slate-500 truncate">{student.nickname}</span>
                               </div>
-                              <span className="text-xs text-gray-400">offline</span>
                             </div>
                           ))}
                         </>
                       )}
                     </div>
                   )}
-                </CardContent>
-              </Card>
+                </div>
+              </div>
             </div>
 
             {/* Main Content Area */}
@@ -446,12 +590,15 @@ export default function SessionLivePage() {
                       <p className="text-sm text-muted-foreground mb-4">
                         Attiva o disattiva i moduli disponibili per gli studenti in questa sessione.
                       </p>
-                      <div className="space-y-3">
+                      <div className="space-y-2">
                         {modules.map((mod) => (
                           <div
                             key={mod.module_key}
-                            className={`flex items-center justify-between p-4 rounded-lg border ${mod.is_enabled ? 'bg-green-50 border-green-200' : 'bg-gray-50 border-gray-200'
-                              }`}
+                            className={`flex items-center justify-between px-4 py-3 rounded-lg border transition-colors ${
+                              mod.is_enabled
+                                ? 'bg-emerald-50 border-emerald-200'
+                                : 'bg-slate-50 border-slate-200'
+                            }`}
                           >
                             <div className="flex items-center gap-3">
                               {getModuleIcon(mod.module_key)}
@@ -474,6 +621,37 @@ export default function SessionLivePage() {
                           </div>
                         ))}
                       </div>
+
+                      {/* Teacher Demo Mode */}
+                      {teacherbots && teacherbots.length > 0 && (
+                        <div className="mt-6 pt-6 border-t">
+                          <h4 className="font-medium mb-2 flex items-center gap-2 text-sm">
+                            <MonitorPlay className="h-4 w-4" />
+                            Modalità Demo
+                          </h4>
+                          <p className="text-sm text-muted-foreground mb-3">
+                            Testa o dimostra un bot in classe vedendo esattamente cosa vedono gli studenti.
+                          </p>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            {teacherbots.map(bot => (
+                              <button
+                                key={bot.id}
+                                onClick={() => setDemoBotId(bot.id)}
+                                className="flex items-center gap-3 p-3 rounded-lg border border-slate-200 hover:border-slate-300 hover:bg-slate-50 transition-colors text-left"
+                              >
+                                <BotColorDot color={bot.color} large />
+                                <div className="flex-1 min-w-0">
+                                  <div className="text-sm font-medium text-slate-800 truncate">{bot.name}</div>
+                                  {bot.synopsis && (
+                                    <div className="text-xs text-slate-400 truncate">{bot.synopsis}</div>
+                                  )}
+                                </div>
+                                <Play className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
 
                       {/* Default LLM Model Selector */}
                       <div className="mt-6 pt-6 border-t">
@@ -534,12 +712,25 @@ export default function SessionLivePage() {
                           <ClipboardList className="h-5 w-5" />
                           Compiti e Attività
                         </span>
-                        {!showTaskBuilder && (
-                          <Button size="sm" onClick={() => setShowTaskBuilder(true)}>
-                            <Plus className="h-4 w-4 mr-1" />
-                            Nuovo
-                          </Button>
-                        )}
+                        <div className="flex gap-2">
+                          {data?.session?.class_id && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => navigate(`/teacher/classes/${data.session.class_id}/uda`)}
+                              className="text-indigo-600 border-indigo-200 hover:bg-indigo-50"
+                            >
+                              <BookOpen className="h-4 w-4 mr-1" />
+                              UDA
+                            </Button>
+                          )}
+                          {!showTaskBuilder && (
+                            <Button size="sm" onClick={() => setShowTaskBuilder(true)}>
+                              <Plus className="h-4 w-4 mr-1" />
+                              Nuovo
+                            </Button>
+                          )}
+                        </div>
                       </CardTitle>
                     </CardHeader>
                     <CardContent>
@@ -553,34 +744,71 @@ export default function SessionLivePage() {
                         </div>
                       )}
 
+                      {tasksData && tasksData.length > 0 && (
+                        <div className="mb-4">
+                          <div className="relative max-w-sm">
+                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
+                            <input
+                              type="text"
+                              placeholder="Cerca compiti..."
+                              value={taskSearch}
+                              onChange={e => setTaskSearch(e.target.value)}
+                              className="w-full pl-9 pr-8 py-2 text-sm bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-300 focus:border-slate-400 transition-colors"
+                            />
+                            {taskSearch && (
+                              <button onClick={() => setTaskSearch('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                                <X className="h-3.5 w-3.5" />
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
                       {!tasksData || tasksData.length === 0 ? (
                         <p className="text-center text-muted-foreground py-8">
                           Nessun compito assegnato. Crea il primo compito sopra.
                         </p>
-                      ) : (
-                        <div className="space-y-3">
-                          {tasksData.map((task) => (
-                            <TaskCard
-                              key={task.id}
-                              task={task}
-                              sessionId={sessionId!}
-                              isExpanded={expandedTaskId === task.id}
-                              onToggle={() => setExpandedTaskId(expandedTaskId === task.id ? null : task.id)}
-                              onPublish={() => publishTaskMutation.mutate(task.id)}
-                              onDelete={() => deleteTaskMutation.mutate(task.id)}
-                            />
-                          ))}
-                        </div>
-                      )}
+                      ) : (() => {
+                        const filtered = tasksData.filter(t => {
+                          if (!taskSearch.trim()) return true
+                          const terms = taskSearch.toLowerCase().split(/\s+/).filter(Boolean)
+                          const target = [t.title, t.description || '', t.task_type].join(' ').toLowerCase()
+                          return terms.every(term => target.includes(term))
+                        })
+                        if (filtered.length === 0) return (
+                          <div className="flex flex-col items-center py-10 text-center">
+                            <Search className="h-7 w-7 text-slate-200 mb-2" />
+                            <p className="text-sm text-slate-400">Nessun compito corrisponde a <strong>"{taskSearch}"</strong></p>
+                          </div>
+                        )
+                        return (
+                          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+                            {filtered.map((task) => (
+                              <div key={task.id} className={expandedTaskId === task.id ? 'col-span-full' : ''}>
+                                <TaskCard
+                                  task={task}
+                                  sessionId={sessionId!}
+                                  isExpanded={expandedTaskId === task.id}
+                                  onToggle={() => setExpandedTaskId(expandedTaskId === task.id ? null : task.id)}
+                                  onPublish={() => publishTaskMutation.mutate(task.id)}
+                                  onDelete={() => deleteTaskMutation.mutate(task.id)}
+                                />
+                              </div>
+                            ))}
+                          </div>
+                        )
+                      })()}
                     </CardContent>
                   </Card>
                 </TabsContent>
 
                 <TabsContent value="history">
+                  <AnalyticsPanel sessionId={sessionId!} socket={socket} />
                   <ConversationHistoryView
                     sessionId={sessionId!}
                     selectedConversationId={selectedConversationId}
                     onSelectConversation={setSelectedConversationId}
+                    socket={socket}
                   />
                 </TabsContent>
               </Tabs>
@@ -588,10 +816,28 @@ export default function SessionLivePage() {
           </div>
         </div>
       </div>
-
     </>
   )
 }
+
+// ─── Helpers ────────────────────────────────────────────────────────────────
+
+function BotColorDot({ color, large }: { color: string; large?: boolean }) {
+  const colorMap: Record<string, string> = {
+    indigo: 'bg-[#181b1e]', blue: 'bg-blue-500', green: 'bg-green-500',
+    red: 'bg-red-500', purple: 'bg-purple-500', pink: 'bg-pink-500',
+    orange: 'bg-orange-500', teal: 'bg-teal-500', cyan: 'bg-cyan-500',
+  }
+  const bg = colorMap[color] || 'bg-[#181b1e]'
+  const size = large ? 'w-8 h-8 rounded-lg' : 'w-5 h-5 rounded-md'
+  return (
+    <div className={`${size} ${bg} flex items-center justify-center shrink-0`}>
+      <Bot className={`${large ? 'h-4 w-4' : 'h-3 w-3'} text-white`} />
+    </div>
+  )
+}
+
+// ─── TaskCard ────────────────────────────────────────────────────────────────
 
 interface TaskCardProps {
   task: TaskData
@@ -687,36 +933,43 @@ function TaskCard({ task, sessionId, isExpanded, onToggle, onPublish, onDelete }
   })
 
   return (
-    <div className={`rounded-lg border ${task.status === 'published' ? 'bg-green-50 border-green-200' : 'bg-gray-50 border-gray-200'}`}>
-      <div className="flex items-center justify-between p-4">
-        <div className="flex-1">
-          <div className="flex items-center gap-2">
-            <span className="font-medium">{task.title}</span>
-            <span className={`text-xs px-2 py-0.5 rounded ${task.status === 'published' ? 'bg-green-100 text-green-700' : 'bg-gray-200 text-gray-600'
-              }`}>
+    <div className={`rounded-xl border transition-colors ${
+      task.status === 'published'
+        ? 'bg-emerald-50/50 border-emerald-200'
+        : 'bg-white border-slate-200'
+    }`}>
+      <div className="flex items-center justify-between px-4 py-3 gap-3">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-sm font-semibold text-slate-800 truncate">{task.title}</span>
+            <span className={`text-[11px] px-2 py-0.5 rounded-full font-medium flex-shrink-0 ${
+              task.status === 'published'
+                ? 'bg-emerald-100 text-emerald-700'
+                : 'bg-slate-100 text-slate-600'
+            }`}>
               {task.status === 'published' ? 'Pubblicato' : 'Bozza'}
             </span>
-            <span className="text-xs px-2 py-0.5 rounded bg-blue-100 text-blue-700 capitalize">
+            <span className="text-[11px] px-2 py-0.5 rounded-full bg-sky-100 text-sky-700 font-medium capitalize flex-shrink-0">
               {task.task_type}
             </span>
           </div>
           {task.description && (
-            <p className="text-sm text-muted-foreground mt-1">{task.description}</p>
+            <p className="text-xs text-slate-500 mt-0.5 truncate">{task.description}</p>
           )}
         </div>
-        <div className="flex gap-2">
-          <Button size="sm" variant="outline" onClick={onToggle}>
-            {isExpanded ? <ChevronUp className="h-4 w-4 mr-1" /> : <ChevronDown className="h-4 w-4 mr-1" />}
-            {isExpanded ? 'Chiudi' : (task.status === 'published' ? 'Dettagli / Risposte' : 'Dettagli')}
+        <div className="flex gap-1.5 shrink-0">
+          <Button size="sm" variant="outline" onClick={onToggle} className="text-xs">
+            {isExpanded ? <ChevronUp className="h-3.5 w-3.5 mr-1" /> : <ChevronDown className="h-3.5 w-3.5 mr-1" />}
+            {isExpanded ? 'Chiudi' : 'Dettagli'}
           </Button>
           {task.status === 'draft' && (
-            <Button size="sm" variant="outline" onClick={onPublish}>
-              <Check className="h-4 w-4 mr-1" />
+            <Button size="sm" variant="outline" onClick={onPublish} className="text-xs">
+              <Check className="h-3.5 w-3.5 mr-1" />
               Pubblica
             </Button>
           )}
-          <Button size="sm" variant="ghost" onClick={onDelete}>
-            <Trash2 className="h-4 w-4 text-red-500" />
+          <Button size="sm" variant="ghost" onClick={onDelete} className="h-8 w-8 p-0">
+            <Trash2 className="h-3.5 w-3.5 text-red-400" />
           </Button>
         </div>
       </div>
@@ -873,13 +1126,136 @@ interface MessageData {
   created_at: string
 }
 
+const STOP_WORDS = new Set(['il', 'la', 'lo', 'i', 'le', 'gli', 'un', 'una', 'uno', 'di', 'da', 'in', 'con', 'su', 'per', 'tra', 'fra', 'e', 'o', 'ma', 'se', 'che', 'come', 'cosa', 'the', 'a', 'an', 'is', 'it', 'of', 'to', 'and', 'or', 'how', 'what', 'mi', 'ti', 'si', 'ci', 'vi', 'me', 'te', 'non', 'ho', 'ha', 'hai', 'del', 'dei', 'delle', 'degli', 'al', 'ai', 'alle', 'agli', 'nel', 'nei', 'nelle', 'negli', 'dal', 'dai'])
+
+function AnalyticsPanel({ sessionId, socket }: { sessionId: string; socket: Socket | null }) {
+  const queryClient = useQueryClient()
+  const { data: conversations } = useQuery<ConversationData[]>({
+    queryKey: ['session-conversations', sessionId],
+    queryFn: async () => {
+      const res = await llmApi.getSessionConversations(sessionId)
+      return res.data
+    },
+    // No polling — updates come via socket
+  })
+
+  // Socket: invalidate conversations when new ones arrive or get updated
+  useEffect(() => {
+    if (!socket) return
+    const invalidate = () => queryClient.invalidateQueries({ queryKey: ['session-conversations', sessionId] })
+    socket.on('conversation_created', invalidate)
+    socket.on('conversation_updated', invalidate)
+    return () => {
+      socket.off('conversation_created', invalidate)
+      socket.off('conversation_updated', invalidate)
+    }
+  }, [socket, sessionId, queryClient])
+
+  // ALL hooks must be before any conditional return — memoize on the possibly-empty array
+  const studentActivity = useMemo(() => {
+    if (!conversations || conversations.length === 0) return []
+    return Object.values(
+      conversations.reduce((acc, conv) => {
+        if (!acc[conv.student_id]) {
+          acc[conv.student_id] = { nickname: conv.student_nickname, messageCount: 0, convCount: 0 }
+        }
+        acc[conv.student_id].messageCount += conv.message_count
+        acc[conv.student_id].convCount += 1
+        return acc
+      }, {} as Record<string, { nickname: string; messageCount: number; convCount: number }>)
+    ).sort((a, b) => b.messageCount - a.messageCount).slice(0, 5)
+  }, [conversations])
+
+  const { topWords, maxFreq } = useMemo(() => {
+    if (!conversations || conversations.length === 0) return { topWords: [], maxFreq: 1 }
+    const wordFreq: Record<string, number> = {}
+    conversations.forEach(conv => {
+      if (!conv.title) return
+      conv.title.toLowerCase().split(/\s+/).forEach(word => {
+        const clean = word.replace(/[^a-zA-ZàèéìòùÀÈÉÌÒÙ]/g, '')
+        if (clean.length > 3 && !STOP_WORDS.has(clean)) {
+          wordFreq[clean] = (wordFreq[clean] || 0) + 1
+        }
+      })
+    })
+    const top = Object.entries(wordFreq).sort((a, b) => b[1] - a[1]).slice(0, 20)
+    return { topWords: top, maxFreq: top[0]?.[1] || 1 }
+  }, [conversations])
+
+  if (!conversations || conversations.length === 0) return null
+
+  return (
+    <Card className="mb-4 border-indigo-100">
+      <CardHeader className="pb-3">
+        <CardTitle className="text-base flex items-center gap-2">
+          <Brain className="h-4 w-4 text-indigo-500" />
+          Analisi Pedagogica
+          <span className="text-xs font-normal text-slate-400 ml-1">{conversations.length} conversazioni • {Object.keys(studentActivity).length} studenti</span>
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* Student activity ranking */}
+          <div>
+            <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">Studenti più attivi</h4>
+            <div className="space-y-2.5">
+              {studentActivity.map((s, i) => (
+                <div key={s.nickname} className="flex items-center gap-2">
+                  <span className="text-xs text-slate-300 w-4 font-mono">{i + 1}</span>
+                  <div className="flex-1">
+                    <div className="flex justify-between items-center mb-1">
+                      <span className="text-sm text-slate-700 font-medium">{s.nickname}</span>
+                      <span className="text-xs text-slate-400">{s.messageCount} msg · {s.convCount} conv</span>
+                    </div>
+                    <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                      <div
+                        className="h-full rounded-full bg-indigo-400"
+                        style={{ width: `${(s.messageCount / (studentActivity[0]?.messageCount || 1)) * 100}%` }}
+                      />
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Argomenti frequenti (tag cloud) */}
+          <div>
+            <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">Argomenti frequenti</h4>
+            <div className="flex flex-wrap gap-1.5">
+              {topWords.map(([word, count]) => (
+                <span
+                  key={word}
+                  className="px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-100 cursor-default"
+                  style={{
+                    fontSize: `${Math.max(10, Math.min(16, 10 + (count / maxFreq) * 6))}px`,
+                    opacity: 0.4 + (count / maxFreq) * 0.6,
+                  }}
+                  title={`${count} occorrenze`}
+                >
+                  {word}
+                </span>
+              ))}
+              {topWords.length === 0 && (
+                <p className="text-xs text-slate-400">Nessun titolo disponibile per l'analisi</p>
+              )}
+            </div>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
 interface ConversationHistoryViewProps {
   sessionId: string
   selectedConversationId: string | null
   onSelectConversation: (id: string | null) => void
+  socket: Socket | null
 }
 
-function ConversationHistoryView({ sessionId, selectedConversationId, onSelectConversation }: ConversationHistoryViewProps) {
+function ConversationHistoryView({ sessionId, selectedConversationId, onSelectConversation, socket }: ConversationHistoryViewProps) {
+  const queryClient = useQueryClient()
   const [expandedStudents, setExpandedStudents] = useState<Set<string>>(new Set())
 
   const toggleStudent = (studentId: string) => {
@@ -900,7 +1276,7 @@ function ConversationHistoryView({ sessionId, selectedConversationId, onSelectCo
       const res = await llmApi.getSessionConversations(sessionId)
       return res.data
     },
-    refetchInterval: 3000, // Poll every 3 seconds for new conversations
+    // No polling — socket events drive updates
   })
 
   const { data: messages, isLoading: loadingMessages } = useQuery<MessageData[]>({
@@ -910,8 +1286,41 @@ function ConversationHistoryView({ sessionId, selectedConversationId, onSelectCo
       return res.data
     },
     enabled: !!selectedConversationId,
-    refetchInterval: 2000, // Poll every 2 seconds for new messages
+    // No polling — invalidated by socket when conversation_updated fires
   })
+
+  // Socket: update conversations list and messages in real-time
+  useEffect(() => {
+    if (!socket) return
+
+    const handleConvCreated = (conv: ConversationData) => {
+      queryClient.setQueryData(['session-conversations', sessionId], (old: ConversationData[] | undefined) => {
+        if (!old) return [conv]
+        if (old.find(c => c.id === conv.id)) return old
+        return [conv, ...old]
+      })
+    }
+
+    const handleConvUpdated = (d: { conversation_id: string; message_count: number; updated_at: string }) => {
+      queryClient.setQueryData(['session-conversations', sessionId], (old: ConversationData[] | undefined) =>
+        old?.map(c => c.id === d.conversation_id
+          ? { ...c, message_count: d.message_count, updated_at: d.updated_at }
+          : c
+        )
+      )
+      // If this conversation is open, refresh its messages
+      if (d.conversation_id === selectedConversationId) {
+        queryClient.invalidateQueries({ queryKey: ['conversation-messages', selectedConversationId] })
+      }
+    }
+
+    socket.on('conversation_created', handleConvCreated)
+    socket.on('conversation_updated', handleConvUpdated)
+    return () => {
+      socket.off('conversation_created', handleConvCreated)
+      socket.off('conversation_updated', handleConvUpdated)
+    }
+  }, [socket, sessionId, selectedConversationId, queryClient])
 
   const selectedConversation = conversations?.find(c => c.id === selectedConversationId)
 

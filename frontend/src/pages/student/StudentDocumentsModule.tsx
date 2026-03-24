@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
-  Plus, Trash2, Monitor, FileText, ChevronLeft, ChevronRight, Send, CheckCircle, FileSpreadsheet, BookOpen, PenTool, Share2, User, Clock, MonitorPlay
+  Plus, Trash2, Monitor, FileText, ChevronLeft, ChevronRight, Send, CheckCircle, FileSpreadsheet, BookOpen, PenTool, Share2, User, Clock, MonitorPlay, Search, X
 } from 'lucide-react'
 import { studentApi } from '@/lib/api'
 import { useToast } from '@/components/ui/use-toast'
@@ -59,6 +59,7 @@ interface LessonDocument {
   updatedAt: string
   contentJson: string
   authorName: string
+  udaFolder?: string
 }
 
 interface StudentTask {
@@ -68,6 +69,7 @@ interface StudentTask {
   content_json: string | null
   created_at: string
   author_name?: string
+  uda_folder?: string
 }
 
 // Format dimensions
@@ -119,6 +121,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId }: 
   const [submitted, setSubmitted] = useState(false)
   const [draftDocuments, setDraftDocuments] = useState<DraftDocument[]>([])
   const [lessonDocuments, setLessonDocuments] = useState<LessonDocument[]>([])
+  const [docSearch, setDocSearch] = useState('')
   const [draftId, setDraftId] = useState<string | null>(null)
   const [isReadOnlyLesson, setIsReadOnlyLesson] = useState(false)
   const [activeLessonTaskId, setActiveLessonTaskId] = useState<string | null>(null)
@@ -281,29 +284,31 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId }: 
 
         const lessons: LessonDocument[] = ((tasksRes.data || []) as StudentTask[])
           .filter((task) => task.task_type === 'lesson' || task.task_type === 'presentation')
-          .map((task) => {
-            if (!task.content_json) return null
+          .reduce<LessonDocument[]>((acc, task) => {
+            if (!task.content_json) return acc
             try {
               const parsed = JSON.parse(task.content_json)
               const type: 'presentation' | 'document' | 'canvas' | null =
                 parsed?.type === 'presentation_v2'
                   ? 'presentation'
                   : (parsed?.type === 'document_v1' ? 'document' : parsed?.type === 'canvas_v1' ? 'canvas' : null)
-              if (!type) return null
-              return {
+              if (!type) return acc
+              const doc: LessonDocument = {
                 id: `lesson-${task.id}`,
                 taskId: task.id,
                 title: task.title,
                 type,
                 updatedAt: task.created_at,
                 contentJson: task.content_json,
-                authorName: task.author_name || 'Docente'
+                authorName: task.author_name || 'Docente',
               }
+              if (task.uda_folder) doc.udaFolder = task.uda_folder
+              acc.push(doc)
             } catch {
-              return null
+              // skip malformed
             }
-          })
-          .filter((item): item is LessonDocument => item !== null)
+            return acc
+          }, [])
           .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
 
         setLessonDocuments(lessons)
@@ -645,6 +650,14 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId }: 
   }, [mode, showSidebar])
 
   if (viewMode === 'list') {
+    const fuzzyMatch = (query: string, ...fields: string[]) => {
+      if (!query.trim()) return true
+      const terms = query.toLowerCase().split(/\s+/).filter(Boolean)
+      const target = fields.join(' ').toLowerCase()
+      return terms.every(term => target.includes(term))
+    }
+    const filteredDrafts = draftDocuments.filter(d => fuzzyMatch(docSearch, d.title, d.type))
+    const filteredLessons = lessonDocuments.filter(d => fuzzyMatch(docSearch, d.title, d.type, d.authorName || ''))
     const docIcon = (type: string) => {
       if (type === 'presentation') return <Monitor className="h-5 w-5" />
       if (type === 'sheet') return <FileSpreadsheet className="h-5 w-5" />
@@ -652,20 +665,35 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId }: 
       return <FileText className="h-5 w-5" />
     }
     const docColor = (type: string) => {
-      if (type === 'presentation') return 'bg-indigo-500 text-white'
-      if (type === 'sheet') return 'bg-sky-500 text-white'
-      if (type === 'canvas') return 'bg-amber-500 text-white'
-      return 'bg-emerald-500 text-white'
+      if (type === 'presentation') return 'bg-indigo-100 text-indigo-700'
+      if (type === 'sheet') return 'bg-sky-100 text-sky-700'
+      if (type === 'canvas') return 'bg-amber-100 text-amber-700'
+      return 'bg-emerald-100 text-emerald-700'
     }
     return (
       <>
         <div className="h-full flex flex-col bg-slate-50 overflow-hidden">
-          <div className="h-14 bg-white border-b flex items-center justify-between px-6 z-20 shadow-sm shrink-0">
-            <div className="flex items-center gap-2">
+          <div className="h-14 bg-white border-b flex items-center justify-between px-6 z-20 shadow-sm shrink-0 gap-3">
+            <div className="flex items-center gap-2 shrink-0">
               <FileText className="h-4 w-4 text-slate-500" />
               <h1 className="text-base font-bold text-slate-800">I miei Documenti</h1>
             </div>
-            <Button onClick={() => setShowNewModal(true)} className="bg-slate-900 text-white hover:bg-slate-800">
+            <div className="relative flex-1 max-w-xs">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400 pointer-events-none" />
+              <input
+                type="text"
+                value={docSearch}
+                onChange={e => setDocSearch(e.target.value)}
+                placeholder="Cerca documenti..."
+                className="w-full pl-9 pr-8 py-1.5 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-300 placeholder:text-slate-400"
+              />
+              {docSearch && (
+                <button onClick={() => setDocSearch('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </div>
+            <Button onClick={() => setShowNewModal(true)} className="bg-slate-900 text-white hover:bg-slate-800 shrink-0">
               <Plus className="h-4 w-4 mr-2" />
               Nuovo
             </Button>
@@ -674,7 +702,11 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId }: 
           <div className="flex-1 overflow-y-auto p-6">
             <div className="max-w-5xl mx-auto space-y-8">
 
-              {draftDocuments.length === 0 && lessonDocuments.length === 0 && (
+              {docSearch && filteredDrafts.length === 0 && filteredLessons.length === 0 && (
+                <p className="text-center text-sm text-slate-400 py-12">Nessun documento corrisponde a "{docSearch}"</p>
+              )}
+
+              {!docSearch && draftDocuments.length === 0 && lessonDocuments.length === 0 && (
                 <div className="flex flex-col items-center justify-center py-24 text-center">
                   <div className="w-20 h-20 rounded-full bg-slate-100 flex items-center justify-center mb-5">
                     <FileText className="h-10 w-10 text-slate-300" />
@@ -688,11 +720,11 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId }: 
                 </div>
               )}
 
-              {draftDocuments.length > 0 && (
+              {filteredDrafts.length > 0 && (
                 <section>
                   <h2 className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-3">Le mie Bozze</h2>
                   <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-                    {draftDocuments.map(doc => (
+                    {filteredDrafts.map(doc => (
                       <div
                         key={doc.id}
                         onClick={() => loadDraft(doc)}
@@ -715,30 +747,56 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId }: 
                 </section>
               )}
 
-              {lessonDocuments.length > 0 && (
-                <section>
-                  <h2 className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-3">Materiali del Docente</h2>
-                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-                    {lessonDocuments.map(doc => (
-                      <div
-                        key={doc.id}
-                        onClick={() => loadLesson(doc)}
-                        className="group cursor-pointer bg-white rounded-2xl border border-slate-200 p-4 hover:border-emerald-200 hover:shadow-md transition-all"
-                      >
-                        <div className={`w-10 h-10 rounded-xl mb-3 flex items-center justify-center ${docColor(doc.type)}`}>
-                          {docIcon(doc.type)}
-                        </div>
-                        <p className="text-sm font-bold text-slate-800 truncate mb-1">{doc.title}</p>
-                        <p className="text-[10px] text-slate-400">{doc.authorName} · {new Date(doc.updatedAt).toLocaleDateString('it-IT', { day: 'numeric', month: 'short', year: 'numeric' })}</p>
-                        <div className="mt-2 flex items-center gap-1 text-[10px] text-emerald-600 font-semibold">
-                          <BookOpen className="h-3 w-3" />
-                          Sola lettura
-                        </div>
-                      </div>
-                    ))}
+              {filteredLessons.length > 0 && (() => {
+                // Group by udaFolder; non-UDA docs go under undefined key
+                const udaFolders: Record<string, LessonDocument[]> = {}
+                const regularLessons: LessonDocument[] = []
+                filteredLessons.forEach(doc => {
+                  if (doc.udaFolder) {
+                    if (!udaFolders[doc.udaFolder]) udaFolders[doc.udaFolder] = []
+                    udaFolders[doc.udaFolder].push(doc)
+                  } else {
+                    regularLessons.push(doc)
+                  }
+                })
+                const LessonCard = ({ doc }: { doc: LessonDocument }) => (
+                  <div
+                    key={doc.id}
+                    onClick={() => loadLesson(doc)}
+                    className="group cursor-pointer bg-white rounded-2xl border border-slate-200 p-4 hover:border-emerald-200 hover:shadow-md transition-all"
+                  >
+                    <div className={`w-10 h-10 rounded-xl mb-3 flex items-center justify-center ${docColor(doc.type)}`}>
+                      {docIcon(doc.type)}
+                    </div>
+                    <p className="text-sm font-bold text-slate-800 truncate mb-1">{doc.title}</p>
+                    <p className="text-[10px] text-slate-400">{doc.authorName} · {new Date(doc.updatedAt).toLocaleDateString('it-IT', { day: 'numeric', month: 'short', year: 'numeric' })}</p>
+                    <div className="mt-2 flex items-center gap-1 text-[10px] text-emerald-600 font-semibold">
+                      <BookOpen className="h-3 w-3" />
+                      Sola lettura
+                    </div>
                   </div>
-                </section>
-              )}
+                )
+                return (
+                  <>
+                    {regularLessons.length > 0 && (
+                      <section>
+                        <h2 className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-3">Materiali del Docente</h2>
+                        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                          {regularLessons.map(doc => <LessonCard key={doc.id} doc={doc} />)}
+                        </div>
+                      </section>
+                    )}
+                    {Object.entries(udaFolders).map(([folderName, docs]) => (
+                      <section key={folderName}>
+                        <h2 className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-3">📁 {folderName}</h2>
+                        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                          {docs.map(doc => <LessonCard key={doc.id} doc={doc} />)}
+                        </div>
+                      </section>
+                    ))}
+                  </>
+                )
+              })()}
             </div>
           </div>
         </div>
@@ -748,13 +806,15 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId }: 
             <div className="bg-white rounded-lg p-6 w-full max-w-md mx-4 shadow-xl">
               <h3 className="text-lg font-semibold mb-2">Crea nuovo</h3>
               <p className="text-sm text-gray-600 mb-4">Scegli se creare un nuovo documento o una nuova presentazione.</p>
-              <div className="flex flex-col gap-3">
-                <Button className="w-full justify-center bg-emerald-600 hover:bg-emerald-700 text-white" onClick={() => { createNewDocument(); setShowNewModal(false) }}>
-                  <FileText className="h-4 w-4 mr-2" />Nuovo documento
-                </Button>
-                <Button className="w-full justify-center bg-indigo-600 hover:bg-indigo-700 text-white" onClick={() => { createNewPresentation(); setShowNewModal(false) }}>
-                  <Monitor className="h-4 w-4 mr-2" />Nuova presentazione
-                </Button>
+              <div className="flex flex-col gap-2">
+                <button className="w-full flex items-center gap-3 p-3 rounded-xl border border-emerald-200/70 bg-emerald-50/80 hover:bg-emerald-50 hover:border-emerald-300/80 transition-all text-left" onClick={() => { createNewDocument(); setShowNewModal(false) }}>
+                  <div className="w-9 h-9 rounded-lg bg-emerald-100 flex items-center justify-center text-emerald-700 flex-shrink-0"><FileText className="h-4 w-4" /></div>
+                  <span className="text-sm font-semibold text-slate-800">Nuovo documento</span>
+                </button>
+                <button className="w-full flex items-center gap-3 p-3 rounded-xl border border-indigo-200/70 bg-indigo-50/80 hover:bg-indigo-50 hover:border-indigo-300/80 transition-all text-left" onClick={() => { createNewPresentation(); setShowNewModal(false) }}>
+                  <div className="w-9 h-9 rounded-lg bg-indigo-100 flex items-center justify-center text-indigo-700 flex-shrink-0"><Monitor className="h-4 w-4" /></div>
+                  <span className="text-sm font-semibold text-slate-800">Nuova presentazione</span>
+                </button>
               </div>
               <div className="flex justify-end mt-4">
                 <Button variant="outline" onClick={() => setShowNewModal(false)}>Annulla</Button>
@@ -991,7 +1051,14 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId }: 
                       <p className="text-[10px] font-medium text-slate-400">Nessun materiale condiviso dal docente</p>
                     </div>
                   )}
-                  {lessonDocuments.map((doc) => (
+                  {/* UDA folder headers inline in the list */}
+                  {(() => {
+                    const seen = new Set<string>()
+                    return lessonDocuments.map((doc) => (
+                      <>
+                        {doc.udaFolder && !seen.has(doc.udaFolder) && (() => { seen.add(doc.udaFolder!); return (
+                          <p key={`folder-${doc.udaFolder}`} className="text-[10px] font-bold uppercase tracking-widest text-indigo-400 mt-3 mb-1 px-1">📁 {doc.udaFolder}</p>
+                        ) })()}
                     <div
                       key={doc.id}
                       onClick={() => loadLesson(doc)}
@@ -1003,10 +1070,10 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId }: 
                       `}
                     >
                       <div className="flex items-center gap-3 mb-2">
-                        <div className={`p-2 rounded-xl shadow-sm ${
-                          doc.type === 'presentation' ? 'bg-indigo-500 text-white' : 
-                          doc.type === 'canvas' ? 'bg-amber-500 text-white' : 
-                          'bg-emerald-500 text-white'
+                        <div className={`p-2 rounded-xl ${
+                          doc.type === 'presentation' ? 'bg-indigo-100 text-indigo-700' :
+                          doc.type === 'canvas' ? 'bg-amber-100 text-amber-700' :
+                          'bg-emerald-100 text-emerald-700'
                         }`}>
                           {doc.type === 'presentation' ? <Monitor className="h-4 w-4" /> : 
                            doc.type === 'canvas' ? <PenTool className="h-4 w-4" /> : 
@@ -1036,7 +1103,9 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId }: 
                         </div>
                       </div>
                     </div>
-                  ))}
+                    </>
+                  ))
+                  })()}
                 </div>
               </section>
             </div>

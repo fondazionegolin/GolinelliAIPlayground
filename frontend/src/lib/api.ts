@@ -31,8 +31,12 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
-      localStorage.removeItem('student_token')
-      window.location.href = '/login'
+      const url: string = error.config?.url ?? ''
+      // Don't redirect if the 401 came from the login endpoint itself
+      if (!url.includes('/auth/login')) {
+        localStorage.removeItem('student_token')
+        window.location.href = '/login'
+      }
     }
     return Promise.reject(error)
   }
@@ -143,6 +147,8 @@ export const teacherApi = {
     api.post(`/teacher/sessions/${sessionId}/freeze/${studentId}`, null, { params: { reason } }),
   unfreezeStudent: (sessionId: string, studentId: string) =>
     api.post(`/teacher/sessions/${sessionId}/unfreeze/${studentId}`),
+  pushTeacherbotToStudent: (sessionId: string, studentId: string, teacherbotId: string) =>
+    api.post(`/teacher/sessions/${sessionId}/students/${studentId}/push-teacherbot`, null, { params: { teacherbot_id: teacherbotId } }),
   removeStudent: (sessionId: string, studentId: string) =>
     api.delete(`/teacher/sessions/${sessionId}/students/${studentId}`),
   deleteSession: (sessionId: string) =>
@@ -167,6 +173,11 @@ export const teacherApi = {
   getProfile: () => api.get('/teacher/profile'),
   updateProfile: (data: { first_name?: string; last_name?: string; institution?: string; avatar_url?: string; ui_accent?: string }) =>
     api.put('/teacher/profile', data),
+  uploadAvatar: (file: File) => {
+    const formData = new FormData()
+    formData.append('file', file)
+    return api.post('/teacher/avatar', formData, { headers: { 'Content-Type': 'multipart/form-data' } })
+  },
   // Invitations
   getInvitations: () => api.get('/teacher/invitations'),
   respondToClassInvitation: (invitationId: string, accept: boolean) =>
@@ -191,8 +202,8 @@ export const teacherApi = {
   getConversations: () => api.get('/teacher/conversations'),
   createConversation: (data: { title?: string; agent_mode?: string }) =>
     api.post('/teacher/conversations', data),
-  getConversation: (conversationId: string) =>
-    api.get(`/teacher/conversations/${conversationId}`),
+  getConversation: (conversationId: string, beforeId?: string) =>
+    api.get(`/teacher/conversations/${conversationId}`, { params: beforeId ? { before_id: beforeId, limit: 30 } : { limit: 30 } }),
   deleteConversation: (conversationId: string) =>
     api.delete(`/teacher/conversations/${conversationId}`),
   deleteAllConversations: () =>
@@ -212,6 +223,43 @@ export const teacherApi = {
     api.get(`/teacher/sessions/${sessionId}/canvas`),
   updateCanvas: (sessionId: string, data: { title?: string; content_json: string; base_version?: number }) =>
     api.put(`/teacher/sessions/${sessionId}/canvas`, data),
+}
+
+export const udaApi = {
+  // Teacher
+  listUdas: (classId: string) =>
+    api.get(`/teacher/classes/${classId}/udas`),
+  createUda: (classId: string, title: string) => {
+    const fd = new FormData()
+    fd.append('title', title)
+    return api.post(`/teacher/classes/${classId}/udas`, fd)
+  },
+  generateKb: (classId: string, udaId: string, prompt: string, files: File[] = []) => {
+    const fd = new FormData()
+    fd.append('prompt', prompt)
+    files.forEach(f => fd.append('files', f))
+    return api.post(`/teacher/classes/${classId}/udas/${udaId}/generate-kb`, fd)
+  },
+  generatePlan: (classId: string, udaId: string) =>
+    api.post(`/teacher/classes/${classId}/udas/${udaId}/generate-plan`),
+  updateKb: (classId: string, udaId: string, kb: object) =>
+    api.put(`/teacher/classes/${classId}/udas/${udaId}/kb`, kb),
+  updatePlan: (classId: string, udaId: string, plan: object) =>
+    api.put(`/teacher/classes/${classId}/udas/${udaId}/plan`, plan),
+  generateContent: (classId: string, udaId: string) =>
+    `/api/v1/teacher/classes/${classId}/udas/${udaId}/generate-content`, // returns SSE URL
+  chat: (classId: string, udaId: string, message: string) =>
+    api.post(`/teacher/classes/${classId}/udas/${udaId}/chat`, { message }),
+  updateChild: (classId: string, udaId: string, childId: string, data: object) =>
+    api.patch(`/teacher/classes/${classId}/udas/${udaId}/children/${childId}`, data),
+  deleteChild: (classId: string, udaId: string, childId: string) =>
+    api.delete(`/teacher/classes/${classId}/udas/${udaId}/children/${childId}`),
+  publishUda: (classId: string, udaId: string) =>
+    api.post(`/teacher/classes/${classId}/udas/${udaId}/publish`),
+  deleteUda: (classId: string, udaId: string) =>
+    api.delete(`/teacher/classes/${classId}/udas/${udaId}`),
+  // Student
+  getStudentUdas: () => api.get('/student/udas'),
 }
 
 export const chatApi = {
@@ -349,6 +397,7 @@ export const filesApi = {
 export const teacherbotsApi = {
   // Teacher endpoints
   list: () => api.get('/teacherbots'),
+  listForSession: (sessionId: string) => api.get(`/teacher/sessions/${sessionId}/teacherbots`),
   create: (data: {
     name: string
     synopsis?: string
@@ -427,8 +476,8 @@ export const creditsApi = {
     api.get('/credits/requests', { params: { status } }),
   reviewRequest: (id: string, status: string, notes?: string) =>
     api.post(`/credits/requests/${id}/review`, { status, admin_notes: notes }),
-  inviteTeacher: (email: string, firstName?: string, lastName?: string, school?: string) =>
-    api.post('/credits/invitations', { email, first_name: firstName, last_name: lastName, school }),
+  inviteTeacher: (email: string, firstName?: string, lastName?: string, school?: string, groupTag?: string, customMessage?: string) =>
+    api.post('/credits/invitations', { email, first_name: firstName, last_name: lastName, school, group_tag: groupTag, custom_message: customMessage }),
   bulkInvite: (file: File) => {
     const formData = new FormData()
     formData.append('file', file)
@@ -436,5 +485,7 @@ export const creditsApi = {
       headers: { 'Content-Type': 'multipart/form-data' }
     })
   },
+  bulkInviteJson: (teachers: Array<{ email: string; first_name?: string; last_name?: string; school?: string }>, groupTag?: string, customMessage?: string) =>
+    api.post('/credits/invitations/bulk-json', { teachers, group_tag: groupTag, custom_message: customMessage }),
   getInvitations: () => api.get('/credits/invitations'),
 }

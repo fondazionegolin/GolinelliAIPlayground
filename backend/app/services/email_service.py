@@ -158,6 +158,8 @@ Se non hai richiesto questo account, puoi ignorare questa email.
         to_email: str,
         link: str,
         first_name: Optional[str] = None,
+        custom_message: Optional[str] = None,
+        group_tag: Optional[str] = None,
         subject_template: Optional[str] = None,
         html_template: Optional[str] = None,
         text_template: Optional[str] = None,
@@ -167,6 +169,8 @@ Se non hai richiesto questo account, puoi ignorare questa email.
         context = {
             "first_name": name,
             "invitation_link": link,
+            "custom_message": custom_message or "",
+            "group_tag": group_tag or "",
         }
         subject = self._render_template(
             subject_template or "👋 Sei stato invitato su EduAI Platform",
@@ -180,35 +184,43 @@ Se non hai richiesto questo account, puoi ignorare questa email.
     <meta charset="utf-8">
 </head>
 <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
-    <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 30px; border-radius: 10px 10px 0 0; text-align: center;">
-        <h1 style="color: white; margin: 0; font-size: 28px;">🎓 EduAI Platform</h1>
+    <div style="background: linear-gradient(135deg, #1a1a2e 0%, #e85c8d 100%); padding: 30px; border-radius: 10px 10px 0 0; text-align: center;">
+        <h1 style="color: white; margin: 0; font-size: 28px;">Golinelli.ai</h1>
     </div>
-    
+
     <div style="background: #ffffff; padding: 30px; border: 1px solid #e0e0e0; border-top: none; border-radius: 0 0 10px 10px;">
-        <h2 style="color: #333; margin-top: 0;">Ciao, {first_name}!</h2>
-        
-        <p>Sei stato invitato a unirti alla piattaforma <strong>EduAI</strong> come docente.</p>
-        
+        <h2 style="color: #1a1a2e; margin-top: 0;">Ciao, {first_name}!</h2>
+
+        <p>Sei stato invitato a unirti a <strong>Golinelli.ai</strong>, la piattaforma di didattica con intelligenza artificiale, come docente.</p>
+
+        {custom_message_block}
+
         <p>Per accettare l'invito e configurare il tuo account, clicca sul pulsante qui sotto:</p>
-        
+
         <div style="text-align: center; margin: 30px 0;">
-            <a href="{invitation_link}" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 15px 30px; text-decoration: none; border-radius: 8px; font-weight: bold; display: inline-block; font-size: 16px;">
+            <a href="{invitation_link}" style="background: #e85c8d; color: white; padding: 15px 30px; text-decoration: none; border-radius: 8px; font-weight: bold; display: inline-block; font-size: 16px;">
                 Accetta invito
             </a>
         </div>
-        
+
         <p style="color: #666; font-size: 14px;">
             <strong>⚠️ Questo link scadrà tra 7 giorni.</strong>
         </p>
-        
+
         <p style="color: #999; font-size: 12px; text-align: center; margin-top: 30px;">
-            Questa email è stata inviata automaticamente da EduAI Platform.
+            Questa email è stata inviata automaticamente da Golinelli.ai.
         </p>
     </div>
 </body>
 </html>
 """
-        default_text = "Ciao {first_name},\n\nSei stato invitato su EduAI Platform.\nPer accettare, visita: {invitation_link}\n\nIl link scade tra 7 giorni."
+        custom_msg_html = (
+            f'<div style="background:#fff8f0;border-left:4px solid #e85c8d;padding:12px 16px;border-radius:4px;margin:16px 0;">'
+            f'<p style="margin:0;color:#555;">{custom_message}</p></div>'
+            if custom_message else ""
+        )
+        context["custom_message_block"] = custom_msg_html
+        default_text = "Ciao {first_name},\n\nSei stato invitato su Golinelli.ai.\n{custom_message}\nPer accettare, visita: {invitation_link}\n\nIl link scade tra 7 giorni."
         html_content = self._render_template(html_template or default_html, context)
         text_content = self._render_template(text_template or default_text, context)
 

@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, type CSSProperties } from 'react'
 import { Link, useNavigate, useLocation } from 'react-router-dom'
-import { User, Settings, LogOut, ChevronDown, Users, MessageSquare, FileText, Check, Brain } from 'lucide-react'
+import { User, Settings, LogOut, ChevronDown, Users, MessageSquare, FileText, Check, Brain, MonitorPlay } from 'lucide-react'
 import { Button } from './ui/button'
 import { LogoMark } from './LogoMark'
 import { teacherApi } from '@/lib/api'
@@ -8,8 +8,11 @@ import { useAuthStore } from '@/stores/auth'
 import TeacherNotifications, { TeacherNotification } from './TeacherNotifications'
 import { useSocket } from '@/hooks/useSocket'
 import { DEFAULT_TEACHER_ACCENT, getTeacherAccentTheme, TEACHER_ACCENTS, type TeacherAccentId } from '@/lib/teacherAccent'
+import { NavTab } from '@/components/ui/NavTab'
 import { useTranslation } from 'react-i18next'
 import { LanguageSwitcher } from '@/components/LanguageSwitcher'
+import { useTeacherProfile, useInvalidateTeacherProfile, TEACHER_PROFILE_KEY } from '@/hooks/useTeacherProfile'
+import { useQueryClient } from '@tanstack/react-query'
 
 interface TeacherProfile {
   firstName: string
@@ -23,6 +26,7 @@ interface SessionInfo {
   id: string
   name: string
   className: string
+  joinCode?: string
 }
 
 interface ActiveSession {
@@ -30,6 +34,7 @@ interface ActiveSession {
   name: string
   className: string
   studentCount?: number
+  joinCode?: string
 }
 
 interface TeacherNavbarProps {
@@ -43,7 +48,10 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
   const location = useLocation()
   const navigate = useNavigate()
 
-  const [profile, setProfile] = useState<TeacherProfile>({ firstName: '', lastName: '', email: '', avatarUrl: '', uiAccent: DEFAULT_TEACHER_ACCENT })
+  const { data: profileData } = useTeacherProfile()
+  const invalidateProfile = useInvalidateTeacherProfile()
+  const queryClient = useQueryClient()
+  const profile: TeacherProfile = profileData ?? { firstName: '', lastName: '', email: '', avatarUrl: '', uiAccent: DEFAULT_TEACHER_ACCENT }
   const [activeSessions, setActiveSessions] = useState<ActiveSession[]>([])
   const [showDropdown, setShowDropdown] = useState(false)
   const [showSessionsMenu, setShowSessionsMenu] = useState(false)
@@ -147,7 +155,6 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
   }
 
   useEffect(() => {
-    loadProfile()
     loadActiveSessions()
 
     // Load saved session from localStorage and sync with parent
@@ -175,21 +182,6 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
 
-  const loadProfile = async () => {
-    try {
-      const res = await teacherApi.getProfile()
-      setProfile({
-        firstName: res.data.first_name || '',
-        lastName: res.data.last_name || '',
-        email: res.data.email,
-        avatarUrl: res.data.avatar_url || '',
-        uiAccent: res.data.ui_accent || DEFAULT_TEACHER_ACCENT,
-      })
-    } catch (error) {
-      console.error('Failed to load profile', error)
-    }
-  }
-
   const loadActiveSessions = async () => {
     try {
       console.log('[TeacherNavbar] Loading active sessions...')
@@ -212,11 +204,12 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
               console.log(`[TeacherNavbar] Session "${session.title}" status:`, session.status)
               return session.status === 'active'  // Fixed: was 'ACTIVE', should be 'active'
             })
-            .map((session: { id: string; title: string; student_count?: number }) => ({
+            .map((session: { id: string; title: string; student_count?: number; join_code?: string }) => ({
               id: session.id,
               name: session.title,
               className: cls.name,
               studentCount: session.student_count || 0,
+              joinCode: session.join_code,
             }))
 
           console.log(`[TeacherNavbar] Found ${activeSessions.length} active sessions in class "${cls.name}"`)
@@ -271,6 +264,7 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
   const navItems = [
     { path: '/teacher', label: t('navbar.nav_support'), icon: MessageSquare },
     { path: '/teacher/classes', label: t('navbar.nav_classes'), icon: Users },
+    { path: '/teacher/demo', label: 'Studentbot', icon: MonitorPlay },
     { path: '/teacher/documents', label: t('navbar.nav_documents'), icon: FileText },
     { path: '/teacher/ml-lab', label: 'ML Lab', icon: Brain },
   ]
@@ -282,7 +276,7 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
         const sessionInfo = {
           id: notification.session_id,
           name: notification.session_name || t('navbar.no_session'),
-          className: notification.class_name || t('navbar.nav_classes')
+          className: notification.class_name || t('navbar.nav_classes'),
         }
         onSessionChange?.(sessionInfo)
         localStorage.setItem('teacher_selected_session', JSON.stringify(sessionInfo))
@@ -300,32 +294,33 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
 
   return (
     <>
-      <nav className="fixed top-0 left-0 right-0 z-50 backdrop-blur-md border-b shadow-sm" style={accentVars}>
+      <nav className="fixed top-0 left-0 right-0 z-50 bg-white/98 border-b shadow-sm" style={accentVars}>
         <div className="max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             {/* Logo/Brand */}
             <div className="flex items-center gap-3 cursor-pointer" onClick={() => navigate('/teacher')}>
               <LogoMark className="h-9 w-9" />
-              <span className="pb-[1px] text-[18px] leading-[1.15] tracking-tight" style={{ fontFamily: '"SofiaPro"' }}>
-                <span className="font-bold text-[#2d2d2d]/85">
-                  Golinelli
+              <div className="flex items-center gap-2">
+                <span className="pb-[1px] text-[18px] leading-[1.15] tracking-tight" style={{ fontFamily: '"SofiaPro"' }}>
+                  <span className="font-bold text-[#2d2d2d]/85">
+                    Golinelli
+                  </span>
+                  <span className="font-black text-[#e85c8d]">.ai</span>
                 </span>
-                <span className="font-black text-[#e85c8d]">.ai</span>
-              </span>
+                <span className="text-[9px] font-extrabold uppercase tracking-widest px-1.5 py-0.5 rounded-md bg-amber-50 text-amber-500 border border-amber-200 leading-none">BETA</span>
+              </div>
             </div>
 
-            <div className="hidden md:flex items-center gap-1 h-11 bg-white/50 backdrop-blur-sm p-1 rounded-2xl border border-slate-200 shadow-sm">
+            <div className="hidden md:flex items-center gap-0.5 h-10 bg-white p-0.5 rounded-2xl border border-slate-200 shadow-sm">
               {navItems.map((item) => (
                 <Link key={item.path} to={item.path}>
-                  <button
-                    className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-[12px] font-bold transition-all duration-200 ${isActive(item.path)
-                      ? 'bg-[var(--teacher-accent-soft)] text-[var(--teacher-accent-text)] border border-[var(--teacher-accent-border)]/50 shadow-sm backdrop-blur-md'
-                      : 'text-slate-600 hover:bg-slate-100/50 hover:text-[var(--teacher-accent-text)] border border-transparent'
-                      }`}
-                  >
-                    <item.icon className="h-4 w-4" />
-                    {item.label}
-                  </button>
+                  <NavTab
+                    icon={item.icon}
+                    label={item.label}
+                    isActive={isActive(item.path)}
+                    accentClass="bg-[var(--teacher-accent)]"
+                    accentTextClass="text-white"
+                  />
                 </Link>
               ))}
             </div>
@@ -344,16 +339,19 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
               <div className="relative flex items-center gap-2" ref={sessionsMenuRef}>
                 <button
                   onClick={() => setShowSessionsMenu(!showSessionsMenu)}
-                  className="hidden lg:flex items-center gap-2 h-9 px-3 rounded-xl border bg-white/60 backdrop-blur-md border-slate-200 hover:bg-white/80 hover:border-slate-300 transition-all cursor-pointer shadow-sm"
+                  className="hidden lg:flex items-center gap-1.5 h-auto py-1.5 px-2.5 rounded-xl border bg-white border-slate-200 hover:bg-slate-50 hover:border-slate-300 transition-colors duration-150 cursor-pointer shadow-sm"
                 >
                   <div className={`w-2 h-2 rounded-full flex-shrink-0 ${currentSession ? 'bg-green-500 animate-pulse shadow-sm shadow-green-300' : 'bg-slate-300'}`} />
                   <div className="text-left min-w-0">
-                    <span className="text-sm font-bold text-[var(--teacher-accent-text)] truncate max-w-[140px]">{currentSession ? currentSession.name : t('navbar.no_session')}</span>
+                    <span className="text-[11px] font-semibold text-[var(--teacher-accent-text)] truncate max-w-[120px] block leading-tight">{currentSession ? currentSession.name : t('navbar.no_session')}</span>
+                    {currentSession?.joinCode && (
+                      <span className="text-[9px] font-mono font-bold tracking-widest leading-tight block" style={{ color: accentTheme.accent }}>{currentSession.joinCode}</span>
+                    )}
                   </div>
                   <ChevronDown className={`h-3 w-3 ml-0.5 text-slate-400 transition-transform flex-shrink-0 ${showSessionsMenu ? 'rotate-180' : ''}`} />
                 </button>
                 <button
-                  className={`hidden lg:flex items-center justify-center p-2.5 rounded-full border transition-all shadow-sm backdrop-blur-md`}
+                  className={`hidden lg:flex items-center justify-center p-2.5 rounded-full border transition-colors duration-150 shadow-sm`}
                   style={chatSidebarOpen
                     ? { backgroundColor: accentTheme.accent, borderColor: accentTheme.accent, color: '#fff' }
                     : { backgroundColor: `${accentTheme.accent}18`, borderColor: `${accentTheme.accent}50`, color: accentTheme.text }}
@@ -390,7 +388,7 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
                               <button
                                 key={session.id}
                                 onClick={() => {
-                                  const sessionInfo = { id: session.id, name: session.name, className: session.className }
+                                  const sessionInfo = { id: session.id, name: session.name, className: session.className, joinCode: session.joinCode }
                                   onSessionChange?.(sessionInfo)
                                   // Persist complete session info
                                   localStorage.setItem('teacher_selected_session', JSON.stringify(sessionInfo))
@@ -439,7 +437,8 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
               <div className="relative" ref={dropdownRef}>
                 <button
                   onClick={() => setShowDropdown(!showDropdown)}
-                  className="flex items-center gap-3 hover:bg-slate-100 rounded-full pl-1 pr-3 py-1 transition-colors border border-transparent hover:border-slate-300"
+                  className="flex items-center gap-1 hover:bg-slate-100 rounded-full p-1 transition-colors border border-transparent hover:border-slate-200"
+                  title={`${profile.firstName} ${profile.lastName}`}
                 >
                   {profile.avatarUrl ? (
                     <img
@@ -453,10 +452,7 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
                       {getInitials()}
                     </div>
                   )}
-                  <div className="hidden md:block text-left">
-                    <p className="text-xs font-medium text-slate-900 leading-none">{profile.firstName}</p>
-                  </div>
-                  <ChevronDown className={`h-3 w-3 text-slate-700 transition-transform ${showDropdown ? 'rotate-180' : ''}`} />
+                  <ChevronDown className={`h-3 w-3 text-slate-400 transition-transform ${showDropdown ? 'rotate-180' : ''}`} />
                 </button>
 
                 {/* Dropdown Menu - Modern Floating Style */}
@@ -517,11 +513,11 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
         <SettingsModal
           profile={profile}
           onSave={async (updated) => {
-            // Optimistic update
-            setProfile(updated)
+            // Optimistic update in React Query cache
+            queryClient.setQueryData(TEACHER_PROFILE_KEY, updated)
             window.dispatchEvent(new CustomEvent('teacherProfileUpdated', { detail: updated }))
             setShowSettings(false)
-            
+
             try {
               await teacherApi.updateProfile({
                 first_name: updated.firstName,
@@ -529,9 +525,11 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
                 avatar_url: updated.avatarUrl,
                 ui_accent: updated.uiAccent,
               })
+              // Refetch to sync canonical data
+              invalidateProfile()
             } catch (err) {
               console.error('Failed to save profile:', err)
-              // We could revert here, but for "fast" feeling, we'll just log
+              invalidateProfile()
             }
           }}
           onClose={() => setShowSettings(false)}
@@ -552,28 +550,32 @@ function SettingsModal({ profile, onSave, onClose }: SettingsModalProps) {
   const { t } = useTranslation()
   const [formData, setFormData] = useState(profile)
   const [previewUrl, setPreviewUrl] = useState(profile.avatarUrl || '')
+  const [isUploading, setIsUploading] = useState(false)
   const modalAccentTheme = getTeacherAccentTheme(formData.uiAccent)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
-    if (file) {
-      if (!file.type.startsWith('image/')) {
-        alert('Per favore seleziona un file immagine')
-        return
-      }
-      if (file.size > 5 * 1024 * 1024) {
-        alert('Il file deve essere inferiore a 5MB')
-        return
-      }
-
-      const reader = new FileReader()
-      reader.onload = (ev) => {
-        const dataUrl = ev.target?.result as string
-        setPreviewUrl(dataUrl)
-        setFormData({ ...formData, avatarUrl: dataUrl })
-      }
-      reader.readAsDataURL(file)
+    if (!file) return
+    if (!file.type.startsWith('image/')) {
+      alert('Per favore seleziona un file immagine')
+      return
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      alert('Il file deve essere inferiore a 2MB')
+      return
+    }
+    // Show instant local preview
+    setPreviewUrl(URL.createObjectURL(file))
+    // Upload to MinIO via backend
+    setIsUploading(true)
+    try {
+      const res = await teacherApi.uploadAvatar(file)
+      setFormData(fd => ({ ...fd, avatarUrl: res.data.avatar_url }))
+    } catch {
+      alert('Errore durante il caricamento dell\'immagine')
+    } finally {
+      setIsUploading(false)
     }
   }
 
@@ -619,10 +621,11 @@ function SettingsModal({ profile, onSave, onClose }: SettingsModalProps) {
               type="button"
               variant="outline"
               size="sm"
-              onClick={() => fileInputRef.current?.click()}
+              onClick={() => !isUploading && fileInputRef.current?.click()}
               className="text-xs"
+              disabled={isUploading}
             >
-              {t('navbar.change_photo')}
+              {isUploading ? 'Caricamento...' : t('navbar.change_photo')}
             </Button>
           </div>
 
@@ -696,7 +699,7 @@ function SettingsModal({ profile, onSave, onClose }: SettingsModalProps) {
             <Button type="button" variant="ghost" onClick={onClose} className="flex-1 text-slate-500 hover:text-slate-700 hover:bg-slate-100">
               {t('common.cancel')}
             </Button>
-            <Button type="submit" className="flex-1 text-white shadow-lg" style={{ backgroundColor: modalAccentTheme.accent }}>
+            <Button type="submit" className="flex-1 text-white shadow-lg" style={{ backgroundColor: modalAccentTheme.accent }} disabled={isUploading}>
               {t('common.save')}
             </Button>
           </div>

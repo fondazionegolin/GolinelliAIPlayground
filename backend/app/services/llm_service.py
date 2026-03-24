@@ -41,6 +41,13 @@ class LLMService:
                 api_key=settings.DEEPSEEK_API_KEY,
                 base_url=settings.DEEPSEEK_BASE_URL,
             )
+
+        self.gemini_client = None
+        if settings.GEMINI_API_KEY:
+            self.gemini_client = AsyncOpenAI(
+                api_key=settings.GEMINI_API_KEY,
+                base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
+            )
     
     async def generate(
         self,
@@ -60,6 +67,8 @@ class LLMService:
             return await self._generate_anthropic(messages, system_prompt, model, temperature, max_tokens)
         elif provider == "deepseek":
             return await self._generate_deepseek(messages, system_prompt, model, temperature, max_tokens)
+        elif provider == "gemini":
+            return await self._generate_gemini(messages, system_prompt, model, temperature, max_tokens)
         elif provider == "ollama":
             return await self._generate_ollama(messages, system_prompt, model, temperature, max_tokens)
         else:
@@ -203,6 +212,38 @@ class LLMService:
             completion_tokens=usage.completion_tokens if usage else 0,
         )
 
+    async def _generate_gemini(
+        self,
+        messages: list[dict],
+        system_prompt: Optional[str],
+        model: str,
+        temperature: float,
+        max_tokens: int,
+    ) -> LLMResponse:
+        if not self.gemini_client:
+            raise RuntimeError("Gemini client not configured")
+
+        formatted_messages = []
+        if system_prompt:
+            formatted_messages.append({"role": "system", "content": system_prompt})
+        formatted_messages.extend(messages)
+
+        response = await self.gemini_client.chat.completions.create(
+            model=model,
+            messages=formatted_messages,
+            temperature=temperature,
+            max_tokens=max_tokens,
+        )
+
+        usage = response.usage
+        return LLMResponse(
+            content=response.choices[0].message.content,
+            provider="gemini",
+            model=model,
+            prompt_tokens=usage.prompt_tokens if usage else 0,
+            completion_tokens=usage.completion_tokens if usage else 0,
+        )
+
     async def _resolve_ollama_model_name(self, model: str) -> str:
         """Resolve short model aliases (e.g. mistral-nemo) to installed Ollama tags."""
         try:
@@ -254,6 +295,9 @@ class LLMService:
                 yield chunk
         elif provider == "deepseek":
             async for chunk in self._stream_deepseek(messages, system_prompt, model, temperature, max_tokens):
+                yield chunk
+        elif provider == "gemini":
+            async for chunk in self._stream_gemini(messages, system_prompt, model, temperature, max_tokens):
                 yield chunk
         else:
             response = await self.generate(messages, system_prompt, provider, model, temperature, max_tokens)
@@ -344,7 +388,35 @@ class LLMService:
         async for chunk in stream:
             if chunk.choices and chunk.choices[0].delta and chunk.choices[0].delta.content:
                 yield chunk.choices[0].delta.content
-    
+
+    async def _stream_gemini(
+        self,
+        messages: list[dict],
+        system_prompt: Optional[str],
+        model: str,
+        temperature: float,
+        max_tokens: int,
+    ) -> AsyncGenerator[str, None]:
+        if not self.gemini_client:
+            raise RuntimeError("Gemini client not configured")
+
+        formatted_messages = []
+        if system_prompt:
+            formatted_messages.append({"role": "system", "content": system_prompt})
+        formatted_messages.extend(messages)
+
+        stream = await self.gemini_client.chat.completions.create(
+            model=model,
+            messages=formatted_messages,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            stream=True,
+        )
+
+        async for chunk in stream:
+            if chunk.choices and chunk.choices[0].delta and chunk.choices[0].delta.content:
+                yield chunk.choices[0].delta.content
+
     async def compute_embeddings(self, texts: list[str]) -> list[list[float]]:
         if not self.openai_client:
             raise RuntimeError("OpenAI client not configured for embeddings")
@@ -385,7 +457,10 @@ class LLMService:
         
         if provider == "dall-e":
             return await self._generate_image_dalle(prompt, size, quality, style)
-            
+
+        if provider == "gpt-image-1":
+            return await self._generate_image_gpt_image_1(prompt, size)
+
         # Fallback to BFL schnell
         return await self._generate_image_bfl(prompt, size, model="flux-schnell")
 
@@ -563,6 +638,45 @@ class LLMService:
         # Fallback to temporary URL if saving fails
         return temp_url
     
+    async def _generate_image_gpt_image_1(
+        self,
+        prompt: str,
+        size: str = "1024x1024",
+    ) -> str:
+        """Generate an image using GPT-Image-1 (OpenAI). Returns b64_json, saved locally."""
+        if not self.openai_client:
+            raise RuntimeError("OpenAI client not configured for image generation")
+
+        # gpt-image-1 supported sizes
+        valid_sizes = {"1024x1024", "1536x1024", "1024x1536"}
+        gpt_size = size if size in valid_sizes else "1024x1024"
+
+        response = await self.openai_client.images.generate(
+            model="gpt-image-1",
+            prompt=prompt,
+            n=1,
+            size=gpt_size,
+        )
+
+        # gpt-image-1 returns base64 encoded PNG
+        b64_data = response.data[0].b64_json
+        if not b64_data:
+            raise RuntimeError("GPT-Image-1 returned no image data")
+
+        try:
+            import base64 as _base64
+            upload_dir = Path("/app/uploads/generated")
+            upload_dir.mkdir(parents=True, exist_ok=True)
+            filename = f"{uuid.uuid4()}.png"
+            file_path = upload_dir / filename
+            img_bytes = _base64.b64decode(b64_data)
+            async with aiofiles.open(file_path, 'wb') as f:
+                await f.write(img_bytes)
+            return f"/uploads/generated/{filename}"
+        except Exception as e:
+            logger.error(f"Failed to save GPT-Image-1 result: {e}")
+            return f"data:image/png;base64,{b64_data}"
+
     async def _generate_image_flux(
         self,
         prompt: str,

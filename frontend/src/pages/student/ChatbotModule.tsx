@@ -45,6 +45,15 @@ interface QuizData {
   time_limit_minutes?: number
 }
 
+interface ExerciseData {
+  title: string
+  description: string
+  instructions: string
+  examples?: string[]
+  hint?: string
+  difficulty?: string
+}
+
 interface ChatbotProfile {
   key: string
   name: string
@@ -77,13 +86,25 @@ const PROFILE_ICONS: Record<string, React.ReactNode> = {
 }
 
 
-const PROFILE_TILE_COLORS: Record<string, string> = {
-  'tutor': 'bg-emerald-500 hover:bg-emerald-600',
-  'quiz': 'bg-rose-500 hover:bg-rose-600',
-  'interview': 'bg-violet-500 hover:bg-violet-600',
-  'oral_exam': 'bg-amber-500 hover:bg-amber-600',
-  'dataset_generator': 'bg-sky-500 hover:bg-sky-600',
-  'math_coach': 'bg-blue-600 hover:bg-blue-700',
+const PROFILE_TILE_STYLES: Record<string, { card: string; iconBg: string; icon: string }> = {
+  tutor:             { card: 'bg-emerald-50/80 border border-emerald-200/70 hover:border-emerald-300/80 hover:bg-emerald-50 hover:shadow-emerald-100/60', iconBg: 'bg-emerald-100', icon: 'text-emerald-700' },
+  quiz:              { card: 'bg-rose-50/80 border border-rose-200/70 hover:border-rose-300/80 hover:bg-rose-50 hover:shadow-rose-100/60',             iconBg: 'bg-rose-100',    icon: 'text-rose-700' },
+  interview:         { card: 'bg-violet-50/80 border border-violet-200/70 hover:border-violet-300/80 hover:bg-violet-50 hover:shadow-violet-100/60',    iconBg: 'bg-violet-100',  icon: 'text-violet-700' },
+  oral_exam:         { card: 'bg-amber-50/80 border border-amber-200/70 hover:border-amber-300/80 hover:bg-amber-50 hover:shadow-amber-100/60',         iconBg: 'bg-amber-100',   icon: 'text-amber-700' },
+  dataset_generator: { card: 'bg-sky-50/80 border border-sky-200/70 hover:border-sky-300/80 hover:bg-sky-50 hover:shadow-sky-100/60',                  iconBg: 'bg-sky-100',     icon: 'text-sky-700' },
+  math_coach:        { card: 'bg-blue-50/80 border border-blue-200/70 hover:border-blue-300/80 hover:bg-blue-50 hover:shadow-blue-100/60',              iconBg: 'bg-blue-100',    icon: 'text-blue-800' },
+}
+
+const TEACHERBOT_TILE_STYLES: Record<string, { card: string; iconBg: string; icon: string }> = {
+  indigo:  { card: 'bg-indigo-50/80 border border-indigo-200/70 hover:border-indigo-300/80 hover:bg-indigo-50 hover:shadow-indigo-100/60',    iconBg: 'bg-indigo-100',  icon: 'text-indigo-700' },
+  blue:    { card: 'bg-blue-50/80 border border-blue-200/70 hover:border-blue-300/80 hover:bg-blue-50 hover:shadow-blue-100/60',              iconBg: 'bg-blue-100',    icon: 'text-blue-700' },
+  green:   { card: 'bg-emerald-50/80 border border-emerald-200/70 hover:border-emerald-300/80 hover:bg-emerald-50 hover:shadow-emerald-100/60', iconBg: 'bg-emerald-100', icon: 'text-emerald-700' },
+  red:     { card: 'bg-red-50/80 border border-red-200/70 hover:border-red-300/80 hover:bg-red-50 hover:shadow-red-100/60',                   iconBg: 'bg-red-100',     icon: 'text-red-700' },
+  purple:  { card: 'bg-purple-50/80 border border-purple-200/70 hover:border-purple-300/80 hover:bg-purple-50 hover:shadow-purple-100/60',    iconBg: 'bg-purple-100',  icon: 'text-purple-700' },
+  pink:    { card: 'bg-pink-50/80 border border-pink-200/70 hover:border-pink-300/80 hover:bg-pink-50 hover:shadow-pink-100/60',              iconBg: 'bg-pink-100',    icon: 'text-pink-700' },
+  orange:  { card: 'bg-orange-50/80 border border-orange-200/70 hover:border-orange-300/80 hover:bg-orange-50 hover:shadow-orange-100/60',    iconBg: 'bg-orange-100',  icon: 'text-orange-700' },
+  teal:    { card: 'bg-teal-50/80 border border-teal-200/70 hover:border-teal-300/80 hover:bg-teal-50 hover:shadow-teal-100/60',              iconBg: 'bg-teal-100',    icon: 'text-teal-700' },
+  cyan:    { card: 'bg-cyan-50/80 border border-cyan-200/70 hover:border-cyan-300/80 hover:bg-cyan-50 hover:shadow-cyan-100/60',              iconBg: 'bg-cyan-100',    icon: 'text-cyan-700' },
 }
 
 function getFallbackProfiles(t: (key: string) => string): ChatbotProfile[] {
@@ -177,7 +198,7 @@ export default function ChatbotModule({ sessionId, studentId, initialTeacherbotI
   const [selectedModel, setSelectedModel] = useState<LLMModel | null>(null)
   const [showModelMenu, setShowModelMenu] = useState(false)
   const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([])
-  const [imageProvider, setImageProvider] = useState<'dall-e' | 'flux-schnell' | 'flux-dev' | 'flux-pro' | 'flux-pro-1.1' | 'flux-2-pro' | 'flux-2-klein'>('flux-schnell')
+  const [imageProvider, setImageProvider] = useState<'dall-e' | 'gpt-image-1'>('dall-e')
   const [imageSize, setImageSize] = useState<string>('1024x1024')
   const [verboseMode] = useState(false)
   const [chatBg, setChatBg] = useState<string>('')
@@ -452,24 +473,10 @@ export default function ChatbotModule({ sessionId, studentId, initialTeacherbotI
   }, [profilesData])
 
   const typewriterEffect = (fullContent: string, messageId: string) => {
-    let currentIndex = 0
-    const chunkSize = 3
-    isGeneratingRef.current = true
-    const interval = setInterval(() => {
-      currentIndex += chunkSize
-      if (currentIndex >= fullContent.length) {
-        currentIndex = fullContent.length
-        clearInterval(interval)
-        isGeneratingRef.current = false
-        setMessages(prev => prev.map(m =>
-          m.id === messageId ? { ...m, content: fullContent } : m
-        ))
-      } else {
-        setMessages(prev => prev.map(m =>
-          m.id === messageId ? { ...m, content: fullContent.substring(0, currentIndex) } : m
-        ))
-      }
-    }, 15)
+    isGeneratingRef.current = false
+    setMessages(prev => prev.map(m =>
+      m.id === messageId ? { ...m, content: fullContent } : m
+    ))
   }
 
   const currentProfile = profiles.find(p => p.key === selectedProfile)
@@ -970,6 +977,9 @@ export default function ChatbotModule({ sessionId, studentId, initialTeacherbotI
     return colorMap[color] || 'bg-indigo-500'
   }
 
+  const getTeacherbotTileStyle = (color: string) =>
+    TEACHERBOT_TILE_STYLES[color] ?? TEACHERBOT_TILE_STYLES.indigo
+
   useEffect(() => {
     if (!initialTeacherbotId || availableTeacherbots.length === 0) return
     if (selectedTeacherbot?.id === initialTeacherbotId) return
@@ -989,19 +999,22 @@ export default function ChatbotModule({ sessionId, studentId, initialTeacherbotI
         <h2 className="text-sm font-bold text-slate-700 mb-0.5">Assistenti AI</h2>
         <p className="text-[11px] text-slate-400 mb-3">Scegli il tipo di sessione</p>
         <div className="grid grid-cols-3 gap-2">
-          {profiles.map((profile) => (
-            <motion.button
-              key={profile.key}
-              whileTap={{ scale: 0.95 }}
-              onClick={() => handleSelectProfile(profile.key)}
-              className={`aspect-square flex flex-col items-center justify-center p-3 rounded-2xl text-white shadow-sm active:shadow-none transition-all ${PROFILE_TILE_COLORS[profile.key] || 'bg-slate-600'}`}
-            >
-              <div className="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center mb-1.5">
-                {PROFILE_ICONS[profile.key] || <Bot className="h-5 w-5" />}
-              </div>
-              <span className="text-[11px] font-bold leading-tight text-center">{profile.name}</span>
-            </motion.button>
-          ))}
+          {profiles.map((profile) => {
+            const s = PROFILE_TILE_STYLES[profile.key] ?? { card: 'bg-slate-50/80 border border-slate-200/70 hover:bg-slate-50', iconBg: 'bg-slate-100', icon: 'text-slate-600' }
+            return (
+              <motion.button
+                key={profile.key}
+                whileTap={{ scale: 0.95 }}
+                onClick={() => handleSelectProfile(profile.key)}
+                className={`aspect-square flex flex-col items-center justify-center p-3 rounded-2xl shadow-sm active:shadow-none transition-all backdrop-blur-sm ${s.card}`}
+              >
+                <div className={`w-9 h-9 rounded-xl ${s.iconBg} flex items-center justify-center mb-1.5 ${s.icon}`}>
+                  {PROFILE_ICONS[profile.key] || <Bot className="h-5 w-5" />}
+                </div>
+                <span className="text-[11px] font-semibold leading-tight text-center text-slate-800">{profile.name}</span>
+              </motion.button>
+            )
+          })}
         </div>
 
         {/* Teacherbots section - Mobile */}
@@ -1013,19 +1026,22 @@ export default function ChatbotModule({ sessionId, studentId, initialTeacherbotI
             </h2>
             <p className="text-[11px] text-slate-400 mb-3">Assistenti personalizzati dal tuo docente</p>
             <div className="grid grid-cols-3 gap-2">
-              {availableTeacherbots.map((bot) => (
-                <motion.button
-                  key={bot.id}
-                  whileTap={{ scale: 0.95 }}
-                  onClick={() => handleSelectTeacherbot(bot)}
-                  className={`aspect-square flex flex-col items-center justify-center p-3 rounded-2xl text-white shadow-sm active:shadow-none transition-all ${getTeacherbotColorClass(bot.color)}`}
-                >
-                  <div className="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center mb-1.5">
-                    <Wand2 className="h-5 w-5" />
-                  </div>
-                  <span className="text-[11px] font-bold leading-tight text-center line-clamp-2">{bot.name}</span>
-                </motion.button>
-              ))}
+              {availableTeacherbots.map((bot) => {
+                const s = getTeacherbotTileStyle(bot.color)
+                return (
+                  <motion.button
+                    key={bot.id}
+                    whileTap={{ scale: 0.95 }}
+                    onClick={() => handleSelectTeacherbot(bot)}
+                    className={`aspect-square flex flex-col items-center justify-center p-3 rounded-2xl shadow-sm active:shadow-none transition-all backdrop-blur-sm ${s.card}`}
+                  >
+                    <div className={`w-9 h-9 rounded-xl ${s.iconBg} flex items-center justify-center mb-1.5 ${s.icon}`}>
+                      <Wand2 className="h-5 w-5" />
+                    </div>
+                    <span className="text-[11px] font-semibold leading-tight text-center text-slate-800 line-clamp-2">{bot.name}</span>
+                  </motion.button>
+                )
+              })}
             </div>
           </div>
         )}
@@ -1106,20 +1122,23 @@ export default function ChatbotModule({ sessionId, studentId, initialTeacherbotI
         <h2 className="text-sm font-bold text-slate-700 mb-0.5">Assistenti AI</h2>
         <p className="text-xs text-slate-400 mb-4">Scegli il tipo di sessione di apprendimento</p>
         <div className="grid grid-cols-3 gap-3">
-          {profiles.map((profile) => (
-            <motion.button
-              key={profile.key}
-              whileTap={{ scale: 0.97 }}
-              className={`aspect-square flex flex-col items-center justify-center p-4 rounded-2xl text-white shadow-sm hover:shadow-md transition-all ${PROFILE_TILE_COLORS[profile.key] || 'bg-slate-600 hover:bg-slate-700'}`}
-              onClick={() => handleSelectProfile(profile.key)}
-            >
-              <div className="w-11 h-11 rounded-xl bg-white/20 flex items-center justify-center mb-2.5">
-                {PROFILE_ICONS[profile.key] || <Bot className="h-6 w-6" />}
-              </div>
-              <span className="text-xs font-bold leading-tight text-center">{profile.name}</span>
-              <span className="text-[10px] opacity-75 leading-tight mt-1 text-center line-clamp-2">{profile.description}</span>
-            </motion.button>
-          ))}
+          {profiles.map((profile) => {
+            const s = PROFILE_TILE_STYLES[profile.key] ?? { card: 'bg-slate-50/80 border border-slate-200/70 hover:bg-slate-50', iconBg: 'bg-slate-100', icon: 'text-slate-600' }
+            return (
+              <motion.button
+                key={profile.key}
+                whileTap={{ scale: 0.97 }}
+                className={`aspect-square flex flex-col items-center justify-center p-4 rounded-2xl shadow-sm hover:shadow-md transition-all backdrop-blur-sm ${s.card}`}
+                onClick={() => handleSelectProfile(profile.key)}
+              >
+                <div className={`w-11 h-11 rounded-xl ${s.iconBg} flex items-center justify-center mb-2.5 ${s.icon}`}>
+                  {PROFILE_ICONS[profile.key] || <Bot className="h-6 w-6" />}
+                </div>
+                <span className="text-xs font-semibold leading-tight text-center text-slate-800">{profile.name}</span>
+                <span className="text-[10px] text-slate-500 leading-tight mt-1 text-center line-clamp-2">{profile.description}</span>
+              </motion.button>
+            )
+          })}
         </div>
 
         {/* Teacherbots section - Desktop */}
@@ -1131,20 +1150,23 @@ export default function ChatbotModule({ sessionId, studentId, initialTeacherbotI
             </h2>
             <p className="text-xs text-slate-400 mb-4">Assistenti personalizzati dal tuo docente</p>
             <div className="grid grid-cols-3 gap-3">
-              {availableTeacherbots.map((bot) => (
-                <motion.button
-                  key={bot.id}
-                  whileTap={{ scale: 0.97 }}
-                  className={`aspect-square flex flex-col items-center justify-center p-4 rounded-2xl text-white shadow-sm hover:shadow-md transition-all ${getTeacherbotColorClass(bot.color)}`}
-                  onClick={() => handleSelectTeacherbot(bot)}
-                >
-                  <div className="w-11 h-11 rounded-xl bg-white/20 flex items-center justify-center mb-2.5">
-                    <Wand2 className="h-6 w-6" />
-                  </div>
-                  <span className="text-xs font-bold leading-tight text-center">{bot.name}</span>
-                  <span className="text-[10px] opacity-75 leading-tight mt-1 text-center line-clamp-2">{bot.synopsis || bot.description}</span>
-                </motion.button>
-              ))}
+              {availableTeacherbots.map((bot) => {
+                const s = getTeacherbotTileStyle(bot.color)
+                return (
+                  <motion.button
+                    key={bot.id}
+                    whileTap={{ scale: 0.97 }}
+                    className={`aspect-square flex flex-col items-center justify-center p-4 rounded-2xl shadow-sm hover:shadow-md transition-all backdrop-blur-sm ${s.card}`}
+                    onClick={() => handleSelectTeacherbot(bot)}
+                  >
+                    <div className={`w-11 h-11 rounded-xl ${s.iconBg} flex items-center justify-center mb-2.5 ${s.icon}`}>
+                      <Wand2 className="h-6 w-6" />
+                    </div>
+                    <span className="text-xs font-semibold leading-tight text-center text-slate-800">{bot.name}</span>
+                    <span className="text-[10px] text-slate-500 leading-tight mt-1 text-center line-clamp-2">{bot.synopsis || bot.description}</span>
+                  </motion.button>
+                )
+              })}
             </div>
           </div>
         )}
@@ -1832,28 +1854,20 @@ export default function ChatbotModule({ sessionId, studentId, initialTeacherbotI
 
           <div className="hidden lg:flex items-center justify-center gap-4 mt-2 pb-4 flex-wrap">
             <div className="flex items-center gap-2">
-              <span className="text-xs text-slate-400">Modello FLUX:</span>
+              <span className="text-xs text-slate-400">Modello immagini:</span>
               <div className="flex items-center bg-slate-100 rounded-lg p-0.5">
-                {[
-                  { id: 'flux-schnell', label: '1.0 Fast' },
-                  { id: 'flux-pro-1.1', label: '1.1 Pro' },
-                  { id: 'flux-2-klein', label: '2.0 Fast' },
-                  { id: 'flux-2-pro', label: '2.0 Pro' },
-                ].map((m) => (
+                {([
+                  { id: 'dall-e' as const, label: '🎨 DALL-E 3' },
+                  { id: 'gpt-image-1' as const, label: '✨ GPT Image 1' },
+                ]).map((m) => (
                   <button
                     key={m.id}
-                    onClick={() => setImageProvider(m.id as any)}
+                    onClick={() => setImageProvider(m.id)}
                     className={`px-2 py-1 text-[10px] rounded-md transition-all ${imageProvider === m.id ? 'bg-white shadow text-fuchsia-600 font-bold' : 'text-slate-500 hover:text-slate-700'}`}
                   >
                     {m.label}
                   </button>
                 ))}
-                <button
-                  onClick={() => setImageProvider('dall-e' as any)}
-                  className={`px-2 py-1 text-[10px] rounded-md transition-all ${imageProvider === 'dall-e' ? 'bg-white shadow text-fuchsia-600 font-bold' : 'text-slate-500 hover:text-slate-700'}`}
-                >
-                  DALL-E
-                </button>
               </div>
             </div>
             <div className="flex items-center gap-2">
@@ -2022,7 +2036,7 @@ function MessageContent({ content, onQuizSubmit, onInput, darkMode = false }: {
   darkMode?: boolean
 }) {
   const { t } = useTranslation()
-  const { quiz, csv, textContent, isGenerating, generationType, actionMenu, sessionSelector, studentSelector } = parseContentBlocks(content)
+  const { quiz, exercise, csv, textContent, isGenerating, generationType, actionMenu, sessionSelector, studentSelector } = parseContentBlocks(content)
   const { cleanContent, images } = extractBase64Images(textContent)
 
   if (isGenerating) {
@@ -2186,6 +2200,11 @@ function MessageContent({ content, onQuizSubmit, onInput, darkMode = false }: {
           <InteractiveQuiz quiz={quiz} onSubmitAnswers={onQuizSubmit} />
         </div>
       )}
+      {exercise && (
+        <div className="mt-3">
+          <InteractiveExercise exercise={exercise} />
+        </div>
+      )}
       {actionMenu && (
         <ActionMenu 
           actions={actionMenu} 
@@ -2220,23 +2239,67 @@ function MessageContent({ content, onQuizSubmit, onInput, darkMode = false }: {
   )
 }
 
-interface QuizQuestion {
-  question: string
-  options: string[]
-  correctIndex: number
-  explanation?: string
+function InteractiveExercise({ exercise }: { exercise: ExerciseData }) {
+  const [showHint, setShowHint] = useState(false)
+
+  const difficultyLabel: Record<string, string> = {
+    easy: 'Facile', medium: 'Medio', hard: 'Difficile'
+  }
+  const difficultyColor: Record<string, string> = {
+    easy: 'bg-green-100 text-green-700', medium: 'bg-amber-100 text-amber-700', hard: 'bg-red-100 text-red-700'
+  }
+  const diff = exercise.difficulty || 'medium'
+
+  return (
+    <div className="bg-gradient-to-br from-sky-50 to-indigo-50 rounded-xl p-4 border border-sky-200">
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="font-bold text-lg text-sky-800">{exercise.title}</h3>
+        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${difficultyColor[diff] || difficultyColor.medium}`}>
+          {difficultyLabel[diff] || diff}
+        </span>
+      </div>
+      <p className="text-sm text-slate-600 mb-3">{exercise.description}</p>
+      <div className="bg-white rounded-lg p-3 mb-3 shadow-sm">
+        <p className="text-xs font-semibold text-sky-700 mb-1 uppercase tracking-wide">Istruzioni</p>
+        <div className="text-sm text-slate-700 whitespace-pre-wrap">{exercise.instructions}</div>
+      </div>
+      {exercise.examples && exercise.examples.length > 0 && (
+        <div className="mb-3">
+          <p className="text-xs font-semibold text-sky-700 mb-1 uppercase tracking-wide">Esempi</p>
+          <ul className="space-y-1">
+            {exercise.examples.map((ex, i) => (
+              <li key={i} className="text-sm bg-white rounded-lg px-3 py-2 shadow-sm text-slate-700">
+                <span className="text-sky-500 font-medium mr-1">{i + 1}.</span>{ex}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {exercise.hint && (
+        <div>
+          <button
+            onClick={() => setShowHint(h => !h)}
+            className="text-xs text-amber-600 hover:text-amber-700 font-medium underline"
+          >
+            {showHint ? 'Nascondi suggerimento' : '💡 Mostra suggerimento'}
+          </button>
+          {showHint && (
+            <div className="mt-2 p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800">
+              {exercise.hint}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
 }
 
-interface QuizData {
-  title: string
-  questions: QuizQuestion[]
-}
-
-function parseContentBlocks(content: string): { 
-  quiz: QuizData | null; 
-  csv: string | null; 
-  textContent: string; 
-  isGenerating: boolean; 
+function parseContentBlocks(content: string): {
+  quiz: QuizData | null;
+  exercise: ExerciseData | null;
+  csv: string | null;
+  textContent: string;
+  isGenerating: boolean;
   generationType: string | null;
   sessionSelector: any[] | null;
   studentSelector: any[] | null;
@@ -2244,6 +2307,7 @@ function parseContentBlocks(content: string): {
 } {
   let textContent = content
   let quiz: QuizData | null = null
+  let exercise: ExerciseData | null = null
   let csv: string | null = null
   let sessionSelector: any[] | null = null
   let studentSelector: any[] | null = null
@@ -2263,7 +2327,7 @@ function parseContentBlocks(content: string): {
 
   const hasBase64Image = content.includes('data:image') && content.includes('base64')
   if (hasBase64Image) {
-    return { quiz, csv, textContent, isGenerating: false, generationType: null, actionMenu, sessionSelector, studentSelector }
+    return { quiz, exercise, csv, textContent, isGenerating: false, generationType: null, actionMenu, sessionSelector, studentSelector }
   }
 
   if (hasIncompleteQuiz || (generatingQuizPattern.test(content) && content.length < 200)) {
@@ -2333,9 +2397,24 @@ function parseContentBlocks(content: string): {
     } catch (e) { console.error("Error parsing student selector", e) }
   }
 
+  // Extract Exercise
+  const exerciseMatch = content.match(/```exercise_data\s*([\s\S]*?)```/)
+  if (exerciseMatch) {
+    try {
+      const parsed = JSON.parse(exerciseMatch[1].trim())
+      if (parsed && parsed.title && parsed.instructions) {
+        exercise = parsed
+        textContent = textContent.replace(/```exercise_data[\s\S]*?```/, '').trim()
+        isGenerating = false
+      }
+    } catch (e) {
+      // partial block — ignore
+    }
+  }
+
   textContent = textContent.replace(/```json[\s\S]*?```/g, '').trim()
 
-  return { quiz, csv, textContent, isGenerating, generationType, actionMenu, sessionSelector, studentSelector }
+  return { quiz, exercise, csv, textContent, isGenerating, generationType, actionMenu, sessionSelector, studentSelector }
 }
 
 function InteractiveQuiz({ quiz, onSubmitAnswers }: { quiz: QuizData; onSubmitAnswers: (answers: string) => void }) {

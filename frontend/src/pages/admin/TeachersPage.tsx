@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useRef, useCallback } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { adminApi, creditsApi } from '@/lib/api'
 import { Card, CardContent } from '@/components/ui/card'
@@ -10,6 +10,7 @@ import {
   Check, X, Clock, Key, Copy, UserPlus, Mail, Trash2,
   GraduationCap, Search, ChevronDown, ChevronUp,
   Users, BookOpen, Euro, LogIn, Pencil,
+  Upload, Tag, MessageSquare, Send, AlertCircle, CheckCircle2, Loader2,
 } from 'lucide-react'
 
 /* ─── types ──────────────────────────────────────────── */
@@ -46,6 +47,17 @@ interface ResetResult {
   temporary_password: string
 }
 
+interface CsvRow {
+  id: string      // local key
+  email: string
+  firstName: string
+  lastName: string
+  school: string
+  selected: boolean
+  status: 'idle' | 'sending' | 'sent' | 'error'
+  errorMsg?: string
+}
+
 /* ─── helpers ─────────────────────────────────────────── */
 const formatCurrency = (v: number) => `€ ${Number(v || 0).toFixed(2)}`
 const formatDate = (raw?: string | null) => {
@@ -72,8 +84,15 @@ export default function TeachersPage() {
   const [inviteFirstName, setInviteFirstName] = useState('')
   const [inviteLastName, setInviteLastName] = useState('')
   const [inviteSchool, setInviteSchool] = useState('')
-  const [bulkInviteText, setBulkInviteText] = useState('')
   const [resetResult, setResetResult] = useState<ResetResult | null>(null)
+  // CSV import flow
+  const [csvRows, setCsvRows] = useState<CsvRow[]>([])
+  const [groupTag, setGroupTag] = useState('')
+  const [customMessage, setCustomMessage] = useState('')
+  const [showMessage, setShowMessage] = useState(false)
+  const [dragOver, setDragOver] = useState(false)
+  const [isSendingAll, setIsSendingAll] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const [approvalResult, setApprovalResult] = useState<{ email: string; email_sent: boolean } | null>(null)
   const [days] = useState(30)
   const [editingCapId, setEditingCapId] = useState<string | null>(null)
@@ -93,6 +112,8 @@ export default function TeachersPage() {
   const { data: invitations } = useQuery<any[]>({
     queryKey: ['admin-platform-invitations'],
     queryFn: async () => (await creditsApi.getInvitations()).data,
+    refetchInterval: 20_000,   // poll ogni 20s per aggiornamenti real-time
+    staleTime: 10_000,
   })
 
   /* ── mutations ── */
@@ -147,21 +168,6 @@ export default function TeachersPage() {
     },
   })
 
-  const bulkInviteMutation = useMutation({
-    mutationFn: async (rows: Array<{ email: string; firstName?: string; lastName?: string; school?: string }>) => {
-      const results = await Promise.allSettled(
-        rows.map((r) => creditsApi.inviteTeacher(r.email, r.firstName, r.lastName, r.school))
-      )
-      const failed = results.filter((r) => r.status === 'rejected').length
-      return { total: rows.length, failed, success: rows.length - failed }
-    },
-    onSuccess: ({ total, success, failed }) => {
-      queryClient.invalidateQueries({ queryKey: ['admin-platform-invitations'] })
-      toast({ title: 'Inviti inviati', description: `${success}/${total} riusciti${failed ? `, ${failed} falliti` : ''}` })
-      setBulkInviteText('')
-    },
-  })
-
   const setCreditLimitMutation = useMutation({
     mutationFn: ({ teacherId, cap }: { teacherId: string; cap: number }) =>
       adminApi.setTeacherCreditLimit(teacherId, cap),
@@ -178,6 +184,83 @@ export default function TeachersPage() {
     toast({ title: 'Copiato!' })
   }
 
+  /* ── CSV helpers ── */
+  const parseCsv = useCallback((text: string) => {
+    const lines = text.split('\n').map(l => l.trim()).filter(Boolean)
+    if (lines.length === 0) return
+    // Detect header row
+    const firstLower = lines[0].toLowerCase()
+    const hasHeader = firstLower.includes('email') || firstLower.includes('nome') || firstLower.includes('first')
+    const dataLines = hasHeader ? lines.slice(1) : lines
+    // Detect separator
+    const sep = lines[0].includes(';') ? ';' : ','
+    // Detect column order from header (or assume email,nome,cognome,scuola)
+    let colEmail = 0, colFirst = 1, colLast = 2, colSchool = 3
+    if (hasHeader) {
+      const headers = lines[0].split(sep).map(h => h.trim().toLowerCase())
+      // NOTE: 'cognome'.includes('nome') === true, so check cognome BEFORE nome and use exact/negative matches
+      const ei = headers.findIndex(h => h.includes('email') || h === 'e-mail')
+      const li = headers.findIndex(h => h.includes('cognome') || h === 'last_name' || h === 'last' || h === 'surname')
+      const fi = headers.findIndex(h => (h === 'nome' || h === 'first_name' || h === 'first' || h === 'name') && !h.includes('cognome'))
+      const si = headers.findIndex(h => h.includes('scuola') || h.includes('school') || h.includes('istituto'))
+      colEmail = ei >= 0 ? ei : 0
+      colFirst = fi >= 0 ? fi : (li === 1 ? 2 : 1)   // fallback avoids colliding with lastName col
+      colLast  = li >= 0 ? li : (fi === 2 ? 1 : 2)
+      colSchool = si >= 0 ? si : 3
+    }
+    const rows: CsvRow[] = dataLines
+      .map((line, i) => {
+        const parts = line.split(sep).map(p => p.trim().replace(/^["']|["']$/g, ''))
+        const email = parts[colEmail] || ''
+        if (!email.includes('@')) return null
+        return {
+          id: `row-${i}-${email}`,
+          email,
+          firstName: parts[colFirst] || '',
+          lastName: parts[colLast] || '',
+          school: parts[colSchool] || '',
+          selected: true,
+          status: 'idle' as const,
+        }
+      })
+      .filter(Boolean) as CsvRow[]
+    setCsvRows(rows)
+  }, [])
+
+  const handleFileUpload = useCallback((file: File) => {
+    const reader = new FileReader()
+    reader.onload = e => parseCsv(e.target?.result as string)
+    reader.readAsText(file, 'utf-8')
+  }, [parseCsv])
+
+  const updateRow = (id: string, patch: Partial<CsvRow>) =>
+    setCsvRows(prev => prev.map(r => r.id === id ? { ...r, ...patch } : r))
+
+  const sendSingleRow = async (row: CsvRow) => {
+    updateRow(row.id, { status: 'sending' })
+    try {
+      await creditsApi.inviteTeacher(row.email, row.firstName || undefined, row.lastName || undefined, row.school || undefined, groupTag || undefined, customMessage || undefined)
+      updateRow(row.id, { status: 'sent' })
+      queryClient.invalidateQueries({ queryKey: ['admin-platform-invitations'] })
+    } catch (err: any) {
+      updateRow(row.id, { status: 'error', errorMsg: err?.response?.data?.detail || 'Errore' })
+    }
+  }
+
+  const sendAllSelected = async () => {
+    const toSend = csvRows.filter(r => r.selected && r.status === 'idle')
+    if (toSend.length === 0) return
+    setIsSendingAll(true)
+    for (const row of toSend) {
+      await sendSingleRow(row)
+    }
+    setIsSendingAll(false)
+    toast({ title: 'Inviti completati', description: `${toSend.length} inviti inviati` })
+  }
+
+  const toggleSelectAll = (checked: boolean) =>
+    setCsvRows(prev => prev.map(r => r.status === 'idle' ? { ...r, selected: checked } : r))
+
   /* ── derived ── */
   const pending = requests?.filter((r) => r.status === 'pending') || []
   const teachers = (teachersStatus?.items || []).filter((t) => {
@@ -188,15 +271,10 @@ export default function TeachersPage() {
     )
   })
 
-  const parsedBulkRows = bulkInviteText
-    .split('\n')
-    .map((l) => l.trim())
-    .filter(Boolean)
-    .map((l) => {
-      const p = l.split(/[;,]/).map((s) => s.trim())
-      return { email: p[0] || '', firstName: p[1] || undefined, lastName: p[2] || undefined, school: p[3] || undefined }
-    })
-    .filter((r) => r.email.includes('@'))
+  const selectedCount = csvRows.filter(r => r.selected && r.status === 'idle').length
+  const sentCount = csvRows.filter(r => r.status === 'sent').length
+  const allIdleSelected = csvRows.filter(r => r.status === 'idle').length > 0 &&
+    csvRows.filter(r => r.status === 'idle').every(r => r.selected)
 
   /* ── render ── */
   return (
@@ -280,116 +358,273 @@ export default function TeachersPage() {
         </div>
       )}
 
-      {/* Invite Panel */}
+      {/* ── INVITE PANEL ─────────────────────────────── */}
       {showInvite && (
-        <div className="rounded-xl border border-[#e85c8d]/30 bg-rose-50/50 p-5 space-y-4">
+        <div className="rounded-xl border border-[#e85c8d]/30 bg-rose-50/40 p-5 space-y-5">
           <h3 className="font-semibold text-slate-800 flex items-center gap-2">
             <Mail className="h-4 w-4 text-[#e85c8d]" />
-            Invita un docente
+            Importa docenti da CSV
           </h3>
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-            {/* Single invite */}
-            <div className="md:col-span-1 space-y-3">
+
+          {/* ── single invite row ── */}
+          <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-3">
+            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Invito singolo</p>
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 md:grid-cols-4">
               <div className="space-y-1">
                 <Label className="text-xs">Email *</Label>
-                <Input
-                  value={inviteEmail}
-                  onChange={(e) => setInviteEmail(e.target.value)}
-                  placeholder="docente@scuola.it"
-                  className="h-8 text-sm"
-                />
+                <Input value={inviteEmail} onChange={e => setInviteEmail(e.target.value)} placeholder="docente@scuola.it" className="h-8 text-sm" />
               </div>
-              <div className="grid grid-cols-2 gap-2">
-                <div className="space-y-1">
-                  <Label className="text-xs">Nome</Label>
-                  <Input value={inviteFirstName} onChange={(e) => setInviteFirstName(e.target.value)} className="h-8 text-sm" />
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-xs">Cognome</Label>
-                  <Input value={inviteLastName} onChange={(e) => setInviteLastName(e.target.value)} className="h-8 text-sm" />
-                </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Nome</Label>
+                <Input value={inviteFirstName} onChange={e => setInviteFirstName(e.target.value)} className="h-8 text-sm" />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Cognome</Label>
+                <Input value={inviteLastName} onChange={e => setInviteLastName(e.target.value)} className="h-8 text-sm" />
               </div>
               <div className="space-y-1">
                 <Label className="text-xs">Scuola</Label>
-                <Input value={inviteSchool} onChange={(e) => setInviteSchool(e.target.value)} placeholder="Istituto…" className="h-8 text-sm" />
-              </div>
-              <Button
-                className="w-full h-8 text-sm"
-                style={{ backgroundColor: '#e85c8d' }}
-                disabled={!inviteEmail.trim() || inviteMutation.isPending}
-                onClick={() =>
-                  inviteMutation.mutate({
-                    email: inviteEmail.trim(),
-                    firstName: inviteFirstName.trim() || undefined,
-                    lastName: inviteLastName.trim() || undefined,
-                    school: inviteSchool.trim() || undefined,
-                  })
-                }
-              >
-                <UserPlus className="h-3.5 w-3.5 mr-1.5" />
-                {inviteMutation.isPending ? 'Invio…' : 'Invia invito'}
-              </Button>
-            </div>
-
-            {/* Bulk invite */}
-            <div className="md:col-span-2 space-y-2">
-              <div className="flex items-center justify-between">
-                <Label className="text-xs">Invito multiplo (CSV)</Label>
-                <span className="text-[11px] text-slate-500">{parsedBulkRows.length} validi</span>
-              </div>
-              <textarea
-                value={bulkInviteText}
-                onChange={(e) => setBulkInviteText(e.target.value)}
-                className="w-full min-h-28 rounded-lg border border-slate-200 bg-white p-3 text-sm font-mono resize-none focus:outline-none focus:ring-1 focus:ring-[#e85c8d]"
-                placeholder={'email;nome;cognome;scuola\nmaria@scuola.it;Maria;Rossi;Liceo Galilei'}
-              />
-              <div className="flex justify-end">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled={parsedBulkRows.length === 0 || bulkInviteMutation.isPending}
-                  onClick={() => bulkInviteMutation.mutate(parsedBulkRows)}
-                >
-                  {bulkInviteMutation.isPending ? 'Invio…' : `Invia ${parsedBulkRows.length} inviti`}
-                </Button>
+                <Input value={inviteSchool} onChange={e => setInviteSchool(e.target.value)} placeholder="Istituto…" className="h-8 text-sm" />
               </div>
             </div>
+            <Button
+              className="h-8 text-sm"
+              style={{ backgroundColor: '#e85c8d' }}
+              disabled={!inviteEmail.trim() || inviteMutation.isPending}
+              onClick={() => inviteMutation.mutate({ email: inviteEmail.trim(), firstName: inviteFirstName.trim() || undefined, lastName: inviteLastName.trim() || undefined, school: inviteSchool.trim() || undefined })}
+            >
+              <UserPlus className="h-3.5 w-3.5 mr-1.5" />
+              {inviteMutation.isPending ? 'Invio…' : 'Invia invito'}
+            </Button>
           </div>
 
-          {/* Invite history */}
-          {(invitations || []).length > 0 && (
-            <div>
-              <p className="text-xs font-medium text-slate-600 mb-2">Inviti recenti</p>
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[560px] text-xs">
-                  <thead>
-                    <tr className="text-left text-[11px] uppercase text-slate-400 border-b">
-                      <th className="pb-1.5 font-medium">Email</th>
-                      <th className="pb-1.5 font-medium">Stato</th>
-                      <th className="pb-1.5 font-medium">Creato</th>
-                      <th className="pb-1.5 font-medium">Scadenza</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {(invitations || []).slice(0, 10).map((inv: any) => (
-                      <tr key={inv.id} className="border-t border-slate-100">
-                        <td className="py-1.5">{inv.email}</td>
-                        <td className="py-1.5">
-                          <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${
-                            inv.status === 'accepted' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'
-                          }`}>
-                            {inv.status}
-                          </span>
-                        </td>
-                        <td className="py-1.5 text-slate-500">{formatDate(inv.created_at)}</td>
-                        <td className="py-1.5 text-slate-500">{formatDate(inv.expires_at)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+          {/* ── CSV import ── */}
+          <div className="space-y-4">
+            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Importazione CSV</p>
+
+            {/* Drop zone */}
+            {csvRows.length === 0 && (
+              <div
+                className={`relative rounded-xl border-2 border-dashed transition-colors cursor-pointer flex flex-col items-center justify-center gap-3 py-10 ${dragOver ? 'border-[#e85c8d] bg-rose-50' : 'border-slate-200 bg-white hover:border-slate-300'}`}
+                onDragOver={e => { e.preventDefault(); setDragOver(true) }}
+                onDragLeave={() => setDragOver(false)}
+                onDrop={e => {
+                  e.preventDefault()
+                  setDragOver(false)
+                  const f = e.dataTransfer.files[0]
+                  if (f) handleFileUpload(f)
+                }}
+                onClick={() => fileInputRef.current?.click()}
+              >
+                <Upload className="h-8 w-8 text-slate-300" />
+                <div className="text-center">
+                  <p className="text-sm font-medium text-slate-600">Trascina un CSV qui o clicca per sfogliare</p>
+                  <p className="text-xs text-slate-400 mt-1">Colonne rilevate automaticamente: email, nome, cognome, scuola</p>
+                  <p className="text-xs text-slate-400">Separatore: virgola o punto e virgola · Con o senza intestazione</p>
+                </div>
+                <input ref={fileInputRef} type="file" accept=".csv,.txt" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) handleFileUpload(f) }} />
               </div>
-            </div>
-          )}
+            )}
+
+            {/* Preview table */}
+            {csvRows.length > 0 && (
+              <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+                {/* Toolbar */}
+                <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-slate-100 flex-wrap">
+                  <div className="flex items-center gap-3">
+                    <span className="text-sm font-semibold text-slate-700">{csvRows.length} docenti importati</span>
+                    {sentCount > 0 && <span className="text-xs text-emerald-600 font-medium">{sentCount} inviati</span>}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => { setCsvRows([]); if (fileInputRef.current) fileInputRef.current.value = '' }}>
+                      <X className="h-3.5 w-3.5 mr-1" />Annulla
+                    </Button>
+                    <Button
+                      size="sm"
+                      className="h-7 text-xs gap-1.5"
+                      style={{ backgroundColor: '#e85c8d' }}
+                      disabled={selectedCount === 0 || isSendingAll}
+                      onClick={sendAllSelected}
+                    >
+                      {isSendingAll ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
+                      {isSendingAll ? 'Invio in corso…' : `Invia ${selectedCount} selezionati`}
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Group tag + custom message */}
+                <div className="px-4 py-3 border-b border-slate-100 space-y-3">
+                  <div className="flex items-center gap-3 flex-wrap">
+                    <div className="flex items-center gap-2 flex-1 min-w-[200px]">
+                      <Tag className="h-4 w-4 text-slate-400 flex-shrink-0" />
+                      <Input
+                        value={groupTag}
+                        onChange={e => setGroupTag(e.target.value)}
+                        placeholder="Gruppo / tag (es. sperimentazione torino)"
+                        className="h-8 text-sm flex-1"
+                      />
+                    </div>
+                    <button
+                      onClick={() => setShowMessage(v => !v)}
+                      className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-700 border border-slate-200 rounded-lg px-2.5 py-1.5 bg-white hover:bg-slate-50 transition-colors"
+                    >
+                      <MessageSquare className="h-3.5 w-3.5" />
+                      {showMessage ? 'Nascondi messaggio' : 'Messaggio personalizzato'}
+                    </button>
+                  </div>
+                  {showMessage && (
+                    <textarea
+                      value={customMessage}
+                      onChange={e => setCustomMessage(e.target.value)}
+                      placeholder="Testo aggiuntivo che apparirà nell'email di invito (facoltativo)…"
+                      className="w-full rounded-lg border border-slate-200 p-3 text-sm resize-none focus:outline-none focus:ring-1 focus:ring-[#e85c8d] min-h-[80px]"
+                    />
+                  )}
+                </div>
+
+                {/* Rows table */}
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[640px] text-sm">
+                    <thead>
+                      <tr className="text-[11px] uppercase text-slate-400 border-b border-slate-100">
+                        <th className="px-4 py-2 text-left w-8">
+                          <input type="checkbox" checked={allIdleSelected} onChange={e => toggleSelectAll(e.target.checked)} className="rounded" />
+                        </th>
+                        <th className="px-3 py-2 text-left font-medium">Email</th>
+                        <th className="px-3 py-2 text-left font-medium">Nome</th>
+                        <th className="px-3 py-2 text-left font-medium">Cognome</th>
+                        <th className="px-3 py-2 text-left font-medium">Scuola</th>
+                        <th className="px-3 py-2 text-center font-medium">Stato</th>
+                        <th className="px-3 py-2 text-right font-medium">Azione</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {csvRows.map(row => (
+                        <tr key={row.id} className={`border-t border-slate-100 ${row.status === 'sent' ? 'bg-emerald-50/40' : row.status === 'error' ? 'bg-red-50/40' : ''}`}>
+                          <td className="px-4 py-2">
+                            <input
+                              type="checkbox"
+                              checked={row.selected}
+                              disabled={row.status !== 'idle'}
+                              onChange={e => updateRow(row.id, { selected: e.target.checked })}
+                              className="rounded"
+                            />
+                          </td>
+                          <td className="px-3 py-2 text-xs font-mono text-slate-700">{row.email}</td>
+                          <td className="px-3 py-2">
+                            <input value={row.firstName} onChange={e => updateRow(row.id, { firstName: e.target.value })} disabled={row.status !== 'idle'} className="w-full text-xs border-0 bg-transparent focus:outline-none focus:ring-1 focus:ring-slate-300 rounded px-1" placeholder="—" />
+                          </td>
+                          <td className="px-3 py-2">
+                            <input value={row.lastName} onChange={e => updateRow(row.id, { lastName: e.target.value })} disabled={row.status !== 'idle'} className="w-full text-xs border-0 bg-transparent focus:outline-none focus:ring-1 focus:ring-slate-300 rounded px-1" placeholder="—" />
+                          </td>
+                          <td className="px-3 py-2">
+                            <input value={row.school} onChange={e => updateRow(row.id, { school: e.target.value })} disabled={row.status !== 'idle'} className="w-full text-xs border-0 bg-transparent focus:outline-none focus:ring-1 focus:ring-slate-300 rounded px-1" placeholder="—" />
+                          </td>
+                          <td className="px-3 py-2 text-center">
+                            {row.status === 'idle' && <span className="text-xs text-slate-400">—</span>}
+                            {row.status === 'sending' && <Loader2 className="h-4 w-4 animate-spin text-slate-400 mx-auto" />}
+                            {row.status === 'sent' && <CheckCircle2 className="h-4 w-4 text-emerald-500 mx-auto" />}
+                            {row.status === 'error' && (
+                              <span title={row.errorMsg}>
+                                <AlertCircle className="h-4 w-4 text-red-400 mx-auto" />
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-3 py-2 text-right">
+                            {row.status === 'idle' && (
+                              <button
+                                onClick={() => sendSingleRow(row)}
+                                className="text-xs text-[#e85c8d] hover:text-[#c44a76] font-medium"
+                              >
+                                Invia
+                              </button>
+                            )}
+                            {row.status === 'error' && (
+                              <button onClick={() => { updateRow(row.id, { status: 'idle', errorMsg: undefined }); sendSingleRow({ ...row, status: 'idle' }) }} className="text-xs text-amber-600 hover:text-amber-800 font-medium">Riprova</button>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Invite history — real-time (polls every 20s) */}
+          {(invitations || []).length > 0 && (() => {
+            // Build email→teacher map for cross-referencing login status
+            const teacherByEmail: Record<string, TeacherStatus> = {}
+            ;(teachersStatus?.items || []).forEach(t => { teacherByEmail[t.email.toLowerCase()] = t })
+            return (
+              <div className="bg-white rounded-xl border border-slate-200 p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Inviti recenti</p>
+                  <span className="text-[10px] text-slate-400 flex items-center gap-1">
+                    <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                    aggiornamento automatico
+                  </span>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[640px] text-xs">
+                    <thead>
+                      <tr className="text-left text-[11px] uppercase text-slate-400 border-b">
+                        <th className="pb-1.5 font-medium">Docente</th>
+                        <th className="pb-1.5 font-medium">Gruppo</th>
+                        <th className="pb-1.5 font-medium">Invito</th>
+                        <th className="pb-1.5 font-medium">Piattaforma</th>
+                        <th className="pb-1.5 font-medium">Inviato</th>
+                        <th className="pb-1.5 font-medium">Scadenza</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(invitations || []).slice(0, 20).map((inv: any) => {
+                        const teacher = teacherByEmail[inv.email?.toLowerCase()]
+                        const hasLoggedIn = !!teacher?.last_login_at
+                        const isExpired = !inv.responded_at && new Date(inv.expires_at) < new Date()
+                        return (
+                          <tr key={inv.id} className="border-t border-slate-100">
+                            <td className="py-2">
+                              <div>
+                                <p className="font-medium text-slate-700">{[inv.first_name, inv.last_name].filter(Boolean).join(' ') || '—'}</p>
+                                <p className="text-[10px] text-slate-400 font-mono">{inv.email}</p>
+                              </div>
+                            </td>
+                            <td className="py-2">
+                              {inv.group_tag
+                                ? <span className="px-1.5 py-0.5 rounded-full bg-indigo-50 text-indigo-600 text-[10px] font-medium border border-indigo-100">{inv.group_tag}</span>
+                                : <span className="text-slate-300">—</span>}
+                            </td>
+                            <td className="py-2">
+                              {inv.status === 'accepted'
+                                ? <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700 text-[10px] font-semibold">
+                                    <CheckCircle2 className="h-3 w-3" />accettato
+                                    {inv.responded_at && <span className="opacity-70 font-normal">· {formatDate(inv.responded_at)}</span>}
+                                  </span>
+                                : isExpired
+                                  ? <span className="px-1.5 py-0.5 rounded-full bg-red-50 text-red-500 text-[10px] font-medium">scaduto</span>
+                                  : <span className="px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 text-[10px] font-medium">in attesa</span>}
+                            </td>
+                            <td className="py-2">
+                              {hasLoggedIn
+                                ? <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-blue-50 text-blue-700 text-[10px] font-semibold">
+                                    <LogIn className="h-3 w-3" />entrato
+                                    <span className="opacity-70 font-normal">· {formatDate(teacher!.last_login_at)}</span>
+                                  </span>
+                                : <span className="text-slate-300 text-[10px]">mai</span>}
+                            </td>
+                            <td className="py-2 text-slate-500">{formatDate(inv.created_at)}</td>
+                            <td className="py-2 text-slate-500">{formatDate(inv.expires_at)}</td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )
+          })()}
         </div>
       )}
 

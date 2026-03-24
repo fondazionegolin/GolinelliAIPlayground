@@ -29,9 +29,12 @@ interface TeacherbotsPanelProps {
   /** Called when the user clicks the settings button on a bot.
    *  If provided the panel won't switch to edit view internally. */
   onOpenSettings?: (botId: string) => void
+  /** Called when the user wants to create a new bot.
+   *  If provided the panel won't switch to create view internally. */
+  onCreateNew?: () => void
 }
 
-export default function TeacherbotsPanel({ onOpenSettings }: TeacherbotsPanelProps = {}) {
+export default function TeacherbotsPanel({ onOpenSettings, onCreateNew }: TeacherbotsPanelProps = {}) {
   const { toast } = useToast()
   const queryClient = useQueryClient()
   const [viewMode, setViewMode] = useState<ViewMode>('list')
@@ -161,7 +164,7 @@ export default function TeacherbotsPanel({ onOpenSettings }: TeacherbotsPanelPro
   return (
     <div className="h-full flex flex-col">
       <div className="flex justify-center mb-3">
-        <Button onClick={() => setViewMode('create')} className="bg-[#181b1e] hover:bg-[#0f1113] h-10 w-10 p-0 rounded-full" title="Nuovo teacherbot">
+        <Button onClick={() => onCreateNew ? onCreateNew() : setViewMode('create')} className="bg-[#181b1e] hover:bg-[#0f1113] h-10 w-10 p-0 rounded-full" title="Nuovo teacherbot">
           <Plus className="h-5 w-5" />
         </Button>
       </div>
@@ -230,7 +233,7 @@ export default function TeacherbotsPanel({ onOpenSettings }: TeacherbotsPanelPro
           <p className="text-sm text-slate-500 mb-4 max-w-md">
             Crea il tuo primo assistente AI personalizzato per interagire con gli studenti.
           </p>
-          <Button onClick={() => setViewMode('create')} className="bg-[#181b1e] hover:bg-[#0f1113]">
+          <Button onClick={() => onCreateNew ? onCreateNew() : setViewMode('create')} className="bg-[#181b1e] hover:bg-[#0f1113]">
             <Plus className="h-4 w-4 mr-2" />
             Crea il tuo primo Teacherbot
           </Button>

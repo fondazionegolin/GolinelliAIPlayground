@@ -3,6 +3,7 @@ import { MessageSquare, X, Loader2, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { teacherApi, chatApi } from '@/lib/api'
 import ChatSidebar from '@/components/ChatSidebar'
+import { useTeacherProfile } from '@/hooks/useTeacherProfile'
 
 interface Session {
   id: string
@@ -20,24 +21,16 @@ export function TeacherChatWidget({ isOpen, onClose }: TeacherChatWidgetProps) {
   const [sessions, setSessions] = useState<Session[]>([])
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(localStorage.getItem('teacher_last_chat_session'))
   const [loading, setLoading] = useState(false)
-  const [teacherProfile, setTeacherProfile] = useState<{id: string, name: string} | null>(null)
+  const { data: profileData } = useTeacherProfile()
+  const teacherProfile = profileData
+    ? { id: '', name: `${profileData.firstName} ${profileData.lastName}` }
+    : null
 
   useEffect(() => {
     if (isOpen) {
       loadSessions()
-      loadProfile()
     }
   }, [isOpen])
-
-  const loadProfile = async () => {
-    try {
-      const res = await teacherApi.getProfile()
-      setTeacherProfile({
-        id: res.data.id,
-        name: `${res.data.first_name} ${res.data.last_name}`
-      })
-    } catch (e) { console.error(e) }
-  }
 
   const loadSessions = async () => {
     setLoading(true)

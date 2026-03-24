@@ -1,20 +1,27 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, lazy, Suspense } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Routes, Route, useLocation, Link } from 'react-router-dom'
-import { MessageSquare, Users, PlayCircle, Bot } from 'lucide-react'
-import ClassesPage from './ClassesPage'
-import SessionsPage from './SessionsPage'
-import SessionLivePage from './SessionLivePage'
+import { Routes, Route, useLocation, Link, useNavigate } from 'react-router-dom'
+import { MessageSquare, Users, PlayCircle, Bot, ClipboardList, History, Monitor } from 'lucide-react'
+// Heavy pages loaded lazily — only parsed when first visited
+const ClassesPage        = lazy(() => import('./ClassesPage'))
+const SessionsPage       = lazy(() => import('./SessionsPage'))
+const SessionLivePage    = lazy(() => import('./SessionLivePage'))
+const TeacherDocumentsPage = lazy(() => import('./TeacherDocumentsPage'))
+const TeacherMLLabPage   = lazy(() => import('./TeacherMLLabPage'))
+const UDAListPage        = lazy(() => import('./UDAListPage'))
+const UDACreatorPage     = lazy(() => import('./UDACreatorPage'))
+const TeacherDemoPage    = lazy(() => import('./TeacherDemoPage'))
+// TeacherSupportChat is the index route — load eagerly for fast first paint
 import TeacherSupportChat from './TeacherSupportChat'
-import TeacherDocumentsPage from './TeacherDocumentsPage'
-import TeacherMLLabPage from './TeacherMLLabPage'
 import { TeacherNavbar } from '@/components/TeacherNavbar'
 import ChatSidebar from '@/components/ChatSidebar'
 import { teacherApi } from '@/lib/api'
 import { AppBackground } from '@/components/ui/AppBackground'
-import { getTeacherAccentTheme, DEFAULT_TEACHER_ACCENT, type TeacherAccentId } from '@/lib/teacherAccent'
+import { getTeacherAccentTheme, type TeacherAccentId } from '@/lib/teacherAccent'
 import { getAppBackgroundGradient } from '@/lib/theme'
 import { useMobile } from '@/hooks/useMobile'
+import { useTeacherProfile } from '@/hooks/useTeacherProfile'
+import { FloatingHelper } from '@/components/FloatingHelper'
 
 const CHATBAR_AUTO_HIDE_BREAKPOINT = 1280
 
@@ -27,8 +34,10 @@ const MOBILE_NAV = [
 export default function TeacherDashboard() {
   const { t } = useTranslation()
   const location = useLocation()
+  const navigate = useNavigate()
   const { isMobile } = useMobile()
 
+  const { data: teacherProfileData } = useTeacherProfile()
   const [teacherProfile, setTeacherProfile] = useState<{ id: string, name: string, uiAccent?: TeacherAccentId } | null>(null)
   const [sidebarWidth, setSidebarWidth] = useState(380)
   const [showSidebar, setShowSidebar] = useState(true)
@@ -43,7 +52,7 @@ export default function TeacherDashboard() {
     return null
   }
 
-  const [currentSession, setCurrentSession] = useState<{ id: string, name: string, className: string } | null>(getPersistedSession)
+  const [currentSession, setCurrentSession] = useState<{ id: string, name: string, className: string, joinCode?: string } | null>(getPersistedSession)
   const [activeSessionId, setActiveSessionId] = useState<string | null>(currentSession?.id || null)
 
   useEffect(() => {
@@ -52,11 +61,12 @@ export default function TeacherDashboard() {
 
     if (urlSessionId) {
       setActiveSessionId(urlSessionId)
-      teacherApi.getSessionLive(urlSessionId).then((res: { data: { session: { name?: string; title?: string; class_name?: string } } }) => {
+      teacherApi.getSessionLive(urlSessionId).then((res: { data: { session: { name?: string; title?: string; class_name?: string; join_code?: string } } }) => {
         const sessionInfo = {
           id: urlSessionId,
           name: res.data.session?.name || res.data.session?.title || t('navbar.no_session'),
-          className: res.data.session?.class_name || t('navbar.nav_classes')
+          className: res.data.session?.class_name || t('navbar.nav_classes'),
+          joinCode: res.data.session?.join_code,
         }
         setCurrentSession(sessionInfo)
         localStorage.setItem('teacher_selected_session', JSON.stringify(sessionInfo))
@@ -81,29 +91,14 @@ export default function TeacherDashboard() {
   }, [location.pathname])
 
   useEffect(() => {
-    const loadProfile = async () => {
-      try {
-        const res = await teacherApi.getProfile()
-        setTeacherProfile({
-          id: res.data.id,
-          name: `${res.data.first_name} ${res.data.last_name}`,
-          uiAccent: res.data.ui_accent || DEFAULT_TEACHER_ACCENT,
-        })
-      } catch (e) { console.error(e) }
+    if (teacherProfileData) {
+      setTeacherProfile(prev => ({
+        id: prev?.id || '',
+        name: `${teacherProfileData.firstName} ${teacherProfileData.lastName}`,
+        uiAccent: teacherProfileData.uiAccent,
+      }))
     }
-    loadProfile()
-
-    const handleProfileUpdate = (e: any) => {
-      const updated = e.detail
-      setTeacherProfile(prev => prev ? ({
-        ...prev,
-        name: `${updated.firstName} ${updated.lastName}`,
-        uiAccent: updated.uiAccent
-      }) : null)
-    }
-    window.addEventListener('teacherProfileUpdated', handleProfileUpdate)
-    return () => window.removeEventListener('teacherProfileUpdated', handleProfileUpdate)
-  }, [])
+  }, [teacherProfileData])
 
   useEffect(() => {
     const handleResize = () => {
@@ -153,15 +148,100 @@ export default function TeacherDashboard() {
 
       {/* ── Main Content ── */}
       <div className={`flex-1 flex overflow-hidden ${isMobile ? 'pt-12 pb-16' : 'pt-16'}`}>
+
+        {/* ── Session Context Strip (left, desktop only) ── */}
+        {!isMobile && currentSession && (
+          <div className="flex-shrink-0 flex items-center pl-2 py-2 z-10">
+          <div
+            className="flex flex-col items-center py-3 px-1.5 gap-1 rounded-2xl shadow-lg border backdrop-blur-md"
+            style={{
+              backgroundColor: `${teacherTheme.soft}e0`,
+              borderColor: `${teacherTheme.accent}30`,
+            }}
+          >
+            {/* Session live */}
+            <button
+              title={currentSession.name}
+              onClick={() => navigate(`/teacher/sessions/${currentSession.id}`)}
+              className="w-9 h-9 rounded-lg flex items-center justify-center transition-colors hover:opacity-80"
+              style={{
+                backgroundColor: location.pathname.includes(`/sessions/${currentSession.id}`) && !location.search
+                  ? teacherTheme.accent
+                  : `${teacherTheme.accent}20`,
+                color: location.pathname.includes(`/sessions/${currentSession.id}`) && !location.search
+                  ? 'white'
+                  : teacherTheme.accent,
+              }}
+            >
+              <Monitor className="h-4 w-4" />
+            </button>
+
+            {/* Tasks */}
+            <button
+              title="Compiti"
+              onClick={() => navigate(`/teacher/sessions/${currentSession.id}?tab=tasks`)}
+              className="w-9 h-9 rounded-lg flex items-center justify-center transition-colors hover:opacity-80"
+              style={{
+                backgroundColor: location.search === '?tab=tasks'
+                  ? teacherTheme.accent
+                  : `${teacherTheme.accent}20`,
+                color: location.search === '?tab=tasks'
+                  ? 'white'
+                  : teacherTheme.accent,
+              }}
+            >
+              <ClipboardList className="h-4 w-4" />
+            </button>
+
+            {/* History */}
+            <button
+              title="Storico chat"
+              onClick={() => navigate(`/teacher/sessions/${currentSession.id}?tab=history`)}
+              className="w-9 h-9 rounded-lg flex items-center justify-center transition-colors hover:opacity-80"
+              style={{
+                backgroundColor: location.search === '?tab=history'
+                  ? teacherTheme.accent
+                  : `${teacherTheme.accent}20`,
+                color: location.search === '?tab=history'
+                  ? 'white'
+                  : teacherTheme.accent,
+              }}
+            >
+              <History className="h-4 w-4" />
+            </button>
+
+            <div className="flex-1" />
+
+            {/* Toggle chat sidebar */}
+            <button
+              title="Chat di classe"
+              onClick={() => setShowSidebar(v => !v)}
+              className="w-9 h-9 rounded-lg flex items-center justify-center transition-colors hover:opacity-80"
+              style={{
+                backgroundColor: showSidebar ? teacherTheme.accent : `${teacherTheme.accent}20`,
+                color: showSidebar ? 'white' : teacherTheme.accent,
+              }}
+            >
+              <MessageSquare className="h-4 w-4" />
+            </button>
+          </div>
+          </div>
+        )}
+
         <main className="flex-1 overflow-y-auto relative">
-          <Routes>
-            <Route index element={<TeacherSupportChat />} />
-            <Route path="documents" element={<TeacherDocumentsPage />} />
-            <Route path="ml-lab" element={<TeacherMLLabPage />} />
-            <Route path="classes" element={<ClassesPage />} />
-            <Route path="sessions" element={<SessionsPage />} />
-            <Route path="sessions/:sessionId" element={<SessionLivePage />} />
-          </Routes>
+          <Suspense fallback={<div className="flex items-center justify-center h-full min-h-[40vh] text-sm text-slate-400">Caricamento...</div>}>
+            <Routes>
+              <Route index element={<TeacherSupportChat />} />
+              <Route path="documents" element={<TeacherDocumentsPage />} />
+              <Route path="ml-lab" element={<TeacherMLLabPage />} />
+              <Route path="classes" element={<ClassesPage />} />
+              <Route path="sessions" element={<SessionsPage />} />
+              <Route path="sessions/:sessionId" element={<SessionLivePage />} />
+              <Route path="classes/:classId/uda" element={<UDAListPage />} />
+              <Route path="classes/:classId/uda/:udaId" element={<UDACreatorPage />} />
+              <Route path="demo" element={<TeacherDemoPage />} />
+            </Routes>
+          </Suspense>
         </main>
 
         {/* Right chat sidebar — desktop only */}
@@ -222,6 +302,7 @@ export default function TeacherDashboard() {
           })}
         </nav>
       )}
+      <FloatingHelper />
     </AppBackground>
   )
 }

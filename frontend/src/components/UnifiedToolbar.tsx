@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import {
   Bold, Italic, Underline, Strikethrough,
   AlignLeft, AlignCenter, AlignRight, AlignJustify,
@@ -121,10 +121,28 @@ export function UnifiedToolbar({
 
   const activeFontSizeAttr = editor?.getAttributes('textStyle')?.fontSize
   const activeFontSize = Number.parseInt(String(activeFontSizeAttr || '16').replace('px', ''), 10) || 16
+
+  // Save editor selection before select/color-input steals browser focus
+  const savedSelectionRef = useRef<{ from: number; to: number } | null>(null)
+  const saveSelection = useCallback(() => {
+    if (editor) {
+      const { from, to } = editor.state.selection
+      savedSelectionRef.current = { from, to }
+    }
+  }, [editor])
+
+  const restoreSelection = useCallback((chain: ReturnType<NonNullable<typeof editor>['chain']>) => {
+    const s = savedSelectionRef.current
+    if (s && s.from !== s.to) {
+      chain.setTextSelection({ from: s.from, to: s.to })
+    }
+    return chain
+  }, [])
+
   const applyFontSize = (size: number) => {
     if (mode !== 'document' || !editor) return
     const next = Math.max(10, Math.min(72, Math.round(size)))
-    editor.chain().focus().setMark('textStyle', { fontSize: `${next}px` }).run()
+    restoreSelection(editor.chain().focus()).setMark('textStyle', { fontSize: `${next}px` }).run()
   }
   const decreaseFontSize = () => applyFontSize(activeFontSize - 1)
   const increaseFontSize = () => applyFontSize(activeFontSize + 1)
@@ -133,6 +151,12 @@ export function UnifiedToolbar({
     <div
       ref={toolbarRef}
       className="flex items-center gap-1 p-2 border-b border-slate-200 bg-white sticky top-0 z-20 shadow-sm h-14 overflow-x-auto"
+      onMouseDown={(e) => {
+        // Prevent editor from losing focus when clicking any toolbar button.
+        // select/input/textarea elements are excluded so their native behaviour is preserved.
+        const tag = (e.target as HTMLElement).tagName
+        if (tag !== 'SELECT' && tag !== 'INPUT' && tag !== 'TEXTAREA') e.preventDefault()
+      }}
     >
       
       {/* History Group */}
@@ -159,7 +183,8 @@ export function UnifiedToolbar({
           <div className={groupClass}>
             <select
               className="h-8 text-xs border rounded px-2 w-28"
-              onChange={(e) => editor.chain().focus().setFontFamily(e.target.value).run()}
+              onMouseDown={saveSelection}
+              onChange={(e) => restoreSelection(editor.chain().focus()).setFontFamily(e.target.value).run()}
             >
               {FONTS.map(f => <option key={f} value={f}>{f}</option>)}
             </select>
@@ -170,6 +195,7 @@ export function UnifiedToolbar({
               <select
                 className="h-8 text-xs border rounded px-2 w-16"
                 value={String(activeFontSize)}
+                onMouseDown={saveSelection}
                 onChange={(e) => applyFontSize(Number(e.target.value))}
                 title="Dimensione font"
               >
@@ -202,7 +228,8 @@ export function UnifiedToolbar({
             </Button>
             <input
               type="color"
-              onInput={event => editor.chain().focus().setColor((event.target as HTMLInputElement).value).run()}
+              onMouseDown={saveSelection}
+              onInput={event => restoreSelection(editor.chain().focus()).setColor((event.target as HTMLInputElement).value).run()}
               value={editor.getAttributes('textStyle').color || '#000000'}
               className="h-8 w-8 p-0 border-0 rounded cursor-pointer ml-1"
               title="Colore testo"
@@ -295,7 +322,8 @@ export function UnifiedToolbar({
                     <div className="flex items-center gap-2 pb-1 mb-1 border-b border-slate-100">
                       <select
                         className="h-8 text-xs border rounded px-2 w-full"
-                        onChange={(e) => editor.chain().focus().setFontFamily(e.target.value).run()}
+                        onMouseDown={saveSelection}
+                        onChange={(e) => restoreSelection(editor.chain().focus()).setFontFamily(e.target.value).run()}
                       >
                         {FONTS.map(f => <option key={f} value={f}>{f}</option>)}
                       </select>
@@ -307,6 +335,7 @@ export function UnifiedToolbar({
                       <select
                         className="h-8 text-xs border rounded px-2 flex-1"
                         value={String(activeFontSize)}
+                        onMouseDown={saveSelection}
                         onChange={(e) => applyFontSize(Number(e.target.value))}
                         title="Dimensione font"
                       >
@@ -324,7 +353,8 @@ export function UnifiedToolbar({
                       </Button>
                       <input
                         type="color"
-                        onInput={event => editor.chain().focus().setColor((event.target as HTMLInputElement).value).run()}
+                        onMouseDown={saveSelection}
+                        onInput={event => restoreSelection(editor.chain().focus()).setColor((event.target as HTMLInputElement).value).run()}
                         value={editor.getAttributes('textStyle').color || '#000000'}
                         className="h-8 w-8 p-0 border-0 rounded cursor-pointer"
                         title="Colore testo"

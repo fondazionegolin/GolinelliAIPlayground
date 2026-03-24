@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input'
 import {
   Send, MessageSquare, Bell, Paperclip, X, Image as ImageIcon,
   MessagesSquare, MessageCircle, Pin, PinOff,
-  FileText, FileSpreadsheet, File, Download, ExternalLink, Wand2, Users, Folder, Search, Upload, List, Grid2X2, Minus, Plus
+  FileText, FileSpreadsheet, File, Download, ExternalLink, Wand2, Users, Folder, Search, Upload, List, Grid2X2, Minus, Plus, ChevronDown
 } from 'lucide-react'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { DEFAULT_STUDENT_ACCENT, getStudentAccentTheme, type StudentAccentId } from '@/lib/studentAccent'
@@ -330,6 +330,8 @@ export default function ChatSidebar({
   const libraryFileInputRef = useRef<HTMLInputElement>(null)
   const dragCounter = useRef(0)
   const prevMessagesCountRef = useRef(0)
+  const [isUserScrolledUp, setIsUserScrolledUp] = useState(false)
+  const [unreadWhileScrolled, setUnreadWhileScrolled] = useState(0)
 
   const {
     connected,
@@ -344,7 +346,8 @@ export default function ChatSidebar({
     onlineUsers,
     loadOlderPublicMessages,
     hasMorePublicMessages,
-    loadingOlderPublicMessages
+    loadingOlderPublicMessages,
+    loadingInitialMessages
   } = useSocket(sessionId)
 
   const getRelativePath = (file: File) => {
@@ -519,30 +522,64 @@ export default function ChatSidebar({
       const delta = container.scrollHeight - previousHeight
       container.scrollTop = Math.max(0, container.scrollTop + delta)
     } else if (currentCount > prevCount) {
-      const nearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 120
-      if (nearBottom || prevCount === 0) {
-        container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' })
+      if (!isUserScrolledUp || prevCount === 0) {
+        // Use rAF so scroll fires after DOM paint (avoids stale scrollHeight)
+        requestAnimationFrame(() => {
+          if (!scrollRef.current) return
+          // Instant for initial load, smooth for new messages
+          if (prevCount === 0) {
+            scrollRef.current.scrollTop = scrollRef.current.scrollHeight
+          } else {
+            scrollRef.current.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })
+          }
+        })
+        setUnreadWhileScrolled(0)
+      } else {
+        setUnreadWhileScrolled(prev => prev + (currentCount - prevCount))
       }
     }
 
     prevMessagesCountRef.current = currentCount
-  }, [messages, activePrivateChat, privateChats])
+  }, [messages, activePrivateChat, privateChats, isUserScrolledUp])
 
   useEffect(() => {
     if (activeTab !== 'session') return
     const viewport = scrollRef.current
     if (!viewport) return
 
+    let rafPending = false
     const onScroll = () => {
-      if (viewport.scrollTop > 120) return
-      if (!hasMorePublicMessages || loadingOlderPublicMessages) return
-      prependScrollHeightRef.current = viewport.scrollHeight
-      void loadOlderPublicMessages()
+      if (rafPending) return
+      rafPending = true
+      requestAnimationFrame(() => {
+        rafPending = false
+        const distanceFromBottom = viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight
+        const scrolledUp = distanceFromBottom > 200
+        setIsUserScrolledUp(scrolledUp)
+        if (!scrolledUp) setUnreadWhileScrolled(0)
+
+        if (viewport.scrollTop > 120) return
+        if (!hasMorePublicMessages || loadingOlderPublicMessages) return
+        prependScrollHeightRef.current = viewport.scrollHeight
+        void loadOlderPublicMessages()
+      })
     }
 
-    viewport.addEventListener('scroll', onScroll)
+    viewport.addEventListener('scroll', onScroll, { passive: true })
     return () => viewport.removeEventListener('scroll', onScroll)
   }, [activeTab, hasMorePublicMessages, loadingOlderPublicMessages, loadOlderPublicMessages])
+
+  // Scroll to bottom when switching to session tab
+  useEffect(() => {
+    if (activeTab !== 'session') return
+    const viewport = scrollRef.current
+    if (!viewport) return
+    requestAnimationFrame(() => {
+      viewport.scrollTo({ top: viewport.scrollHeight, behavior: 'smooth' })
+      setIsUserScrolledUp(false)
+      setUnreadWhileScrolled(0)
+    })
+  }, [activeTab])
 
   // Mark private chat as read when viewing
   useEffect(() => {
@@ -1024,11 +1061,11 @@ export default function ChatSidebar({
               color: messageAccentTheme.text 
             } : undefined}
           >
-            {isMe ? linkify(content, messageAccentTheme ? 'text-white/90 hover:text-white underline break-all' : undefined) : (
+            {isMe ? linkify(content, messageAccentTheme ? 'underline break-all' : undefined) : (
               // For received messages, basic linkify with darker link color
               content.split(/(https?:\/\/[^\s]+)/g).map((part: string, i: number) => {
                 if (part.match(/(https?:\/\/[^\s]+)/g)) {
-                  return <a key={i} href={part} target="_blank" rel="noopener noreferrer" className={messageAccentTheme ? 'text-white/90 hover:text-white underline break-all' : 'text-red-600 hover:text-red-700 underline break-all'}>{part}</a>
+                  return <a key={i} href={part} target="_blank" rel="noopener noreferrer" className={messageAccentTheme ? 'underline break-all' : 'text-red-600 hover:text-red-700 underline break-all'}>{part}</a>
                 }
                 return part
               })
@@ -1180,24 +1217,62 @@ export default function ChatSidebar({
 
   const renderSessionChat = () => {
     return (
-      <div
-        className="flex-1 overflow-y-auto p-4 space-y-6 bg-slate-50/30 scroll-smooth overscroll-contain"
-        ref={scrollRef}
-      >
-        {loadingOlderPublicMessages && (
-          <div className="text-center text-[10px] text-slate-400 uppercase tracking-wider">{t('chat_sidebar.loading_history')}</div>
-        )}
-        {!hasMorePublicMessages && messages.length > 0 && (
-          <div className="text-center text-[10px] text-slate-300 uppercase tracking-wider">{t('chat_sidebar.chat_start')}</div>
-        )}
-        {messages.length === 0 && (
-          <div className="h-full flex flex-col items-center justify-center text-slate-300 opacity-50">
-            <MessageSquare className="h-8 w-8 mb-2" />
-            <p className="text-[10px] font-medium uppercase">{t('chat_sidebar.no_messages')}</p>
-          </div>
-        )}
+      <div className="flex-1 overflow-hidden relative">
+        <div
+          className="h-full overflow-y-auto p-4 space-y-6 bg-slate-50/30 scroll-smooth overscroll-contain"
+          ref={scrollRef}
+        >
+          {loadingOlderPublicMessages && (
+            <div className="flex justify-center py-2">
+              <div className="flex items-center gap-1.5 text-[10px] text-slate-400 bg-white/80 px-3 py-1 rounded-full border border-slate-100">
+                <span className="w-1.5 h-1.5 rounded-full bg-slate-300 animate-bounce" style={{ animationDelay: '0ms' }} />
+                <span className="w-1.5 h-1.5 rounded-full bg-slate-300 animate-bounce" style={{ animationDelay: '150ms' }} />
+                <span className="w-1.5 h-1.5 rounded-full bg-slate-300 animate-bounce" style={{ animationDelay: '300ms' }} />
+              </div>
+            </div>
+          )}
+          {!hasMorePublicMessages && messages.length > 0 && (
+            <div className="text-center text-[10px] text-slate-300 uppercase tracking-wider">{t('chat_sidebar.chat_start')}</div>
+          )}
+          {messages.length === 0 && (
+            loadingInitialMessages ? (
+              /* Skeleton while initial messages load */
+              <div className="space-y-4 pt-2 pointer-events-none select-none">
+                {[60, 80, 45, 70, 55].map((w, i) => (
+                  <div key={i} className={`flex gap-2 ${i % 2 === 1 ? 'justify-end' : 'justify-start'}`}>
+                    {i % 2 === 0 && <div className="w-6 h-6 rounded-full bg-slate-200 animate-pulse flex-shrink-0 self-end" />}
+                    <div className="flex flex-col gap-1" style={{ alignItems: i % 2 === 1 ? 'flex-end' : 'flex-start' }}>
+                      <div className="h-8 rounded-2xl bg-slate-200 animate-pulse" style={{ width: `${w * 2.2}px`, animationDelay: `${i * 100}ms` }} />
+                      <div className="h-2.5 rounded bg-slate-100 animate-pulse" style={{ width: `${w}px`, animationDelay: `${i * 100 + 50}ms` }} />
+                    </div>
+                    {i % 2 === 1 && <div className="w-6 h-6 rounded-full bg-slate-200 animate-pulse flex-shrink-0 self-end" />}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="h-full flex flex-col items-center justify-center text-slate-300 opacity-50">
+                <MessageSquare className="h-8 w-8 mb-2" />
+                <p className="text-[10px] font-medium uppercase">{t('chat_sidebar.no_messages')}</p>
+              </div>
+            )
+          )}
 
-        {messages.map((msg, idx) => renderMessage(msg, idx, messages))}
+          {messages.map((msg, idx) => renderMessage(msg, idx, messages))}
+        </div>
+        {isUserScrolledUp && (
+          <button
+            className="absolute bottom-3 left-1/2 -translate-x-1/2 flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#181b1e] text-white text-[11px] font-medium shadow-lg hover:bg-[#181b1e]/80 transition-all z-10"
+            onClick={() => {
+              const container = scrollRef.current
+              if (container) container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' })
+              setIsUserScrolledUp(false)
+              setUnreadWhileScrolled(0)
+            }}
+          >
+            <ChevronDown className="h-3.5 w-3.5" />
+            {unreadWhileScrolled > 0 ? `${unreadWhileScrolled} nuovi messaggi` : 'Scorri in basso'}
+          </button>
+        )}
       </div>
     )
   }
@@ -1708,62 +1783,60 @@ export default function ChatSidebar({
         </div>
       </div>
 
-      {/* Tabs */}
-      <div className="flex border-b border-slate-100 bg-white/50 backdrop-blur-md">
-        <button
-          onClick={() => setActiveTab('session')}
-          onDragEnter={(e) => {
-            const types = Array.from(e.dataTransfer.types || [])
-            if (types.includes('application/x-session-file') || types.includes('Files')) {
-              setActiveTab('session')
-            }
-          }}
-          className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 text-[10px] font-bold uppercase tracking-wider transition-all ${activeTab === 'session'
-            ? 'text-[#181b1e] border-b-2 border-[#181b1e] bg-[#181b1e]/5'
-            : 'text-slate-400 hover:text-slate-600 hover:bg-white/50'
-            }`}
-        >
-          <MessageSquare className="h-3.5 w-3.5" />
-          Sessione
-        </button>
+      {/* Tabs — pill switcher */}
+      <div className="px-2.5 pt-2 pb-1.5 bg-white border-b border-slate-100 shrink-0">
+        <div className="flex items-center gap-0.5 bg-slate-100/80 p-0.5 rounded-xl">
+          <button
+            onClick={() => setActiveTab('session')}
+            onDragEnter={(e) => {
+              const types = Array.from(e.dataTransfer.types || [])
+              if (types.includes('application/x-session-file') || types.includes('Files')) {
+                setActiveTab('session')
+              }
+            }}
+            className={`flex-1 flex items-center justify-center gap-1 py-1.5 text-[10px] font-bold rounded-lg transition-all duration-200 ${activeTab === 'session'
+              ? 'bg-white shadow-sm text-[#181b1e]'
+              : 'text-slate-400 hover:text-slate-500'}`}
+          >
+            <MessageSquare className="h-3 w-3" />
+            Sessione
+          </button>
 
-        <button
-          onClick={() => setActiveTab('private')}
-          className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 text-[10px] font-bold uppercase tracking-wider transition-all relative ${activeTab === 'private'
-            ? 'text-[#181b1e] border-b-2 border-[#181b1e] bg-[#181b1e]/5'
-            : 'text-slate-400 hover:text-slate-600 hover:bg-white/50'
-            }`}
-        >
-          <MessagesSquare className="h-3.5 w-3.5" />
-          Private
-          {totalUnreadPrivate > 0 && (
-            <span className="ml-1 px-1.5 py-0.5 text-[8px] bg-red-500 text-white rounded-full">
-              {totalUnreadPrivate > 9 ? '9+' : totalUnreadPrivate}
-            </span>
-          )}
-        </button>
+          <button
+            onClick={() => setActiveTab('private')}
+            className={`flex-1 flex items-center justify-center gap-1 py-1.5 text-[10px] font-bold rounded-lg transition-all duration-200 relative ${activeTab === 'private'
+              ? 'bg-white shadow-sm text-[#181b1e]'
+              : 'text-slate-400 hover:text-slate-500'}`}
+          >
+            <MessagesSquare className="h-3 w-3" />
+            Private
+            {totalUnreadPrivate > 0 && (
+              <span className="ml-0.5 px-1 py-0.5 text-[8px] bg-red-500 text-white rounded-full leading-none">
+                {totalUnreadPrivate > 9 ? '9+' : totalUnreadPrivate}
+              </span>
+            )}
+          </button>
 
-        <button
-          onClick={() => setActiveTab('files')}
-          className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 text-[10px] font-bold uppercase tracking-wider transition-all ${activeTab === 'files'
-            ? 'text-[#181b1e] border-b-2 border-[#181b1e] bg-[#181b1e]/5'
-            : 'text-slate-400 hover:text-slate-600 hover:bg-white/50'
-            }`}
-        >
-          <Folder className="h-3.5 w-3.5" />
-          File
-        </button>
+          <button
+            onClick={() => setActiveTab('files')}
+            className={`flex-1 flex items-center justify-center gap-1 py-1.5 text-[10px] font-bold rounded-lg transition-all duration-200 ${activeTab === 'files'
+              ? 'bg-white shadow-sm text-[#181b1e]'
+              : 'text-slate-400 hover:text-slate-500'}`}
+          >
+            <Folder className="h-3 w-3" />
+            File
+          </button>
 
-        <button
-          onClick={() => setActiveTab('users')}
-          className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 text-[10px] font-bold uppercase tracking-wider transition-all ${activeTab === 'users'
-            ? 'text-[#181b1e] border-b-2 border-[#181b1e] bg-[#181b1e]/5'
-            : 'text-slate-400 hover:text-slate-600 hover:bg-white/50'
-            }`}
-        >
-          <Users className="h-3.5 w-3.5" />
-          Utenti
-        </button>
+          <button
+            onClick={() => setActiveTab('users')}
+            className={`flex-1 flex items-center justify-center gap-1 py-1.5 text-[10px] font-bold rounded-lg transition-all duration-200 ${activeTab === 'users'
+              ? 'bg-white shadow-sm text-[#181b1e]'
+              : 'text-slate-400 hover:text-slate-500'}`}
+          >
+            <Users className="h-3 w-3" />
+            Utenti
+          </button>
+        </div>
       </div>
 
       {/* Tab content */}

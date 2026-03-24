@@ -22,4 +22,16 @@ export default defineConfig({
       },
     },
   },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'vendor-react': ['react', 'react-dom', 'react-router-dom'],
+          'vendor-query': ['@tanstack/react-query'],
+          'vendor-ui': ['framer-motion', 'lucide-react'],
+          'vendor-i18n': ['react-i18next', 'i18next'],
+        },
+      },
+    },
+  },
 })

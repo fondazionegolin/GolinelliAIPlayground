@@ -268,6 +268,26 @@ CONCISIONE: Risposte dirette e dense di contenuto. Evita ridondanze e preamboli 
         ],
     },
     
+    "document_assist": {
+        "name": "Assistente Documenti",
+        "description": "Trasforma e migliora testi in documenti didattici — bypass agent, nessuna classificazione intent",
+        "teacher_only": True,
+        "uses_agent": False,
+        "system_prompt": """Sei un assistente specializzato nella trasformazione di testi per documenti didattici.
+
+REGOLA ASSOLUTA: Applica ESATTAMENTE l'istruzione ricevuta al testo fornito.
+- Non generare quiz, domande, esercizi o verifiche
+- Non aggiungere spiegazioni, commenti o introduzioni
+- Non fare domande di chiarimento
+- Rispondi SOLO con il testo trasformato
+
+Se l'istruzione riguarda formule matematiche, usa esclusivamente LaTeX:
+- Formule inline: $formula$
+- Formule in blocco: $$formula$$""",
+        "temperature": 0.3,
+        "max_tokens": 2048,
+    },
+
     "math_coach": {
         "name": "Math Coach",
         "description": "Mentor matematico con metodo socratico Polya - ti guida senza darti le risposte",

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Query, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, status, Query, BackgroundTasks, UploadFile, File
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, or_
 from sqlalchemy.orm import selectinload
@@ -47,6 +47,7 @@ from app.schemas.invitation import (
     TeacherBasicInfo,
 )
 from app.services.education_level import SCHOOL_GRADE_OPTIONS
+from app.services.storage_service import storage_service
 
 router = APIRouter()
 TEACHER_ACCENTS = {"pink", "slate", "black", "indigo"}
@@ -124,6 +125,31 @@ async def update_profile(
         avatar_url=teacher.avatar_url,
         ui_accent=teacher.ui_accent,
     )
+
+@router.post("/avatar")
+async def upload_avatar(
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+    teacher: User = Depends(get_current_teacher),
+):
+    """Upload teacher avatar to MinIO and store URL in profile."""
+    if not file.content_type or not file.content_type.startswith('image/'):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="File must be an image")
+    data = await file.read()
+    if len(data) > 2 * 1024 * 1024:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Image must be under 2MB")
+
+    ext = (file.filename or 'avatar.jpg').rsplit('.', 1)[-1].lower()
+    if ext not in ('jpg', 'jpeg', 'png', 'webp', 'gif'):
+        ext = 'jpg'
+    storage_key = f"avatars/{teacher.id}.{ext}"
+    storage_service.upload_file(storage_key, data, file.content_type or 'image/jpeg')
+
+    avatar_url = f"/api/v1/media/avatar/{storage_key}"
+    teacher.avatar_url = avatar_url
+    await db.commit()
+    return {"avatar_url": avatar_url}
+
 
 DEFAULT_MODULES = ["chatbot", "classification", "self_assessment", "chat"]
 
@@ -477,6 +503,7 @@ async def toggle_module(
         db.add(module)
     
     await db.commit()
+    await sio.emit("module_toggled", {"module_key": module_key, "is_enabled": is_enabled}, room=f"session:{session_id}")
     return {"message": f"Module {module_key} {'enabled' if is_enabled else 'disabled'}", "module_key": module_key, "is_enabled": is_enabled}
 
 
@@ -503,7 +530,7 @@ async def freeze_student(
     
     student.is_frozen = True
     student.frozen_reason = reason
-    
+
     # Log audit event
     audit = AuditEvent(
         tenant_id=student.tenant_id,
@@ -514,8 +541,9 @@ async def freeze_student(
         payload_json={"student_id": str(student_id), "reason": reason},
     )
     db.add(audit)
-    
+
     await db.commit()
+    await sio.emit("student_frozen_status", {"student_id": str(student_id), "is_frozen": True}, room=f"session:{session_id}")
     return {"message": "Student frozen", "student_id": str(student_id)}
 
 
@@ -541,9 +569,72 @@ async def unfreeze_student(
     
     student.is_frozen = False
     student.frozen_reason = None
-    
+
     await db.commit()
+    await sio.emit("student_frozen_status", {"student_id": str(student_id), "is_frozen": False}, room=f"session:{session_id}")
     return {"message": "Student unfrozen", "student_id": str(student_id)}
+
+
+@router.post("/sessions/{session_id}/students/{student_id}/push-teacherbot")
+async def push_teacherbot_to_student(
+    session_id: UUID,
+    student_id: UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    teacher: Annotated[User, Depends(get_current_teacher)],
+    teacherbot_id: UUID = Query(...),
+):
+    """Push a teacherbot notification directly to a specific student"""
+    from app.models.teacherbot import Teacherbot
+
+    if not await teacher_can_access_session(db, teacher, session_id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
+
+    # Verify the student is in this session
+    student_result = await db.execute(
+        select(SessionStudent)
+        .where(SessionStudent.id == student_id)
+        .where(SessionStudent.session_id == session_id)
+    )
+    student = student_result.scalar_one_or_none()
+    if not student:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Student not found")
+
+    # Verify the teacherbot belongs to this teacher
+    bot_result = await db.execute(
+        select(Teacherbot)
+        .where(Teacherbot.id == teacherbot_id)
+        .where(Teacherbot.teacher_id == teacher.id)
+    )
+    bot = bot_result.scalar_one_or_none()
+    if not bot:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Teacherbot not found")
+
+    # Emit teacherbot_published notification to the specific student's room
+    await sio.emit(
+        "chat_message",
+        {
+            "room_type": "PUBLIC",
+            "session_id": str(session_id),
+            "message": {
+                "id": f"push-{student_id}-{teacherbot_id}",
+                "sender_type": "SYSTEM",
+                "text": f"Il docente ti ha inviato un assistente: {bot.name}",
+                "created_at": datetime.utcnow().isoformat(),
+                "is_notification": True,
+                "notification_type": "teacherbot_published",
+                "notification_data": {
+                    "teacherbot_id": str(bot.id),
+                    "name": bot.name,
+                    "icon": bot.icon,
+                    "color": bot.color,
+                    "synopsis": bot.synopsis,
+                },
+            },
+        },
+        room=f"student:{student_id}",
+    )
+
+    return {"message": f"Teacherbot {bot.name} pushed to student {student.nickname}"}
 
 
 @router.delete("/sessions/{session_id}/students/{student_id}")
@@ -1921,34 +2012,55 @@ async def get_teacher_conversation(
     conversation_id: UUID,
     db: Annotated[AsyncSession, Depends(get_db)],
     teacher: Annotated[User, Depends(get_current_teacher)],
+    limit: int = Query(30, ge=1, le=200),
+    before_id: Optional[str] = Query(None),
 ):
-    """Get a conversation with all its messages"""
+    """Get a conversation with its most recent messages (paginated).
+    Pass before_id to load messages older than that message id.
+    """
     from app.models import TeacherConversation, TeacherConversationMessage
-    
+
     result = await db.execute(
         select(TeacherConversation)
         .where(TeacherConversation.id == conversation_id)
         .where(TeacherConversation.teacher_id == teacher.id)
     )
     conversation = result.scalar_one_or_none()
-    
+
     if not conversation:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found")
-    
-    # Get messages
-    msg_result = await db.execute(
+
+    # Build base query
+    msg_query = (
         select(TeacherConversationMessage)
         .where(TeacherConversationMessage.conversation_id == conversation_id)
-        .order_by(TeacherConversationMessage.created_at.asc())
+        .order_by(TeacherConversationMessage.created_at.desc())
+        .limit(limit + 1)  # fetch one extra to know if there are more
     )
-    messages = msg_result.scalars().all()
-    
+
+    if before_id:
+        # Find the created_at of the cursor message
+        cursor_result = await db.execute(
+            select(TeacherConversationMessage.created_at)
+            .where(TeacherConversationMessage.id == UUID(before_id))
+        )
+        cursor_ts = cursor_result.scalar_one_or_none()
+        if cursor_ts:
+            msg_query = msg_query.where(TeacherConversationMessage.created_at < cursor_ts)
+
+    msg_result = await db.execute(msg_query)
+    rows = msg_result.scalars().all()
+
+    has_more = len(rows) > limit
+    messages = list(reversed(rows[:limit]))  # return in chronological order
+
     return {
         "id": conversation.id,
         "title": conversation.title,
         "agent_mode": conversation.agent_mode,
         "created_at": conversation.created_at,
         "updated_at": conversation.updated_at,
+        "has_more": has_more,
         "messages": [
             {
                 "id": str(m.id),

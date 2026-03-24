@@ -240,11 +240,10 @@ async def test_teacherbot(
             messages.append({"role": msg.get("role", "user"), "content": msg.get("content", "")})
     messages.append({"role": "user", "content": request.content})
 
-    # Call LLM with teacherbot's system prompt
-    grade_instruction = get_school_grade_instruction(class_obj.school_grade)
+    # Call LLM with teacherbot's system prompt (no class context in test mode)
     llm_response = await llm_service.generate(
         messages=messages,
-        system_prompt=bot.system_prompt + grade_instruction,
+        system_prompt=bot.system_prompt,
         provider=bot.llm_provider,
         model=bot.llm_model,
         temperature=bot.temperature,
@@ -268,6 +267,61 @@ async def test_teacherbot(
         provider=llm_response.provider,
         model=llm_response.model,
     )
+
+
+@router.get("/teacher/sessions/{session_id}/teacherbots", response_model=list[TeacherbotListResponse])
+async def list_session_teacherbots(
+    session_id: UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    teacher: Annotated[User, Depends(get_current_teacher)],
+):
+    """Return teacherbots published to the class of this session (teacher view for demo mode)"""
+    from app.models.session import Session
+    from app.core.permissions import teacher_can_access_session
+
+    if not await teacher_can_access_session(db, teacher, session_id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
+
+    # Get the session's class_id
+    session_result = await db.execute(
+        select(Session).where(Session.id == session_id)
+    )
+    session = session_result.scalar_one_or_none()
+    if not session:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
+
+    result = await db.execute(
+        select(
+            Teacherbot,
+            func.count(TeacherbotConversation.id.distinct()).label('conversation_count')
+        )
+        .join(TeacherbotPublication, TeacherbotPublication.teacherbot_id == Teacherbot.id)
+        .outerjoin(TeacherbotConversation, TeacherbotConversation.teacherbot_id == Teacherbot.id)
+        .where(TeacherbotPublication.class_id == session.class_id)
+        .where(TeacherbotPublication.is_active == True)
+        .where(Teacherbot.tenant_id == teacher.tenant_id)
+        .group_by(Teacherbot.id)
+        .order_by(Teacherbot.name)
+    )
+    rows = result.all()
+
+    return [
+        TeacherbotListResponse(
+            id=bot.id,
+            name=bot.name,
+            synopsis=bot.synopsis,
+            icon=bot.icon,
+            color=bot.color,
+            status=bot.status.value,
+            is_proactive=bot.is_proactive,
+            enable_reporting=bot.enable_reporting,
+            created_at=bot.created_at,
+            updated_at=bot.updated_at,
+            publication_count=1,
+            conversation_count=conv_count,
+        )
+        for bot, conv_count in rows
+    ]
 
 
 @router.post("/teacherbots/{teacherbot_id}/publish", response_model=TeacherbotPublicationResponse)
@@ -335,6 +389,7 @@ async def publish_teacherbot(
             select(ChatRoom)
             .where(ChatRoom.session_id == session.id)
             .where(ChatRoom.room_type == ChatRoomType.PUBLIC)
+            .limit(1)
         )
         room = room_result.scalar_one_or_none()
         if not room:
@@ -849,7 +904,6 @@ async def send_teacherbot_message_with_files(
             except:
                 extracted_text = file_data.decode("latin-1", errors="ignore")
         elif mime_type == "application/pdf" or filename.endswith(".pdf"):
-            # Try to extract text from PDF
             try:
                 import fitz  # PyMuPDF
                 pdf_doc = fitz.open(stream=file_data, filetype="pdf")
@@ -861,6 +915,32 @@ async def send_teacherbot_message_with_files(
                 extracted_text = "[PDF content - PyMuPDF not installed]"
             except Exception as e:
                 extracted_text = f"[Error reading PDF: {str(e)}]"
+        elif (
+            mime_type in (
+                "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+                "application/vnd.ms-powerpoint",
+            )
+            or filename.lower().endswith((".pptx", ".ppt"))
+        ):
+            try:
+                import io as _io
+                from pptx import Presentation
+                prs = Presentation(_io.BytesIO(file_data))
+                slide_texts: list[str] = []
+                for i, slide in enumerate(prs.slides, 1):
+                    parts: list[str] = []
+                    for shape in slide.shapes:
+                        if not shape.has_text_frame:
+                            continue
+                        for para in shape.text_frame.paragraphs:
+                            line = " ".join(run.text for run in para.runs if run.text.strip())
+                            if line.strip():
+                                parts.append(line.strip())
+                    if parts:
+                        slide_texts.append(f"## Slide {i}\n" + "\n".join(parts))
+                extracted_text = "\n\n".join(slide_texts)
+            except Exception as e:
+                extracted_text = f"[Error reading PPTX: {str(e)}]"
         elif mime_type.startswith("image/"):
             # For images, we'll use vision API if available
             try:

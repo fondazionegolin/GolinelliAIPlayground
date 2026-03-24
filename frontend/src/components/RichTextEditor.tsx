@@ -8,6 +8,26 @@ import { TextStyle } from '@tiptap/extension-text-style'
 import { Color } from '@tiptap/extension-color'
 import FontFamily from '@tiptap/extension-font-family'
 import { Mathematics } from '@tiptap/extension-mathematics'
+
+// Adds fontSize support to the existing TextStyle mark
+const FontSizeExtension = Extension.create({
+  name: 'fontSize',
+  addGlobalAttributes() {
+    return [{
+      types: ['textStyle'],
+      attributes: {
+        fontSize: {
+          default: null,
+          parseHTML: (element: HTMLElement) => element.style.fontSize || null,
+          renderHTML: (attributes: Record<string, unknown>) => {
+            if (!attributes.fontSize) return {}
+            return { style: `font-size: ${attributes.fontSize}` }
+          },
+        },
+      },
+    }]
+  },
+})
 import { useEffect, useState, useCallback } from 'react'
 import { AITextAssistPanel } from './AITextAssistPanel'
 import { looksLikeMarkdown, renderMarkdownToHtml } from '@/lib/markdown'
@@ -73,6 +93,7 @@ export function RichTextEditor({
       TextStyle,
       Color,
       FontFamily,
+      FontSizeExtension,
       TextAlign.configure({
         types: ['heading', 'paragraph'],
       }),

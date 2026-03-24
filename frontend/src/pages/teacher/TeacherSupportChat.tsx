@@ -27,9 +27,7 @@ const FALLBACK_MODELS = [
   { id: 'gpt-5-mini', name: 'GPT-5 Mini', provider: 'openai' },
   { id: 'gpt-5-nano', name: 'GPT-5 Nano', provider: 'openai' },
   { id: 'claude-haiku-4-5-20251001', name: 'Claude Haiku 4.5', provider: 'anthropic' },
-  { id: 'deepseek-chat', name: 'DeepSeek Chat (V3.2)', provider: 'deepseek' },
   { id: 'mistral-nemo', name: 'Mistral Nemo', provider: 'ollama' },
-  { id: 'deepseek-r1:8b', name: 'DeepSeek R1', provider: 'ollama' },
 ]
 
 const AGENT_MODES = [
@@ -103,167 +101,13 @@ interface WebSearchProgress {
   confidence?: number
 }
 
-type DatasetInterviewStepKey =
-  | 'context'
-  | 'dataType'
-  | 'correlation'
-  | 'columnCount'
-  | 'headers'
-  | 'rowCount'
-
-interface DatasetInterviewAnswers {
-  context: string
-  dataType: string
-  correlation: string
-  columnCount: number
-  headers: string[]
-  rowCount: number
-}
-
-function getDatasetInterviewSteps(t: any): Array<{ key: DatasetInterviewStepKey; question: string }> {
-  return [
-    {
-      key: 'context',
-      question: t('teacher_chat.dataset_interview_q1'),
-    },
-    {
-      key: 'dataType',
-      question: t('teacher_chat.dataset_interview_q2'),
-    },
-    {
-      key: 'correlation',
-      question: t('teacher_chat.dataset_interview_q3'),
-    },
-    {
-      key: 'columnCount',
-      question: t('teacher_chat.dataset_interview_q4'),
-    },
-    {
-      key: 'headers',
-      question: t('teacher_chat.dataset_interview_q5'),
-    },
-    {
-      key: 'rowCount',
-      question: t('teacher_chat.dataset_interview_q6'),
-    },
-  ]
-}
-
-interface DatasetInterviewState {
-  active: boolean
-  stepIndex: number
-  answers: Partial<DatasetInterviewAnswers>
-}
-
-type ImageInterviewStepKey = 'subject' | 'action' | 'background' | 'style'
-
-interface ImageInterviewAnswers {
-  subject: string
-  action: string
-  background: string
-  style: string
-}
-
-function getImageInterviewSteps(t: any): Array<{ key: ImageInterviewStepKey; question: string }> {
-  return [
-    {
-      key: 'subject',
-      question: t('teacher_chat.image_interview_intro'),
-    },
-    {
-      key: 'action',
-      question: t('teacher_chat.image_interview_q2'),
-    },
-    {
-      key: 'background',
-      question: t('teacher_chat.image_interview_q3'),
-    },
-    {
-      key: 'style',
-      question: t('teacher_chat.image_interview_q4'),
-    },
-  ]
-}
-
-interface ImageInterviewState {
-  active: boolean
-  stepIndex: number
-  answers: Partial<ImageInterviewAnswers>
-}
-
-type ReportInterviewStepKey = 'session' | 'focus' | 'scope'
-
-interface ReportInterviewAnswers {
-  session: string
-  focus: string
-  scope: string
-}
-
-function getReportInterviewSteps(t: any): Array<{ key: ReportInterviewStepKey; question: string }> {
-  return [
-    {
-      key: 'session',
-      question: t('teacher_chat.report_interview_intro'),
-    },
-    {
-      key: 'focus',
-      question: t('teacher_chat.report_interview_q2'),
-    },
-    {
-      key: 'scope',
-      question: t('teacher_chat.report_interview_q3'),
-    },
-  ]
-}
-
-interface ReportInterviewState {
-  active: boolean
-  stepIndex: number
-  answers: Partial<ReportInterviewAnswers>
-}
-
-type QuizInterviewStepKey = 'topic' | 'questionCount' | 'optionsPerQuestion' | 'highlights'
-
-interface QuizInterviewAnswers {
-  topic: string
-  questionCount: number
-  optionsPerQuestion: number
-  highlights: string
-}
-
-function getQuizInterviewSteps(t: any): Array<{ key: QuizInterviewStepKey; question: string }> {
-  return [
-    {
-      key: 'topic',
-      question: t('teacher_chat.quiz_interview_intro'),
-    },
-    {
-      key: 'questionCount',
-      question: t('teacher_chat.quiz_interview_q2'),
-    },
-    {
-      key: 'optionsPerQuestion',
-      question: t('teacher_chat.quiz_interview_q3'),
-    },
-    {
-      key: 'highlights',
-      question: t('teacher_chat.quiz_interview_q4'),
-    },
-  ]
-}
-
-interface QuizInterviewState {
-  active: boolean
-  stepIndex: number
-  answers: Partial<QuizInterviewAnswers>
-}
 
 export default function TeacherSupportChat() {
   const { t } = useTranslation()
   const { toast } = useToast()
   const { isMobile } = useMobile()
   const [activeTab, setActiveTab] = useState<'chat' | 'teacherbots'>('chat')
-  const [botConfigId, setBotConfigId] = useState<string | null>(null)
+  const [botPanelTarget, setBotPanelTarget] = useState<'create' | string | null>(null)
   const [mobileHistoryOpen, setMobileHistoryOpen] = useState(false)
   const [messages, setMessages] = useState<Message[]>([])
   const messagesRef = useRef<Message[]>([])
@@ -274,59 +118,37 @@ export default function TeacherSupportChat() {
   const [showModelMenu, setShowModelMenu] = useState(false)
   const [showModeMenu, setShowModeMenu] = useState(false)
   const [conversations, setConversations] = useState<Conversation[]>([])
+  const [loadingConversations, setLoadingConversations] = useState(true)
+  const [loadingMessages, setLoadingMessages] = useState(false)
+  const [hasMoreMessages, setHasMoreMessages] = useState(false)
+  const [oldestMessageId, setOldestMessageId] = useState<string | null>(null)
+  const [isLoadingOlder, setIsLoadingOlder] = useState(false)
+  const chatScrollRef = useRef<HTMLDivElement>(null)
+  const currentConversationId_ref = useRef<string | null>(null)
   const [currentConversationId, setCurrentConversationId] = useState<string | null>(null)
   const [, setConversationCache] = useState<Record<string, Message[]>>({})
   const conversationCacheRef = useRef<Record<string, Message[]>>({})
   const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([])
   const [agentMode, setAgentMode] = useState<AgentMode>('default')
-  const [imageProvider, setImageProvider] = useState<'dall-e' | 'flux-schnell' | 'flux-dev' | 'flux-pro' | 'flux-pro-1.1' | 'flux-2-pro' | 'flux-2-klein'>('flux-schnell')
+  const [imageProvider, setImageProvider] = useState<'dall-e' | 'gpt-image-1'>('dall-e')
   const [imageSize, setImageSize] = useState<string>('1024x1024')
   const [chatBg, setChatBg] = useState<string>('')
   const [chatBgDefault, setChatBgDefault] = useState<string>('')
   const [showBgPalette, setShowBgPalette] = useState(false)
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => window.innerWidth < CHAT_HISTORY_COLLAPSE_BREAKPOINT)
   const [webSearchProgress, setWebSearchProgress] = useState<WebSearchProgress | null>(null)
-  const [datasetInterview, setDatasetInterview] = useState<DatasetInterviewState>({
-    active: false,
-    stepIndex: 0,
-    answers: {},
-  })
-  const [imageInterview, setImageInterview] = useState<ImageInterviewState>({
-    active: false,
-    stepIndex: 0,
-    answers: {},
-  })
-  const [reportInterview, setReportInterview] = useState<ReportInterviewState>({
-    active: false,
-    stepIndex: 0,
-    answers: {},
-  })
-  const [quizInterview, setQuizInterview] = useState<QuizInterviewState>({
-    active: false,
-    stepIndex: 0,
-    answers: {},
-  })
-  // Ref mirrors quizInterview so handleSend always reads current state (avoids stale closure after await)
-  const quizInterviewRef = useRef<QuizInterviewState>({ active: false, stepIndex: 0, answers: {} })
-  // Prevents duplicate concurrent sends during the async interview flow
-  const interviewSendingRef = useRef(false)
   const modelMenuRef = useRef<HTMLDivElement>(null)
   const modeMenuRef = useRef<HTMLDivElement>(null)
 
-  // Computed interview steps using translations (must be inside component to use t())
-  const QUIZ_INTERVIEW_STEPS = getQuizInterviewSteps(t)
-  const IMAGE_INTERVIEW_STEPS = getImageInterviewSteps(t)
-  const DATASET_INTERVIEW_STEPS = getDatasetInterviewSteps(t)
-  const REPORT_INTERVIEW_STEPS = getReportInterviewSteps(t)
   const { data: availableModelsResponse } = useQuery({
     queryKey: ['llm-available-models'],
     queryFn: () => llmApi.getAvailableModels(),
     staleTime: 60_000,
   })
   const { data: teacherProfileResponse } = useQuery({
-    queryKey: ['teacher-profile-chat-accent'],
+    queryKey: ['teacher-profile'],
     queryFn: () => teacherApi.getProfile(),
-    staleTime: 60_000,
+    staleTime: 5 * 60 * 1000,
   })
   const availableModels = useMemo<AvailableModel[]>(() => {
     const modelsFromApi = (availableModelsResponse?.data?.models || [])
@@ -616,6 +438,8 @@ export default function TeacherSupportChat() {
             })))
           } catch (parseErr) { console.error(parseErr) }
         }
+      } finally {
+        setLoadingConversations(false)
       }
     }
     loadConversations()
@@ -636,18 +460,20 @@ export default function TeacherSupportChat() {
     }
   }, [currentConversationId])
 
+  // Load messages when selecting a conversation (last 30 only)
   useEffect(() => {
-    setDatasetInterview({ active: false, stepIndex: 0, answers: {} })
-    setImageInterview({ active: false, stepIndex: 0, answers: {} })
-    setReportInterview({ active: false, stepIndex: 0, answers: {} })
-    setQuizInterview({ active: false, stepIndex: 0, answers: {} })
-  }, [currentConversationId])
-
-  // Load messages when selecting a conversation
-  useEffect(() => {
+    currentConversationId_ref.current = currentConversationId
+    if (!currentConversationId) {
+      setHasMoreMessages(false)
+      setOldestMessageId(null)
+      return
+    }
     const loadMessages = async () => {
-      if (!currentConversationId) return
+      setLoadingMessages(true)
+      setHasMoreMessages(false)
+      setOldestMessageId(null)
       try {
+        // Show cached while fetching
         const cachedMessages = conversationCacheRef.current[currentConversationId]
         if (cachedMessages && cachedMessages.length > 0) {
           setMessages(cachedMessages)
@@ -655,40 +481,57 @@ export default function TeacherSupportChat() {
 
         const response = await teacherApi.getConversation(currentConversationId)
         const conv = response.data
-        if (conv?.messages) {
+        if (conv?.messages && currentConversationId_ref.current === currentConversationId) {
           const serverMessages = conv.messages.map((m: any) => ({
             id: m.id,
             role: m.role,
             content: m.content,
             timestamp: new Date(m.created_at)
           }))
-
-          const localMessages = cachedMessages || messagesRef.current || []
-          const localLast = localMessages[localMessages.length - 1]?.timestamp?.getTime() || 0
-          const serverLast = serverMessages[serverMessages.length - 1]?.timestamp?.getTime() || 0
-
-          // Only replace if server has strictly more messages OR same count but newer last message.
-          // Do NOT replace when local is empty but server has data — local may hold in-progress interview
-          // messages not yet persisted to the server.
-          const shouldReplace =
-            (serverMessages.length > localMessages.length) ||
-            (serverMessages.length === localMessages.length && serverLast > localLast)
-
-          if (shouldReplace) {
-            setMessages(serverMessages)
-            setConversationCache(prev => {
-              const next = { ...prev, [currentConversationId]: serverMessages }
-              conversationCacheRef.current = next
-              return next
-            })
-          }
+          setMessages(serverMessages)
+          setHasMoreMessages(conv.has_more ?? false)
+          setOldestMessageId(serverMessages[0]?.id ?? null)
+          setConversationCache(prev => {
+            const next = { ...prev, [currentConversationId]: serverMessages }
+            conversationCacheRef.current = next
+            return next
+          })
         }
       } catch (e) {
         console.error('Failed to load messages:', e)
+      } finally {
+        if (currentConversationId_ref.current === currentConversationId) {
+          setLoadingMessages(false)
+        }
       }
     }
     loadMessages()
   }, [currentConversationId])
+
+  // Load older messages when user scrolls to top
+  const loadOlderMessages = async () => {
+    if (!currentConversationId || !hasMoreMessages || isLoadingOlder || !oldestMessageId) return
+    setIsLoadingOlder(true)
+    try {
+      const response = await teacherApi.getConversation(currentConversationId, oldestMessageId)
+      const conv = response.data
+      if (conv?.messages) {
+        const older = conv.messages.map((m: any) => ({
+          id: m.id,
+          role: m.role,
+          content: m.content,
+          timestamp: new Date(m.created_at)
+        }))
+        setMessages(prev => [...older, ...prev])
+        setHasMoreMessages(conv.has_more ?? false)
+        setOldestMessageId(older[0]?.id ?? oldestMessageId)
+      }
+    } catch (e) {
+      console.error('Failed to load older messages:', e)
+    } finally {
+      setIsLoadingOlder(false)
+    }
+  }
 
   useEffect(() => { messagesRef.current = messages }, [messages])
 
@@ -854,23 +697,6 @@ export default function TeacherSupportChat() {
     return convId
   }
 
-  const saveSingleMessageToServer = async (
-    conversationId: string | null,
-    msg: Message,
-    model?: string
-  ): Promise<void> => {
-    if (!conversationId) return
-    try {
-      await teacherApi.addMessage(conversationId, {
-        role: msg.role,
-        content: msg.content,
-        model
-      })
-    } catch (e) {
-      console.error('Failed to save message:', e)
-    }
-  }
-
   const runStreamingRequest = async (content: string, history: Message[]): Promise<string> => {
     setWebSearchProgress({ status: 'Inizializzazione...', sources: [] })
 
@@ -947,586 +773,10 @@ export default function TeacherSupportChat() {
     }
   }
 
-  const resetDatasetInterview = () => {
-    setDatasetInterview({ active: false, stepIndex: 0, answers: {} })
-  }
-
-  const resetImageInterview = () => {
-    setImageInterview({ active: false, stepIndex: 0, answers: {} })
-  }
-
-  const resetReportInterview = () => {
-    setReportInterview({ active: false, stepIndex: 0, answers: {} })
-  }
-
-  const resetQuizInterview = () => {
-    const s: QuizInterviewState = { active: false, stepIndex: 0, answers: {} }
-    quizInterviewRef.current = s
-    setQuizInterview(s)
-  }
-
-  const startDatasetInterview = () => {
-    setDatasetInterview({ active: true, stepIndex: 0, answers: {} })
-    setMessages(prev => [
-      ...prev,
-      {
-        id: `ds-q-${Date.now()}`,
-        role: 'assistant',
-        content: `Modalita dataset attiva. Ti faccio una breve intervista guidata.\n\n${DATASET_INTERVIEW_STEPS[0].question}`,
-        timestamp: new Date()
-      }
-    ])
-  }
-
-  const startImageInterview = () => {
-    setImageInterview({ active: true, stepIndex: 0, answers: {} })
-    setMessages(prev => [
-      ...prev,
-      {
-        id: `img-q-${Date.now()}`,
-        role: 'assistant',
-        content: IMAGE_INTERVIEW_STEPS[0].question,
-        timestamp: new Date()
-      }
-    ])
-  }
-
-  const startReportInterview = () => {
-    setReportInterview({ active: true, stepIndex: 0, answers: {} })
-    setMessages(prev => [
-      ...prev,
-      {
-        id: `rep-q-${Date.now()}`,
-        role: 'assistant',
-        content: REPORT_INTERVIEW_STEPS[0].question,
-        timestamp: new Date()
-      }
-    ])
-  }
-
-  const startQuizInterview = () => {
-    const s: QuizInterviewState = { active: true, stepIndex: 0, answers: {} }
-    quizInterviewRef.current = s
-    interviewSendingRef.current = false
-    setQuizInterview(s)
-    setMessages(prev => [
-      ...prev,
-      {
-        id: `quiz-q-${Date.now()}`,
-        role: 'assistant',
-        content: QUIZ_INTERVIEW_STEPS[0].question,
-        timestamp: new Date()
-      }
-    ])
-  }
-
-  const buildDatasetSummary = (answers: DatasetInterviewAnswers) => {
-    return [
-      'Riepilogo specifiche dataset:',
-      `- Contesto: ${answers.context}`,
-      `- Tipologia dati: ${answers.dataType}`,
-      `- Correlazione: ${answers.correlation}`,
-      `- Colonne: ${answers.columnCount}`,
-      `- Intestazioni: ${answers.headers.join(', ')}`,
-      `- Righe: ${answers.rowCount}`,
-      '',
-      'Procedo ora con la generazione del CSV.'
-    ].join('\n')
-  }
-
-  const buildDatasetGenerationPrompt = (answers: DatasetInterviewAnswers) => {
-    return `GENERA DATASET: Crea un dataset CSV sintetico seguendo ESATTAMENTE queste specifiche:
-- Contesto: ${answers.context}
-- Tipologia dati: ${answers.dataType}
-- Correlazione: ${answers.correlation}
-- Numero colonne: ${answers.columnCount}
-- Intestazioni colonne (usa esattamente questi nomi e in quest'ordine): ${answers.headers.join(',')}
-- Numero righe: ${answers.rowCount}
-
-Vincoli obbligatori:
-1) Restituisci il dataset in formato CSV valido.
-2) Mantieni coerenza con il contesto e con la correlazione richiesta.
-3) Nessuna spiegazione prima del CSV.
-4) Dopo il CSV, aggiungi una breve nota (max 5 righe) che spiega come hai impostato la correlazione.`
-  }
-
-  const buildImageSummary = (answers: ImageInterviewAnswers) => {
-    return [
-      'Riepilogo specifiche immagine:',
-      `- Soggetto: ${answers.subject}`,
-      `- Azione/scena: ${answers.action}`,
-      `- Sfondo: ${answers.background}`,
-      `- Stile: ${answers.style}`,
-      '',
-      'Procedo ora con la generazione dell\'immagine.'
-    ].join('\n')
-  }
-
-  const buildImageGenerationPrompt = (answers: ImageInterviewAnswers) => {
-    return `Genera un'immagine con queste specifiche:
-- Soggetto: ${answers.subject}
-- Scena/Azione: ${answers.action}
-- Sfondo: ${answers.background}
-- Stile visivo: ${answers.style}`
-  }
-
-  const buildQuizSummary = (answers: QuizInterviewAnswers) => {
-    return [
-      'Riepilogo specifiche quiz:',
-      `- Argomento: ${answers.topic}`,
-      `- Numero domande: ${answers.questionCount}`,
-      `- Risposte per domanda: ${answers.optionsPerQuestion}`,
-      `- Highlights: ${answers.highlights}`,
-      '',
-      'Procedo ora con la generazione del quiz.'
-    ].join('\n')
-  }
-
-  const buildQuizGenerationPrompt = (answers: QuizInterviewAnswers) => {
-    const highlightInstruction = answers.highlights && answers.highlights.toLowerCase() !== 'no'
-      ? `Includi questi highlights didattici: ${answers.highlights}.`
-      : 'Non includere highlights extra.'
-
-    return `GENERA QUIZ: Crea un quiz a scelta multipla con queste specifiche:
-- Argomento: ${answers.topic}
-- Numero domande: ${answers.questionCount}
-- Opzioni per domanda: ${answers.optionsPerQuestion}
-- ${highlightInstruction}
-
-Requisiti:
-1) Ogni domanda deve avere una sola risposta corretta.
-2) Fornisci anche una breve spiegazione della risposta corretta.
-3) Usa linguaggio chiaro e didattico.
-4) Restituisci il risultato in formato strutturato, pronto per la pubblicazione come quiz in piattaforma.`
-  }
-
   const handleSend = async () => {
     const userInput = inputText.trim()
 
-    // Interview handlers are pure local state operations — they must NOT be blocked by isLoading
-    // (which reflects an ongoing LLM request that may still be running from a previous mode)
-    const isInInterview =
-      (agentMode === 'quiz' && quizInterviewRef.current.active) ||
-      (agentMode === 'dataset' && datasetInterview.active) ||
-      (agentMode === 'image' && imageInterview.active) ||
-      (agentMode === 'report' && reportInterview.active)
-
-    if ((!userInput && attachedFiles.length === 0) || (!isInInterview && isLoading)) return
-
-    if (agentMode === 'dataset' && datasetInterview.active) {
-      if (!userInput) return
-      const convId = await ensureConversation('Generazione dataset guidata')
-      const userMessage: Message = {
-        id: `msg-${Date.now()}`,
-        role: 'user',
-        content: userInput,
-        timestamp: new Date()
-      }
-      setMessages(prev => [...prev, userMessage])
-      setInputText('')
-
-      const currentStep = DATASET_INTERVIEW_STEPS[datasetInterview.stepIndex]
-      if (!currentStep) return
-
-      const nextAnswers = { ...datasetInterview.answers }
-      let followUp: string | null = null
-
-      if (currentStep.key === 'context') {
-        nextAnswers.context = userInput
-      } else if (currentStep.key === 'dataType') {
-        nextAnswers.dataType = userInput
-      } else if (currentStep.key === 'correlation') {
-        nextAnswers.correlation = userInput
-      } else if (currentStep.key === 'columnCount') {
-        const parsed = Number.parseInt(userInput, 10)
-        if (Number.isNaN(parsed) || parsed < 2 || parsed > 100) {
-          followUp = 'Inserisci un numero valido di colonne (tra 2 e 100).'
-        } else {
-          nextAnswers.columnCount = parsed
-        }
-      } else if (currentStep.key === 'headers') {
-        const headers = userInput
-          .split(',')
-          .map(h => h.trim())
-          .filter(Boolean)
-        const expected = nextAnswers.columnCount || 0
-        if (headers.length === 0) {
-          followUp = 'Non ho trovato intestazioni valide. Inseriscile separate da virgola.'
-        } else if (expected > 0 && headers.length !== expected) {
-          followUp = `Hai indicato ${headers.length} intestazioni ma ${expected} colonne. Reinserisci le intestazioni.`
-        } else {
-          nextAnswers.headers = headers
-        }
-      } else if (currentStep.key === 'rowCount') {
-        const parsed = Number.parseInt(userInput, 10)
-        if (Number.isNaN(parsed) || parsed < 5 || parsed > 200000) {
-          followUp = 'Inserisci un numero valido di righe (tra 5 e 200000).'
-        } else {
-          nextAnswers.rowCount = parsed
-        }
-      }
-
-      if (followUp) {
-        const assistantMessage: Message = {
-          id: `resp-${Date.now()}`,
-          role: 'assistant',
-          content: followUp,
-          timestamp: new Date()
-        }
-        setMessages(prev => [...prev, assistantMessage])
-        await saveMessageToServer(convId, userMessage, assistantMessage, 'claude-haiku-4-5-20251001')
-        return
-      }
-
-      const isLastStep = datasetInterview.stepIndex === DATASET_INTERVIEW_STEPS.length - 1
-      if (!isLastStep) {
-        const nextStepIndex = datasetInterview.stepIndex + 1
-        setDatasetInterview({
-          active: true,
-          stepIndex: nextStepIndex,
-          answers: nextAnswers
-        })
-        const assistantMessage: Message = {
-          id: `resp-${Date.now()}`,
-          role: 'assistant',
-          content: DATASET_INTERVIEW_STEPS[nextStepIndex].question,
-          timestamp: new Date()
-        }
-        setMessages(prev => [...prev, assistantMessage])
-        await saveMessageToServer(convId, userMessage, assistantMessage, 'claude-haiku-4-5-20251001')
-        return
-      }
-
-      const finalAnswers = nextAnswers as DatasetInterviewAnswers
-      const summaryMessage: Message = {
-        id: `resp-${Date.now()}`,
-        role: 'assistant',
-        content: buildDatasetSummary(finalAnswers),
-        timestamp: new Date()
-      }
-      setMessages(prev => [...prev, summaryMessage])
-      await saveMessageToServer(convId, userMessage, summaryMessage, 'claude-haiku-4-5-20251001')
-
-      setDatasetInterview({
-        active: false,
-        stepIndex: DATASET_INTERVIEW_STEPS.length,
-        answers: finalAnswers
-      })
-
-      const generationPrompt = buildDatasetGenerationPrompt(finalAnswers)
-      setIsLoading(true)
-      try {
-        const finalContent = await runStreamingRequest(generationPrompt, [...messages, userMessage, summaryMessage])
-        const assistantMessage: Message = {
-          id: `resp-${Date.now()}`,
-          role: 'assistant',
-          content: finalContent,
-          timestamp: new Date()
-        }
-        setMessages(prev => [...prev, assistantMessage])
-        await saveSingleMessageToServer(convId, assistantMessage, 'claude-haiku-4-5-20251001')
-      } catch (e) {
-        console.error(e)
-        toast({ title: "Errore", description: "Impossibile generare il dataset.", variant: "destructive" })
-        const errorMsg: Message = {
-          id: `err-${Date.now()}`,
-          role: 'assistant',
-          content: t('teacher_chat.generation_error'),
-          timestamp: new Date()
-        }
-        setMessages(prev => [...prev, errorMsg])
-      } finally {
-        setIsLoading(false)
-      }
-      return
-    }
-
-    if (agentMode === 'image' && imageInterview.active) {
-      if (!userInput) return
-      const convId = await ensureConversation('Generazione immagine guidata')
-      const userMessage: Message = {
-        id: `msg-${Date.now()}`,
-        role: 'user',
-        content: userInput,
-        timestamp: new Date()
-      }
-      setMessages(prev => [...prev, userMessage])
-      setInputText('')
-
-      const currentStep = IMAGE_INTERVIEW_STEPS[imageInterview.stepIndex]
-      if (!currentStep) return
-
-      const nextAnswers = { ...imageInterview.answers }
-      let followUp: string | null = null
-
-      if (!userInput.trim()) {
-        followUp = 'Risposta vuota. Inserisci un testo breve per continuare.'
-      } else if (currentStep.key === 'subject') {
-        nextAnswers.subject = userInput
-      } else if (currentStep.key === 'action') {
-        nextAnswers.action = userInput
-      } else if (currentStep.key === 'background') {
-        nextAnswers.background = userInput
-      } else if (currentStep.key === 'style') {
-        nextAnswers.style = userInput
-      }
-
-      if (followUp) {
-        const assistantMessage: Message = {
-          id: `resp-${Date.now()}`,
-          role: 'assistant',
-          content: followUp,
-          timestamp: new Date()
-        }
-        setMessages(prev => [...prev, assistantMessage])
-        await saveMessageToServer(convId, userMessage, assistantMessage, selectedModel)
-        return
-      }
-
-      const isLastStep = imageInterview.stepIndex === IMAGE_INTERVIEW_STEPS.length - 1
-      if (!isLastStep) {
-        const nextStepIndex = imageInterview.stepIndex + 1
-        setImageInterview({
-          active: true,
-          stepIndex: nextStepIndex,
-          answers: nextAnswers
-        })
-        const assistantMessage: Message = {
-          id: `resp-${Date.now()}`,
-          role: 'assistant',
-          content: IMAGE_INTERVIEW_STEPS[nextStepIndex].question,
-          timestamp: new Date()
-        }
-        setMessages(prev => [...prev, assistantMessage])
-        await saveMessageToServer(convId, userMessage, assistantMessage, selectedModel)
-        return
-      }
-
-      const finalAnswers = nextAnswers as ImageInterviewAnswers
-      const summaryMessage: Message = {
-        id: `resp-${Date.now()}`,
-        role: 'assistant',
-        content: buildImageSummary(finalAnswers),
-        timestamp: new Date()
-      }
-      setMessages(prev => [...prev, summaryMessage])
-      await saveMessageToServer(convId, userMessage, summaryMessage, selectedModel)
-
-      setImageInterview({
-        active: false,
-        stepIndex: IMAGE_INTERVIEW_STEPS.length,
-        answers: finalAnswers
-      })
-
-      const providerLabel = imageProvider === 'dall-e' ? 'DALL-E 3' : 'Flux Schnell'
-      const imagePromptRequest = buildImageGenerationPrompt(finalAnswers)
-      setIsLoading(true)
-
-      try {
-        setImageGenerationProgress({
-          status: `Connessione al server ${providerLabel}...`,
-          step: 'connecting',
-          provider: providerLabel
-        })
-        setImageGenerationProgress({
-          status: 'Ottimizzazione del prompt...',
-          step: 'enhancing',
-          provider: providerLabel
-        })
-
-        const expansionPrompt = `Sei un esperto Prompt Engineer. Il tuo compito e' scrivere un prompt dettagliato e ottimizzato per generare un'immagine con il modello ${providerLabel}.
-
-Descrizione utente: "${imagePromptRequest}"
-
-REGOLE IMPORTANTI:
-- Scrivi SOLO il prompt in inglese, nient'altro.
-- Sii molto descrittivo: specifica stile artistico, illuminazione, composizione, colori e dettagli tecnici.
-- NON scrivere spiegazioni, commenti o altro testo.
-- Rispondi SOLO con il prompt ottimizzato per la generazione dell'immagine.`
-
-        const expansionResponse = await llmApi.teacherChat(
-          expansionPrompt,
-          messages.map(m => ({ role: m.role, content: m.content })),
-          'tutor',
-          'openai',
-          'gpt-5-mini'
-        )
-
-        const enhancedPrompt = expansionResponse.data?.response?.trim() || imagePromptRequest
-
-        setImageGenerationProgress({
-          status: `Generazione immagine con ${providerLabel}...`,
-          step: 'generating',
-          provider: providerLabel,
-          enhancedPrompt
-        })
-
-        const genResponse = await llmApi.generateImage(enhancedPrompt, imageProvider)
-        const imageUrl = genResponse.data?.image_url
-        setImageGenerationProgress(null)
-
-        if (!imageUrl) {
-          throw new Error('Nessuna URL immagine ricevuta')
-        }
-
-        const assistantMessage: Message = {
-          id: `resp-${Date.now()}`,
-          role: 'assistant',
-          content: `**Immagine Generata**\n\n![Generata](${imageUrl})\n\n**Prompt Effettivo:**\n\`${enhancedPrompt}\``,
-          timestamp: new Date()
-        }
-        setMessages(prev => [...prev, assistantMessage])
-        await saveSingleMessageToServer(convId, assistantMessage, selectedModel)
-      } catch (e) {
-        console.error(e)
-        setImageGenerationProgress(null)
-        toast({ title: "Errore", description: "Impossibile generare l'immagine.", variant: "destructive" })
-        const errorMsg: Message = {
-          id: `err-${Date.now()}`,
-          role: 'assistant',
-          content: t('teacher_chat.generation_error'),
-          timestamp: new Date()
-        }
-        setMessages(prev => [...prev, errorMsg])
-      } finally {
-        setIsLoading(false)
-      }
-      return
-    }
-
-    if (agentMode === 'quiz' && quizInterviewRef.current.active) {
-      if (!userInput) return
-      // Prevent duplicate concurrent sends (e.g. double Enter press)
-      if (interviewSendingRef.current) return
-      interviewSendingRef.current = true
-
-      try {
-        // Read from ref — always current even after async pauses
-        const quiz = quizInterviewRef.current
-        const currentStep = QUIZ_INTERVIEW_STEPS[quiz.stepIndex]
-
-        if (!currentStep) {
-          // State is corrupt — reset and inform user
-          const s: QuizInterviewState = { active: false, stepIndex: 0, answers: {} }
-          quizInterviewRef.current = s
-          setQuizInterview(s)
-          toast({ title: t('teacher_chat.interview_error'), description: t('teacher_chat.invalid_state'), variant: "destructive" })
-          return
-        }
-
-        const convId = await ensureConversation('Generazione quiz guidata')
-
-        const userMessage: Message = {
-          id: `msg-${Date.now()}`,
-          role: 'user',
-          content: userInput,
-          timestamp: new Date()
-        }
-        setMessages(prev => [...prev, userMessage])
-        setInputText('')
-
-        // Re-read from ref after the await (ensureConversation may have triggered re-renders)
-        const quizNow = quizInterviewRef.current
-        const stepNow = QUIZ_INTERVIEW_STEPS[quizNow.stepIndex]
-        if (!stepNow) return // guard against concurrent state corruption
-
-        const nextAnswers = { ...quizNow.answers }
-        let followUp: string | null = null
-
-        if (stepNow.key === 'topic') {
-          nextAnswers.topic = userInput
-        } else if (stepNow.key === 'questionCount') {
-          const parsed = Number.parseInt(userInput, 10)
-          if (Number.isNaN(parsed) || parsed < 1 || parsed > 30) {
-            followUp = 'Inserisci un numero valido di domande (tra 1 e 30).'
-          } else {
-            nextAnswers.questionCount = parsed
-          }
-        } else if (stepNow.key === 'optionsPerQuestion') {
-          const parsed = Number.parseInt(userInput, 10)
-          if (Number.isNaN(parsed) || parsed < 2 || parsed > 8) {
-            followUp = 'Inserisci un numero valido di opzioni per domanda (tra 2 e 8).'
-          } else {
-            nextAnswers.optionsPerQuestion = parsed
-          }
-        } else if (stepNow.key === 'highlights') {
-          nextAnswers.highlights = userInput
-        }
-
-        if (followUp) {
-          const assistantMessage: Message = {
-            id: `resp-${Date.now()}`,
-            role: 'assistant',
-            content: followUp,
-            timestamp: new Date()
-          }
-          setMessages(prev => [...prev, assistantMessage])
-          await saveMessageToServer(convId, userMessage, assistantMessage, 'claude-haiku-4-5-20251001')
-          return
-        }
-
-        const isLastStep = quizNow.stepIndex === QUIZ_INTERVIEW_STEPS.length - 1
-
-        if (!isLastStep) {
-          const nextStepIndex = quizNow.stepIndex + 1
-          const nextState: QuizInterviewState = { active: true, stepIndex: nextStepIndex, answers: nextAnswers }
-          quizInterviewRef.current = nextState
-          setQuizInterview(nextState)
-          const assistantMessage: Message = {
-            id: `resp-${Date.now()}`,
-            role: 'assistant',
-            content: QUIZ_INTERVIEW_STEPS[nextStepIndex].question,
-            timestamp: new Date()
-          }
-          setMessages(prev => [...prev, assistantMessage])
-          await saveMessageToServer(convId, userMessage, assistantMessage, 'claude-haiku-4-5-20251001')
-          return
-        }
-
-        // All steps answered — generate the quiz
-        const finalAnswers = nextAnswers as QuizInterviewAnswers
-        const summaryMessage: Message = {
-          id: `resp-${Date.now()}`,
-          role: 'assistant',
-          content: buildQuizSummary(finalAnswers),
-          timestamp: new Date()
-        }
-        setMessages(prev => [...prev, summaryMessage])
-        await saveMessageToServer(convId, userMessage, summaryMessage, 'claude-haiku-4-5-20251001')
-
-        const doneState: QuizInterviewState = { active: false, stepIndex: QUIZ_INTERVIEW_STEPS.length, answers: finalAnswers }
-        quizInterviewRef.current = doneState
-        setQuizInterview(doneState)
-
-        const generationPrompt = buildQuizGenerationPrompt(finalAnswers)
-        setIsLoading(true)
-        try {
-          const finalContent = await runStreamingRequest(generationPrompt, [...messages, userMessage, summaryMessage])
-          const assistantMessage: Message = {
-            id: `resp-${Date.now()}`,
-            role: 'assistant',
-            content: finalContent,
-            timestamp: new Date()
-          }
-          setMessages(prev => [...prev, assistantMessage])
-          await saveSingleMessageToServer(convId, assistantMessage, 'claude-haiku-4-5-20251001')
-        } catch (e) {
-          console.error(e)
-          toast({ title: "Errore", description: "Impossibile generare il quiz.", variant: "destructive" })
-          setMessages(prev => [...prev, {
-            id: `err-${Date.now()}`,
-            role: 'assistant',
-            content: t('teacher_chat.quiz_generation_error'),
-            timestamp: new Date()
-          }])
-        } finally {
-          setIsLoading(false)
-        }
-      } finally {
-        interviewSendingRef.current = false
-      }
-      return
-    }
+    if ((!userInput && attachedFiles.length === 0) || isLoading) return
 
     const filesInfo = attachedFiles.length > 0 ? ` [Allegati: ${attachedFiles.map(f => f.file.name).join(', ')}]` : ''
     let messageContent = userInput || 'Analizza questi documenti'
@@ -1573,7 +823,7 @@ REGOLE IMPORTANTI:
     try {
       if (agentMode === 'image') {
         // IMAGE GENERATION FLOW
-        const providerLabel = imageProvider === 'dall-e' ? 'DALL-E 3' : 'Flux Schnell'
+        const providerLabel = imageProvider === 'dall-e' ? 'DALL-E 3' : 'GPT Image 1'
 
         // Step 1: Show connecting status
         setImageGenerationProgress({
@@ -1729,10 +979,6 @@ REGOLE IMPORTANTI:
     setMessages([])
     setCurrentConversationId(null)
     setAttachedFiles([])
-    resetDatasetInterview()
-    resetImageInterview()
-    resetReportInterview()
-    resetQuizInterview()
   }
 
   const handleClearAllConversations = async () => {
@@ -1753,17 +999,35 @@ REGOLE IMPORTANTI:
     }
   }
 
+  const buildModeInvitation = (mode: AgentMode): string | null => {
+    if (mode === 'dataset') {
+      return 'Sei in modalità **Dataset**. Descrivi il dataset che vuoi generare: argomento, numero di colonne e righe, tipo di dati, eventuale correlazione tra variabili.'
+    }
+    if (mode === 'image') {
+      return "Sei in modalità **Immagine**. Descrivi l'immagine che vuoi generare: soggetto, azione, sfondo, stile visivo."
+    }
+    if (mode === 'quiz') {
+      return 'Sei in modalità **Quiz**. Descrivi il quiz che vuoi generare: argomento, numero di domande, opzioni per domanda, livello di difficoltà.'
+    }
+    if (mode === 'report') {
+      const sessions = classesData || []
+      return `Certamente! Seleziona una delle tue sessioni attive per generare il report:\n\n\`\`\`session_selector\n${JSON.stringify(sessions)}\n\`\`\``
+    }
+    return null
+  }
+
   const handleChangeAgentMode = (mode: AgentMode) => {
     setShowModeMenu(false)
-    if (mode === agentMode) {
-      if (mode === 'dataset' && !datasetInterview.active) {
-        startDatasetInterview()
-      } else if (mode === 'image' && !imageInterview.active) {
-        startImageInterview()
-      } else if (mode === 'report' && !reportInterview.active) {
-        startReportInterview()
-      } else if (mode === 'quiz' && !quizInterview.active) {
-        startQuizInterview()
+    if (mode === agentMode && mode !== 'default') {
+      // Re-click: show invitation again
+      const inviteMsg = buildModeInvitation(mode)
+      if (inviteMsg) {
+        setMessages(prev => [...prev, {
+          id: `invite-${Date.now()}`,
+          role: 'assistant',
+          content: inviteMsg,
+          timestamp: new Date()
+        }])
       }
       return
     }
@@ -1773,25 +1037,16 @@ REGOLE IMPORTANTI:
       setAttachedFiles([])
       setInputText('')
     }
-    resetDatasetInterview()
-    resetImageInterview()
-    resetReportInterview()
-    resetQuizInterview()
 
-    if (mode === 'dataset') startDatasetInterview()
-    if (mode === 'image') startImageInterview()
-    if (mode === 'report') {
-      // INSTANT UI: Inject a local message with the session selector widget
-      const sessions = classesData || [];
-      const localMsg: Message = {
-        id: `local-report-selector-${Date.now()}`,
+    const inviteMsg = buildModeInvitation(mode)
+    if (inviteMsg) {
+      setMessages(prev => [...prev, {
+        id: `invite-${Date.now()}`,
         role: 'assistant',
-        content: `Certamente! Seleziona una delle tue sessioni attive per generare il report:\n\n\`\`\`session_selector\n${JSON.stringify(sessions)}\n\`\`\``,
+        content: inviteMsg,
         timestamp: new Date()
-      };
-      setMessages(prev => [...prev, localMsg]);
+      }])
     }
-    if (mode === 'quiz') startQuizInterview()
   }
 
   const handlePublish = async (sessionId: string) => {
@@ -1866,11 +1121,6 @@ REGOLE IMPORTANTI:
     }
   }
 
-  const hasActiveInterview =
-    (agentMode === 'dataset' && datasetInterview.active) ||
-    (agentMode === 'image' && imageInterview.active) ||
-    (agentMode === 'report' && reportInterview.active) ||
-    (agentMode === 'quiz' && quizInterview.active)
 
   return (
     <>
@@ -1936,27 +1186,33 @@ REGOLE IMPORTANTI:
                     </div>
                   ) : (
                     <>
-                      {/* Section tabs */}
-                      <div className="flex items-center border-b border-slate-100 shrink-0">
-                        <button
-                          onClick={() => setActiveTab('chat')}
-                          className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 text-xs font-semibold transition-colors border-b-2 ${activeTab === 'chat' ? 'text-[var(--teacher-accent-text)] border-[var(--teacher-accent-border)]' : 'text-slate-400 hover:text-slate-600 border-transparent'}`}
-                        >
-                          <MessageCircle className="h-3.5 w-3.5" />
-                          Cronologia
-                        </button>
-                        <button
-                          onClick={() => setActiveTab('teacherbots')}
-                          className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 text-xs font-semibold transition-colors border-b-2 ${activeTab === 'teacherbots' ? 'text-[var(--teacher-accent-text)] border-[var(--teacher-accent-border)]' : 'text-slate-400 hover:text-slate-600 border-transparent'}`}
-                        >
-                          <Sparkles className="h-3.5 w-3.5" />
-                          Teacherbots
-                        </button>
+                      {/* Section tabs — pill switcher */}
+                      <div className="px-2.5 pt-2 pb-1.5 bg-white border-b border-slate-100 shrink-0 flex items-center gap-1">
+                        <div className="flex-1 flex items-center gap-0.5 bg-slate-100/80 p-0.5 rounded-xl">
+                          <button
+                            onClick={() => setActiveTab('chat')}
+                            className={`flex-1 flex items-center justify-center gap-1 py-1.5 text-[10px] font-bold rounded-lg transition-all duration-200 ${activeTab === 'chat'
+                              ? 'bg-[var(--teacher-accent-soft)] text-[var(--teacher-accent-text)] shadow-sm border border-[var(--teacher-accent-border)]/50'
+                              : 'text-slate-400 hover:text-slate-500'}`}
+                          >
+                            <MessageCircle className="h-3 w-3" />
+                            Cronologia
+                          </button>
+                          <button
+                            onClick={() => setActiveTab('teacherbots')}
+                            className={`flex-1 flex items-center justify-center gap-1 py-1.5 text-[10px] font-bold rounded-lg transition-all duration-200 ${activeTab === 'teacherbots'
+                              ? 'bg-[var(--teacher-accent-soft)] text-[var(--teacher-accent-text)] shadow-sm border border-[var(--teacher-accent-border)]/50'
+                              : 'text-slate-400 hover:text-slate-500'}`}
+                          >
+                            <Sparkles className="h-3 w-3" />
+                            Teacherbots
+                          </button>
+                        </div>
                         <Button
                           variant="ghost"
                           size="sm"
                           onClick={() => setIsSidebarCollapsed(true)}
-                          className="h-8 w-8 p-0 hover:bg-slate-100 mr-1 flex-shrink-0"
+                          className="h-7 w-7 p-0 hover:bg-slate-100 flex-shrink-0"
                           title="Comprimi"
                         >
                           <ChevronDown className="h-4 w-4 text-slate-400 rotate-90" />
@@ -1974,7 +1230,7 @@ REGOLE IMPORTANTI:
                               <Trash2 className="h-4 w-4 text-slate-600" />
                             </Button>
                           </div>
-                          <div className="flex-1 overflow-y-auto p-3 space-y-1">
+                          <div className="flex-1 overflow-y-auto px-3 py-3 space-y-1">
                             {conversations.map(conv => (
                               <button
                                 key={conv.id}
@@ -2022,8 +1278,11 @@ REGOLE IMPORTANTI:
                           </div>
                         </>
                       ) : (
-                        <div className="flex-1 overflow-y-auto">
-                          <TeacherbotsPanel onOpenSettings={(id) => { setBotConfigId(id) }} />
+                        <div className="flex-1 overflow-y-auto px-3 py-2">
+                          <TeacherbotsPanel
+                            onOpenSettings={(id) => setBotPanelTarget(id)}
+                            onCreateNew={() => setBotPanelTarget('create')}
+                          />
                         </div>
                       )}
                     </>
@@ -2033,14 +1292,16 @@ REGOLE IMPORTANTI:
                  {/* Chat Main */}
                  <main className={`flex-1 flex flex-col relative overflow-hidden`} style={chatBg ? { backgroundColor: chatBg } : undefined}>
 
-                  {/* Teacherbot config view — absolute overlay replaces chat */}
-                  {botConfigId && (
-                    <div className="absolute inset-0 z-20 bg-white overflow-y-auto">
-                      <TeacherbotForm
-                        teacherbotId={botConfigId}
-                        onBack={() => setBotConfigId(null)}
-                        onSaved={() => setBotConfigId(null)}
-                      />
+                  {/* Teacherbot config modal — full-screen centered modal */}
+                  {botPanelTarget && (
+                    <div className="fixed inset-0 z-[80] bg-black/40 backdrop-blur-sm flex items-start justify-center overflow-y-auto p-6">
+                      <div className="bg-white rounded-2xl w-full max-w-2xl my-8 shadow-2xl overflow-hidden">
+                        <TeacherbotForm
+                          teacherbotId={botPanelTarget !== 'create' ? botPanelTarget : undefined}
+                          onBack={() => setBotPanelTarget(null)}
+                          onSaved={() => setBotPanelTarget(null)}
+                        />
+                      </div>
                     </div>
                   )}
 
@@ -2094,15 +1355,13 @@ REGOLE IMPORTANTI:
                         {agentMode === 'image' && (
                           <>
                             <div className="flex items-center bg-slate-100/80 rounded-full p-1 border border-slate-200">
-                              {[
-                                { id: 'flux-schnell', label: '1.0 Fast' },
-                                { id: 'flux-pro-1.1', label: '1.1 Pro' },
-                                { id: 'flux-2-klein', label: '2.0 Fast' },
-                                { id: 'flux-2-pro', label: '2.0 Pro' },
-                              ].map((m) => (
+                              {([
+                                { id: 'dall-e', label: '🎨 DALL-E 3' },
+                                { id: 'gpt-image-1', label: '✨ GPT Image 1' },
+                              ] as { id: 'dall-e' | 'gpt-image-1'; label: string }[]).map((m) => (
                                 <button
                                   key={m.id}
-                                  onClick={() => setImageProvider(m.id as any)}
+                                  onClick={() => setImageProvider(m.id)}
                                   className={`px-3 py-1 text-[10px] rounded-full transition-all flex items-center gap-1 ${imageProvider === m.id
                                     ? 'bg-white shadow-sm font-bold'
                                     : 'text-slate-500 hover:text-slate-700'
@@ -2112,16 +1371,6 @@ REGOLE IMPORTANTI:
                                   {m.label}
                                 </button>
                               ))}
-                              <button
-                                onClick={() => setImageProvider('dall-e' as any)}
-                                className={`px-3 py-1 text-[10px] rounded-full transition-all flex items-center gap-1 ${imageProvider === 'dall-e'
-                                  ? 'bg-white shadow-sm font-bold'
-                                  : 'text-slate-500 hover:text-slate-700'
-                                  }`}
-                                style={imageProvider === 'dall-e' ? { color: accentTheme.text } : undefined}
-                              >
-                                🎨 DALL-E
-                              </button>
                             </div>
 
                             {/* Formato */}
@@ -2317,15 +1566,75 @@ REGOLE IMPORTANTI:
                   )}
 
                   <div
+                    ref={chatScrollRef}
                     className={`flex-1 overflow-y-auto ${isMobile ? 'px-3 py-3' : 'px-4 py-6'} ${chatBgIsDark ? 'text-white' : ''}`}
                     style={{ WebkitOverflowScrolling: 'touch', scrollBehavior: 'smooth' }}
+                    onScroll={(e) => {
+                      if (e.currentTarget.scrollTop < 80 && hasMoreMessages && !isLoadingOlder) {
+                        loadOlderMessages()
+                      }
+                    }}
                   >
+                    {/* Load older indicator */}
+                    {isLoadingOlder && (
+                      <div className="flex justify-center py-3">
+                        <div className="flex items-center gap-2 text-xs text-slate-400 bg-white/80 px-3 py-1.5 rounded-full border border-slate-100 shadow-sm">
+                          <span className="w-1.5 h-1.5 rounded-full bg-slate-300 animate-bounce" style={{ animationDelay: '0ms' }} />
+                          <span className="w-1.5 h-1.5 rounded-full bg-slate-300 animate-bounce" style={{ animationDelay: '150ms' }} />
+                          <span className="w-1.5 h-1.5 rounded-full bg-slate-300 animate-bounce" style={{ animationDelay: '300ms' }} />
+                          <span className="ml-1">Caricamento messaggi precedenti</span>
+                        </div>
+                      </div>
+                    )}
+                    {hasMoreMessages && !isLoadingOlder && (
+                      <div className="flex justify-center py-2">
+                        <button onClick={loadOlderMessages} className="text-xs text-slate-400 hover:text-slate-600 underline">
+                          Carica messaggi precedenti
+                        </button>
+                      </div>
+                    )}
                     <div className="max-w-3xl mx-auto w-full space-y-3 md:space-y-6 min-h-full flex flex-col">
                     {messages.length === 0 ? (
-                      <div className="h-full flex flex-col items-center justify-center opacity-50">
-                        <Bot className="h-12 w-12 text-slate-300 mb-4" />
-                        <p className="text-slate-400 font-medium">Inizia una nuova conversazione</p>
-                      </div>
+                      (loadingConversations || loadingMessages) ? (
+                        /* Buffering skeleton while conversations load */
+                        <div className="h-full flex flex-col justify-end gap-4 pb-2 pointer-events-none select-none">
+                          {/* Fake assistant messages */}
+                          {[72, 52, 88, 44].map((w, i) => (
+                            <div key={i} className={`flex gap-3 ${i % 2 === 1 ? 'justify-end' : 'justify-start'}`}>
+                              {i % 2 === 0 && (
+                                <div className="w-8 h-8 rounded-full bg-slate-100 animate-pulse flex-shrink-0" />
+                              )}
+                              <div className={`flex flex-col gap-1.5 ${i % 2 === 1 ? 'items-end' : 'items-start'}`}>
+                                <div
+                                  className="h-9 rounded-2xl bg-slate-100 animate-pulse"
+                                  style={{ width: `${w * 3}px`, animationDelay: `${i * 120}ms` }}
+                                />
+                                <div
+                                  className="h-3 rounded bg-slate-100 animate-pulse"
+                                  style={{ width: `${w * 1.2}px`, animationDelay: `${i * 120 + 60}ms` }}
+                                />
+                              </div>
+                              {i % 2 === 1 && (
+                                <div className="w-8 h-8 rounded-full bg-slate-100 animate-pulse flex-shrink-0" />
+                              )}
+                            </div>
+                          ))}
+                          {/* Typing indicator */}
+                          <div className="flex gap-3 justify-start">
+                            <div className="w-8 h-8 rounded-full bg-slate-100 animate-pulse flex-shrink-0" />
+                            <div className="bg-slate-100 rounded-2xl rounded-tl-sm px-4 py-3 flex items-center gap-1.5">
+                              <span className="w-2 h-2 rounded-full bg-slate-300 animate-bounce" style={{ animationDelay: '0ms' }} />
+                              <span className="w-2 h-2 rounded-full bg-slate-300 animate-bounce" style={{ animationDelay: '150ms' }} />
+                              <span className="w-2 h-2 rounded-full bg-slate-300 animate-bounce" style={{ animationDelay: '300ms' }} />
+                            </div>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="h-full flex flex-col items-center justify-center opacity-50">
+                          <Bot className="h-12 w-12 text-slate-300 mb-4" />
+                          <p className="text-slate-400 font-medium">Inizia una nuova conversazione</p>
+                        </div>
+                      )
                     ) : (
                       messages.map((msg) => (
                         <div key={msg.id} className={`flex gap-4 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
@@ -2601,7 +1910,7 @@ REGOLE IMPORTANTI:
                           value={inputText}
                           onChange={(e) => setInputText(e.target.value)}
                           onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
-                          placeholder={hasActiveInterview ? 'Rispondi...' : isMobile ? 'Scrivi...' : 'Scrivi o trascina file qui...'}
+                          placeholder={isMobile ? 'Scrivi...' : 'Scrivi o trascina file qui...'}
                           className="flex-1 bg-transparent border-none focus:ring-0 focus:outline-none outline-none resize-none py-2 px-2 text-sm text-slate-800 placeholder:text-slate-400 max-h-32 min-h-[36px] leading-relaxed"
                           rows={1}
                           style={{ overflow: 'hidden' }}
@@ -2690,7 +1999,7 @@ REGOLE IMPORTANTI:
                     className="w-full text-left p-3 rounded-lg border border-slate-200 hover:border-red-400 hover:bg-red-50 transition-all flex items-center justify-between group"
                   >
                     <div>
-                      <div className="font-semibold text-sm group-hover:text-red-700">{session.name}</div>
+                      <div className="font-semibold text-sm group-hover:text-red-700">{session.title}</div>
                       <div className="text-xs text-slate-500">{session.class_name}</div>
                     </div>
                     <ChevronRight className="h-4 w-4 text-slate-300 group-hover:text-red-500" />
