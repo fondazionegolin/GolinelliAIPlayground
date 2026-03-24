@@ -92,11 +92,13 @@ export function FloatingHelper(_props: FloatingHelperProps = {}) {
 
   return (
     <>
-      {/* Floating button */}
+      {/* Floating button — orange glassy */}
       <button
         onClick={() => setOpen(v => !v)}
-        className={`fixed bottom-20 left-4 sm:bottom-5 sm:left-5 z-40 w-11 h-11 rounded-full shadow-lg flex items-center justify-center transition-all duration-200 hover:shadow-xl hover:scale-105 ${
-          open ? 'bg-slate-800 text-white' : 'bg-white border border-slate-200 text-slate-500 hover:text-slate-800'
+        className={`fixed bottom-20 left-4 sm:bottom-5 sm:left-5 z-40 w-11 h-11 rounded-full flex items-center justify-center transition-all duration-200 hover:scale-105 ${
+          open
+            ? 'bg-orange-500 text-white shadow-lg shadow-orange-200'
+            : 'bg-white/70 backdrop-blur-md border-2 border-orange-400 text-orange-500 shadow-md shadow-orange-100 hover:bg-orange-50/80'
         }`}
         title="Segnala un problema"
         aria-label="Apri feedback"

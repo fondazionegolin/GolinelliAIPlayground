@@ -9,7 +9,7 @@ import { useToast } from '@/components/ui/use-toast'
 import {
   Check, X, Clock, Key, Copy, UserPlus, Mail, Trash2,
   GraduationCap, Search, ChevronDown, ChevronUp,
-  Users, BookOpen, Euro, LogIn, Pencil,
+  Users, BookOpen, Euro, LogIn, Pencil, ShieldCheck,
   Upload, Tag, MessageSquare, Send, AlertCircle, CheckCircle2, Loader2,
 } from 'lucide-react'
 
@@ -148,6 +148,17 @@ export default function TeachersPage() {
     onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ['admin-teacher-status'] })
       toast({ title: 'Docente eliminato', description: res.data.message })
+    },
+    onError: (error: any) => {
+      toast({ variant: 'destructive', title: 'Errore', description: error.response?.data?.detail })
+    },
+  })
+
+  const promoteMutation = useMutation({
+    mutationFn: (userId: string) => adminApi.promoteToAdmin(userId),
+    onSuccess: (res) => {
+      queryClient.invalidateQueries({ queryKey: ['admin-teacher-status'] })
+      toast({ title: 'Ruolo aggiornato', description: res.data.message })
     },
     onError: (error: any) => {
       toast({ variant: 'destructive', title: 'Errore', description: error.response?.data?.detail })
@@ -836,6 +847,11 @@ export default function TeachersPage() {
                                 </span>
                                 <span className="text-[10px] text-slate-400">/</span>
                                 <span className="text-xs text-slate-500">{formatCurrency(teacher.monthly_cap)}</span>
+                                {teacher.period_cost > 0 && (
+                                  <span className="text-[10px] text-indigo-500 font-medium ml-1" title={`Spesa effettiva (${teacher.period_calls} chiamate)`}>
+                                    ({formatCurrency(teacher.period_cost)})
+                                  </span>
+                                )}
                                 <button
                                   className="ml-0.5 text-slate-300 hover:text-slate-600 transition-colors"
                                   onClick={() => {
@@ -880,6 +896,19 @@ export default function TeachersPage() {
                             >
                               <Key className="h-3.5 w-3.5 mr-1" />
                               <span className="hidden lg:inline">Reset PWD</span>
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-7 px-2 text-xs text-amber-600 hover:text-amber-800 hover:bg-amber-50"
+                              onClick={() => {
+                                if (confirm(`Promuovere ${teacher.email} ad amministratore? Non sarà più un docente.`))
+                                  promoteMutation.mutate(teacher.id)
+                              }}
+                              disabled={promoteMutation.isPending}
+                              title="Promuovi ad amministratore"
+                            >
+                              <ShieldCheck className="h-3.5 w-3.5" />
                             </Button>
                             <Button
                               size="sm"

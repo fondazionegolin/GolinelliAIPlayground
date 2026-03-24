@@ -7,7 +7,7 @@ from uuid import UUID
 import secrets
 
 from app.core.database import get_db
-from app.core.security import get_password_hash
+from app.core.security import get_password_hash, verify_password
 from app.core.config import settings
 from app.core.url_utils import resolve_frontend_url
 from app.api.deps import get_current_admin
@@ -409,6 +409,56 @@ async def reactivate_user(
     user.deactivated_by_admin_id = None
     await db.commit()
     return {"message": f"User {user.email} reactivated successfully"}
+
+
+@router.post("/change-password")
+async def admin_change_password(
+    body: dict,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    admin: Annotated[User, Depends(get_current_admin)],
+):
+    """Admin changes their own password (requires current password)."""
+    current_password = body.get("current_password", "")
+    new_password = body.get("new_password", "")
+
+    if not current_password or not new_password:
+        raise HTTPException(status_code=400, detail="Entrambe le password sono obbligatorie")
+    if len(new_password) < 8:
+        raise HTTPException(status_code=400, detail="La nuova password deve avere almeno 8 caratteri")
+
+    result = await db.execute(select(User).where(User.id == admin.id))
+    user = result.scalar_one()
+
+    if not verify_password(current_password, user.password_hash):
+        raise HTTPException(status_code=400, detail="Password attuale non corretta")
+
+    user.password_hash = get_password_hash(new_password)
+    await db.commit()
+    return {"message": "Password aggiornata con successo"}
+
+
+@router.post("/users/{user_id}/promote-admin")
+async def promote_to_admin(
+    user_id: UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    admin: Annotated[User, Depends(get_current_admin)],
+):
+    """Promote a teacher to admin role."""
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="Utente non trovato")
+    if user.id == admin.id:
+        raise HTTPException(status_code=400, detail="Non puoi modificare il tuo stesso ruolo")
+    if user.role == UserRole.ADMIN:
+        raise HTTPException(status_code=400, detail="L'utente è già amministratore")
+    if user.role != UserRole.TEACHER:
+        raise HTTPException(status_code=400, detail="Solo i docenti possono essere promossi ad amministratore")
+
+    user.role = UserRole.ADMIN
+    user.is_verified = True
+    await db.commit()
+    return {"message": f"{user.email} è ora amministratore"}
 
 
 @router.get("/users", response_model=list[dict])

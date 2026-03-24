@@ -58,8 +58,9 @@ export function StudentNavbar({
     '--student-accent-soft-strong': accentTheme.softStrong,
     '--student-accent-border': accentTheme.border,
     '--student-accent-text': accentTheme.text,
-    backgroundColor: accentTheme.soft,
-    borderBottomColor: accentTheme.border,
+    backgroundColor: accentTheme.softMid,
+    borderBottomColor: accentTheme.softStrong,
+    borderBottomWidth: '2px',
   } as CSSProperties
 
   // Load profile from API

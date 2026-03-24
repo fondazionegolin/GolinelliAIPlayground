@@ -120,6 +120,10 @@ export const adminApi = {
   setTeacherCreditLimit: (teacherId: string, amountCap: number) =>
     api.put(`/admin/teachers/${teacherId}/credit-limit`, { amount_cap: amountCap }),
   getAdminClasses: () => api.get('/admin/classes'),
+  changePassword: (currentPassword: string, newPassword: string) =>
+    api.post('/admin/change-password', { current_password: currentPassword, new_password: newPassword }),
+  promoteToAdmin: (userId: string) =>
+    api.post(`/admin/users/${userId}/promote-admin`),
 }
 
 export const teacherApi = {

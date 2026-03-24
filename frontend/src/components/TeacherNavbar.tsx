@@ -65,8 +65,9 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
     '--teacher-accent-soft': accentTheme.soft,
     '--teacher-accent-soft-strong': accentTheme.softStrong,
     '--teacher-accent-border': accentTheme.border,
-    backgroundColor: accentTheme.soft,
-    borderBottomColor: accentTheme.border,
+    backgroundColor: accentTheme.softMid,
+    borderBottomColor: accentTheme.softStrong,
+    borderBottomWidth: '2px',
   } as CSSProperties
 
   // Global notifications state
