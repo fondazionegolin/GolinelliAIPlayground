@@ -365,10 +365,11 @@ export default function TeacherSupportChat() {
           const sessionsRes = await teacherApi.getSessions(cls.id)
           const sessions = sessionsRes.data || []
           sessions.forEach((s: any) => {
-            allSessions.push({ 
-              id: s.id, 
-              title: s.title || s.name || 'Sessione senza titolo', 
+            allSessions.push({
+              id: s.id,
+              title: s.title || s.name || 'Sessione senza titolo',
               class_name: cls.name,
+              class_join_code: cls.join_code || null,
               status: s.status || 'attiva'
             })
           })
@@ -695,7 +696,8 @@ export default function TeacherSupportChat() {
           content,
           history: history.map(m => ({ role: m.role, content: m.content })),
           provider: 'anthropic',
-          model: 'claude-haiku-4-5-20251001'
+          model: 'claude-haiku-4-5-20251001',
+          agent_mode: agentMode,
         })
       })
 
@@ -1907,7 +1909,12 @@ REGOLE IMPORTANTI:
                   >
                     <div>
                       <div className="font-semibold text-sm group-hover:text-red-700">{session.title}</div>
-                      <div className="text-xs text-slate-500">{session.class_name}</div>
+                      <div className="text-xs text-slate-500">
+                        {session.class_name}
+                        {session.class_join_code && (
+                          <span className="ml-2 font-mono font-semibold text-slate-400">#{session.class_join_code}</span>
+                        )}
+                      </div>
                     </div>
                     <ChevronRight className="h-4 w-4 text-slate-300 group-hover:text-red-500" />
                   </button>

@@ -441,6 +441,8 @@ export const teacherbotsApi = {
     api.delete(`/teacherbots/${id}/publications/${publicationId}`),
   getReports: (id: string) =>
     api.get(`/teacherbots/${id}/reports`),
+  getTeacherConversationMessages: (teacherbotId: string, conversationId: string) =>
+    api.get(`/teacherbots/${teacherbotId}/conversations/${conversationId}/messages`),
 
   // Student endpoints
   listAvailable: () => api.get('/student/teacherbots'),

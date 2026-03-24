@@ -1390,6 +1390,7 @@ async def teacher_chat_stream(
     history = request.get("history", [])
     provider = request.get("provider", "openai")
     model = request.get("model", "gpt-5-mini")
+    agent_mode = request.get("agent_mode", "default")
 
     if not content:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Content required")
@@ -1416,7 +1417,15 @@ async def teacher_chat_stream(
         )
 
         try:
-            # Step 1: Classify intent
+            # If mode is "default" (chat), skip intent recognition entirely — always text response
+            if agent_mode == "default":
+                yield f"data: {json.dumps({'type': 'status', 'message': '💬 Elaborazione risposta...'})}\n\n"
+                context, _ = await load_teacher_context(db, teacher)
+                result = await generate_with_analytics(messages, context, provider, model)
+                yield f"data: {json.dumps({'type': 'done', 'content': result})}\n\n"
+                return
+
+            # Step 1: Classify intent (only for non-default modes)
             yield f"data: {json.dumps({'type': 'status', 'message': '🧠 Analisi della richiesta...'})}\n\n"
 
             intent_result = await classify_intent(content, history)

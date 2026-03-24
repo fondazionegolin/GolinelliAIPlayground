@@ -551,7 +551,7 @@ async def get_teacherbot_reports(
     if not bot:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Teacherbot not found")
 
-    # Get conversations with reports
+    # Get all conversations (with or without generated reports)
     result = await db.execute(
         select(
             TeacherbotConversation, SessionStudent, Session,
@@ -561,9 +561,8 @@ async def get_teacherbot_reports(
         .join(Session, TeacherbotConversation.session_id == Session.id)
         .outerjoin(TeacherbotMessage, TeacherbotMessage.conversation_id == TeacherbotConversation.id)
         .where(TeacherbotConversation.teacherbot_id == teacherbot_id)
-        .where(TeacherbotConversation.report_json.isnot(None))
         .group_by(TeacherbotConversation.id, SessionStudent.id, Session.id)
-        .order_by(TeacherbotConversation.report_generated_at.desc())
+        .order_by(TeacherbotConversation.created_at.desc())
         .limit(limit)
     )
     rows = result.all()
@@ -590,6 +589,51 @@ async def get_teacherbot_reports(
         ))
 
     return reports
+
+
+@router.get("/teacherbots/{teacherbot_id}/conversations/{conversation_id}/messages")
+async def get_teacherbot_conversation_messages_teacher(
+    teacherbot_id: UUID,
+    conversation_id: UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    teacher: Annotated[User, Depends(get_current_teacher)],
+):
+    """Get messages for a specific teacherbot conversation (teacher view)"""
+    # Verify ownership of the teacherbot
+    result = await db.execute(
+        select(Teacherbot)
+        .where(Teacherbot.id == teacherbot_id)
+        .where(Teacherbot.teacher_id == teacher.id)
+    )
+    bot = result.scalar_one_or_none()
+    if not bot:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Teacherbot not found")
+
+    # Verify conversation belongs to this teacherbot
+    result = await db.execute(
+        select(TeacherbotConversation)
+        .where(TeacherbotConversation.id == conversation_id)
+        .where(TeacherbotConversation.teacherbot_id == teacherbot_id)
+    )
+    conv = result.scalar_one_or_none()
+    if not conv:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found")
+
+    result = await db.execute(
+        select(TeacherbotMessage)
+        .where(TeacherbotMessage.conversation_id == conversation_id)
+        .order_by(TeacherbotMessage.created_at.asc())
+    )
+    messages = result.scalars().all()
+    return [
+        {
+            "id": str(m.id),
+            "role": m.role,
+            "content": m.content,
+            "created_at": m.created_at.isoformat(),
+        }
+        for m in messages
+    ]
 
 
 # ==================== STUDENT ENDPOINTS ====================
