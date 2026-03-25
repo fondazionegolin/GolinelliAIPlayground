@@ -7,7 +7,10 @@ Provides:
 - FastAPI app with overridden get_db dependency
 - Authenticated httpx clients for teacher, student, admin
 - Seed data fixtures (tenant, teacher, class, session, student)
+- Resource profiling (--profile, --profile-docker)
 """
+
+pytest_plugins = ["tests.profiling.conftest"]
 
 import asyncio
 import uuid
