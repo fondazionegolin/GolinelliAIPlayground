@@ -14,6 +14,7 @@ from app.models.document_draft import DocumentDraft
 from app.models.session_canvas import SessionCanvas
 from app.models.template_version import TenantTemplateVersion
 from app.models.alert import ContentAlert
+from app.models.credits import CreditLimit, CreditTransaction, CreditRequest
 
 __all__ = [
     "Tenant",
@@ -60,4 +61,7 @@ __all__ = [
     "SessionCanvas",
     "TenantTemplateVersion",
     "ContentAlert",
+    "CreditLimit",
+    "CreditTransaction",
+    "CreditRequest",
 ]

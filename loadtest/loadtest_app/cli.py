@@ -148,6 +148,15 @@ async def orchestrate() -> int:
         f"[bold]Risultato:[/bold] completati={final['completed']} falliti={final['failed']} "
         f"su pianificati={final['planned']}"
     )
+
+    # Export metrics snapshot for unified reporting
+    try:
+        from .report_export import export_snapshot
+        path = export_snapshot(final, output_dir="reports")
+        console.print(f"[dim]Metrics exported to {path}[/dim]")
+    except Exception as e:
+        console.print(f"[dim]Metrics export skipped: {e}[/dim]")
+
     return 0 if final["failed"] == 0 else 1
 
 

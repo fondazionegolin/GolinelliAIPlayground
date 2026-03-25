@@ -30,6 +30,7 @@ Thumbs.db
 # Logs
 *.log
 logs/
+/benchmark/
 
 # Docker
 *.tar
@@ -46,3 +47,6 @@ venv/
 htmlcov/
 .env
 .env
+
+# Test reports
+reports/
