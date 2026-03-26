@@ -14,14 +14,14 @@ export function getAppBackgroundGradient(theme: Theme) {
   // Interfaccia "Ethereal Mesh" - Gradienti pastello con shading più evidente
   // Alternanza di punti luce quasi bianchi e zone più profonde in tono
   // Usiamo opacità regolate per non scurire troppo con gli accenti slate/black
-  const accentOpacityFactor = (theme.id === 'black' || theme.id === 'slate') ? 0.6 : 1;
+  const accentOpacityFactor = theme.id === 'black' ? 0.4 : 1;
 
-  // 4 corner gradients + white center — reduced from 9 for GPU performance
+  // 4 corner gradients — very soft pastel tints, white-based center
   return [
-    `radial-gradient(at 0% 0%, ${hexToRgba(theme.accent, 0.14 * accentOpacityFactor)} 0px, transparent 55%)`,
-    `radial-gradient(at 100% 0%, ${hexToRgba(theme.accent, 0.10 * accentOpacityFactor)} 0px, transparent 55%)`,
-    `radial-gradient(at 100% 100%, ${hexToRgba(theme.accent, 0.16 * accentOpacityFactor)} 0px, transparent 65%)`,
-    `radial-gradient(at 0% 100%, ${hexToRgba(theme.accent, 0.12 * accentOpacityFactor)} 0px, transparent 60%)`,
+    `radial-gradient(at 0% 0%, ${hexToRgba(theme.accent, 0.08 * accentOpacityFactor)} 0px, transparent 60%)`,
+    `radial-gradient(at 100% 0%, ${hexToRgba(theme.accent, 0.06 * accentOpacityFactor)} 0px, transparent 60%)`,
+    `radial-gradient(at 100% 100%, ${hexToRgba(theme.accent, 0.09 * accentOpacityFactor)} 0px, transparent 65%)`,
+    `radial-gradient(at 0% 100%, ${hexToRgba(theme.accent, 0.07 * accentOpacityFactor)} 0px, transparent 65%)`,
     theme.soft,
   ].join(', ')
 }

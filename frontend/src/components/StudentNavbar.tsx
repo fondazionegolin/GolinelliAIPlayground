@@ -58,7 +58,9 @@ export function StudentNavbar({
     '--student-accent-soft-strong': accentTheme.softStrong,
     '--student-accent-border': accentTheme.border,
     '--student-accent-text': accentTheme.text,
-    backgroundColor: accentTheme.softMid,
+    backgroundColor: 'rgba(255, 255, 255, 0.88)',
+    backdropFilter: 'blur(14px)',
+    WebkitBackdropFilter: 'blur(14px)',
     borderBottomColor: accentTheme.softStrong,
     borderBottomWidth: '2px',
   } as CSSProperties
@@ -175,17 +177,21 @@ export function StudentNavbar({
             {/* Desktop Navigation */}
             {onNavigate && (
               <div className="hidden md:flex items-center gap-0.5 h-10 bg-white p-0.5 rounded-2xl border border-slate-200 shadow-sm">
-                {navItems.map((item) => (
-                  <NavTab
-                    key={item.label}
-                    icon={item.icon}
-                    label={item.label}
-                    isActive={activeModule === item.key}
-                    onClick={() => onNavigate(item.key)}
-                    accentClass="bg-[var(--student-accent)]"
-                    accentTextClass="text-white"
-                  />
-                ))}
+                {(() => {
+                  const activeIdx = navItems.findIndex(item => activeModule === item.key)
+                  return navItems.map((item, idx) => (
+                    <NavTab
+                      key={item.label}
+                      icon={item.icon}
+                      label={item.label}
+                      isActive={activeModule === item.key}
+                      isAdjacent={Math.abs(idx - activeIdx) === 1}
+                      onClick={() => onNavigate(item.key)}
+                      accentClass="bg-[var(--student-accent)]"
+                      accentTextClass="text-white"
+                    />
+                  ))
+                })()}
               </div>
             )}
 
@@ -440,7 +446,7 @@ function SettingsModal({ profile, accent, onSave, onClose }: SettingsModalProps)
 
           <div>
             <label className="block text-xs font-semibold text-slate-500 uppercase mb-2">Colore Accento</label>
-            <div className="grid grid-cols-5 gap-2">
+            <div className="grid grid-cols-4 gap-2">
               {(Object.values(STUDENT_ACCENTS)).map((accentOption) => {
                 const isSelected = selectedAccent === accentOption.id
                 return (

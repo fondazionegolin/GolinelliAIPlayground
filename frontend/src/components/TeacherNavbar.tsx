@@ -65,7 +65,9 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
     '--teacher-accent-soft': accentTheme.soft,
     '--teacher-accent-soft-strong': accentTheme.softStrong,
     '--teacher-accent-border': accentTheme.border,
-    backgroundColor: accentTheme.softMid,
+    backgroundColor: 'rgba(255, 255, 255, 0.88)',
+    backdropFilter: 'blur(14px)',
+    WebkitBackdropFilter: 'blur(14px)',
     borderBottomColor: accentTheme.softStrong,
     borderBottomWidth: '2px',
   } as CSSProperties
@@ -313,17 +315,21 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
             </div>
 
             <div className="hidden md:flex items-center gap-0.5 h-10 bg-white p-0.5 rounded-2xl border border-slate-200 shadow-sm">
-              {navItems.map((item) => (
-                <Link key={item.path} to={item.path}>
-                  <NavTab
-                    icon={item.icon}
-                    label={item.label}
-                    isActive={isActive(item.path)}
-                    accentClass="bg-[var(--teacher-accent)]"
-                    accentTextClass="text-white"
-                  />
-                </Link>
-              ))}
+              {(() => {
+                const activeIdx = navItems.findIndex(item => isActive(item.path))
+                return navItems.map((item, idx) => (
+                  <Link key={item.path} to={item.path}>
+                    <NavTab
+                      icon={item.icon}
+                      label={item.label}
+                      isActive={isActive(item.path)}
+                      isAdjacent={Math.abs(idx - activeIdx) === 1}
+                      accentClass="bg-[var(--teacher-accent)]"
+                      accentTextClass="text-white"
+                    />
+                  </Link>
+                ))
+              })()}
             </div>
 
             <div className="flex items-center gap-3">
@@ -671,7 +677,7 @@ function SettingsModal({ profile, onSave, onClose }: SettingsModalProps) {
 
           <div>
             <label className="block text-xs font-semibold text-slate-500 uppercase mb-2">{t('navbar.accent_color')}</label>
-            <div className="grid grid-cols-5 gap-2">
+            <div className="grid grid-cols-4 gap-2">
               {(Object.values(TEACHER_ACCENTS)).map((accentOption) => {
                 const isSelected = formData.uiAccent === accentOption.id
                 return (

@@ -8,6 +8,7 @@ from pathlib import Path
 from app.core.config import settings
 from app.api.v1.router import api_router
 from app.realtime.gateway import socket_app
+from app.services.storage_service import storage_service
 
 # Prometheus metrics
 REQUEST_COUNT = Counter(
@@ -25,6 +26,7 @@ REQUEST_DURATION = Histogram(
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
+    await storage_service.ensure_bucket()
     yield
     # Shutdown
 

@@ -8,6 +8,7 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
 import rehypeKatex from 'rehype-katex'
+import { markdownCodeComponents } from '@/components/CodeBlock'
 
 interface Message {
   id: string
@@ -375,19 +376,7 @@ const MessageBubble = memo(function MessageBubble({
               rehypePlugins={[rehypeKatex]}
               components={{
                 p: ({ children }) => <p className="mb-2 last:mb-0 text-sm">{children}</p>,
-                code: ({ className, children, ...props }) => {
-                  const isInline = !className
-                  return isInline ? (
-                    <code className="bg-slate-100 px-1.5 py-0.5 rounded text-sky-600 text-xs font-mono" {...props}>
-                      {children}
-                    </code>
-                  ) : (
-                    <code className="block bg-slate-900 text-slate-100 p-3 rounded-lg text-xs font-mono overflow-x-auto my-2" {...props}>
-                      {children}
-                    </code>
-                  )
-                },
-                pre: ({ children }) => <>{children}</>,
+                ...markdownCodeComponents(),
                 ul: ({ children }) => <ul className="list-disc pl-4 mb-2 space-y-1">{children}</ul>,
                 ol: ({ children }) => <ol className="list-decimal pl-4 mb-2 space-y-1">{children}</ol>,
                 li: ({ children }) => <li className="text-sm">{children}</li>,

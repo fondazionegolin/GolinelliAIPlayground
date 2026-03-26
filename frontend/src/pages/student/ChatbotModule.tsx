@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
 import { llmApi, studentApi, teacherbotsApi } from '@/lib/api'
+import DataFileCard, { type DataFilePreview } from '@/components/DataFileCard'
 import { Button } from '@/components/ui/button'
 import {
   Send, Bot, User, GraduationCap,
@@ -14,13 +15,14 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
 import rehypeKatex from 'rehype-katex'
+import { markdownCodeComponents } from '@/components/CodeBlock'
 import 'katex/dist/katex.min.css'
 import { useMobile } from '@/hooks/useMobile'
 import { triggerHaptic } from '@/lib/haptics'
 import ChatConversationList from '@/components/student/ChatConversationList'
 import ChatConversationView from '@/components/student/ChatConversationView'
 import { VoiceRecorder } from '@/components/VoiceRecorder'
-import { DEFAULT_STUDENT_ACCENT, getStudentAccentTheme, loadStudentAccent } from '@/lib/studentAccent'
+import { DEFAULT_STUDENT_ACCENT, getStudentAccentTheme, loadStudentAccent, type StudentAccentId } from '@/lib/studentAccent'
 
 interface Message {
   id: string
@@ -75,6 +77,7 @@ interface ChatbotModuleProps {
   initialTeacherbotId?: string | null
   onInputFocusChange?: (focused: boolean) => void
   isTeacherPreview?: boolean
+  studentAccent?: StudentAccentId
 }
 
 const PROFILE_ICONS: Record<string, React.ReactNode> = {
@@ -180,13 +183,14 @@ interface Teacherbot {
 interface AttachedFile {
   file: globalThis.File
   preview?: string
-  type: 'image' | 'document'
+  type: 'image' | 'document' | 'data'
+  dataPreview?: DataFilePreview
 }
 
 // Mobile navigation state
 type MobileViewState = 'profiles' | 'conversations' | 'chat'
 
-export default function ChatbotModule({ sessionId, studentId, initialTeacherbotId, onInputFocusChange, isTeacherPreview }: ChatbotModuleProps) {
+export default function ChatbotModule({ sessionId, studentId, initialTeacherbotId, onInputFocusChange, isTeacherPreview, studentAccent: accentProp }: ChatbotModuleProps) {
   const { t } = useTranslation()
   const FALLBACK_PROFILES = getFallbackProfiles(t)
   const PROFILE_INTERVIEWS = getProfileInterviews(t)
@@ -219,17 +223,23 @@ export default function ChatbotModule({ sessionId, studentId, initialTeacherbotI
   const [activeMasterPrompt, setActiveMasterPrompt] = useState<string | null>(null)
   const [isMasterPromptApplied, setIsMasterPromptApplied] = useState(false)
   const [defaultModelKey, setDefaultModelKey] = useState(localStorage.getItem('student_default_model') || '')
+  const [isStreaming, setIsStreaming] = useState(false)
+  const [streamingStatus, setStreamingStatus] = useState<string | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const modelMenuRef = useRef<HTMLDivElement>(null)
   const isGeneratingRef = useRef(false)
   const inputRef = useRef<HTMLInputElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [isInputFocused, setIsInputFocused] = useState(false)
-  const [studentAccent, setStudentAccent] = useState(DEFAULT_STUDENT_ACCENT)
+  const [studentAccent, setStudentAccent] = useState<StudentAccentId>(accentProp || DEFAULT_STUDENT_ACCENT)
 
   useEffect(() => {
-    setStudentAccent(loadStudentAccent())
-  }, [])
+    if (accentProp) {
+      setStudentAccent(accentProp)
+    } else {
+      setStudentAccent(loadStudentAccent())
+    }
+  }, [accentProp])
 
   const accentTheme = useMemo(() => getStudentAccentTheme(studentAccent), [studentAccent])
   const accentVars = useMemo(() => ({
@@ -506,12 +516,122 @@ export default function ChatbotModule({ sessionId, studentId, initialTeacherbotI
     })
   }, [profilesData])
 
+  const addFileWithPreview = async (file: globalThis.File) => {
+    const isImage = file.type.startsWith('image/')
+    const isData = /\.(xlsx|xls|csv|json)$/i.test(file.name) ||
+      file.type.includes('spreadsheet') || file.type.includes('excel') ||
+      file.type === 'text/csv' || file.type === 'application/json'
+
+    if (isImage) {
+      const reader = new FileReader()
+      reader.onload = (ev) => {
+        setAttachedFiles(prev => [...prev, { file, type: 'image', preview: ev.target?.result as string }])
+      }
+      reader.readAsDataURL(file)
+      return
+    }
+
+    if (isData) {
+      // Add immediately as data type, then enrich with preview
+      const attached: AttachedFile = { file, type: 'data' }
+      setAttachedFiles(prev => [...prev, attached])
+      try {
+        const res = await llmApi.filePreview(file)
+        const preview: DataFilePreview = res.data
+        setAttachedFiles(prev =>
+          prev.map(af => af.file === file ? { ...af, dataPreview: preview } : af)
+        )
+      } catch {
+        // preview fetch failed — still keep the file
+      }
+      return
+    }
+
+    setAttachedFiles(prev => [...prev, { file, type: 'document' }])
+  }
+
+  const handleInputPaste = (e: React.ClipboardEvent) => {
+    const fileItems = Array.from(e.clipboardData.items).filter(item => item.kind === 'file')
+    if (fileItems.length === 0) return
+    e.preventDefault()
+    fileItems.forEach(item => {
+      const file = item.getAsFile()
+      if (!file) return
+      addFileWithPreview(file)
+    })
+  }
+
   const typewriterEffect = (fullContent: string, messageId: string) => {
     isGeneratingRef.current = false
     setMessages(prev => prev.map(m =>
       m.id === messageId ? { ...m, content: fullContent } : m
     ))
   }
+
+  const runStudentStreamRequest = useCallback(async (convId: string, content: string) => {
+    const studentToken = localStorage.getItem('student_token')
+    setIsStreaming(true)
+    const assistantId = `stream-${Date.now()}`
+    setMessages(prev => [...prev, { id: assistantId, role: 'assistant' as const, content: '', timestamp: new Date() }])
+
+    try {
+      const response = await fetch(llmApi.sendMessageStreamUrl(convId), {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(studentToken ? { 'student-token': studentToken } : {}),
+        },
+        credentials: 'include',
+        body: JSON.stringify({ content }),
+      })
+
+      if (!response.ok) throw new Error('Stream request failed')
+
+      const reader = response.body?.getReader()
+      const decoder = new TextDecoder()
+
+      if (reader) {
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+          const raw = decoder.decode(value)
+          for (const line of raw.split('\n')) {
+            if (!line.startsWith('data: ')) continue
+            let data: any
+            try { data = JSON.parse(line.slice(6)) } catch { continue }
+
+            if (data.type === 'chunk') {
+              setMessages(prev => prev.map(m =>
+                m.id === assistantId ? { ...m, content: m.content + data.content } : m
+              ))
+            } else if (data.type === 'status') {
+              setStreamingStatus(data.message)
+            } else if (data.type === 'done') {
+              if (data.content) {
+                setMessages(prev => prev.map(m =>
+                  m.id === assistantId ? { ...m, content: data.content } : m
+                ))
+              }
+            } else if (data.type === 'error') {
+              throw new Error(data.message || 'Errore stream')
+            }
+          }
+        }
+      }
+    } catch (err) {
+      console.error('Student stream error:', err)
+      setMessages(prev => prev.map(m =>
+        m.id === assistantId
+          ? { ...m, content: `Mi dispiace, si è verificato un errore durante la generazione della risposta.` }
+          : m
+      ))
+    } finally {
+      setIsStreaming(false)
+      setStreamingStatus(null)
+      refetchConversations()
+      setTimeout(() => inputRef.current?.focus(), 0)
+    }
+  }, [refetchConversations, inputRef])
 
   const currentProfile = profiles.find(p => p.key === selectedProfile)
   const buildMasterPrompt = useCallback((profileKey: ProactiveProfileKey, answers: Record<string, string>) => {
@@ -680,7 +800,7 @@ export default function ChatbotModule({ sessionId, studentId, initialTeacherbotI
     const messageContent = content ?? input
     const messageFiles = files ?? attachedFiles.map(af => af.file)
 
-    if ((!messageContent.trim() && messageFiles.length === 0) || sendMessageMutation.isPending) return
+    if ((!messageContent.trim() && messageFiles.length === 0) || sendMessageMutation.isPending || isStreaming) return
 
     if (profileInterview.active && profileInterview.profileKey) {
       const steps = PROFILE_INTERVIEWS[profileInterview.profileKey]
@@ -756,13 +876,21 @@ export default function ChatbotModule({ sessionId, studentId, initialTeacherbotI
       timestamp: new Date(),
     }
     setMessages((prev) => [...prev, userMessage])
+    setInput('')
+    setAttachedFiles([])
+
+    // Text-only standard profile mode → use streaming endpoint for typewriter + web search feedback
+    if (!selectedTeacherbot && !isTeacherPreview && messageFiles.length === 0 && conversationId) {
+      runStudentStreamRequest(conversationId, contentForApi)
+      return
+    }
+
+    // All other cases: teacherbot, files, teacher preview, or no convId yet
     sendMessageMutation.mutate({
       content: contentForApi,
       files: messageFiles,
       existingHistory: !conversationId && messages.length > 0 ? messages : undefined
     })
-    setInput('')
-    setAttachedFiles([])
   }, [
     input,
     attachedFiles,
@@ -774,6 +902,9 @@ export default function ChatbotModule({ sessionId, studentId, initialTeacherbotI
     selectedTeacherbot,
     activeMasterPrompt,
     isMasterPromptApplied,
+    isStreaming,
+    isTeacherPreview,
+    runStudentStreamRequest,
   ])
 
   const handleNewChat = useCallback(async () => {
@@ -1128,7 +1259,7 @@ export default function ChatbotModule({ sessionId, studentId, initialTeacherbotI
           triggerHaptic('light')
           setMobileView('conversations')
         }}
-        isLoading={sendMessageMutation.isPending}
+        isLoading={sendMessageMutation.isPending || isStreaming}
         suggestedPrompts={[]}
         isTeacherbot={true}
       />
@@ -1149,7 +1280,7 @@ export default function ChatbotModule({ sessionId, studentId, initialTeacherbotI
           triggerHaptic('light')
           setMobileView('conversations')
         }}
-        isLoading={sendMessageMutation.isPending}
+        isLoading={sendMessageMutation.isPending || isStreaming}
         suggestedPrompts={currentProfile?.suggested_prompts}
       />
     )
@@ -1429,21 +1560,7 @@ export default function ChatbotModule({ sessionId, studentId, initialTeacherbotI
                 const fileObj = new globalThis.File([blob], data.filename || 'file', {
                   type: data.mime_type || blob.type || 'application/octet-stream'
                 })
-                const isImage = fileObj.type.startsWith('image/')
-                const attached: AttachedFile = {
-                  file: fileObj,
-                  type: isImage ? 'image' : 'document',
-                }
-                if (isImage) {
-                  const reader = new FileReader()
-                  reader.onload = (ev) => {
-                    attached.preview = ev.target?.result as string
-                    setAttachedFiles(prev => [...prev, attached])
-                  }
-                  reader.readAsDataURL(fileObj)
-                } else {
-                  setAttachedFiles(prev => [...prev, attached])
-                }
+                addFileWithPreview(fileObj)
               }
               if (fileUrl.includes('/api/v1/files/') && fileUrl.endsWith('/download-url')) {
                 fetch(fileUrl)
@@ -1492,28 +1609,12 @@ export default function ChatbotModule({ sessionId, studentId, initialTeacherbotI
               name: `dataset_${Date.now()}.csv`,
               lastModified: Date.now()
             }) as File
-            setAttachedFiles(prev => [...prev, { file: fileObj, type: 'document' as const }])
+            addFileWithPreview(fileObj as globalThis.File)
             return
           }
 
           const files = Array.from(e.dataTransfer.files)
-          files.forEach(file => {
-            const isImage = (file as File).type.startsWith('image/')
-            const attached: AttachedFile = {
-              file: file as File,
-              type: isImage ? 'image' : 'document',
-            }
-            if (isImage) {
-              const reader = new FileReader()
-              reader.onload = (ev) => {
-                attached.preview = ev.target?.result as string
-                setAttachedFiles(prev => [...prev, attached])
-              }
-              reader.readAsDataURL(file as File)
-            } else {
-              setAttachedFiles(prev => [...prev, attached])
-            }
-          })
+          files.forEach(file => addFileWithPreview(file as globalThis.File))
         }}
       >
         {/* Desktop Header */}
@@ -1760,7 +1861,7 @@ export default function ChatbotModule({ sessionId, studentId, initialTeacherbotI
               </div>
             ))
           )}
-          {sendMessageMutation.isPending && (
+          {(sendMessageMutation.isPending && !isStreaming) && (
             <div className="flex gap-3">
               <div className={`w-9 h-9 rounded-xl flex items-center justify-center shadow-md ${selectedTeacherbot ? getTeacherbotColorClass(selectedTeacherbot.color) : ''}`} style={selectedTeacherbot ? undefined : selectedSolidStyle}>
                 {selectedTeacherbot ? (
@@ -1783,6 +1884,16 @@ export default function ChatbotModule({ sessionId, studentId, initialTeacherbotI
               </div>
             </div>
           )}
+          {streamingStatus && (
+            <div className="flex gap-3">
+              <div className={`w-9 h-9 rounded-xl flex items-center justify-center shadow-md`} style={selectedSolidStyle}>
+                <Loader2 className="h-4 w-4 text-white animate-spin" />
+              </div>
+              <div className={`${chatBgIsDark ? 'bg-white/10 border border-white/15' : 'bg-white border border-slate-100'} shadow-sm rounded-2xl rounded-bl-md px-3 py-2`}>
+                <span className={`text-xs ${chatBgIsDark ? 'text-white/70' : 'text-slate-400'}`}>{streamingStatus}</span>
+              </div>
+            </div>
+          )}
           <div className="h-16 md:hidden" />
           <div ref={messagesEndRef} />
         </div>
@@ -1795,6 +1906,16 @@ export default function ChatbotModule({ sessionId, studentId, initialTeacherbotI
                 <div key={idx} className="relative group">
                   {af.type === 'image' && af.preview ? (
                     <img src={af.preview} alt="Preview" className="w-10 h-10 md:w-16 md:h-16 object-cover rounded-lg border" />
+                  ) : af.type === 'data' ? (
+                    <div className="w-full max-w-xs md:max-w-sm">
+                      {af.dataPreview
+                        ? <DataFileCard preview={af.dataPreview} compact />
+                        : <div className="flex items-center gap-2 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2 text-xs text-emerald-700">
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                            <span className="truncate">{af.file.name}</span>
+                          </div>
+                      }
+                    </div>
                   ) : (
                     <div className="w-10 h-10 md:w-16 md:h-16 bg-slate-100 rounded-lg border flex items-center justify-center">
                       <File className="h-4 w-4 md:h-6 md:w-6 text-slate-400" />
@@ -1802,12 +1923,30 @@ export default function ChatbotModule({ sessionId, studentId, initialTeacherbotI
                   )}
                   <button
                     onClick={() => setAttachedFiles(prev => prev.filter((_, i) => i !== idx))}
-                    className="absolute -top-1 -right-1 w-4 h-4 md:w-5 md:h-5 bg-red-500 text-white rounded-full flex items-center justify-center"
+                    className="absolute -top-1 -right-1 w-4 h-4 md:w-5 md:h-5 bg-red-500 text-white rounded-full flex items-center justify-center z-10"
                   >
                     <X className="h-2 w-2 md:h-3 md:w-3" />
                   </button>
                 </div>
               ))}
+            </div>
+          )}
+          {/* Suggested prompts from data files */}
+          {attachedFiles.some(af => af.type === 'data' && af.dataPreview?.suggested_prompts?.length) && (
+            <div className="flex gap-1 mb-1 flex-wrap px-2">
+              {attachedFiles
+                .filter(af => af.type === 'data' && af.dataPreview?.suggested_prompts?.length)
+                .flatMap(af => af.dataPreview!.suggested_prompts!.slice(0, 3))
+                .slice(0, 4)
+                .map((prompt, i) => (
+                  <button
+                    key={i}
+                    onClick={() => setInput(prompt)}
+                    className="text-xs bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-full px-2.5 py-1 transition-colors"
+                  >
+                    {prompt}
+                  </button>
+                ))}
             </div>
           )}
 
@@ -1816,24 +1955,13 @@ export default function ChatbotModule({ sessionId, studentId, initialTeacherbotI
               className="relative flex items-end gap-2 bg-white border-2 rounded-[2rem] p-1.5 pl-3 transition-all shadow-sm"
               style={{ borderColor: accentTheme.border, boxShadow: `0 0 0 0 ${accentTheme.accent}` }}
             >
-              <input type="file" ref={fileInputRef} className="hidden" multiple onChange={(e) => {
-                const files = Array.from(e.target.files || [])
-                files.forEach(file => {
-                  const isImage = file.type.startsWith('image/')
-                  const attached: AttachedFile = { file, type: isImage ? 'image' : 'document' }
-                  if (isImage) {
-                    const reader = new FileReader()
-                    reader.onload = (ev) => {
-                      attached.preview = ev.target?.result as string
-                      setAttachedFiles(prev => [...prev, attached])
-                    }
-                    reader.readAsDataURL(file)
-                  } else {
-                    setAttachedFiles(prev => [...prev, attached])
-                  }
-                })
-                e.target.value = ''
-              }}
+              <input type="file" ref={fileInputRef} className="hidden" multiple
+                accept="image/*,.pdf,.doc,.docx,.ppt,.pptx,.txt,.csv,.xlsx,.xls,.json"
+                onChange={(e) => {
+                  const files = Array.from(e.target.files || [])
+                  files.forEach(file => addFileWithPreview(file))
+                  e.target.value = ''
+                }}
               />
 
               <VoiceRecorder
@@ -1872,15 +2000,16 @@ export default function ChatbotModule({ sessionId, studentId, initialTeacherbotI
                       handleSend()
                     }
                   }}
+                  onPaste={handleInputPaste}
                   placeholder={profileInterview.active ? t('chatbot.guided_placeholder') : (attachedFiles.length > 0 ? t('chatbot.describe_placeholder') : "Scrivi un messaggio...")}
-                  disabled={sendMessageMutation.isPending}
+                  disabled={sendMessageMutation.isPending || isStreaming}
                   className="w-full py-2.5 bg-transparent border-none text-sm focus:ring-0 focus:outline-none outline-none placeholder:text-slate-400"
                 />
               </div>
 
               <Button
                 onClick={() => handleSend()}
-                disabled={(!input.trim() && attachedFiles.length === 0) || sendMessageMutation.isPending}
+                disabled={(!input.trim() && attachedFiles.length === 0) || sendMessageMutation.isPending || isStreaming}
                 size="icon"
                 className={`h-9 w-9 rounded-full transition-all flex-shrink-0 ${(!input.trim() && attachedFiles.length === 0)
                   ? 'bg-slate-200 text-slate-400'
@@ -2119,19 +2248,7 @@ function MessageContent({ content, onQuizSubmit, onInput, darkMode = false }: {
           rehypePlugins={[rehypeKatex]}
           components={{
             p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
-            code: ({ className, children, ...props }) => {
-              const isInline = !className
-              return isInline ? (
-                <code className={`${darkMode ? 'bg-white/10 text-white' : 'bg-slate-100 text-fuchsia-600'} px-1.5 py-0.5 rounded text-xs font-mono`} {...props}>
-                  {children}
-                </code>
-              ) : (
-                <code className={`block ${darkMode ? 'bg-white/10 text-white' : 'bg-slate-900 text-slate-100'} p-3 rounded-lg text-xs font-mono overflow-x-auto my-2`} {...props}>
-                  {children}
-                </code>
-              )
-            },
-            pre: ({ children }) => <>{children}</>,
+            ...markdownCodeComponents(darkMode),
             ul: ({ children }) => <ul className="list-disc pl-4 mb-2 space-y-1">{children}</ul>,
             ol: ({ children }) => <ol className="list-decimal pl-4 mb-2 space-y-1">{children}</ol>,
             li: ({ children }) => <li className={`text-sm ${darkMode ? 'text-white' : ''}`}>{children}</li>,

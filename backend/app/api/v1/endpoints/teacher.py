@@ -50,7 +50,7 @@ from app.services.education_level import SCHOOL_GRADE_OPTIONS
 from app.services.storage_service import storage_service
 
 router = APIRouter()
-TEACHER_ACCENTS = {"pink", "slate", "black", "indigo"}
+TEACHER_ACCENTS = {"cyan", "orange", "black", "red"}
 SCHOOL_GRADES = set(SCHOOL_GRADE_OPTIONS)
 
 
@@ -90,7 +90,7 @@ async def get_profile(
         email=teacher.email,
         institution=teacher.institution,
         avatar_url=teacher.avatar_url,
-        ui_accent=teacher.ui_accent,
+        ui_accent=teacher.ui_accent if teacher.ui_accent in TEACHER_ACCENTS else None,
     )
 
 
@@ -2196,3 +2196,185 @@ async def update_teacher_conversation(
     await db.refresh(conversation)
     
     return {"id": conversation.id, "title": conversation.title, "agent_mode": conversation.agent_mode}
+
+
+# ---------------------------------------------------------------------------
+# Teacher: full chatbot profiles (with system_prompt) for the demo/edit page
+# ---------------------------------------------------------------------------
+
+@router.get("/chatbot-profiles-full")
+async def list_chatbot_profiles_full(
+    teacher: Annotated[User, Depends(get_current_teacher)],
+):
+    """Return all student-visible chatbot profiles including their system prompts."""
+    from app.services.chatbot_profiles import CHATBOT_PROFILES
+    return {
+        key: {
+            "key": key,
+            "name": profile["name"],
+            "description": profile.get("description", ""),
+            "icon": profile.get("icon", "bot"),
+            "system_prompt": profile["system_prompt"],
+            "suggested_prompts": profile.get("suggested_prompts", []),
+        }
+        for key, profile in CHATBOT_PROFILES.items()
+        if not profile.get("teacher_only", False)
+    }
+
+
+# ---------------------------------------------------------------------------
+# Support Chat Prompt Customization
+# ---------------------------------------------------------------------------
+
+class SupportChatPromptResponse(BaseModel):
+    custom_prompt: str | None
+    default_prompt: str
+
+
+class SupportChatPromptUpdate(BaseModel):
+    prompt: str | None  # None means reset to default
+
+
+@router.get("/support-chat/prompt", response_model=SupportChatPromptResponse)
+async def get_support_chat_prompt(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    teacher: Annotated[User, Depends(get_current_teacher)],
+):
+    """Get the teacher's custom support chat system prompt and the default."""
+    from app.services.chatbot_profiles import get_profile
+    default_prompt = get_profile("teacher_support")["system_prompt"]
+    return SupportChatPromptResponse(
+        custom_prompt=teacher.support_chat_system_prompt,
+        default_prompt=default_prompt,
+    )
+
+
+@router.put("/support-chat/prompt")
+async def update_support_chat_prompt(
+    body: SupportChatPromptUpdate,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    teacher: Annotated[User, Depends(get_current_teacher)],
+):
+    """Set or clear the teacher's custom support chat system prompt."""
+    teacher.support_chat_system_prompt = body.prompt or None
+    await db.commit()
+    return {"status": "ok", "custom_prompt": teacher.support_chat_system_prompt}
+
+
+# ---------------------------------------------------------------------------
+# Session Chatbot Profile Overrides
+# ---------------------------------------------------------------------------
+
+class ProfileOverrideItem(BaseModel):
+    profile_key: str
+    name: str
+    description: str
+    default_prompt: str
+    custom_prompt: str | None
+
+
+class ProfileOverrideUpsert(BaseModel):
+    system_prompt: str | None  # None means delete/reset to default
+
+
+@router.get("/sessions/{session_id}/chatbot-profiles")
+async def list_session_chatbot_profiles(
+    session_id: UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    teacher: Annotated[User, Depends(get_current_teacher)],
+):
+    """Return all student-visible chatbot profiles with any teacher overrides for this session."""
+    from app.models.session import SessionProfileOverride
+    from app.services.chatbot_profiles import CHATBOT_PROFILES
+
+    await get_session_with_access_check(session_id, teacher, db)
+
+    # Load all existing overrides for this session
+    result = await db.execute(
+        select(SessionProfileOverride).where(SessionProfileOverride.session_id == session_id)
+    )
+    overrides = {o.profile_key: o.custom_system_prompt for o in result.scalars().all()}
+
+    profiles = []
+    for key, profile in CHATBOT_PROFILES.items():
+        if profile.get("teacher_only"):
+            continue
+        profiles.append({
+            "profile_key": key,
+            "name": profile["name"],
+            "description": profile.get("description", ""),
+            "default_prompt": profile["system_prompt"],
+            "custom_prompt": overrides.get(key),
+        })
+
+    return profiles
+
+
+@router.put("/sessions/{session_id}/chatbot-profiles/{profile_key}")
+async def upsert_session_chatbot_profile(
+    session_id: UUID,
+    profile_key: str,
+    body: ProfileOverrideUpsert,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    teacher: Annotated[User, Depends(get_current_teacher)],
+):
+    """Set or clear a custom system prompt for a profile in a session."""
+    from app.models.session import SessionProfileOverride
+    from app.services.chatbot_profiles import CHATBOT_PROFILES
+
+    if profile_key not in CHATBOT_PROFILES:
+        raise HTTPException(status_code=404, detail="Profile not found")
+
+    session_obj = await get_session_with_access_check(session_id, teacher, db)
+
+    result = await db.execute(
+        select(SessionProfileOverride)
+        .where(SessionProfileOverride.session_id == session_id)
+        .where(SessionProfileOverride.profile_key == profile_key)
+    )
+    override = result.scalar_one_or_none()
+
+    if body.system_prompt is None or body.system_prompt.strip() == "":
+        # Delete override (reset to default)
+        if override:
+            await db.delete(override)
+            await db.commit()
+        return {"status": "reset"}
+
+    if override:
+        override.custom_system_prompt = body.system_prompt
+    else:
+        db.add(SessionProfileOverride(
+            tenant_id=session_obj.tenant_id,
+            session_id=session_id,
+            profile_key=profile_key,
+            custom_system_prompt=body.system_prompt,
+        ))
+
+    await db.commit()
+    return {"status": "ok", "profile_key": profile_key}
+
+
+@router.delete("/sessions/{session_id}/chatbot-profiles/{profile_key}")
+async def delete_session_chatbot_profile_override(
+    session_id: UUID,
+    profile_key: str,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    teacher: Annotated[User, Depends(get_current_teacher)],
+):
+    """Remove a custom system prompt override, reverting to default."""
+    from app.models.session import SessionProfileOverride
+
+    await get_session_with_access_check(session_id, teacher, db)
+
+    result = await db.execute(
+        select(SessionProfileOverride)
+        .where(SessionProfileOverride.session_id == session_id)
+        .where(SessionProfileOverride.profile_key == profile_key)
+    )
+    override = result.scalar_one_or_none()
+    if override:
+        await db.delete(override)
+        await db.commit()
+
+    return {"status": "reset"}

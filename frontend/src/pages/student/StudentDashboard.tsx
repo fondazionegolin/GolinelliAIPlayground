@@ -655,6 +655,7 @@ function ModuleView({ moduleKey, sessionId, openTaskId, studentId, studentName, 
           sessionId={sessionId}
           studentId={studentId}
           initialTeacherbotId={selectedTeacherbotId}
+          studentAccent={studentAccent}
         />
       </div>
     )

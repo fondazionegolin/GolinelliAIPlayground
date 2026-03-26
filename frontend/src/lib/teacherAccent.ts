@@ -1,4 +1,4 @@
-export type TeacherAccentId = 'pink' | 'slate' | 'black' | 'indigo' | 'purple'
+export type TeacherAccentId = 'cyan' | 'orange' | 'black' | 'red'
 
 export interface TeacherAccentTheme {
   id: TeacherAccentId
@@ -11,58 +11,48 @@ export interface TeacherAccentTheme {
   border: string
 }
 
-export const DEFAULT_TEACHER_ACCENT: TeacherAccentId = 'slate'
+export const DEFAULT_TEACHER_ACCENT: TeacherAccentId = 'cyan'
 
 export const TEACHER_ACCENTS: Record<TeacherAccentId, TeacherAccentTheme> = {
-  pink: {
-    id: 'pink',
-    label: 'Brand Pink',
-    accent: '#e85c8d', // Logo Pink
-    text: '#c13d6a',
-    soft: '#fff5f8',
-    softMid: '#ffe4ee',
-    softStrong: '#ffc9db',
-    border: '#f9a8d4',
+  cyan: {
+    id: 'cyan',
+    label: 'Light Cyan',
+    accent: '#06b6d4',
+    text: '#0891b2',
+    soft: '#ecfeff',
+    softMid: '#cffafe',
+    softStrong: '#a5f3fc',
+    border: '#67e8f9',
   },
-  slate: {
-    id: 'slate',
-    label: 'Brand Slate',
-    accent: '#2d2d2d', // Logo Slate
-    text: '#1a1a1a',
-    soft: '#f8f8f8',
-    softMid: '#eeeeee',
-    softStrong: '#e0e0e0',
-    border: '#cccccc',
+  orange: {
+    id: 'orange',
+    label: 'Warm Orange',
+    accent: '#f97316',
+    text: '#ea580c',
+    soft: '#fff7ed',
+    softMid: '#fed7aa',
+    softStrong: '#fdba74',
+    border: '#fb923c',
   },
   black: {
     id: 'black',
     label: 'High Contrast',
-    accent: '#000000', // Black
+    accent: '#000000',
     text: '#000000',
     soft: '#f3f4f6',
     softMid: '#e5e7eb',
     softStrong: '#d1d5db',
     border: '#9ca3af',
   },
-  indigo: {
-    id: 'indigo',
-    label: 'Professional Indigo',
-    accent: '#6366f1',
-    text: '#4f46e5',
-    soft: '#eef2ff',
-    softMid: '#e0e7ff',
-    softStrong: '#c7d2fe',
-    border: '#a5b4fc',
-  },
-  purple: {
-    id: 'purple',
-    label: 'Dark Purple',
-    accent: '#7c3aed',
-    text: '#6d28d9',
-    soft: '#f5f3ff',
-    softMid: '#ede9fe',
-    softStrong: '#ddd6fe',
-    border: '#c4b5fd',
+  red: {
+    id: 'red',
+    label: 'Acid Red',
+    accent: '#e11d48',
+    text: '#be123c',
+    soft: '#fff1f2',
+    softMid: '#ffe4e6',
+    softStrong: '#fecdd3',
+    border: '#fda4af',
   },
 }
 

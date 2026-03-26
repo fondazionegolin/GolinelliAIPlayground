@@ -18,10 +18,12 @@ import ChatSidebar from '@/components/ChatSidebar'
 import { teacherApi } from '@/lib/api'
 import { AppBackground } from '@/components/ui/AppBackground'
 import { getTeacherAccentTheme, type TeacherAccentId } from '@/lib/teacherAccent'
+import { type StudentAccentId } from '@/lib/studentAccent'
 import { getAppBackgroundGradient } from '@/lib/theme'
 import { useMobile } from '@/hooks/useMobile'
 import { useTeacherProfile } from '@/hooks/useTeacherProfile'
 import { FloatingHelper } from '@/components/FloatingHelper'
+import WhatsNewModal, { shouldShowWhatsNew } from '@/components/WhatsNewModal'
 
 const CHATBAR_AUTO_HIDE_BREAKPOINT = 1280
 
@@ -41,6 +43,7 @@ export default function TeacherDashboard() {
   const [teacherProfile, setTeacherProfile] = useState<{ id: string, name: string, uiAccent?: TeacherAccentId } | null>(null)
   const [sidebarWidth, setSidebarWidth] = useState(380)
   const [showSidebar, setShowSidebar] = useState(true)
+  const [showWhatsNew, setShowWhatsNew] = useState(() => shouldShowWhatsNew())
 
   const getPersistedSession = (): { id: string, name: string, className: string } | null => {
     try {
@@ -262,6 +265,7 @@ export default function TeacherDashboard() {
                 onWidthChange={setSidebarWidth}
                 initialWidth={sidebarWidth}
                 className="h-full w-full"
+                studentAccent={teacherProfile.uiAccent as StudentAccentId}
               />
             ) : (
               <div className="h-full flex flex-col items-center justify-center p-8 text-center">
@@ -303,6 +307,7 @@ export default function TeacherDashboard() {
         </nav>
       )}
       <FloatingHelper />
+      {showWhatsNew && <WhatsNewModal onClose={() => setShowWhatsNew(false)} />}
     </AppBackground>
   )
 }

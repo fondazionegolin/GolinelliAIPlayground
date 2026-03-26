@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button'
 import {
   Send, Bot, Paperclip, X, Trash2, Plus, File, Image as ImageIcon, Loader2,
   Database, Download, ChevronDown, ChevronRight, Edit3, Check, MessageCircle, Sparkles,
-  Palette, FileText, CheckSquare, MessageSquare
+  Palette, FileText, CheckSquare, MessageSquare, Settings, RotateCcw
 } from 'lucide-react'
 import { llmApi, teacherApi } from '@/lib/api'
 import { useToast } from '@/components/ui/use-toast'
@@ -13,12 +13,15 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
 import rehypeKatex from 'rehype-katex'
+import { markdownCodeComponents } from '@/components/CodeBlock'
 import 'katex/dist/katex.min.css'
 import { ContentEditorModal } from '@/components/ContentEditorModal'
+import DataFileCard from '@/components/DataFileCard'
 import { DataVisualizationPanel } from '@/components/DataVisualizationPanel'
 import TeacherbotsPanel from '@/components/teacher/TeacherbotsPanel'
 import TeacherbotForm from '@/components/teacher/TeacherbotForm'
 import { DEFAULT_TEACHER_ACCENT, getTeacherAccentTheme } from '@/lib/teacherAccent'
+import { useTeacherProfile } from '@/hooks/useTeacherProfile'
 import { VoiceRecorder } from '@/components/VoiceRecorder'
 import { useTranslation } from 'react-i18next'
 
@@ -84,7 +87,8 @@ interface Conversation {
 interface AttachedFile {
   file: globalThis.File
   preview?: string
-  type: 'image' | 'document'
+  type: 'image' | 'document' | 'data'
+  dataPreview?: import('@/components/DataFileCard').DataFilePreview
 }
 
 
@@ -131,11 +135,7 @@ export default function TeacherSupportChat() {
     queryFn: () => llmApi.getAvailableModels(),
     staleTime: 60_000,
   })
-  const { data: teacherProfileResponse } = useQuery({
-    queryKey: ['teacher-profile'],
-    queryFn: () => teacherApi.getProfile(),
-    staleTime: 5 * 60 * 1000,
-  })
+  const teacherProfileData = useTeacherProfile().data
   const availableModels = useMemo<AvailableModel[]>(() => {
     const modelsFromApi = (availableModelsResponse?.data?.models || [])
       .filter((m: { model?: string; name?: string; provider?: string }) => m?.model && m?.provider)
@@ -149,8 +149,8 @@ export default function TeacherSupportChat() {
     return FALLBACK_MODELS
   }, [availableModelsResponse])
   const accentTheme = useMemo(
-    () => getTeacherAccentTheme(teacherProfileResponse?.data?.ui_accent || DEFAULT_TEACHER_ACCENT),
-    [teacherProfileResponse]
+    () => getTeacherAccentTheme(teacherProfileData?.uiAccent || DEFAULT_TEACHER_ACCENT),
+    [teacherProfileData]
   )
   const accentVars = useMemo(() => ({
     '--teacher-accent': accentTheme.accent,
@@ -237,6 +237,11 @@ export default function TeacherSupportChat() {
   }
 
 
+  const [streamingStatus, setStreamingStatus] = useState<string | null>(null)
+  const [showPromptEditor, setShowPromptEditor] = useState(false)
+  const [promptEditorValue, setPromptEditorValue] = useState('')
+  const [promptEditorDefault, setPromptEditorDefault] = useState('')
+  const [promptEditorSaving, setPromptEditorSaving] = useState(false)
   const [imageGenerationProgress, setImageGenerationProgress] = useState<{
     status: string
     step: 'connecting' | 'enhancing' | 'generating' | 'done' | 'error'
@@ -537,22 +542,43 @@ export default function TeacherSupportChat() {
   }, [conversations])
 
   const addFiles = (files: globalThis.File[]) => {
-    const newFiles: AttachedFile[] = files.map(file => {
+    files.forEach(file => {
       const isImage = file.type.startsWith('image/')
-      const attached: AttachedFile = {
-        file,
-        type: isImage ? 'image' : 'document',
-      }
+      const isData = /\.(xlsx|xls|csv|json)$/i.test(file.name) ||
+        file.type.includes('spreadsheet') || file.type.includes('excel') ||
+        file.type === 'text/csv' || file.type === 'application/json'
+
       if (isImage) {
-        attached.preview = URL.createObjectURL(file)
+        setAttachedFiles(prev => [...prev, { file, type: 'image', preview: URL.createObjectURL(file) }])
+        return
       }
-      return attached
+
+      if (isData) {
+        setAttachedFiles(prev => [...prev, { file, type: 'data' }])
+        llmApi.filePreview(file)
+          .then(res => {
+            setAttachedFiles(prev =>
+              prev.map(af => af.file === file ? { ...af, dataPreview: res.data } : af)
+            )
+          })
+          .catch(() => {/* keep file without preview */})
+        return
+      }
+
+      setAttachedFiles(prev => [...prev, { file, type: 'document' }])
     })
-    setAttachedFiles(prev => [...prev, ...newFiles])
   }
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) addFiles(Array.from(e.target.files))
+  }
+
+  const handleInputPaste = (e: React.ClipboardEvent) => {
+    const fileItems = Array.from(e.clipboardData.items).filter(item => item.kind === 'file')
+    if (fileItems.length === 0) return
+    e.preventDefault()
+    const files = fileItems.map(item => item.getAsFile()).filter(Boolean) as globalThis.File[]
+    if (files.length > 0) addFiles(files)
   }
 
   const removeFile = (index: number) => {
@@ -578,8 +604,7 @@ export default function TeacherSupportChat() {
           const fileObj = new globalThis.File([blob], data.filename || 'file', {
             type: data.mime_type || blob.type || 'application/octet-stream'
           })
-          const isImage = fileObj.type.startsWith('image/')
-          setAttachedFiles(prev => [...prev, { file: fileObj, type: isImage ? 'image' : 'document', preview: isImage ? URL.createObjectURL(fileObj) : undefined }])
+          addFiles([fileObj])
         }
         if (fileUrl.includes('/api/v1/files/') && fileUrl.endsWith('/download-url')) {
           fetch(fileUrl)
@@ -622,7 +647,7 @@ export default function TeacherSupportChat() {
         name: `dataset_${Date.now()}.csv`,
         lastModified: Date.now()
       }) as File
-      setAttachedFiles(prev => [...prev, { file: fileObj, type: 'document' as const }])
+      addFiles([fileObj])
       return
     }
 
@@ -684,19 +709,27 @@ export default function TeacherSupportChat() {
     return convId
   }
 
-  const runStreamingRequest = async (content: string, history: Message[]): Promise<string> => {
+  const runStreamingRequest = async (
+    content: string,
+    history: Message[],
+    opts?: {
+      provider?: string
+      model?: string
+      onChunk?: (chunk: string) => void
+      onStatus?: (status: string) => void
+    }
+  ): Promise<string> => {
+    const modelInfo = availableModels.find(m => m.id === selectedModel)
     try {
       const response = await fetch('/api/v1/llm/teacher/chat-stream', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({
           content,
           history: history.map(m => ({ role: m.role, content: m.content })),
-          provider: 'anthropic',
-          model: 'claude-haiku-4-5-20251001',
+          provider: opts?.provider ?? modelInfo?.provider ?? 'openai',
+          model: opts?.model ?? selectedModel,
           agent_mode: agentMode,
         })
       })
@@ -712,8 +745,8 @@ export default function TeacherSupportChat() {
           const { done, value } = await reader.read()
           if (done) break
 
-          const chunk = decoder.decode(value)
-          const lines = chunk.split('\n')
+          const raw = decoder.decode(value)
+          const lines = raw.split('\n')
 
           for (const line of lines) {
             if (!line.startsWith('data: ')) continue
@@ -724,8 +757,14 @@ export default function TeacherSupportChat() {
               continue
             }
 
-            if (data.type === 'done') {
-              finalContent = data.content
+            if (data.type === 'chunk') {
+              finalContent += data.content
+              opts?.onChunk?.(data.content)
+            } else if (data.type === 'done') {
+              // done may carry full content (for non-streaming modes) or empty string
+              if (data.content) finalContent = data.content
+            } else if (data.type === 'status') {
+              opts?.onStatus?.(data.message)
             } else if (data.type === 'error') {
               throw new Error(data.message || 'Errore durante lo stream')
             }
@@ -878,9 +917,9 @@ REGOLE IMPORTANTI:
         const history = messages.map(m => ({ role: m.role, content: m.content }))
         const modelInfo = availableModels.find(m => m.id === selectedModel)
 
-        let response;
         if (currentFiles.length > 0) {
-          response = await llmApi.teacherChatWithFiles(
+          // Files: use non-streaming endpoint (files can't go over SSE JSON)
+          const response = await llmApi.teacherChatWithFiles(
             messageContent,
             history,
             'teacher_support',
@@ -890,29 +929,41 @@ REGOLE IMPORTANTI:
             imageProvider,
             imageSize
           )
+          const assistantMessage: Message = {
+            id: `resp-${Date.now()}`,
+            role: 'assistant',
+            content: response.data?.response || 'Errore nella risposta.',
+            timestamp: new Date()
+          }
+          setMessages(prev => [...prev, assistantMessage])
+          await saveMessageToServer(convId, userMessage, assistantMessage, selectedModel)
         } else {
-          response = await llmApi.teacherChat(
-            userMessage.content,
-            history,
-            'teacher_support',
-            modelInfo?.provider || 'openai',
-            selectedModel,
-            imageProvider,
-            imageSize
-          )
+          // Text-only: use streaming endpoint for typewriter effect
+          const assistantId = `resp-${Date.now()}`
+          setMessages(prev => [...prev, { id: assistantId, role: 'assistant' as const, content: '', timestamp: new Date() }])
+
+          // history already excludes the current user message — backend appends it via `content`
+          const finalContent = await runStreamingRequest(messageContent, messages, {
+            onChunk: (chunk) => {
+              setMessages(prev => prev.map(m =>
+                m.id === assistantId ? { ...m, content: m.content + chunk } : m
+              ))
+            },
+            onStatus: (status) => {
+              setStreamingStatus(status)
+            },
+          })
+
+          setStreamingStatus(null)
+
+          // Ensure final message is complete (handles non-chunked fallback)
+          setMessages(prev => prev.map(m =>
+            m.id === assistantId && !m.content ? { ...m, content: finalContent } : m
+          ))
+
+          const finalMsg: Message = { id: assistantId, role: 'assistant', content: finalContent, timestamp: new Date() }
+          await saveMessageToServer(convId, userMessage, finalMsg, selectedModel)
         }
-
-        const assistantMessage: Message = {
-          id: `resp-${Date.now()}`,
-          role: 'assistant',
-          content: response.data?.response || 'Errore nella risposta.',
-          timestamp: new Date()
-        }
-
-        setMessages(prev => [...prev, assistantMessage])
-
-        // Save to server
-        await saveMessageToServer(convId, userMessage, assistantMessage, selectedModel)
       }
     } catch (e: any) {
       console.error("Teacher support chat error:", e)
@@ -927,6 +978,7 @@ REGOLE IMPORTANTI:
       }
       
       setImageGenerationProgress(null)
+      setStreamingStatus(null)
       toast({ title: "Errore", description: `Impossibile completare la richiesta: ${e.response?.data?.detail || e.message}`, variant: "destructive" })
       const errorMsg: Message = {
         id: `err-${Date.now()}`,
@@ -945,6 +997,32 @@ REGOLE IMPORTANTI:
     setMessages([])
     setCurrentConversationId(null)
     setAttachedFiles([])
+  }
+
+  const handleOpenPromptEditor = async () => {
+    try {
+      const res = await teacherApi.getSupportChatPrompt()
+      const { custom_prompt, default_prompt } = res.data
+      setPromptEditorDefault(default_prompt)
+      setPromptEditorValue(custom_prompt ?? default_prompt)
+      setShowPromptEditor(true)
+    } catch {
+      toast({ title: 'Errore', description: 'Impossibile caricare il prompt.', variant: 'destructive' })
+    }
+  }
+
+  const handleSavePrompt = async () => {
+    setPromptEditorSaving(true)
+    try {
+      const isDefault = promptEditorValue.trim() === promptEditorDefault.trim()
+      await teacherApi.updateSupportChatPrompt(isDefault ? null : promptEditorValue)
+      toast({ title: 'Prompt salvato', description: isDefault ? 'Ripristinato al prompt predefinito.' : 'Il tuo prompt personalizzato è attivo.' })
+      setShowPromptEditor(false)
+    } catch {
+      toast({ title: 'Errore', description: 'Impossibile salvare il prompt.', variant: 'destructive' })
+    } finally {
+      setPromptEditorSaving(false)
+    }
   }
 
   const handleClearAllConversations = async () => {
@@ -1258,6 +1336,63 @@ REGOLE IMPORTANTI:
                  {/* Chat Main */}
                  <main className={`flex-1 flex flex-col relative overflow-hidden`} style={chatBg ? { backgroundColor: chatBg } : undefined}>
 
+                  {/* Support Chat Prompt Editor Modal */}
+                  {showPromptEditor && (
+                    <div className="fixed inset-0 z-[90] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
+                      <div className="bg-white rounded-2xl w-full max-w-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+                        <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-full flex items-center justify-center" style={{ backgroundColor: accentTheme.accent }}>
+                              <Settings className="h-4 w-4 text-white" />
+                            </div>
+                            <div>
+                              <h2 className="text-sm font-bold text-slate-800">Personalizza il tuo Assistente</h2>
+                              <p className="text-xs text-slate-500">Modifica il comportamento del chatbot di supporto docente</p>
+                            </div>
+                          </div>
+                          <button onClick={() => setShowPromptEditor(false)} className="p-2 rounded-lg hover:bg-slate-100 transition-colors">
+                            <X className="h-4 w-4 text-slate-500" />
+                          </button>
+                        </div>
+                        <div className="flex-1 overflow-y-auto p-6 space-y-4">
+                          <p className="text-xs text-slate-500 bg-slate-50 rounded-lg p-3 border border-slate-200">
+                            Questo è il <strong>system prompt</strong> del tuo assistente AI. Determina il suo comportamento, tono e capacità. Puoi personalizzarlo liberamente — le modifiche si applicano alle nuove conversazioni.
+                          </p>
+                          <textarea
+                            value={promptEditorValue}
+                            onChange={(e) => setPromptEditorValue(e.target.value)}
+                            className="w-full h-80 text-xs font-mono border border-slate-200 rounded-xl p-4 resize-none focus:outline-none focus:ring-2 focus:border-transparent"
+                            style={{ ['--tw-ring-color' as string]: accentTheme.border }}
+                            placeholder="Inserisci qui il system prompt del tuo assistente..."
+                            spellCheck={false}
+                          />
+                        </div>
+                        <div className="px-6 py-4 border-t border-slate-200 flex items-center justify-between gap-3">
+                          <button
+                            onClick={() => setPromptEditorValue(promptEditorDefault)}
+                            className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-700 transition-colors"
+                          >
+                            <RotateCcw className="h-3.5 w-3.5" />
+                            Ripristina default
+                          </button>
+                          <div className="flex items-center gap-2">
+                            <Button variant="outline" size="sm" onClick={() => setShowPromptEditor(false)}>
+                              Annulla
+                            </Button>
+                            <Button
+                              size="sm"
+                              disabled={promptEditorSaving}
+                              onClick={handleSavePrompt}
+                              style={{ backgroundColor: accentTheme.accent, color: '#fff' }}
+                            >
+                              {promptEditorSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Salva'}
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
                   {/* Teacherbot config modal — full-screen centered modal */}
                   {botPanelTarget && (
                     <div className="fixed inset-0 z-[80] bg-black/40 backdrop-blur-sm flex items-start justify-center overflow-y-auto p-6">
@@ -1438,6 +1573,15 @@ REGOLE IMPORTANTI:
                       </div>
 
                       <div className="hidden lg:flex items-center gap-2 relative">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={handleOpenPromptEditor}
+                          className="text-slate-500 hover:text-slate-700"
+                          title="Personalizza il prompt del tuo assistente"
+                        >
+                          <Settings className="h-4 w-4" />
+                        </Button>
                         <div className="relative">
                           <Button
                             variant="ghost"
@@ -1643,13 +1787,23 @@ REGOLE IMPORTANTI:
                         </div>
                       ))
                     )}
-                    {isLoading && !imageGenerationProgress && ( // eslint-disable-line
+                    {isLoading && !imageGenerationProgress && !streamingStatus && ( // eslint-disable-line
                       <div className="flex gap-4 justify-start">
                         <div className="w-8 h-8 rounded-full bg-white border border-slate-200 flex items-center justify-center">
                           <Bot className="h-4 w-4 text-red-500" />
                         </div>
                         <div className={`${chatBgIsDark ? 'bg-white/10 border border-white/15' : 'bg-white border border-slate-200'} px-4 py-3 rounded-2xl rounded-tl-sm shadow-sm`}>
                           <Loader2 className={`h-4 w-4 animate-spin ${chatBgIsDark ? 'text-white' : 'text-red-500'}`} />
+                        </div>
+                      </div>
+                    )}
+                    {streamingStatus && (
+                      <div className="flex gap-4 justify-start">
+                        <div className="w-8 h-8 rounded-full bg-white border border-slate-200 flex items-center justify-center flex-shrink-0">
+                          <Loader2 className="h-4 w-4 animate-spin text-slate-400" />
+                        </div>
+                        <div className={`${chatBgIsDark ? 'bg-white/10 border border-white/15' : 'bg-white border border-slate-200'} px-3 py-2 rounded-2xl rounded-tl-sm shadow-sm`}>
+                          <span className="text-xs text-slate-500">{streamingStatus}</span>
                         </div>
                       </div>
                     )}
@@ -1743,20 +1897,60 @@ REGOLE IMPORTANTI:
                       {attachedFiles.length > 0 && (
                         <div className="flex flex-wrap gap-2 mb-2">
                           {attachedFiles.map((f, i) => (
-                            <div key={i} className="bg-slate-50/50 backdrop-blur-sm px-3 py-1.5 rounded-full text-xs flex items-center gap-2 text-slate-600 border border-slate-200 shadow-sm">
-                              {f.type === 'image' ? <ImageIcon className="h-3 w-3" /> : <File className="h-3 w-3" />}
-                              <span className="max-w-[120px] truncate">{f.file.name}</span>
-                              <button onClick={() => removeFile(i)} className="text-slate-400 hover:text-red-500">
-                                <X className="h-3 w-3" />
-                              </button>
+                            <div key={i} className="relative group">
+                              {f.type === 'image' && f.preview ? (
+                                <div className="bg-slate-50/50 backdrop-blur-sm px-3 py-1.5 rounded-full text-xs flex items-center gap-2 text-slate-600 border border-slate-200 shadow-sm">
+                                  <ImageIcon className="h-3 w-3" />
+                                  <span className="max-w-[120px] truncate">{f.file.name}</span>
+                                  <button onClick={() => removeFile(i)} className="text-slate-400 hover:text-red-500"><X className="h-3 w-3" /></button>
+                                </div>
+                              ) : f.type === 'data' ? (
+                                <div className="w-64 md:w-80">
+                                  {f.dataPreview
+                                    ? <DataFileCard preview={f.dataPreview} compact />
+                                    : <div className="flex items-center gap-2 bg-emerald-50 border border-emerald-200 rounded-full px-3 py-1.5 text-xs text-emerald-700">
+                                        <Loader2 className="h-3 w-3 animate-spin" />
+                                        <span className="truncate">{f.file.name}</span>
+                                      </div>
+                                  }
+                                  <button onClick={() => removeFile(i)} className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white rounded-full flex items-center justify-center z-10">
+                                    <X className="h-2.5 w-2.5" />
+                                  </button>
+                                </div>
+                              ) : (
+                                <div className="bg-slate-50/50 backdrop-blur-sm px-3 py-1.5 rounded-full text-xs flex items-center gap-2 text-slate-600 border border-slate-200 shadow-sm">
+                                  <File className="h-3 w-3" />
+                                  <span className="max-w-[120px] truncate">{f.file.name}</span>
+                                  <button onClick={() => removeFile(i)} className="text-slate-400 hover:text-red-500"><X className="h-3 w-3" /></button>
+                                </div>
+                              )}
                             </div>
                           ))}
+                        </div>
+                      )}
+                      {attachedFiles.some(af => af.type === 'data' && af.dataPreview?.suggested_prompts?.length) && (
+                        <div className="flex gap-1 mb-2 flex-wrap">
+                          {attachedFiles
+                            .filter(af => af.type === 'data' && af.dataPreview?.suggested_prompts?.length)
+                            .flatMap(af => af.dataPreview!.suggested_prompts!.slice(0, 3))
+                            .slice(0, 4)
+                            .map((prompt, i) => (
+                              <button
+                                key={i}
+                                onClick={() => setInputText(prompt)}
+                                className="text-xs bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-full px-2.5 py-1 transition-colors"
+                              >
+                                {prompt}
+                              </button>
+                            ))}
                         </div>
                       )}
 
                       {/* Input Pill */}
                       <div className="relative flex items-center gap-1.5 bg-white border border-slate-200 shadow-sm rounded-[24px] p-1.5 focus-within:ring-2 focus-within:ring-slate-200 transition-all">
-                        <input type="file" ref={fileInputRef} className="hidden" multiple onChange={handleFileSelect} />
+                        <input type="file" ref={fileInputRef} className="hidden" multiple
+                          accept="image/*,.pdf,.doc,.docx,.ppt,.pptx,.txt,.csv,.xlsx,.xls,.json"
+                          onChange={handleFileSelect} />
 
                         {/* Mode Selector — desktop only (mobile uses pills above) */}
                         {!isMobile && (
@@ -1819,6 +2013,7 @@ REGOLE IMPORTANTI:
                           value={inputText}
                           onChange={(e) => setInputText(e.target.value)}
                           onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
+                          onPaste={handleInputPaste}
                           placeholder={isMobile ? 'Scrivi...' : 'Scrivi o trascina file qui...'}
                           className="flex-1 bg-transparent border-none focus:ring-0 focus:outline-none outline-none resize-none py-2 px-2 text-sm text-slate-800 placeholder:text-slate-400 max-h-32 min-h-[36px] leading-relaxed"
                           rows={1}
@@ -2256,19 +2451,7 @@ function MessageContent({ content, onPublish, onEdit, onInput, toast, darkMode =
           rehypePlugins={[rehypeKatex]}
           components={{
             p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
-            code: ({ className, children, ...props }) => {
-              const isInline = !className
-              return isInline ? (
-                <code className={`${darkMode ? 'bg-white/10 text-white' : 'bg-slate-100 text-cyan-600'} px-1.5 py-0.5 rounded text-xs font-mono`} {...props}>
-                  {children}
-                </code>
-              ) : (
-                <code className="block bg-slate-900 text-slate-100 p-3 rounded-lg text-xs font-mono overflow-x-auto my-2" {...props}>
-                  {children}
-                </code>
-              )
-            },
-            pre: ({ children }) => <>{children}</>,
+            ...markdownCodeComponents(darkMode),
             img: ({ src, alt, ...props }) => (
               <div
                 className="relative group cursor-grab active:cursor-grabbing my-3 inline-block"

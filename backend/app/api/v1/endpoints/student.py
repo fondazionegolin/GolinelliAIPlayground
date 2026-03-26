@@ -24,7 +24,7 @@ from app.realtime.gateway import sio
 
 router = APIRouter()
 
-STUDENT_ACCENTS = {"pink", "slate", "black", "blue"}
+STUDENT_ACCENTS = {"cyan", "orange", "black", "red"}
 
 
 class UpdateProfileRequest(BaseModel):
@@ -187,7 +187,7 @@ async def get_profile(
         "id": str(student.id),
         "nickname": student.nickname,
         "avatar_url": student.avatar_url,
-        "ui_accent": student.ui_accent,
+        "ui_accent": student.ui_accent if student.ui_accent in STUDENT_ACCENTS else None,
         "created_at": student.created_at.isoformat() if student.created_at else None,
     }
 

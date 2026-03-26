@@ -6,6 +6,7 @@ import { useToast } from '@/components/ui/use-toast'
 import { teacherbotsApi } from '@/lib/api'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import { markdownCodeComponents } from '@/components/CodeBlock'
 
 interface TeacherbotTestChatProps {
   teacherbotId: string
@@ -177,6 +178,7 @@ export default function TeacherbotTestChat({ teacherbotId, onBack }: TeacherbotT
                     <ReactMarkdown
                       remarkPlugins={[remarkGfm]}
                       className="prose prose-sm max-w-none prose-p:my-1"
+                      components={markdownCodeComponents()}
                     >
                       {msg.content}
                     </ReactMarkdown>

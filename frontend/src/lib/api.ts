@@ -227,6 +227,16 @@ export const teacherApi = {
     api.get(`/teacher/sessions/${sessionId}/canvas`),
   updateCanvas: (sessionId: string, data: { title?: string; content_json: string; base_version?: number }) =>
     api.put(`/teacher/sessions/${sessionId}/canvas`, data),
+  // Prompt customization
+  getSupportChatPrompt: () => api.get('/teacher/support-chat/prompt'),
+  updateSupportChatPrompt: (prompt: string | null) =>
+    api.put('/teacher/support-chat/prompt', { prompt }),
+  getSessionChatbotProfiles: (sessionId: string) =>
+    api.get(`/teacher/sessions/${sessionId}/chatbot-profiles`),
+  upsertSessionChatbotProfile: (sessionId: string, profileKey: string, systemPrompt: string | null) =>
+    api.put(`/teacher/sessions/${sessionId}/chatbot-profiles/${profileKey}`, { system_prompt: systemPrompt }),
+  deleteSessionChatbotProfileOverride: (sessionId: string, profileKey: string) =>
+    api.delete(`/teacher/sessions/${sessionId}/chatbot-profiles/${profileKey}`),
 }
 
 export const udaApi = {
@@ -294,6 +304,7 @@ export const chatApi = {
 export const llmApi = {
   getProfiles: () => api.get('/llm/profiles'),
   getChatbotProfiles: () => api.get('/llm/chatbot-profiles'),
+  getChatbotProfilesFull: () => api.get('/teacher/chatbot-profiles-full'),
   getAvailableModels: () => api.get('/llm/available-models'),
   getSessionConversations: (sessionId: string) => api.get(`/llm/sessions/${sessionId}/conversations`),
   getConversationMessages: (conversationId: string) => api.get(`/llm/conversations/${conversationId}/messages`),
@@ -305,6 +316,7 @@ export const llmApi = {
     api.get(`/llm/conversations/${conversationId}/messages`),
   sendMessage: (conversationId: string, content: string, imageProvider?: string, imageSize?: string, verboseMode?: boolean) =>
     api.post(`/llm/conversations/${conversationId}/message`, { content, image_provider: imageProvider, image_size: imageSize, verbose_mode: verboseMode }),
+  sendMessageStreamUrl: (conversationId: string) => `/api/v1/llm/conversations/${conversationId}/message-stream`,
   deleteConversation: (conversationId: string) =>
     api.delete(`/llm/conversations/${conversationId}`),
   deleteAllConversations: (sessionId: string) =>
@@ -339,6 +351,13 @@ export const llmApi = {
     api.post('/llm/generate-image', { prompt, provider }),
   explain: (messageId: string) =>
     api.post('/llm/explain', { message_id: messageId }),
+  filePreview: (file: File) => {
+    const formData = new FormData()
+    formData.append('file', file)
+    return api.post('/llm/files/preview', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    })
+  },
 }
 
 export const ragApi = {
@@ -448,6 +467,19 @@ export const teacherbotsApi = {
   getTeacherConversationMessages: (teacherbotId: string, conversationId: string) =>
     api.get(`/teacherbots/${teacherbotId}/conversations/${conversationId}/messages`),
 
+  // Knowledge base
+  uploadKbDocument: (teacherbotId: string, file: File) => {
+    const formData = new FormData()
+    formData.append('file', file)
+    return api.post(`/teacherbots/${teacherbotId}/kb`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    })
+  },
+  listKbDocuments: (teacherbotId: string) =>
+    api.get(`/teacherbots/${teacherbotId}/kb`),
+  deleteKbDocument: (teacherbotId: string, docId: string) =>
+    api.delete(`/teacherbots/${teacherbotId}/kb/${docId}`),
+
   // Student endpoints
   listAvailable: () => api.get('/student/teacherbots'),
   startConversation: (teacherbotId: string, sessionId: string) =>
@@ -510,6 +542,7 @@ export const feedbackApi = {
       viewport_height?: number
     }
     console_errors?: string[]
+    screenshot_base64?: string
   }) => api.post('/feedback/', data),
   list: (params?: { limit?: number; offset?: number; status_filter?: string }) =>
     api.get('/feedback/admin', { params }),

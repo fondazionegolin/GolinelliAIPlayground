@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Button } from '@/components/ui/button'
-import { ArrowLeft, Save, Loader2, Globe, Check, X } from 'lucide-react'
+import { ArrowLeft, Save, Loader2, Globe, Check, X, Upload, Trash2, FileText, Database, AlertCircle } from 'lucide-react'
 import { useToast } from '@/components/ui/use-toast'
 import { Switch } from '@/components/ui/switch'
 import { teacherbotsApi, teacherApi } from '@/lib/api'
@@ -32,6 +32,213 @@ interface FormData {
 
 const COLORS = ['indigo', 'blue', 'green', 'purple', 'pink', 'orange', 'teal', 'cyan', 'red']
 
+const DOC_TYPE_ICON: Record<string, React.ReactNode> = {
+  pdf: <FileText className="h-4 w-4 text-red-500" />,
+  xlsx: <Database className="h-4 w-4 text-emerald-500" />,
+  xls: <Database className="h-4 w-4 text-emerald-500" />,
+  csv: <Database className="h-4 w-4 text-emerald-500" />,
+  docx: <FileText className="h-4 w-4 text-blue-500" />,
+  doc: <FileText className="h-4 w-4 text-blue-500" />,
+  txt: <FileText className="h-4 w-4 text-slate-400" />,
+}
+
+interface KnowledgeBaseSectionProps {
+  teacherbotId?: string
+  pendingFiles?: File[]
+  onPendingFilesChange?: (files: File[]) => void
+}
+
+function KnowledgeBaseSection({ teacherbotId, pendingFiles, onPendingFilesChange }: KnowledgeBaseSectionProps) {
+  const { toast } = useToast()
+  const queryClient = useQueryClient()
+  const kbInputRef = useRef<HTMLInputElement>(null)
+  const [uploading, setUploading] = useState(false)
+
+  // Only fetch from API when we have a saved teacherbot
+  const { data: docs, isLoading } = useQuery({
+    queryKey: ['teacherbot-kb', teacherbotId],
+    queryFn: async () => {
+      const res = await teacherbotsApi.listKbDocuments(teacherbotId!)
+      return (res.data || []) as Array<{ id: string; title: string; doc_type: string; status: string; created_at: string }>
+    },
+    enabled: !!teacherbotId,
+  })
+
+  const deleteMutation = useMutation({
+    mutationFn: (docId: string) => teacherbotsApi.deleteKbDocument(teacherbotId!, docId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['teacherbot-kb', teacherbotId] })
+      toast({ title: 'Documento rimosso dalla knowledge base' })
+    },
+  })
+
+  const handleFileInput = async (files: FileList | null) => {
+    if (!files || files.length === 0) return
+    const fileArray = Array.from(files)
+    if (kbInputRef.current) kbInputRef.current.value = ''
+
+    if (!teacherbotId) {
+      // Creation mode: accumulate locally
+      onPendingFilesChange?.([...(pendingFiles || []), ...fileArray])
+      return
+    }
+
+    // Edit mode: upload immediately
+    setUploading(true)
+    let uploaded = 0
+    for (const file of fileArray) {
+      try {
+        await teacherbotsApi.uploadKbDocument(teacherbotId, file)
+        uploaded++
+      } catch (e: any) {
+        toast({
+          title: 'Errore caricamento',
+          description: e.response?.data?.detail || file.name,
+          variant: 'destructive',
+        })
+      }
+    }
+    setUploading(false)
+    if (uploaded > 0) {
+      queryClient.invalidateQueries({ queryKey: ['teacherbot-kb', teacherbotId] })
+      toast({ title: `${uploaded} documento/i aggiunto/i alla knowledge base` })
+    }
+  }
+
+  const removePending = (idx: number) => {
+    if (!pendingFiles) return
+    onPendingFilesChange?.(pendingFiles.filter((_, i) => i !== idx))
+  }
+
+  const statusColor = (s: string) => ({
+    ready: 'text-emerald-600 bg-emerald-50',
+    processing: 'text-amber-600 bg-amber-50',
+    queued: 'text-sky-600 bg-sky-50',
+    failed: 'text-red-600 bg-red-50',
+  }[s] || 'text-slate-500 bg-slate-100')
+
+  const statusLabel = (s: string) => ({
+    ready: 'Pronto',
+    processing: 'Elaborazione…',
+    queued: 'In coda',
+    failed: 'Errore',
+  }[s] || s)
+
+  const getExt = (filename: string) => filename.split('.').pop()?.toLowerCase() || ''
+
+  return (
+    <div className="mt-6 bg-white rounded-xl border border-slate-200 p-5">
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <h3 className="font-semibold text-slate-800 flex items-center gap-2">
+            <Database className="h-4 w-4 text-indigo-600" />
+            Knowledge Base
+          </h3>
+          <p className="text-xs text-slate-500 mt-0.5">
+            {teacherbotId
+              ? 'Carica documenti per specializzare il bot su contenuti specifici (PDF, Word, Excel, CSV, TXT)'
+              : 'Aggiungi documenti ora — verranno caricati automaticamente al salvataggio'}
+          </p>
+        </div>
+        <div>
+          <input
+            ref={kbInputRef}
+            type="file"
+            className="hidden"
+            multiple
+            accept=".pdf,.doc,.docx,.txt,.csv,.xlsx,.xls,.md"
+            onChange={(e) => handleFileInput(e.target.files)}
+          />
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            disabled={uploading}
+            onClick={() => kbInputRef.current?.click()}
+            className="border-indigo-200 text-indigo-700 hover:bg-indigo-50"
+          >
+            {uploading ? <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> : <Upload className="h-3.5 w-3.5 mr-1.5" />}
+            {uploading ? 'Caricamento…' : 'Aggiungi documento'}
+          </Button>
+        </div>
+      </div>
+
+      {/* Pending files (creation mode) */}
+      {!teacherbotId && pendingFiles && pendingFiles.length > 0 && (
+        <div className="space-y-2">
+          {pendingFiles.map((file, idx) => (
+            <div key={idx} className="flex items-center gap-3 px-3 py-2 rounded-lg bg-indigo-50 border border-indigo-100">
+              {DOC_TYPE_ICON[getExt(file.name)] || <FileText className="h-4 w-4 text-slate-400" />}
+              <span className="flex-1 text-sm text-slate-700 truncate">{file.name}</span>
+              <span className="text-xs px-2 py-0.5 rounded-full font-medium text-indigo-600 bg-indigo-100">
+                In attesa
+              </span>
+              <button
+                type="button"
+                onClick={() => removePending(idx)}
+                className="text-slate-300 hover:text-red-500 transition-colors flex-shrink-0"
+              >
+                <Trash2 className="h-4 w-4" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Empty state (creation mode, no files yet) */}
+      {!teacherbotId && (!pendingFiles || pendingFiles.length === 0) && (
+        <div className="flex flex-col items-center justify-center py-8 text-slate-400 text-sm border-2 border-dashed border-slate-200 rounded-lg">
+          <Database className="h-8 w-8 mb-2 opacity-30" />
+          <p>Nessun documento aggiunto</p>
+          <p className="text-xs mt-1">Opzionale — puoi aggiungerne anche dopo il salvataggio</p>
+        </div>
+      )}
+
+      {/* Saved bot: loading */}
+      {teacherbotId && isLoading && (
+        <div className="flex items-center justify-center py-6 text-slate-400 text-sm">
+          <Loader2 className="h-4 w-4 mr-2 animate-spin" />Caricamento…
+        </div>
+      )}
+
+      {/* Saved bot: empty */}
+      {teacherbotId && !isLoading && (!docs || docs.length === 0) && (
+        <div className="flex flex-col items-center justify-center py-8 text-slate-400 text-sm border-2 border-dashed border-slate-200 rounded-lg">
+          <Database className="h-8 w-8 mb-2 opacity-30" />
+          <p>Nessun documento nella knowledge base</p>
+          <p className="text-xs mt-1">I documenti caricati guidano le risposte del bot</p>
+        </div>
+      )}
+
+      {/* Saved bot: document list */}
+      {teacherbotId && !isLoading && docs && docs.length > 0 && (
+        <div className="space-y-2">
+          {docs.map((doc) => (
+            <div key={doc.id} className="flex items-center gap-3 px-3 py-2 rounded-lg bg-slate-50 border border-slate-100">
+              {DOC_TYPE_ICON[doc.doc_type] || <FileText className="h-4 w-4 text-slate-400" />}
+              <span className="flex-1 text-sm text-slate-700 truncate">{doc.title}</span>
+              <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${statusColor(doc.status)}`}>
+                {statusLabel(doc.status)}
+              </span>
+              {doc.status === 'failed' && (
+                <AlertCircle className="h-4 w-4 text-red-400 flex-shrink-0" />
+              )}
+              <button
+                type="button"
+                onClick={() => deleteMutation.mutate(doc.id)}
+                disabled={deleteMutation.isPending}
+                className="text-slate-300 hover:text-red-500 transition-colors flex-shrink-0"
+              >
+                <Trash2 className="h-4 w-4" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function TeacherbotForm({ teacherbotId, onBack, onSaved }: TeacherbotFormProps) {
   const { toast } = useToast()
   const { t } = useTranslation()
@@ -52,6 +259,8 @@ export default function TeacherbotForm({ teacherbotId, onBack, onSaved }: Teache
     llm_model: '',
     temperature: 0.7,
   })
+
+  const [pendingKbFiles, setPendingKbFiles] = useState<File[]>([])
 
   // Selection state for AI Optimizer
   const [selection, setSelection] = useState<{ text: string, position: { x: number, y: number } } | null>(null)
@@ -121,7 +330,14 @@ export default function TeacherbotForm({ teacherbotId, onBack, onSaved }: Teache
         return teacherbotsApi.create(apiData)
       }
     },
-    onSuccess: () => {
+    onSuccess: async (res) => {
+      const savedId: string | undefined = res?.data?.id || teacherbotId
+      if (!isEditing && pendingKbFiles.length > 0 && savedId) {
+        for (const file of pendingKbFiles) {
+          try { await teacherbotsApi.uploadKbDocument(savedId, file) } catch {}
+        }
+        setPendingKbFiles([])
+      }
       toast({ title: isEditing ? t('teacherbot.updated') : t('teacherbot.created') })
       queryClient.invalidateQueries({ queryKey: ['teacherbots'] })
       onSaved()
@@ -441,6 +657,13 @@ Il tuo obiettivo è:
           </div>
         </div>
         </div>
+
+        {/* Knowledge Base Section — always visible */}
+        <KnowledgeBaseSection
+          teacherbotId={teacherbotId}
+          pendingFiles={pendingKbFiles}
+          onPendingFilesChange={setPendingKbFiles}
+        />
 
         {/* Save Button */}
         <div className="mt-4 pt-4 pb-4 flex justify-end gap-3 border-t border-slate-200 bg-white/95 backdrop-blur-sm sticky bottom-0">

@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input'
 import { useToast } from '@/components/ui/use-toast'
 import {
   Plus, Play, Square, Users, Clock, Copy, Eye, Trash2,
-  PlayCircle, ChevronDown
+  PlayCircle, ChevronDown, Bot, X, RotateCcw, Loader2, Save,
 } from 'lucide-react'
 
 interface ClassData {
@@ -29,12 +29,192 @@ interface SessionData {
   created_at: string
 }
 
+interface ProfileItem {
+  profile_key: string
+  name: string
+  description: string
+  default_prompt: string
+  custom_prompt: string | null
+}
+
 const STATUS_CONFIG: Record<string, { label: string; dot: string; badge: string }> = {
   draft:  { label: 'Bozza',   dot: 'bg-slate-400',  badge: 'bg-slate-100 text-slate-600' },
   active: { label: 'Attiva',  dot: 'bg-emerald-500', badge: 'bg-emerald-100 text-emerald-700' },
   paused: { label: 'Pausa',   dot: 'bg-amber-500',   badge: 'bg-amber-100 text-amber-700' },
   ended:  { label: 'Terminata', dot: 'bg-red-400',   badge: 'bg-red-100 text-red-700' },
 }
+
+// ─── Session Bot Config Modal ────────────────────────────────────────────────
+
+function SessionBotConfigModal({
+  sessionId,
+  sessionTitle,
+  onClose,
+}: {
+  sessionId: string
+  sessionTitle: string
+  onClose: () => void
+}) {
+  const { toast } = useToast()
+  const queryClient = useQueryClient()
+  const [selectedProfile, setSelectedProfile] = useState<string | null>(null)
+  const [editValue, setEditValue] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  const { data: profiles, isLoading } = useQuery<ProfileItem[]>({
+    queryKey: ['session-chatbot-profiles', sessionId],
+    queryFn: async () => (await teacherApi.getSessionChatbotProfiles(sessionId)).data,
+  })
+
+  const openProfile = (p: ProfileItem) => {
+    setSelectedProfile(p.profile_key)
+    setEditValue(p.custom_prompt ?? p.default_prompt)
+  }
+
+  const handleSave = async () => {
+    if (!selectedProfile || !profiles) return
+    const profile = profiles.find(p => p.profile_key === selectedProfile)!
+    setSaving(true)
+    try {
+      const isDefault = editValue.trim() === profile.default_prompt.trim()
+      await teacherApi.upsertSessionChatbotProfile(sessionId, selectedProfile, isDefault ? null : editValue)
+      queryClient.invalidateQueries({ queryKey: ['session-chatbot-profiles', sessionId] })
+      toast({ title: 'Prompt salvato', description: isDefault ? 'Ripristinato al prompt predefinito.' : 'Prompt personalizzato attivo.' })
+      setSelectedProfile(null)
+    } catch {
+      toast({ title: 'Errore', description: 'Impossibile salvare.', variant: 'destructive' })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleReset = async (profileKey: string) => {
+    try {
+      await teacherApi.deleteSessionChatbotProfileOverride(sessionId, profileKey)
+      queryClient.invalidateQueries({ queryKey: ['session-chatbot-profiles', sessionId] })
+      toast({ title: 'Ripristinato', description: 'Prompt riportato al default.' })
+      if (selectedProfile === profileKey) setSelectedProfile(null)
+    } catch {
+      toast({ title: 'Errore', variant: 'destructive' })
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-[90] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl w-full max-w-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+        {/* Header */}
+        <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between flex-shrink-0">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-full bg-indigo-600 flex items-center justify-center">
+              <Bot className="h-4 w-4 text-white" />
+            </div>
+            <div>
+              <h2 className="text-sm font-bold text-slate-800">Configura Bot di Sessione</h2>
+              <p className="text-xs text-slate-500">{sessionTitle}</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="p-2 rounded-lg hover:bg-slate-100 transition-colors">
+            <X className="h-4 w-4 text-slate-500" />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-hidden flex min-h-0">
+          {/* Profile list */}
+          <div className="w-56 flex-shrink-0 border-r border-slate-200 overflow-y-auto">
+            {isLoading ? (
+              <div className="p-4 text-center text-xs text-slate-400">Caricamento...</div>
+            ) : (
+              <div className="p-2 space-y-1">
+                {profiles?.map((p) => (
+                  <button
+                    key={p.profile_key}
+                    onClick={() => openProfile(p)}
+                    className={`w-full text-left px-3 py-2.5 rounded-lg transition-colors flex items-start gap-2 ${
+                      selectedProfile === p.profile_key
+                        ? 'bg-indigo-50 border border-indigo-200'
+                        : 'hover:bg-slate-50'
+                    }`}
+                  >
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-xs font-semibold text-slate-700 truncate">{p.name}</span>
+                        {p.custom_prompt && (
+                          <span className="flex-shrink-0 w-1.5 h-1.5 rounded-full bg-indigo-500" title="Prompt personalizzato" />
+                        )}
+                      </div>
+                      <p className="text-[10px] text-slate-400 mt-0.5 line-clamp-2">{p.description}</p>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Editor */}
+          <div className="flex-1 flex flex-col overflow-hidden">
+            {selectedProfile && profiles ? (() => {
+              const profile = profiles.find(p => p.profile_key === selectedProfile)!
+              const isCustomized = !!profile.custom_prompt
+              return (
+                <>
+                  <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between flex-shrink-0">
+                    <div>
+                      <h3 className="text-sm font-semibold text-slate-800">{profile.name}</h3>
+                      {isCustomized && (
+                        <span className="text-[10px] text-indigo-600 font-medium">Prompt personalizzato attivo</span>
+                      )}
+                    </div>
+                    {isCustomized && (
+                      <button
+                        onClick={() => handleReset(selectedProfile)}
+                        className="flex items-center gap-1 text-[10px] text-slate-500 hover:text-slate-700 transition-colors"
+                      >
+                        <RotateCcw className="h-3 w-3" />
+                        Ripristina default
+                      </button>
+                    )}
+                  </div>
+                  <div className="flex-1 overflow-hidden p-4 flex flex-col gap-3">
+                    <p className="text-xs text-slate-500 bg-slate-50 rounded-lg p-3 border border-slate-100 flex-shrink-0">
+                      Personalizza il comportamento del bot <strong>{profile.name}</strong> per questa sessione specifica. Gli studenti useranno questo prompt invece di quello predefinito.
+                    </p>
+                    <textarea
+                      value={editValue}
+                      onChange={(e) => setEditValue(e.target.value)}
+                      className="flex-1 text-xs font-mono border border-slate-200 rounded-xl p-4 resize-none focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-transparent"
+                      placeholder="Inserisci il system prompt personalizzato..."
+                      spellCheck={false}
+                    />
+                  </div>
+                  <div className="px-4 py-3 border-t border-slate-200 flex items-center justify-between flex-shrink-0">
+                    <button
+                      onClick={() => setEditValue(profile.default_prompt)}
+                      className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-700 transition-colors"
+                    >
+                      <RotateCcw className="h-3.5 w-3.5" />
+                      Usa default come base
+                    </button>
+                    <Button size="sm" disabled={saving} onClick={handleSave} className="bg-indigo-600 hover:bg-indigo-700 text-white">
+                      {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <><Save className="h-3.5 w-3.5 mr-1.5" />Salva</>}
+                    </Button>
+                  </div>
+                </>
+              )
+            })() : (
+              <div className="flex-1 flex flex-col items-center justify-center text-center p-8">
+                <Bot className="h-10 w-10 text-slate-300 mb-3" />
+                <p className="text-sm font-medium text-slate-500">Seleziona un bot</p>
+                <p className="text-xs text-slate-400 mt-1">Scegli un profilo dalla lista per modificarne il comportamento</p>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── Main Page ───────────────────────────────────────────────────────────────
 
 export default function SessionsPage() {
   const { t } = useTranslation()
@@ -45,6 +225,7 @@ export default function SessionsPage() {
   const [selectedClass, setSelectedClass] = useState<string>(classFilter || '')
   const [showNewForm, setShowNewForm] = useState(false)
   const [newTitle, setNewTitle] = useState('')
+  const [botConfigSession, setBotConfigSession] = useState<SessionData | null>(null)
 
   const { data: classes } = useQuery<ClassData[]>({
     queryKey: ['classes'],
@@ -105,6 +286,15 @@ export default function SessionsPage() {
   return (
     <div className="p-6 md:p-8">
       <div className="max-w-5xl mx-auto space-y-8">
+
+        {/* Bot Config Modal */}
+        {botConfigSession && (
+          <SessionBotConfigModal
+            sessionId={botConfigSession.id}
+            sessionTitle={botConfigSession.title}
+            onClose={() => setBotConfigSession(null)}
+          />
+        )}
 
         {/* Header */}
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -236,7 +426,7 @@ export default function SessionsPage() {
                   </div>
 
                   {/* Right: actions */}
-                  <div className="flex items-center gap-2 flex-shrink-0">
+                  <div className="flex items-center gap-2 flex-shrink-0 flex-wrap">
                     {isDraft && (
                       <Button
                         size="sm"
@@ -293,6 +483,15 @@ export default function SessionsPage() {
                         {t('common.delete')}
                       </Button>
                     )}
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setBotConfigSession(session)}
+                      title="Personalizza i bot di questa sessione"
+                    >
+                      <Bot className="h-3.5 w-3.5 mr-1.5" />
+                      Bot
+                    </Button>
                     <Link to={`/teacher/sessions/${session.id}`}>
                       <Button size="sm" variant="outline">
                         <Eye className="h-3.5 w-3.5 mr-1.5" />

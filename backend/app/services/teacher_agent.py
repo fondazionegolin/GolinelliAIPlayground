@@ -6,7 +6,7 @@ Automatically detects teacher intent and activates specialized content generatio
 import json
 import re
 import asyncio
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, AsyncGenerator
 import logging
 
 from app.services.llm_service import llm_service
@@ -1338,6 +1338,30 @@ async def generate_generic_response(
     return response.content
 
 
+async def generate_generic_response_stream(
+    messages: list[dict],
+    provider: str,
+    model: str,
+    profile_key: str,
+    custom_system_prompt: Optional[str] = None,
+) -> AsyncGenerator[str, None]:
+    """Streaming version of generate_generic_response. Yields text chunks."""
+    from app.services.chatbot_profiles import get_profile
+    profile = get_profile(profile_key)
+
+    system_prompt = custom_system_prompt if custom_system_prompt else profile["system_prompt"]
+
+    async for chunk in llm_service.generate_stream(
+        messages=messages,
+        system_prompt=system_prompt,
+        provider=provider,
+        model=model,
+        temperature=profile.get("temperature", 0.7),
+        max_tokens=2048,
+    ):
+        yield chunk
+
+
 async def generate_report_widgets(
     message: str,
     structured_context: Optional[dict],
@@ -1567,3 +1591,63 @@ LINEE GUIDA PER RISPOSTE CHIARE E TRASPARENTI:
     )
 
     return response.content
+
+
+async def generate_with_analytics_stream(
+    messages: list[dict],
+    context: str,
+    provider: str,
+    model: str,
+    custom_system_prompt: Optional[str] = None,
+) -> AsyncGenerator[str, None]:
+    """
+    Streaming version of generate_with_analytics.
+    Yields text chunks as they arrive from the LLM.
+    """
+    from app.services.chatbot_profiles import get_profile
+
+    profile = get_profile("teacher_support")
+    base_prompt = custom_system_prompt if custom_system_prompt else profile["system_prompt"]
+
+    enhanced_prompt = f"""{base_prompt}
+
+{PLATFORM_KNOWLEDGE_BASE}
+
+HAI ACCESSO AI SEGUENTI DATI REALI DEL DOCENTE:
+
+{context}
+
+LINEE GUIDA PER RISPOSTE CHIARE E TRASPARENTI:
+
+📊 **DATI E STATISTICHE**:
+- Usa questi dati reali per fornire risposte personalizzate
+- Quando mostri dati, usa tabelle markdown ben formattate
+- Formatta statistiche come "X su Y" per visualizzazione grafica
+- Usa emoji per rendere le risposte leggibili (📊 📈 ✅ ⚠️)
+
+🔍 **EXPLAINABILITY** (MOLTO IMPORTANTE):
+- Spiega sempre il TUO RAGIONAMENTO: come sei arrivato a una conclusione
+- Non limitarti a dare risposte: spiega il "perché" e il "come"
+- Se fai inferenze dai dati, dichiaralo: "Dai dati emerge che..." oppure "Osservando X, posso dedurre Y perché..."
+- Se ci sono limitazioni nei dati o incertezze, comunicale chiaramente
+
+💡 **SUGGERIMENTI PRATICI**:
+- Fornisci sempre suggerimenti azionabili
+- Spiega il razionale dietro ogni suggerimento
+- Indica priorità e impatto atteso delle azioni consigliate
+
+⚠️ **TRASPARENZA**:
+- Distingui tra fatti (dai dati) e interpretazioni/suggerimenti
+- Se non hai abbastanza dati per rispondere, dillo chiaramente
+- Evita affermazioni generiche: sii specifico e basato sui dati
+"""
+
+    async for chunk in llm_service.generate_stream(
+        messages=messages,
+        system_prompt=enhanced_prompt,
+        provider=provider,
+        model=model,
+        temperature=0.7,
+        max_tokens=4096,
+    ):
+        yield chunk

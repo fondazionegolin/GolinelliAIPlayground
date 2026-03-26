@@ -74,6 +74,140 @@ async def list_chatbot_profiles():
     return get_all_profiles()
 
 
+@router.post("/files/preview")
+async def preview_file(
+    file: UploadFile = File(...),
+    auth: Annotated[StudentOrTeacher, Depends(get_student_or_teacher)] = None,
+):
+    """
+    Quick file preview — no LLM calls, just metadata extraction.
+    Used by the frontend to show rich attachment cards before sending.
+    Returns: { filename, type, sheets, rows, columns, column_types, stats, sample, suggested_prompts }
+    """
+    try:
+        file_bytes = await file.read()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Cannot read file")
+
+    filename = file.filename or "file"
+    mime_type = file.content_type or "application/octet-stream"
+    fn_lower = filename.lower()
+
+    base = {"filename": filename, "mime_type": mime_type, "size_bytes": len(file_bytes)}
+
+    # ── Data file: XLSX / XLS ────────────────────────────────────────────────
+    if fn_lower.endswith((".xlsx", ".xls")) or "spreadsheet" in mime_type or "excel" in mime_type:
+        try:
+            import pandas as pd
+            import io as _io
+            xl = pd.ExcelFile(_io.BytesIO(file_bytes))
+            sheets_info = []
+            for sheet_name in xl.sheet_names[:6]:
+                df = xl.parse(sheet_name)
+                rows, cols = df.shape
+                col_names = [str(c) for c in df.columns.tolist()]
+                col_types = {}
+                for c in df.columns:
+                    dtype = df[c].dtype
+                    if str(dtype).startswith("int") or str(dtype).startswith("float"):
+                        col_types[str(c)] = "number"
+                    elif "datetime" in str(dtype):
+                        col_types[str(c)] = "date"
+                    else:
+                        col_types[str(c)] = "text"
+                stats = {}
+                for c in df.select_dtypes(include="number").columns[:8]:
+                    s = df[c].dropna()
+                    if len(s):
+                        stats[str(c)] = {
+                            "min": float(s.min()), "max": float(s.max()),
+                            "mean": round(float(s.mean()), 3),
+                            "nulls": int(df[c].isna().sum()),
+                        }
+                sample = df.head(5).fillna("").astype(str).values.tolist()
+                sheets_info.append({
+                    "name": sheet_name, "rows": rows, "columns": col_names,
+                    "column_types": col_types, "stats": stats, "sample": sample
+                })
+            suggested = [
+                "Analizza questi dati e fornisci un riassunto",
+                "Identifica eventuali valori anomali o outlier",
+                "Calcola le statistiche principali per ogni colonna numerica",
+                "Quali sono le tendenze principali in questo dataset?",
+            ]
+            return {**base, "type": "xlsx", "sheets": sheets_info,
+                    "active_sheet": sheets_info[0] if sheets_info else None,
+                    "suggested_prompts": suggested}
+        except Exception as e:
+            logger.warning(f"XLSX preview failed: {e}")
+            return {**base, "type": "xlsx", "error": str(e)}
+
+    # ── Data file: CSV ───────────────────────────────────────────────────────
+    if fn_lower.endswith(".csv") or "csv" in mime_type:
+        try:
+            import pandas as pd
+            import io as _io
+            for enc in ("utf-8", "latin-1", "cp1252"):
+                try:
+                    df = pd.read_csv(_io.BytesIO(file_bytes), encoding=enc, nrows=500)
+                    break
+                except Exception:
+                    continue
+            else:
+                return {**base, "type": "csv"}
+            rows = len(df)
+            col_names = [str(c) for c in df.columns.tolist()]
+            col_types = {}
+            for c in df.columns:
+                dtype = df[c].dtype
+                col_types[str(c)] = "number" if str(dtype).startswith(("int", "float")) else "text"
+            stats = {}
+            for c in df.select_dtypes(include="number").columns[:8]:
+                s = df[c].dropna()
+                if len(s):
+                    stats[str(c)] = {"min": float(s.min()), "max": float(s.max()), "mean": round(float(s.mean()), 3)}
+            sample = df.head(5).fillna("").astype(str).values.tolist()
+            suggested = [
+                "Analizza questo CSV e fornisci un riassunto dei dati",
+                "Identifica correlazioni tra le colonne",
+                "Trova i valori più frequenti per ogni categoria",
+            ]
+            return {**base, "type": "csv", "rows": rows, "columns": col_names,
+                    "column_types": col_types, "stats": stats, "sample": sample,
+                    "suggested_prompts": suggested}
+        except Exception as e:
+            return {**base, "type": "csv", "error": str(e)}
+
+    # ── JSON ─────────────────────────────────────────────────────────────────
+    if fn_lower.endswith(".json") or "json" in mime_type:
+        try:
+            import json as _json
+            data = _json.loads(file_bytes.decode("utf-8", errors="ignore"))
+            if isinstance(data, list):
+                return {**base, "type": "json", "records": len(data),
+                        "keys": list(data[0].keys())[:15] if data and isinstance(data[0], dict) else [],
+                        "suggested_prompts": ["Analizza questi dati JSON", "Riassumi la struttura"]}
+            elif isinstance(data, dict):
+                return {**base, "type": "json", "keys": list(data.keys())[:15],
+                        "suggested_prompts": ["Analizza questo JSON", "Spiega la struttura"]}
+        except Exception:
+            pass
+        return {**base, "type": "json"}
+
+    # ── Other document types ──────────────────────────────────────────────────
+    suggested_by_type = {
+        "pdf": ["Riassumi questo documento", "Quali sono i punti chiave?", "Estrai le informazioni principali"],
+        "docx": ["Analizza questo documento", "Riassumi il contenuto", "Trova i punti principali"],
+        "pptx": ["Analizza questa presentazione", "Riassumi le slide", "Quali sono i messaggi chiave?"],
+    }
+    for ext, prompts in suggested_by_type.items():
+        if fn_lower.endswith(f".{ext}"):
+            return {**base, "type": ext, "suggested_prompts": prompts}
+
+    return {**base, "type": "document",
+            "suggested_prompts": ["Analizza questo file", "Riassumi il contenuto"]}
+
+
 @router.get("/available-models")
 async def list_available_models():
     """Get list of available LLM models"""
@@ -722,6 +856,239 @@ async def send_message(
     }, room=f"session:{conversation.session_id}")
 
     return assistant_message
+
+
+@router.post("/conversations/{conversation_id}/message-stream")
+async def send_message_stream(
+    conversation_id: UUID,
+    request: MessageCreate,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    student: Annotated[SessionStudent, Depends(get_current_student)],
+):
+    """
+    Streaming SSE version of send_message.
+    Performs the same credit/moderation checks and DB persistence,
+    but streams the LLM response as Server-Sent Events with typewriter effect.
+    """
+    result = await db.execute(
+        select(Conversation).where(Conversation.id == conversation_id)
+    )
+    conversation = result.scalar_one_or_none()
+    if not conversation:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found")
+
+    if conversation.student_id != student.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
+
+    session_result = await db.execute(
+        select(Session, Class)
+        .join(Class, Session.class_id == Class.id)
+        .where(Session.id == conversation.session_id)
+    )
+    session_rw = session_result.first()
+    if not session_rw:
+        raise HTTPException(status_code=404, detail="Session not found")
+    session_obj, class_obj = session_rw
+
+    is_allowed = await credit_service.check_availability(
+        db,
+        student.tenant_id,
+        estimated_cost=0.0001,
+        teacher_id=class_obj.teacher_id,
+        class_id=class_obj.id,
+        session_id=session_obj.id,
+        student_id=student.id,
+    )
+    if not is_allowed:
+        raise HTTPException(
+            status_code=status.HTTP_402_PAYMENT_REQUIRED,
+            detail="Credit limit exceeded for this session/class.",
+        )
+
+    # Content moderation
+    moderation_result = await moderation_service.check(request.content or "")
+    effective_content = moderation_result.masked_text or request.content
+
+    if not moderation_result.is_safe and moderation_result.flagged:
+        # Flagged: block and return immediately (no streaming needed)
+        db.add(ContentAlert(
+            tenant_id=student.tenant_id,
+            session_id=conversation.session_id,
+            student_id=student.id,
+            conversation_id=conversation_id,
+            alert_type=moderation_result.alert_type or "offensive",
+            status="pending",
+            original_message=request.content or "",
+            masked_message=moderation_result.masked_text,
+            risk_score=moderation_result.risk_score,
+            details={
+                "flagged_categories": moderation_result.flagged_categories,
+                "pii_found": moderation_result.pii_found,
+            },
+        ))
+        blocked_user_msg = ConversationMessage(
+            tenant_id=student.tenant_id,
+            conversation_id=conversation_id,
+            role=MessageRole.USER,
+            content=f"[BLOCCATO] {effective_content}",
+        )
+        blocked_reply = ConversationMessage(
+            tenant_id=student.tenant_id,
+            conversation_id=conversation_id,
+            role=MessageRole.ASSISTANT,
+            content="🚫 Il tuo messaggio è stato bloccato perché contiene contenuto non appropriato. Questo evento è stato segnalato al tuo docente.",
+            provider="system",
+            model="moderation",
+            token_usage_json={"prompt_tokens": 0, "completion_tokens": 0},
+        )
+        db.add(blocked_user_msg)
+        db.add(blocked_reply)
+        conversation.updated_at = datetime.utcnow()
+        await db.commit()
+        try:
+            await notify_teacher_content_alert(
+                session_id=str(conversation.session_id),
+                alert_id=str(blocked_user_msg.id),
+                student_id=str(student.id),
+                nickname=student.nickname or "Studente",
+                alert_type=moderation_result.alert_type or "offensive",
+                risk_score=moderation_result.risk_score,
+                preview=(request.content or "")[:100],
+            )
+        except Exception:
+            pass
+
+        async def blocked_stream():
+            yield f"data: {json.dumps({'type': 'done', 'content': blocked_reply.content, 'message_id': str(blocked_reply.id)})}\n\n"
+
+        return StreamingResponse(blocked_stream(), media_type="text/event-stream",
+                                 headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+    elif moderation_result.pii_found:
+        db.add(ContentAlert(
+            tenant_id=student.tenant_id,
+            session_id=conversation.session_id,
+            student_id=student.id,
+            conversation_id=conversation_id,
+            alert_type="pii_detected",
+            status="pending",
+            original_message=request.content or "",
+            masked_message=effective_content,
+            risk_score=0.3,
+            details={"pii_found": moderation_result.pii_found},
+        ))
+        await db.flush()
+
+    # Save user message
+    user_message = ConversationMessage(
+        tenant_id=student.tenant_id,
+        conversation_id=conversation_id,
+        role=MessageRole.USER,
+        content=effective_content,
+        content_json=request.content_json,
+    )
+    db.add(user_message)
+    db.add(AuditEvent(
+        tenant_id=student.tenant_id,
+        session_id=conversation.session_id,
+        actor_type="STUDENT",
+        actor_student_id=student.id,
+        event_type="PROMPT_SUBMITTED",
+        payload_json={
+            "conversation_id": str(conversation_id),
+            "content_preview": request.content[:200] if request.content else "",
+        },
+    ))
+    await db.flush()
+
+    # Build message history for LLM
+    hist_result = await db.execute(
+        select(ConversationMessage)
+        .where(ConversationMessage.conversation_id == conversation_id)
+        .order_by(ConversationMessage.created_at.asc())
+    )
+    messages = [{"role": m.role.value, "content": m.content or ""} for m in hist_result.scalars().all()]
+
+    pii_prefix = ""
+    if moderation_result.pii_found:
+        pii_label = moderation_service.pii_label_list(moderation_result.pii_found)
+        pii_prefix = f"⚠️ *Nota: il tuo messaggio conteneva dati sensibili ({pii_label}) che sono stati automaticamente rimossi per la tua sicurezza.*\n\n"
+
+    provider = conversation.llm_provider or "openai"
+    model = conversation.llm_model or "gpt-5-mini"
+    profile_key = conversation.profile_key or "tutor"
+
+    # Load any teacher-defined custom prompt for this profile+session
+    from app.models.session import SessionProfileOverride
+    override_result = await db.execute(
+        select(SessionProfileOverride)
+        .where(SessionProfileOverride.session_id == conversation.session_id)
+        .where(SessionProfileOverride.profile_key == profile_key)
+    )
+    profile_override = override_result.scalar_one_or_none()
+    custom_profile_prompt = profile_override.custom_system_prompt if profile_override else None
+
+    async def generate_stream():
+        from app.services.teacher_agent import generate_generic_response_stream
+        from app.services.llm_service import _needs_web_search
+
+        try:
+            if _needs_web_search(messages):
+                yield f"data: {json.dumps({'type': 'status', 'message': '🔍 Ricerca sul web in corso...'})}\n\n"
+            else:
+                yield f"data: {json.dumps({'type': 'status', 'message': '💬 Elaborazione risposta...'})}\n\n"
+
+            full_content = pii_prefix
+            async for chunk in generate_generic_response_stream(
+                messages, provider, model, profile_key,
+                custom_system_prompt=custom_profile_prompt,
+            ):
+                full_content += chunk
+                yield f"data: {json.dumps({'type': 'chunk', 'content': chunk})}\n\n"
+
+            # Persist assistant message
+            assistant_message = ConversationMessage(
+                tenant_id=student.tenant_id,
+                conversation_id=conversation_id,
+                role=MessageRole.ASSISTANT,
+                content=full_content,
+                provider=provider,
+                model=model,
+                token_usage_json={"prompt_tokens": 0, "completion_tokens": 0},
+            )
+            db.add(assistant_message)
+            conversation.updated_at = datetime.utcnow()
+            await db.commit()
+            await db.refresh(assistant_message)
+
+            yield f"data: {json.dumps({'type': 'done', 'content': full_content, 'message_id': str(assistant_message.id)})}\n\n"
+
+            # Notify teacher of updated conversation
+            try:
+                from sqlalchemy import func as sql_func
+                count_result = await db.execute(
+                    select(sql_func.count()).select_from(ConversationMessage)
+                    .where(ConversationMessage.conversation_id == conversation_id)
+                )
+                msg_count = count_result.scalar_one() or 0
+                await sio.emit("conversation_updated", {
+                    "conversation_id": str(conversation_id),
+                    "session_id": str(conversation.session_id),
+                    "message_count": msg_count,
+                    "updated_at": conversation.updated_at.isoformat(),
+                }, room=f"session:{conversation.session_id}")
+            except Exception as e:
+                logger.warning(f"Socket notify failed: {e}")
+
+        except Exception as e:
+            logger.error(f"Student stream error: {e}")
+            yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+
+    return StreamingResponse(
+        generate_stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 @router.post("/student/chat")
@@ -1417,12 +1784,28 @@ async def teacher_chat_stream(
         )
 
         try:
-            # If mode is "default" (chat), skip intent recognition entirely — always text response
+            # If mode is "default" (chat), skip intent recognition — stream text directly
             if agent_mode == "default":
-                yield f"data: {json.dumps({'type': 'status', 'message': '💬 Elaborazione risposta...'})}\n\n"
+                from app.services.llm_service import _needs_web_search
+                from app.services.teacher_agent import generate_with_analytics_stream
+
+                # Yield status immediately so NGINX/client know the connection is alive
+                if _needs_web_search(messages):
+                    yield f"data: {json.dumps({'type': 'status', 'message': '🔍 Ricerca sul web in corso...'})}\n\n"
+                else:
+                    yield f"data: {json.dumps({'type': 'status', 'message': '💬 Elaborazione risposta...'})}\n\n"
+
                 context, _ = await load_teacher_context(db, teacher)
-                result = await generate_with_analytics(messages, context, provider, model)
-                yield f"data: {json.dumps({'type': 'done', 'content': result})}\n\n"
+
+                full_content = ''
+                async for chunk in generate_with_analytics_stream(
+                    messages, context, provider, model,
+                    custom_system_prompt=teacher.support_chat_system_prompt or None,
+                ):
+                    full_content += chunk
+                    yield f"data: {json.dumps({'type': 'chunk', 'content': chunk})}\n\n"
+
+                yield f"data: {json.dumps({'type': 'done', 'content': full_content})}\n\n"
                 return
 
             # Step 1: Classify intent (only for non-default modes)
@@ -1535,12 +1918,22 @@ async def teacher_chat_with_files(
             continue
 
         try:
+            fn_lower = file_name.lower()
+            is_spreadsheet = (
+                fn_lower.endswith((".xlsx", ".xls", ".csv"))
+                or "spreadsheet" in file_type
+                or "excel" in file_type
+                or file_type in ("text/csv", "application/csv")
+            )
             analysis = await document_processor.process(
                 file_bytes=file_data,
                 filename=file_name,
                 mime_type=file_type,
-                llm_service=llm_service,
-                analyze_visuals=True,
+                # Skip LLM-based summarisation for spreadsheets — the raw
+                # structured extract is already informative and the extra LLM
+                # call makes the request too slow / too large.
+                llm_service=None if is_spreadsheet else llm_service,
+                analyze_visuals=not is_spreadsheet,
             )
             file_extracts.append(analysis.structured_extract)
             logger.info(

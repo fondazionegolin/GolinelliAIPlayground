@@ -12,7 +12,6 @@ import {
 } from 'lucide-react'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { DEFAULT_STUDENT_ACCENT, getStudentAccentTheme, type StudentAccentId } from '@/lib/studentAccent'
-import { getTeacherAccentTheme } from '@/lib/teacherAccent'
 import { VoiceRecorder } from '@/components/VoiceRecorder'
 
 // File Viewer Modal Component
@@ -784,6 +783,14 @@ export default function ChatSidebar({
     }
   }
 
+  const handleInputPaste = (e: React.ClipboardEvent) => {
+    const fileItems = Array.from(e.clipboardData.items).filter(item => item.kind === 'file')
+    if (fileItems.length === 0) return
+    e.preventDefault()
+    const files = fileItems.map(item => item.getAsFile()).filter(Boolean) as File[]
+    if (files.length > 0) setAttachedFiles(prev => [...prev, ...files])
+  }
+
   const uploadSessionFiles = async (files: File[]) => {
     if (files.length === 0) return
     try {
@@ -911,16 +918,10 @@ export default function ChatSidebar({
   const resolveAccentTheme = (accentId?: string) => {
     if (!accentId) return null
     try {
-      if (accentId === 'pink' || accentId === 'blue' || accentId === 'cyan' || accentId === 'orange' || accentId === 'mustard') {
-        return getStudentAccentTheme(accentId as StudentAccentId)
-      }
-      if (accentId === 'red' || accentId === 'indigo' || accentId === 'gray' || accentId === 'green' || accentId === 'slateblue') {
-        return getTeacherAccentTheme(accentId)
-      }
+      return getStudentAccentTheme(accentId as StudentAccentId)
     } catch {
       return null
     }
-    return null
   }
 
   // Linkify function
@@ -1791,57 +1792,46 @@ export default function ChatSidebar({
 
       {/* Tabs — pill switcher */}
       <div className="px-2.5 pt-2 pb-1.5 bg-white border-b border-slate-100 shrink-0">
-        <div className="flex items-center gap-0.5 bg-slate-100/80 p-0.5 rounded-xl">
-          <button
-            onClick={() => setActiveTab('session')}
-            onDragEnter={(e) => {
-              const types = Array.from(e.dataTransfer.types || [])
-              if (types.includes('application/x-session-file') || types.includes('Files')) {
-                setActiveTab('session')
-              }
-            }}
-            className={`flex-1 flex items-center justify-center gap-1 py-1.5 text-[10px] font-bold rounded-lg transition-all duration-200 ${activeTab === 'session'
-              ? 'bg-white shadow-sm text-[#181b1e]'
-              : 'text-slate-400 hover:text-slate-500'}`}
-          >
-            <MessageSquare className="h-3 w-3" />
-            Sessione
-          </button>
-
-          <button
-            onClick={() => setActiveTab('private')}
-            className={`flex-1 flex items-center justify-center gap-1 py-1.5 text-[10px] font-bold rounded-lg transition-all duration-200 relative ${activeTab === 'private'
-              ? 'bg-white shadow-sm text-[#181b1e]'
-              : 'text-slate-400 hover:text-slate-500'}`}
-          >
-            <MessagesSquare className="h-3 w-3" />
-            Private
-            {totalUnreadPrivate > 0 && (
-              <span className="ml-0.5 px-1 py-0.5 text-[8px] bg-red-500 text-white rounded-full leading-none">
-                {totalUnreadPrivate > 9 ? '9+' : totalUnreadPrivate}
-              </span>
-            )}
-          </button>
-
-          <button
-            onClick={() => setActiveTab('files')}
-            className={`flex-1 flex items-center justify-center gap-1 py-1.5 text-[10px] font-bold rounded-lg transition-all duration-200 ${activeTab === 'files'
-              ? 'bg-white shadow-sm text-[#181b1e]'
-              : 'text-slate-400 hover:text-slate-500'}`}
-          >
-            <Folder className="h-3 w-3" />
-            File
-          </button>
-
-          <button
-            onClick={() => setActiveTab('users')}
-            className={`flex-1 flex items-center justify-center gap-1 py-1.5 text-[10px] font-bold rounded-lg transition-all duration-200 ${activeTab === 'users'
-              ? 'bg-white shadow-sm text-[#181b1e]'
-              : 'text-slate-400 hover:text-slate-500'}`}
-          >
-            <Users className="h-3 w-3" />
-            Utenti
-          </button>
+        <div
+          className="flex items-center gap-0.5 p-0.5 rounded-xl"
+          style={{ backgroundColor: studentAccentTheme.softMid }}
+        >
+          {(['session', 'private', 'files', 'users'] as const).map((tab) => {
+            const isTabActive = activeTab === tab
+            const tabLabels = { session: 'Sessione', private: 'Private', files: 'File', users: 'Utenti' }
+            const TabIcons = { session: MessageSquare, private: MessagesSquare, files: Folder, users: Users }
+            const TabIcon = TabIcons[tab]
+            return (
+              <button
+                key={tab}
+                onClick={() => setActiveTab(tab)}
+                {...(tab === 'session' ? {
+                  onDragEnter: (e: React.DragEvent) => {
+                    const types = Array.from(e.dataTransfer.types || [])
+                    if (types.includes('application/x-session-file') || types.includes('Files')) setActiveTab('session')
+                  }
+                } : {})}
+                className="flex-1 flex items-center justify-center gap-1 py-1.5 text-[10px] font-bold rounded-lg transition-all duration-200 relative"
+                style={isTabActive ? {
+                  backgroundColor: 'rgba(255,255,255,0.92)',
+                  color: studentAccentTheme.text,
+                  boxShadow: `0 1px 4px ${studentAccentTheme.accent}30`,
+                  border: `1px solid ${studentAccentTheme.border}`,
+                } : {
+                  color: studentAccentTheme.text + '80',
+                  border: '1px solid transparent',
+                }}
+              >
+                <TabIcon className="h-3 w-3" />
+                {tabLabels[tab]}
+                {tab === 'private' && totalUnreadPrivate > 0 && (
+                  <span className="ml-0.5 px-1 py-0.5 text-[8px] bg-red-500 text-white rounded-full leading-none">
+                    {totalUnreadPrivate > 9 ? '9+' : totalUnreadPrivate}
+                  </span>
+                )}
+              </button>
+            )
+          })}
         </div>
       </div>
 
@@ -1920,6 +1910,7 @@ export default function ChatSidebar({
               value={inputText}
               onChange={(e) => setInputText(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
+              onPaste={handleInputPaste}
               placeholder={activeTab === 'private' ? "Messaggio privato..." : "Scrivi un messaggio..."}
               className="border-none bg-transparent focus-visible:ring-0 h-9 text-sm px-2 flex-1 shadow-none"
             />

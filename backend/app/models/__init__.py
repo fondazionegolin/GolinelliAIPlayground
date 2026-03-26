@@ -1,6 +1,6 @@
 from app.models.tenant import Tenant
 from app.models.user import User
-from app.models.session import Class, Session, SessionModule, SessionStudent
+from app.models.session import Class, Session, SessionModule, SessionStudent, SessionProfileOverride
 from app.models.chat import ChatRoom, ChatMessage
 from app.models.llm import LLMProfile, Conversation, ConversationMessage, AuditEvent, TeacherConversation, TeacherConversationMessage
 from app.models.rag import RAGDocument, RAGChunk, RAGEmbedding, RAGCitation
@@ -23,6 +23,7 @@ __all__ = [
     "Session",
     "SessionModule",
     "SessionStudent",
+    "SessionProfileOverride",
     "ChatRoom",
     "ChatMessage",
     "LLMProfile",
