@@ -15,6 +15,7 @@ from app.models.session_canvas import SessionCanvas
 from app.models.template_version import TenantTemplateVersion
 from app.models.alert import ContentAlert
 from app.models.feedback import FeedbackReport
+from app.models.notebook import Notebook
 
 __all__ = [
     "Tenant",
@@ -63,4 +64,5 @@ __all__ = [
     "TenantTemplateVersion",
     "ContentAlert",
     "FeedbackReport",
+    "Notebook",
 ]

@@ -52,6 +52,10 @@ export const authApi = {
     api.get('/auth/public-settings', { params: { tenant_slug: tenantSlug } }),
   requestTeacher: (data: { email: string; first_name: string; last_name: string; tenant_slug?: string; school_name?: string }) =>
     api.post('/auth/teachers/request', data),
+  getResetPasswordInfo: (token: string) =>
+    api.get(`/auth/reset-password/${token}`),
+  setNewPassword: (token: string, data: { new_password: string; confirm_password: string }) =>
+    api.post(`/auth/reset-password/${token}`, data),
 }
 
 export const studentApi = {
@@ -127,6 +131,8 @@ export const adminApi = {
 }
 
 export const teacherApi = {
+  changePassword: (data: { current_password: string; new_password: string; confirm_password: string }) =>
+    api.post('/teacher/profile/change-password', data),
   getClasses: () => api.get('/teacher/classes'),
   createClass: (data: { name: string; school_grade?: string }) => api.post('/teacher/classes', data),
   updateClass: (id: string, data: { name: string; school_grade?: string }) =>
@@ -173,6 +179,8 @@ export const teacherApi = {
     api.get(`/teacher/sessions/${sessionId}/tasks/${taskId}/submissions`),
   gradeSubmission: (sessionId: string, taskId: string, submissionId: string, data: { score?: string; feedback?: string }) =>
     api.patch(`/teacher/sessions/${sessionId}/tasks/${taskId}/submissions/${submissionId}`, null, { params: data }),
+  analyzeTask: (sessionId: string, taskId: string, question?: string) =>
+    api.post(`/teacher/sessions/${sessionId}/tasks/${taskId}/analyze`, { question: question || '' }),
   // Profile
   getProfile: () => api.get('/teacher/profile'),
   updateProfile: (data: { first_name?: string; last_name?: string; institution?: string; avatar_url?: string; ui_accent?: string }) =>
@@ -548,4 +556,19 @@ export const feedbackApi = {
     api.get('/feedback/admin', { params }),
   updateStatus: (id: string, status: string) =>
     api.patch(`/feedback/admin/${id}/status`, { status }),
+}
+
+
+export const notebooksApi = {
+  list: () => api.get('/notebooks'),
+  create: (title: string) => api.post('/notebooks', { title }),
+  get: (id: string) => api.get(`/notebooks/${id}`),
+  update: (id: string, data: { title?: string; cells?: unknown[] }) => api.put(`/notebooks/${id}`, data),
+  delete: (id: string) => api.delete(`/notebooks/${id}`),
+  tutorChat: (id: string, data: {
+    message: string
+    history: { role: string; content: string }[]
+    current_cell_source?: string
+    last_output?: string
+  }) => api.post(`/notebooks/${id}/tutor`, data),
 }

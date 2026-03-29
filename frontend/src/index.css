@@ -110,3 +110,12 @@
   50% { background-position: 100% 50% }
   100% { background-position: 0% 50% }
 }
+
+.animate-gentle-bounce {
+  animation: gentle-bounce 2.8s ease-in-out infinite;
+}
+
+@keyframes gentle-bounce {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-7px); }
+}

@@ -150,7 +150,7 @@ export function ChatConversationView({
 
       {/* Messages area */}
       <div
-        className="flex-1 overflow-y-auto px-3 py-4 space-y-4"
+        className="flex-1 overflow-y-auto px-6 py-4 space-y-4"
         style={{
           paddingBottom: isKeyboardOpen ? keyboardHeight + 80 : 80,
           WebkitOverflowScrolling: 'touch',

@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, type CSSProperties } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { User, Settings, LogOut, ChevronDown, Bot, Brain, Award, Home, FileEdit, Menu, X, MessageSquare, Check } from 'lucide-react'
+import { User, Settings, LogOut, ChevronDown, Bot, Brain, Award, Home, FileEdit, Menu, X, MessageSquare, Check, FileCode2 } from 'lucide-react'
 import { Button } from './ui/button'
 import { LogoMark } from './LogoMark'
 import { studentApi } from '@/lib/api'
@@ -138,6 +138,7 @@ export function StudentNavbar({
     { key: 'classification', label: 'ML Lab', icon: Brain },
     { key: 'documents', label: 'Documenti', icon: FileEdit },
     { key: 'self_assessment', label: 'Compiti', icon: Award },
+    { key: 'notebook', label: 'Notebook', icon: FileCode2 },
   ]
 
   return (

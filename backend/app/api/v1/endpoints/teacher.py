@@ -8,7 +8,7 @@ from uuid import UUID
 from pydantic import BaseModel, EmailStr
 
 from app.core.database import get_db
-from app.core.security import generate_join_code
+from app.core.security import generate_join_code, verify_password, get_password_hash
 from app.core.permissions import (
     teacher_can_access_class,
     teacher_can_access_session,
@@ -48,6 +48,8 @@ from app.schemas.invitation import (
 )
 from app.services.education_level import SCHOOL_GRADE_OPTIONS
 from app.services.storage_service import storage_service
+from app.services.llm_service import llm_service
+from app.services.credit_service import credit_service
 
 router = APIRouter()
 TEACHER_ACCENTS = {"cyan", "orange", "black", "red"}
@@ -1323,6 +1325,302 @@ async def get_task_submissions(
     ]
 
 
+def _parse_quiz_questions(data: dict) -> list:
+    """Extract questions list from task content_json."""
+    return data.get("questions") or data.get("domande") or []
+
+
+def _parse_quiz_submissions(content_json: str) -> list:
+    """Parse student's quiz answer list from submission content_json."""
+    import json as _json
+    try:
+        data = _json.loads(content_json)
+        if isinstance(data, list):
+            return data
+        if isinstance(data, dict):
+            return data.get("answers") or data.get("risposte") or []
+    except Exception:
+        pass
+    return []
+
+
+def _build_quiz_cross_reference(task_data: dict, submissions: list) -> str:
+    """
+    Build a per-question breakdown: for each question show the expected answer
+    and what every student actually answered. This lets the LLM compare directly.
+    """
+    questions = _parse_quiz_questions(task_data)
+    if not questions:
+        return ""
+
+    lines = []
+
+    for i, q in enumerate(questions):
+        text = q.get("text") or q.get("question") or q.get("domanda") or f"Domanda {i+1}"
+        opts = q.get("options") or q.get("opzioni") or []
+        correct_idx = q.get("correct") if isinstance(q.get("correct"), int) else (
+            q.get("correctIndex") or q.get("correct_index")
+        )
+        explanation = q.get("explanation") or q.get("spiegazione") or ""
+
+        lines.append(f"**Domanda {i+1}:** {text}")
+        if opts:
+            for j, opt in enumerate(opts):
+                marker = "✓" if j == correct_idx else " "
+                lines.append(f"  [{marker}] {chr(65+j)}. {opt}")
+        if explanation:
+            lines.append(f"  📝 Spiegazione: {explanation}")
+
+        # Per-student answers for this question
+        student_rows = []
+        for sub, student in submissions:
+            answers = _parse_quiz_submissions(sub.content_json or "")
+            # Find the answer for this question index
+            answer_item = next(
+                (a for a in answers if a.get("question_index") == i),
+                None
+            )
+            if answer_item is None:
+                student_rows.append(f"  - **{student.nickname}**: *(non risposto)*")
+            else:
+                chosen = answer_item.get("selected_answer") or answer_item.get("risposta") or "?"
+                chosen_idx = answer_item.get("selected_index")
+                is_correct = (chosen_idx == correct_idx) if correct_idx is not None else None
+                mark = " ✓" if is_correct is True else (" ✗" if is_correct is False else "")
+                student_rows.append(f"  - **{student.nickname}**: \"{chosen}\"{mark}")
+
+        if student_rows:
+            lines.append("  Risposte:")
+            lines.extend(student_rows)
+        lines.append("")
+
+    return "\n".join(lines)
+
+
+def _format_exercise_submissions(submissions: list) -> str:
+    """
+    For open-ended exercises: list each student with their full answer text,
+    truncating only if extremely long so the LLM can quote directly.
+    """
+    import json as _json
+    lines = []
+    for sub, student in submissions:
+        score_part = f" [voto: {sub.score}]" if sub.score else ""
+        lines.append(f"\n**{student.nickname}**{score_part}:")
+
+        # Prefer free-text content
+        if sub.content and sub.content.strip():
+            text = sub.content.strip()
+            # Keep up to ~600 chars per student to avoid context explosion
+            if len(text) > 600:
+                text = text[:597] + "…"
+            lines.append(f"  \"{text}\"")
+        elif sub.content_json:
+            try:
+                data = _json.loads(sub.content_json)
+                # Try to extract readable text
+                if isinstance(data, dict):
+                    for key in ("text", "testo", "risposta", "answer", "content"):
+                        if data.get(key):
+                            text = str(data[key])[:600]
+                            lines.append(f"  \"{text}\"")
+                            break
+                    else:
+                        lines.append(f"  {_json.dumps(data, ensure_ascii=False)[:400]}")
+                else:
+                    lines.append(f"  {_json.dumps(data, ensure_ascii=False)[:400]}")
+            except Exception:
+                lines.append(f"  {sub.content_json[:300]}")
+        else:
+            lines.append("  *(nessuna risposta)*")
+    return "\n".join(lines)
+
+
+class TaskAnalyzeRequest(BaseModel):
+    question: str = ""
+
+
+@router.post("/sessions/{session_id}/tasks/{task_id}/analyze")
+async def analyze_task_submissions(
+    session_id: UUID,
+    task_id: UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    teacher: Annotated[User, Depends(get_current_teacher)],
+    body: TaskAnalyzeRequest = TaskAnalyzeRequest(),
+):
+    """
+    Analyze all student submissions for a task with AI.
+    Returns a detailed pedagogical report highlighting strengths, gaps, and critical observations.
+    """
+    import json as _json
+
+    question = (body.question or "").strip()
+
+    if not await teacher_can_access_session(db, teacher, session_id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
+
+    # Fetch session + class
+    sess_res = await db.execute(select(Session).where(Session.id == session_id))
+    session = sess_res.scalar_one_or_none()
+    if not session:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
+
+    cls_name = ""
+    if session.class_id:
+        cls_res = await db.execute(select(Class).where(Class.id == session.class_id))
+        cls = cls_res.scalar_one_or_none()
+        if cls:
+            cls_name = cls.name
+
+    # Fetch task
+    task_res = await db.execute(
+        select(Task)
+        .where(Task.id == task_id)
+        .where(or_(Task.session_id == session_id, Task.class_id == session.class_id))
+    )
+    task = task_res.scalar_one_or_none()
+    if not task:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
+
+    # Fetch all students in session
+    students_res = await db.execute(
+        select(SessionStudent).where(SessionStudent.session_id == session_id)
+    )
+    all_students = students_res.scalars().all()
+
+    # Fetch submissions with student names
+    subs_res = await db.execute(
+        select(TaskSubmission, SessionStudent)
+        .join(SessionStudent, TaskSubmission.student_id == SessionStudent.id)
+        .where(TaskSubmission.task_id == task_id)
+        .order_by(SessionStudent.nickname)
+    )
+    submissions = subs_res.all()
+
+    # Build context
+    lines = []
+    lines.append(f"## COMPITO DA ANALIZZARE: «{task.title}»")
+    lines.append(f"**Tipo:** {task.task_type.value}  |  **Sessione:** {session.title}" + (f"  |  **Classe:** {cls_name}" if cls_name else ""))
+    if task.description:
+        lines.append(f"**Descrizione:** {task.description}")
+    lines.append(f"**Consegne ricevute:** {len(submissions)} su {len(all_students)} studenti")
+
+    task_data = {}
+    if task.content_json:
+        try:
+            task_data = _json.loads(task.content_json)
+        except Exception:
+            pass
+
+    # Show task structure (consegna) clearly
+    if task_data:
+        if task.task_type == TaskType.QUIZ:
+            questions = _parse_quiz_questions(task_data)
+            if questions:
+                lines.append("\n### STRUTTURA DEL QUIZ (domanda → risposta corretta):")
+                for i, q in enumerate(questions):
+                    q_text = q.get("text") or q.get("testo") or q.get("domanda") or f"Domanda {i+1}"
+                    lines.append(f"\n**D{i+1}:** {q_text}")
+                    options = q.get("options") or q.get("opzioni") or []
+                    correct_idx = q.get("correct") if isinstance(q.get("correct"), int) else q.get("correct_index")
+                    for j, opt in enumerate(options):
+                        marker = "✓" if j == correct_idx else "  "
+                        lines.append(f"  {marker} {chr(65+j)}) {opt}")
+                    expl = q.get("explanation") or q.get("spiegazione")
+                    if expl:
+                        lines.append(f"  *Spiegazione:* {expl}")
+        else:
+            # Exercise: show consegna text/instructions
+            consegna = (
+                task_data.get("text") or task_data.get("testo") or
+                task_data.get("instructions") or task_data.get("istruzioni") or
+                task_data.get("description") or ""
+            )
+            if consegna:
+                lines.append(f"\n### CONSEGNA DEL DOCENTE:\n{consegna}")
+
+    if submissions:
+        if task.task_type == TaskType.QUIZ:
+            cross_ref = _build_quiz_cross_reference(task_data, submissions)
+            if cross_ref:
+                lines.append("\n### ANALISI INCROCIATA QUIZ (per domanda):")
+                lines.append(cross_ref)
+        else:
+            lines.append("\n### RISPOSTE DEGLI STUDENTI (testo completo):")
+            lines.append(_format_exercise_submissions(submissions))
+    else:
+        lines.append("\n*Nessuna consegna ricevuta finora.*")
+
+    submitted_ids = {str(s.student_id) for s, _ in submissions}
+    missing = [s for s in all_students if str(s.id) not in submitted_ids]
+    if missing:
+        lines.append(f"\n**Non hanno ancora consegnato ({len(missing)}):** {', '.join(s.nickname for s in missing)}")
+
+    task_context = "\n".join(lines)
+
+    system_prompt = f"""Sei un assistente didattico esperto in analisi formativa e valutazione. \
+Il docente ti chiede di analizzare le risposte degli studenti a un compito/esercizio/quiz.
+
+**REGOLA FONDAMENTALE:** Ogni affermazione che fai sulle competenze, errori o ragionamenti degli studenti \
+DEVE essere supportata da una citazione verbatim (tra virgolette) di ciò che lo studente ha scritto, \
+con il nickname dello studente. Non fare mai valutazioni generiche senza esempi concreti tratti dalle risposte.
+
+Produci un rapporto strutturato e critico che includa:
+
+1. **📊 Panoramica generale** — quanti hanno consegnato, livello generale della classe, trend complessivo
+2. **✅ Punti di forza** — cosa gli studenti hanno dimostrato di aver compreso, con citazioni dirette (es. «Mario ha scritto: "..."»)
+3. **⚠️ Debiti formativi** — errori ricorrenti e lacune comuni, sempre illustrati con esempi citati testualmente
+4. **🔴 Criticità individuali** — studenti con difficoltà particolari, con i loro errori specifici riportati testualmente
+5. **🔍 Anomalie e fuori topic** — risposte non pertinenti, troppo brevi, fuori tema, o sospettosamente simili tra loro
+6. **💡 Suggerimenti didattici** — azioni concrete che il docente potrebbe intraprendere per colmare le lacune
+
+Per i **quiz**: fai riferimento alla struttura domanda-per-domanda fornita; indica quanti studenti hanno sbagliato \
+ogni domanda e quale risposta errata era più comune.
+Per gli **esercizi aperti**: confronta esplicitamente ciò che lo studente ha scritto con la consegna originale.
+
+Usa **tabelle markdown** per dati comparabili. Sii diretto e specifico — mai generico.
+
+---
+
+{task_context}"""
+
+    user_msg = question if question else (
+        "Fornisci un'analisi critica e dettagliata delle risposte degli studenti, "
+        "evidenziando debiti formativi, punti di forza, criticità individuali e suggerimenti didattici."
+    )
+
+    llm_response = await llm_service.generate(
+        messages=[{"role": "user", "content": user_msg}],
+        system_prompt=system_prompt,
+        provider=None,
+        model=None,
+        max_tokens=3000,
+    )
+
+    try:
+        from app.api.v1.endpoints.llm import safe_track_usage
+        cost = credit_service.calculate_cost_for_model(
+            llm_response.provider, llm_response.model,
+            llm_response.prompt_tokens, llm_response.completion_tokens,
+        )
+        await safe_track_usage(
+            db, teacher.tenant_id, llm_response.provider, llm_response.model, cost,
+            {"type": "task_analysis", "task_id": str(task_id)},
+            teacher_id=teacher.id,
+            context="task_analysis",
+        )
+    except Exception:
+        pass
+
+    return {
+        "analysis": llm_response.content,
+        "task_title": task.title,
+        "task_type": task.task_type.value,
+        "submission_count": len(submissions),
+        "total_students": len(all_students),
+    }
+
+
 @router.patch("/sessions/{session_id}/tasks/{task_id}/submissions/{submission_id}")
 async def grade_submission(
     session_id: UUID,
@@ -2378,3 +2676,31 @@ async def delete_session_chatbot_profile_override(
         await db.commit()
 
     return {"status": "reset"}
+
+
+# ── Self-service password change ──────────────────────────────────────────────
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str
+    confirm_password: str
+
+
+@router.post("/profile/change-password")
+async def change_password(
+    request: ChangePasswordRequest,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    teacher: Annotated[User, Depends(get_current_teacher)],
+):
+    if not teacher.password_hash or not verify_password(request.current_password, teacher.password_hash):
+        raise HTTPException(status_code=400, detail="Password attuale non corretta")
+
+    if request.new_password != request.confirm_password:
+        raise HTTPException(status_code=400, detail="Le password non coincidono")
+
+    if len(request.new_password) < 8:
+        raise HTTPException(status_code=400, detail="La password deve essere di almeno 8 caratteri")
+
+    teacher.password_hash = get_password_hash(request.new_password)
+    await db.commit()
+    return {"message": "Password aggiornata con successo"}

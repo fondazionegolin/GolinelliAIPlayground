@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
 import { useToast } from '@/components/ui/use-toast'
 import {
-  Check, X, Clock, Key, Copy, UserPlus, Mail, Trash2,
+  Check, X, Clock, Key, UserPlus, Mail, Trash2,
   GraduationCap, Search, ChevronDown, ChevronUp,
   Users, BookOpen, Euro, LogIn, Pencil, ShieldCheck,
   Upload, Tag, MessageSquare, Send, AlertCircle, CheckCircle2, Loader2,
@@ -44,7 +44,7 @@ interface TeacherStatus {
 
 interface ResetResult {
   email: string
-  temporary_password: string
+  email_sent: boolean
 }
 
 interface CsvRow {
@@ -138,7 +138,7 @@ export default function TeachersPage() {
   const resetMutation = useMutation({
     mutationFn: (userId: string) => adminApi.resetPassword(userId),
     onSuccess: (res) => {
-      setResetResult({ email: res.data.email, temporary_password: res.data.temporary_password })
+      setResetResult({ email: res.data.email, email_sent: res.data.email_sent })
     },
     onError: () => toast({ variant: 'destructive', title: 'Errore reset password' }),
   })
@@ -193,11 +193,6 @@ export default function TeachersPage() {
     },
     onError: () => toast({ variant: 'destructive', title: 'Errore aggiornamento limite' }),
   })
-
-  const copyToClipboard = (text: string) => {
-    navigator.clipboard.writeText(text)
-    toast({ title: 'Copiato!' })
-  }
 
   /* ── CSV helpers ── */
   const parseCsv = useCallback((text: string) => {
@@ -342,30 +337,18 @@ export default function TeachersPage() {
 
       {/* Reset password result */}
       {resetResult && (
-        <div className="flex items-start gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3">
-          <Key className="h-5 w-5 text-emerald-600 mt-0.5 flex-shrink-0" />
-          <div className="flex-1">
-            <p className="text-sm font-semibold text-emerald-800 mb-2">Password resettata</p>
-            <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
-              <div className="flex items-center justify-between rounded-lg bg-white border border-emerald-200 px-3 py-1.5">
-                <span className="text-xs text-slate-500">Email</span>
-                <div className="flex items-center gap-1">
-                  <code className="text-xs font-mono text-slate-800">{resetResult.email}</code>
-                  <button onClick={() => copyToClipboard(resetResult.email)} className="p-0.5 text-slate-400 hover:text-slate-700">
-                    <Copy className="h-3.5 w-3.5" />
-                  </button>
-                </div>
-              </div>
-              <div className="flex items-center justify-between rounded-lg bg-white border border-emerald-200 px-3 py-1.5">
-                <span className="text-xs text-slate-500">Password</span>
-                <div className="flex items-center gap-1">
-                  <code className="text-xs font-mono text-slate-800">{resetResult.temporary_password}</code>
-                  <button onClick={() => copyToClipboard(resetResult.temporary_password)} className="p-0.5 text-slate-400 hover:text-slate-700">
-                    <Copy className="h-3.5 w-3.5" />
-                  </button>
-                </div>
-              </div>
-            </div>
+        <div className={`flex items-start gap-3 rounded-xl border px-4 py-3 ${resetResult.email_sent ? 'border-emerald-200 bg-emerald-50' : 'border-amber-200 bg-amber-50'}`}>
+          <Key className={`h-5 w-5 mt-0.5 flex-shrink-0 ${resetResult.email_sent ? 'text-emerald-600' : 'text-amber-600'}`} />
+          <div className="flex-1 text-sm">
+            <p className={`font-semibold mb-0.5 ${resetResult.email_sent ? 'text-emerald-800' : 'text-amber-800'}`}>
+              {resetResult.email_sent ? 'Link di reset inviato' : 'Reset generato — email non inviata'}
+            </p>
+            <p className={resetResult.email_sent ? 'text-emerald-700' : 'text-amber-700'}>
+              {resetResult.email_sent
+                ? <>Il docente riceverà un'email su <strong>{resetResult.email}</strong> con il link per impostare la nuova password (valido 24 h).</>
+                : <>Verifica la configurazione SMTP. Email non recapitata a {resetResult.email}.</>
+              }
+            </p>
           </div>
           <button onClick={() => setResetResult(null)} className="opacity-60 hover:opacity-100">
             <X className="h-4 w-4" />

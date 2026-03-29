@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button'
 import {
   Send, Bot, Paperclip, X, Trash2, Plus, File, Image as ImageIcon, Loader2,
   Database, Download, ChevronDown, ChevronRight, Edit3, Check, MessageCircle, Sparkles,
-  Palette, FileText, CheckSquare, MessageSquare, Settings, RotateCcw
+  Palette, FileText, CheckSquare, MessageSquare, Settings, RotateCcw, BarChart2
 } from 'lucide-react'
 import { llmApi, teacherApi } from '@/lib/api'
 import { useToast } from '@/components/ui/use-toast'
@@ -40,6 +40,7 @@ const AGENT_MODES = [
   { id: 'quiz', label: 'Quiz' },
   { id: 'image', label: 'Immagine' },
   { id: 'dataset', label: 'Dataset' },
+  { id: 'analysis', label: 'Analisi' },
 ] as const
 
 // Explicitly include web_search in type even though it's hidden from UI
@@ -123,6 +124,9 @@ export default function TeacherSupportChat() {
   const [agentMode, setAgentMode] = useState<AgentMode>('default')
   const [imageProvider, setImageProvider] = useState<'dall-e' | 'gpt-image-1'>('dall-e')
   const [imageSize, setImageSize] = useState<string>('1024x1024')
+  // Analysis mode: session/task picker
+  const [analysisSessionId, setAnalysisSessionId] = useState<string>('')
+  const [analysisTaskId, setAnalysisTaskId] = useState<string>('')
   const [chatBg, setChatBg] = useState<string>('')
   const [chatBgDefault, setChatBgDefault] = useState<string>('')
   const [showBgPalette, setShowBgPalette] = useState(false)
@@ -382,6 +386,17 @@ export default function TeacherSupportChat() {
       }
       return allSessions
     },
+  })
+
+  // Tasks for selected analysis session
+  const { data: analysisTasksData } = useQuery({
+    queryKey: ['analysis-tasks', analysisSessionId],
+    queryFn: async () => {
+      const res = await teacherApi.getTasks(analysisSessionId)
+      return (res.data || []) as Array<{ id: string; title: string; task_type: string; status: string }>
+    },
+    enabled: !!analysisSessionId && agentMode === 'analysis',
+    staleTime: 30_000,
   })
 
   // Auto-scroll
@@ -781,10 +796,11 @@ export default function TeacherSupportChat() {
   const handleSend = async () => {
     const userInput = inputText.trim()
 
-    if ((!userInput && attachedFiles.length === 0) || isLoading) return
+    const canSendAnalysis = agentMode === 'analysis' && analysisTaskId
+    if ((!userInput && attachedFiles.length === 0 && !canSendAnalysis) || isLoading) return
 
     const filesInfo = attachedFiles.length > 0 ? ` [Allegati: ${attachedFiles.map(f => f.file.name).join(', ')}]` : ''
-    let messageContent = userInput || 'Analizza questi documenti'
+    let messageContent = userInput || (agentMode === 'analysis' ? 'Analizza le risposte degli studenti' : 'Analizza questi documenti')
 
     if (userInput && agentMode !== 'default' && agentMode !== 'image') {
       const prefixes: Partial<Record<AgentMode, string>> = {
@@ -901,6 +917,28 @@ REGOLE IMPORTANTI:
         } else {
           throw new Error("Nessuna URL immagine ricevuta")
         }
+
+      } else if (agentMode === 'analysis') {
+        if (!analysisSessionId || !analysisTaskId) {
+          throw new Error('Seleziona una sessione e un compito prima di avviare l\'analisi.')
+        }
+        const taskTitle = analysisTasksData?.find(t => t.id === analysisTaskId)?.title || 'compito selezionato'
+        const sessionTitle = (classesData || []).find((s: any) => s.id === analysisSessionId)?.title || 'sessione'
+
+        // Show status in the streaming slot
+        const assistantId = `resp-${Date.now()}`
+        setMessages(prev => [...prev, { id: assistantId, role: 'assistant' as const, content: '', timestamp: new Date() }])
+        setStreamingStatus(`Caricamento risposte per «${taskTitle}»...`)
+
+        const res = await teacherApi.analyzeTask(analysisSessionId, analysisTaskId, userInput || undefined)
+        const data = res.data
+        const submissionSummary = `📋 *${data.submission_count} su ${data.total_students} studenti hanno consegnato «${data.task_title}» (sessione: ${sessionTitle})*\n\n`
+        const fullContent = submissionSummary + (data.analysis || 'Nessuna analisi disponibile.')
+
+        setStreamingStatus(null)
+        setMessages(prev => prev.map(m => m.id === assistantId ? { ...m, content: fullContent } : m))
+        const finalMsg: Message = { id: assistantId, role: 'assistant', content: fullContent, timestamp: new Date() }
+        await saveMessageToServer(convId, userMessage, finalMsg, selectedModel)
 
       } else if (agentMode === 'web_search' || agentMode === 'quiz' || agentMode === 'dataset' || agentMode === 'report') {
         const finalContent = await runStreamingRequest(messageContent, [...messages, userMessage])
@@ -1443,7 +1481,7 @@ REGOLE IMPORTANTI:
                       <div>
                         <h1 className="text-sm font-bold text-slate-800">Supporto Docente AI</h1>
                         <p className="text-xs text-slate-500">
-                          {(agentMode === 'quiz' || agentMode === 'dataset' || agentMode === 'web_search' || agentMode === 'report')
+                          {(agentMode === 'quiz' || agentMode === 'dataset' || agentMode === 'web_search' || agentMode === 'report' || agentMode === 'analysis')
                             ? 'Claude Haiku'
                             : availableModels.find(m => m.id === selectedModel)?.name}
                         </p>
@@ -1946,6 +1984,46 @@ REGOLE IMPORTANTI:
                         </div>
                       )}
 
+                      {/* Analysis mode: task picker */}
+                      {agentMode === 'analysis' && (
+                        <div className="mb-2 p-3 bg-violet-50 border border-violet-200 rounded-2xl animate-in fade-in slide-in-from-bottom-2 duration-200">
+                          <div className="flex items-center gap-2 mb-2">
+                            <BarChart2 className="h-3.5 w-3.5 text-violet-600" />
+                            <span className="text-xs font-semibold text-violet-700">Analisi risposte studenti</span>
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            <select
+                              value={analysisSessionId}
+                              onChange={e => { setAnalysisSessionId(e.target.value); setAnalysisTaskId('') }}
+                              className="flex-1 min-w-[140px] text-xs border border-violet-200 rounded-lg px-2 py-1.5 bg-white text-slate-700 focus:outline-none focus:ring-1 focus:ring-violet-400"
+                            >
+                              <option value="">— Sessione —</option>
+                              {(classesData || []).map((s: any) => (
+                                <option key={s.id} value={s.id}>{s.class_name}: {s.title}</option>
+                              ))}
+                            </select>
+                            <select
+                              value={analysisTaskId}
+                              onChange={e => setAnalysisTaskId(e.target.value)}
+                              disabled={!analysisSessionId}
+                              className="flex-1 min-w-[140px] text-xs border border-violet-200 rounded-lg px-2 py-1.5 bg-white text-slate-700 focus:outline-none focus:ring-1 focus:ring-violet-400 disabled:opacity-50"
+                            >
+                              <option value="">— Compito/Quiz —</option>
+                              {(analysisTasksData || [])
+                                .filter(t => t.status === 'published' || t.status === 'closed')
+                                .map(t => (
+                                  <option key={t.id} value={t.id}>[{t.task_type}] {t.title}</option>
+                                ))}
+                            </select>
+                          </div>
+                          {analysisTaskId && (
+                            <p className="mt-1.5 text-[10px] text-violet-500">
+                              Scrivi una domanda specifica oppure invia per un'analisi completa
+                            </p>
+                          )}
+                        </div>
+                      )}
+
                       {/* Input Pill */}
                       <div className="relative flex items-center gap-1.5 bg-white border border-slate-200 shadow-sm rounded-[24px] p-1.5 focus-within:ring-2 focus-within:ring-slate-200 transition-all">
                         <input type="file" ref={fileInputRef} className="hidden" multiple
@@ -1976,7 +2054,9 @@ REGOLE IMPORTANTI:
                                         ? <CheckSquare className="h-3.5 w-3.5" />
                                         : m.id === 'image'
                                           ? <ImageIcon className="h-3.5 w-3.5" />
-                                          : <Database className="h-3.5 w-3.5" />
+                                          : m.id === 'analysis'
+                                            ? <BarChart2 className="h-3.5 w-3.5" />
+                                            : <Database className="h-3.5 w-3.5" />
                                   const isSelected = agentMode === m.id
                                   return (
                                     <button
@@ -2014,7 +2094,11 @@ REGOLE IMPORTANTI:
                           onChange={(e) => setInputText(e.target.value)}
                           onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
                           onPaste={handleInputPaste}
-                          placeholder={isMobile ? 'Scrivi...' : 'Scrivi o trascina file qui...'}
+                          placeholder={
+                            agentMode === 'analysis'
+                              ? (analysisTaskId ? 'Domanda specifica (opzionale)...' : 'Seleziona prima sessione e compito...')
+                              : isMobile ? 'Scrivi...' : 'Scrivi o trascina file qui...'
+                          }
                           className="flex-1 bg-transparent border-none focus:ring-0 focus:outline-none outline-none resize-none py-2 px-2 text-sm text-slate-800 placeholder:text-slate-400 max-h-32 min-h-[36px] leading-relaxed"
                           rows={1}
                           style={{ overflow: 'hidden' }}
@@ -2033,6 +2117,7 @@ REGOLE IMPORTANTI:
                             selectedModeMeta.id === 'quiz' ? 'bg-amber-50/50 text-amber-600 border-amber-200' :
                             selectedModeMeta.id === 'image' ? 'bg-purple-50/50 text-purple-600 border-purple-200' :
                             selectedModeMeta.id === 'dataset' ? 'bg-emerald-50/50 text-emerald-600 border-emerald-200' :
+                            selectedModeMeta.id === 'analysis' ? 'bg-violet-50/50 text-violet-600 border-violet-200' :
                             'bg-slate-100/50 text-slate-600 border-slate-200'
                           }`}>
                             {selectedModeMeta.label}
@@ -2041,8 +2126,8 @@ REGOLE IMPORTANTI:
 
                         <Button
                           onClick={handleSend}
-                          disabled={(!inputText.trim() && attachedFiles.length === 0) || isLoading}
-                          className={`h-9 w-9 rounded-full transition-all flex-shrink-0 ${(!inputText.trim() && attachedFiles.length === 0)
+                          disabled={((!inputText.trim() && attachedFiles.length === 0) && !(agentMode === 'analysis' && analysisTaskId)) || isLoading}
+                          className={`h-9 w-9 rounded-full transition-all flex-shrink-0 ${((!inputText.trim() && attachedFiles.length === 0) && !(agentMode === 'analysis' && analysisTaskId))
                             ? 'bg-slate-100 text-slate-300'
                             : 'bg-slate-900 hover:bg-slate-800 text-white shadow-md'
                             }`}

@@ -11,6 +11,8 @@ const TeacherMLLabPage   = lazy(() => import('./TeacherMLLabPage'))
 const UDAListPage        = lazy(() => import('./UDAListPage'))
 const UDACreatorPage     = lazy(() => import('./UDACreatorPage'))
 const TeacherDemoPage    = lazy(() => import('./TeacherDemoPage'))
+const NotebookListPage   = lazy(() => import('../notebook/NotebookListPage'))
+const NotebookPage       = lazy(() => import('../notebook/NotebookPage'))
 // TeacherSupportChat is the index route — load eagerly for fast first paint
 import TeacherSupportChat from './TeacherSupportChat'
 import { TeacherNavbar } from '@/components/TeacherNavbar'
@@ -243,6 +245,8 @@ export default function TeacherDashboard() {
               <Route path="classes/:classId/uda" element={<UDAListPage />} />
               <Route path="classes/:classId/uda/:udaId" element={<UDACreatorPage />} />
               <Route path="demo" element={<TeacherDemoPage />} />
+              <Route path="notebooks" element={<NotebookListPage />} />
+              <Route path="notebooks/notebook/:notebookId" element={<NotebookPage />} />
             </Routes>
           </Suspense>
         </main>

@@ -11,7 +11,7 @@ from app.core.security import get_password_hash, verify_password
 from app.core.config import settings
 from app.core.url_utils import resolve_frontend_url
 from app.api.deps import get_current_admin
-from app.models.user import User, TeacherRequest, ActivationToken
+from app.models.user import User, TeacherRequest, ActivationToken, PasswordResetToken
 from app.models.tenant import Tenant
 from app.models.template_version import TenantTemplateVersion
 from app.models.session import Session, SessionStudent, Class as TeacherClass
@@ -323,37 +323,50 @@ async def reset_user_password(
     db: Annotated[AsyncSession, Depends(get_db)],
     admin: Annotated[User, Depends(get_current_admin)],
 ):
-    import secrets
-    
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
-    
-    # Generate new temporary password
-    temp_password = secrets.token_urlsafe(12)
-    user.password_hash = get_password_hash(temp_password)
-    
+
+    # Invalidate any previous unused reset tokens for this user
+    old_tokens = await db.execute(
+        select(PasswordResetToken).where(
+            PasswordResetToken.user_id == user_id,
+            PasswordResetToken.is_used == False,
+        )
+    )
+    for tok in old_tokens.scalars().all():
+        tok.is_used = True
+
+    # Generate a new secure token (valid 24 h)
+    reset_token = secrets.token_urlsafe(32)
+    token_record = PasswordResetToken(
+        user_id=user.id,
+        token=reset_token,
+        expires_at=datetime.now(timezone.utc) + timedelta(hours=24),
+    )
+    db.add(token_record)
     await db.commit()
+
+    # Build reset link and send email
+    frontend_base = resolve_frontend_url(request.headers.get("origin"))
+    reset_link = f"{frontend_base}/reset-password/{reset_token}"
 
     tenant = (await db.execute(select(Tenant).where(Tenant.id == admin.tenant_id))).scalar_one_or_none()
     template_args = _template_args(_catalog_with_tenant_values(tenant), "password_reset") if tenant else {}
-    login_url = f"{resolve_frontend_url(request.headers.get('origin'))}/login"
-    email_sent = await email_service.send_password_reset_email(
+
+    email_sent = await email_service.send_password_reset_link_email(
         to_email=user.email or "",
         first_name=user.first_name or "",
         last_name=user.last_name or "",
-        temporary_password=temp_password,
-        login_url=login_url,
+        reset_link=reset_link,
         subject_template=template_args.get("subject_template"),
         html_template=template_args.get("html_template"),
-        text_template=template_args.get("text_template"),
     )
-    
+
     return {
-        "message": "Password reset successful" + (" and email sent" if email_sent else " (email not sent)"),
+        "message": "Link di reset inviato" + (" via email" if email_sent else " (email non inviata — verifica SMTP)"),
         "email": user.email,
-        "temporary_password": temp_password,
         "email_sent": email_sent,
     }
 

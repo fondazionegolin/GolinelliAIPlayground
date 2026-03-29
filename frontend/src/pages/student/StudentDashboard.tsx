@@ -15,6 +15,7 @@ const ChatbotModule         = lazy(() => import('./ChatbotModule'))
 const TasksModule           = lazy(() => import('./TasksModule'))
 const ClassificationModule  = lazy(() => import('./ClassificationModule'))
 const StudentDocumentsModule = lazy(() => import('./StudentDocumentsModule'))
+const StudentNotebookModule = lazy(() => import('../notebook/StudentNotebookModule'))
 import ChatSidebar from '@/components/ChatSidebar'
 import { MobileNav } from '@/components/student/MobileNav'
 import { MobileHeader } from '@/components/student/MobileHeader'
@@ -686,6 +687,14 @@ function ModuleView({ moduleKey, sessionId, openTaskId, studentId, studentName, 
     return (
       <div className="h-[calc(100dvh-7rem)] md:h-full">
         <StudentDocumentsModule sessionId={sessionId} openLessonTaskId={openDocumentTaskId} />
+      </div>
+    )
+  }
+
+  if (moduleKey === 'notebook') {
+    return (
+      <div className="h-[calc(100dvh-7rem)] md:h-full flex flex-col overflow-hidden">
+        <StudentNotebookModule />
       </div>
     )
   }

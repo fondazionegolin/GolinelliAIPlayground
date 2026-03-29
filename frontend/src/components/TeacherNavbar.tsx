@@ -1,7 +1,8 @@
 import { useState, useRef, useEffect, type CSSProperties } from 'react'
 import { Link, useNavigate, useLocation } from 'react-router-dom'
-import { User, Settings, LogOut, ChevronDown, Users, MessageSquare, FileText, Check, Brain, MonitorPlay } from 'lucide-react'
+import { User, Settings, LogOut, ChevronDown, Users, MessageSquare, FileText, Check, Brain, MonitorPlay, FileCode2, KeyRound, Loader2 } from 'lucide-react'
 import { Button } from './ui/button'
+import { useToast } from '@/components/ui/use-toast'
 import { LogoMark } from './LogoMark'
 import { teacherApi } from '@/lib/api'
 import { useAuthStore } from '@/stores/auth'
@@ -270,6 +271,7 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
     { path: '/teacher/demo', label: 'Studentbot', icon: MonitorPlay },
     { path: '/teacher/documents', label: t('navbar.nav_documents'), icon: FileText },
     { path: '/teacher/ml-lab', label: 'ML Lab', icon: Brain },
+    { path: '/teacher/notebooks', label: 'Notebook', icon: FileCode2 },
   ]
 
   const handleNotificationClick = (notification: TeacherNotification) => {
@@ -555,11 +557,45 @@ interface SettingsModalProps {
 
 function SettingsModal({ profile, onSave, onClose }: SettingsModalProps) {
   const { t } = useTranslation()
+  const { toast } = useToast()
   const [formData, setFormData] = useState(profile)
   const [previewUrl, setPreviewUrl] = useState(profile.avatarUrl || '')
   const [isUploading, setIsUploading] = useState(false)
   const modalAccentTheme = getTeacherAccentTheme(formData.uiAccent)
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  // Password change state
+  const [showPasswordSection, setShowPasswordSection] = useState(false)
+  const [currentPassword, setCurrentPassword] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [changingPassword, setChangingPassword] = useState(false)
+
+  const handleChangePassword = async () => {
+    console.log('[ChangePassword] invoked', { currentPassword: !!currentPassword, newPasswordLen: newPassword.length, match: newPassword === confirmPassword })
+    if (newPassword !== confirmPassword) {
+      toast({ variant: 'destructive', title: 'Errore', description: 'Le password non coincidono' })
+      return
+    }
+    if (newPassword.length < 8) {
+      toast({ variant: 'destructive', title: 'Errore', description: 'La password deve essere di almeno 8 caratteri' })
+      return
+    }
+    setChangingPassword(true)
+    try {
+      console.log('[ChangePassword] calling API...')
+      const res = await teacherApi.changePassword({ current_password: currentPassword, new_password: newPassword, confirm_password: confirmPassword })
+      console.log('[ChangePassword] success', res.data)
+      toast({ title: 'Password aggiornata', description: 'La tua password è stata cambiata con successo.' })
+      setCurrentPassword(''); setNewPassword(''); setConfirmPassword('')
+      setShowPasswordSection(false)
+    } catch (err: any) {
+      console.error('[ChangePassword] error', err.response?.status, err.response?.data)
+      toast({ variant: 'destructive', title: 'Errore', description: err.response?.data?.detail || 'Errore durante il cambio password' })
+    } finally {
+      setChangingPassword(false)
+    }
+  }
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -700,6 +736,58 @@ function SettingsModal({ profile, onSave, onClose }: SettingsModalProps) {
           </div>
 
 
+
+          {/* Change password section */}
+          <div className="border-t border-slate-100 pt-4">
+            <button
+              type="button"
+              onClick={() => setShowPasswordSection(v => !v)}
+              className="flex items-center gap-2 text-xs font-semibold text-slate-500 uppercase tracking-wide hover:text-slate-700 transition-colors w-full text-left"
+            >
+              <KeyRound className="h-3.5 w-3.5" />
+              Cambia password
+              <span className="ml-auto text-slate-300">{showPasswordSection ? '▲' : '▼'}</span>
+            </button>
+
+            {showPasswordSection && (
+              <div className="mt-3 space-y-3">
+                <input
+                  type="password"
+                  value={currentPassword}
+                  onChange={e => setCurrentPassword(e.target.value)}
+                  placeholder="Password attuale"
+                  required
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-slate-400 focus:border-transparent outline-none"
+                />
+                <input
+                  type="password"
+                  value={newPassword}
+                  onChange={e => setNewPassword(e.target.value)}
+                  placeholder="Nuova password (min. 8 caratteri)"
+                  required
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-slate-400 focus:border-transparent outline-none"
+                />
+                <input
+                  type="password"
+                  value={confirmPassword}
+                  onChange={e => setConfirmPassword(e.target.value)}
+                  placeholder="Conferma nuova password"
+                  required
+                  className={`w-full px-3 py-2 bg-slate-50 border rounded-lg text-sm focus:ring-2 focus:border-transparent outline-none ${newPassword && confirmPassword && newPassword !== confirmPassword ? 'border-red-300 focus:ring-red-400' : 'border-slate-200 focus:ring-slate-400'}`}
+                />
+                <Button
+                  type="button"
+                  size="sm"
+                  disabled={changingPassword}
+                  className="w-full text-white"
+                  style={{ backgroundColor: modalAccentTheme.accent }}
+                  onClick={handleChangePassword}
+                >
+                  {changingPassword ? <><Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />Aggiornamento…</> : 'Aggiorna password'}
+                </Button>
+              </div>
+            )}
+          </div>
 
           {/* Actions */}
           <div className="flex gap-3 pt-2">

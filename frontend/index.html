@@ -6,6 +6,30 @@
     <link href="https://db.onlinewebfonts.com/c/7615af7a9f681395bf515be718f1bf9c?family=SofiaPro" rel="stylesheet" type="text/css"/>
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Golinelli AI Playground</title>
+    <script>
+      // COOP/COEP headers are set by nginx — this SW is a fallback for environments without them.
+      // Guard: only reload once per browser session to avoid infinite loops on browsers
+      // that don't support COEP "credentialless" (e.g. Safari ≤16).
+      if ('serviceWorker' in navigator && !self.crossOriginIsolated) {
+        if (!sessionStorage.getItem('coi-sw-reloaded')) {
+          navigator.serviceWorker.register('/coi-serviceworker.js').then(function (reg) {
+            var sw = reg.installing || reg.waiting || reg.active;
+            if (sw && sw.state !== 'activated') {
+              sw.addEventListener('statechange', function (e) {
+                if (e.target.state === 'activated') {
+                  sessionStorage.setItem('coi-sw-reloaded', '1');
+                  location.reload();
+                }
+              });
+            } else {
+              // SW already active but still not isolated — reload once, then give up.
+              sessionStorage.setItem('coi-sw-reloaded', '1');
+              location.reload();
+            }
+          }).catch(function (e) { console.warn('[COI-SW]', e); });
+        }
+      }
+    </script>
   </head>
   <body>
     <div id="root"></div>

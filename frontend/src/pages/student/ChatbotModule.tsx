@@ -9,7 +9,7 @@ import {
   Send, Bot, User, GraduationCap,
   Lightbulb, ClipboardCheck, ArrowLeft, Sparkles,
   Paperclip, X, File, Database, Download, Loader2,
-  Trash2, ChevronLeft, ChevronRight, Menu, Wand2, Palette, ChevronDown, Check
+  Trash2, ChevronLeft, ChevronRight, Menu, Wand2, Palette, ChevronDown, Check, ImageIcon
 } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -197,6 +197,7 @@ export default function ChatbotModule({ sessionId, studentId, initialTeacherbotI
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [conversationId, setConversationId] = useState<string | null>(null)
+  const loadingConvIdRef = useRef<string | null>(null)
   const [showHistory, setShowHistory] = useState(false)
   const [mobileHistoryOpen, setMobileHistoryOpen] = useState(false)
   const [selectedProfile, setSelectedProfile] = useState<string | null>(null)
@@ -205,6 +206,12 @@ export default function ChatbotModule({ sessionId, studentId, initialTeacherbotI
   const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([])
   const [imageProvider, setImageProvider] = useState<'dall-e' | 'gpt-image-1'>('dall-e')
   const [imageSize, setImageSize] = useState<string>('1024x1024')
+  const [imageMode, setImageMode] = useState(false)
+  const [imageGenerationProgress, setImageGenerationProgress] = useState<{
+    status: string
+    step: 'enhancing' | 'generating' | 'done' | 'error'
+    enhancedPrompt?: string
+  } | null>(null)
   const [verboseMode] = useState(false)
   const [chatBg, setChatBg] = useState<string>('')
   const [chatBgDefault, setChatBgDefault] = useState<string>('')
@@ -796,6 +803,64 @@ export default function ChatbotModule({ sessionId, studentId, initialTeacherbotI
     },
   })
 
+  const handleImageGeneration = useCallback(async (messageContent: string) => {
+    const userMessage: Message = {
+      id: Date.now().toString(),
+      role: 'user',
+      content: messageContent,
+      timestamp: new Date(),
+    }
+    setMessages(prev => [...prev, userMessage])
+    setInput('')
+
+    try {
+      setImageGenerationProgress({ status: 'Ottimizzazione del prompt con il contesto della chat...', step: 'enhancing' })
+
+      const expansionPrompt = `Sei un esperto Prompt Engineer per la generazione di immagini AI. Analizza la conversazione precedente e crea un prompt dettagliato e ottimizzato per generare un'immagine.
+
+Richiesta utente: "${messageContent}"
+
+REGOLE IMPORTANTI:
+- Scrivi SOLO il prompt in inglese, nient'altro.
+- Usa il contesto della conversazione precedente se rilevante (stile, soggetti, ambientazione già discussi).
+- Sii molto descrittivo: specifica stile artistico, illuminazione, composizione, colori e dettagli.
+- NON scrivere spiegazioni, commenti o testo aggiuntivo.
+- Rispondi SOLO con il prompt ottimizzato.`
+
+      const history = messages.map(m => ({ role: m.role, content: m.content }))
+      const expansionRes = await llmApi.studentChat(expansionPrompt, history, 'tutor', 'openai', 'gpt-5-mini')
+      const enhancedPrompt = expansionRes.data?.response?.trim() || messageContent
+
+      setImageGenerationProgress({ status: 'Generazione immagine in corso...', step: 'generating', enhancedPrompt })
+
+      const genRes = await llmApi.generateImage(enhancedPrompt, imageProvider)
+      const imageUrl = genRes.data?.image_url
+
+      setImageGenerationProgress(null)
+
+      if (imageUrl) {
+        const assistantMessage: Message = {
+          id: `img-${Date.now()}`,
+          role: 'assistant',
+          content: `**Immagine Generata**\n\n![Generata](${imageUrl})\n\n**Prompt:** \`${enhancedPrompt}\``,
+          timestamp: new Date(),
+        }
+        setMessages(prev => [...prev, assistantMessage])
+      } else {
+        throw new Error('Nessuna immagine ricevuta dal server')
+      }
+    } catch (err: any) {
+      setImageGenerationProgress(null)
+      const errMessage: Message = {
+        id: `err-${Date.now()}`,
+        role: 'assistant',
+        content: `Mi dispiace, si è verificato un errore nella generazione: ${err.response?.data?.detail || err.message}`,
+        timestamp: new Date(),
+      }
+      setMessages(prev => [...prev, errMessage])
+    }
+  }, [messages, imageProvider])
+
   const handleSend = useCallback((content?: string, files?: globalThis.File[]) => {
     const messageContent = content ?? input
     const messageFiles = files ?? attachedFiles.map(af => af.file)
@@ -858,6 +923,12 @@ export default function ChatbotModule({ sessionId, studentId, initialTeacherbotI
       return
     }
 
+    // IMAGE GENERATION MODE — intercept before normal flow
+    if (imageMode && !selectedTeacherbot && !profileInterview.active) {
+      handleImageGeneration(messageContent.trim())
+      return
+    }
+
     const filesInfo = messageFiles.length > 0
       ? ` [Allegati: ${messageFiles.map(f => f.name).join(', ')}]`
       : ''
@@ -905,6 +976,8 @@ export default function ChatbotModule({ sessionId, studentId, initialTeacherbotI
     isStreaming,
     isTeacherPreview,
     runStudentStreamRequest,
+    imageMode,
+    handleImageGeneration,
   ])
 
   const handleNewChat = useCallback(async () => {
@@ -985,7 +1058,9 @@ export default function ChatbotModule({ sessionId, studentId, initialTeacherbotI
   }
 
   const loadConversation = async (convId: string, isTeacherbotMsg = false) => {
+    loadingConvIdRef.current = convId
     setConversationId(convId)
+    setMessages([])  // Clear immediately so old messages don't bleed into the new view
     // Determine if it's a teacherbot conversation from the list
     const tbConv = teacherbotConversationsData?.find(c => c.id === convId)
     const isTeacherbot = isTeacherbotMsg || !!tbConv
@@ -999,6 +1074,7 @@ export default function ChatbotModule({ sessionId, studentId, initialTeacherbotI
       }
       try {
         const res = await teacherbotsApi.getConversationMessages(convId)
+        if (loadingConvIdRef.current !== convId) return  // Stale response — a newer load superseded this one
         const loadedMessages: Message[] = res.data.map((m: any) => ({
           id: m.id,
           role: m.role,
@@ -1019,20 +1095,14 @@ export default function ChatbotModule({ sessionId, studentId, initialTeacherbotI
 
     try {
       const res = await llmApi.getMessages(convId)
+      if (loadingConvIdRef.current !== convId) return  // Stale response — a newer load superseded this one
       const serverMessages: Message[] = res.data.map((m: { id: string; role: string; content: string; created_at: string }) => ({
         id: m.id,
         role: m.role as 'user' | 'assistant',
         content: m.content,
         timestamp: new Date(m.created_at),
       }))
-      
-      setMessages(prev => {
-        // Only replace if server has more messages or local is empty
-        if (serverMessages.length >= prev.length || prev.length === 0) {
-          return serverMessages;
-        }
-        return prev;
-      })
+      setMessages(serverMessages)
 
       const conv = conversationsData?.find(c => c.id === convId)
       if (conv) {
@@ -1353,7 +1423,7 @@ export default function ChatbotModule({ sessionId, studentId, initialTeacherbotI
   // Desktop Chat interface
   return (
     <div
-      className="flex h-full md:h-[calc(100vh-7.2rem)] md:max-h-[920px] md:min-h-[500px] flex-col md:flex-row bg-slate-50 md:bg-white md:rounded-2xl overflow-hidden md:shadow-lg md:border md:border-slate-200 relative md:my-1.5 md:mb-5"
+      className="flex h-full md:h-[calc(100vh-7.2rem)] md:max-h-[920px] md:min-h-[500px] flex-col md:flex-row bg-slate-50 md:bg-white md:rounded-2xl overflow-hidden md:shadow-lg md:border md:border-slate-200 relative md:my-1.5 md:mb-5 md:mx-3"
       style={accentVars}
     >
       {/* Mobile Header - Fixed height */}
@@ -1793,7 +1863,7 @@ export default function ChatbotModule({ sessionId, studentId, initialTeacherbotI
         </div>
 
         {/* Messages area */}
-        <div className={`flex-1 overflow-y-auto overflow-x-hidden px-3 py-3 md:px-4 md:py-6 space-y-3 md:space-y-6 ${chatBgIsDark ? 'text-white' : ''}`} style={{ WebkitOverflowScrolling: 'touch', scrollBehavior: 'smooth' }}>
+        <div className={`flex-1 overflow-y-auto px-6 py-4 md:px-10 md:py-6 space-y-3 md:space-y-6 ${chatBgIsDark ? 'text-white' : ''}`} style={{ WebkitOverflowScrolling: 'touch', scrollBehavior: 'smooth' }}>
           {messages.length === 0 ? (
             <div className="text-center py-12">
               <div className={`inline-flex items-center justify-center w-20 h-20 rounded-2xl mb-6 shadow-lg ${selectedTeacherbot ? getTeacherbotColorClass(selectedTeacherbot.color) : ''}`} style={selectedTeacherbot ? undefined : selectedSolidStyle}>
@@ -1894,6 +1964,24 @@ export default function ChatbotModule({ sessionId, studentId, initialTeacherbotI
               </div>
             </div>
           )}
+          {imageGenerationProgress && (
+            <div className="flex gap-3 justify-start">
+              <div className="w-9 h-9 rounded-xl flex items-center justify-center shadow-md flex-shrink-0" style={selectedSolidStyle}>
+                <ImageIcon className="h-4 w-4 text-white" />
+              </div>
+              <div className="bg-white border border-slate-100 shadow-sm rounded-2xl rounded-bl-md px-4 py-3 max-w-[75%]">
+                <div className="flex items-center gap-2 mb-1">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin text-fuchsia-500" />
+                  <span className="font-medium text-slate-700 text-sm">{imageGenerationProgress.status}</span>
+                </div>
+                {imageGenerationProgress.enhancedPrompt && (
+                  <div className="text-xs text-slate-400 italic mt-2 border-t border-slate-100 pt-2">
+                    "{imageGenerationProgress.enhancedPrompt.substring(0, 140)}{imageGenerationProgress.enhancedPrompt.length > 140 ? '...' : ''}"
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
           <div className="h-16 md:hidden" />
           <div ref={messagesEndRef} />
         </div>
@@ -1979,6 +2067,15 @@ export default function ChatbotModule({ sessionId, studentId, initialTeacherbotI
                 <Paperclip className="h-5 w-5" />
               </Button>
 
+              <Button
+                variant="ghost" size="icon"
+                className={`h-9 w-9 rounded-full flex-shrink-0 transition-all ${imageMode ? 'bg-fuchsia-50 text-fuchsia-600' : 'text-slate-400 hover:bg-slate-100'}`}
+                onClick={() => setImageMode(v => !v)}
+                title={imageMode ? 'Disattiva modalità immagini' : 'Attiva modalità immagini'}
+              >
+                <ImageIcon className="h-5 w-5" />
+              </Button>
+
               <div className="flex-1 relative min-w-0">
                 <input
                   ref={inputRef}
@@ -2001,7 +2098,7 @@ export default function ChatbotModule({ sessionId, studentId, initialTeacherbotI
                     }
                   }}
                   onPaste={handleInputPaste}
-                  placeholder={profileInterview.active ? t('chatbot.guided_placeholder') : (attachedFiles.length > 0 ? t('chatbot.describe_placeholder') : "Scrivi un messaggio...")}
+                  placeholder={profileInterview.active ? t('chatbot.guided_placeholder') : (imageMode ? 'Descrivi l\'immagine da generare...' : (attachedFiles.length > 0 ? t('chatbot.describe_placeholder') : 'Scrivi un messaggio...'))}
                   disabled={sendMessageMutation.isPending || isStreaming}
                   className="w-full py-2.5 bg-transparent border-none text-sm focus:ring-0 focus:outline-none outline-none placeholder:text-slate-400"
                 />
@@ -2022,39 +2119,41 @@ export default function ChatbotModule({ sessionId, studentId, initialTeacherbotI
             </div>
           </div>
 
-          <div className="hidden lg:flex items-center justify-center gap-4 mt-2 pb-4 flex-wrap">
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-slate-400">Modello immagini:</span>
-              <div className="flex items-center bg-slate-100 rounded-lg p-0.5">
-                {([
-                  { id: 'dall-e' as const, label: '🎨 DALL-E 3' },
-                  { id: 'gpt-image-1' as const, label: '✨ GPT Image 1' },
-                ]).map((m) => (
-                  <button
-                    key={m.id}
-                    onClick={() => setImageProvider(m.id)}
-                    className={`px-2 py-1 text-[10px] rounded-md transition-all ${imageProvider === m.id ? 'bg-white shadow text-fuchsia-600 font-bold' : 'text-slate-500 hover:text-slate-700'}`}
-                  >
-                    {m.label}
-                  </button>
-                ))}
+          {imageMode && (
+            <div className="flex items-center justify-center gap-4 mt-2 pb-3 flex-wrap animate-in fade-in slide-in-from-bottom-1 duration-150">
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-slate-400">Modello:</span>
+                <div className="flex items-center bg-slate-100 rounded-lg p-0.5">
+                  {([
+                    { id: 'dall-e' as const, label: '🎨 DALL-E 3' },
+                    { id: 'gpt-image-1' as const, label: '✨ GPT Image 1' },
+                  ]).map((m) => (
+                    <button
+                      key={m.id}
+                      onClick={() => setImageProvider(m.id)}
+                      className={`px-2 py-1 text-[10px] rounded-md transition-all ${imageProvider === m.id ? 'bg-white shadow text-fuchsia-600 font-bold' : 'text-slate-500 hover:text-slate-700'}`}
+                    >
+                      {m.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-slate-400">Formato:</span>
+                <select
+                  value={imageSize}
+                  onChange={(e) => setImageSize(e.target.value)}
+                  className="text-xs bg-slate-100 border-0 rounded-lg px-2 py-1 text-slate-600 focus:ring-1 focus:ring-fuchsia-300"
+                >
+                  <option value="1024x1024">1:1 Quadrato</option>
+                  <option value="1024x768">4:3 Orizzontale</option>
+                  <option value="768x1024">3:4 Verticale</option>
+                  <option value="1280x720">16:9 Panorama</option>
+                  <option value="720x1280">9:16 Portrait</option>
+                </select>
               </div>
             </div>
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-slate-400">Formato:</span>
-              <select
-                value={imageSize}
-                onChange={(e) => setImageSize(e.target.value)}
-                className="text-xs bg-slate-100 border-0 rounded-lg px-2 py-1 text-slate-600 focus:ring-1 focus:ring-fuchsia-300"
-              >
-                <option value="1024x1024">1:1 Quadrato</option>
-                <option value="1024x768">4:3 Orizzontale</option>
-                <option value="768x1024">3:4 Verticale</option>
-                <option value="1280x720">16:9 Panorama</option>
-                <option value="720x1280">9:16 Portrait</option>
-              </select>
-            </div>
-          </div>
+          )}
         </div>
       </div>
     </div >
