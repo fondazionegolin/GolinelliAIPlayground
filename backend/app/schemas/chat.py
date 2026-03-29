@@ -29,6 +29,8 @@ class ChatMessageResponse(BaseModel):
     sender_student_id: Optional[UUID]
     message_text: str
     attachments: list[dict[str, Any]]
+    reply_to_id: Optional[UUID] = None
+    reply_preview: Optional[str] = None
     created_at: datetime
 
     class Config:
@@ -46,3 +48,4 @@ class SessionMessageCreate(BaseModel):
     notification_type: Optional[str] = None
     notification_data: Optional[dict[str, Any]] = None
     attachments: list[dict[str, Any]] = []
+    reply_to_id: Optional[UUID] = None

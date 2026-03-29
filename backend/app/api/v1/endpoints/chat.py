@@ -135,6 +135,8 @@ async def get_session_messages(
             "sender_accent": accents.get(str(m.sender_student_id or m.sender_teacher_id)),
             "text": m.message_text,
             "attachments": m.attachments,
+            "reply_to_id": str(m.reply_to_id) if m.reply_to_id else None,
+            "reply_preview": m.reply_preview,
             "created_at": m.created_at.isoformat(),
             "is_notification": is_notif,
             "notification_type": notif_type,
@@ -199,6 +201,20 @@ async def send_session_message(
             # Merge with first attachment
             attachments[0].update(notification_meta)
     
+    # Build reply preview (denormalized to avoid JOIN on every message load)
+    reply_preview = None
+    if request.reply_to_id:
+        parent_res = await db.execute(select(ChatMessage).where(ChatMessage.id == request.reply_to_id))
+        parent_msg = parent_res.scalar_one_or_none()
+        if parent_msg:
+            parent_name = "Docente" if parent_msg.sender_type == SenderType.TEACHER else "Studente"
+            if parent_msg.sender_student_id:
+                ss_res = await db.execute(select(SessionStudent).where(SessionStudent.id == parent_msg.sender_student_id))
+                ss = ss_res.scalar_one_or_none()
+                if ss:
+                    parent_name = ss.nickname
+            reply_preview = f"{parent_name}: {parent_msg.message_text[:80]}"
+
     message = ChatMessage(
         tenant_id=tenant_id,
         session_id=session_id,
@@ -208,11 +224,13 @@ async def send_session_message(
         sender_student_id=sender_student_id,
         message_text=request.text,
         attachments=attachments,
+        reply_to_id=request.reply_to_id,
+        reply_preview=reply_preview,
     )
     db.add(message)
     await db.commit()
     await db.refresh(message)
-    
+
     return {
         "id": str(message.id),
         "sender_type": sender_type.value,
@@ -221,6 +239,8 @@ async def send_session_message(
         "sender_accent": sender_accent,
         "text": request.text,
         "attachments": attachments,
+        "reply_to_id": str(request.reply_to_id) if request.reply_to_id else None,
+        "reply_preview": reply_preview,
         "created_at": message.created_at.isoformat(),
         "is_notification": request.is_notification,
         "notification_type": request.notification_type,

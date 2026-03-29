@@ -9,13 +9,14 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import {
   Bot, Brain, Award, MessageSquare, FileEdit,
-  Loader2, ChevronRight, Sparkles, ClipboardList, FileText, LogOut
+  Loader2, ChevronRight, Sparkles, ClipboardList, FileText, LogOut, LayoutDashboard
 } from 'lucide-react'
 const ChatbotModule         = lazy(() => import('./ChatbotModule'))
 const TasksModule           = lazy(() => import('./TasksModule'))
 const ClassificationModule  = lazy(() => import('./ClassificationModule'))
 const StudentDocumentsModule = lazy(() => import('./StudentDocumentsModule'))
 const StudentNotebookModule = lazy(() => import('../notebook/StudentNotebookModule'))
+const DesktopPage           = lazy(() => import('../shared/DesktopPage'))
 import ChatSidebar from '@/components/ChatSidebar'
 import { MobileNav } from '@/components/student/MobileNav'
 import { MobileHeader } from '@/components/student/MobileHeader'
@@ -104,6 +105,15 @@ function getModuleConfig(t: (key: string) => string): Record<string, ModuleConfi
     },
     chat: chatEntry,
     classe: chatEntry,
+    desktop: {
+      label: 'Desktop',
+      description: 'Il tuo spazio personale con widget',
+      icon: LayoutDashboard,
+      colorClass: 'text-indigo-700',
+      bgClass: 'bg-indigo-100',
+      borderClass: 'border-indigo-200/70',
+      shadowClass: 'shadow-indigo-100/40',
+    },
   }
 }
 
@@ -281,7 +291,7 @@ export default function StudentDashboard() {
   // Filter out 'chat' module since it's handled separately
   // Always include 'documents' module for students
   const sessionModules = sessionInfo.enabled_modules.map(m => m.key).filter(k => k !== 'chat')
-  const enabledModules = [...new Set([...sessionModules, 'documents'])]
+  const enabledModules = [...new Set([...sessionModules, 'documents', 'desktop'])]
 
   const headerConfig = getHeaderConfig()
 
@@ -695,6 +705,16 @@ function ModuleView({ moduleKey, sessionId, openTaskId, studentId, studentName, 
     return (
       <div className="h-[calc(100dvh-7rem)] md:h-full flex flex-col overflow-hidden">
         <StudentNotebookModule />
+      </div>
+    )
+  }
+
+  if (moduleKey === 'desktop') {
+    return (
+      <div className="h-[calc(100dvh-7rem)] md:h-full flex flex-col overflow-hidden">
+        <Suspense fallback={<div className="flex items-center justify-center h-full"><Loader2 className="h-6 w-6 animate-spin text-slate-400" /></div>}>
+          <DesktopPage />
+        </Suspense>
       </div>
     )
   }

@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input'
 import {
   Send, MessageSquare, Bell, Paperclip, X, Image as ImageIcon,
   MessagesSquare, MessageCircle, Pin, PinOff,
-  FileText, FileSpreadsheet, File, Download, ExternalLink, Wand2, Users, Folder, Search, Upload, List, Grid2X2, Minus, Plus, ChevronDown
+  FileText, FileSpreadsheet, File, Download, ExternalLink, Wand2, Users, Folder, Search, Upload, List, Grid2X2, Minus, Plus, ChevronDown, CornerUpLeft
 } from 'lucide-react'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { DEFAULT_STUDENT_ACCENT, getStudentAccentTheme, type StudentAccentId } from '@/lib/studentAccent'
@@ -332,6 +332,7 @@ export default function ChatSidebar({
   const prevMessagesCountRef = useRef(0)
   const [isUserScrolledUp, setIsUserScrolledUp] = useState(false)
   const [unreadWhileScrolled, setUnreadWhileScrolled] = useState(0)
+  const [replyingTo, setReplyingTo] = useState<ChatMessage | null>(null)
 
   const {
     connected,
@@ -669,7 +670,10 @@ export default function ChatSidebar({
       } else {
         // Send public message
         if (messageText || uploadedUrls.length > 0) {
-          await sendPublicMessage(messageText || '📎 Allegato', uploadedUrls, filenameMap)
+          const replyId = replyingTo?.id
+          const replyPrev = replyingTo ? `${replyingTo.sender_name || 'Utente'}: ${replyingTo.text.slice(0, 80)}` : undefined
+          setReplyingTo(null)
+          await sendPublicMessage(messageText || '📎 Allegato', uploadedUrls, filenameMap, replyId, replyPrev)
         }
       }
       if (uploadedUrls.length > 0) {
@@ -1029,7 +1033,16 @@ export default function ChatSidebar({
     const messageAccentTheme = accentFromSender || accentFallback
 
     return (
-      <div key={msg.id} className={`flex gap-3 ${isMe ? 'flex-row-reverse' : ''}`}>
+      <div
+        key={msg.id}
+        className={`flex gap-3 group/msg ${isMe ? 'flex-row-reverse' : ''}`}
+        draggable
+        onDragStart={(e) => {
+          const payload = JSON.stringify({ text: msg.text, sender_name: msg.sender_name || 'Utente' })
+          e.dataTransfer.setData('desktop/note', payload)
+          e.dataTransfer.effectAllowed = 'copy'
+        }}
+      >
         <div className="flex-shrink-0 w-7 flex flex-col items-center">
           {showAvatar ? (
             <Avatar className="h-7 w-7 border-none shadow-sm">
@@ -1055,19 +1068,26 @@ export default function ChatSidebar({
             </span>
           )}
           <div className={`
-            px-3.5 py-2.5 text-sm leading-snug shadow-sm backdrop-blur-md transition-all
+            px-3.5 py-2.5 text-sm leading-snug shadow-sm backdrop-blur-md transition-all relative
             ${isMe
               ? messageAccentTheme
                 ? 'border rounded-2xl rounded-tr-none'
                 : 'bg-slate-50/60 text-slate-800 border border-slate-200/80 rounded-2xl rounded-tr-none'
               : 'bg-white/60 text-slate-700 border border-slate-200/80 rounded-2xl rounded-tl-none'}
           `}
-            style={messageAccentTheme ? { 
+            style={messageAccentTheme ? {
               backgroundColor: `${messageAccentTheme.accent}15`, // 15 is ~8% opacity for ethereal look
               borderColor: `${messageAccentTheme.accent}40`, // 40 is ~25% opacity for outline
-              color: messageAccentTheme.text 
+              color: messageAccentTheme.text
             } : undefined}
           >
+            {/* Reply quote */}
+            {msg.reply_preview && (
+              <div className="mb-1.5 px-2 py-1 rounded-lg bg-black/5 border-l-2 border-slate-400/60 text-[11px] text-slate-500 truncate">
+                <CornerUpLeft className="inline h-2.5 w-2.5 mr-1 opacity-60" />
+                {msg.reply_preview}
+              </div>
+            )}
             {isMe ? linkify(content, messageAccentTheme ? 'underline break-all' : undefined) : (
               // For received messages, basic linkify with darker link color
               content.split(/(https?:\/\/[^\s]+)/g).map((part: string, i: number) => {
@@ -1122,9 +1142,20 @@ export default function ChatSidebar({
               </div>
             )}
           </div>
-          <span className="text-[9px] text-slate-300 mt-1 font-medium">
-            {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-          </span>
+          <div className={`flex items-center gap-2 mt-1 ${isMe ? 'flex-row-reverse' : ''}`}>
+            <span className="text-[9px] text-slate-300 font-medium">
+              {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+            </span>
+            {activeTab !== 'private' && (
+              <button
+                onClick={() => setReplyingTo(msg)}
+                className="opacity-0 group-hover/msg:opacity-100 transition-opacity p-0.5 rounded text-slate-400 hover:text-slate-600 hover:bg-slate-100"
+                title="Rispondi"
+              >
+                <CornerUpLeft className="h-3 w-3" />
+              </button>
+            )}
+          </div>
         </div>
       </div>
     )
@@ -1884,6 +1915,17 @@ export default function ChatSidebar({
             </div>
           )}
 
+          {replyingTo && (
+            <div className="flex items-center gap-2 px-3 py-1.5 mb-1 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-500">
+              <CornerUpLeft className="h-3 w-3 flex-shrink-0 text-slate-400" />
+              <span className="flex-1 truncate">
+                <span className="font-semibold text-slate-700">{replyingTo.sender_name}</span>: {replyingTo.text.slice(0, 60)}
+              </span>
+              <button onClick={() => setReplyingTo(null)} className="flex-shrink-0 text-slate-400 hover:text-slate-600">
+                <X className="h-3 w-3" />
+              </button>
+            </div>
+          )}
           <div className="relative flex items-center bg-white border border-slate-200 shadow-sm rounded-[24px] p-1.5 focus-within:ring-2 focus-within:ring-slate-200 focus-within:border-slate-300 transition-all">
             <input
               ref={fileInputRef}

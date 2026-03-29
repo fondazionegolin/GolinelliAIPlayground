@@ -16,6 +16,7 @@ from app.models.template_version import TenantTemplateVersion
 from app.models.alert import ContentAlert
 from app.models.feedback import FeedbackReport
 from app.models.notebook import Notebook
+from app.models.desktop import UserDesktop, DesktopWidget
 
 __all__ = [
     "Tenant",
@@ -65,4 +66,6 @@ __all__ = [
     "ContentAlert",
     "FeedbackReport",
     "Notebook",
+    "UserDesktop",
+    "DesktopWidget",
 ]

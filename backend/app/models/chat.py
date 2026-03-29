@@ -35,6 +35,8 @@ class ChatMessage(Base):
     sender_student_id = Column(UUID(as_uuid=True), ForeignKey("session_students.id"), nullable=True)
     message_text = Column(Text, nullable=False)
     attachments = Column(JSONB, default=list, nullable=False)
+    reply_to_id = Column(UUID(as_uuid=True), ForeignKey("chat_messages.id", ondelete="SET NULL"), nullable=True)
+    reply_preview = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
     __table_args__ = (

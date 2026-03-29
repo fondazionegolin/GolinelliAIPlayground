@@ -19,6 +19,8 @@ export interface ChatMessage {
   is_notification?: boolean
   notification_type?: 'task' | 'document' | 'quiz' | 'system' | 'teacherbot_published'
   notification_data?: Record<string, unknown>
+  reply_to_id?: string
+  reply_preview?: string
 }
 
 export interface OnlineUser {
@@ -62,7 +64,7 @@ interface UseSocketReturn {
   messages: ChatMessage[]
   onlineUsers: OnlineUser[]
   privateChats: Record<string, PrivateChat>
-  sendPublicMessage: (text: string, attachmentUrls?: string[], filenameMap?: Record<string, string>) => Promise<void>
+  sendPublicMessage: (text: string, attachmentUrls?: string[], filenameMap?: Record<string, string>, replyToId?: string, replyPreview?: string) => Promise<void>
   sendPrivateMessage: (targetId: string, text: string, attachmentUrls?: string[], filenameMap?: Record<string, string>) => void
   startPrivateChat: (user: OnlineUser) => void
   markPrivateChatRead: (oderId: string) => void
@@ -495,7 +497,7 @@ export function useSocket(sessionId?: string): UseSocketReturn {
     }
   }, [authToken, sessionId, refreshOnlineUsers, updatePublicCache])
 
-  const sendPublicMessage = useCallback(async (text: string, attachmentUrls: string[] = [], filenameMap: Record<string, string> = {}) => {
+  const sendPublicMessage = useCallback(async (text: string, attachmentUrls: string[] = [], filenameMap: Record<string, string> = {}, replyToId?: string, replyPreview?: string) => {
     if (!sessionId || (!text.trim() && attachmentUrls.length === 0)) return
 
     try {
@@ -515,13 +517,15 @@ export function useSocket(sessionId?: string): UseSocketReturn {
         filename: filenameMap[url] || url.split('/').pop() || 'file'
       }))
 
-      await chatApi.sendSessionMessage(sessionId, text.trim(), attachments)
+      await chatApi.sendSessionMessage(sessionId, text.trim(), attachments, replyToId)
 
       if (socketRef.current) {
         socketRef.current.emit('chat_public_message', {
           session_id: sessionId,
           text: text.trim(),
           attachments,
+          reply_to_id: replyToId,
+          reply_preview: replyPreview,
         })
       }
     } catch (err) {

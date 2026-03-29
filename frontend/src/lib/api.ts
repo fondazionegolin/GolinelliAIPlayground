@@ -295,8 +295,8 @@ export const chatApi = {
     api.post(`/chat/rooms/${roomId}/messages`, { message_text, attachments }),
   getSessionMessages: (sessionId: string, params?: { limit?: number; before_created_at?: string }) =>
     api.get(`/chat/session/${sessionId}/messages`, { params }),
-  sendSessionMessage: (sessionId: string, text: string, attachments: unknown[] = []) =>
-    api.post(`/chat/session/${sessionId}/messages`, { text, attachments }),
+  sendSessionMessage: (sessionId: string, text: string, attachments: unknown[] = [], reply_to_id?: string) =>
+    api.post(`/chat/session/${sessionId}/messages`, { text, attachments, reply_to_id }),
   clearSessionMessages: (sessionId: string) =>
     api.delete(`/chat/session/${sessionId}/messages`),
   uploadFiles: (sessionId: string, files: File[]) => {
@@ -571,4 +571,31 @@ export const notebooksApi = {
     current_cell_source?: string
     last_output?: string
   }) => api.post(`/notebooks/${id}/tutor`, data),
+}
+
+export const desktopApi = {
+  listDesktops: () => api.get('/desktop'),
+  createDesktop: (data: { title?: string; wallpaper_key?: string }) =>
+    api.post('/desktop', data),
+  updateDesktop: (id: string, data: { title?: string; wallpaper_key?: string }) =>
+    api.patch(`/desktop/${id}`, data),
+  deleteDesktop: (id: string) => api.delete(`/desktop/${id}`),
+  reorderDesktops: (ids: string[]) => api.patch('/desktop/reorder', { ids }),
+  addWidget: (desktopId: string, data: {
+    widget_type: string
+    grid_x?: number
+    grid_y?: number
+    grid_w?: number
+    grid_h?: number
+    config_json?: Record<string, unknown>
+  }) => api.post(`/desktop/${desktopId}/widgets`, data),
+  updateWidget: (desktopId: string, widgetId: string, data: {
+    grid_x?: number
+    grid_y?: number
+    grid_w?: number
+    grid_h?: number
+    config_json?: Record<string, unknown>
+  }) => api.patch(`/desktop/${desktopId}/widgets/${widgetId}`, data),
+  deleteWidget: (desktopId: string, widgetId: string) =>
+    api.delete(`/desktop/${desktopId}/widgets/${widgetId}`),
 }
