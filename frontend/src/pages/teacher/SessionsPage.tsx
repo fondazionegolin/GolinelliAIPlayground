@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input'
 import { useToast } from '@/components/ui/use-toast'
 import {
   Plus, Play, Square, Users, Clock, Copy, Eye, Trash2,
-  PlayCircle, ChevronDown, Bot, X, RotateCcw, Loader2, Save,
+  PlayCircle, ChevronDown, Bot, X, RotateCcw, Loader2, Save, Pencil, Check,
 } from 'lucide-react'
 
 interface ClassData {
@@ -226,6 +226,8 @@ export default function SessionsPage() {
   const [showNewForm, setShowNewForm] = useState(false)
   const [newTitle, setNewTitle] = useState('')
   const [botConfigSession, setBotConfigSession] = useState<SessionData | null>(null)
+  const [editingTitleId, setEditingTitleId] = useState<string | null>(null)
+  const [editingTitleValue, setEditingTitleValue] = useState('')
 
   const { data: classes } = useQuery<ClassData[]>({
     queryKey: ['classes'],
@@ -268,6 +270,22 @@ export default function SessionsPage() {
       toast({ title: t('sessions.deleted'), variant: 'destructive' })
     },
   })
+
+  const renameMutation = useMutation({
+    mutationFn: ({ id, title }: { id: string; title: string }) =>
+      teacherApi.updateSession(id, { title }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['sessions'] })
+      setEditingTitleId(null)
+      toast({ title: 'Nome aggiornato' })
+    },
+  })
+
+  const handleRenameSubmit = (id: string) => {
+    const trimmed = editingTitleValue.trim()
+    if (!trimmed) return
+    renameMutation.mutate({ id, title: trimmed })
+  }
 
   const copyCode = (code: string) => {
     navigator.clipboard.writeText(code)
@@ -401,7 +419,37 @@ export default function SessionsPage() {
                     <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${sc.dot} ${isActive ? 'animate-pulse' : ''}`} />
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <h3 className="text-sm font-semibold text-slate-800 truncate">{session.title}</h3>
+                        {editingTitleId === session.id ? (
+                          <form
+                            className="flex items-center gap-1"
+                            onSubmit={(e) => { e.preventDefault(); handleRenameSubmit(session.id) }}
+                          >
+                            <input
+                              autoFocus
+                              value={editingTitleValue}
+                              onChange={e => setEditingTitleValue(e.target.value)}
+                              onKeyDown={e => { if (e.key === 'Escape') setEditingTitleId(null) }}
+                              className="text-sm font-semibold text-slate-800 border-b border-indigo-400 focus:outline-none bg-transparent min-w-0 w-40"
+                            />
+                            <button type="submit" disabled={renameMutation.isPending} className="p-1 rounded hover:bg-slate-100 text-emerald-600">
+                              {renameMutation.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+                            </button>
+                            <button type="button" onClick={() => setEditingTitleId(null)} className="p-1 rounded hover:bg-slate-100 text-slate-400">
+                              <X className="h-3.5 w-3.5" />
+                            </button>
+                          </form>
+                        ) : (
+                          <div className="flex items-center gap-1.5">
+                            <h3 className="text-sm font-semibold text-slate-800 truncate">{session.title}</h3>
+                            <button
+                              onClick={() => { setEditingTitleId(session.id); setEditingTitleValue(session.title) }}
+                              className="p-0.5 rounded hover:bg-slate-100 text-slate-300 hover:text-slate-600 transition-colors"
+                              title="Rinomina sessione"
+                            >
+                              <Pencil className="h-3 w-3" />
+                            </button>
+                          </div>
+                        )}
                         <span className={`px-2 py-0.5 rounded-full text-[11px] font-medium ${sc.badge}`}>
                           {sc.label}
                         </span>

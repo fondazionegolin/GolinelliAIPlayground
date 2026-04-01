@@ -41,8 +41,8 @@ export default function NoteWidget({ config, onConfigChange }: NoteWidgetProps) 
       style={{ backgroundColor: bg }}
     >
       <textarea
-        className="flex-1 w-full resize-none p-4 text-sm font-medium bg-transparent outline-none placeholder:opacity-40"
-        style={{ color: textColor, fontSize: config.font_size ? `${config.font_size}px` : '14px' }}
+        className="flex-1 w-full resize-none p-4 font-medium bg-transparent outline-none placeholder:opacity-40"
+        style={{ color: textColor, fontSize: config.font_size ? `${config.font_size}px` : '16px' }}
         placeholder="Scrivi una nota..."
         value={text}
         onChange={e => handleChange(e.target.value)}

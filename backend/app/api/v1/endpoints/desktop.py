@@ -1,13 +1,21 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from typing import Annotated, List
+from typing import Annotated, List, Optional, Any
 from uuid import UUID
+from pydantic import BaseModel
 import uuid
+import json
+import logging
 
 from app.core.database import get_db
 from app.api.deps import get_student_or_teacher, StudentOrTeacher
 from app.models.desktop import UserDesktop, DesktopWidget
+from app.models.calendar import SessionCalendarEvent
+from app.models.session import Session as SessionModel
+from app.services.llm_service import llm_service
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -92,6 +100,37 @@ async def list_desktops(
             sort_order=0,
         )
         db.add(desktop)
+        await db.flush()  # get desktop.id before creating widgets
+
+        # For students: pre-populate with useful default widgets
+        if actor.is_student:
+            session_id = str(actor.student.session_id)
+            default_widgets = [
+                DesktopWidget(
+                    tenant_id=tenant_id,
+                    desktop_id=desktop.id,
+                    widget_type="WEEKLY_CALENDAR",
+                    grid_x=0, grid_y=0, grid_w=24, grid_h=6,
+                    config_json={"session_id": session_id},
+                ),
+                DesktopWidget(
+                    tenant_id=tenant_id,
+                    desktop_id=desktop.id,
+                    widget_type="CLOCK",
+                    grid_x=0, grid_y=6, grid_w=6, grid_h=3,
+                    config_json={"style": "digital", "show_seconds": True, "show_date": True},
+                ),
+                DesktopWidget(
+                    tenant_id=tenant_id,
+                    desktop_id=desktop.id,
+                    widget_type="NOTE",
+                    grid_x=6, grid_y=6, grid_w=6, grid_h=4,
+                    config_json={"text": "", "color": "#fef08a"},
+                ),
+            ]
+            for w in default_widgets:
+                db.add(w)
+
         await db.commit()
         await db.refresh(desktop)
         desktops = [desktop]
@@ -133,7 +172,7 @@ async def create_desktop(
         owner_teacher_id=teacher_id,
         owner_student_id=student_id,
         title=request.get("title", f"Desktop {len(existing) + 1}"),
-        wallpaper_key=request.get("wallpaper_key", "gradient_midnight"),
+        wallpaper_key=request.get("wallpaper_key", "solid_neutral"),
         sort_order=len(existing),
     )
     db.add(desktop)
@@ -277,3 +316,222 @@ async def delete_widget(
         raise HTTPException(status_code=404, detail="Widget not found")
     await db.delete(widget)
     await db.commit()
+
+
+# ── Desktop Agent ─────────────────────────────────────────────────────────────
+
+WIDGET_REGISTRY_PROMPT = """
+### NOTE — Post-it colorato
+Nota libera con testo. Config: {text: string, color: "#fef08a"|"#bfdbfe"|"#bbf7d0"|"#fecaca"|"#e9d5ff"|qualsiasi hex}. Default: 4×4.
+
+### TASKLIST — Lista compiti
+Lista checkbox. Config: {title: string, items: [{text: string, done: boolean}]}. Default: 5×5.
+
+### CLOCK — Orologio
+Orologio digitale. Config: {show_seconds: boolean, show_date: boolean}. Default: 6×3.
+
+### CALENDAR — Calendario mensile personale
+Note personali per giorno. Config: {notes: {"YYYY-MM-DD": "testo"}}. Default: 6×5.
+NOTA: usa questo per eventi/appuntamenti personali degli studenti.
+
+### WEEKLY_CALENDAR — Calendario sessione (solo se session_id presente)
+Calendario settimanale condiviso. Config: {session_id: string}. Default: 24×6.
+
+La griglia ha 24 colonne. rowHeight ≈ 40px. Posizioni: grid_x, grid_y, grid_w, grid_h.
+"""
+
+AGENT_SYSTEM_PROMPT = """Sei l'assistente AI del desktop personale di {user_name} ({user_role}).
+Il desktop è privato e personale. Il tuo obiettivo è aiutare l'utente a personalizzare e organizzare il suo spazio di lavoro.
+
+STATO ATTUALE DEL DESKTOP:
+{desktop_state}
+
+EVENTI CALENDARIO (settimana corrente):
+{calendar_state}
+
+INFO SESSIONE:
+{session_info}
+
+WIDGET DISPONIBILI:
+{widget_registry}
+
+SFONDI: qualsiasi colore esadecimale (es. #1a1a2e, #0f172a, #1e3a2f) o data URL di un'immagine compressa.
+
+REGOLE:
+- Rispondi SEMPRE in italiano, in modo naturale e amichevole
+- Sei INTERATTIVO: proponi sempre le azioni e chiedi conferma PRIMA di eseguire
+- Se l'utente conferma o dice "sì / vai / fallo", esegui senza chiedere di nuovo
+- Per operazioni complesse o non supportate (es. widget meteo, crypto), spiega gentilmente i limiti e suggerisci alternative
+- NON puoi eliminare widget o eventi — solo creare e modificare
+- Gli studenti possono creare widget personali e note nel calendario personale (CALENDAR widget)
+- I docenti possono creare eventi nella sessione attiva (WEEKLY_CALENDAR / session events)
+- Se non c'è sessione attiva, non proporre WEEKLY_CALENDAR
+- Per i post-it, scegli colori appropriati al contesto (studio=giallo, importante=rosso, ecc.)
+- Quando proponi azioni, elencale chiaramente all'utente
+
+Rispondi con JSON valido nel seguente formato:
+{{
+  "reply": "messaggio conversazionale all'utente (markdown ok)",
+  "actions": [
+    // lista vuota se solo rispondi senza fare nulla
+    // oppure lista di azioni da eseguire
+  ],
+  "requires_confirmation": true/false
+}}
+
+Formato azioni:
+- Crea widget: {{"type": "create_widget", "widget_type": "NOTE", "config": {{}}, "grid_w": 4, "grid_h": 4}}
+- Modifica widget: {{"type": "update_widget", "widget_id": "uuid", "config": {{}}}}
+- Cambia sfondo: {{"type": "update_wallpaper", "wallpaper_key": "#1a1a2e"}}
+- Crea evento sessione (solo docente): {{"type": "create_calendar_event", "title": "...", "event_date": "YYYY-MM-DD", "event_time": "HH:MM", "description": "...", "color": "#6366f1"}}
+- Aggiungi nota calendario personale: {{"type": "update_calendar_note", "date": "YYYY-MM-DD", "note": "testo"}}
+"""
+
+
+class AgentContextWidget(BaseModel):
+    id: str
+    widget_type: str
+    config_json: dict
+    grid_x: int
+    grid_y: int
+    grid_w: int
+    grid_h: int
+
+
+class AgentContextCalendarEvent(BaseModel):
+    id: str
+    title: str
+    event_date: str
+    event_time: Optional[str] = None
+    description: Optional[str] = None
+    color: str
+
+
+class AgentContextSession(BaseModel):
+    id: Optional[str] = None
+    name: Optional[str] = None
+    class_name: Optional[str] = None
+
+
+class AgentRequestContext(BaseModel):
+    desktop_id: str
+    wallpaper_key: str
+    widgets: list[AgentContextWidget]
+    calendar_events: list[AgentContextCalendarEvent] = []
+    session: Optional[AgentContextSession] = None
+    user_name: str
+    user_role: str  # "teacher" | "student"
+
+
+class AgentRequest(BaseModel):
+    message: str
+    context: AgentRequestContext
+
+
+class AgentAction(BaseModel):
+    type: str
+    model_config = {"extra": "allow"}
+
+
+class AgentResponse(BaseModel):
+    reply: str
+    actions: list[dict]
+    requires_confirmation: bool
+
+
+def _build_desktop_state(ctx: AgentRequestContext) -> str:
+    if not ctx.widgets:
+        return "Desktop vuoto (nessun widget)."
+    lines = [f"Desktop ID: {ctx.desktop_id}, Sfondo: {ctx.wallpaper_key}"]
+    for w in ctx.widgets:
+        config_summary = json.dumps(w.config_json, ensure_ascii=False)[:200]
+        lines.append(f"- [{w.widget_type}] id={w.id} pos=({w.grid_x},{w.grid_y}) size={w.grid_w}×{w.grid_h} config={config_summary}")
+    return "\n".join(lines)
+
+
+def _build_calendar_state(ctx: AgentRequestContext) -> str:
+    if not ctx.calendar_events:
+        return "Nessun evento questa settimana."
+    lines = []
+    for ev in ctx.calendar_events:
+        time_str = f" alle {ev.event_time}" if ev.event_time else ""
+        desc_str = f" — {ev.description}" if ev.description else ""
+        lines.append(f"- {ev.event_date}{time_str}: {ev.title}{desc_str}")
+    return "\n".join(lines)
+
+
+def _build_session_info(ctx: AgentRequestContext) -> str:
+    if not ctx.session or not ctx.session.id:
+        return "Nessuna sessione attiva."
+    parts = [f"ID: {ctx.session.id}"]
+    if ctx.session.name:
+        parts.append(f"Nome: {ctx.session.name}")
+    if ctx.session.class_name:
+        parts.append(f"Classe: {ctx.session.class_name}")
+    return ", ".join(parts)
+
+
+@router.post("/desktop/agent", response_model=AgentResponse)
+async def desktop_agent(
+    body: AgentRequest,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    actor: Annotated[StudentOrTeacher, Depends(get_student_or_teacher)],
+):
+    if not llm_service.anthropic_client:
+        raise HTTPException(status_code=503, detail="AI service not available")
+
+    ctx = body.context
+
+    # Build system prompt
+    system = AGENT_SYSTEM_PROMPT.format(
+        user_name=ctx.user_name,
+        user_role="Docente" if ctx.user_role == "teacher" else "Studente",
+        desktop_state=_build_desktop_state(ctx),
+        calendar_state=_build_calendar_state(ctx),
+        session_info=_build_session_info(ctx),
+        widget_registry=WIDGET_REGISTRY_PROMPT,
+    )
+
+    messages = [{"role": "user", "content": body.message}]
+
+    try:
+        response = await llm_service.anthropic_client.messages.create(
+            model="claude-haiku-4-5-20251001",  # fast and cheap for UI interactions
+            system=system,
+            messages=messages,
+            max_tokens=1024,
+            temperature=0.3,
+        )
+
+        raw_text = ""
+        for block in response.content:
+            if hasattr(block, "text"):
+                raw_text += block.text
+
+        # Parse JSON from response
+        # Claude might wrap in ```json ... ``` or return raw JSON
+        raw_text = raw_text.strip()
+        if raw_text.startswith("```"):
+            raw_text = raw_text.split("```")[1]
+            if raw_text.startswith("json"):
+                raw_text = raw_text[4:]
+        raw_text = raw_text.strip().rstrip("`").strip()
+
+        parsed = json.loads(raw_text)
+        return AgentResponse(
+            reply=parsed.get("reply", ""),
+            actions=parsed.get("actions", []),
+            requires_confirmation=parsed.get("requires_confirmation", True),
+        )
+
+    except json.JSONDecodeError as e:
+        logger.warning("Agent response JSON parse error: %s | raw: %s", e, raw_text[:300])
+        # Return raw text as reply with no actions
+        return AgentResponse(
+            reply=raw_text or "Non ho capito. Prova a riformulare la richiesta.",
+            actions=[],
+            requires_confirmation=False,
+        )
+    except Exception as e:
+        logger.error("Agent error: %s", e)
+        raise HTTPException(status_code=500, detail="Agent error")

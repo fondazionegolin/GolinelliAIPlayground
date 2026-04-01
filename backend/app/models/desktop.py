@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, DateTime, ForeignKey, Integer, func
+from sqlalchemy import Column, String, DateTime, ForeignKey, Integer, Text, func
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 import uuid
 
@@ -15,7 +15,7 @@ class UserDesktop(Base):
     owner_student_id = Column(UUID(as_uuid=True), ForeignKey("session_students.id", ondelete="CASCADE"), nullable=True, index=True)
 
     title = Column(String(100), nullable=False, default="Desktop")
-    wallpaper_key = Column(String(200), nullable=False, default="gradient_midnight")
+    wallpaper_key = Column(Text, nullable=False, default="solid_neutral")
     sort_order = Column(Integer, nullable=False, default=0)
 
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)

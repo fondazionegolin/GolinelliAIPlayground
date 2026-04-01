@@ -14,6 +14,7 @@ import { useTranslation } from 'react-i18next'
 import { LanguageSwitcher } from '@/components/LanguageSwitcher'
 import { useTeacherProfile, useInvalidateTeacherProfile, TEACHER_PROFILE_KEY } from '@/hooks/useTeacherProfile'
 import { useQueryClient } from '@tanstack/react-query'
+import { NavbarCalendarClock } from './NavbarCalendarClock'
 
 interface TeacherProfile {
   firstName: string
@@ -336,6 +337,12 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
             </div>
 
             <div className="flex items-center gap-3">
+              {/* Date/time + mini calendar */}
+              <NavbarCalendarClock
+                sessionId={currentSession?.id}
+                accentColor={accentTheme.accent}
+              />
+
               {/* Teacher Notifications (unified) */}
               <TeacherNotifications
                 notifications={teacherNotifications}
@@ -373,7 +380,7 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
 
                 {/* Sessions Dropdown Menu */}
                 {showSessionsMenu && (
-                  <div className="absolute top-full right-0 mt-2 w-80 bg-white/80 backdrop-blur-lg rounded-2xl shadow-xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-150 origin-top-right z-50">
+                  <div className="absolute top-full right-0 mt-2 w-80 bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-150 origin-top-right z-50">
                     {/* Header */}
                     <div className="px-5 py-4 border-b border-slate-100 bg-slate-50">
                       <h3 className="font-bold text-slate-800">{t('navbar.sessions_title')}</h3>
@@ -467,7 +474,7 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
 
                 {/* Dropdown Menu - Modern Floating Style */}
                 {showDropdown && (
-                  <div className="absolute right-0 mt-2 w-64 bg-white/80 backdrop-blur-lg rounded-xl shadow-xl border border-slate-100 py-2 animate-in fade-in zoom-in-95 duration-100 origin-top-right">
+                  <div className="absolute right-0 mt-2 w-64 bg-white rounded-xl shadow-xl border border-slate-100 py-2 animate-in fade-in zoom-in-95 duration-100 origin-top-right z-50">
                     <div className="px-4 py-3 border-b border-slate-50 mb-1">
                       <p className="text-sm font-semibold text-slate-900">
                         {profile.firstName} {profile.lastName}

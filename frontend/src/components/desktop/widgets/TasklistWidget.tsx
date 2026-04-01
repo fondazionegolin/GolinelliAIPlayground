@@ -44,7 +44,7 @@ export default function TasklistWidget({ config, onConfigChange }: TasklistWidge
   return (
     <div className="h-full flex flex-col p-3 gap-2 overflow-hidden">
       {config.title && (
-        <div className="text-xs font-semibold text-white/60 uppercase tracking-wider px-1">
+        <div className="text-sm font-semibold text-white/60 uppercase tracking-wider px-1">
           {config.title}
         </div>
       )}
@@ -60,7 +60,7 @@ export default function TasklistWidget({ config, onConfigChange }: TasklistWidge
               : <Square className="h-4 w-4 text-white/30 flex-shrink-0 mt-0.5 group-hover:text-white/60" />
             }
             <span
-              className={`text-sm leading-snug ${item.done ? 'line-through text-white/30' : 'text-white/80'}`}
+              className={`text-base leading-snug ${item.done ? 'line-through text-white/30' : 'text-white/80'}`}
             >
               {item.text}
             </span>
@@ -74,7 +74,7 @@ export default function TasklistWidget({ config, onConfigChange }: TasklistWidge
           onChange={e => setNewText(e.target.value)}
           onKeyDown={onKeyDown}
           placeholder="Aggiungi un'attività..."
-          className="flex-1 bg-transparent text-xs text-white/70 placeholder:text-white/25 outline-none"
+          className="flex-1 bg-transparent text-sm text-white/70 placeholder:text-white/25 outline-none"
         />
         <button
           onClick={addItem}

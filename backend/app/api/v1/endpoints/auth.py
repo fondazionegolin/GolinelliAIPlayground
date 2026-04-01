@@ -369,6 +369,70 @@ async def change_password_with_token(
     }
 
 
+# ── Self-service "forgot password" ───────────────────────────────────────────
+
+class ForgotPasswordRequest(BaseModel):
+    email: str
+
+
+@router.post("/forgot-password")
+async def forgot_password(
+    body: ForgotPasswordRequest,
+    http_request: Request,
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """
+    Initiate a self-service password reset for teachers.
+    Always returns 200 to avoid leaking whether an email exists.
+    """
+    result = await db.execute(select(User).where(User.email == body.email))
+    user = result.scalar_one_or_none()
+
+    # Silently succeed if user not found, not a teacher/admin, or not active
+    if not user or user.role not in (UserRole.TEACHER, UserRole.ADMIN) or not user.is_active:
+        return {"message": "Se la mail è registrata riceverai un link di reset."}
+
+    # Invalidate previous unused reset tokens
+    old_tokens = (await db.execute(
+        select(PasswordResetToken).where(
+            PasswordResetToken.user_id == user.id,
+            PasswordResetToken.is_used == False,  # noqa: E712
+        )
+    )).scalars().all()
+    for tok in old_tokens:
+        tok.is_used = True
+
+    # Generate new token valid 24 h
+    reset_token = secrets.token_urlsafe(32)
+    token_record = PasswordResetToken(
+        user_id=user.id,
+        token=reset_token,
+        expires_at=datetime.now(timezone.utc) + timedelta(hours=24),
+    )
+    db.add(token_record)
+    await db.commit()
+
+    frontend_base = resolve_frontend_url(http_request.headers.get("origin"))
+    reset_link = f"{frontend_base}/reset-password/{reset_token}"
+
+    # Use tenant email templates if available
+    tenant = None
+    if user.tenant_id:
+        tenant = (await db.execute(select(Tenant).where(Tenant.id == user.tenant_id))).scalar_one_or_none()
+    templates = (tenant.email_templates_json or {}).get("password_reset", {}) if tenant else {}
+
+    await email_service.send_password_reset_link_email(
+        to_email=user.email or "",
+        first_name=user.first_name or "",
+        last_name=user.last_name or "",
+        reset_link=reset_link,
+        subject_template=templates.get("subject"),
+        html_template=templates.get("html"),
+    )
+
+    return {"message": "Se la mail è registrata riceverai un link di reset."}
+
+
 # ── Self-service password reset (token sent by admin) ────────────────────────
 
 class ResetPasswordInfoResponse(BaseModel):

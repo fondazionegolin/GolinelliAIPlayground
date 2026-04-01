@@ -1,8 +1,10 @@
-import { X, Clock, Calendar, StickyNote, CheckSquare, FileText, Image } from 'lucide-react'
+import { X, Clock, Calendar, StickyNote, CheckSquare, FileText, Image, CalendarDays, Sparkles } from 'lucide-react'
 
 interface WidgetPaletteProps {
   onAdd: (widgetType: string, defaultConfig: Record<string, unknown>) => void
   onClose: () => void
+  sessionId?: string
+  sessionName?: string
 }
 
 const PALETTE_ITEMS = [
@@ -65,10 +67,32 @@ const PALETTE_ITEMS = [
     bg: 'bg-pink-400/10',
     defaultConfig: { url: '', filename: '' },
     defaultSize: { w: 5, h: 4 },
+    requiresSession: false,
+  },
+  {
+    type: 'WEEKLY_CALENDAR',
+    label: 'Calendario sessione',
+    description: 'Calendaria settimanale condiviso',
+    icon: CalendarDays,
+    color: 'text-indigo-400',
+    bg: 'bg-indigo-400/10',
+    defaultConfig: {},
+    defaultSize: { w: 14, h: 6 },
+    requiresSession: true,
+  },
+  {
+    type: 'OGGI_IMPARO',
+    label: 'Oggi Imparo',
+    description: 'Microlezione giornaliera con chatbot',
+    icon: Sparkles,
+    color: 'text-violet-400',
+    bg: 'bg-violet-400/10',
+    defaultConfig: {},
+    defaultSize: { w: 7, h: 6 },
   },
 ]
 
-export default function WidgetPalette({ onAdd, onClose }: WidgetPaletteProps) {
+export default function WidgetPalette({ onAdd, onClose, sessionId, sessionName }: WidgetPaletteProps) {
   return (
     <div className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={onClose}>
       <div
@@ -88,12 +112,17 @@ export default function WidgetPalette({ onAdd, onClose }: WidgetPaletteProps) {
         <div className="flex flex-col gap-2">
           {PALETTE_ITEMS.map(item => {
             const Icon = item.icon
+            const disabled = (item as any).requiresSession && !sessionId
             return (
               <button
                 key={item.type}
-                className="flex items-center gap-3 p-3 rounded-xl hover:bg-white/5 transition-colors text-left group"
+                disabled={disabled}
+                title={disabled ? 'Seleziona una sessione attiva per usare questo widget' : undefined}
+                className={`flex items-center gap-3 p-3 rounded-xl transition-colors text-left group ${disabled ? 'opacity-40 cursor-not-allowed' : 'hover:bg-white/5'}`}
                 onClick={() => {
-                  onAdd(item.type, { ...item.defaultConfig, ...item.defaultSize })
+                  if (disabled) return
+                  const extra = item.type === 'WEEKLY_CALENDAR' ? { session_id: sessionId, session_name: sessionName } : {}
+                  onAdd(item.type, { ...item.defaultConfig, ...item.defaultSize, ...extra })
                   onClose()
                 }}
               >

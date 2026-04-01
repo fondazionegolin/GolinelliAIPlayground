@@ -1,10 +1,12 @@
 import { useState, useRef, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useNavigate } from 'react-router-dom'
 import { teacherApi, teacherbotsApi, llmApi } from '@/lib/api'
 import {
   Wand2, ChevronDown, Send, Loader2, RefreshCw,
   GraduationCap, ClipboardCheck, MessageSquare, User, Database, Lightbulb, Bot,
-  ArrowLeft, Save, RotateCcw, MessageCircle, FileText, Sparkles,
+  ArrowLeft, Save, RotateCcw, MessageCircle, FileText, Sparkles, MonitorPlay,
+  ExternalLink,
 } from 'lucide-react'
 import TeacherbotTestChat from '@/components/teacher/TeacherbotTestChat'
 import { TeacherbotPromptOptimizer } from '@/components/teacher/TeacherbotPromptOptimizer'
@@ -12,6 +14,7 @@ import { Button } from '@/components/ui/button'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { useToast } from '@/components/ui/use-toast'
+import { useAuthStore } from '@/stores/auth'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -407,7 +410,49 @@ type Selected = { type: 'teacherbot'; id: string } | { type: 'profile'; profile:
 
 export default function TeacherDemoPage() {
   const [selected, setSelected] = useState<Selected>(null)
-  const [selectedSessionId, setSelectedSessionId] = useState<string>('all')
+  const [selectedSessionId, setSelectedSessionId] = useState<string>(() => {
+    try {
+      const stored = localStorage.getItem('teacher_selected_session')
+      if (stored) return JSON.parse(stored).id
+    } catch { /* ignore */ }
+    return 'all'
+  })
+  const [enteringPreview, setEnteringPreview] = useState(false)
+  const navigate = useNavigate()
+  const { toast } = useToast()
+  const authStore = useAuthStore()
+
+  const handleEnterStudentPreview = async () => {
+    if (selectedSessionId === 'all') {
+      toast({ variant: 'destructive', title: 'Seleziona una sessione', description: 'Devi selezionare una sessione specifica per entrare in modalità anteprima studente.' })
+      return
+    }
+    setEnteringPreview(true)
+    try {
+      const res = await teacherApi.createStudentPreview(selectedSessionId)
+      const { token, student_id, session_id, session_title, nickname } = res.data
+
+      // Back up teacher credentials
+      const teacherToken = authStore.accessToken
+      const teacherUser = authStore.user
+      if (teacherToken && teacherUser) {
+        localStorage.setItem('_teacher_token_backup', teacherToken)
+        localStorage.setItem('_teacher_user_backup', JSON.stringify(teacherUser))
+      }
+      localStorage.setItem('_preview_mode', 'true')
+
+      // Set student session in auth store
+      authStore.setStudentSession(
+        { student_id, session_id, session_title, nickname },
+        token
+      )
+      navigate('/student')
+    } catch {
+      toast({ variant: 'destructive', title: 'Errore', description: 'Impossibile avviare la modalità anteprima.' })
+    } finally {
+      setEnteringPreview(false)
+    }
+  }
 
   const { data: classes } = useQuery({
     queryKey: ['classes'],
@@ -498,10 +543,31 @@ export default function TeacherDemoPage() {
   return (
     <div className="max-w-3xl mx-auto p-6 md:p-8">
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-slate-800 mb-1">Vista Studente</h1>
+        <h1 className="text-2xl font-bold text-slate-800 mb-1">Studentbot</h1>
         <p className="text-slate-500 text-sm">
-          Esplora e personalizza i chatbot che vedono i tuoi studenti. Seleziona una sessione e clicca su un profilo per modificarne il comportamento.
+          Entra nell'interfaccia studente in modalità anteprima, oppure personalizza i chatbot per sessione.
         </p>
+      </div>
+
+      {/* Student preview CTA */}
+      <div className="mb-8 bg-gradient-to-br from-indigo-50 to-purple-50 border border-indigo-200/60 rounded-2xl p-6 flex flex-col sm:flex-row items-start sm:items-center gap-5">
+        <div className="w-12 h-12 rounded-2xl bg-indigo-600 flex items-center justify-center flex-shrink-0 shadow-lg shadow-indigo-200">
+          <MonitorPlay className="h-6 w-6 text-white" />
+        </div>
+        <div className="flex-1">
+          <h2 className="text-base font-bold text-slate-800">Visualizza come studente</h2>
+          <p className="text-sm text-slate-500 mt-0.5">
+            Entra nell'interfaccia studente con le stesse funzionalità che vedono i tuoi studenti. Seleziona prima una sessione.
+          </p>
+        </div>
+        <Button
+          onClick={handleEnterStudentPreview}
+          disabled={enteringPreview || selectedSessionId === 'all'}
+          className="bg-indigo-600 hover:bg-indigo-700 text-white gap-2 flex-shrink-0"
+        >
+          {enteringPreview ? <Loader2 className="h-4 w-4 animate-spin" /> : <ExternalLink className="h-4 w-4" />}
+          Entra come studente
+        </Button>
       </div>
 
       {/* Session selector */}

@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, type CSSProperties } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { User, Settings, LogOut, ChevronDown, Bot, Brain, Award, Home, FileEdit, Menu, X, MessageSquare, Check, FileCode2 } from 'lucide-react'
+import { User, Settings, LogOut, ChevronDown, Bot, Brain, Award, FileEdit, Menu, X, MessageSquare, Check, FileCode2, MonitorPlay, LayoutDashboard } from 'lucide-react'
 import { Button } from './ui/button'
 import { LogoMark } from './LogoMark'
 import { studentApi } from '@/lib/api'
@@ -9,6 +9,7 @@ import { NavTab } from '@/components/ui/NavTab'
 import { useTranslation } from 'react-i18next'
 import { LanguageSwitcher } from '@/components/LanguageSwitcher'
 import { useAuthStore } from '@/stores/auth'
+import { NavbarCalendarClock } from './NavbarCalendarClock'
 
 interface StudentProfile {
   id?: string
@@ -33,6 +34,7 @@ export function StudentNavbar({
   activeModule,
   onNavigate,
   sessionTitle,
+  sessionId,
   joinCode,
   chatSidebarOpen = false,
   onToggleChatSidebar,
@@ -41,6 +43,25 @@ export function StudentNavbar({
 }: StudentNavbarProps) {
   const navigate = useNavigate()
   const logout = useAuthStore((s) => s.logout)
+  const isPreviewMode = localStorage.getItem('_preview_mode') === 'true'
+
+  const handleExitPreview = () => {
+    const tokenBackup = localStorage.getItem('_teacher_token_backup')
+    const userBackup = localStorage.getItem('_teacher_user_backup')
+    if (tokenBackup && userBackup) {
+      try {
+        const user = JSON.parse(userBackup)
+        useAuthStore.getState().setUser(user, tokenBackup)
+      } catch {
+        // fallback: just navigate
+      }
+    }
+    localStorage.removeItem('_preview_mode')
+    localStorage.removeItem('_teacher_token_backup')
+    localStorage.removeItem('_teacher_user_backup')
+    localStorage.removeItem('student_token')
+    navigate('/teacher/demo')
+  }
   const [showDropdown, setShowDropdown] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
   const [showMobileMenu, setShowMobileMenu] = useState(false)
@@ -133,7 +154,7 @@ export function StudentNavbar({
   }
 
   const navItems = [
-    { key: null, label: 'Home', icon: Home },
+    { key: 'desktop', label: 'Desktop', icon: LayoutDashboard },
     { key: 'chatbot', label: 'Chatbot', icon: Bot },
     { key: 'classification', label: 'ML Lab', icon: Brain },
     { key: 'documents', label: 'Documenti', icon: FileEdit },
@@ -143,8 +164,21 @@ export function StudentNavbar({
 
   return (
     <>
+      {/* Preview mode banner */}
+      {isPreviewMode && (
+        <div className="fixed top-0 left-0 right-0 z-[60] bg-amber-500 text-white text-xs font-semibold flex items-center justify-center gap-3 py-1.5 px-4">
+          <MonitorPlay className="h-3.5 w-3.5 flex-shrink-0" />
+          <span>Stai visualizzando l'interfaccia studente in modalità anteprima</span>
+          <button
+            onClick={handleExitPreview}
+            className="ml-2 underline hover:no-underline font-bold"
+          >
+            Esci dall'anteprima
+          </button>
+        </div>
+      )}
       <nav
-        className="fixed top-0 left-0 right-0 z-50 bg-white/98 border-b shadow-sm"
+        className={`fixed left-0 right-0 z-50 bg-white/98 border-b shadow-sm ${isPreviewMode ? 'top-8' : 'top-0'}`}
         style={accentVars}
       >
         <div className="max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -197,6 +231,12 @@ export function StudentNavbar({
             )}
 
             <div className="flex items-center gap-2">
+              {/* Date/time + mini calendar */}
+              <NavbarCalendarClock
+                sessionId={sessionId}
+                accentColor={accentTheme.accent}
+              />
+
               {/* Session Info - Always visible */}
               {sessionTitle && (
                 <div className="hidden lg:flex items-center gap-2 h-9 px-3 rounded-xl border bg-white border-slate-200 shadow-sm">
@@ -248,7 +288,7 @@ export function StudentNavbar({
 
                 {/* Dropdown Menu - Modern Floating Style */}
                 {showDropdown && (
-                  <div className="absolute right-0 mt-2 w-64 bg-white rounded-2xl shadow-xl border border-slate-100 py-2 animate-in fade-in zoom-in-95 duration-100 origin-top-right">
+                  <div className="absolute right-0 mt-2 w-64 bg-white rounded-2xl shadow-xl border border-slate-100 py-2 animate-in fade-in zoom-in-95 duration-100 origin-top-right z-50">
                     <div className="px-4 py-3 border-b border-slate-50 mb-1">
                       <p className="text-sm font-semibold text-slate-900">{profile.nickname}</p>
                       <p className="text-xs text-slate-500 mt-0.5">Studente</p>

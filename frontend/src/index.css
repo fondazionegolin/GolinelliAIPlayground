@@ -119,3 +119,23 @@
   0%, 100% { transform: translateY(0); }
   50% { transform: translateY(-7px); }
 }
+
+/* ── Desktop widget resize handles ───────────────────────────────────────── */
+.react-grid-item .react-resizable-handle {
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+.react-grid-item:hover .react-resizable-handle {
+  opacity: 1;
+}
+.react-grid-item .react-resizable-handle::after {
+  border-color: rgba(99, 102, 241, 0.45);
+  width: 7px;
+  height: 7px;
+  transition: border-color 0.15s ease, width 0.15s ease, height 0.15s ease;
+}
+.react-grid-item .react-resizable-handle:hover::after {
+  border-color: rgba(99, 102, 241, 0.95);
+  width: 9px;
+  height: 9px;
+}

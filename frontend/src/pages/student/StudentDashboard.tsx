@@ -133,13 +133,14 @@ export default function StudentDashboard() {
   const location = useLocation()
   const [sessionInfo, setSessionInfo] = useState<SessionInfo | null>(null)
   const [loading, setLoading] = useState(true)
-  const [activeModule, setActiveModule] = useState<string | null>(null)
+  const [activeModule, setActiveModule] = useState<string | null>('desktop')
   const [openTaskId, setOpenTaskId] = useState<string | null>(null)
   const [openDocumentTaskId, setOpenDocumentTaskId] = useState<string | null>(null)
   const [pendingTasksCount, setPendingTasksCount] = useState(0)
   const [lastDocument] = useState<string | null>(null)
   const [sidebarWidth, setSidebarWidth] = useState(380)
   const [selectedTeacherbotId, setSelectedTeacherbotId] = useState<string | null>(null)
+  const [oggiImparoLesson, setOggiImparoLesson] = useState<string | null>(null)
   const [showSidebar, setShowSidebar] = useState(false)
   const [studentAccent, setStudentAccent] = useState<StudentAccentId>(loadStudentAccent())
 
@@ -264,6 +265,17 @@ export default function StudentDashboard() {
     return () => window.removeEventListener('resize', handleResize)
   }, [])
 
+  // Listen for "Espandi" from OggiImparoWidget → navigate to chatbot with lesson context
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail as { lesson?: string; sessionName?: string }
+      setOggiImparoLesson(detail.lesson ?? null)
+      setActiveModule('chatbot')
+    }
+    window.addEventListener('oggi-imparo:expand', handler)
+    return () => window.removeEventListener('oggi-imparo:expand', handler)
+  }, [])
+
   // Get header config based on active module
   const getHeaderConfig = () => {
     if (!activeModule) {
@@ -301,7 +313,7 @@ export default function StudentDashboard() {
   return (
     <AppBackground className="h-[100dvh] flex flex-col" gradient={bgGradient}>
       {/* Desktop Navbar - hidden on mobile */}
-      <div className="hidden md:block h-16 flex-shrink-0">
+      <div className={`hidden md:block flex-shrink-0 ${localStorage.getItem('_preview_mode') === 'true' ? 'h-24' : 'h-16'}`}>
         <StudentNavbar
           activeModule={activeModule}
           onNavigate={setActiveModule}
@@ -355,7 +367,7 @@ export default function StudentDashboard() {
       {/* Main Layout with Chat Sidebar */}
       <div className={`flex flex-1 overflow-hidden ${isMobile ? 'pt-14' : ''}`}>
         {/* Main Content Area */}
-        <main className={`flex-1 relative ${activeModule === 'chatbot' || activeModule === 'classe' || activeModule === 'documents' ? 'overflow-hidden' : 'overflow-y-auto'}`}>
+        <main className={`flex-1 relative ${activeModule === 'chatbot' || activeModule === 'classe' || activeModule === 'documents' || activeModule === 'desktop' ? 'overflow-hidden' : 'overflow-y-auto'}`}>
           <AnimatePresence mode="wait">
             <motion.div
               key={activeModule || 'home'}
@@ -364,7 +376,7 @@ export default function StudentDashboard() {
               animate="animate"
               exit="exit"
               transition={{ duration: 0.2, ease: 'easeInOut' }}
-              className={`${activeModule === 'chatbot' || activeModule === 'classe' || activeModule === 'documents' ? 'p-0 h-full' : 'p-4 md:p-6'}`}
+              className={`${activeModule === 'chatbot' || activeModule === 'classe' || activeModule === 'documents' || activeModule === 'desktop' ? 'p-0 h-full' : 'p-4 md:p-6'}`}
               style={swipeState.isActive ? { transform: `translateX(${swipeState.x}px)` } : undefined}
             >
               {!activeModule ? (
@@ -378,7 +390,7 @@ export default function StudentDashboard() {
                 />
               ) : (
                 <div className="h-full flex flex-col">
-                  {activeModule !== 'documents' && (
+                  {activeModule !== 'documents' && activeModule !== 'desktop' && (
                     <div className={`mb-4 ${activeModule === 'chatbot' || activeModule === 'classe' ? 'hidden md:block' : ''}`}>
                       <Button
                         variant="ghost"
@@ -398,11 +410,14 @@ export default function StudentDashboard() {
                     <ModuleView
                       moduleKey={activeModule}
                       sessionId={sessionInfo.session.id}
+                      sessionName={sessionInfo.session.title}
                       openTaskId={openTaskId}
                       studentId={sessionInfo.student.id}
                       studentName={sessionInfo.student.nickname}
                       onTeacherbotNotificationClick={handleNotificationClick}
                       selectedTeacherbotId={selectedTeacherbotId}
+                      oggiImparoLesson={oggiImparoLesson}
+                      onOggiImparoLessonConsumed={() => setOggiImparoLesson(null)}
                       studentAccent={studentAccent}
                       openDocumentTaskId={openDocumentTaskId}
                       onOpenDocument={(taskId) => {
@@ -628,14 +643,17 @@ function HomeView({
   )
 }
 
-function ModuleView({ moduleKey, sessionId, openTaskId, studentId, studentName, onTeacherbotNotificationClick, selectedTeacherbotId, studentAccent, openDocumentTaskId, onOpenDocument }: {
+function ModuleView({ moduleKey, sessionId, sessionName, openTaskId, studentId, studentName, onTeacherbotNotificationClick, selectedTeacherbotId, oggiImparoLesson, onOggiImparoLessonConsumed, studentAccent, openDocumentTaskId, onOpenDocument }: {
   moduleKey: string;
   sessionId: string;
+  sessionName?: string;
   openTaskId?: string | null;
   studentId?: string;
   studentName?: string;
   onTeacherbotNotificationClick?: (notification: any) => void;
   selectedTeacherbotId?: string | null;
+  oggiImparoLesson?: string | null;
+  onOggiImparoLessonConsumed?: () => void;
   studentAccent: StudentAccentId;
   openDocumentTaskId?: string | null;
   onOpenDocument?: (taskId: string) => void;
@@ -666,6 +684,8 @@ function ModuleView({ moduleKey, sessionId, openTaskId, studentId, studentName, 
           sessionId={sessionId}
           studentId={studentId}
           initialTeacherbotId={selectedTeacherbotId}
+          oggiImparoContext={oggiImparoLesson ?? undefined}
+          onOggiImparoContextConsumed={onOggiImparoLessonConsumed}
           studentAccent={studentAccent}
         />
       </div>
@@ -713,7 +733,7 @@ function ModuleView({ moduleKey, sessionId, openTaskId, studentId, studentName, 
     return (
       <div className="h-[calc(100dvh-7rem)] md:h-full flex flex-col overflow-hidden">
         <Suspense fallback={<div className="flex items-center justify-center h-full"><Loader2 className="h-6 w-6 animate-spin text-slate-400" /></div>}>
-          <DesktopPage />
+          <DesktopPage sessionId={sessionId} sessionName={sessionName} userType="student" accentColor={getStudentAccentTheme(loadStudentAccent()).accent} />
         </Suspense>
       </div>
     )

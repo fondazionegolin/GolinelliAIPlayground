@@ -371,11 +371,73 @@ function HomeSection({ onCta }: { onCta: () => void }) {
   )
 }
 
+function ForgotPasswordModal({ onClose }: { onClose: () => void }) {
+  const [email, setEmail] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [sent, setSent] = useState(false)
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!email.trim()) return
+    setLoading(true)
+    try {
+      await authApi.forgotPassword(email.trim())
+      setSent(true)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-[200] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-2xl border border-slate-100 p-6 w-full max-w-sm" onClick={e => e.stopPropagation()}>
+        {sent ? (
+          <div className="text-center py-4">
+            <div className="w-12 h-12 rounded-full bg-green-100 flex items-center justify-center mx-auto mb-4">
+              <svg className="w-6 h-6 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+            </div>
+            <h3 className="text-base font-bold text-slate-800 mb-1">Email inviata</h3>
+            <p className="text-sm text-slate-500 mb-4">Se la mail è registrata riceverai un link per reimpostare la password entro qualche minuto.</p>
+            <button onClick={onClose} className="w-full h-10 rounded-xl bg-slate-900 text-white text-sm font-semibold hover:bg-slate-700 transition-colors">Chiudi</button>
+          </div>
+        ) : (
+          <>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-base font-bold text-slate-800">Recupera password</h3>
+              <button onClick={onClose} className="text-slate-400 hover:text-slate-600 transition-colors">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <p className="text-sm text-slate-500 mb-4">Inserisci l'email del tuo account docente. Ti invieremo un link per reimpostare la password.</p>
+            <form onSubmit={handleSubmit} className="space-y-3">
+              <Input
+                type="email"
+                autoFocus
+                required
+                placeholder="docente@scuola.it"
+                value={email}
+                onChange={e => setEmail(e.target.value)}
+                className="bg-slate-50 border-slate-200"
+              />
+              <Button type="submit" className="w-full h-10" style={{ backgroundColor: '#a855f7' }} disabled={loading || !email.trim()}>
+                {loading ? (
+                  <span className="flex items-center gap-2"><svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/></svg>Invio...</span>
+                ) : 'Invia link di reset'}
+              </Button>
+            </form>
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
 function TeachersSection() {
   const { t } = useTranslation()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
+  const [showForgot, setShowForgot] = useState(false)
   const navigate = useNavigate()
   const { setUser } = useAuthStore()
   const { toast } = useToast()
@@ -401,6 +463,7 @@ function TeachersSection() {
   }
 
   return (
+    <>
     <motion.div
       initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }}
       exit={{ opacity: 0, x: -20 }} className="max-w-md w-full"
@@ -429,7 +492,7 @@ function TeachersSection() {
             <div className="space-y-2">
               <div className="flex justify-between">
                 <Label htmlFor="password">Password</Label>
-                <a href="#" className="text-xs text-indigo-600 hover:underline">Recupera?</a>
+                <button type="button" onClick={() => setShowForgot(true)} className="text-xs text-indigo-600 hover:underline">Recupera?</button>
               </div>
               <Input
                 id="password" type="password"
@@ -459,6 +522,8 @@ function TeachersSection() {
         </span>
       </div>
     </motion.div>
+    {showForgot && <ForgotPasswordModal onClose={() => setShowForgot(false)} />}
+    </>
   )
 }
 

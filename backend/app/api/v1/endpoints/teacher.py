@@ -8,7 +8,7 @@ from uuid import UUID
 from pydantic import BaseModel, EmailStr
 
 from app.core.database import get_db
-from app.core.security import generate_join_code, verify_password, get_password_hash
+from app.core.security import generate_join_code, verify_password, get_password_hash, create_student_join_token
 from app.core.permissions import (
     teacher_can_access_class,
     teacher_can_access_session,
@@ -367,6 +367,60 @@ async def update_session(
     await db.commit()
     await db.refresh(session)
     return session
+
+
+@router.post("/sessions/{session_id}/student-preview")
+async def create_student_preview_token(
+    session_id: UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    teacher: Annotated[User, Depends(get_current_teacher)],
+):
+    """Create or retrieve a preview student so the teacher can test the student interface."""
+    session_data = await get_session_with_access_check(db, teacher, session_id)
+    if not session_data:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
+    session, _ = session_data
+
+    preview_nickname = "[Anteprima Docente]"
+    result = await db.execute(
+        select(SessionStudent)
+        .where(SessionStudent.session_id == session_id)
+        .where(SessionStudent.nickname == preview_nickname)
+    )
+    existing = result.scalar_one_or_none()
+
+    if existing:
+        existing.last_seen_at = datetime.utcnow()
+        await db.commit()
+        token = create_student_join_token(str(session_id), str(existing.id), preview_nickname)
+        return {
+            "token": token,
+            "student_id": str(existing.id),
+            "session_id": str(session_id),
+            "session_title": session.title,
+            "nickname": preview_nickname,
+        }
+
+    student = SessionStudent(
+        tenant_id=session.tenant_id,
+        session_id=session.id,
+        nickname=preview_nickname,
+        join_token="pending",
+        last_seen_at=datetime.utcnow(),
+    )
+    db.add(student)
+    await db.flush()
+    token = create_student_join_token(str(session_id), str(student.id), preview_nickname)
+    student.join_token = token
+    await db.commit()
+
+    return {
+        "token": token,
+        "student_id": str(student.id),
+        "session_id": str(session_id),
+        "session_title": session.title,
+        "nickname": preview_nickname,
+    }
 
 
 @router.post("/sessions/{session_id}/modules", response_model=list[SessionModuleResponse])

@@ -248,7 +248,14 @@ export default function TeacherDashboard() {
               <Route path="demo" element={<TeacherDemoPage />} />
               <Route path="notebooks" element={<NotebookListPage />} />
               <Route path="notebooks/notebook/:notebookId" element={<NotebookPage />} />
-              <Route path="desktop" element={<DesktopPage />} />
+              <Route path="desktop" element={
+                <DesktopPage
+                  sessionId={activeSessionId ?? undefined}
+                  sessionName={currentSession?.name}
+                  userType="teacher"
+                  accentColor={teacherTheme.accent}
+                />
+              } />
             </Routes>
           </Suspense>
         </main>

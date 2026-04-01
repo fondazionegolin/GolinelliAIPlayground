@@ -17,6 +17,7 @@ from app.models.alert import ContentAlert
 from app.models.feedback import FeedbackReport
 from app.models.notebook import Notebook
 from app.models.desktop import UserDesktop, DesktopWidget
+from app.models.calendar import SessionCalendarEvent
 
 __all__ = [
     "Tenant",
@@ -68,4 +69,5 @@ __all__ = [
     "Notebook",
     "UserDesktop",
     "DesktopWidget",
+    "SessionCalendarEvent",
 ]

@@ -6,7 +6,7 @@ import { llmApi, studentApi, teacherbotsApi } from '@/lib/api'
 import DataFileCard, { type DataFilePreview } from '@/components/DataFileCard'
 import { Button } from '@/components/ui/button'
 import {
-  Send, Bot, User, GraduationCap,
+  Send, Bot, User, GraduationCap, BookOpen, Plus,
   Lightbulb, ClipboardCheck, ArrowLeft, Sparkles,
   Paperclip, X, File, Database, Download, Loader2,
   Trash2, ChevronLeft, ChevronRight, Menu, Wand2, Palette, ChevronDown, Check, ImageIcon
@@ -75,6 +75,8 @@ interface ChatbotModuleProps {
   sessionId: string
   studentId?: string
   initialTeacherbotId?: string | null
+  oggiImparoContext?: string
+  onOggiImparoContextConsumed?: () => void
   onInputFocusChange?: (focused: boolean) => void
   isTeacherPreview?: boolean
   studentAccent?: StudentAccentId
@@ -90,26 +92,6 @@ const PROFILE_ICONS: Record<string, React.ReactNode> = {
 }
 
 
-const PROFILE_TILE_STYLES: Record<string, { card: string; iconBg: string; icon: string }> = {
-  tutor:             { card: 'bg-emerald-50/80 border border-emerald-200/70 hover:border-emerald-300/80 hover:bg-emerald-50 hover:shadow-emerald-100/60', iconBg: 'bg-emerald-100', icon: 'text-emerald-700' },
-  quiz:              { card: 'bg-rose-50/80 border border-rose-200/70 hover:border-rose-300/80 hover:bg-rose-50 hover:shadow-rose-100/60',             iconBg: 'bg-rose-100',    icon: 'text-rose-700' },
-  interview:         { card: 'bg-violet-50/80 border border-violet-200/70 hover:border-violet-300/80 hover:bg-violet-50 hover:shadow-violet-100/60',    iconBg: 'bg-violet-100',  icon: 'text-violet-700' },
-  oral_exam:         { card: 'bg-amber-50/80 border border-amber-200/70 hover:border-amber-300/80 hover:bg-amber-50 hover:shadow-amber-100/60',         iconBg: 'bg-amber-100',   icon: 'text-amber-700' },
-  dataset_generator: { card: 'bg-sky-50/80 border border-sky-200/70 hover:border-sky-300/80 hover:bg-sky-50 hover:shadow-sky-100/60',                  iconBg: 'bg-sky-100',     icon: 'text-sky-700' },
-  math_coach:        { card: 'bg-blue-50/80 border border-blue-200/70 hover:border-blue-300/80 hover:bg-blue-50 hover:shadow-blue-100/60',              iconBg: 'bg-blue-100',    icon: 'text-blue-800' },
-}
-
-const TEACHERBOT_TILE_STYLES: Record<string, { card: string; iconBg: string; icon: string }> = {
-  indigo:  { card: 'bg-indigo-50/80 border border-indigo-200/70 hover:border-indigo-300/80 hover:bg-indigo-50 hover:shadow-indigo-100/60',    iconBg: 'bg-indigo-100',  icon: 'text-indigo-700' },
-  blue:    { card: 'bg-blue-50/80 border border-blue-200/70 hover:border-blue-300/80 hover:bg-blue-50 hover:shadow-blue-100/60',              iconBg: 'bg-blue-100',    icon: 'text-blue-700' },
-  green:   { card: 'bg-emerald-50/80 border border-emerald-200/70 hover:border-emerald-300/80 hover:bg-emerald-50 hover:shadow-emerald-100/60', iconBg: 'bg-emerald-100', icon: 'text-emerald-700' },
-  red:     { card: 'bg-red-50/80 border border-red-200/70 hover:border-red-300/80 hover:bg-red-50 hover:shadow-red-100/60',                   iconBg: 'bg-red-100',     icon: 'text-red-700' },
-  purple:  { card: 'bg-purple-50/80 border border-purple-200/70 hover:border-purple-300/80 hover:bg-purple-50 hover:shadow-purple-100/60',    iconBg: 'bg-purple-100',  icon: 'text-purple-700' },
-  pink:    { card: 'bg-pink-50/80 border border-pink-200/70 hover:border-pink-300/80 hover:bg-pink-50 hover:shadow-pink-100/60',              iconBg: 'bg-pink-100',    icon: 'text-pink-700' },
-  orange:  { card: 'bg-orange-50/80 border border-orange-200/70 hover:border-orange-300/80 hover:bg-orange-50 hover:shadow-orange-100/60',    iconBg: 'bg-orange-100',  icon: 'text-orange-700' },
-  teal:    { card: 'bg-teal-50/80 border border-teal-200/70 hover:border-teal-300/80 hover:bg-teal-50 hover:shadow-teal-100/60',              iconBg: 'bg-teal-100',    icon: 'text-teal-700' },
-  cyan:    { card: 'bg-cyan-50/80 border border-cyan-200/70 hover:border-cyan-300/80 hover:bg-cyan-50 hover:shadow-cyan-100/60',              iconBg: 'bg-cyan-100',    icon: 'text-cyan-700' },
-}
 
 function getFallbackProfiles(t: (key: string) => string): ChatbotProfile[] {
   return [
@@ -169,6 +151,14 @@ interface ConversationHistory {
   updated_at: string
 }
 
+interface LearningSession {
+  id: string
+  topic: string
+  lesson: string
+  createdAt: string
+  conversationId?: string | null
+}
+
 interface Teacherbot {
   id: string
   name: string
@@ -190,7 +180,7 @@ interface AttachedFile {
 // Mobile navigation state
 type MobileViewState = 'profiles' | 'conversations' | 'chat'
 
-export default function ChatbotModule({ sessionId, studentId, initialTeacherbotId, onInputFocusChange, isTeacherPreview, studentAccent: accentProp }: ChatbotModuleProps) {
+export default function ChatbotModule({ sessionId, studentId, initialTeacherbotId, oggiImparoContext, onOggiImparoContextConsumed, onInputFocusChange, isTeacherPreview, studentAccent: accentProp }: ChatbotModuleProps) {
   const { t } = useTranslation()
   const FALLBACK_PROFILES = getFallbackProfiles(t)
   const PROFILE_INTERVIEWS = getProfileInterviews(t)
@@ -229,6 +219,15 @@ export default function ChatbotModule({ sessionId, studentId, initialTeacherbotI
   })
   const [activeMasterPrompt, setActiveMasterPrompt] = useState<string | null>(null)
   const [isMasterPromptApplied, setIsMasterPromptApplied] = useState(false)
+  // Learning section
+  const [mainTab, setMainTab] = useState<'assistants' | 'teacherbots' | 'learning'>('assistants')
+  const [learningSessions, setLearningSessions] = useState<LearningSession[]>([])
+  const [activeLearningSession, setActiveLearningSession] = useState<LearningSession | null>(null)
+  const [learningMode, setLearningMode] = useState(false)
+  const [showNewLessonDialog, setShowNewLessonDialog] = useState(false)
+  const [newLessonTopic, setNewLessonTopic] = useState('')
+  const [generatingLesson, setGeneratingLesson] = useState(false)
+  const activeLearningSessionRef = useRef<string | null>(null)
   const [defaultModelKey, setDefaultModelKey] = useState(localStorage.getItem('student_default_model') || '')
   const [isStreaming, setIsStreaming] = useState(false)
   const [streamingStatus, setStreamingStatus] = useState<string | null>(null)
@@ -491,6 +490,83 @@ export default function ChatbotModule({ sessionId, studentId, initialTeacherbotI
     }
   }, [isTeacherPreview, previewBotData])
 
+  // Learning sessions localStorage helpers
+  const learningStorageKey = `oggi_imparo_sessions_${sessionId ?? ''}`
+
+  function loadLearningSessionsFromStorage(): LearningSession[] {
+    try {
+      const raw = localStorage.getItem(learningStorageKey)
+      return raw ? JSON.parse(raw) : []
+    } catch { return [] }
+  }
+
+  function saveLearningSessionToStorage(sessions: LearningSession[]) {
+    try { localStorage.setItem(learningStorageKey, JSON.stringify(sessions)) } catch {}
+  }
+
+  function addLearningSession(session: LearningSession) {
+    const updated = [session, ...learningSessions]
+    setLearningSessions(updated)
+    saveLearningSessionToStorage(updated)
+  }
+
+  function updateLearningSessionConvId(sessionId: string, convId: string) {
+    const updated = learningSessions.map(s =>
+      s.id === sessionId ? { ...s, conversationId: convId } : s
+    )
+    setLearningSessions(updated)
+    saveLearningSessionToStorage(updated)
+  }
+
+  function openLearningSession(session: LearningSession) {
+    setActiveLearningSession(session)
+    activeLearningSessionRef.current = session.id
+    setLearningMode(true)
+    setSelectedTeacherbot(null)
+    setSelectedProfile('tutor')
+    setActiveMasterPrompt(
+      `Sei un tutor educativo dedicato. Il tema di studio è: "${session.topic}". La micro-lezione è: "${session.lesson}". Aiuta lo studente in italiano con esempi pratici e domande stimolanti. Ogni 2-3 scambi, proponi proattivamente un breve quiz a risposta multipla per verificare la comprensione. Se lo studente carica documenti, analizzali nel contesto del tema.`
+    )
+    setIsMasterPromptApplied(false)
+    if (session.conversationId) {
+      loadConversation(session.conversationId)
+    } else {
+      setConversationId(null)
+      setMessages([{
+        id: 'learning-intro',
+        role: 'assistant' as const,
+        content: `📖 **Microlezione: ${session.topic}**\n\n${session.lesson}\n\n---\n\nSono il tuo tutor dedicato su questo argomento. Puoi farmi domande, chiedermi esempi pratici, caricare i tuoi appunti o chiedere direttamente un quiz per verificare quanto hai capito. Come vuoi iniziare?`,
+        timestamp: new Date(),
+      }])
+      if (isMobile) setMobileView('chat')
+    }
+  }
+
+  // Auto-init from OggiImparo widget — creates a new Learning session
+  useEffect(() => {
+    if (!oggiImparoContext) return
+    const sessions = loadLearningSessionsFromStorage()
+    const newSession: LearningSession = {
+      id: crypto.randomUUID(),
+      topic: oggiImparoContext.slice(0, 80).trim(),
+      lesson: oggiImparoContext,
+      createdAt: new Date().toISOString(),
+    }
+    const updated = [newSession, ...sessions]
+    setLearningSessions(updated)
+    saveLearningSessionToStorage(updated)
+    setMainTab('learning')
+    openLearningSession(newSession)
+    onOggiImparoContextConsumed?.()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [oggiImparoContext])
+
+  // Load learning sessions on mount
+  useEffect(() => {
+    setLearningSessions(loadLearningSessionsFromStorage())
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [learningStorageKey])
+
   // Fetch teacherbot conversations
   const { data: teacherbotConversationsData, refetch: refetchTeacherbotConversations } = useQuery({
     queryKey: ['teacherbot-conversations', sessionId, studentId],
@@ -684,7 +760,8 @@ export default function ChatbotModule({ sessionId, studentId, initialTeacherbotI
 
   const scrollToBottom = () => {
     if (!isGeneratingRef.current) {
-      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+      // Use instant scroll to avoid Safari jumping to top during smooth animation
+      messagesEndRef.current?.scrollIntoView({ behavior: 'instant' as ScrollBehavior })
     }
   }
 
@@ -738,6 +815,11 @@ export default function ChatbotModule({ sessionId, studentId, initialTeacherbotI
         )
         convId = convRes.data.id
         setConversationId(convId)
+
+        // If in a learning session, store the new conversationId
+        if (activeLearningSessionRef.current && convId) {
+          updateLearningSessionConvId(activeLearningSessionRef.current, convId)
+        }
 
         // If we had history (e.g. from a proactive interview), we might want to persist it.
         // But for the FIRST message from user, existingHistory will likely be empty or just the current message.
@@ -982,6 +1064,18 @@ REGOLE IMPORTANTI:
 
   const handleNewChat = useCallback(async () => {
     triggerHaptic('light')
+    // In learning mode, go back to the learning list instead of full reset
+    if (learningMode) {
+      setMessages([])
+      setConversationId(null)
+      setSelectedProfile(null)
+      setActiveMasterPrompt(null)
+      setIsMasterPromptApplied(false)
+      setLearningMode(false)
+      setActiveLearningSession(null)
+      activeLearningSessionRef.current = null
+      return
+    }
 
     // End teacherbot conversation if exists
     if (teacherbotConversationId) {
@@ -1005,7 +1099,7 @@ REGOLE IMPORTANTI:
     if (isMobile) {
       setMobileView('profiles')
     }
-  }, [isMobile, teacherbotConversationId, resetProfileInterview])
+  }, [isMobile, learningMode, teacherbotConversationId, resetProfileInterview])
 
   const handleSelectProfile = useCallback(async (profileKey: string) => {
     triggerHaptic('selection')
@@ -1050,6 +1144,31 @@ REGOLE IMPORTANTI:
       setMobileView('chat')
     }
   }, [isMobile, resetProfileInterview])
+
+  const handleGenerateLesson = async () => {
+    if (!newLessonTopic.trim() || generatingLesson) return
+    setGeneratingLesson(true)
+    const prompt = `Genera una microlezione educativa breve in italiano sull'argomento: "${newLessonTopic.trim()}". La microlezione deve essere un fatto interessante, un concetto chiave o una curiosità stimolante per studenti delle scuole superiori o universitari. MASSIMO 400 caratteri. Rispondi SOLO con il testo della microlezione, senza titoli né introduzioni.`
+    try {
+      const res = await llmApi.studentChat(prompt, [], 'tutor')
+      const text: string = res.data?.response ?? res.data?.content ?? ''
+      const lesson = text.trim().slice(0, 420)
+      const newSession: LearningSession = {
+        id: crypto.randomUUID(),
+        topic: newLessonTopic.trim(),
+        lesson,
+        createdAt: new Date().toISOString(),
+      }
+      addLearningSession(newSession)
+      setShowNewLessonDialog(false)
+      setNewLessonTopic('')
+      openLearningSession(newSession)
+    } catch {
+      // silently fail
+    } finally {
+      setGeneratingLesson(false)
+    }
+  }
 
   const handleChangeModel = (model: LLMModel | null) => {
     setSelectedModel(model)
@@ -1219,9 +1338,6 @@ REGOLE IMPORTANTI:
     return colorMap[color] || 'bg-indigo-500'
   }
 
-  const getTeacherbotTileStyle = (color: string) =>
-    TEACHERBOT_TILE_STYLES[color] ?? TEACHERBOT_TILE_STYLES.indigo
-
   useEffect(() => {
     if (!initialTeacherbotId || availableTeacherbots.length === 0) return
     if (selectedTeacherbot?.id === initialTeacherbotId) return
@@ -1236,54 +1352,153 @@ REGOLE IMPORTANTI:
 
   // Mobile: Profile selection screen
   if (isMobile && mobileView === 'profiles') {
+    const BOT_GRADIENTS_MOB: Record<string, string> = {
+      indigo: 'linear-gradient(135deg,#6366f1,#4f46e5)', blue: 'linear-gradient(135deg,#3b82f6,#2563eb)',
+      green: 'linear-gradient(135deg,#22c55e,#16a34a)', red: 'linear-gradient(135deg,#ef4444,#dc2626)',
+      purple: 'linear-gradient(135deg,#a855f7,#9333ea)', pink: 'linear-gradient(135deg,#ec4899,#db2777)',
+      orange: 'linear-gradient(135deg,#f97316,#ea580c)', teal: 'linear-gradient(135deg,#14b8a6,#0d9488)',
+      cyan: 'linear-gradient(135deg,#06b6d4,#0891b2)',
+    }
+    const PROFILE_GRADS_MOB: Record<string, string> = {
+      tutor: 'linear-gradient(135deg,#10b981,#0d9488)', quiz: 'linear-gradient(135deg,#f43f5e,#e11d48)',
+      interview: 'linear-gradient(135deg,#8b5cf6,#7c3aed)', oral_exam: 'linear-gradient(135deg,#f59e0b,#d97706)',
+      math_coach: 'linear-gradient(135deg,#3b82f6,#6366f1)', dataset_generator: 'linear-gradient(135deg,#0ea5e9,#2563eb)',
+    }
     return (
-      <div className="h-full overflow-y-auto p-4 pb-20">
-        <h2 className="text-sm font-bold text-slate-700 mb-0.5">Assistenti AI</h2>
-        <p className="text-[11px] text-slate-400 mb-3">Scegli il tipo di sessione</p>
-        <div className="grid grid-cols-3 gap-2">
-          {profiles.map((profile) => {
-            const s = PROFILE_TILE_STYLES[profile.key] ?? { card: 'bg-slate-50/80 border border-slate-200/70 hover:bg-slate-50', iconBg: 'bg-slate-100', icon: 'text-slate-600' }
-            return (
-              <motion.button
-                key={profile.key}
-                whileTap={{ scale: 0.95 }}
-                onClick={() => handleSelectProfile(profile.key)}
-                className={`aspect-square flex flex-col items-center justify-center p-3 rounded-2xl shadow-sm active:shadow-none transition-all backdrop-blur-sm ${s.card}`}
-              >
-                <div className={`w-9 h-9 rounded-xl ${s.iconBg} flex items-center justify-center mb-1.5 ${s.icon}`}>
-                  {PROFILE_ICONS[profile.key] || <Bot className="h-5 w-5" />}
-                </div>
-                <span className="text-[11px] font-semibold leading-tight text-center text-slate-800">{profile.name}</span>
-              </motion.button>
-            )
-          })}
+      <div className="h-full flex flex-col overflow-hidden" style={{ background: 'linear-gradient(160deg,#f8fafc 0%,#ffffff 60%,#eef2ff 100%)' }}>
+        {/* Tab nav */}
+        <div className="flex items-center gap-1 px-3 pt-3 pb-2 flex-shrink-0 overflow-x-auto scrollbar-none">
+          {([
+            { key: 'assistants' as const, label: 'Assistenti AI', icon: <Bot className="h-3 w-3" /> },
+            { key: 'teacherbots' as const, label: 'Teacherbots', icon: <Wand2 className="h-3 w-3" />, badge: availableTeacherbots.length },
+            { key: 'learning' as const, label: 'Oggi Imparo', icon: <BookOpen className="h-3 w-3" />, badge: learningSessions.length },
+          ]).map(({ key, label, icon, badge }) => (
+            <button key={key} onClick={() => setMainTab(key)}
+              className={`flex items-center gap-1 px-3 py-1.5 rounded-xl text-[11px] font-semibold transition-all whitespace-nowrap flex-shrink-0 ${
+                mainTab === key ? 'bg-white shadow-md text-slate-800' : 'text-slate-500 hover:bg-white/60'
+              }`}
+            >
+              {icon}{label}
+              {badge !== undefined && badge > 0 && (
+                <span className={`text-[8px] font-bold px-1 py-0.5 rounded-full ${mainTab === key ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-200 text-slate-500'}`}>{badge}</span>
+              )}
+            </button>
+          ))}
         </div>
 
-        {/* Teacherbots section - Mobile */}
-        {availableTeacherbots.length > 0 && (
-          <div className="mt-5">
-            <h2 className="text-sm font-bold text-slate-700 mb-0.5 flex items-center gap-1.5">
-              <Wand2 className="h-3.5 w-3.5 text-indigo-500" />
-              Teacherbots del Docente
-            </h2>
-            <p className="text-[11px] text-slate-400 mb-3">Assistenti personalizzati dal tuo docente</p>
-            <div className="grid grid-cols-3 gap-2">
-              {availableTeacherbots.map((bot) => {
-                const s = getTeacherbotTileStyle(bot.color)
-                return (
-                  <motion.button
-                    key={bot.id}
-                    whileTap={{ scale: 0.95 }}
-                    onClick={() => handleSelectTeacherbot(bot)}
-                    className={`aspect-square flex flex-col items-center justify-center p-3 rounded-2xl shadow-sm active:shadow-none transition-all backdrop-blur-sm ${s.card}`}
+        <div className="flex-1 overflow-y-auto px-3 pb-20">
+          {/* Mobile: Assistenti AI */}
+          {mainTab === 'assistants' && (
+            <div className="space-y-2">
+              {/* Tutor hero */}
+              <motion.button whileTap={{ scale: 0.98 }} onClick={() => handleSelectProfile('tutor')}
+                className="w-full relative overflow-hidden rounded-2xl p-4 text-left shadow-lg"
+                style={{ background: 'linear-gradient(135deg,#10b981 0%,#0d9488 100%)' }}
+              >
+                <div className="absolute right-3 top-3 opacity-[0.12]"><GraduationCap className="h-16 w-16 text-white" /></div>
+                <div className="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center mb-2"><GraduationCap className="h-4 w-4 text-white" /></div>
+                <h3 className="text-sm font-bold text-white">{profiles.find(p => p.key === 'tutor')?.name || 'Tutor Personale'}</h3>
+                <p className="text-[11px] text-white/70 mt-0.5 line-clamp-2">{profiles.find(p => p.key === 'tutor')?.description}</p>
+              </motion.button>
+              {/* Other profiles 2-col */}
+              <div className="grid grid-cols-2 gap-2">
+                {profiles.filter(p => p.key !== 'tutor').map((profile) => (
+                  <motion.button key={profile.key} whileTap={{ scale: 0.95 }} onClick={() => handleSelectProfile(profile.key)}
+                    className="relative overflow-hidden rounded-2xl p-3 text-left shadow-md"
+                    style={{ background: PROFILE_GRADS_MOB[profile.key] || 'linear-gradient(135deg,#6366f1,#4f46e5)' }}
                   >
-                    <div className={`w-9 h-9 rounded-xl ${s.iconBg} flex items-center justify-center mb-1.5 ${s.icon}`}>
-                      <Wand2 className="h-5 w-5" />
+                    <div className="w-7 h-7 rounded-lg bg-white/20 flex items-center justify-center mb-1.5">
+                      <div className="text-white scale-75">{PROFILE_ICONS[profile.key] || <Bot className="h-4 w-4" />}</div>
                     </div>
-                    <span className="text-[11px] font-semibold leading-tight text-center text-slate-800 line-clamp-2">{bot.name}</span>
+                    <span className="text-[11px] font-bold text-white leading-tight block">{profile.name}</span>
                   </motion.button>
-                )
-              })}
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Mobile: Teacherbots */}
+          {mainTab === 'teacherbots' && (
+            availableTeacherbots.length === 0 ? (
+              <div className="text-center py-16">
+                <Wand2 className="h-8 w-8 text-indigo-200 mx-auto mb-3" />
+                <p className="text-sm text-slate-400 font-medium">Nessun teacherbot disponibile</p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {availableTeacherbots.map((bot, idx) => (
+                  <motion.button key={bot.id} whileTap={{ scale: 0.97 }} onClick={() => handleSelectTeacherbot(bot)}
+                    className={`w-full relative overflow-hidden rounded-2xl text-left shadow-lg ${idx === 0 ? 'p-4' : 'p-3'}`}
+                    style={{ background: BOT_GRADIENTS_MOB[bot.color] || BOT_GRADIENTS_MOB.indigo }}
+                  >
+                    <div className="absolute right-2 top-2 opacity-[0.1]"><Wand2 className={idx === 0 ? 'h-16 w-16 text-white' : 'h-10 w-10 text-white'} /></div>
+                    <div className={`${idx === 0 ? 'w-10 h-10' : 'w-8 h-8'} rounded-xl bg-white/20 flex items-center justify-center mb-2`}>
+                      <Wand2 className={idx === 0 ? 'h-5 w-5 text-white' : 'h-4 w-4 text-white'} />
+                    </div>
+                    <h3 className={`${idx === 0 ? 'text-sm' : 'text-xs'} font-bold text-white`}>{bot.name}</h3>
+                    <p className="text-[11px] text-white/70 mt-0.5 line-clamp-2">{bot.synopsis || bot.description}</p>
+                  </motion.button>
+                ))}
+              </div>
+            )
+          )}
+
+          {/* Mobile: Oggi Imparo */}
+          {mainTab === 'learning' && (
+            <div className="space-y-2">
+              <motion.button whileTap={{ scale: 0.98 }} onClick={() => setShowNewLessonDialog(true)}
+                className="w-full relative overflow-hidden rounded-2xl p-4 text-left shadow-lg"
+                style={{ background: 'linear-gradient(135deg,#7c3aed,#6d28d9)' }}
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center shrink-0"><Plus className="h-4 w-4 text-white" /></div>
+                  <div>
+                    <h3 className="text-sm font-bold text-white">Nuova microlezione</h3>
+                    <p className="text-[11px] text-white/65">Scegli un argomento</p>
+                  </div>
+                </div>
+              </motion.button>
+              {learningSessions.length === 0 ? (
+                <div className="text-center py-10"><BookOpen className="h-8 w-8 text-slate-200 mx-auto mb-2" /><p className="text-sm text-slate-400">Nessuna lezione ancora</p></div>
+              ) : learningSessions.map(session => (
+                <motion.div key={session.id} whileTap={{ scale: 0.99 }} onClick={() => openLearningSession(session)}
+                  className="p-3 rounded-2xl bg-white border border-slate-100 cursor-pointer shadow-sm group"
+                >
+                  <div className="flex items-start gap-2.5">
+                    <div className="w-8 h-8 rounded-xl bg-violet-100 flex items-center justify-center shrink-0"><BookOpen className="h-3.5 w-3.5 text-violet-600" /></div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-semibold text-slate-800 truncate">{session.topic}</p>
+                      <p className="text-[10px] text-slate-400 mt-0.5 line-clamp-2">{session.lesson}</p>
+                    </div>
+                  </div>
+                </motion.div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* New lesson dialog */}
+        {showNewLessonDialog && (
+          <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-end justify-center" onClick={() => setShowNewLessonDialog(false)}>
+            <div className="bg-white rounded-t-3xl p-6 w-full max-w-lg" onClick={e => e.stopPropagation()}>
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-10 h-10 rounded-xl bg-violet-100 flex items-center justify-center"><BookOpen className="h-5 w-5 text-violet-600" /></div>
+                <div><h3 className="text-base font-bold text-slate-800">Oggi Imparo</h3><p className="text-xs text-slate-400">Genera una microlezione</p></div>
+              </div>
+              <input autoFocus type="text" value={newLessonTopic} onChange={e => setNewLessonTopic(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') handleGenerateLesson(); if (e.key === 'Escape') setShowNewLessonDialog(false) }}
+                placeholder="Es: La fotosintesi, La Seconda Guerra Mondiale..."
+                className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100 mb-4"
+              />
+              <div className="flex gap-2 justify-end">
+                <button onClick={() => { setShowNewLessonDialog(false); setNewLessonTopic('') }} className="px-4 py-2 text-sm text-slate-500">Annulla</button>
+                <button onClick={handleGenerateLesson} disabled={!newLessonTopic.trim() || generatingLesson}
+                  className="px-4 py-2 text-sm font-semibold bg-violet-600 text-white rounded-xl disabled:opacity-50 flex items-center gap-1.5"
+                >
+                  {generatingLesson ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+                  Genera
+                </button>
+              </div>
             </div>
           </div>
         )}
@@ -1357,62 +1572,374 @@ REGOLE IMPORTANTI:
   }
 
   // Profile selection screen (Desktop)
-  if (!selectedProfile && !selectedTeacherbot) {
+  if (!selectedProfile && !selectedTeacherbot && !learningMode) {
+    // Usage stats from conversation history
+    const profileUsageCounts = (conversationsData || []).reduce<Record<string, number>>((acc, c) => {
+      acc[c.profile_key] = (acc[c.profile_key] || 0) + 1
+      return acc
+    }, {})
+    const topProfiles = Object.entries(profileUsageCounts).sort((a, b) => b[1] - a[1]).slice(0, 5)
+    const maxUsage = Math.max(1, ...topProfiles.map(([, n]) => n))
+    const skillTags = [...new Set(learningSessions.map(s => s.topic).filter(Boolean))]
+
+    const BOT_GRADIENTS: Record<string, string> = {
+      indigo: 'linear-gradient(135deg,#6366f1,#4f46e5)',
+      blue:   'linear-gradient(135deg,#3b82f6,#2563eb)',
+      green:  'linear-gradient(135deg,#22c55e,#16a34a)',
+      red:    'linear-gradient(135deg,#ef4444,#dc2626)',
+      purple: 'linear-gradient(135deg,#a855f7,#9333ea)',
+      pink:   'linear-gradient(135deg,#ec4899,#db2777)',
+      orange: 'linear-gradient(135deg,#f97316,#ea580c)',
+      teal:   'linear-gradient(135deg,#14b8a6,#0d9488)',
+      cyan:   'linear-gradient(135deg,#06b6d4,#0891b2)',
+    }
+
+    const PROFILE_ACCENT: Record<string, string> = {
+      tutor:              '#10b981',
+      quiz:               '#f43f5e',
+      interview:          '#8b5cf6',
+      oral_exam:          '#f59e0b',
+      math_coach:         '#3b82f6',
+      dataset_generator:  '#0ea5e9',
+    }
+
     return (
-      <div className="h-full overflow-y-auto p-4 md:p-6 scrollbar-thin scrollbar-thumb-indigo-200 scrollbar-track-transparent">
-        <div className="max-w-xl mx-auto">
-        <h2 className="text-sm font-bold text-slate-700 mb-0.5">Assistenti AI</h2>
-        <p className="text-xs text-slate-400 mb-4">Scegli il tipo di sessione di apprendimento</p>
-        <div className="grid grid-cols-3 gap-3">
-          {profiles.map((profile) => {
-            const s = PROFILE_TILE_STYLES[profile.key] ?? { card: 'bg-slate-50/80 border border-slate-200/70 hover:bg-slate-50', iconBg: 'bg-slate-100', icon: 'text-slate-600' }
-            return (
-              <motion.button
-                key={profile.key}
-                whileTap={{ scale: 0.97 }}
-                className={`aspect-square flex flex-col items-center justify-center p-4 rounded-2xl shadow-sm hover:shadow-md transition-all backdrop-blur-sm ${s.card}`}
-                onClick={() => handleSelectProfile(profile.key)}
-              >
-                <div className={`w-11 h-11 rounded-xl ${s.iconBg} flex items-center justify-center mb-2.5 ${s.icon}`}>
-                  {PROFILE_ICONS[profile.key] || <Bot className="h-6 w-6" />}
-                </div>
-                <span className="text-xs font-semibold leading-tight text-center text-slate-800">{profile.name}</span>
-                <span className="text-[10px] text-slate-500 leading-tight mt-1 text-center line-clamp-2">{profile.description}</span>
-              </motion.button>
-            )
-          })}
+      <div className="h-full flex flex-col overflow-hidden" style={{ background: 'linear-gradient(160deg,#f8fafc 0%,#ffffff 50%,#eef2ff 100%)' }}>
+
+        {/* ── Header ── */}
+        <div className="px-6 pt-5 pb-3 flex-shrink-0">
+          <h1 className="text-xl font-bold tracking-tight text-slate-900">Ciao! 👋</h1>
+          <p className="text-sm text-slate-500 mt-0.5">Quale assistente vuoi usare oggi?</p>
         </div>
 
-        {/* Teacherbots section - Desktop */}
-        {availableTeacherbots.length > 0 && (
-          <div className="mt-6 pb-8">
-            <h2 className="text-sm font-bold text-slate-700 mb-0.5 flex items-center gap-1.5">
-              <Wand2 className="h-3.5 w-3.5 text-indigo-500" />
-              Teacherbots del Docente
-            </h2>
-            <p className="text-xs text-slate-400 mb-4">Assistenti personalizzati dal tuo docente</p>
-            <div className="grid grid-cols-3 gap-3">
-              {availableTeacherbots.map((bot) => {
-                const s = getTeacherbotTileStyle(bot.color)
-                return (
-                  <motion.button
-                    key={bot.id}
-                    whileTap={{ scale: 0.97 }}
-                    className={`aspect-square flex flex-col items-center justify-center p-4 rounded-2xl shadow-sm hover:shadow-md transition-all backdrop-blur-sm ${s.card}`}
-                    onClick={() => handleSelectTeacherbot(bot)}
-                  >
-                    <div className={`w-11 h-11 rounded-xl ${s.iconBg} flex items-center justify-center mb-2.5 ${s.icon}`}>
-                      <Wand2 className="h-6 w-6" />
-                    </div>
-                    <span className="text-xs font-semibold leading-tight text-center text-slate-800">{bot.name}</span>
-                    <span className="text-[10px] text-slate-500 leading-tight mt-1 text-center line-clamp-2">{bot.synopsis || bot.description}</span>
-                  </motion.button>
-                )
-              })}
+        {/* ── 3-tab pill navigation ── */}
+        <div className="flex items-center gap-1 px-5 mb-2 flex-shrink-0 overflow-x-auto scrollbar-none">
+          {([
+            { key: 'assistants' as const,  label: 'Assistenti AI', icon: <Bot className="h-3.5 w-3.5" /> },
+            { key: 'teacherbots' as const, label: 'Teacherbots',   icon: <Wand2 className="h-3.5 w-3.5" />,    badge: availableTeacherbots.length },
+            { key: 'learning' as const,    label: 'Oggi Imparo',   icon: <BookOpen className="h-3.5 w-3.5" />, badge: learningSessions.length },
+          ]).map(({ key, label, icon, badge }) => (
+            <button
+              key={key}
+              onClick={() => setMainTab(key)}
+              className={`flex items-center gap-1.5 px-3.5 py-2 rounded-2xl text-xs font-semibold transition-all whitespace-nowrap flex-shrink-0 ${
+                mainTab === key
+                  ? 'bg-white shadow-md shadow-slate-200/80 text-slate-800'
+                  : 'text-slate-500 hover:bg-white/70 hover:text-slate-700'
+              }`}
+            >
+              {icon}
+              {label}
+              {badge !== undefined && badge > 0 && (
+                <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full min-w-[16px] text-center ${
+                  mainTab === key ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-200 text-slate-500'
+                }`}>{badge}</span>
+              )}
+            </button>
+          ))}
+        </div>
+
+        {/* ── Scrollable content ── */}
+        <div className="flex-1 overflow-y-auto px-5 py-3 scrollbar-thin scrollbar-thumb-slate-200 scrollbar-track-transparent">
+
+          {/* ────────── ASSISTENTI AI ────────── */}
+          {mainTab === 'assistants' && (
+            <div className="max-w-2xl mx-auto space-y-3 pb-6">
+
+              {/* Hero: Tutor — full width */}
+              <motion.button
+                whileTap={{ scale: 0.99 }}
+                onClick={() => handleSelectProfile('tutor')}
+                className="w-full relative overflow-hidden rounded-3xl p-6 text-left group shadow-xl shadow-emerald-200/40"
+                style={{ background: 'linear-gradient(135deg,#10b981 0%,#059669 55%,#0d9488 100%)' }}
+              >
+                <div className="absolute right-5 top-1/2 -translate-y-1/2 opacity-[0.12] group-hover:opacity-[0.2] transition-opacity duration-300 pointer-events-none">
+                  <GraduationCap className="h-32 w-32 text-white" />
+                </div>
+                <div className="relative z-10">
+                  <div className="w-11 h-11 rounded-2xl bg-white/25 backdrop-blur-sm flex items-center justify-center mb-4 shadow-sm">
+                    <GraduationCap className="h-5 w-5 text-white" />
+                  </div>
+                  <div className="max-w-sm">
+                    <h3 className="text-lg font-bold text-white leading-tight">
+                      {profiles.find(p => p.key === 'tutor')?.name || 'Tutor Personale'}
+                    </h3>
+                    <p className="text-sm text-white/75 mt-1.5 leading-relaxed">
+                      {profiles.find(p => p.key === 'tutor')?.description || 'Spiegazioni, approfondimenti e risposte su qualsiasi materia'}
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5 mt-4">
+                    {(profiles.find(p => p.key === 'tutor')?.suggested_prompts ?? []).slice(0, 2).map((prompt) => (
+                      <span key={prompt} className="text-[11px] bg-white/20 text-white px-2.5 py-1 rounded-full">{prompt}</span>
+                    ))}
+                  </div>
+                </div>
+              </motion.button>
+
+              {/* Row 2: Quiz + Interview — half width each */}
+              <div className="grid grid-cols-2 gap-3">
+                {[
+                  { key: 'quiz',      grad: 'linear-gradient(135deg,#f43f5e 0%,#e11d48 100%)', icon: <ClipboardCheck className="h-5 w-5 text-white" />, decor: <ClipboardCheck className="h-20 w-20 text-white" /> },
+                  { key: 'interview', grad: 'linear-gradient(135deg,#8b5cf6 0%,#7c3aed 100%)', icon: <Bot className="h-5 w-5 text-white" />,            decor: <Bot className="h-20 w-20 text-white" /> },
+                ].map(({ key, grad, icon, decor }) => {
+                  const p = profiles.find(pr => pr.key === key)
+                  return (
+                    <motion.button
+                      key={key}
+                      whileTap={{ scale: 0.97 }}
+                      onClick={() => handleSelectProfile(key)}
+                      className="relative overflow-hidden rounded-2xl p-4 text-left group shadow-lg"
+                      style={{ background: grad }}
+                    >
+                      <div className="absolute -right-4 -bottom-4 opacity-[0.1] group-hover:opacity-[0.18] transition-opacity pointer-events-none">
+                        {decor}
+                      </div>
+                      <div className="relative z-10">
+                        <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center mb-3">
+                          {icon}
+                        </div>
+                        <h3 className="text-sm font-bold text-white leading-tight">{p?.name || key}</h3>
+                        <p className="text-[11px] text-white/70 mt-1.5 line-clamp-3 leading-relaxed">{p?.description}</p>
+                      </div>
+                    </motion.button>
+                  )
+                })}
+              </div>
+
+              {/* Row 3: Oral + Math + Dataset — thirds */}
+              <div className="grid grid-cols-3 gap-3">
+                {[
+                  { key: 'oral_exam',         grad: 'linear-gradient(135deg,#f59e0b 0%,#d97706 100%)', icon: <User className="h-4 w-4 text-white" /> },
+                  { key: 'math_coach',         grad: 'linear-gradient(135deg,#3b82f6 0%,#6366f1 100%)', icon: <Lightbulb className="h-4 w-4 text-white" /> },
+                  { key: 'dataset_generator',  grad: 'linear-gradient(135deg,#0ea5e9 0%,#2563eb 100%)', icon: <Database className="h-4 w-4 text-white" /> },
+                ].map(({ key, grad, icon }) => {
+                  const p = profiles.find(pr => pr.key === key)
+                  return (
+                    <motion.button
+                      key={key}
+                      whileTap={{ scale: 0.97 }}
+                      onClick={() => handleSelectProfile(key)}
+                      className="relative overflow-hidden rounded-2xl p-3.5 text-left group shadow-md"
+                      style={{ background: grad }}
+                    >
+                      <div className="w-8 h-8 rounded-xl bg-white/20 flex items-center justify-center mb-2.5">
+                        {icon}
+                      </div>
+                      <h3 className="text-xs font-bold text-white leading-tight">{p?.name || key}</h3>
+                      <p className="text-[10px] text-white/65 mt-0.5 line-clamp-2 leading-relaxed">{p?.description}</p>
+                    </motion.button>
+                  )
+                })}
+              </div>
+
+              {/* Usage dashboard */}
+              {topProfiles.length > 0 && (
+                <div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-100">
+                  <h4 className="text-[11px] font-bold text-slate-400 uppercase tracking-wide mb-3">Assistenti più usati</h4>
+                  <div className="space-y-2">
+                    {topProfiles.map(([key, count]) => {
+                      const name = profiles.find(p => p.key === key)?.name || key
+                      const accent = PROFILE_ACCENT[key] ?? accentTheme.accent
+                      return (
+                        <div key={key} className="flex items-center gap-2.5">
+                          <span className="text-[11px] text-slate-500 w-28 shrink-0 truncate">{name}</span>
+                          <div className="flex-1 h-2 bg-slate-100 rounded-full overflow-hidden">
+                            <div className="h-full rounded-full transition-all duration-500" style={{ width: `${(count / maxUsage) * 100}%`, background: accent }} />
+                          </div>
+                          <span className="text-[11px] font-bold text-slate-400 w-5 text-right shrink-0">{count}</span>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ────────── TEACHERBOTS ────────── */}
+          {mainTab === 'teacherbots' && (
+            <div className="max-w-2xl mx-auto pb-6">
+              {availableTeacherbots.length === 0 ? (
+                <div className="text-center py-20">
+                  <div className="w-16 h-16 rounded-2xl bg-indigo-50 flex items-center justify-center mx-auto mb-4">
+                    <Wand2 className="h-8 w-8 text-indigo-200" />
+                  </div>
+                  <p className="text-sm font-semibold text-slate-400">Nessun teacherbot disponibile</p>
+                  <p className="text-xs text-slate-300 mt-1.5 max-w-xs mx-auto">Il tuo docente non ha ancora configurato assistenti personalizzati per questa sessione</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {availableTeacherbots.map((bot, idx) => {
+                    const grad = BOT_GRADIENTS[bot.color] || BOT_GRADIENTS.indigo
+                    const isHero = idx === 0
+                    return (
+                      <motion.button
+                        key={bot.id}
+                        whileTap={{ scale: 0.98 }}
+                        onClick={() => handleSelectTeacherbot(bot)}
+                        className={`w-full relative overflow-hidden rounded-2xl text-left group shadow-lg ${isHero ? 'p-5' : 'p-4'}`}
+                        style={{ background: grad }}
+                      >
+                        <div className="absolute right-3 top-3 opacity-[0.09] pointer-events-none">
+                          <Wand2 className={isHero ? 'h-24 w-24 text-white' : 'h-14 w-14 text-white'} />
+                        </div>
+                        <div className="relative z-10">
+                          <div className={`${isHero ? 'w-12 h-12' : 'w-9 h-9'} rounded-xl bg-white/20 flex items-center justify-center mb-3`}>
+                            <Wand2 className={isHero ? 'h-6 w-6 text-white' : 'h-4 w-4 text-white'} />
+                          </div>
+                          <div className="flex items-center gap-2 mb-1.5">
+                            <h3 className={`${isHero ? 'text-base' : 'text-sm'} font-bold text-white`}>{bot.name}</h3>
+                            <span className="text-[9px] bg-white/20 text-white px-1.5 py-0.5 rounded-full">Del docente</span>
+                          </div>
+                          <p className={`${isHero ? 'text-sm' : 'text-[11px]'} text-white/70 line-clamp-2 leading-relaxed`}>
+                            {bot.synopsis || bot.description}
+                          </p>
+                        </div>
+                      </motion.button>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ────────── OGGI IMPARO ────────── */}
+          {mainTab === 'learning' && (
+            <div className="max-w-2xl mx-auto space-y-3 pb-6">
+
+              {/* Stats chips */}
+              <div className="grid grid-cols-3 gap-2">
+                {[
+                  { label: 'Lezioni',   value: learningSessions.length,                              icon: <BookOpen className="h-3.5 w-3.5" />,     bg: 'bg-violet-50 border-violet-100', txt: 'text-violet-600' },
+                  { label: 'Chat',      value: learningSessions.filter(s => s.conversationId).length, icon: <ClipboardCheck className="h-3.5 w-3.5" />, bg: 'bg-rose-50 border-rose-100',     txt: 'text-rose-600' },
+                  { label: 'Argomenti', value: skillTags.length,                                     icon: <Sparkles className="h-3.5 w-3.5" />,     bg: 'bg-amber-50 border-amber-100',   txt: 'text-amber-600' },
+                ].map(({ label, value, icon, bg, txt }) => (
+                  <div key={label} className={`rounded-2xl p-3 border ${bg} ${txt} flex flex-col items-center gap-1`}>
+                    {icon}
+                    <div className="text-lg font-bold leading-none">{value}</div>
+                    <div className="text-[10px] font-medium opacity-60">{label}</div>
+                  </div>
+                ))}
+              </div>
+
+              {/* CTA button */}
+              <motion.button
+                whileTap={{ scale: 0.98 }}
+                onClick={() => setShowNewLessonDialog(true)}
+                className="w-full relative overflow-hidden rounded-2xl p-4 text-left shadow-lg shadow-violet-200/50"
+                style={{ background: 'linear-gradient(135deg,#7c3aed 0%,#6d28d9 100%)' }}
+              >
+                <div className="absolute right-4 top-1/2 -translate-y-1/2 opacity-[0.1] pointer-events-none">
+                  <Sparkles className="h-20 w-20 text-white" />
+                </div>
+                <div className="flex items-center gap-3 relative z-10">
+                  <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center shrink-0">
+                    <Plus className="h-5 w-5 text-white" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-white">Nuova microlezione</h3>
+                    <p className="text-xs text-white/65 mt-0.5">Scegli un argomento e impara qualcosa di nuovo</p>
+                  </div>
+                </div>
+              </motion.button>
+
+              {/* Sessions list */}
+              {learningSessions.length === 0 ? (
+                <div className="text-center py-10">
+                  <BookOpen className="h-10 w-10 text-slate-200 mx-auto mb-3" />
+                  <p className="text-sm font-medium text-slate-400">Nessuna lezione ancora</p>
+                  <p className="text-xs text-slate-300 mt-1">Clicca "Nuova microlezione" per iniziare</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {learningSessions.map(session => (
+                    <motion.div
+                      key={session.id}
+                      whileTap={{ scale: 0.99 }}
+                      onClick={() => openLearningSession(session)}
+                      className="p-4 rounded-2xl bg-white border border-slate-100 hover:border-violet-200 hover:shadow-md hover:shadow-violet-50/50 cursor-pointer transition-all group shadow-sm"
+                    >
+                      <div className="flex items-start gap-3">
+                        <div className="w-9 h-9 rounded-xl bg-violet-100 flex items-center justify-center shrink-0 group-hover:bg-violet-200 transition-colors">
+                          <BookOpen className="h-4 w-4 text-violet-600" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-semibold text-slate-800 truncate">{session.topic}</p>
+                          <p className="text-xs text-slate-400 mt-0.5 line-clamp-2 leading-relaxed">{session.lesson}</p>
+                          <p className="text-[10px] text-slate-300 mt-1.5">
+                            {new Date(session.createdAt).toLocaleDateString('it-IT', { day: 'numeric', month: 'long', year: 'numeric' })}
+                            {session.conversationId && <span className="ml-2 text-violet-400 font-medium">· Chat attiva</span>}
+                          </p>
+                        </div>
+                        <ChevronRight className="h-4 w-4 text-slate-200 group-hover:text-violet-400 transition-colors shrink-0 mt-1" />
+                      </div>
+                    </motion.div>
+                  ))}
+                </div>
+              )}
+
+              {/* Skill tags cloud */}
+              {skillTags.length > 0 && (
+                <div className="bg-white rounded-2xl p-4 border border-slate-100 shadow-sm">
+                  <h4 className="text-[11px] font-bold text-slate-400 uppercase tracking-wide mb-2.5 flex items-center gap-1.5">
+                    <Sparkles className="h-3 w-3 text-amber-500" />
+                    Argomenti studiati
+                  </h4>
+                  <div className="flex flex-wrap gap-1.5">
+                    {skillTags.map(tag => (
+                      <span key={tag} className="text-[11px] bg-violet-50 text-violet-600 border border-violet-100 px-2.5 py-1 rounded-full font-medium">
+                        {tag}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* New lesson dialog */}
+        {showNewLessonDialog && (
+          <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setShowNewLessonDialog(false)}>
+            <div className="bg-white rounded-2xl shadow-2xl border border-slate-100 p-6 w-full max-w-sm" onClick={e => e.stopPropagation()}>
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-10 h-10 rounded-xl bg-violet-100 flex items-center justify-center">
+                  <BookOpen className="h-5 w-5 text-violet-600" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-800">Oggi Imparo</h3>
+                  <p className="text-xs text-slate-400">Genera una microlezione su un argomento</p>
+                </div>
+              </div>
+              <input
+                autoFocus
+                type="text"
+                value={newLessonTopic}
+                onChange={e => setNewLessonTopic(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') handleGenerateLesson(); if (e.key === 'Escape') setShowNewLessonDialog(false) }}
+                placeholder="Es: La fotosintesi, La Seconda Guerra Mondiale..."
+                className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100 mb-4"
+              />
+              <p className="text-xs text-slate-400 mb-4">Dopo la microlezione potrai caricare documenti nel chatbot e chiedere quiz di verifica.</p>
+              <div className="flex gap-2 justify-end">
+                <button
+                  onClick={() => { setShowNewLessonDialog(false); setNewLessonTopic('') }}
+                  className="px-4 py-2 text-sm text-slate-500 hover:text-slate-700 transition-colors"
+                >
+                  Annulla
+                </button>
+                <button
+                  onClick={handleGenerateLesson}
+                  disabled={!newLessonTopic.trim() || generatingLesson}
+                  className="px-4 py-2 text-sm font-semibold bg-violet-600 hover:bg-violet-700 text-white rounded-xl disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-1.5"
+                >
+                  {generatingLesson ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+                  Genera lezione
+                </button>
+              </div>
             </div>
           </div>
         )}
-        </div>
       </div>
     )
   }
@@ -1428,14 +1955,20 @@ REGOLE IMPORTANTI:
     >
       {/* Mobile Header - Fixed height */}
       <div className="flex md:hidden items-center gap-2 px-3 py-1.5 bg-white border-b flex-shrink-0">
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => setMobileHistoryOpen(true)}
-          className="text-slate-500 -ml-2 h-8 w-8 p-0"
-        >
-          <Menu className="h-4 w-4" />
-        </Button>
+        {learningMode ? (
+          <Button variant="ghost" size="sm" onClick={handleNewChat} className="text-violet-600 -ml-2 h-8 gap-1 px-2 text-xs font-medium">
+            <ArrowLeft className="h-3.5 w-3.5" /> Argomenti
+          </Button>
+        ) : (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setMobileHistoryOpen(true)}
+            className="text-slate-500 -ml-2 h-8 w-8 p-0"
+          >
+            <Menu className="h-4 w-4" />
+          </Button>
+        )}
         <div className="w-7 h-7 rounded-xl flex items-center justify-center shadow-md" style={selectedSolidStyle}>
           {selectedProfile && PROFILE_ICONS[selectedProfile] ? (
             <div className="text-white scale-90">{PROFILE_ICONS[selectedProfile]}</div>
@@ -1444,7 +1977,9 @@ REGOLE IMPORTANTI:
           )}
         </div>
         <div className="flex-1 min-w-0">
-          <h3 className="font-semibold text-sm text-slate-800 truncate">{currentProfile?.name}</h3>
+          <h3 className="font-semibold text-sm text-slate-800 truncate">
+            {learningMode && activeLearningSession ? activeLearningSession.topic : currentProfile?.name}
+          </h3>
         </div>
         <Button
           variant="ghost"
@@ -1504,7 +2039,13 @@ REGOLE IMPORTANTI:
             <>
               <div className="p-3 border-b bg-white">
                 <div className="flex items-center justify-between">
-                  <h4 className="font-semibold text-sm text-slate-700">Cronologia</h4>
+                  {learningMode ? (
+                    <button onClick={handleNewChat} className="flex items-center gap-1.5 text-xs font-semibold text-violet-600 hover:text-violet-700 transition-colors">
+                      <ArrowLeft className="h-3.5 w-3.5" /> Argomenti
+                    </button>
+                  ) : (
+                    <h4 className="font-semibold text-sm text-slate-700">Cronologia</h4>
+                  )}
                   <Button
                     variant="ghost"
                     size="sm"

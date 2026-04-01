@@ -1786,8 +1786,13 @@ async def teacher_chat_stream(
         try:
             # If mode is "default" (chat), skip intent recognition — stream text directly
             if agent_mode == "default":
+                import re as _re
+                from datetime import date as _date, time as _time
                 from app.services.llm_service import _needs_web_search
                 from app.services.teacher_agent import generate_with_analytics_stream
+                from app.models.calendar import SessionCalendarEvent as _CalEvent
+
+                session_id_str = request.get("session_id")
 
                 # Yield status immediately so NGINX/client know the connection is alive
                 if _needs_web_search(messages):
@@ -1797,15 +1802,65 @@ async def teacher_chat_stream(
 
                 context, _ = await load_teacher_context(db, teacher)
 
+                # Build datetime-aware calendar addendum
+                now = datetime.now()
+                _days_it = ["lunedì","martedì","mercoledì","giovedì","venerdì","sabato","domenica"]
+                _months_it = ["gennaio","febbraio","marzo","aprile","maggio","giugno",
+                              "luglio","agosto","settembre","ottobre","novembre","dicembre"]
+                now_str = f"{_days_it[now.weekday()]} {now.day} {_months_it[now.month-1]} {now.year}, ore {now.strftime('%H:%M')}"
+                cal_addendum = f"\n\n---\nData e ora attuali (server): {now_str}.\n"
+                if session_id_str:
+                    cal_addendum += (
+                        "Se il docente chiede di creare un evento in calendario, "
+                        "al termine della risposta includi questo blocco e nient'altro:\n"
+                        "<CALENDAR_EVENT>{\"title\": \"Titolo\", \"event_date\": \"YYYY-MM-DD\", "
+                        "\"event_time\": \"HH:MM\", \"color\": \"#6366f1\"}</CALENDAR_EVENT>\n"
+                        "Calcola le date relative (es. 'domani', 'lunedì prossimo') dalla data attuale.\n"
+                        "Includi il tag SOLO se ti viene chiesto esplicitamente di creare un evento."
+                    )
+
                 full_content = ''
                 async for chunk in generate_with_analytics_stream(
-                    messages, context, provider, model,
+                    messages, context + cal_addendum, provider, model,
                     custom_system_prompt=teacher.support_chat_system_prompt or None,
                 ):
                     full_content += chunk
                     yield f"data: {json.dumps({'type': 'chunk', 'content': chunk})}\n\n"
 
-                yield f"data: {json.dumps({'type': 'done', 'content': full_content})}\n\n"
+                # Extract and execute CALENDAR_EVENT actions
+                _cal_pat = _re.compile(r'<CALENDAR_EVENT>(.*?)</CALENDAR_EVENT>', _re.DOTALL)
+                _matches = _cal_pat.findall(full_content)
+                clean_content = _cal_pat.sub('', full_content).strip()
+
+                for _m in _matches:
+                    try:
+                        evt = json.loads(_m.strip())
+                        if not evt.get('event_date') or not session_id_str:
+                            continue
+                        _sess = (await db.execute(
+                            select(Session).where(Session.id == UUID(session_id_str))
+                        )).scalar_one_or_none()
+                        if not _sess or _sess.tenant_id != teacher.tenant_id:
+                            continue
+                        _ev_time = _time.fromisoformat(evt['event_time']) if evt.get('event_time') else None
+                        _new_ev = _CalEvent(
+                            session_id=UUID(session_id_str),
+                            tenant_id=teacher.tenant_id,
+                            created_by_teacher_id=teacher.id,
+                            title=str(evt.get('title', 'Evento'))[:200],
+                            description=evt.get('description'),
+                            event_date=_date.fromisoformat(evt['event_date']),
+                            event_time=_ev_time,
+                            color=str(evt.get('color', '#6366f1')),
+                        )
+                        db.add(_new_ev)
+                        await db.flush()
+                        await db.commit()
+                        yield f"data: {json.dumps({'type': 'calendar_event_created', 'event': {'id': str(_new_ev.id), 'title': _new_ev.title, 'event_date': str(_new_ev.event_date), 'event_time': str(_new_ev.event_time) if _new_ev.event_time else None, 'color': _new_ev.color}})}\n\n"
+                    except Exception as _exc:
+                        logging.warning(f"Failed to create calendar event from chat: {_exc}")
+
+                yield f"data: {json.dumps({'type': 'done', 'content': clean_content})}\n\n"
                 return
 
             # Step 1: Classify intent (only for non-default modes)

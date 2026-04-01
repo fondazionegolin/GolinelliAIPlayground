@@ -32,8 +32,9 @@ api.interceptors.response.use(
   (error) => {
     if (error.response?.status === 401) {
       const url: string = error.config?.url ?? ''
-      // Don't redirect if the 401 came from the login endpoint itself
-      if (!url.includes('/auth/login')) {
+      // Only redirect for auth-critical endpoints; never for content/chat calls
+      const isContentCall = url.includes('/llm/') || url.includes('/desktop')
+      if (!url.includes('/auth/login') && !isContentCall) {
         localStorage.removeItem('student_token')
         window.location.href = '/login'
       }
@@ -56,6 +57,8 @@ export const authApi = {
     api.get(`/auth/reset-password/${token}`),
   setNewPassword: (token: string, data: { new_password: string; confirm_password: string }) =>
     api.post(`/auth/reset-password/${token}`, data),
+  forgotPassword: (email: string) =>
+    api.post('/auth/forgot-password', { email }),
 }
 
 export const studentApi = {
@@ -203,6 +206,9 @@ export const teacherApi = {
     api.post(`/teacher/classes/${classId}/teachers/invite`, { email }),
   removeTeacherFromClass: (classId: string, teacherId: string) =>
     api.delete(`/teacher/classes/${classId}/teachers/${teacherId}`),
+  // Student preview
+  createStudentPreview: (sessionId: string) =>
+    api.post(`/teacher/sessions/${sessionId}/student-preview`),
   // Session teachers management
   getSessionTeachers: (sessionId: string) =>
     api.get(`/teacher/sessions/${sessionId}/teachers`),
@@ -598,4 +604,36 @@ export const desktopApi = {
   }) => api.patch(`/desktop/${desktopId}/widgets/${widgetId}`, data),
   deleteWidget: (desktopId: string, widgetId: string) =>
     api.delete(`/desktop/${desktopId}/widgets/${widgetId}`),
+}
+
+export const calendarApi = {
+  listEvents: (sessionId: string, fromDate?: string, toDate?: string) =>
+    api.get(`/calendar/session/${sessionId}/events`, { params: { from_date: fromDate, to_date: toDate } }),
+  createEvent: (sessionId: string, data: { title: string; description?: string; event_date: string; event_time?: string; color?: string }) =>
+    api.post(`/calendar/session/${sessionId}/events`, data),
+  updateEvent: (sessionId: string, eventId: string, data: { title?: string; description?: string; event_date?: string; event_time?: string | null; color?: string }) =>
+    api.patch(`/calendar/session/${sessionId}/events/${eventId}`, data),
+  deleteEvent: (sessionId: string, eventId: string) =>
+    api.delete(`/calendar/session/${sessionId}/events/${eventId}`),
+}
+
+export const desktopAgentApi = {
+  chat: (body: {
+    message: string
+    context: {
+      desktop_id: string
+      wallpaper_key: string
+      widgets: Array<{
+        id: string; widget_type: string; config_json: Record<string, unknown>
+        grid_x: number; grid_y: number; grid_w: number; grid_h: number
+      }>
+      calendar_events?: Array<{
+        id: string; title: string; event_date: string; event_time?: string
+        description?: string; color: string
+      }>
+      session?: { id?: string; name?: string; class_name?: string } | null
+      user_name: string
+      user_role: 'teacher' | 'student'
+    }
+  }) => api.post('/desktop/agent', body),
 }

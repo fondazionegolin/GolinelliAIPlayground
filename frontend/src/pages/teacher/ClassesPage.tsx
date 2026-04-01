@@ -182,6 +182,8 @@ function ClassCard({ classData }: { classData: ClassData }) {
   const [editName, setEditName] = useState(classData.name)
   const [editSchoolGrade, setEditSchoolGrade] = useState(classData.school_grade || SCHOOL_GRADE_OPTIONS[1])
   const [isCreatingSession, setIsCreatingSession] = useState(false)
+  const [showSessionTitleDialog, setShowSessionTitleDialog] = useState(false)
+  const [newSessionTitle, setNewSessionTitle] = useState('')
   const [showTeachersModal, setShowTeachersModal] = useState(false)
 
   const isShared = classData.role === 'invited'
@@ -217,17 +219,27 @@ function ClassCard({ classData }: { classData: ClassData }) {
   })
 
   const createSessionMutation = useMutation({
-    mutationFn: () => {
-      const title = `Lezione del ${new Date().toLocaleDateString('it-IT')}`
-      return teacherApi.createSession(classData.id, { title })
-    },
+    mutationFn: (title: string) => teacherApi.createSession(classData.id, { title }),
     onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ['sessions', classData.id] })
       toast({ title: 'Sessione avviata!' })
+      setShowSessionTitleDialog(false)
+      setNewSessionTitle('')
       navigate(`/teacher/sessions/${res.data.id}`)
     },
     onSettled: () => setIsCreatingSession(false)
   })
+
+  const handleStartNewSession = () => {
+    setNewSessionTitle(`Lezione del ${new Date().toLocaleDateString('it-IT')}`)
+    setShowSessionTitleDialog(true)
+  }
+
+  const handleConfirmNewSession = () => {
+    const title = newSessionTitle.trim() || `Lezione del ${new Date().toLocaleDateString('it-IT')}`
+    setIsCreatingSession(true)
+    createSessionMutation.mutate(title)
+  }
 
   const updateSessionMutation = useMutation({
     mutationFn: ({ id, status }: { id: string; status: string }) =>
@@ -376,7 +388,7 @@ function ClassCard({ classData }: { classData: ClassData }) {
               </Button>
               <Button
                 size="sm"
-                onClick={() => { setIsCreatingSession(true); createSessionMutation.mutate() }}
+                onClick={handleStartNewSession}
                 disabled={isCreatingSession}
                 className="bg-violet-600 hover:bg-violet-700 gap-1.5"
               >
@@ -420,6 +432,31 @@ function ClassCard({ classData }: { classData: ClassData }) {
           targetName={classData.name}
           onClose={() => setShowTeachersModal(false)}
         />
+      )}
+
+      {/* New session title dialog */}
+      {showSessionTitleDialog && (
+        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-100 p-6 w-full max-w-sm animate-in zoom-in-95 duration-150">
+            <h3 className="text-base font-bold text-slate-800 mb-1">Nuova sessione</h3>
+            <p className="text-sm text-slate-500 mb-4">Scegli un nome per questa sessione.</p>
+            <Input
+              autoFocus
+              value={newSessionTitle}
+              onChange={e => setNewSessionTitle(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') handleConfirmNewSession(); if (e.key === 'Escape') setShowSessionTitleDialog(false) }}
+              placeholder="Es: Lezione su Python"
+              className="mb-4"
+            />
+            <div className="flex gap-2 justify-end">
+              <Button variant="ghost" size="sm" onClick={() => setShowSessionTitleDialog(false)}>Annulla</Button>
+              <Button size="sm" onClick={handleConfirmNewSession} disabled={isCreatingSession} className="bg-violet-600 hover:bg-violet-700">
+                {isCreatingSession ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : null}
+                Crea sessione
+              </Button>
+            </div>
+          </div>
+        </div>
       )}
     </>
   )

@@ -730,8 +730,10 @@ export default function TeacherSupportChat() {
     opts?: {
       provider?: string
       model?: string
+      sessionId?: string
       onChunk?: (chunk: string) => void
       onStatus?: (status: string) => void
+      onCalendarEvent?: (event: { id: string; title: string; event_date: string; event_time?: string; color: string }) => void
     }
   ): Promise<string> => {
     const modelInfo = availableModels.find(m => m.id === selectedModel)
@@ -746,6 +748,7 @@ export default function TeacherSupportChat() {
           provider: opts?.provider ?? modelInfo?.provider ?? 'openai',
           model: opts?.model ?? selectedModel,
           agent_mode: agentMode,
+          session_id: opts?.sessionId ?? null,
         })
       })
 
@@ -776,10 +779,12 @@ export default function TeacherSupportChat() {
               finalContent += data.content
               opts?.onChunk?.(data.content)
             } else if (data.type === 'done') {
-              // done may carry full content (for non-streaming modes) or empty string
+              // done carries the clean content (tags stripped)
               if (data.content) finalContent = data.content
             } else if (data.type === 'status') {
               opts?.onStatus?.(data.message)
+            } else if (data.type === 'calendar_event_created') {
+              opts?.onCalendarEvent?.(data.event)
             } else if (data.type === 'error') {
               throw new Error(data.message || 'Errore durante lo stream')
             }
@@ -980,8 +985,14 @@ REGOLE IMPORTANTI:
           const assistantId = `resp-${Date.now()}`
           setMessages(prev => [...prev, { id: assistantId, role: 'assistant' as const, content: '', timestamp: new Date() }])
 
+          const _sessionId = (() => {
+            try { return JSON.parse(localStorage.getItem('teacher_selected_session') || 'null')?.id ?? undefined }
+            catch { return undefined }
+          })()
+
           // history already excludes the current user message — backend appends it via `content`
           const finalContent = await runStreamingRequest(messageContent, messages, {
+            sessionId: _sessionId,
             onChunk: (chunk) => {
               setMessages(prev => prev.map(m =>
                 m.id === assistantId ? { ...m, content: m.content + chunk } : m
@@ -990,13 +1001,19 @@ REGOLE IMPORTANTI:
             onStatus: (status) => {
               setStreamingStatus(status)
             },
+            onCalendarEvent: (evt) => {
+              toast({
+                title: '📅 Evento creato',
+                description: `"${evt.title}" il ${evt.event_date}${evt.event_time ? ` alle ${evt.event_time.slice(0,5)}` : ''}`,
+              })
+            },
           })
 
           setStreamingStatus(null)
 
-          // Ensure final message is complete (handles non-chunked fallback)
+          // Always replace with clean final content (strips any CALENDAR_EVENT tags)
           setMessages(prev => prev.map(m =>
-            m.id === assistantId && !m.content ? { ...m, content: finalContent } : m
+            m.id === assistantId ? { ...m, content: finalContent || m.content } : m
           ))
 
           const finalMsg: Message = { id: assistantId, role: 'assistant', content: finalContent, timestamp: new Date() }
