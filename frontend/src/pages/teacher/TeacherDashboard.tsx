@@ -121,7 +121,7 @@ export default function TeacherDashboard() {
   const bgGradient = getAppBackgroundGradient(teacherTheme)
 
   return (
-    <AppBackground className="h-[100dvh] flex flex-col overflow-hidden" gradient={bgGradient}>
+    <AppBackground className="h-full flex flex-col overflow-hidden" gradient={bgGradient}>
 
       {/* ── Desktop Navbar ── */}
       {!isMobile && (

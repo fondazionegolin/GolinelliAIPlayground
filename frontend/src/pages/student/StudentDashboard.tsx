@@ -311,7 +311,7 @@ export default function StudentDashboard() {
   const bgGradient = getAppBackgroundGradient(studentTheme)
 
   return (
-    <AppBackground className="h-[100dvh] flex flex-col" gradient={bgGradient}>
+    <AppBackground className="h-full flex flex-col" gradient={bgGradient}>
       {/* Desktop Navbar - hidden on mobile */}
       <div className={`hidden md:block flex-shrink-0 ${localStorage.getItem('_preview_mode') === 'true' ? 'h-24' : 'h-16'}`}>
         <StudentNavbar
@@ -367,7 +367,7 @@ export default function StudentDashboard() {
       {/* Main Layout with Chat Sidebar */}
       <div className={`flex flex-1 overflow-hidden ${isMobile ? 'pt-14' : ''}`}>
         {/* Main Content Area */}
-        <main className={`flex-1 relative ${activeModule === 'chatbot' || activeModule === 'classe' || activeModule === 'documents' || activeModule === 'desktop' ? 'overflow-hidden' : 'overflow-y-auto'}`}>
+        <main className={`flex-1 min-h-0 relative ${activeModule === 'chatbot' || activeModule === 'classe' || activeModule === 'documents' || activeModule === 'desktop' ? 'overflow-hidden flex flex-col' : 'overflow-y-auto'}`}>
           <AnimatePresence mode="wait">
             <motion.div
               key={activeModule || 'home'}
@@ -376,7 +376,7 @@ export default function StudentDashboard() {
               animate="animate"
               exit="exit"
               transition={{ duration: 0.2, ease: 'easeInOut' }}
-              className={`${activeModule === 'chatbot' || activeModule === 'classe' || activeModule === 'documents' || activeModule === 'desktop' ? 'p-0 h-full' : 'p-4 md:p-6'}`}
+              className={`${activeModule === 'chatbot' || activeModule === 'classe' || activeModule === 'documents' || activeModule === 'desktop' ? 'p-0 h-full min-h-0' : 'p-4 md:p-6'}`}
               style={swipeState.isActive ? { transform: `translateX(${swipeState.x}px)` } : undefined}
             >
               {!activeModule ? (
@@ -389,8 +389,8 @@ export default function StudentDashboard() {
                   isMobile={isMobile}
                 />
               ) : (
-                <div className="h-full flex flex-col">
-                  {activeModule !== 'documents' && activeModule !== 'desktop' && (
+                <div className="h-full min-h-0 flex flex-col">
+                  {activeModule !== 'documents' && activeModule !== 'desktop' && activeModule !== 'chatbot' && activeModule !== 'classe' && (
                     <div className={`mb-4 ${activeModule === 'chatbot' || activeModule === 'classe' ? 'hidden md:block' : ''}`}>
                       <Button
                         variant="ghost"
@@ -679,7 +679,7 @@ function ModuleView({ moduleKey, sessionId, sessionName, openTaskId, studentId, 
 
   if (moduleKey === 'chatbot') {
     return (
-      <div className="h-[calc(100dvh-7rem)] md:h-full flex flex-col overflow-y-auto">
+      <div className="h-[calc(100dvh-7rem)] md:h-full md:min-h-0 flex flex-col overflow-hidden md:p-5">
         <ChatbotModule
           sessionId={sessionId}
           studentId={studentId}
