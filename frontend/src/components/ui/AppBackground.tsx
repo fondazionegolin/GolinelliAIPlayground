@@ -10,7 +10,7 @@ interface AppBackgroundProps {
 
 export function AppBackground({ className = "", gradient = DEFAULT_GRADIENT, children }: AppBackgroundProps) {
     return (
-        <div className={`min-h-screen w-full ${className} relative overflow-hidden`}>
+        <div className={`w-full ${className} relative overflow-hidden`}>
             <style>
                 {`
                 @keyframes mesh-shift {

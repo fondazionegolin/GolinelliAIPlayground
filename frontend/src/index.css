@@ -78,14 +78,12 @@
   }
   html {
     font-size: 16px; /* Standard readable size */
-    height: 100%;
   }
   body {
     @apply bg-background text-foreground;
     font-family: var(--font-family);
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
-    height: 100%;
   }
 }
 

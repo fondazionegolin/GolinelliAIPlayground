@@ -311,7 +311,7 @@ export default function StudentDashboard() {
   const bgGradient = getAppBackgroundGradient(studentTheme)
 
   return (
-    <AppBackground className="h-full flex flex-col" gradient={bgGradient}>
+    <AppBackground className="h-[100dvh] flex flex-col" gradient={bgGradient}>
       {/* Desktop Navbar - hidden on mobile */}
       <div className={`hidden md:block flex-shrink-0 ${localStorage.getItem('_preview_mode') === 'true' ? 'h-24' : 'h-16'}`}>
         <StudentNavbar
