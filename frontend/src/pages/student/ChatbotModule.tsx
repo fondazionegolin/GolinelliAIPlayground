@@ -24,6 +24,7 @@ import ChatConversationList from '@/components/student/ChatConversationList'
 import ChatConversationView from '@/components/student/ChatConversationView'
 import { VoiceRecorder } from '@/components/VoiceRecorder'
 import { DEFAULT_STUDENT_ACCENT, getStudentAccentTheme, loadStudentAccent, type StudentAccentId } from '@/lib/studentAccent'
+import EnvironmentalImpactPill from '@/components/chat/EnvironmentalImpactPill'
 
 interface Message {
   id: string
@@ -358,6 +359,7 @@ export default function ChatbotModule({ sessionId, studentId, initialTeacherbotI
   const [showModelMenu, setShowModelMenu] = useState(false)
   const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([])
   const [imageProvider, setImageProvider] = useState<'dall-e' | 'gpt-image-1'>('dall-e')
+  const messagesContainerRef = useRef<HTMLDivElement>(null)
   const [imageSize, setImageSize] = useState<string>('1024x1024')
   const [imageMode, setImageMode] = useState(false)
   const [imageGenerationProgress, setImageGenerationProgress] = useState<{
@@ -1001,8 +1003,10 @@ export default function ChatbotModule({ sessionId, studentId, initialTeacherbotI
 
   const scrollToBottom = () => {
     if (!isGeneratingRef.current) {
-      // Use instant scroll to avoid Safari jumping to top during smooth animation
-      messagesEndRef.current?.scrollIntoView({ behavior: 'instant' as ScrollBehavior })
+      const container = messagesContainerRef.current
+      if (container) {
+        container.scrollTo({ top: container.scrollHeight, behavior: 'instant' as ScrollBehavior })
+      }
     }
   }
 
@@ -2723,7 +2727,11 @@ REGOLE IMPORTANTI:
                 )}
               </div>
 
-              <div className={`flex-1 min-h-0 overflow-y-auto px-6 py-4 md:px-10 md:py-6 space-y-3 md:space-y-6 ${chatBgIsDark ? 'text-white' : ''}`} style={{ WebkitOverflowScrolling: 'touch', scrollBehavior: 'smooth' }}>
+              <div
+                ref={messagesContainerRef}
+                className={`flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-6 py-4 md:px-10 md:py-6 space-y-3 md:space-y-6 ${chatBgIsDark ? 'text-white' : ''}`}
+                style={{ WebkitOverflowScrolling: 'touch', scrollBehavior: 'smooth' }}
+              >
           {messages.length === 0 ? (
             <div className="text-center py-12">
               <div className={`inline-flex items-center justify-center w-20 h-20 rounded-2xl mb-6 shadow-lg ${selectedTeacherbot ? getTeacherbotColorClass(selectedTeacherbot.color) : ''}`} style={selectedTeacherbot ? undefined : selectedSolidStyle}>
@@ -2781,6 +2789,9 @@ REGOLE IMPORTANTI:
                     />
                   ) : (
                     <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+                  )}
+                  {message.role === 'assistant' && (
+                    <EnvironmentalImpactPill darkMode={chatBgIsDark} className="mt-3" />
                   )}
                 </div>
                 {message.role === 'user' && (
@@ -2851,7 +2862,7 @@ REGOLE IMPORTANTI:
                   {composerContent}
                 </div>
               ) : (
-                <div className="hidden md:block mt-auto shrink-0 border-t border-slate-200 bg-white/92">
+                <div className="hidden md:block shrink-0 border-t border-slate-200 bg-white/92">
                   {composerContent}
                 </div>
               )}

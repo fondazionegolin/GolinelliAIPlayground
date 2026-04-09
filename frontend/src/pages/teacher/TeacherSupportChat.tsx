@@ -24,6 +24,7 @@ import { DEFAULT_TEACHER_ACCENT, getTeacherAccentTheme } from '@/lib/teacherAcce
 import { useTeacherProfile } from '@/hooks/useTeacherProfile'
 import { VoiceRecorder } from '@/components/VoiceRecorder'
 import { useTranslation } from 'react-i18next'
+import EnvironmentalImpactPill from '@/components/chat/EnvironmentalImpactPill'
 
 // Constants
 const FALLBACK_MODELS = [
@@ -1835,6 +1836,9 @@ REGOLE IMPORTANTI:
                                 <ReactMarkdown className={`prose prose-sm max-w-none prose-p:leading-relaxed prose-pre:bg-slate-800 prose-pre:text-slate-100 ${msg.role === 'user' ? '[&_*]:!text-white' : ''} [&_strong]:font-bold`}>
                                   {convertEmoticons(msg.content)}
                                 </ReactMarkdown>
+                              )}
+                              {msg.role === 'assistant' && (
+                                <EnvironmentalImpactPill darkMode={chatBgIsDark} className="mt-3" />
                               )}
                             </div>
                             <span className={`text-[10px] px-1 ${chatBgIsDark ? 'text-white/70' : 'text-slate-400'}`}>{msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>

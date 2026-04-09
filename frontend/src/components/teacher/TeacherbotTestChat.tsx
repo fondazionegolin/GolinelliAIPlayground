@@ -7,6 +7,7 @@ import { teacherbotsApi } from '@/lib/api'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { markdownCodeComponents } from '@/components/CodeBlock'
+import EnvironmentalImpactPill from '@/components/chat/EnvironmentalImpactPill'
 
 interface TeacherbotTestChatProps {
   teacherbotId: string
@@ -184,6 +185,9 @@ export default function TeacherbotTestChat({ teacherbotId, onBack }: TeacherbotT
                     </ReactMarkdown>
                   ) : (
                     <p className="text-sm">{msg.content}</p>
+                  )}
+                  {msg.role === 'assistant' && (
+                    <EnvironmentalImpactPill className="mt-3" />
                   )}
                 </div>
               </div>

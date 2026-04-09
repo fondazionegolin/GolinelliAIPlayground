@@ -9,6 +9,7 @@ import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
 import rehypeKatex from 'rehype-katex'
 import { markdownCodeComponents } from '@/components/CodeBlock'
+import EnvironmentalImpactPill from '@/components/chat/EnvironmentalImpactPill'
 
 interface Message {
   id: string
@@ -56,6 +57,7 @@ export function ChatConversationView({
     : `bg-${profileColor}-500`
   const [input, setInput] = useState('')
   const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([])
+  const messagesContainerRef = useRef<HTMLDivElement>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -65,7 +67,10 @@ export function ChatConversationView({
   // Auto-scroll to bottom on new messages
   useEffect(() => {
     if (!isLoading) {
-      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+      const container = messagesContainerRef.current
+      if (container) {
+        container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' })
+      }
     }
   }, [messages.length, isLoading])
 
@@ -121,7 +126,7 @@ export function ChatConversationView({
   }, [])
 
   return (
-    <div className="flex flex-col h-full bg-slate-50">
+    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-slate-50">
       {/* Mobile Header */}
       <div className="md:hidden flex-shrink-0 bg-white border-b border-slate-200 px-3 py-2 flex items-center gap-3">
         <Button
@@ -150,7 +155,8 @@ export function ChatConversationView({
 
       {/* Messages area */}
       <div
-        className="flex-1 overflow-y-auto px-6 py-4 space-y-4"
+        ref={messagesContainerRef}
+        className="flex-1 min-h-0 overflow-y-auto px-6 py-4 space-y-4"
         style={{
           paddingBottom: isKeyboardOpen ? keyboardHeight + 80 : 80,
           WebkitOverflowScrolling: 'touch',
@@ -389,16 +395,21 @@ const MessageBubble = memo(function MessageBubble({
 
         {/* Copy button for assistant messages */}
         {!isUser && (
-          <button
-            onClick={onCopy}
-            className="absolute -bottom-2 -right-2 w-7 h-7 bg-white border border-slate-200 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 group-active:opacity-100 transition-opacity shadow-sm"
-          >
-            {isCopied ? (
-              <Check className="h-3.5 w-3.5 text-green-500" />
-            ) : (
-              <Copy className="h-3.5 w-3.5 text-slate-400" />
-            )}
-          </button>
+          <>
+            <div className="mt-3 flex items-center justify-between gap-3">
+              <EnvironmentalImpactPill />
+            </div>
+            <button
+              onClick={onCopy}
+              className="absolute -bottom-2 -right-2 w-7 h-7 bg-white border border-slate-200 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 group-active:opacity-100 transition-opacity shadow-sm"
+            >
+              {isCopied ? (
+                <Check className="h-3.5 w-3.5 text-green-500" />
+              ) : (
+                <Copy className="h-3.5 w-3.5 text-slate-400" />
+              )}
+            </button>
+          </>
         )}
       </div>
 
