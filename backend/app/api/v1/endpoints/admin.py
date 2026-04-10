@@ -1,22 +1,22 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Request, Body
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, desc
+from sqlalchemy import select, func, desc, delete as sa_delete, update as sa_update
 from typing import Annotated, Optional
 from datetime import datetime, timedelta, timezone
 from uuid import UUID
 import secrets
 
 from app.core.database import get_db
-from app.core.security import get_password_hash
+from app.core.security import get_password_hash, verify_password
 from app.core.config import settings
 from app.core.url_utils import resolve_frontend_url
 from app.api.deps import get_current_admin
-from app.models.user import User, TeacherRequest, ActivationToken
+from app.models.user import User, TeacherRequest, ActivationToken, PasswordResetToken
 from app.models.tenant import Tenant
 from app.models.template_version import TenantTemplateVersion
 from app.models.session import Session, SessionStudent, Class as TeacherClass
 from app.models.llm import ConversationMessage, TeacherConversation, TeacherConversationMessage
-from app.models.credits import CreditLimit, CreditTransaction
+from app.models.credits import CreditLimit, CreditTransaction, CreditRequest
 from app.models.invitation import PlatformInvitation
 from app.models.enums import UserRole, TeacherRequestStatus, TenantStatus, LimitLevel
 from app.schemas.tenant import TenantCreate, TenantUpdate, TenantResponse
@@ -323,37 +323,50 @@ async def reset_user_password(
     db: Annotated[AsyncSession, Depends(get_db)],
     admin: Annotated[User, Depends(get_current_admin)],
 ):
-    import secrets
-    
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
-    
-    # Generate new temporary password
-    temp_password = secrets.token_urlsafe(12)
-    user.password_hash = get_password_hash(temp_password)
-    
+
+    # Invalidate any previous unused reset tokens for this user
+    old_tokens = await db.execute(
+        select(PasswordResetToken).where(
+            PasswordResetToken.user_id == user_id,
+            PasswordResetToken.is_used == False,
+        )
+    )
+    for tok in old_tokens.scalars().all():
+        tok.is_used = True
+
+    # Generate a new secure token (valid 24 h)
+    reset_token = secrets.token_urlsafe(32)
+    token_record = PasswordResetToken(
+        user_id=user.id,
+        token=reset_token,
+        expires_at=datetime.now(timezone.utc) + timedelta(hours=24),
+    )
+    db.add(token_record)
     await db.commit()
+
+    # Build reset link and send email
+    frontend_base = resolve_frontend_url(request.headers.get("origin"))
+    reset_link = f"{frontend_base}/reset-password/{reset_token}"
 
     tenant = (await db.execute(select(Tenant).where(Tenant.id == admin.tenant_id))).scalar_one_or_none()
     template_args = _template_args(_catalog_with_tenant_values(tenant), "password_reset") if tenant else {}
-    login_url = f"{resolve_frontend_url(request.headers.get('origin'))}/login"
-    email_sent = await email_service.send_password_reset_email(
+
+    email_sent = await email_service.send_password_reset_link_email(
         to_email=user.email or "",
         first_name=user.first_name or "",
         last_name=user.last_name or "",
-        temporary_password=temp_password,
-        login_url=login_url,
+        reset_link=reset_link,
         subject_template=template_args.get("subject_template"),
         html_template=template_args.get("html_template"),
-        text_template=template_args.get("text_template"),
     )
-    
+
     return {
-        "message": "Password reset successful" + (" and email sent" if email_sent else " (email not sent)"),
+        "message": "Link di reset inviato" + (" via email" if email_sent else " (email non inviata — verifica SMTP)"),
         "email": user.email,
-        "temporary_password": temp_password,
         "email_sent": email_sent,
     }
 
@@ -391,6 +404,88 @@ async def delete_user(
     }
 
 
+@router.delete("/users/{user_id}/permanent")
+async def permanently_delete_user(
+    user_id: UUID,
+    body: dict,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    admin: Annotated[User, Depends(get_current_admin)],
+):
+    """Hard-delete a user from the database. Irreversible. Requires email confirmation."""
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="Utente non trovato")
+    if user.id == admin.id:
+        raise HTTPException(status_code=400, detail="Non puoi eliminare te stesso")
+    if user.role == UserRole.ADMIN:
+        raise HTTPException(status_code=400, detail="Non puoi eliminare altri amministratori")
+
+    confirm_email = (body.get("confirm_email") or "").strip().lower()
+    if confirm_email != (user.email or "").strip().lower():
+        raise HTTPException(status_code=400, detail="Email di conferma non corretta")
+
+    # Block if teacher owns classes (content would be orphaned)
+    class_count = (
+        await db.execute(
+            select(func.count(TeacherClass.id)).where(TeacherClass.teacher_id == user_id)
+        )
+    ).scalar() or 0
+    if class_count > 0:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Il docente ha {class_count} class{'i' if class_count > 1 else 'e'}. "
+                   "Elimina prima le classi dalla piattaforma, poi riprova.",
+        )
+
+    user_email = user.email or ""
+    user_name = f"{user.first_name or ''} {user.last_name or ''}".strip()
+
+    # Delete activation and password-reset tokens
+    await db.execute(sa_delete(ActivationToken).where(ActivationToken.user_id == user_id))
+    await db.execute(sa_delete(PasswordResetToken).where(PasswordResetToken.user_id == user_id))
+
+    # Nullify credit transactions (keep financial history, just remove user ref)
+    await db.execute(
+        sa_update(CreditTransaction)
+        .where(CreditTransaction.teacher_id == user_id)
+        .values(teacher_id=None)
+    )
+
+    # Delete credit limits for this teacher
+    await db.execute(sa_delete(CreditLimit).where(CreditLimit.teacher_id == user_id))
+
+    # Delete credit requests submitted by this teacher; nullify reviewed_by
+    await db.execute(
+        sa_update(CreditRequest)
+        .where(CreditRequest.reviewed_by_id == user_id)
+        .values(reviewed_by_id=None)
+    )
+    await db.execute(sa_delete(CreditRequest).where(CreditRequest.requester_id == user_id))
+
+    # Delete platform invitations for this email
+    await db.execute(
+        sa_delete(PlatformInvitation).where(PlatformInvitation.email == user_email)
+    )
+
+    # Nullify back-references from other records
+    await db.execute(
+        sa_update(TeacherRequest)
+        .where(TeacherRequest.reviewed_by_admin_id == user_id)
+        .values(reviewed_by_admin_id=None)
+    )
+    await db.execute(
+        sa_update(User)
+        .where(User.deactivated_by_admin_id == user_id)
+        .values(deactivated_by_admin_id=None)
+    )
+
+    await db.delete(user)
+    await db.commit()
+
+    return {"message": f"Utente {user_name} ({user_email}) eliminato definitivamente dal database"}
+
+
 @router.post("/users/{user_id}/reactivate")
 async def reactivate_user(
     user_id: UUID,
@@ -409,6 +504,56 @@ async def reactivate_user(
     user.deactivated_by_admin_id = None
     await db.commit()
     return {"message": f"User {user.email} reactivated successfully"}
+
+
+@router.post("/change-password")
+async def admin_change_password(
+    body: dict,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    admin: Annotated[User, Depends(get_current_admin)],
+):
+    """Admin changes their own password (requires current password)."""
+    current_password = body.get("current_password", "")
+    new_password = body.get("new_password", "")
+
+    if not current_password or not new_password:
+        raise HTTPException(status_code=400, detail="Entrambe le password sono obbligatorie")
+    if len(new_password) < 8:
+        raise HTTPException(status_code=400, detail="La nuova password deve avere almeno 8 caratteri")
+
+    result = await db.execute(select(User).where(User.id == admin.id))
+    user = result.scalar_one()
+
+    if not verify_password(current_password, user.password_hash):
+        raise HTTPException(status_code=400, detail="Password attuale non corretta")
+
+    user.password_hash = get_password_hash(new_password)
+    await db.commit()
+    return {"message": "Password aggiornata con successo"}
+
+
+@router.post("/users/{user_id}/promote-admin")
+async def promote_to_admin(
+    user_id: UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    admin: Annotated[User, Depends(get_current_admin)],
+):
+    """Promote a teacher to admin role."""
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="Utente non trovato")
+    if user.id == admin.id:
+        raise HTTPException(status_code=400, detail="Non puoi modificare il tuo stesso ruolo")
+    if user.role == UserRole.ADMIN:
+        raise HTTPException(status_code=400, detail="L'utente è già amministratore")
+    if user.role != UserRole.TEACHER:
+        raise HTTPException(status_code=400, detail="Solo i docenti possono essere promossi ad amministratore")
+
+    user.role = UserRole.ADMIN
+    user.is_verified = True
+    await db.commit()
+    return {"message": f"{user.email} è ora amministratore"}
 
 
 @router.get("/users", response_model=list[dict])

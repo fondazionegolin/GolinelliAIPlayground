@@ -30,6 +30,11 @@ from app.schemas.teacherbot import (
 from app.services.llm_service import llm_service
 from app.services.credit_service import credit_service
 from app.services.education_level import get_school_grade_instruction
+from app.services.environmental_impact import enrich_usage_with_environmental_impact
+from app.services.rag_service import rag_service
+from app.services.document_processor import document_processor
+from app.models.rag import RAGDocument
+from app.models.enums import DocumentStatus, Scope
 from app.realtime.gateway import sio
 
 router = APIRouter()
@@ -44,6 +49,28 @@ Includi:
 4. SUGGERIMENTI: Consigli per il docente
 
 Rispondi in formato JSON con chiavi: summary, topics (array), observations, suggestions"""
+
+
+async def _build_kb_context(db: AsyncSession, bot: "Teacherbot", query: str, tenant_id: UUID) -> str:
+    """Return a context block from the teacherbot's KB relevant to the query, or ''."""
+    try:
+        # Use a savepoint so a search failure doesn't abort the outer transaction
+        async with db.begin_nested():
+            chunks = await rag_service.search_teacherbot_kb(
+                db, query=query, teacherbot_id=bot.id, tenant_id=tenant_id, top_k=5
+            )
+        if not chunks:
+            return ""
+        parts = ["## Documenti di riferimento\n"]
+        for chunk in chunks:
+            header = f"**{chunk.document_title}**"
+            if chunk.page:
+                header += f" (pag. {chunk.page})"
+            parts.append(f"{header}\n{chunk.text}")
+        return "\n\n---\n".join(parts)
+    except Exception as e:
+        logger.warning(f"KB search failed for bot {bot.id}: {e}")
+        return ""
 
 
 # ==================== TEACHER ENDPOINTS ====================
@@ -240,10 +267,16 @@ async def test_teacherbot(
             messages.append({"role": msg.get("role", "user"), "content": msg.get("content", "")})
     messages.append({"role": "user", "content": request.content})
 
-    # Call LLM with teacherbot's system prompt (no class context in test mode)
+    # Augment system prompt with KB context if available
+    kb_context = await _build_kb_context(db, bot, request.content, teacher.tenant_id)
+    system_prompt = bot.system_prompt
+    if kb_context:
+        system_prompt = f"{system_prompt}\n\n{kb_context}"
+
+    # Call LLM
     llm_response = await llm_service.generate(
         messages=messages,
-        system_prompt=bot.system_prompt,
+        system_prompt=system_prompt,
         provider=bot.llm_provider,
         model=bot.llm_model,
         temperature=bot.temperature,
@@ -253,7 +286,16 @@ async def test_teacherbot(
     cost = credit_service.calculate_cost_for_model(llm_response.provider, llm_response.model, llm_response.prompt_tokens, llm_response.completion_tokens)
     await credit_service.track_usage(
         db, teacher.tenant_id, llm_response.provider, llm_response.model, cost,
-        {"type": "teacherbot_test", "bot_id": str(bot.id)},
+        enrich_usage_with_environmental_impact(
+            {
+                "type": "teacherbot_test",
+                "bot_id": str(bot.id),
+                "prompt_tokens": llm_response.prompt_tokens,
+                "completion_tokens": llm_response.completion_tokens,
+            },
+            provider=llm_response.provider,
+            model=llm_response.model,
+        ),
         teacher_id=teacher.id
     )
 
@@ -266,7 +308,130 @@ async def test_teacherbot(
         content=llm_response.content,
         provider=llm_response.provider,
         model=llm_response.model,
+        token_usage_json=enrich_usage_with_environmental_impact(
+            {
+                "prompt_tokens": llm_response.prompt_tokens,
+                "completion_tokens": llm_response.completion_tokens,
+            },
+            provider=llm_response.provider,
+            model=llm_response.model,
+        ),
     )
+
+
+@router.post("/teacherbots/{teacherbot_id}/kb")
+async def upload_teacherbot_kb_document(
+    teacherbot_id: UUID,
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+    teacher: User = Depends(get_current_teacher),
+):
+    """Upload a document to the teacherbot's knowledge base and ingest it."""
+    result = await db.execute(
+        select(Teacherbot)
+        .where(Teacherbot.id == teacherbot_id)
+        .where(Teacherbot.teacher_id == teacher.id)
+    )
+    bot = result.scalar_one_or_none()
+    if not bot:
+        raise HTTPException(status_code=404, detail="Teacherbot not found")
+
+    file_bytes = await file.read()
+    if len(file_bytes) > 20 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="File troppo grande (max 20 MB)")
+
+    filename = file.filename or "document"
+    mime_type = file.content_type or "application/octet-stream"
+
+    # Extract text (no LLM summary for speed; data files skip the summary anyway)
+    is_data = filename.lower().endswith((".xlsx", ".xls", ".csv"))
+    analysis = await document_processor.process(
+        file_bytes=file_bytes,
+        filename=filename,
+        mime_type=mime_type,
+        llm_service=None if is_data else llm_service,
+        analyze_visuals=not is_data,
+    )
+
+    if not analysis.raw_text.strip():
+        raise HTTPException(status_code=400, detail="Impossibile estrarre testo dal documento.")
+
+    doc = RAGDocument(
+        tenant_id=teacher.tenant_id,
+        scope=Scope.USER,          # scope field is required; teacherbot_id is the real key
+        owner_teacher_id=teacher.id,
+        teacherbot_id=teacherbot_id,
+        file_id=None,
+        title=filename,
+        doc_type=filename.rsplit(".", 1)[-1].lower() if "." in filename else "doc",
+        status=DocumentStatus.QUEUED,
+    )
+    db.add(doc)
+    await db.flush()
+
+    chunk_count = await rag_service.ingest_document(db, doc, analysis.raw_text)
+    logger.info(f"KB doc ingested for bot {teacherbot_id}: {filename} ({chunk_count} chunks)")
+
+    return {
+        "id": str(doc.id),
+        "title": doc.title,
+        "doc_type": doc.doc_type,
+        "status": doc.status,
+        "chunk_count": chunk_count,
+    }
+
+
+@router.get("/teacherbots/{teacherbot_id}/kb")
+async def list_teacherbot_kb_documents(
+    teacherbot_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    teacher: User = Depends(get_current_teacher),
+):
+    """List all knowledge base documents for a teacherbot."""
+    result = await db.execute(
+        select(Teacherbot)
+        .where(Teacherbot.id == teacherbot_id)
+        .where(Teacherbot.teacher_id == teacher.id)
+    )
+    if not result.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail="Teacherbot not found")
+
+    docs_result = await db.execute(
+        select(RAGDocument)
+        .where(RAGDocument.teacherbot_id == teacherbot_id)
+        .order_by(RAGDocument.created_at.asc())
+    )
+    docs = docs_result.scalars().all()
+    return [
+        {
+            "id": str(d.id),
+            "title": d.title,
+            "doc_type": d.doc_type,
+            "status": d.status,
+            "created_at": d.created_at.isoformat(),
+        }
+        for d in docs
+    ]
+
+
+@router.delete("/teacherbots/{teacherbot_id}/kb/{doc_id}", status_code=204)
+async def delete_teacherbot_kb_document(
+    teacherbot_id: UUID,
+    doc_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    teacher: User = Depends(get_current_teacher),
+):
+    """Remove a document from the teacherbot's knowledge base."""
+    result = await db.execute(
+        select(RAGDocument)
+        .where(RAGDocument.id == doc_id)
+        .where(RAGDocument.teacherbot_id == teacherbot_id)
+    )
+    doc = result.scalar_one_or_none()
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+    await db.delete(doc)
+    await db.commit()
 
 
 @router.get("/teacher/sessions/{session_id}/teacherbots", response_model=list[TeacherbotListResponse])
@@ -551,7 +716,7 @@ async def get_teacherbot_reports(
     if not bot:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Teacherbot not found")
 
-    # Get conversations with reports
+    # Get all conversations (with or without generated reports)
     result = await db.execute(
         select(
             TeacherbotConversation, SessionStudent, Session,
@@ -561,9 +726,8 @@ async def get_teacherbot_reports(
         .join(Session, TeacherbotConversation.session_id == Session.id)
         .outerjoin(TeacherbotMessage, TeacherbotMessage.conversation_id == TeacherbotConversation.id)
         .where(TeacherbotConversation.teacherbot_id == teacherbot_id)
-        .where(TeacherbotConversation.report_json.isnot(None))
         .group_by(TeacherbotConversation.id, SessionStudent.id, Session.id)
-        .order_by(TeacherbotConversation.report_generated_at.desc())
+        .order_by(TeacherbotConversation.created_at.desc())
         .limit(limit)
     )
     rows = result.all()
@@ -590,6 +754,51 @@ async def get_teacherbot_reports(
         ))
 
     return reports
+
+
+@router.get("/teacherbots/{teacherbot_id}/conversations/{conversation_id}/messages")
+async def get_teacherbot_conversation_messages_teacher(
+    teacherbot_id: UUID,
+    conversation_id: UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    teacher: Annotated[User, Depends(get_current_teacher)],
+):
+    """Get messages for a specific teacherbot conversation (teacher view)"""
+    # Verify ownership of the teacherbot
+    result = await db.execute(
+        select(Teacherbot)
+        .where(Teacherbot.id == teacherbot_id)
+        .where(Teacherbot.teacher_id == teacher.id)
+    )
+    bot = result.scalar_one_or_none()
+    if not bot:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Teacherbot not found")
+
+    # Verify conversation belongs to this teacherbot
+    result = await db.execute(
+        select(TeacherbotConversation)
+        .where(TeacherbotConversation.id == conversation_id)
+        .where(TeacherbotConversation.teacherbot_id == teacherbot_id)
+    )
+    conv = result.scalar_one_or_none()
+    if not conv:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found")
+
+    result = await db.execute(
+        select(TeacherbotMessage)
+        .where(TeacherbotMessage.conversation_id == conversation_id)
+        .order_by(TeacherbotMessage.created_at.asc())
+    )
+    messages = result.scalars().all()
+    return [
+        {
+            "id": str(m.id),
+            "role": m.role,
+            "content": m.content,
+            "created_at": m.created_at.isoformat(),
+        }
+        for m in messages
+    ]
 
 
 # ==================== STUDENT ENDPOINTS ====================
@@ -793,11 +1002,16 @@ async def send_teacherbot_message(
     history = result.scalars().all()
     messages = [{"role": msg.role, "content": msg.content} for msg in history]
     
+    # Augment with KB context if the bot has a knowledge base
+    kb_context = await _build_kb_context(db, bot, request.content, student.tenant_id)
+    system_prompt = bot.system_prompt
+    if kb_context:
+        system_prompt = f"{system_prompt}\n\n{kb_context}"
+
     # history already includes user_msg because of db.add and flush
-    # So we don't need to append request.content again if it's already in history
     llm_response = await llm_service.generate(
         messages=messages,
-        system_prompt=bot.system_prompt,
+        system_prompt=system_prompt,
         provider=bot.llm_provider,
         model=bot.llm_model,
         temperature=bot.temperature,
@@ -807,7 +1021,16 @@ async def send_teacherbot_message(
     cost = credit_service.calculate_cost_for_model(llm_response.provider, llm_response.model, llm_response.prompt_tokens, llm_response.completion_tokens)
     await credit_service.track_usage(
         db, student.tenant_id, llm_response.provider, llm_response.model, cost,
-        {"type": "teacherbot_chat", "bot_id": str(bot.id)},
+        enrich_usage_with_environmental_impact(
+            {
+                "type": "teacherbot_chat",
+                "bot_id": str(bot.id),
+                "prompt_tokens": llm_response.prompt_tokens,
+                "completion_tokens": llm_response.completion_tokens,
+            },
+            provider=llm_response.provider,
+            model=llm_response.model,
+        ),
         teacher_id=class_obj.teacher_id, class_id=class_obj.id, session_id=session_obj.id, student_id=student.id
     )
 
@@ -819,11 +1042,14 @@ async def send_teacherbot_message(
         content=llm_response.content,
         provider=llm_response.provider,
         model=llm_response.model,
-        token_usage_json={
-            "prompt_tokens": llm_response.prompt_tokens,
-            "completion_tokens": llm_response.completion_tokens,
-            "total_tokens": llm_response.prompt_tokens + llm_response.completion_tokens,
-        },
+        token_usage_json=enrich_usage_with_environmental_impact(
+            {
+                "prompt_tokens": llm_response.prompt_tokens,
+                "completion_tokens": llm_response.completion_tokens,
+            },
+            provider=llm_response.provider,
+            model=llm_response.model,
+        ),
     )
     db.add(assistant_msg)
 
@@ -1078,6 +1304,22 @@ async def send_teacherbot_message_with_files(
             )
             
             assistant_content = f"🎨 Ecco l'immagine che hai richiesto:\n\n![Immagine generata]({image_url})\n\n*Generata con FLUX - Prompt: {image_prompt}*"
+            image_usage = enrich_usage_with_environmental_impact(
+                {"prompt_tokens": 0, "completion_tokens": 0, "image_count": 1},
+                provider="flux",
+                model="flux-schnell",
+            )
+            img_cost = credit_service.calculate_cost_for_model("flux", "flux-schnell", 0, 0, image_count=1)
+            await credit_service.track_usage(
+                db, student.tenant_id, "flux", "flux-schnell", img_cost,
+                {
+                    **image_usage,
+                    "type": "teacherbot_image_generation",
+                    "bot_id": str(bot.id),
+                    "image_prompt": image_prompt,
+                },
+                teacher_id=class_obj.teacher_id, class_id=class_obj.id, session_id=session_obj.id, student_id=student.id,
+            )
             
             # Save assistant message
             assistant_msg = TeacherbotMessage(
@@ -1087,6 +1329,7 @@ async def send_teacherbot_message_with_files(
                 content=assistant_content,
                 provider="flux",
                 model="flux-schnell",
+                token_usage_json=image_usage,
             )
             db.add(assistant_msg)
             await db.commit()
@@ -1118,7 +1361,16 @@ async def send_teacherbot_message_with_files(
     cost = credit_service.calculate_cost_for_model(llm_response.provider, llm_response.model, llm_response.prompt_tokens, llm_response.completion_tokens)
     await credit_service.track_usage(
         db, student.tenant_id, llm_response.provider, llm_response.model, cost,
-        {"type": "teacherbot_chat", "bot_id": str(bot.id)},
+        enrich_usage_with_environmental_impact(
+            {
+                "type": "teacherbot_chat",
+                "bot_id": str(bot.id),
+                "prompt_tokens": llm_response.prompt_tokens,
+                "completion_tokens": llm_response.completion_tokens,
+            },
+            provider=llm_response.provider,
+            model=llm_response.model,
+        ),
         teacher_id=class_obj.teacher_id, class_id=class_obj.id, session_id=session_obj.id, student_id=student.id
     )
 
@@ -1130,11 +1382,14 @@ async def send_teacherbot_message_with_files(
         content=llm_response.content,
         provider=llm_response.provider,
         model=llm_response.model,
-        token_usage_json={
-            "prompt_tokens": llm_response.prompt_tokens,
-            "completion_tokens": llm_response.completion_tokens,
-            "total_tokens": llm_response.prompt_tokens + llm_response.completion_tokens,
-        },
+        token_usage_json=enrich_usage_with_environmental_impact(
+            {
+                "prompt_tokens": llm_response.prompt_tokens,
+                "completion_tokens": llm_response.completion_tokens,
+            },
+            provider=llm_response.provider,
+            model=llm_response.model,
+        ),
     )
     db.add(assistant_msg)
 

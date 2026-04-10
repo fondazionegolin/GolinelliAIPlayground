@@ -9,16 +9,22 @@ interface MobileNavProps {
   onNavigate: (module: string | null) => void
   unreadMessages?: number
   hidden?: boolean
+  enabledModules?: string[]
 }
 
-const NAV_ITEMS = [
-  { key: null, icon: Home, label: 'Home' },
+const ALL_NAV_ITEMS = [
+  { key: null as string | null, icon: Home, label: 'Home' },
   { key: 'chatbot', icon: Bot, label: 'AI' },
   { key: 'classe', icon: MessageSquare, label: 'Classe' },
   { key: 'classification', icon: Brain, label: 'ML' },
-] as const
+]
 
-export function MobileNav({ activeModule, onNavigate, unreadMessages = 0, hidden = false }: MobileNavProps) {
+export function MobileNav({ activeModule, onNavigate, unreadMessages = 0, hidden = false, enabledModules }: MobileNavProps) {
+  // Home and classe (chat) always shown; optional modules filtered by session settings
+  const ALWAYS_SHOWN = new Set([null, 'classe'])
+  const NAV_ITEMS = enabledModules
+    ? ALL_NAV_ITEMS.filter(item => ALWAYS_SHOWN.has(item.key) || enabledModules.includes(item.key as string))
+    : ALL_NAV_ITEMS
   const [accentTheme, setAccentTheme] = useState(getStudentAccentTheme(loadStudentAccent()))
 
   useEffect(() => {
@@ -64,7 +70,7 @@ export function MobileNav({ activeModule, onNavigate, unreadMessages = 0, hidden
           initial={false}
           animate={{
             x: `calc(${activeIndex * 100}% + ${activeIndex * 0.5}rem)`,
-            width: `calc(25% - 0.5rem)`,
+            width: `calc(${100 / NAV_ITEMS.length}% - 0.5rem)`,
           }}
           transition={{
             type: 'spring',

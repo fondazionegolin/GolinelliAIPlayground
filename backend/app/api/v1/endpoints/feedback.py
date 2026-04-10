@@ -33,6 +33,7 @@ class FeedbackSubmit(BaseModel):
     page_url: Optional[str] = None
     browser_info: Optional[BrowserInfo] = None
     console_errors: Optional[List[str]] = None
+    screenshot_base64: Optional[str] = None  # data URI for attached screenshot
 
 
 class FeedbackResponse(BaseModel):
@@ -68,13 +69,17 @@ async def submit_feedback(
         user_id_ref = str(actor.teacher.id)
         user_display_name = f"{actor.teacher.first_name or ''} {actor.teacher.last_name or ''}".strip() or actor.teacher.email
 
+    browser_info_dict = body.browser_info.model_dump() if body.browser_info else {}
+    if body.screenshot_base64:
+        browser_info_dict['screenshot_base64'] = body.screenshot_base64
+
     report = FeedbackReport(
         user_type=user_type,
         user_id_ref=user_id_ref,
         user_display_name=user_display_name,
         message=body.message.strip(),
         page_url=body.page_url,
-        browser_info=body.browser_info.model_dump() if body.browser_info else {},
+        browser_info=browser_info_dict,
         console_errors=body.console_errors or [],
     )
     db.add(report)
@@ -101,6 +106,7 @@ async def submit_feedback(
           <td style="padding: 6px 0; font-size: 13px;">{body.message.strip()}</td></tr>
     </table>
     {'<div style="margin-top: 16px; padding: 12px; background: #fff5f5; border-left: 3px solid #e85c8d; border-radius: 4px;"><strong style="font-size: 12px; color: #c0392b;">Errori console:</strong><pre style="font-size: 11px; color: #555; margin: 6px 0 0; white-space: pre-wrap;">' + chr(10).join(body.console_errors[:10]) + '</pre></div>' if body.console_errors else ''}
+    {'<div style="margin-top: 16px;"><strong style="font-size: 12px; color: #555;">Screenshot allegato:</strong><br><img src="' + body.screenshot_base64 + '" style="max-width: 100%; border-radius: 6px; margin-top: 8px; border: 1px solid #e0e0e0;" /></div>' if body.screenshot_base64 else ''}
     <p style="color: #999; font-size: 11px; margin-top: 20px; text-align: center;">
       Golinelli.ai — Sistema di feedback beta automatico
     </p>

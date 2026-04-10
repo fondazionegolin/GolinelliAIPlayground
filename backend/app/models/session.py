@@ -67,6 +67,19 @@ class SessionModule(Base):
     session = relationship("Session", back_populates="modules")
 
 
+class SessionProfileOverride(Base):
+    """Teacher-defined custom system prompts for student chatbot profiles, per session."""
+    __tablename__ = "session_profile_overrides"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id = Column(UUID(as_uuid=True), ForeignKey("tenants.id"), nullable=False, index=True)
+    session_id = Column(UUID(as_uuid=True), ForeignKey("sessions.id"), nullable=False, index=True)
+    profile_key = Column(String(64), nullable=False)
+    custom_system_prompt = Column(Text, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+
 class SessionStudent(Base):
     __tablename__ = "session_students"
 

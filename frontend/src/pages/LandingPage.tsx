@@ -133,7 +133,7 @@ const DottedGridBackground = () => {
     <canvas
       ref={canvasRef}
       className="absolute inset-0 -z-10"
-      style={{ background: '#f8fafc' }}
+      style={{ background: '#f6f8fc' }}
     />
   )
 }
@@ -153,7 +153,7 @@ export default function LandingPage() {
       <DottedGridBackground />
 
       {/* --- Navbar --- */}
-      <nav className="sticky top-0 z-50 w-full backdrop-blur-md bg-white/70 border-b border-white/50 px-6 py-4 flex items-center justify-between">
+      <nav className="sticky top-0 z-50 w-full border-b border-slate-200/80 bg-white/92 px-6 py-4 backdrop-blur-md flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-3 cursor-pointer" onClick={() => switchTab('home')}>
             <img src="/logo_new.png" alt="Golinelli AI" className="h-10 w-auto shadow-sm rounded-md" />
@@ -174,7 +174,7 @@ export default function LandingPage() {
         </div>
 
         {/* Desktop Menu */}
-        <div className="hidden md:flex items-center gap-1 bg-slate-100/50 p-1 rounded-full border border-slate-200/50">
+        <div className="hidden md:flex items-center gap-1 rounded-full border border-slate-200/80 bg-slate-50/90 p-1">
           <TabButton active={activeTab === 'home'} onClick={() => switchTab('home')} color="#e85c8d">{t('landing.nav_explore')}</TabButton>
           <TabButton active={activeTab === 'teachers'} onClick={() => switchTab('teachers')} color="#a855f7">{t('landing.nav_teachers')}</TabButton>
           <TabButton active={activeTab === 'students'} onClick={() => switchTab('students')} color="#38bdf8">{t('landing.nav_students')}</TabButton>
@@ -204,7 +204,7 @@ export default function LandingPage() {
             initial={{ opacity: 0, y: -20 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -20 }}
-            className="absolute top-20 left-0 right-0 z-40 bg-white border-b shadow-xl p-4 md:hidden flex flex-col gap-2"
+            className="absolute top-20 left-0 right-0 z-40 border-b border-slate-200 bg-white/96 p-4 md:hidden flex flex-col gap-2"
           >
             <Button variant={activeTab === 'home' ? 'default' : 'ghost'} onClick={() => switchTab('home')} className="w-full justify-start">{t('landing.nav_explore')}</Button>
             <Button variant={activeTab === 'teachers' ? 'default' : 'ghost'} onClick={() => switchTab('teachers')} className="w-full justify-start">{t('landing.nav_teacher_area')}</Button>
@@ -227,7 +227,7 @@ export default function LandingPage() {
       </main>
 
       {/* --- Footer --- */}
-      <footer className="py-6 text-center text-sm text-slate-500 bg-white/40 backdrop-blur-sm border-t border-white/50">
+      <footer className="border-t border-slate-200/80 bg-white/88 py-6 text-center text-sm text-slate-500 backdrop-blur-sm">
         <p>{t('landing.footer_copyright')}</p>
         <p className="mt-2 flex items-center justify-center gap-1.5 text-xs text-slate-400">
           un progetto di{' '}
@@ -260,7 +260,7 @@ function TabButton({ active, children, onClick, color = '#1e293b' }: {
     <button
       onClick={onClick}
       className={`relative px-6 py-2 rounded-full text-sm font-medium transition-all duration-300 ${
-        active ? 'text-white shadow-md' : 'text-slate-600 hover:bg-white/50'
+        active ? 'text-white' : 'text-slate-600 hover:bg-white'
       }`}
     >
       {active && (
@@ -309,7 +309,7 @@ function HomeSection({ onCta }: { onCta: () => void }) {
       className="max-w-5xl w-full grid md:grid-cols-2 gap-12 items-center"
     >
       <div className="space-y-6 text-center md:text-left">
-        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-50 border border-blue-100 text-blue-700 text-xs font-semibold uppercase tracking-wider">
+        <div className="inline-flex items-center gap-2 rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-xs font-semibold uppercase tracking-wider text-sky-700">
           <span className="relative flex h-2 w-2">
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
             <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500"></span>
@@ -319,7 +319,7 @@ function HomeSection({ onCta }: { onCta: () => void }) {
 
         <h1 className="text-4xl md:text-6xl font-black text-slate-900 leading-tight">
           L'Intelligenza Artificiale <br />
-          <span className="bg-clip-text text-transparent bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600">
+          <span className="text-sky-700">
             entra in classe.
           </span>
         </h1>
@@ -329,7 +329,7 @@ function HomeSection({ onCta }: { onCta: () => void }) {
         </p>
 
         <div className="flex flex-col sm:flex-row gap-4 justify-center md:justify-start">
-          <Button size="lg" onClick={onCta} className="bg-slate-900 hover:bg-slate-800 text-white rounded-full px-8 shadow-lg hover:shadow-xl transition-all">
+          <Button size="lg" onClick={onCta} className="rounded-full bg-slate-900 px-8 text-white hover:bg-slate-800">
             Inizia Ora
           </Button>
           <a href="https://www.fondazionegolinelli.it" target="_blank" rel="noreferrer">
@@ -357,7 +357,7 @@ function HomeSection({ onCta }: { onCta: () => void }) {
             initial={{ opacity: 0, scale: 0.9 }}
             animate={{ opacity: 1, scale: 1 }}
             transition={{ delay: 0.1 * i }}
-            className="p-5 bg-white/80 backdrop-blur-xl border border-white/80 rounded-3xl shadow-sm hover:shadow-md transition-all hover:-translate-y-1"
+            className="rounded-[28px] border border-slate-200/90 bg-white/90 p-5 transition-all hover:-translate-y-1"
           >
             <div className={`w-10 h-10 rounded-2xl ${f.bg} ${f.color} flex items-center justify-center mb-3`}>
               <f.icon size={20} />
@@ -371,11 +371,73 @@ function HomeSection({ onCta }: { onCta: () => void }) {
   )
 }
 
+function ForgotPasswordModal({ onClose }: { onClose: () => void }) {
+  const [email, setEmail] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [sent, setSent] = useState(false)
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!email.trim()) return
+    setLoading(true)
+    try {
+      await authApi.forgotPassword(email.trim())
+      setSent(true)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-[200] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-2xl border border-slate-100 p-6 w-full max-w-sm" onClick={e => e.stopPropagation()}>
+        {sent ? (
+          <div className="text-center py-4">
+            <div className="w-12 h-12 rounded-full bg-green-100 flex items-center justify-center mx-auto mb-4">
+              <svg className="w-6 h-6 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+            </div>
+            <h3 className="text-base font-bold text-slate-800 mb-1">Email inviata</h3>
+            <p className="text-sm text-slate-500 mb-4">Se la mail è registrata riceverai un link per reimpostare la password entro qualche minuto.</p>
+            <button onClick={onClose} className="w-full h-10 rounded-xl bg-slate-900 text-white text-sm font-semibold hover:bg-slate-700 transition-colors">Chiudi</button>
+          </div>
+        ) : (
+          <>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-base font-bold text-slate-800">Recupera password</h3>
+              <button onClick={onClose} className="text-slate-400 hover:text-slate-600 transition-colors">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <p className="text-sm text-slate-500 mb-4">Inserisci l'email del tuo account docente. Ti invieremo un link per reimpostare la password.</p>
+            <form onSubmit={handleSubmit} className="space-y-3">
+              <Input
+                type="email"
+                autoFocus
+                required
+                placeholder="docente@scuola.it"
+                value={email}
+                onChange={e => setEmail(e.target.value)}
+                className="bg-slate-50 border-slate-200"
+              />
+              <Button type="submit" className="w-full h-10" style={{ backgroundColor: '#a855f7' }} disabled={loading || !email.trim()}>
+                {loading ? (
+                  <span className="flex items-center gap-2"><svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/></svg>Invio...</span>
+                ) : 'Invia link di reset'}
+              </Button>
+            </form>
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
 function TeachersSection() {
   const { t } = useTranslation()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
+  const [showForgot, setShowForgot] = useState(false)
   const navigate = useNavigate()
   const { setUser } = useAuthStore()
   const { toast } = useToast()
@@ -401,16 +463,17 @@ function TeachersSection() {
   }
 
   return (
+    <>
     <motion.div
       initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }}
       exit={{ opacity: 0, x: -20 }} className="max-w-md w-full"
     >
-      <div className="bg-white/80 backdrop-blur-xl rounded-3xl shadow-2xl border border-white/50 overflow-hidden">
-        <div className="p-6 text-white text-center relative overflow-hidden" style={{ background: 'linear-gradient(135deg, #a855f7 0%, #7c3aed 100%)' }}>
+      <div className="overflow-hidden rounded-[30px] border border-slate-200/90 bg-white/94">
+        <div className="border-b border-violet-200/80 bg-violet-50 p-6 text-center text-slate-900">
           <div className="relative z-10">
-            <School className="w-12 h-12 mx-auto mb-3 opacity-80" />
+            <School className="mx-auto mb-3 h-12 w-12 text-violet-700" />
             <h2 className="text-2xl font-bold">{t('landing.nav_teacher_area')}</h2>
-            <p className="text-purple-200 text-sm">{t('login.subtitle')}</p>
+            <p className="text-sm text-slate-600">{t('login.subtitle')}</p>
           </div>
         </div>
 
@@ -422,31 +485,31 @@ function TeachersSection() {
                 id="email" type="email"
                 placeholder={t('login.email_placeholder')}
                 value={email} onChange={(e) => setEmail(e.target.value)}
-                className="bg-slate-50 border-slate-200 focus:ring-indigo-500"
+                className="border-slate-200 bg-slate-50 focus:ring-indigo-500"
                 required
               />
             </div>
             <div className="space-y-2">
               <div className="flex justify-between">
                 <Label htmlFor="password">Password</Label>
-                <a href="#" className="text-xs text-indigo-600 hover:underline">Recupera?</a>
+                <button type="button" onClick={() => setShowForgot(true)} className="text-xs text-violet-700 hover:underline">Recupera?</button>
               </div>
               <Input
                 id="password" type="password"
                 value={password} onChange={(e) => setPassword(e.target.value)}
-                className="bg-slate-50 border-slate-200 focus:ring-indigo-500"
+                className="border-slate-200 bg-slate-50 focus:ring-indigo-500"
                 required
               />
             </div>
-            <Button type="submit" className="w-full h-11 text-base shadow-lg shadow-purple-200" style={{ backgroundColor: '#a855f7' }} disabled={loading}>
+            <Button type="submit" className="h-11 w-full text-base" style={{ backgroundColor: '#8b5cf6' }} disabled={loading}>
               {loading ? t('login.logging_in') : t('login.login_btn')}
             </Button>
           </form>
 
-          <div className="mt-8 pt-6 border-t border-slate-100 text-center">
+          <div className="mt-8 border-t border-slate-100 pt-6 text-center">
             <p className="text-sm text-slate-500 mb-3">Non hai ancora un account?</p>
             <Link to="/teacher-request">
-              <Button variant="outline" className="w-full border-purple-200 text-purple-700 hover:bg-purple-50 hover:text-purple-800">
+              <Button variant="outline" className="w-full border-violet-200 text-violet-700 hover:bg-violet-50 hover:text-violet-800">
                 {t('teacher_request.title')}
               </Button>
             </Link>
@@ -459,6 +522,8 @@ function TeachersSection() {
         </span>
       </div>
     </motion.div>
+    {showForgot && <ForgotPasswordModal onClose={() => setShowForgot(false)} />}
+    </>
   )
 }
 
@@ -497,11 +562,11 @@ function StudentsSection() {
       initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }}
       exit={{ opacity: 0, x: 20 }} className="max-w-md w-full"
     >
-      <div className="bg-white/80 backdrop-blur-xl rounded-3xl shadow-2xl border border-white/50 overflow-hidden">
-        <div className="p-6 text-white text-center" style={{ background: 'linear-gradient(135deg, #38bdf8 0%, #0ea5e9 100%)' }}>
-          <GraduationCap className="w-12 h-12 mx-auto mb-3 text-sky-100" />
+      <div className="overflow-hidden rounded-[30px] border border-slate-200/90 bg-white/94">
+        <div className="border-b border-sky-200/80 bg-sky-50 p-6 text-center text-slate-900">
+          <GraduationCap className="mx-auto mb-3 h-12 w-12 text-sky-700" />
           <h2 className="text-2xl font-bold">{t('landing.nav_student_area')}</h2>
-          <p className="text-sky-50 text-sm">{t('student_join.subtitle')}</p>
+          <p className="text-sm text-slate-600">{t('student_join.subtitle')}</p>
         </div>
 
         <div className="p-8">
@@ -515,7 +580,7 @@ function StudentsSection() {
                 value={joinCode}
                 onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
                 maxLength={5}
-                className="text-center text-2xl tracking-widest font-mono bg-slate-50 border-slate-200 focus:ring-teal-500"
+                className="border-slate-200 bg-slate-50 text-center font-mono text-2xl tracking-widest focus:ring-teal-500"
                 required
               />
             </div>
@@ -528,13 +593,13 @@ function StudentsSection() {
                 value={nickname}
                 onChange={(e) => setNickname(e.target.value)}
                 maxLength={20}
-                className="bg-slate-50 border-slate-200 focus:ring-teal-500"
+                className="border-slate-200 bg-slate-50 focus:ring-teal-500"
                 required
               />
             </div>
             <Button
               type="submit"
-              className="w-full h-11 text-base shadow-lg shadow-sky-200 group"
+              className="group h-11 w-full text-base"
               style={{ backgroundColor: '#0ea5e9' }}
               disabled={loading}
             >

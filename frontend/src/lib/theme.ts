@@ -11,19 +11,8 @@ function hexToRgba(hex: string, opacity: number) {
 }
 
 export function getAppBackgroundGradient(theme: Theme) {
-  // Interfaccia "Ethereal Mesh" - Gradienti pastello con shading più evidente
-  // Alternanza di punti luce quasi bianchi e zone più profonde in tono
-  // Usiamo opacità regolate per non scurire troppo con gli accenti slate/black
-  const accentOpacityFactor = (theme.id === 'black' || theme.id === 'slate') ? 0.6 : 1;
-
-  // 4 corner gradients + white center — reduced from 9 for GPU performance
-  return [
-    `radial-gradient(at 0% 0%, ${hexToRgba(theme.accent, 0.14 * accentOpacityFactor)} 0px, transparent 55%)`,
-    `radial-gradient(at 100% 0%, ${hexToRgba(theme.accent, 0.10 * accentOpacityFactor)} 0px, transparent 55%)`,
-    `radial-gradient(at 100% 100%, ${hexToRgba(theme.accent, 0.16 * accentOpacityFactor)} 0px, transparent 65%)`,
-    `radial-gradient(at 0% 100%, ${hexToRgba(theme.accent, 0.12 * accentOpacityFactor)} 0px, transparent 60%)`,
-    theme.soft,
-  ].join(', ')
+  return theme.soft
 }
 
 export const DEFAULT_GRADIENT = getAppBackgroundGradient(STUDENT_ACCENTS[DEFAULT_STUDENT_ACCENT])
+export { hexToRgba }

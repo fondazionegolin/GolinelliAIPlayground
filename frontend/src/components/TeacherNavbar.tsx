@@ -1,7 +1,8 @@
 import { useState, useRef, useEffect, type CSSProperties } from 'react'
 import { Link, useNavigate, useLocation } from 'react-router-dom'
-import { User, Settings, LogOut, ChevronDown, Users, MessageSquare, FileText, Check, Brain, MonitorPlay } from 'lucide-react'
+import { User, Settings, LogOut, ChevronDown, Users, MessageSquare, FileText, Check, Brain, MonitorPlay, FileCode2, KeyRound, Loader2, LayoutDashboard, ShieldCheck } from 'lucide-react'
 import { Button } from './ui/button'
+import { useToast } from '@/components/ui/use-toast'
 import { LogoMark } from './LogoMark'
 import { teacherApi } from '@/lib/api'
 import { useAuthStore } from '@/stores/auth'
@@ -13,6 +14,7 @@ import { useTranslation } from 'react-i18next'
 import { LanguageSwitcher } from '@/components/LanguageSwitcher'
 import { useTeacherProfile, useInvalidateTeacherProfile, TEACHER_PROFILE_KEY } from '@/hooks/useTeacherProfile'
 import { useQueryClient } from '@tanstack/react-query'
+import { NavbarCalendarClock } from './NavbarCalendarClock'
 
 interface TeacherProfile {
   firstName: string
@@ -48,10 +50,12 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
   const location = useLocation()
   const navigate = useNavigate()
 
+  const { user: authUser } = useAuthStore()
   const { data: profileData } = useTeacherProfile()
   const invalidateProfile = useInvalidateTeacherProfile()
   const queryClient = useQueryClient()
   const profile: TeacherProfile = profileData ?? { firstName: '', lastName: '', email: '', avatarUrl: '', uiAccent: DEFAULT_TEACHER_ACCENT }
+  const isAdmin = authUser?.role === 'ADMIN'
   const [activeSessions, setActiveSessions] = useState<ActiveSession[]>([])
   const [showDropdown, setShowDropdown] = useState(false)
   const [showSessionsMenu, setShowSessionsMenu] = useState(false)
@@ -65,8 +69,11 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
     '--teacher-accent-soft': accentTheme.soft,
     '--teacher-accent-soft-strong': accentTheme.softStrong,
     '--teacher-accent-border': accentTheme.border,
-    backgroundColor: accentTheme.soft,
+    backgroundColor: 'rgba(255, 255, 255, 0.94)',
+    backdropFilter: 'blur(12px)',
+    WebkitBackdropFilter: 'blur(12px)',
     borderBottomColor: accentTheme.border,
+    borderBottomWidth: '1px',
   } as CSSProperties
 
   // Global notifications state
@@ -267,6 +274,8 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
     { path: '/teacher/demo', label: 'Studentbot', icon: MonitorPlay },
     { path: '/teacher/documents', label: t('navbar.nav_documents'), icon: FileText },
     { path: '/teacher/ml-lab', label: 'ML Lab', icon: Brain },
+    { path: '/teacher/notebooks', label: 'Notebook', icon: FileCode2 },
+    { path: '/teacher/desktop', label: 'Desktop', icon: LayoutDashboard },
   ]
 
   const handleNotificationClick = (notification: TeacherNotification) => {
@@ -294,7 +303,7 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
 
   return (
     <>
-      <nav className="fixed top-0 left-0 right-0 z-50 bg-white/98 border-b shadow-sm" style={accentVars}>
+      <nav className="fixed top-0 left-0 right-0 z-50 border-b" style={accentVars}>
         <div className="max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             {/* Logo/Brand */}
@@ -312,20 +321,30 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
             </div>
 
             <div className="hidden md:flex items-center gap-0.5 h-10 bg-white p-0.5 rounded-2xl border border-slate-200 shadow-sm">
-              {navItems.map((item) => (
-                <Link key={item.path} to={item.path}>
-                  <NavTab
-                    icon={item.icon}
-                    label={item.label}
-                    isActive={isActive(item.path)}
-                    accentClass="bg-[var(--teacher-accent)]"
-                    accentTextClass="text-white"
-                  />
-                </Link>
-              ))}
+              {(() => {
+                const activeIdx = navItems.findIndex(item => isActive(item.path))
+                return navItems.map((item, idx) => (
+                  <Link key={item.path} to={item.path}>
+                    <NavTab
+                      icon={item.icon}
+                      label={item.label}
+                      isActive={isActive(item.path)}
+                      isAdjacent={Math.abs(idx - activeIdx) === 1}
+                      accentClass="bg-[var(--teacher-accent)]"
+                      accentTextClass="text-white"
+                    />
+                  </Link>
+                ))
+              })()}
             </div>
 
             <div className="flex items-center gap-3">
+              {/* Date/time + mini calendar */}
+              <NavbarCalendarClock
+                sessionId={currentSession?.id}
+                accentColor={accentTheme.accent}
+              />
+
               {/* Teacher Notifications (unified) */}
               <TeacherNotifications
                 notifications={teacherNotifications}
@@ -363,7 +382,7 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
 
                 {/* Sessions Dropdown Menu */}
                 {showSessionsMenu && (
-                  <div className="absolute top-full right-0 mt-2 w-80 bg-white/80 backdrop-blur-lg rounded-2xl shadow-xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-150 origin-top-right z-50">
+                  <div className="absolute top-full right-0 mt-2 w-80 bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-150 origin-top-right z-50">
                     {/* Header */}
                     <div className="px-5 py-4 border-b border-slate-100 bg-slate-50">
                       <h3 className="font-bold text-slate-800">{t('navbar.sessions_title')}</h3>
@@ -457,7 +476,7 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
 
                 {/* Dropdown Menu - Modern Floating Style */}
                 {showDropdown && (
-                  <div className="absolute right-0 mt-2 w-64 bg-white/80 backdrop-blur-lg rounded-xl shadow-xl border border-slate-100 py-2 animate-in fade-in zoom-in-95 duration-100 origin-top-right">
+                  <div className="absolute right-0 mt-2 w-64 bg-white rounded-xl shadow-xl border border-slate-100 py-2 animate-in fade-in zoom-in-95 duration-100 origin-top-right z-50">
                     <div className="px-4 py-3 border-b border-slate-50 mb-1">
                       <p className="text-sm font-semibold text-slate-900">
                         {profile.firstName} {profile.lastName}
@@ -474,6 +493,17 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
                       <Settings className="h-4 w-4" />
                       {t('navbar.settings')}
                     </button>
+                    {isAdmin && (
+                      <>
+                        <button
+                          onClick={() => { setShowDropdown(false); navigate('/admin') }}
+                          className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-indigo-700 hover:bg-indigo-50 transition-colors"
+                        >
+                          <ShieldCheck className="h-4 w-4" />
+                          Pannello amministratore
+                        </button>
+                      </>
+                    )}
                     <div className="h-px bg-slate-50 my-1"></div>
                     <button
                       onClick={handleLogout}
@@ -548,11 +578,45 @@ interface SettingsModalProps {
 
 function SettingsModal({ profile, onSave, onClose }: SettingsModalProps) {
   const { t } = useTranslation()
+  const { toast } = useToast()
   const [formData, setFormData] = useState(profile)
   const [previewUrl, setPreviewUrl] = useState(profile.avatarUrl || '')
   const [isUploading, setIsUploading] = useState(false)
   const modalAccentTheme = getTeacherAccentTheme(formData.uiAccent)
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  // Password change state
+  const [showPasswordSection, setShowPasswordSection] = useState(false)
+  const [currentPassword, setCurrentPassword] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [changingPassword, setChangingPassword] = useState(false)
+
+  const handleChangePassword = async () => {
+    console.log('[ChangePassword] invoked', { currentPassword: !!currentPassword, newPasswordLen: newPassword.length, match: newPassword === confirmPassword })
+    if (newPassword !== confirmPassword) {
+      toast({ variant: 'destructive', title: 'Errore', description: 'Le password non coincidono' })
+      return
+    }
+    if (newPassword.length < 8) {
+      toast({ variant: 'destructive', title: 'Errore', description: 'La password deve essere di almeno 8 caratteri' })
+      return
+    }
+    setChangingPassword(true)
+    try {
+      console.log('[ChangePassword] calling API...')
+      const res = await teacherApi.changePassword({ current_password: currentPassword, new_password: newPassword, confirm_password: confirmPassword })
+      console.log('[ChangePassword] success', res.data)
+      toast({ title: 'Password aggiornata', description: 'La tua password è stata cambiata con successo.' })
+      setCurrentPassword(''); setNewPassword(''); setConfirmPassword('')
+      setShowPasswordSection(false)
+    } catch (err: any) {
+      console.error('[ChangePassword] error', err.response?.status, err.response?.data)
+      toast({ variant: 'destructive', title: 'Errore', description: err.response?.data?.detail || 'Errore durante il cambio password' })
+    } finally {
+      setChangingPassword(false)
+    }
+  }
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -670,7 +734,7 @@ function SettingsModal({ profile, onSave, onClose }: SettingsModalProps) {
 
           <div>
             <label className="block text-xs font-semibold text-slate-500 uppercase mb-2">{t('navbar.accent_color')}</label>
-            <div className="grid grid-cols-5 gap-2">
+            <div className="grid grid-cols-4 gap-2">
               {(Object.values(TEACHER_ACCENTS)).map((accentOption) => {
                 const isSelected = formData.uiAccent === accentOption.id
                 return (
@@ -693,6 +757,58 @@ function SettingsModal({ profile, onSave, onClose }: SettingsModalProps) {
           </div>
 
 
+
+          {/* Change password section */}
+          <div className="border-t border-slate-100 pt-4">
+            <button
+              type="button"
+              onClick={() => setShowPasswordSection(v => !v)}
+              className="flex items-center gap-2 text-xs font-semibold text-slate-500 uppercase tracking-wide hover:text-slate-700 transition-colors w-full text-left"
+            >
+              <KeyRound className="h-3.5 w-3.5" />
+              Cambia password
+              <span className="ml-auto text-slate-300">{showPasswordSection ? '▲' : '▼'}</span>
+            </button>
+
+            {showPasswordSection && (
+              <div className="mt-3 space-y-3">
+                <input
+                  type="password"
+                  value={currentPassword}
+                  onChange={e => setCurrentPassword(e.target.value)}
+                  placeholder="Password attuale"
+                  required
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-slate-400 focus:border-transparent outline-none"
+                />
+                <input
+                  type="password"
+                  value={newPassword}
+                  onChange={e => setNewPassword(e.target.value)}
+                  placeholder="Nuova password (min. 8 caratteri)"
+                  required
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-slate-400 focus:border-transparent outline-none"
+                />
+                <input
+                  type="password"
+                  value={confirmPassword}
+                  onChange={e => setConfirmPassword(e.target.value)}
+                  placeholder="Conferma nuova password"
+                  required
+                  className={`w-full px-3 py-2 bg-slate-50 border rounded-lg text-sm focus:ring-2 focus:border-transparent outline-none ${newPassword && confirmPassword && newPassword !== confirmPassword ? 'border-red-300 focus:ring-red-400' : 'border-slate-200 focus:ring-slate-400'}`}
+                />
+                <Button
+                  type="button"
+                  size="sm"
+                  disabled={changingPassword}
+                  className="w-full text-white"
+                  style={{ backgroundColor: modalAccentTheme.accent }}
+                  onClick={handleChangePassword}
+                >
+                  {changingPassword ? <><Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />Aggiornamento…</> : 'Aggiorna password'}
+                </Button>
+              </div>
+            )}
+          </div>
 
           {/* Actions */}
           <div className="flex gap-3 pt-2">

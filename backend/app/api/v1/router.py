@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from app.api.v1.endpoints import auth, admin, teacher, student, chat, llm, rag, ml, assessment, files, teacherbots, admin_credits, alerts, stt, uda, media, feedback
+from app.api.v1.endpoints import auth, admin, teacher, student, chat, llm, rag, ml, assessment, files, teacherbots, admin_credits, alerts, stt, uda, media, feedback, notebooks, desktop, calendar
 
 api_router = APIRouter()
 
@@ -21,3 +21,6 @@ api_router.include_router(stt.router, prefix="/stt", tags=["stt"])
 api_router.include_router(uda.router, tags=["uda"])
 api_router.include_router(media.router, prefix="/media", tags=["media"])
 api_router.include_router(feedback.router, prefix="/feedback", tags=["feedback"])
+api_router.include_router(notebooks.router, tags=["notebooks"])
+api_router.include_router(desktop.router, tags=["desktop"])
+api_router.include_router(calendar.router, tags=["calendar"])

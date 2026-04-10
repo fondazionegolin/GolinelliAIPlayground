@@ -9,6 +9,7 @@ import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { useToast } from '@/components/ui/use-toast'
 import { useState } from 'react'
+import { AppBackground } from '@/components/ui/AppBackground'
 
 const FEATURES = [
   {
@@ -79,25 +80,25 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-sky-600 via-blue-700 to-indigo-900 px-4 py-6 md:px-8 md:py-8">
+    <AppBackground className="min-h-screen px-4 py-6 md:px-8 md:py-8" gradient="#f6f8fc">
       <div className="mx-auto grid min-h-[calc(100vh-2rem)] w-full max-w-7xl grid-cols-1 gap-6 lg:grid-cols-[1.15fr_0.85fr]">
-        <section className="rounded-3xl border border-white/20 bg-white/10 p-6 text-white shadow-2xl backdrop-blur-md md:p-8">
-          <p className="text-xs font-semibold uppercase tracking-[0.25em] text-sky-100">Fondazione Golinelli</p>
+        <section className="rounded-[32px] border border-sky-100/90 bg-white/88 p-6 text-slate-900 md:p-8">
+          <p className="text-xs font-semibold uppercase tracking-[0.25em] text-sky-700">Fondazione Golinelli</p>
           <h1 className="mt-2 text-4xl font-black leading-tight md:text-5xl" style={{ fontFamily: '"SofiaPro"' }}>
             Golinelli AI Playground
           </h1>
-          <p className="mt-3 max-w-2xl text-sm text-blue-100 md:text-base">
+          <p className="mt-3 max-w-2xl text-sm text-slate-600 md:text-base">
             Piattaforma moderna per fare lezione con l&apos;AI in modo strutturato, trasparente e conforme al contesto educativo.
           </p>
 
           <div className="mt-6 grid grid-cols-1 gap-3 md:grid-cols-2">
             {FEATURES.map((item) => (
-              <article key={item.title} className="rounded-2xl border border-white/20 bg-white/10 p-4">
+              <article key={item.title} className="rounded-[24px] border border-slate-200/90 bg-slate-50/88 p-4">
                 <div className="flex items-center gap-2">
-                  <item.icon className="h-4 w-4 text-sky-100" />
+                  <item.icon className="h-4 w-4 text-sky-700" />
                   <h3 className="text-sm font-bold">{item.title}</h3>
                 </div>
-                <p className="mt-2 text-xs text-blue-100">{item.body}</p>
+                <p className="mt-2 text-xs text-slate-600">{item.body}</p>
               </article>
             ))}
           </div>
@@ -112,8 +113,8 @@ export default function LoginPage() {
         </section>
 
         <aside className="flex items-start justify-center lg:items-center">
-          <Card className="w-full max-w-md border-white/40 bg-white/95 shadow-2xl rounded-3xl overflow-hidden">
-            <CardHeader className="pb-4">
+          <Card className="w-full max-w-md overflow-hidden rounded-[32px] border border-slate-200/90 bg-white/96">
+            <CardHeader className="border-b border-slate-100/90 pb-4">
               <CardTitle className="text-slate-900">Accesso Docente / Admin</CardTitle>
               <CardDescription>Entra in piattaforma o richiedi l&apos;accesso beta.</CardDescription>
             </CardHeader>
@@ -163,6 +164,6 @@ export default function LoginPage() {
           </Card>
         </aside>
       </div>
-    </div>
+    </AppBackground>
   )
 }

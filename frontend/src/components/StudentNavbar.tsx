@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, type CSSProperties } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { User, Settings, LogOut, ChevronDown, Bot, Brain, Award, Home, FileEdit, Menu, X, MessageSquare, Check } from 'lucide-react'
+import { User, Settings, LogOut, ChevronDown, Bot, Brain, Award, FileEdit, Menu, X, MessageSquare, Check, FileCode2, MonitorPlay, LayoutDashboard } from 'lucide-react'
 import { Button } from './ui/button'
 import { LogoMark } from './LogoMark'
 import { studentApi } from '@/lib/api'
@@ -9,6 +9,7 @@ import { NavTab } from '@/components/ui/NavTab'
 import { useTranslation } from 'react-i18next'
 import { LanguageSwitcher } from '@/components/LanguageSwitcher'
 import { useAuthStore } from '@/stores/auth'
+import { NavbarCalendarClock } from './NavbarCalendarClock'
 
 interface StudentProfile {
   id?: string
@@ -27,20 +28,42 @@ interface StudentNavbarProps {
   onToggleChatSidebar?: () => void
   accent?: StudentAccentId
   onAccentChange?: (accent: StudentAccentId) => void
+  enabledModules?: string[]
 }
 
 export function StudentNavbar({
   activeModule,
   onNavigate,
   sessionTitle,
+  sessionId,
   joinCode,
   chatSidebarOpen = false,
   onToggleChatSidebar,
   accent = DEFAULT_STUDENT_ACCENT,
-  onAccentChange
+  onAccentChange,
+  enabledModules,
 }: StudentNavbarProps) {
   const navigate = useNavigate()
   const logout = useAuthStore((s) => s.logout)
+  const isPreviewMode = localStorage.getItem('_preview_mode') === 'true'
+
+  const handleExitPreview = () => {
+    const tokenBackup = localStorage.getItem('_teacher_token_backup')
+    const userBackup = localStorage.getItem('_teacher_user_backup')
+    if (tokenBackup && userBackup) {
+      try {
+        const user = JSON.parse(userBackup)
+        useAuthStore.getState().setUser(user, tokenBackup)
+      } catch {
+        // fallback: just navigate
+      }
+    }
+    localStorage.removeItem('_preview_mode')
+    localStorage.removeItem('_teacher_token_backup')
+    localStorage.removeItem('_teacher_user_backup')
+    localStorage.removeItem('student_token')
+    navigate('/teacher/demo')
+  }
   const [showDropdown, setShowDropdown] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
   const [showMobileMenu, setShowMobileMenu] = useState(false)
@@ -58,8 +81,11 @@ export function StudentNavbar({
     '--student-accent-soft-strong': accentTheme.softStrong,
     '--student-accent-border': accentTheme.border,
     '--student-accent-text': accentTheme.text,
-    backgroundColor: accentTheme.soft,
+    backgroundColor: 'rgba(255, 255, 255, 0.94)',
+    backdropFilter: 'blur(12px)',
+    WebkitBackdropFilter: 'blur(12px)',
     borderBottomColor: accentTheme.border,
+    borderBottomWidth: '1px',
   } as CSSProperties
 
   // Load profile from API
@@ -129,18 +155,37 @@ export function StudentNavbar({
     navigate('/join')
   }
 
-  const navItems = [
-    { key: null, label: 'Home', icon: Home },
+  const ALL_NAV_ITEMS = [
+    { key: 'desktop', label: 'Desktop', icon: LayoutDashboard },
     { key: 'chatbot', label: 'Chatbot', icon: Bot },
     { key: 'classification', label: 'ML Lab', icon: Brain },
     { key: 'documents', label: 'Documenti', icon: FileEdit },
     { key: 'self_assessment', label: 'Compiti', icon: Award },
+    { key: 'notebook', label: 'Notebook', icon: FileCode2 },
   ]
+  // Always show desktop and documents; filter optional modules by session settings
+  const ALWAYS_SHOWN = new Set(['desktop', 'documents', 'notebook'])
+  const navItems = enabledModules
+    ? ALL_NAV_ITEMS.filter(item => ALWAYS_SHOWN.has(item.key) || enabledModules.includes(item.key))
+    : ALL_NAV_ITEMS
 
   return (
     <>
+      {/* Preview mode banner */}
+      {isPreviewMode && (
+        <div className="fixed top-0 left-0 right-0 z-[60] bg-amber-500 text-white text-xs font-semibold flex items-center justify-center gap-3 py-1.5 px-4">
+          <MonitorPlay className="h-3.5 w-3.5 flex-shrink-0" />
+          <span>Stai visualizzando l'interfaccia studente in modalità anteprima</span>
+          <button
+            onClick={handleExitPreview}
+            className="ml-2 underline hover:no-underline font-bold"
+          >
+            Esci dall'anteprima
+          </button>
+        </div>
+      )}
       <nav
-        className="fixed top-0 left-0 right-0 z-50 bg-white/98 border-b shadow-sm"
+        className={`fixed left-0 right-0 z-50 border-b ${isPreviewMode ? 'top-8' : 'top-0'}`}
         style={accentVars}
       >
         <div className="max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -173,22 +218,32 @@ export function StudentNavbar({
 
             {/* Desktop Navigation */}
             {onNavigate && (
-              <div className="hidden md:flex items-center gap-0.5 h-10 bg-white p-0.5 rounded-2xl border border-slate-200 shadow-sm">
-                {navItems.map((item) => (
-                  <NavTab
-                    key={item.label}
-                    icon={item.icon}
-                    label={item.label}
-                    isActive={activeModule === item.key}
-                    onClick={() => onNavigate(item.key)}
-                    accentClass="bg-[var(--student-accent)]"
-                    accentTextClass="text-white"
-                  />
-                ))}
+              <div className="hidden md:flex items-center gap-0.5 h-11 rounded-[18px] border p-1" style={{ backgroundColor: 'rgba(255,255,255,0.78)', borderColor: accentTheme.border }}>
+                {(() => {
+                  const activeIdx = navItems.findIndex(item => activeModule === item.key)
+                  return navItems.map((item, idx) => (
+                    <NavTab
+                      key={item.label}
+                      icon={item.icon}
+                      label={item.label}
+                      isActive={activeModule === item.key}
+                      isAdjacent={Math.abs(idx - activeIdx) === 1}
+                      onClick={() => onNavigate(item.key)}
+                      accentClass="bg-[var(--student-accent)]"
+                      accentTextClass="text-white"
+                    />
+                  ))
+                })()}
               </div>
             )}
 
             <div className="flex items-center gap-2">
+              {/* Date/time + mini calendar */}
+              <NavbarCalendarClock
+                sessionId={sessionId}
+                accentColor={accentTheme.accent}
+              />
+
               {/* Session Info - Always visible */}
               {sessionTitle && (
                 <div className="hidden lg:flex items-center gap-2 h-9 px-3 rounded-xl border bg-white border-slate-200 shadow-sm">
@@ -240,7 +295,7 @@ export function StudentNavbar({
 
                 {/* Dropdown Menu - Modern Floating Style */}
                 {showDropdown && (
-                  <div className="absolute right-0 mt-2 w-64 bg-white rounded-2xl shadow-xl border border-slate-100 py-2 animate-in fade-in zoom-in-95 duration-100 origin-top-right">
+                  <div className="absolute right-0 mt-2 w-64 bg-white rounded-2xl shadow-xl border border-slate-100 py-2 animate-in fade-in zoom-in-95 duration-100 origin-top-right z-50">
                     <div className="px-4 py-3 border-b border-slate-50 mb-1">
                       <p className="text-sm font-semibold text-slate-900">{profile.nickname}</p>
                       <p className="text-xs text-slate-500 mt-0.5">Studente</p>
@@ -439,7 +494,7 @@ function SettingsModal({ profile, accent, onSave, onClose }: SettingsModalProps)
 
           <div>
             <label className="block text-xs font-semibold text-slate-500 uppercase mb-2">Colore Accento</label>
-            <div className="grid grid-cols-5 gap-2">
+            <div className="grid grid-cols-4 gap-2">
               {(Object.values(STUDENT_ACCENTS)).map((accentOption) => {
                 const isSelected = selectedAccent === accentOption.id
                 return (

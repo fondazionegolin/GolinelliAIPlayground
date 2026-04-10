@@ -4,23 +4,28 @@ import { Button } from '@/components/ui/button'
 import {
   Send, Bot, Paperclip, X, Trash2, Plus, File, Image as ImageIcon, Loader2,
   Database, Download, ChevronDown, ChevronRight, Edit3, Check, MessageCircle, Sparkles,
-  Palette, FileText, CheckSquare, MessageSquare
+  Palette, FileText, CheckSquare, MessageSquare, Settings, RotateCcw, BarChart2
 } from 'lucide-react'
 import { llmApi, teacherApi } from '@/lib/api'
 import { useToast } from '@/components/ui/use-toast'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
 import rehypeKatex from 'rehype-katex'
+import { markdownCodeComponents } from '@/components/CodeBlock'
 import 'katex/dist/katex.min.css'
 import { ContentEditorModal } from '@/components/ContentEditorModal'
+import DataFileCard from '@/components/DataFileCard'
 import { DataVisualizationPanel } from '@/components/DataVisualizationPanel'
 import TeacherbotsPanel from '@/components/teacher/TeacherbotsPanel'
 import TeacherbotForm from '@/components/teacher/TeacherbotForm'
 import { DEFAULT_TEACHER_ACCENT, getTeacherAccentTheme } from '@/lib/teacherAccent'
+import { useTeacherProfile } from '@/hooks/useTeacherProfile'
 import { VoiceRecorder } from '@/components/VoiceRecorder'
 import { useTranslation } from 'react-i18next'
+import EnvironmentalImpactPill from '@/components/chat/EnvironmentalImpactPill'
+import type { TokenUsageJson } from '@/lib/environmentalImpact'
 
 // Constants
 const FALLBACK_MODELS = [
@@ -37,6 +42,7 @@ const AGENT_MODES = [
   { id: 'quiz', label: 'Quiz' },
   { id: 'image', label: 'Immagine' },
   { id: 'dataset', label: 'Dataset' },
+  { id: 'analysis', label: 'Analisi' },
 ] as const
 
 // Explicitly include web_search in type even though it's hidden from UI
@@ -72,6 +78,9 @@ interface Message {
   role: 'user' | 'assistant' | 'system'
   content: string
   timestamp: Date
+  provider?: string
+  model?: string
+  token_usage_json?: TokenUsageJson | null
 }
 
 interface Conversation {
@@ -84,13 +93,15 @@ interface Conversation {
 interface AttachedFile {
   file: globalThis.File
   preview?: string
-  type: 'image' | 'document'
+  type: 'image' | 'document' | 'data'
+  dataPreview?: import('@/components/DataFileCard').DataFilePreview
 }
 
 
 
 export default function TeacherSupportChat() {
   const { t } = useTranslation()
+  const queryClient = useQueryClient()
   const { toast } = useToast()
   const { isMobile } = useMobile()
   const [activeTab, setActiveTab] = useState<'chat' | 'teacherbots'>('chat')
@@ -119,6 +130,9 @@ export default function TeacherSupportChat() {
   const [agentMode, setAgentMode] = useState<AgentMode>('default')
   const [imageProvider, setImageProvider] = useState<'dall-e' | 'gpt-image-1'>('dall-e')
   const [imageSize, setImageSize] = useState<string>('1024x1024')
+  // Analysis mode: session/task picker
+  const [analysisSessionId, setAnalysisSessionId] = useState<string>('')
+  const [analysisTaskId, setAnalysisTaskId] = useState<string>('')
   const [chatBg, setChatBg] = useState<string>('')
   const [chatBgDefault, setChatBgDefault] = useState<string>('')
   const [showBgPalette, setShowBgPalette] = useState(false)
@@ -131,11 +145,7 @@ export default function TeacherSupportChat() {
     queryFn: () => llmApi.getAvailableModels(),
     staleTime: 60_000,
   })
-  const { data: teacherProfileResponse } = useQuery({
-    queryKey: ['teacher-profile'],
-    queryFn: () => teacherApi.getProfile(),
-    staleTime: 5 * 60 * 1000,
-  })
+  const teacherProfileData = useTeacherProfile().data
   const availableModels = useMemo<AvailableModel[]>(() => {
     const modelsFromApi = (availableModelsResponse?.data?.models || [])
       .filter((m: { model?: string; name?: string; provider?: string }) => m?.model && m?.provider)
@@ -149,8 +159,8 @@ export default function TeacherSupportChat() {
     return FALLBACK_MODELS
   }, [availableModelsResponse])
   const accentTheme = useMemo(
-    () => getTeacherAccentTheme(teacherProfileResponse?.data?.ui_accent || DEFAULT_TEACHER_ACCENT),
-    [teacherProfileResponse]
+    () => getTeacherAccentTheme(teacherProfileData?.uiAccent || DEFAULT_TEACHER_ACCENT),
+    [teacherProfileData]
   )
   const accentVars = useMemo(() => ({
     '--teacher-accent': accentTheme.accent,
@@ -237,6 +247,11 @@ export default function TeacherSupportChat() {
   }
 
 
+  const [streamingStatus, setStreamingStatus] = useState<string | null>(null)
+  const [showPromptEditor, setShowPromptEditor] = useState(false)
+  const [promptEditorValue, setPromptEditorValue] = useState('')
+  const [promptEditorDefault, setPromptEditorDefault] = useState('')
+  const [promptEditorSaving, setPromptEditorSaving] = useState(false)
   const [imageGenerationProgress, setImageGenerationProgress] = useState<{
     status: string
     step: 'connecting' | 'enhancing' | 'generating' | 'done' | 'error'
@@ -365,10 +380,11 @@ export default function TeacherSupportChat() {
           const sessionsRes = await teacherApi.getSessions(cls.id)
           const sessions = sessionsRes.data || []
           sessions.forEach((s: any) => {
-            allSessions.push({ 
-              id: s.id, 
-              title: s.title || s.name || 'Sessione senza titolo', 
+            allSessions.push({
+              id: s.id,
+              title: s.title || s.name || 'Sessione senza titolo',
               class_name: cls.name,
+              class_join_code: cls.join_code || null,
               status: s.status || 'attiva'
             })
           })
@@ -376,6 +392,17 @@ export default function TeacherSupportChat() {
       }
       return allSessions
     },
+  })
+
+  // Tasks for selected analysis session
+  const { data: analysisTasksData } = useQuery({
+    queryKey: ['analysis-tasks', analysisSessionId],
+    queryFn: async () => {
+      const res = await teacherApi.getTasks(analysisSessionId)
+      return (res.data || []) as Array<{ id: string; title: string; task_type: string; status: string }>
+    },
+    enabled: !!analysisSessionId && agentMode === 'analysis',
+    staleTime: 30_000,
   })
 
   // Auto-scroll
@@ -472,7 +499,10 @@ export default function TeacherSupportChat() {
             id: m.id,
             role: m.role,
             content: m.content,
-            timestamp: new Date(m.created_at)
+            timestamp: new Date(m.created_at),
+            provider: m.provider,
+            model: m.model,
+            token_usage_json: m.token_usage_json,
           }))
           setMessages(serverMessages)
           setHasMoreMessages(conv.has_more ?? false)
@@ -506,7 +536,10 @@ export default function TeacherSupportChat() {
           id: m.id,
           role: m.role,
           content: m.content,
-          timestamp: new Date(m.created_at)
+          timestamp: new Date(m.created_at),
+          provider: m.provider,
+          model: m.model,
+          token_usage_json: m.token_usage_json,
         }))
         setMessages(prev => [...older, ...prev])
         setHasMoreMessages(conv.has_more ?? false)
@@ -536,22 +569,43 @@ export default function TeacherSupportChat() {
   }, [conversations])
 
   const addFiles = (files: globalThis.File[]) => {
-    const newFiles: AttachedFile[] = files.map(file => {
+    files.forEach(file => {
       const isImage = file.type.startsWith('image/')
-      const attached: AttachedFile = {
-        file,
-        type: isImage ? 'image' : 'document',
-      }
+      const isData = /\.(xlsx|xls|csv|json)$/i.test(file.name) ||
+        file.type.includes('spreadsheet') || file.type.includes('excel') ||
+        file.type === 'text/csv' || file.type === 'application/json'
+
       if (isImage) {
-        attached.preview = URL.createObjectURL(file)
+        setAttachedFiles(prev => [...prev, { file, type: 'image', preview: URL.createObjectURL(file) }])
+        return
       }
-      return attached
+
+      if (isData) {
+        setAttachedFiles(prev => [...prev, { file, type: 'data' }])
+        llmApi.filePreview(file)
+          .then(res => {
+            setAttachedFiles(prev =>
+              prev.map(af => af.file === file ? { ...af, dataPreview: res.data } : af)
+            )
+          })
+          .catch(() => {/* keep file without preview */})
+        return
+      }
+
+      setAttachedFiles(prev => [...prev, { file, type: 'document' }])
     })
-    setAttachedFiles(prev => [...prev, ...newFiles])
   }
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) addFiles(Array.from(e.target.files))
+  }
+
+  const handleInputPaste = (e: React.ClipboardEvent) => {
+    const fileItems = Array.from(e.clipboardData.items).filter(item => item.kind === 'file')
+    if (fileItems.length === 0) return
+    e.preventDefault()
+    const files = fileItems.map(item => item.getAsFile()).filter(Boolean) as globalThis.File[]
+    if (files.length > 0) addFiles(files)
   }
 
   const removeFile = (index: number) => {
@@ -577,8 +631,7 @@ export default function TeacherSupportChat() {
           const fileObj = new globalThis.File([blob], data.filename || 'file', {
             type: data.mime_type || blob.type || 'application/octet-stream'
           })
-          const isImage = fileObj.type.startsWith('image/')
-          setAttachedFiles(prev => [...prev, { file: fileObj, type: isImage ? 'image' : 'document', preview: isImage ? URL.createObjectURL(fileObj) : undefined }])
+          addFiles([fileObj])
         }
         if (fileUrl.includes('/api/v1/files/') && fileUrl.endsWith('/download-url')) {
           fetch(fileUrl)
@@ -621,7 +674,7 @@ export default function TeacherSupportChat() {
         name: `dataset_${Date.now()}.csv`,
         lastModified: Date.now()
       }) as File
-      setAttachedFiles(prev => [...prev, { file: fileObj, type: 'document' as const }])
+      addFiles([fileObj])
       return
     }
 
@@ -674,7 +727,9 @@ export default function TeacherSupportChat() {
       await teacherApi.addMessage(convId, {
         role: assistantMsg.role,
         content: assistantMsg.content,
-        model: model
+        model: assistantMsg.model || model,
+        provider: assistantMsg.provider,
+        token_usage_json: assistantMsg.token_usage_json ? { ...assistantMsg.token_usage_json } as Record<string, unknown> : undefined,
       })
     } catch (e) {
       console.error('Failed to save messages:', e)
@@ -683,19 +738,31 @@ export default function TeacherSupportChat() {
     return convId
   }
 
-  const runStreamingRequest = async (content: string, history: Message[]): Promise<string> => {
+  const runStreamingRequest = async (
+    content: string,
+    history: Message[],
+    opts?: {
+      provider?: string
+      model?: string
+      sessionId?: string
+      onChunk?: (chunk: string) => void
+      onStatus?: (status: string) => void
+      onCalendarEvent?: (event: { id: string; title: string; event_date: string; event_time?: string; color: string }) => void
+    }
+  ): Promise<{ content: string; provider?: string; model?: string; token_usage_json?: TokenUsageJson | null }> => {
+    const modelInfo = availableModels.find(m => m.id === selectedModel)
     try {
       const response = await fetch('/api/v1/llm/teacher/chat-stream', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({
           content,
           history: history.map(m => ({ role: m.role, content: m.content })),
-          provider: 'anthropic',
-          model: 'claude-haiku-4-5-20251001'
+          provider: opts?.provider ?? modelInfo?.provider ?? 'openai',
+          model: opts?.model ?? selectedModel,
+          agent_mode: agentMode,
+          session_id: opts?.sessionId ?? null,
         })
       })
 
@@ -704,14 +771,17 @@ export default function TeacherSupportChat() {
       const reader = response.body?.getReader()
       const decoder = new TextDecoder()
       let finalContent = ''
+      let finalProvider: string | undefined
+      let finalModel: string | undefined
+      let finalTokenUsage: TokenUsageJson | null = null
 
       if (reader) {
         while (true) {
           const { done, value } = await reader.read()
           if (done) break
 
-          const chunk = decoder.decode(value)
-          const lines = chunk.split('\n')
+          const raw = decoder.decode(value)
+          const lines = raw.split('\n')
 
           for (const line of lines) {
             if (!line.startsWith('data: ')) continue
@@ -722,8 +792,19 @@ export default function TeacherSupportChat() {
               continue
             }
 
-            if (data.type === 'done') {
-              finalContent = data.content
+            if (data.type === 'chunk') {
+              finalContent += data.content
+              opts?.onChunk?.(data.content)
+            } else if (data.type === 'done') {
+              // done carries the clean content (tags stripped)
+              if (data.content) finalContent = data.content
+              finalProvider = data.provider
+              finalModel = data.model
+              finalTokenUsage = data.token_usage || null
+            } else if (data.type === 'status') {
+              opts?.onStatus?.(data.message)
+            } else if (data.type === 'calendar_event_created') {
+              opts?.onCalendarEvent?.(data.event)
             } else if (data.type === 'error') {
               throw new Error(data.message || 'Errore durante lo stream')
             }
@@ -731,7 +812,12 @@ export default function TeacherSupportChat() {
         }
       }
 
-      return finalContent || 'Nessun risultato dalla generazione.'
+      return {
+        content: finalContent || 'Nessun risultato dalla generazione.',
+        provider: finalProvider,
+        model: finalModel,
+        token_usage_json: finalTokenUsage,
+      }
     } catch (e) {
       throw e
     }
@@ -740,10 +826,11 @@ export default function TeacherSupportChat() {
   const handleSend = async () => {
     const userInput = inputText.trim()
 
-    if ((!userInput && attachedFiles.length === 0) || isLoading) return
+    const canSendAnalysis = agentMode === 'analysis' && analysisTaskId
+    if ((!userInput && attachedFiles.length === 0 && !canSendAnalysis) || isLoading) return
 
     const filesInfo = attachedFiles.length > 0 ? ` [Allegati: ${attachedFiles.map(f => f.file.name).join(', ')}]` : ''
-    let messageContent = userInput || 'Analizza questi documenti'
+    let messageContent = userInput || (agentMode === 'analysis' ? 'Analizza le risposte degli studenti' : 'Analizza questi documenti')
 
     if (userInput && agentMode !== 'default' && agentMode !== 'image') {
       const prefixes: Partial<Record<AgentMode, string>> = {
@@ -850,10 +937,14 @@ REGOLE IMPORTANTI:
             id: `resp-${Date.now()}`,
             role: 'assistant',
             content: `**Immagine Generata**\n\n![Generata](${imageUrl})\n\n**Prompt Effettivo:**\n\`${enhancedPrompt}\``,
-            timestamp: new Date()
+            timestamp: new Date(),
+            provider: imageProvider === 'dall-e' || imageProvider === 'gpt-image-1' ? 'openai' : 'flux',
+            model: imageProvider === 'dall-e' ? 'dall-e-3' : imageProvider,
+            token_usage_json: { image_count: 1 },
           }
           // IMPORTANTE: Aggiorna anche messages per mostrare subito l'immagine nella chat
           setMessages(prev => [...prev, assistantMessage])
+          queryClient.invalidateQueries({ queryKey: ['llm-environmental-footprint'] })
 
           // Save to server
           await saveMessageToServer(convId, userMessage, assistantMessage, selectedModel)
@@ -861,24 +952,51 @@ REGOLE IMPORTANTI:
           throw new Error("Nessuna URL immagine ricevuta")
         }
 
+      } else if (agentMode === 'analysis') {
+        if (!analysisSessionId || !analysisTaskId) {
+          throw new Error('Seleziona una sessione e un compito prima di avviare l\'analisi.')
+        }
+        const taskTitle = analysisTasksData?.find(t => t.id === analysisTaskId)?.title || 'compito selezionato'
+        const sessionTitle = (classesData || []).find((s: any) => s.id === analysisSessionId)?.title || 'sessione'
+
+        // Show status in the streaming slot
+        const assistantId = `resp-${Date.now()}`
+        setMessages(prev => [...prev, { id: assistantId, role: 'assistant' as const, content: '', timestamp: new Date() }])
+        setStreamingStatus(`Caricamento risposte per «${taskTitle}»...`)
+
+        const res = await teacherApi.analyzeTask(analysisSessionId, analysisTaskId, userInput || undefined)
+        const data = res.data
+        const submissionSummary = `📋 *${data.submission_count} su ${data.total_students} studenti hanno consegnato «${data.task_title}» (sessione: ${sessionTitle})*\n\n`
+        const fullContent = submissionSummary + (data.analysis || 'Nessuna analisi disponibile.')
+
+        setStreamingStatus(null)
+        setMessages(prev => prev.map(m => m.id === assistantId ? { ...m, content: fullContent } : m))
+        const finalMsg: Message = { id: assistantId, role: 'assistant', content: fullContent, timestamp: new Date() }
+        queryClient.invalidateQueries({ queryKey: ['llm-environmental-footprint'] })
+        await saveMessageToServer(convId, userMessage, finalMsg, selectedModel)
+
       } else if (agentMode === 'web_search' || agentMode === 'quiz' || agentMode === 'dataset' || agentMode === 'report') {
-        const finalContent = await runStreamingRequest(messageContent, [...messages, userMessage])
+        const streamResult = await runStreamingRequest(messageContent, [...messages, userMessage])
         const assistantMessage: Message = {
           id: `resp-${Date.now()}`,
           role: 'assistant',
-          content: finalContent,
-          timestamp: new Date()
+          content: streamResult.content,
+          timestamp: new Date(),
+          provider: streamResult.provider,
+          model: streamResult.model,
+          token_usage_json: streamResult.token_usage_json,
         }
         setMessages(prev => [...prev, assistantMessage])
+        queryClient.invalidateQueries({ queryKey: ['llm-environmental-footprint'] })
         await saveMessageToServer(convId, userMessage, assistantMessage, 'claude-haiku-4-5-20251001')
       } else {
         // STANDARD CHAT FLOW
         const history = messages.map(m => ({ role: m.role, content: m.content }))
         const modelInfo = availableModels.find(m => m.id === selectedModel)
 
-        let response;
         if (currentFiles.length > 0) {
-          response = await llmApi.teacherChatWithFiles(
+          // Files: use non-streaming endpoint (files can't go over SSE JSON)
+          const response = await llmApi.teacherChatWithFiles(
             messageContent,
             history,
             'teacher_support',
@@ -888,29 +1006,75 @@ REGOLE IMPORTANTI:
             imageProvider,
             imageSize
           )
+          const assistantMessage: Message = {
+            id: `resp-${Date.now()}`,
+            role: 'assistant',
+            content: response.data?.response || 'Errore nella risposta.',
+            timestamp: new Date(),
+            provider: response.data?.provider,
+            model: response.data?.model,
+            token_usage_json: {
+              prompt_tokens: response.data?.prompt_tokens,
+              completion_tokens: response.data?.completion_tokens,
+            },
+          }
+          setMessages(prev => [...prev, assistantMessage])
+          queryClient.invalidateQueries({ queryKey: ['llm-environmental-footprint'] })
+          await saveMessageToServer(convId, userMessage, assistantMessage, selectedModel)
         } else {
-          response = await llmApi.teacherChat(
-            userMessage.content,
-            history,
-            'teacher_support',
-            modelInfo?.provider || 'openai',
-            selectedModel,
-            imageProvider,
-            imageSize
-          )
+          // Text-only: use streaming endpoint for typewriter effect
+          const assistantId = `resp-${Date.now()}`
+          setMessages(prev => [...prev, { id: assistantId, role: 'assistant' as const, content: '', timestamp: new Date() }])
+
+          const _sessionId = (() => {
+            try { return JSON.parse(localStorage.getItem('teacher_selected_session') || 'null')?.id ?? undefined }
+            catch { return undefined }
+          })()
+
+          // history already excludes the current user message — backend appends it via `content`
+          const streamResult = await runStreamingRequest(messageContent, messages, {
+            sessionId: _sessionId,
+            onChunk: (chunk) => {
+              setMessages(prev => prev.map(m =>
+                m.id === assistantId ? { ...m, content: m.content + chunk } : m
+              ))
+            },
+            onStatus: (status) => {
+              setStreamingStatus(status)
+            },
+            onCalendarEvent: (evt) => {
+              toast({
+                title: '📅 Evento creato',
+                description: `"${evt.title}" il ${evt.event_date}${evt.event_time ? ` alle ${evt.event_time.slice(0,5)}` : ''}`,
+              })
+            },
+          })
+
+          setStreamingStatus(null)
+
+          // Always replace with clean final content (strips any CALENDAR_EVENT tags)
+          setMessages(prev => prev.map(m =>
+            m.id === assistantId ? {
+              ...m,
+              content: streamResult.content || m.content,
+              provider: streamResult.provider,
+              model: streamResult.model,
+              token_usage_json: streamResult.token_usage_json,
+            } : m
+          ))
+          queryClient.invalidateQueries({ queryKey: ['llm-environmental-footprint'] })
+
+          const finalMsg: Message = {
+            id: assistantId,
+            role: 'assistant',
+            content: streamResult.content,
+            timestamp: new Date(),
+            provider: streamResult.provider,
+            model: streamResult.model,
+            token_usage_json: streamResult.token_usage_json,
+          }
+          await saveMessageToServer(convId, userMessage, finalMsg, selectedModel)
         }
-
-        const assistantMessage: Message = {
-          id: `resp-${Date.now()}`,
-          role: 'assistant',
-          content: response.data?.response || 'Errore nella risposta.',
-          timestamp: new Date()
-        }
-
-        setMessages(prev => [...prev, assistantMessage])
-
-        // Save to server
-        await saveMessageToServer(convId, userMessage, assistantMessage, selectedModel)
       }
     } catch (e: any) {
       console.error("Teacher support chat error:", e)
@@ -925,6 +1089,7 @@ REGOLE IMPORTANTI:
       }
       
       setImageGenerationProgress(null)
+      setStreamingStatus(null)
       toast({ title: "Errore", description: `Impossibile completare la richiesta: ${e.response?.data?.detail || e.message}`, variant: "destructive" })
       const errorMsg: Message = {
         id: `err-${Date.now()}`,
@@ -943,6 +1108,32 @@ REGOLE IMPORTANTI:
     setMessages([])
     setCurrentConversationId(null)
     setAttachedFiles([])
+  }
+
+  const handleOpenPromptEditor = async () => {
+    try {
+      const res = await teacherApi.getSupportChatPrompt()
+      const { custom_prompt, default_prompt } = res.data
+      setPromptEditorDefault(default_prompt)
+      setPromptEditorValue(custom_prompt ?? default_prompt)
+      setShowPromptEditor(true)
+    } catch {
+      toast({ title: 'Errore', description: 'Impossibile caricare il prompt.', variant: 'destructive' })
+    }
+  }
+
+  const handleSavePrompt = async () => {
+    setPromptEditorSaving(true)
+    try {
+      const isDefault = promptEditorValue.trim() === promptEditorDefault.trim()
+      await teacherApi.updateSupportChatPrompt(isDefault ? null : promptEditorValue)
+      toast({ title: 'Prompt salvato', description: isDefault ? 'Ripristinato al prompt predefinito.' : 'Il tuo prompt personalizzato è attivo.' })
+      setShowPromptEditor(false)
+    } catch {
+      toast({ title: 'Errore', description: 'Impossibile salvare il prompt.', variant: 'destructive' })
+    } finally {
+      setPromptEditorSaving(false)
+    }
   }
 
   const handleClearAllConversations = async () => {
@@ -1256,6 +1447,63 @@ REGOLE IMPORTANTI:
                  {/* Chat Main */}
                  <main className={`flex-1 flex flex-col relative overflow-hidden`} style={chatBg ? { backgroundColor: chatBg } : undefined}>
 
+                  {/* Support Chat Prompt Editor Modal */}
+                  {showPromptEditor && (
+                    <div className="fixed inset-0 z-[90] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
+                      <div className="bg-white rounded-2xl w-full max-w-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+                        <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-full flex items-center justify-center" style={{ backgroundColor: accentTheme.accent }}>
+                              <Settings className="h-4 w-4 text-white" />
+                            </div>
+                            <div>
+                              <h2 className="text-sm font-bold text-slate-800">Personalizza il tuo Assistente</h2>
+                              <p className="text-xs text-slate-500">Modifica il comportamento del chatbot di supporto docente</p>
+                            </div>
+                          </div>
+                          <button onClick={() => setShowPromptEditor(false)} className="p-2 rounded-lg hover:bg-slate-100 transition-colors">
+                            <X className="h-4 w-4 text-slate-500" />
+                          </button>
+                        </div>
+                        <div className="flex-1 overflow-y-auto p-6 space-y-4">
+                          <p className="text-xs text-slate-500 bg-slate-50 rounded-lg p-3 border border-slate-200">
+                            Questo è il <strong>system prompt</strong> del tuo assistente AI. Determina il suo comportamento, tono e capacità. Puoi personalizzarlo liberamente — le modifiche si applicano alle nuove conversazioni.
+                          </p>
+                          <textarea
+                            value={promptEditorValue}
+                            onChange={(e) => setPromptEditorValue(e.target.value)}
+                            className="w-full h-80 text-xs font-mono border border-slate-200 rounded-xl p-4 resize-none focus:outline-none focus:ring-2 focus:border-transparent"
+                            style={{ ['--tw-ring-color' as string]: accentTheme.border }}
+                            placeholder="Inserisci qui il system prompt del tuo assistente..."
+                            spellCheck={false}
+                          />
+                        </div>
+                        <div className="px-6 py-4 border-t border-slate-200 flex items-center justify-between gap-3">
+                          <button
+                            onClick={() => setPromptEditorValue(promptEditorDefault)}
+                            className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-700 transition-colors"
+                          >
+                            <RotateCcw className="h-3.5 w-3.5" />
+                            Ripristina default
+                          </button>
+                          <div className="flex items-center gap-2">
+                            <Button variant="outline" size="sm" onClick={() => setShowPromptEditor(false)}>
+                              Annulla
+                            </Button>
+                            <Button
+                              size="sm"
+                              disabled={promptEditorSaving}
+                              onClick={handleSavePrompt}
+                              style={{ backgroundColor: accentTheme.accent, color: '#fff' }}
+                            >
+                              {promptEditorSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Salva'}
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
                   {/* Teacherbot config modal — full-screen centered modal */}
                   {botPanelTarget && (
                     <div className="fixed inset-0 z-[80] bg-black/40 backdrop-blur-sm flex items-start justify-center overflow-y-auto p-6">
@@ -1306,7 +1554,7 @@ REGOLE IMPORTANTI:
                       <div>
                         <h1 className="text-sm font-bold text-slate-800">Supporto Docente AI</h1>
                         <p className="text-xs text-slate-500">
-                          {(agentMode === 'quiz' || agentMode === 'dataset' || agentMode === 'web_search' || agentMode === 'report')
+                          {(agentMode === 'quiz' || agentMode === 'dataset' || agentMode === 'web_search' || agentMode === 'report' || agentMode === 'analysis')
                             ? 'Claude Haiku'
                             : availableModels.find(m => m.id === selectedModel)?.name}
                         </p>
@@ -1436,6 +1684,15 @@ REGOLE IMPORTANTI:
                       </div>
 
                       <div className="hidden lg:flex items-center gap-2 relative">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={handleOpenPromptEditor}
+                          className="text-slate-500 hover:text-slate-700"
+                          title="Personalizza il prompt del tuo assistente"
+                        >
+                          <Settings className="h-4 w-4" />
+                        </Button>
                         <div className="relative">
                           <Button
                             variant="ghost"
@@ -1635,19 +1892,38 @@ REGOLE IMPORTANTI:
                                   {convertEmoticons(msg.content)}
                                 </ReactMarkdown>
                               )}
+                              {msg.role === 'assistant' && (
+                                <EnvironmentalImpactPill
+                                  darkMode={chatBgIsDark}
+                                  className="mt-3"
+                                  provider={msg.provider}
+                                  model={msg.model}
+                                  tokenUsage={msg.token_usage_json}
+                                />
+                              )}
                             </div>
                             <span className={`text-[10px] px-1 ${chatBgIsDark ? 'text-white/70' : 'text-slate-400'}`}>{msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                           </div>
                         </div>
                       ))
                     )}
-                    {isLoading && !imageGenerationProgress && ( // eslint-disable-line
+                    {isLoading && !imageGenerationProgress && !streamingStatus && ( // eslint-disable-line
                       <div className="flex gap-4 justify-start">
                         <div className="w-8 h-8 rounded-full bg-white border border-slate-200 flex items-center justify-center">
                           <Bot className="h-4 w-4 text-red-500" />
                         </div>
                         <div className={`${chatBgIsDark ? 'bg-white/10 border border-white/15' : 'bg-white border border-slate-200'} px-4 py-3 rounded-2xl rounded-tl-sm shadow-sm`}>
                           <Loader2 className={`h-4 w-4 animate-spin ${chatBgIsDark ? 'text-white' : 'text-red-500'}`} />
+                        </div>
+                      </div>
+                    )}
+                    {streamingStatus && (
+                      <div className="flex gap-4 justify-start">
+                        <div className="w-8 h-8 rounded-full bg-white border border-slate-200 flex items-center justify-center flex-shrink-0">
+                          <Loader2 className="h-4 w-4 animate-spin text-slate-400" />
+                        </div>
+                        <div className={`${chatBgIsDark ? 'bg-white/10 border border-white/15' : 'bg-white border border-slate-200'} px-3 py-2 rounded-2xl rounded-tl-sm shadow-sm`}>
+                          <span className="text-xs text-slate-500">{streamingStatus}</span>
                         </div>
                       </div>
                     )}
@@ -1741,20 +2017,100 @@ REGOLE IMPORTANTI:
                       {attachedFiles.length > 0 && (
                         <div className="flex flex-wrap gap-2 mb-2">
                           {attachedFiles.map((f, i) => (
-                            <div key={i} className="bg-slate-50/50 backdrop-blur-sm px-3 py-1.5 rounded-full text-xs flex items-center gap-2 text-slate-600 border border-slate-200 shadow-sm">
-                              {f.type === 'image' ? <ImageIcon className="h-3 w-3" /> : <File className="h-3 w-3" />}
-                              <span className="max-w-[120px] truncate">{f.file.name}</span>
-                              <button onClick={() => removeFile(i)} className="text-slate-400 hover:text-red-500">
-                                <X className="h-3 w-3" />
-                              </button>
+                            <div key={i} className="relative group">
+                              {f.type === 'image' && f.preview ? (
+                                <div className="bg-slate-50/50 backdrop-blur-sm px-3 py-1.5 rounded-full text-xs flex items-center gap-2 text-slate-600 border border-slate-200 shadow-sm">
+                                  <ImageIcon className="h-3 w-3" />
+                                  <span className="max-w-[120px] truncate">{f.file.name}</span>
+                                  <button onClick={() => removeFile(i)} className="text-slate-400 hover:text-red-500"><X className="h-3 w-3" /></button>
+                                </div>
+                              ) : f.type === 'data' ? (
+                                <div className="w-64 md:w-80">
+                                  {f.dataPreview
+                                    ? <DataFileCard preview={f.dataPreview} compact />
+                                    : <div className="flex items-center gap-2 bg-emerald-50 border border-emerald-200 rounded-full px-3 py-1.5 text-xs text-emerald-700">
+                                        <Loader2 className="h-3 w-3 animate-spin" />
+                                        <span className="truncate">{f.file.name}</span>
+                                      </div>
+                                  }
+                                  <button onClick={() => removeFile(i)} className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white rounded-full flex items-center justify-center z-10">
+                                    <X className="h-2.5 w-2.5" />
+                                  </button>
+                                </div>
+                              ) : (
+                                <div className="bg-slate-50/50 backdrop-blur-sm px-3 py-1.5 rounded-full text-xs flex items-center gap-2 text-slate-600 border border-slate-200 shadow-sm">
+                                  <File className="h-3 w-3" />
+                                  <span className="max-w-[120px] truncate">{f.file.name}</span>
+                                  <button onClick={() => removeFile(i)} className="text-slate-400 hover:text-red-500"><X className="h-3 w-3" /></button>
+                                </div>
+                              )}
                             </div>
                           ))}
+                        </div>
+                      )}
+                      {attachedFiles.some(af => af.type === 'data' && af.dataPreview?.suggested_prompts?.length) && (
+                        <div className="flex gap-1 mb-2 flex-wrap">
+                          {attachedFiles
+                            .filter(af => af.type === 'data' && af.dataPreview?.suggested_prompts?.length)
+                            .flatMap(af => af.dataPreview!.suggested_prompts!.slice(0, 3))
+                            .slice(0, 4)
+                            .map((prompt, i) => (
+                              <button
+                                key={i}
+                                onClick={() => setInputText(prompt)}
+                                className="text-xs bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-full px-2.5 py-1 transition-colors"
+                              >
+                                {prompt}
+                              </button>
+                            ))}
+                        </div>
+                      )}
+
+                      {/* Analysis mode: task picker */}
+                      {agentMode === 'analysis' && (
+                        <div className="mb-2 p-3 bg-violet-50 border border-violet-200 rounded-2xl animate-in fade-in slide-in-from-bottom-2 duration-200">
+                          <div className="flex items-center gap-2 mb-2">
+                            <BarChart2 className="h-3.5 w-3.5 text-violet-600" />
+                            <span className="text-xs font-semibold text-violet-700">Analisi risposte studenti</span>
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            <select
+                              value={analysisSessionId}
+                              onChange={e => { setAnalysisSessionId(e.target.value); setAnalysisTaskId('') }}
+                              className="flex-1 min-w-[140px] text-xs border border-violet-200 rounded-lg px-2 py-1.5 bg-white text-slate-700 focus:outline-none focus:ring-1 focus:ring-violet-400"
+                            >
+                              <option value="">— Sessione —</option>
+                              {(classesData || []).map((s: any) => (
+                                <option key={s.id} value={s.id}>{s.class_name}: {s.title}</option>
+                              ))}
+                            </select>
+                            <select
+                              value={analysisTaskId}
+                              onChange={e => setAnalysisTaskId(e.target.value)}
+                              disabled={!analysisSessionId}
+                              className="flex-1 min-w-[140px] text-xs border border-violet-200 rounded-lg px-2 py-1.5 bg-white text-slate-700 focus:outline-none focus:ring-1 focus:ring-violet-400 disabled:opacity-50"
+                            >
+                              <option value="">— Compito/Quiz —</option>
+                              {(analysisTasksData || [])
+                                .filter(t => t.status === 'published' || t.status === 'closed')
+                                .map(t => (
+                                  <option key={t.id} value={t.id}>[{t.task_type}] {t.title}</option>
+                                ))}
+                            </select>
+                          </div>
+                          {analysisTaskId && (
+                            <p className="mt-1.5 text-[10px] text-violet-500">
+                              Scrivi una domanda specifica oppure invia per un'analisi completa
+                            </p>
+                          )}
                         </div>
                       )}
 
                       {/* Input Pill */}
                       <div className="relative flex items-center gap-1.5 bg-white border border-slate-200 shadow-sm rounded-[24px] p-1.5 focus-within:ring-2 focus-within:ring-slate-200 transition-all">
-                        <input type="file" ref={fileInputRef} className="hidden" multiple onChange={handleFileSelect} />
+                        <input type="file" ref={fileInputRef} className="hidden" multiple
+                          accept="image/*,.pdf,.doc,.docx,.ppt,.pptx,.txt,.csv,.xlsx,.xls,.json"
+                          onChange={handleFileSelect} />
 
                         {/* Mode Selector — desktop only (mobile uses pills above) */}
                         {!isMobile && (
@@ -1780,7 +2136,9 @@ REGOLE IMPORTANTI:
                                         ? <CheckSquare className="h-3.5 w-3.5" />
                                         : m.id === 'image'
                                           ? <ImageIcon className="h-3.5 w-3.5" />
-                                          : <Database className="h-3.5 w-3.5" />
+                                          : m.id === 'analysis'
+                                            ? <BarChart2 className="h-3.5 w-3.5" />
+                                            : <Database className="h-3.5 w-3.5" />
                                   const isSelected = agentMode === m.id
                                   return (
                                     <button
@@ -1817,7 +2175,12 @@ REGOLE IMPORTANTI:
                           value={inputText}
                           onChange={(e) => setInputText(e.target.value)}
                           onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
-                          placeholder={isMobile ? 'Scrivi...' : 'Scrivi o trascina file qui...'}
+                          onPaste={handleInputPaste}
+                          placeholder={
+                            agentMode === 'analysis'
+                              ? (analysisTaskId ? 'Domanda specifica (opzionale)...' : 'Seleziona prima sessione e compito...')
+                              : isMobile ? 'Scrivi...' : 'Scrivi o trascina file qui...'
+                          }
                           className="flex-1 bg-transparent border-none focus:ring-0 focus:outline-none outline-none resize-none py-2 px-2 text-sm text-slate-800 placeholder:text-slate-400 max-h-32 min-h-[36px] leading-relaxed"
                           rows={1}
                           style={{ overflow: 'hidden' }}
@@ -1836,6 +2199,7 @@ REGOLE IMPORTANTI:
                             selectedModeMeta.id === 'quiz' ? 'bg-amber-50/50 text-amber-600 border-amber-200' :
                             selectedModeMeta.id === 'image' ? 'bg-purple-50/50 text-purple-600 border-purple-200' :
                             selectedModeMeta.id === 'dataset' ? 'bg-emerald-50/50 text-emerald-600 border-emerald-200' :
+                            selectedModeMeta.id === 'analysis' ? 'bg-violet-50/50 text-violet-600 border-violet-200' :
                             'bg-slate-100/50 text-slate-600 border-slate-200'
                           }`}>
                             {selectedModeMeta.label}
@@ -1844,8 +2208,8 @@ REGOLE IMPORTANTI:
 
                         <Button
                           onClick={handleSend}
-                          disabled={(!inputText.trim() && attachedFiles.length === 0) || isLoading}
-                          className={`h-9 w-9 rounded-full transition-all flex-shrink-0 ${(!inputText.trim() && attachedFiles.length === 0)
+                          disabled={((!inputText.trim() && attachedFiles.length === 0) && !(agentMode === 'analysis' && analysisTaskId)) || isLoading}
+                          className={`h-9 w-9 rounded-full transition-all flex-shrink-0 ${((!inputText.trim() && attachedFiles.length === 0) && !(agentMode === 'analysis' && analysisTaskId))
                             ? 'bg-slate-100 text-slate-300'
                             : 'bg-slate-900 hover:bg-slate-800 text-white shadow-md'
                             }`}
@@ -1907,7 +2271,12 @@ REGOLE IMPORTANTI:
                   >
                     <div>
                       <div className="font-semibold text-sm group-hover:text-red-700">{session.title}</div>
-                      <div className="text-xs text-slate-500">{session.class_name}</div>
+                      <div className="text-xs text-slate-500">
+                        {session.class_name}
+                        {session.class_join_code && (
+                          <span className="ml-2 font-mono font-semibold text-slate-400">#{session.class_join_code}</span>
+                        )}
+                      </div>
                     </div>
                     <ChevronRight className="h-4 w-4 text-slate-300 group-hover:text-red-500" />
                   </button>
@@ -2249,19 +2618,7 @@ function MessageContent({ content, onPublish, onEdit, onInput, toast, darkMode =
           rehypePlugins={[rehypeKatex]}
           components={{
             p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
-            code: ({ className, children, ...props }) => {
-              const isInline = !className
-              return isInline ? (
-                <code className={`${darkMode ? 'bg-white/10 text-white' : 'bg-slate-100 text-cyan-600'} px-1.5 py-0.5 rounded text-xs font-mono`} {...props}>
-                  {children}
-                </code>
-              ) : (
-                <code className="block bg-slate-900 text-slate-100 p-3 rounded-lg text-xs font-mono overflow-x-auto my-2" {...props}>
-                  {children}
-                </code>
-              )
-            },
-            pre: ({ children }) => <>{children}</>,
+            ...markdownCodeComponents(darkMode),
             img: ({ src, alt, ...props }) => (
               <div
                 className="relative group cursor-grab active:cursor-grabbing my-3 inline-block"

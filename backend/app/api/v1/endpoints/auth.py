@@ -12,7 +12,8 @@ from app.core.database import get_db
 from app.core.security import verify_password, create_access_token, get_password_hash
 from app.core.config import settings
 from app.core.url_utils import resolve_frontend_url
-from app.models.user import User, TeacherRequest, ActivationToken
+from app.models.user import User, TeacherRequest, ActivationToken, PasswordResetToken
+from app.models.invitation import PlatformInvitation
 from app.models.tenant import Tenant
 from app.models.enums import UserRole, TeacherRequestStatus
 from app.schemas.auth import LoginRequest, LoginResponse, TeacherRequestCreate, TeacherRequestResponse
@@ -360,6 +361,18 @@ async def change_password_with_token(
     # Mark token as used
     token_record.is_used = True
     token_record.used_at = datetime.now(timezone.utc)
+
+    pending_invitation = (await db.execute(
+        select(PlatformInvitation)
+        .where(
+            PlatformInvitation.email == user.email,
+            PlatformInvitation.status == "pending",
+        )
+        .order_by(PlatformInvitation.created_at.desc())
+    )).scalars().first()
+    if pending_invitation:
+        pending_invitation.status = "accepted"
+        pending_invitation.responded_at = datetime.now(timezone.utc)
     
     await db.commit()
     
@@ -367,3 +380,139 @@ async def change_password_with_token(
         "message": "Password aggiornata con successo",
         "email": user.email,
     }
+
+
+# ── Self-service "forgot password" ───────────────────────────────────────────
+
+class ForgotPasswordRequest(BaseModel):
+    email: str
+
+
+@router.post("/forgot-password")
+async def forgot_password(
+    body: ForgotPasswordRequest,
+    http_request: Request,
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """
+    Initiate a self-service password reset for teachers.
+    Always returns 200 to avoid leaking whether an email exists.
+    """
+    result = await db.execute(select(User).where(User.email == body.email))
+    user = result.scalar_one_or_none()
+
+    # Silently succeed if user not found, not a teacher/admin, or not active
+    if not user or user.role not in (UserRole.TEACHER, UserRole.ADMIN) or not user.is_active:
+        return {"message": "Se la mail è registrata riceverai un link di reset."}
+
+    # Invalidate previous unused reset tokens
+    old_tokens = (await db.execute(
+        select(PasswordResetToken).where(
+            PasswordResetToken.user_id == user.id,
+            PasswordResetToken.is_used == False,  # noqa: E712
+        )
+    )).scalars().all()
+    for tok in old_tokens:
+        tok.is_used = True
+
+    # Generate new token valid 24 h
+    reset_token = secrets.token_urlsafe(32)
+    token_record = PasswordResetToken(
+        user_id=user.id,
+        token=reset_token,
+        expires_at=datetime.now(timezone.utc) + timedelta(hours=24),
+    )
+    db.add(token_record)
+    await db.commit()
+
+    frontend_base = resolve_frontend_url(http_request.headers.get("origin"))
+    reset_link = f"{frontend_base}/reset-password/{reset_token}"
+
+    # Use tenant email templates if available
+    tenant = None
+    if user.tenant_id:
+        tenant = (await db.execute(select(Tenant).where(Tenant.id == user.tenant_id))).scalar_one_or_none()
+    templates = (tenant.email_templates_json or {}).get("password_reset", {}) if tenant else {}
+
+    await email_service.send_password_reset_link_email(
+        to_email=user.email or "",
+        first_name=user.first_name or "",
+        last_name=user.last_name or "",
+        reset_link=reset_link,
+        subject_template=templates.get("subject"),
+        html_template=templates.get("html"),
+    )
+
+    return {"message": "Se la mail è registrata riceverai un link di reset."}
+
+
+# ── Self-service password reset (token sent by admin) ────────────────────────
+
+class ResetPasswordInfoResponse(BaseModel):
+    first_name: str
+    email: str
+
+
+class SetNewPasswordRequest(BaseModel):
+    new_password: str
+    confirm_password: str
+
+
+@router.get("/reset-password/{token}", response_model=ResetPasswordInfoResponse)
+async def get_reset_password_info(
+    token: str,
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Validate a password-reset token and return the user's display name."""
+    result = await db.execute(
+        select(PasswordResetToken).where(PasswordResetToken.token == token)
+    )
+    token_record = result.scalar_one_or_none()
+
+    if not token_record or token_record.is_used:
+        raise HTTPException(status_code=404, detail="Link non valido o già utilizzato")
+
+    if token_record.expires_at < datetime.now(timezone.utc):
+        raise HTTPException(status_code=410, detail="Link scaduto. Chiedi un nuovo reset all'amministratore.")
+
+    user = (await db.execute(select(User).where(User.id == token_record.user_id))).scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="Utente non trovato")
+
+    return ResetPasswordInfoResponse(first_name=user.first_name or "", email=user.email or "")
+
+
+@router.post("/reset-password/{token}")
+async def set_new_password(
+    token: str,
+    request: SetNewPasswordRequest,
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Set a new password using a valid reset token."""
+    result = await db.execute(
+        select(PasswordResetToken).where(PasswordResetToken.token == token)
+    )
+    token_record = result.scalar_one_or_none()
+
+    if not token_record or token_record.is_used:
+        raise HTTPException(status_code=404, detail="Link non valido o già utilizzato")
+
+    if token_record.expires_at < datetime.now(timezone.utc):
+        raise HTTPException(status_code=410, detail="Link scaduto")
+
+    if request.new_password != request.confirm_password:
+        raise HTTPException(status_code=400, detail="Le password non coincidono")
+
+    if len(request.new_password) < 8:
+        raise HTTPException(status_code=400, detail="La password deve essere di almeno 8 caratteri")
+
+    user = (await db.execute(select(User).where(User.id == token_record.user_id))).scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="Utente non trovato")
+
+    user.password_hash = get_password_hash(request.new_password)
+    token_record.is_used = True
+    token_record.used_at = datetime.now(timezone.utc)
+
+    await db.commit()
+    return {"message": "Password aggiornata con successo"}

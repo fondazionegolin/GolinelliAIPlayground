@@ -455,6 +455,8 @@ async def chat_public_message(sid, data):
     session_id = data.get("session_id") or user.get("session_id")
     text = data.get("text", "")
     attachments = data.get("attachments", [])
+    reply_to_id = data.get("reply_to_id")
+    reply_preview = data.get("reply_preview")
     
     # Refresh sender metadata from DB for consistent cross-client rendering.
     if user["type"] == "student":
@@ -505,9 +507,11 @@ async def chat_public_message(sid, data):
         "sender_accent": sender_accent,
         "text": text,
         "attachments": attachments,
+        "reply_to_id": reply_to_id,
+        "reply_preview": reply_preview,
         "created_at": datetime.utcnow().isoformat(),
     }
-    
+
     await sio.emit(
         "chat_message",
         {

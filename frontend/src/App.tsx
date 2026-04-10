@@ -7,6 +7,7 @@ import LandingPage from '@/pages/LandingPage'
 import StudentJoinPage from '@/pages/StudentJoinPage'
 import TeacherRequestPage from '@/pages/TeacherRequestPage'
 import ActivatePage from '@/pages/ActivatePage'
+import ResetPasswordPage from '@/pages/ResetPasswordPage'
 import AdminDashboard from '@/pages/admin/AdminDashboard'
 import TeacherDashboard from '@/pages/teacher/TeacherDashboard'
 import StudentDashboard from '@/pages/student/StudentDashboard'
@@ -45,6 +46,7 @@ function App() {
         <Route path="/privacy" element={<PrivacyPage />} />
         <Route path="/teacher-request" element={<TeacherRequestPage />} />
         <Route path="/activate/:token" element={<ActivatePage />} />
+        <Route path="/reset-password/:token" element={<ResetPasswordPage />} />
         
         <Route
           path="/admin/*"
@@ -58,7 +60,7 @@ function App() {
         <Route
           path="/teacher/*"
           element={
-            <ProtectedRoute allowedRoles={['TEACHER']}>
+            <ProtectedRoute allowedRoles={['TEACHER', 'ADMIN']}>
               <TeacherDashboard />
             </ProtectedRoute>
           }

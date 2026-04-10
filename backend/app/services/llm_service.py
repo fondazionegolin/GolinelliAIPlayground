@@ -4,6 +4,7 @@ import httpx
 import base64
 import uuid
 import aiofiles
+import re
 from pathlib import Path
 import logging
 from openai import AsyncOpenAI
@@ -22,6 +23,74 @@ class LLMResponse:
     prompt_tokens: int
     completion_tokens: int
     confidence_score: Optional[float] = None
+
+
+# ── Web-search intent detection ──────────────────────────────────────────────
+# Matches messages that clearly need fresh/real-time data.
+_WEB_SEARCH_RE = re.compile(
+    r'\b('
+    # Italian temporal references
+    r'oggi|adesso|attuale|attualmente|corrente|correntemente'
+    r'|recente|recenti|recentemente'
+    r'|ultimo|ultima|ultimi|ultime'
+    r'|aggiornato|aggiornati|aggiornata|aggiornate'
+    r'|questa settimana|questo mese'
+    r"|quest'anno"
+    r'|ieri|stanotte|stamattina|stasera'
+    # English temporal references
+    r'|today|right now|current|currently|recent|recently|latest|newest'
+    r'|this week|this month|this year|yesterday|tonight'
+    # Italian news/live-data topics
+    r'|notizie|notizia|news|meteo|prezzo|prezzi|quotazione|quotazioni'
+    r'|borsa|mercato|evento|eventi|partita|partite|risultato|risultati'
+    r'|classifica|campionato|chi ha vinto|è uscito|è uscita|è disponibile'
+    r'|aggiornamento|comunicato|annuncio|dichiarazione'
+    # English news/live-data topics
+    r'|weather|forecast|price|stock|market|score|standings|championship'
+    r'|breaking|announcement|release date|launch|just released|just announced'
+    # Recency-implying questions
+    r'|chi è (il|la|i|le) (?:attuale|nuovo|nuova|corrente)'
+    r'|qual è (il|la) (?:attuale|corrente|ultimo|ultima)'
+    r'|who is the (?:current|new|latest)'
+    r'|what is the (?:current|latest|new|recent)'
+    r'|when (?:did|will|is|are|was)'
+    # Explicit year references covering the near-present window
+    r'|202[456789]'
+    r')\b',
+    re.IGNORECASE,
+)
+
+
+def _needs_web_search(messages: list[dict]) -> bool:
+    """Return True if the most recent user message likely needs real-time data."""
+    for msg in reversed(messages):
+        if msg.get('role') != 'user':
+            continue
+        content = msg.get('content', '')
+        if isinstance(content, list):
+            # multi-modal content: join text parts
+            content = ' '.join(
+                p.get('text', '') for p in content
+                if isinstance(p, dict) and p.get('type') == 'text'
+            )
+        return bool(_WEB_SEARCH_RE.search(content or ''))
+    return False
+
+
+def _openai_supports_web_search(model: str) -> bool:
+    """Reasoning models (o1/o3) cannot use web search; everything else can."""
+    return not (model.startswith('o1') or model.startswith('o3'))
+
+
+def _openai_search_model(model: str) -> str:
+    """Return the Chat Completions search-preview variant for a given model name.
+
+    The web_search_preview *tool type* is only valid in the Responses API.
+    For Chat Completions we must swap to a search-preview model instead.
+    """
+    if 'mini' in model or 'nano' in model:
+        return 'gpt-4o-mini-search-preview'
+    return 'gpt-4o-search-preview'
 
 
 class LLMService:
@@ -60,11 +129,14 @@ class LLMService:
     ) -> LLMResponse:
         provider = provider or settings.DEFAULT_LLM_PROVIDER
         model = model or settings.DEFAULT_LLM_MODEL
-        
+        use_web_search = _needs_web_search(messages)
+        if use_web_search:
+            logger.info("Web search enabled for %s/%s", provider, model)
+
         if provider == "openai":
-            return await self._generate_openai(messages, system_prompt, model, temperature, max_tokens)
+            return await self._generate_openai(messages, system_prompt, model, temperature, max_tokens, use_web_search)
         elif provider == "anthropic":
-            return await self._generate_anthropic(messages, system_prompt, model, temperature, max_tokens)
+            return await self._generate_anthropic(messages, system_prompt, model, temperature, max_tokens, use_web_search)
         elif provider == "deepseek":
             return await self._generate_deepseek(messages, system_prompt, model, temperature, max_tokens)
         elif provider == "gemini":
@@ -81,21 +153,37 @@ class LLMService:
         model: str,
         temperature: float,
         max_tokens: int,
+        use_web_search: bool = False,
     ) -> LLMResponse:
         if not self.openai_client:
             raise RuntimeError("OpenAI client not configured")
-        
+
         formatted_messages = []
         if system_prompt:
             formatted_messages.append({"role": "system", "content": system_prompt})
         formatted_messages.extend(messages)
-        
-        # GPT-5 and o-series models require max_completion_tokens and don't support custom temperature
-        if model.startswith("gpt-5") or model.startswith("o1") or model.startswith("o3"):
+
+        # Swap to a search-preview model when web search is needed.
+        # web_search_preview as a tool type is only valid in the Responses API,
+        # not in Chat Completions.
+        if use_web_search and _openai_supports_web_search(model):
+            model = _openai_search_model(model)
+
+        is_o_series = model.startswith("gpt-5") or model.startswith("o1") or model.startswith("o3")
+        is_search_model = model.endswith('-search-preview')
+
+        if is_o_series:
             response = await self.openai_client.chat.completions.create(
                 model=model,
                 messages=formatted_messages,
                 max_completion_tokens=max_tokens,
+            )
+        elif is_search_model:
+            # Search-preview models do not support temperature
+            response = await self.openai_client.chat.completions.create(
+                model=model,
+                messages=formatted_messages,
+                max_tokens=max_tokens,
             )
         else:
             response = await self.openai_client.chat.completions.create(
@@ -104,9 +192,9 @@ class LLMService:
                 temperature=temperature,
                 max_tokens=max_tokens,
             )
-        
+
         return LLMResponse(
-            content=response.choices[0].message.content,
+            content=response.choices[0].message.content or "",
             provider="openai",
             model=model,
             prompt_tokens=response.usage.prompt_tokens,
@@ -120,20 +208,33 @@ class LLMService:
         model: str,
         temperature: float,
         max_tokens: int,
+        use_web_search: bool = False,
     ) -> LLMResponse:
         if not self.anthropic_client:
             raise RuntimeError("Anthropic client not configured")
-        
+
+        kwargs: dict = {}
+        if use_web_search:
+            kwargs["tools"] = [{"type": "web_search_20260209", "name": "web_search", "max_uses": 3, "allowed_callers": ["direct"]}]
+
         response = await self.anthropic_client.messages.create(
             model=model,
             system=system_prompt or "",
             messages=messages,
             temperature=temperature,
             max_tokens=max_tokens,
+            **kwargs,
         )
-        
+
+        # With web search the response contains tool_use + web_search_tool_result blocks
+        # in addition to text blocks — extract only the text.
+        text_content = ' '.join(
+            block.text for block in response.content
+            if hasattr(block, 'text') and getattr(block, 'type', '') == 'text'
+        ) or (response.content[0].text if response.content else '')
+
         return LLMResponse(
-            content=response.content[0].text,
+            content=text_content,
             provider="anthropic",
             model=model,
             prompt_tokens=response.usage.input_tokens,
@@ -286,12 +387,15 @@ class LLMService:
     ) -> AsyncGenerator[str, None]:
         provider = provider or settings.DEFAULT_LLM_PROVIDER
         model = model or settings.DEFAULT_LLM_MODEL
-        
+        use_web_search = _needs_web_search(messages)
+        if use_web_search:
+            logger.info("Web search enabled (stream) for %s/%s", provider, model)
+
         if provider == "openai":
-            async for chunk in self._stream_openai(messages, system_prompt, model, temperature, max_tokens):
+            async for chunk in self._stream_openai(messages, system_prompt, model, temperature, max_tokens, use_web_search):
                 yield chunk
         elif provider == "anthropic":
-            async for chunk in self._stream_anthropic(messages, system_prompt, model, temperature, max_tokens):
+            async for chunk in self._stream_anthropic(messages, system_prompt, model, temperature, max_tokens, use_web_search):
                 yield chunk
         elif provider == "deepseek":
             async for chunk in self._stream_deepseek(messages, system_prompt, model, temperature, max_tokens):
@@ -310,21 +414,34 @@ class LLMService:
         model: str,
         temperature: float,
         max_tokens: int,
+        use_web_search: bool = False,
     ) -> AsyncGenerator[str, None]:
         if not self.openai_client:
             raise RuntimeError("OpenAI client not configured")
-        
+
         formatted_messages = []
         if system_prompt:
             formatted_messages.append({"role": "system", "content": system_prompt})
         formatted_messages.extend(messages)
-        
-        # GPT-5 and o-series models require max_completion_tokens and don't support custom temperature
-        if model.startswith("gpt-5") or model.startswith("o1") or model.startswith("o3"):
+
+        if use_web_search and _openai_supports_web_search(model):
+            model = _openai_search_model(model)
+
+        is_o_series = model.startswith("gpt-5") or model.startswith("o1") or model.startswith("o3")
+        is_search_model = model.endswith('-search-preview')
+
+        if is_o_series:
             stream = await self.openai_client.chat.completions.create(
                 model=model,
                 messages=formatted_messages,
                 max_completion_tokens=max_tokens,
+                stream=True,
+            )
+        elif is_search_model:
+            stream = await self.openai_client.chat.completions.create(
+                model=model,
+                messages=formatted_messages,
+                max_tokens=max_tokens,
                 stream=True,
             )
         else:
@@ -335,9 +452,9 @@ class LLMService:
                 max_tokens=max_tokens,
                 stream=True,
             )
-        
+
         async for chunk in stream:
-            if chunk.choices[0].delta.content:
+            if chunk.choices and chunk.choices[0].delta and chunk.choices[0].delta.content:
                 yield chunk.choices[0].delta.content
     
     async def _stream_anthropic(
@@ -347,17 +464,24 @@ class LLMService:
         model: str,
         temperature: float,
         max_tokens: int,
+        use_web_search: bool = False,
     ) -> AsyncGenerator[str, None]:
         if not self.anthropic_client:
             raise RuntimeError("Anthropic client not configured")
-        
+
+        kwargs: dict = {}
+        if use_web_search:
+            kwargs["tools"] = [{"type": "web_search_20260209", "name": "web_search", "max_uses": 3, "allowed_callers": ["direct"]}]
+
         async with self.anthropic_client.messages.stream(
             model=model,
             system=system_prompt or "",
             messages=messages,
             temperature=temperature,
             max_tokens=max_tokens,
+            **kwargs,
         ) as stream:
+            # .text_stream filters out tool-use / web-search-result blocks automatically
             async for text in stream.text_stream:
                 yield text
 

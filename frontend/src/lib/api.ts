@@ -1,4 +1,5 @@
 import axios from 'axios'
+import type { EnvironmentalFootprintResponse } from '@/lib/environmentalImpact'
 
 const api = axios.create({
   baseURL: '/api/v1',
@@ -32,8 +33,9 @@ api.interceptors.response.use(
   (error) => {
     if (error.response?.status === 401) {
       const url: string = error.config?.url ?? ''
-      // Don't redirect if the 401 came from the login endpoint itself
-      if (!url.includes('/auth/login')) {
+      // Only redirect for auth-critical endpoints; never for content/chat calls
+      const isContentCall = url.includes('/llm/') || url.includes('/desktop')
+      if (!url.includes('/auth/login') && !isContentCall) {
         localStorage.removeItem('student_token')
         window.location.href = '/login'
       }
@@ -52,6 +54,12 @@ export const authApi = {
     api.get('/auth/public-settings', { params: { tenant_slug: tenantSlug } }),
   requestTeacher: (data: { email: string; first_name: string; last_name: string; tenant_slug?: string; school_name?: string }) =>
     api.post('/auth/teachers/request', data),
+  getResetPasswordInfo: (token: string) =>
+    api.get(`/auth/reset-password/${token}`),
+  setNewPassword: (token: string, data: { new_password: string; confirm_password: string }) =>
+    api.post(`/auth/reset-password/${token}`, data),
+  forgotPassword: (email: string) =>
+    api.post('/auth/forgot-password', { email }),
 }
 
 export const studentApi = {
@@ -120,9 +128,17 @@ export const adminApi = {
   setTeacherCreditLimit: (teacherId: string, amountCap: number) =>
     api.put(`/admin/teachers/${teacherId}/credit-limit`, { amount_cap: amountCap }),
   getAdminClasses: () => api.get('/admin/classes'),
+  changePassword: (currentPassword: string, newPassword: string) =>
+    api.post('/admin/change-password', { current_password: currentPassword, new_password: newPassword }),
+  promoteToAdmin: (userId: string) =>
+    api.post(`/admin/users/${userId}/promote-admin`),
+  hardDeleteUser: (userId: string, confirmEmail: string) =>
+    api.delete(`/admin/users/${userId}/permanent`, { data: { confirm_email: confirmEmail } }),
 }
 
 export const teacherApi = {
+  changePassword: (data: { current_password: string; new_password: string; confirm_password: string }) =>
+    api.post('/teacher/profile/change-password', data),
   getClasses: () => api.get('/teacher/classes'),
   createClass: (data: { name: string; school_grade?: string }) => api.post('/teacher/classes', data),
   updateClass: (id: string, data: { name: string; school_grade?: string }) =>
@@ -169,6 +185,8 @@ export const teacherApi = {
     api.get(`/teacher/sessions/${sessionId}/tasks/${taskId}/submissions`),
   gradeSubmission: (sessionId: string, taskId: string, submissionId: string, data: { score?: string; feedback?: string }) =>
     api.patch(`/teacher/sessions/${sessionId}/tasks/${taskId}/submissions/${submissionId}`, null, { params: data }),
+  analyzeTask: (sessionId: string, taskId: string, question?: string) =>
+    api.post(`/teacher/sessions/${sessionId}/tasks/${taskId}/analyze`, { question: question || '' }),
   // Profile
   getProfile: () => api.get('/teacher/profile'),
   updateProfile: (data: { first_name?: string; last_name?: string; institution?: string; avatar_url?: string; ui_accent?: string }) =>
@@ -191,6 +209,9 @@ export const teacherApi = {
     api.post(`/teacher/classes/${classId}/teachers/invite`, { email }),
   removeTeacherFromClass: (classId: string, teacherId: string) =>
     api.delete(`/teacher/classes/${classId}/teachers/${teacherId}`),
+  // Student preview
+  createStudentPreview: (sessionId: string) =>
+    api.post(`/teacher/sessions/${sessionId}/student-preview`),
   // Session teachers management
   getSessionTeachers: (sessionId: string) =>
     api.get(`/teacher/sessions/${sessionId}/teachers`),
@@ -210,7 +231,7 @@ export const teacherApi = {
     api.delete('/teacher/conversations'),
   updateConversation: (conversationId: string, data: { title?: string; agent_mode?: string }) =>
     api.patch(`/teacher/conversations/${conversationId}`, data),
-  addMessage: (conversationId: string, data: { role: string; content: string; provider?: string; model?: string }) =>
+  addMessage: (conversationId: string, data: { role: string; content: string; provider?: string; model?: string; token_usage_json?: Record<string, unknown> }) =>
     api.post(`/teacher/conversations/${conversationId}/messages`, data),
   listDocumentDrafts: (sessionId?: string) => api.get('/teacher/documents/drafts', { params: { session_id: sessionId } }),
   createDocumentDraft: (data: { title: string; doc_type: string; content_json: string; session_id?: string }) =>
@@ -223,6 +244,16 @@ export const teacherApi = {
     api.get(`/teacher/sessions/${sessionId}/canvas`),
   updateCanvas: (sessionId: string, data: { title?: string; content_json: string; base_version?: number }) =>
     api.put(`/teacher/sessions/${sessionId}/canvas`, data),
+  // Prompt customization
+  getSupportChatPrompt: () => api.get('/teacher/support-chat/prompt'),
+  updateSupportChatPrompt: (prompt: string | null) =>
+    api.put('/teacher/support-chat/prompt', { prompt }),
+  getSessionChatbotProfiles: (sessionId: string) =>
+    api.get(`/teacher/sessions/${sessionId}/chatbot-profiles`),
+  upsertSessionChatbotProfile: (sessionId: string, profileKey: string, systemPrompt: string | null) =>
+    api.put(`/teacher/sessions/${sessionId}/chatbot-profiles/${profileKey}`, { system_prompt: systemPrompt }),
+  deleteSessionChatbotProfileOverride: (sessionId: string, profileKey: string) =>
+    api.delete(`/teacher/sessions/${sessionId}/chatbot-profiles/${profileKey}`),
 }
 
 export const udaApi = {
@@ -273,8 +304,8 @@ export const chatApi = {
     api.post(`/chat/rooms/${roomId}/messages`, { message_text, attachments }),
   getSessionMessages: (sessionId: string, params?: { limit?: number; before_created_at?: string }) =>
     api.get(`/chat/session/${sessionId}/messages`, { params }),
-  sendSessionMessage: (sessionId: string, text: string, attachments: unknown[] = []) =>
-    api.post(`/chat/session/${sessionId}/messages`, { text, attachments }),
+  sendSessionMessage: (sessionId: string, text: string, attachments: unknown[] = [], reply_to_id?: string) =>
+    api.post(`/chat/session/${sessionId}/messages`, { text, attachments, reply_to_id }),
   clearSessionMessages: (sessionId: string) =>
     api.delete(`/chat/session/${sessionId}/messages`),
   uploadFiles: (sessionId: string, files: File[]) => {
@@ -290,6 +321,7 @@ export const chatApi = {
 export const llmApi = {
   getProfiles: () => api.get('/llm/profiles'),
   getChatbotProfiles: () => api.get('/llm/chatbot-profiles'),
+  getChatbotProfilesFull: () => api.get('/teacher/chatbot-profiles-full'),
   getAvailableModels: () => api.get('/llm/available-models'),
   getSessionConversations: (sessionId: string) => api.get(`/llm/sessions/${sessionId}/conversations`),
   getConversationMessages: (conversationId: string) => api.get(`/llm/conversations/${conversationId}/messages`),
@@ -301,6 +333,7 @@ export const llmApi = {
     api.get(`/llm/conversations/${conversationId}/messages`),
   sendMessage: (conversationId: string, content: string, imageProvider?: string, imageSize?: string, verboseMode?: boolean) =>
     api.post(`/llm/conversations/${conversationId}/message`, { content, image_provider: imageProvider, image_size: imageSize, verbose_mode: verboseMode }),
+  sendMessageStreamUrl: (conversationId: string) => `/api/v1/llm/conversations/${conversationId}/message-stream`,
   deleteConversation: (conversationId: string) =>
     api.delete(`/llm/conversations/${conversationId}`),
   deleteAllConversations: (sessionId: string) =>
@@ -335,6 +368,15 @@ export const llmApi = {
     api.post('/llm/generate-image', { prompt, provider }),
   explain: (messageId: string) =>
     api.post('/llm/explain', { message_id: messageId }),
+  filePreview: (file: File) => {
+    const formData = new FormData()
+    formData.append('file', file)
+    return api.post('/llm/files/preview', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    })
+  },
+  getEnvironmentalFootprint: () =>
+    api.get<EnvironmentalFootprintResponse>('/llm/environmental-footprint'),
 }
 
 export const ragApi = {
@@ -441,6 +483,21 @@ export const teacherbotsApi = {
     api.delete(`/teacherbots/${id}/publications/${publicationId}`),
   getReports: (id: string) =>
     api.get(`/teacherbots/${id}/reports`),
+  getTeacherConversationMessages: (teacherbotId: string, conversationId: string) =>
+    api.get(`/teacherbots/${teacherbotId}/conversations/${conversationId}/messages`),
+
+  // Knowledge base
+  uploadKbDocument: (teacherbotId: string, file: File) => {
+    const formData = new FormData()
+    formData.append('file', file)
+    return api.post(`/teacherbots/${teacherbotId}/kb`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    })
+  },
+  listKbDocuments: (teacherbotId: string) =>
+    api.get(`/teacherbots/${teacherbotId}/kb`),
+  deleteKbDocument: (teacherbotId: string, docId: string) =>
+    api.delete(`/teacherbots/${teacherbotId}/kb/${docId}`),
 
   // Student endpoints
   listAvailable: () => api.get('/student/teacherbots'),
@@ -488,6 +545,10 @@ export const creditsApi = {
   bulkInviteJson: (teachers: Array<{ email: string; first_name?: string; last_name?: string; school?: string }>, groupTag?: string, customMessage?: string) =>
     api.post('/credits/invitations/bulk-json', { teachers, group_tag: groupTag, custom_message: customMessage }),
   getInvitations: () => api.get('/credits/invitations'),
+  resendInvitation: (invitationId: string) =>
+    api.post(`/credits/invitations/${invitationId}/resend`),
+  deleteInvitation: (invitationId: string) =>
+    api.delete(`/credits/invitations/${invitationId}`),
 }
 
 export const feedbackApi = {
@@ -504,9 +565,90 @@ export const feedbackApi = {
       viewport_height?: number
     }
     console_errors?: string[]
+    screenshot_base64?: string
   }) => api.post('/feedback/', data),
   list: (params?: { limit?: number; offset?: number; status_filter?: string }) =>
     api.get('/feedback/admin', { params }),
   updateStatus: (id: string, status: string) =>
     api.patch(`/feedback/admin/${id}/status`, { status }),
+}
+
+
+export const notebooksApi = {
+  list: () => api.get('/notebooks'),
+  create: (title: string, projectType: 'python' | 'p5js') => api.post('/notebooks', { title, project_type: projectType }),
+  get: (id: string) => api.get(`/notebooks/${id}`),
+  update: (id: string, data: { title?: string; cells?: unknown[]; project_type?: 'python' | 'p5js'; editor_settings?: Record<string, unknown> }) => api.put(`/notebooks/${id}`, data),
+  delete: (id: string) => api.delete(`/notebooks/${id}`),
+  tutorChat: (id: string, data: {
+    message: string
+    history: { role: string; content: string }[]
+    current_cell_source?: string
+    last_output?: string
+    pending_proposals?: unknown[]
+  }) => api.post(`/notebooks/${id}/tutor`, data),
+  assist: (id: string, data: {
+    message?: string
+    current_cell_source?: string
+    last_output?: string
+  }) => api.post(`/notebooks/${id}/assist`, data),
+}
+
+export const desktopApi = {
+  listDesktops: () => api.get('/desktop'),
+  createDesktop: (data: { title?: string; wallpaper_key?: string }) =>
+    api.post('/desktop', data),
+  updateDesktop: (id: string, data: { title?: string; wallpaper_key?: string }) =>
+    api.patch(`/desktop/${id}`, data),
+  deleteDesktop: (id: string) => api.delete(`/desktop/${id}`),
+  reorderDesktops: (ids: string[]) => api.patch('/desktop/reorder', { ids }),
+  addWidget: (desktopId: string, data: {
+    widget_type: string
+    grid_x?: number
+    grid_y?: number
+    grid_w?: number
+    grid_h?: number
+    config_json?: Record<string, unknown>
+  }) => api.post(`/desktop/${desktopId}/widgets`, data),
+  updateWidget: (desktopId: string, widgetId: string, data: {
+    grid_x?: number
+    grid_y?: number
+    grid_w?: number
+    grid_h?: number
+    config_json?: Record<string, unknown>
+  }) => api.patch(`/desktop/${desktopId}/widgets/${widgetId}`, data),
+  deleteWidget: (desktopId: string, widgetId: string) =>
+    api.delete(`/desktop/${desktopId}/widgets/${widgetId}`),
+}
+
+export const calendarApi = {
+  listEvents: (sessionId: string, fromDate?: string, toDate?: string) =>
+    api.get(`/calendar/session/${sessionId}/events`, { params: { from_date: fromDate, to_date: toDate } }),
+  createEvent: (sessionId: string, data: { title: string; description?: string; event_date: string; event_time?: string; color?: string }) =>
+    api.post(`/calendar/session/${sessionId}/events`, data),
+  updateEvent: (sessionId: string, eventId: string, data: { title?: string; description?: string; event_date?: string; event_time?: string | null; color?: string }) =>
+    api.patch(`/calendar/session/${sessionId}/events/${eventId}`, data),
+  deleteEvent: (sessionId: string, eventId: string) =>
+    api.delete(`/calendar/session/${sessionId}/events/${eventId}`),
+}
+
+export const desktopAgentApi = {
+  chat: (body: {
+    message: string
+    context: {
+      desktop_id: string
+      wallpaper_key: string
+      widgets: Array<{
+        id: string; widget_type: string; config_json: Record<string, unknown>
+        grid_x: number; grid_y: number; grid_w: number; grid_h: number
+      }>
+      calendar_events?: Array<{
+        id: string; title: string; event_date: string; event_time?: string
+        description?: string; color: string
+      }>
+      session?: { id?: string; name?: string; class_name?: string } | null
+      user_name: string
+      user_role: 'teacher' | 'student'
+    }
+  }) => api.post('/desktop/agent', body),
 }

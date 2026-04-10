@@ -1,255 +1,18 @@
 import { useState, useEffect, useRef, Dispatch, SetStateAction, useCallback } from 'react'
-import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import { filesApi } from '@/lib/api'
+import FileViewerModal from '@/components/ui/FileViewerModal'
 import { useSocket, ChatMessage, OnlineUser } from '@/hooks/useSocket'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
   Send, MessageSquare, Bell, Paperclip, X, Image as ImageIcon,
   MessagesSquare, MessageCircle, Pin, PinOff,
-  FileText, FileSpreadsheet, File, Download, ExternalLink, Wand2, Users, Folder, Search, Upload, List, Grid2X2, Minus, Plus, ChevronDown
+  File, Wand2, Users, Folder, Search, Upload, List, Grid2X2, Minus, Plus, ChevronDown, CornerUpLeft
 } from 'lucide-react'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { DEFAULT_STUDENT_ACCENT, getStudentAccentTheme, type StudentAccentId } from '@/lib/studentAccent'
-import { getTeacherAccentTheme } from '@/lib/teacherAccent'
 import { VoiceRecorder } from '@/components/VoiceRecorder'
-
-// File Viewer Modal Component
-function FileViewerModal({
-  file,
-  onClose
-}: {
-  file: { url: string; filename: string; type?: string } | null;
-  onClose: () => void
-}) {
-  if (!file) return null
-
-  const getFileType = (filename: string, mimeType?: string): string => {
-    const ext = filename.split('.').pop()?.toLowerCase() || ''
-    if (mimeType?.startsWith('image/') || ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp'].includes(ext)) return 'image'
-    if (ext === 'pdf' || mimeType === 'application/pdf') return 'pdf'
-    if (['doc', 'docx'].includes(ext) || mimeType?.includes('word')) return 'word'
-    if (['xls', 'xlsx', 'csv'].includes(ext) || mimeType?.includes('spreadsheet') || mimeType?.includes('excel') || mimeType?.includes('csv')) return 'excel'
-    if (['ppt', 'pptx'].includes(ext) || mimeType?.includes('presentation')) return 'powerpoint'
-    return 'other'
-  }
-
-  const fileType = getFileType(file.filename, file.type)
-
-  const { t } = useTranslation()
-  const [csvData, setCsvData] = useState<string[][] | null>(null)
-  const [textContent, setTextContent] = useState<string | null>(null)
-
-  // Load CSV or text content
-  useEffect(() => {
-    if (!file) return
-
-    const ext = file.filename.split('.').pop()?.toLowerCase() || ''
-
-    if (ext === 'csv') {
-      fetch(file.url)
-        .then(res => res.text())
-        .then(text => {
-          const rows = text.split('\n').map(row => row.split(',').map(cell => cell.trim()))
-          setCsvData(rows)
-        })
-        .catch(() => setCsvData(null))
-    } else if (['txt', 'json', 'xml', 'md'].includes(ext)) {
-      fetch(file.url)
-        .then(res => res.text())
-        .then(text => setTextContent(text))
-        .catch(() => setTextContent(null))
-    }
-  }, [file])
-
-  const renderContent = () => {
-    switch (fileType) {
-      case 'image':
-        return (
-          <img
-            src={file.url}
-            alt={file.filename}
-            className="max-w-full max-h-[80vh] object-contain rounded-lg shadow-lg"
-          />
-        )
-      case 'pdf':
-        return (
-          <iframe
-            src={file.url}
-            className="w-full h-[80vh] rounded-lg border-0"
-            title={file.filename}
-          />
-        )
-      case 'excel':
-        // Check if it's a CSV file
-        const ext = file.filename.split('.').pop()?.toLowerCase()
-        if (ext === 'csv' && csvData) {
-          return (
-            <div className="w-full h-[80vh] overflow-auto bg-white rounded-lg">
-              <table className="min-w-full border-collapse">
-                <thead className="bg-slate-100 sticky top-0">
-                  {csvData[0] && (
-                    <tr>
-                      {csvData[0].map((cell, i) => (
-                        <th key={i} className="border border-slate-200 px-3 py-2 text-left text-xs font-semibold text-slate-700">
-                          {cell}
-                        </th>
-                      ))}
-                    </tr>
-                  )}
-                </thead>
-                <tbody>
-                  {csvData.slice(1).map((row, rowIdx) => (
-                    <tr key={rowIdx} className={rowIdx % 2 === 0 ? 'bg-white' : 'bg-slate-50'}>
-                      {row.map((cell, cellIdx) => (
-                        <td key={cellIdx} className="border border-slate-200 px-3 py-2 text-xs text-slate-600">
-                          {cell}
-                        </td>
-                      ))}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )
-        }
-        // Fall through to default for xlsx files
-        return (
-          <div className="flex flex-col items-center justify-center p-12 bg-slate-100 rounded-lg">
-            <FileSpreadsheet className="h-24 w-24 text-green-500 mb-4" />
-            <p className="text-lg font-medium text-slate-700 mb-2">{file.filename}</p>
-            <p className="text-sm text-slate-500 mb-6">{t('chat_sidebar.preview_excel_unavailable')}</p>
-            <a
-              href={file.url}
-              download={file.filename}
-              className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
-            >
-              <Download className="h-4 w-4" />
-              {t('chat_sidebar.download_excel')}
-            </a>
-          </div>
-        )
-      case 'word':
-        return (
-          <div className="flex flex-col items-center justify-center p-12 bg-slate-100 rounded-lg">
-            <FileText className="h-24 w-24 text-blue-500 mb-4" />
-            <p className="text-lg font-medium text-slate-700 mb-2">{file.filename}</p>
-            <p className="text-sm text-slate-500 mb-6">{t('chat_sidebar.preview_word_unavailable')}</p>
-            <a
-              href={file.url}
-              download={file.filename}
-              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-            >
-              <Download className="h-4 w-4" />
-              {t('chat_sidebar.download_word')}
-            </a>
-          </div>
-        )
-      case 'powerpoint':
-        return (
-          <div className="flex flex-col items-center justify-center p-12 bg-slate-100 rounded-lg">
-            <FileText className="h-24 w-24 text-orange-500 mb-4" />
-            <p className="text-lg font-medium text-slate-700 mb-2">{file.filename}</p>
-            <p className="text-sm text-slate-500 mb-6">{t('chat_sidebar.preview_ppt_unavailable')}</p>
-            <a
-              href={file.url}
-              download={file.filename}
-              className="flex items-center gap-2 px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors"
-            >
-              <Download className="h-4 w-4" />
-              {t('chat_sidebar.download_ppt')}
-            </a>
-          </div>
-        )
-      default:
-        // Check for text-based files
-        if (textContent !== null) {
-          return (
-            <div className="w-full h-[80vh] overflow-auto bg-slate-900 rounded-lg p-4">
-              <pre className="text-sm text-slate-100 font-mono whitespace-pre-wrap">{textContent}</pre>
-            </div>
-          )
-        }
-        return (
-          <div className="flex flex-col items-center justify-center p-12 bg-slate-100 rounded-lg">
-            <File className="h-24 w-24 text-slate-400 mb-4" />
-            <p className="text-lg font-medium text-slate-700 mb-2">{file.filename}</p>
-            <p className="text-sm text-slate-500 mb-6">{t('chat_sidebar.preview_unavailable')}</p>
-            <a
-              href={file.url}
-              download={file.filename}
-              className="flex items-center gap-2 px-4 py-2 bg-[#181b1e] text-white rounded-lg hover:bg-[#0f1113] transition-colors"
-            >
-              <Download className="h-4 w-4" />
-              {t('chat_sidebar.download_file')}
-            </a>
-          </div>
-        )
-    }
-  }
-
-  const getFileIcon = () => {
-    switch (fileType) {
-      case 'pdf': return <FileText className="h-5 w-5 text-red-500" />
-      case 'word': return <FileText className="h-5 w-5 text-blue-500" />
-      case 'excel': return <FileSpreadsheet className="h-5 w-5 text-green-500" />
-      case 'powerpoint': return <FileText className="h-5 w-5 text-orange-500" />
-      case 'image': return <ImageIcon className="h-5 w-5 text-purple-500" />
-      default: return <File className="h-5 w-5 text-slate-500" />
-    }
-  }
-
-  return (
-    <div
-      className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-[100] p-4"
-      onClick={onClose}
-    >
-      <div
-        className="bg-white rounded-xl shadow-2xl max-w-5xl w-full max-h-[95vh] overflow-hidden flex flex-col"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Header */}
-        <div className="flex items-center justify-between px-4 py-3 border-b bg-slate-50">
-          <div className="flex items-center gap-3">
-            {getFileIcon()}
-            <span className="font-medium text-slate-700 truncate max-w-md">{file.filename}</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <a
-              href={file.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="p-2 text-slate-500 hover:text-[#181b1e] hover:bg-[#181b1e]/5 rounded-lg transition-colors"
-              title={t('chat_sidebar.open_new_tab')}
-            >
-              <ExternalLink className="h-4 w-4" />
-            </a>
-            <a
-              href={file.url}
-              download={file.filename}
-              className="p-2 text-slate-500 hover:text-[#181b1e] hover:bg-[#181b1e]/5 rounded-lg transition-colors"
-              title={t('chat_sidebar.download')}
-            >
-              <Download className="h-4 w-4" />
-            </a>
-            <button
-              onClick={onClose}
-              className="p-2 text-slate-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          </div>
-        </div>
-
-        {/* Content */}
-        <div className="flex-1 overflow-auto p-4 flex items-center justify-center bg-slate-100">
-          {renderContent()}
-        </div>
-      </div>
-    </div>
-  )
-}
 
 export type { ChatMessage }
 
@@ -333,6 +96,7 @@ export default function ChatSidebar({
   const prevMessagesCountRef = useRef(0)
   const [isUserScrolledUp, setIsUserScrolledUp] = useState(false)
   const [unreadWhileScrolled, setUnreadWhileScrolled] = useState(0)
+  const [replyingTo, setReplyingTo] = useState<ChatMessage | null>(null)
 
   const {
     connected,
@@ -670,7 +434,10 @@ export default function ChatSidebar({
       } else {
         // Send public message
         if (messageText || uploadedUrls.length > 0) {
-          await sendPublicMessage(messageText || '📎 Allegato', uploadedUrls, filenameMap)
+          const replyId = replyingTo?.id
+          const replyPrev = replyingTo ? `${replyingTo.sender_name || 'Utente'}: ${replyingTo.text.slice(0, 80)}` : undefined
+          setReplyingTo(null)
+          await sendPublicMessage(messageText || '📎 Allegato', uploadedUrls, filenameMap, replyId, replyPrev)
         }
       }
       if (uploadedUrls.length > 0) {
@@ -782,6 +549,14 @@ export default function ChatSidebar({
     if (files.length > 0) {
       setAttachedFiles(prev => [...prev, ...files])
     }
+  }
+
+  const handleInputPaste = (e: React.ClipboardEvent) => {
+    const fileItems = Array.from(e.clipboardData.items).filter(item => item.kind === 'file')
+    if (fileItems.length === 0) return
+    e.preventDefault()
+    const files = fileItems.map(item => item.getAsFile()).filter(Boolean) as File[]
+    if (files.length > 0) setAttachedFiles(prev => [...prev, ...files])
   }
 
   const uploadSessionFiles = async (files: File[]) => {
@@ -911,16 +686,10 @@ export default function ChatSidebar({
   const resolveAccentTheme = (accentId?: string) => {
     if (!accentId) return null
     try {
-      if (accentId === 'pink' || accentId === 'blue' || accentId === 'cyan' || accentId === 'orange' || accentId === 'mustard') {
-        return getStudentAccentTheme(accentId as StudentAccentId)
-      }
-      if (accentId === 'red' || accentId === 'indigo' || accentId === 'gray' || accentId === 'green' || accentId === 'slateblue') {
-        return getTeacherAccentTheme(accentId)
-      }
+      return getStudentAccentTheme(accentId as StudentAccentId)
     } catch {
       return null
     }
-    return null
   }
 
   // Linkify function
@@ -1028,7 +797,16 @@ export default function ChatSidebar({
     const messageAccentTheme = accentFromSender || accentFallback
 
     return (
-      <div key={msg.id} className={`flex gap-3 ${isMe ? 'flex-row-reverse' : ''}`}>
+      <div
+        key={msg.id}
+        className={`flex gap-3 group/msg ${isMe ? 'flex-row-reverse' : ''}`}
+        draggable
+        onDragStart={(e) => {
+          const payload = JSON.stringify({ text: msg.text, sender_name: msg.sender_name || 'Utente' })
+          e.dataTransfer.setData('desktop/note', payload)
+          e.dataTransfer.effectAllowed = 'copy'
+        }}
+      >
         <div className="flex-shrink-0 w-7 flex flex-col items-center">
           {showAvatar ? (
             <Avatar className="h-7 w-7 border-none shadow-sm">
@@ -1054,19 +832,26 @@ export default function ChatSidebar({
             </span>
           )}
           <div className={`
-            px-3.5 py-2.5 text-sm leading-snug shadow-sm backdrop-blur-md transition-all
+            px-3.5 py-2.5 text-sm leading-snug shadow-sm backdrop-blur-md transition-all relative
             ${isMe
               ? messageAccentTheme
                 ? 'border rounded-2xl rounded-tr-none'
                 : 'bg-slate-50/60 text-slate-800 border border-slate-200/80 rounded-2xl rounded-tr-none'
               : 'bg-white/60 text-slate-700 border border-slate-200/80 rounded-2xl rounded-tl-none'}
           `}
-            style={messageAccentTheme ? { 
+            style={messageAccentTheme ? {
               backgroundColor: `${messageAccentTheme.accent}15`, // 15 is ~8% opacity for ethereal look
               borderColor: `${messageAccentTheme.accent}40`, // 40 is ~25% opacity for outline
-              color: messageAccentTheme.text 
+              color: messageAccentTheme.text
             } : undefined}
           >
+            {/* Reply quote */}
+            {msg.reply_preview && (
+              <div className="mb-1.5 px-2 py-1 rounded-lg bg-black/5 border-l-2 border-slate-400/60 text-[11px] text-slate-500 truncate">
+                <CornerUpLeft className="inline h-2.5 w-2.5 mr-1 opacity-60" />
+                {msg.reply_preview}
+              </div>
+            )}
             {isMe ? linkify(content, messageAccentTheme ? 'underline break-all' : undefined) : (
               // For received messages, basic linkify with darker link color
               content.split(/(https?:\/\/[^\s]+)/g).map((part: string, i: number) => {
@@ -1079,10 +864,19 @@ export default function ChatSidebar({
             {imageAttachments.length > 0 && (
               <div className="mt-2 space-y-2">
                 {imageAttachments.map((att: any, idx: number) => (
-                  <button
+                  <div
                     key={idx}
-                    type="button"
-                    className={`w-full rounded-lg border px-2 py-1.5 text-left text-xs transition-colors ${
+                    draggable
+                    onDragStart={(e) => {
+                      e.stopPropagation()
+                      e.dataTransfer.setData('desktop/file', JSON.stringify({
+                        filename: att.filename || 'image.png',
+                        mime_type: att.type || 'image/png',
+                        url: att.url,
+                      }))
+                      e.dataTransfer.effectAllowed = 'copy'
+                    }}
+                    className={`w-full rounded-lg border px-2 py-1.5 text-left text-xs transition-colors cursor-grab active:cursor-grabbing ${
                       isMe
                         ? messageAccentTheme
                           ? 'hover:brightness-95'
@@ -1096,17 +890,27 @@ export default function ChatSidebar({
                       <ImageIcon className="h-3.5 w-3.5 flex-shrink-0" />
                       <span className="truncate">{att.filename || 'Immagine'}</span>
                     </div>
-                  </button>
+                  </div>
                 ))}
               </div>
             )}
             {fileAttachments.length > 0 && (
               <div className="mt-2 space-y-1">
                 {fileAttachments.map((att: any, idx: number) => (
-                  <button
+                  <div
                     key={idx}
+                    draggable
+                    onDragStart={(e) => {
+                      e.stopPropagation()
+                      e.dataTransfer.setData('desktop/file', JSON.stringify({
+                        filename: att.filename || 'file',
+                        mime_type: att.type || 'application/octet-stream',
+                        url: att.url,
+                      }))
+                      e.dataTransfer.effectAllowed = 'copy'
+                    }}
                     onClick={() => setViewingFile({ url: att.url, filename: att.filename || 'file', type: att.type })}
-                    className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition-colors w-full text-left ${isMe
+                    className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition-colors cursor-grab active:cursor-grabbing w-full text-left ${isMe
                       ? messageAccentTheme
                         ? 'text-slate-800 hover:brightness-95'
                         : 'bg-gray-200 hover:bg-gray-300 text-gray-700'
@@ -1116,14 +920,25 @@ export default function ChatSidebar({
                   >
                     <Paperclip className="h-3.5 w-3.5 flex-shrink-0" />
                     <span className="truncate">{att.filename || 'Allegato'}</span>
-                  </button>
+                  </div>
                 ))}
               </div>
             )}
           </div>
-          <span className="text-[9px] text-slate-300 mt-1 font-medium">
-            {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-          </span>
+          <div className={`flex items-center gap-2 mt-1 ${isMe ? 'flex-row-reverse' : ''}`}>
+            <span className="text-[9px] text-slate-300 font-medium">
+              {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+            </span>
+            {activeTab !== 'private' && (
+              <button
+                onClick={() => setReplyingTo(msg)}
+                className="opacity-0 group-hover/msg:opacity-100 transition-opacity p-0.5 rounded text-slate-400 hover:text-slate-600 hover:bg-slate-100"
+                title="Rispondi"
+              >
+                <CornerUpLeft className="h-3 w-3" />
+              </button>
+            )}
+          </div>
         </div>
       </div>
     )
@@ -1791,57 +1606,46 @@ export default function ChatSidebar({
 
       {/* Tabs — pill switcher */}
       <div className="px-2.5 pt-2 pb-1.5 bg-white border-b border-slate-100 shrink-0">
-        <div className="flex items-center gap-0.5 bg-slate-100/80 p-0.5 rounded-xl">
-          <button
-            onClick={() => setActiveTab('session')}
-            onDragEnter={(e) => {
-              const types = Array.from(e.dataTransfer.types || [])
-              if (types.includes('application/x-session-file') || types.includes('Files')) {
-                setActiveTab('session')
-              }
-            }}
-            className={`flex-1 flex items-center justify-center gap-1 py-1.5 text-[10px] font-bold rounded-lg transition-all duration-200 ${activeTab === 'session'
-              ? 'bg-white shadow-sm text-[#181b1e]'
-              : 'text-slate-400 hover:text-slate-500'}`}
-          >
-            <MessageSquare className="h-3 w-3" />
-            Sessione
-          </button>
-
-          <button
-            onClick={() => setActiveTab('private')}
-            className={`flex-1 flex items-center justify-center gap-1 py-1.5 text-[10px] font-bold rounded-lg transition-all duration-200 relative ${activeTab === 'private'
-              ? 'bg-white shadow-sm text-[#181b1e]'
-              : 'text-slate-400 hover:text-slate-500'}`}
-          >
-            <MessagesSquare className="h-3 w-3" />
-            Private
-            {totalUnreadPrivate > 0 && (
-              <span className="ml-0.5 px-1 py-0.5 text-[8px] bg-red-500 text-white rounded-full leading-none">
-                {totalUnreadPrivate > 9 ? '9+' : totalUnreadPrivate}
-              </span>
-            )}
-          </button>
-
-          <button
-            onClick={() => setActiveTab('files')}
-            className={`flex-1 flex items-center justify-center gap-1 py-1.5 text-[10px] font-bold rounded-lg transition-all duration-200 ${activeTab === 'files'
-              ? 'bg-white shadow-sm text-[#181b1e]'
-              : 'text-slate-400 hover:text-slate-500'}`}
-          >
-            <Folder className="h-3 w-3" />
-            File
-          </button>
-
-          <button
-            onClick={() => setActiveTab('users')}
-            className={`flex-1 flex items-center justify-center gap-1 py-1.5 text-[10px] font-bold rounded-lg transition-all duration-200 ${activeTab === 'users'
-              ? 'bg-white shadow-sm text-[#181b1e]'
-              : 'text-slate-400 hover:text-slate-500'}`}
-          >
-            <Users className="h-3 w-3" />
-            Utenti
-          </button>
+        <div
+          className="flex items-center gap-0.5 p-0.5 rounded-xl"
+          style={{ backgroundColor: studentAccentTheme.softMid }}
+        >
+          {(['session', 'private', 'files', 'users'] as const).map((tab) => {
+            const isTabActive = activeTab === tab
+            const tabLabels = { session: 'Sessione', private: 'Private', files: 'File', users: 'Utenti' }
+            const TabIcons = { session: MessageSquare, private: MessagesSquare, files: Folder, users: Users }
+            const TabIcon = TabIcons[tab]
+            return (
+              <button
+                key={tab}
+                onClick={() => setActiveTab(tab)}
+                {...(tab === 'session' ? {
+                  onDragEnter: (e: React.DragEvent) => {
+                    const types = Array.from(e.dataTransfer.types || [])
+                    if (types.includes('application/x-session-file') || types.includes('Files')) setActiveTab('session')
+                  }
+                } : {})}
+                className="flex-1 flex items-center justify-center gap-1 py-1.5 text-[10px] font-bold rounded-lg transition-all duration-200 relative"
+                style={isTabActive ? {
+                  backgroundColor: 'rgba(255,255,255,0.92)',
+                  color: studentAccentTheme.text,
+                  boxShadow: `0 1px 4px ${studentAccentTheme.accent}30`,
+                  border: `1px solid ${studentAccentTheme.border}`,
+                } : {
+                  color: studentAccentTheme.text + '80',
+                  border: '1px solid transparent',
+                }}
+              >
+                <TabIcon className="h-3 w-3" />
+                {tabLabels[tab]}
+                {tab === 'private' && totalUnreadPrivate > 0 && (
+                  <span className="ml-0.5 px-1 py-0.5 text-[8px] bg-red-500 text-white rounded-full leading-none">
+                    {totalUnreadPrivate > 9 ? '9+' : totalUnreadPrivate}
+                  </span>
+                )}
+              </button>
+            )
+          })}
         </div>
       </div>
 
@@ -1894,6 +1698,17 @@ export default function ChatSidebar({
             </div>
           )}
 
+          {replyingTo && (
+            <div className="flex items-center gap-2 px-3 py-1.5 mb-1 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-500">
+              <CornerUpLeft className="h-3 w-3 flex-shrink-0 text-slate-400" />
+              <span className="flex-1 truncate">
+                <span className="font-semibold text-slate-700">{replyingTo.sender_name}</span>: {replyingTo.text.slice(0, 60)}
+              </span>
+              <button onClick={() => setReplyingTo(null)} className="flex-shrink-0 text-slate-400 hover:text-slate-600">
+                <X className="h-3 w-3" />
+              </button>
+            </div>
+          )}
           <div className="relative flex items-center bg-white border border-slate-200 shadow-sm rounded-[24px] p-1.5 focus-within:ring-2 focus-within:ring-slate-200 focus-within:border-slate-300 transition-all">
             <input
               ref={fileInputRef}
@@ -1920,6 +1735,7 @@ export default function ChatSidebar({
               value={inputText}
               onChange={(e) => setInputText(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
+              onPaste={handleInputPaste}
               placeholder={activeTab === 'private' ? "Messaggio privato..." : "Scrivi un messaggio..."}
               className="border-none bg-transparent focus-visible:ring-0 h-9 text-sm px-2 flex-1 shadow-none"
             />
@@ -1947,11 +1763,8 @@ export default function ChatSidebar({
         </div>
       )}
 
-      {/* File Viewer Modal - rendered via portal to escape sidebar DOM */}
-      {viewingFile && createPortal(
-        <FileViewerModal file={viewingFile} onClose={() => setViewingFile(null)} />,
-        document.body
-      )}
+      {/* File Viewer Modal */}
+      <FileViewerModal file={viewingFile} onClose={() => setViewingFile(null)} />
     </div>
   )
 }

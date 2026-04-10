@@ -1,6 +1,6 @@
 from app.models.tenant import Tenant
 from app.models.user import User
-from app.models.session import Class, Session, SessionModule, SessionStudent
+from app.models.session import Class, Session, SessionModule, SessionStudent, SessionProfileOverride
 from app.models.chat import ChatRoom, ChatMessage
 from app.models.llm import LLMProfile, Conversation, ConversationMessage, AuditEvent, TeacherConversation, TeacherConversationMessage
 from app.models.rag import RAGDocument, RAGChunk, RAGEmbedding, RAGCitation
@@ -15,6 +15,9 @@ from app.models.session_canvas import SessionCanvas
 from app.models.template_version import TenantTemplateVersion
 from app.models.alert import ContentAlert
 from app.models.feedback import FeedbackReport
+from app.models.notebook import Notebook
+from app.models.desktop import UserDesktop, DesktopWidget
+from app.models.calendar import SessionCalendarEvent
 
 __all__ = [
     "Tenant",
@@ -23,6 +26,7 @@ __all__ = [
     "Session",
     "SessionModule",
     "SessionStudent",
+    "SessionProfileOverride",
     "ChatRoom",
     "ChatMessage",
     "LLMProfile",
@@ -62,4 +66,8 @@ __all__ = [
     "TenantTemplateVersion",
     "ContentAlert",
     "FeedbackReport",
+    "Notebook",
+    "UserDesktop",
+    "DesktopWidget",
+    "SessionCalendarEvent",
 ]

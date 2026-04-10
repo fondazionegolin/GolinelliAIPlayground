@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { lazy, Suspense, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Button } from '@/components/ui/button'
 import { Plus, Settings, Eye, Trash2, FileText, Loader2 } from 'lucide-react'
@@ -6,7 +6,7 @@ import { useToast } from '@/components/ui/use-toast'
 import { teacherbotsApi } from '@/lib/api'
 import TeacherbotForm from './TeacherbotForm'
 import TeacherbotReportsPanel from './TeacherbotReportsPanel'
-import ChatbotModule from '@/pages/student/ChatbotModule'
+const ChatbotModule = lazy(() => import('@/pages/student/ChatbotModule'))
 
 interface Teacherbot {
   id: string
@@ -163,11 +163,17 @@ export default function TeacherbotsPanel({ onOpenSettings, onCreateNew }: Teache
           <span className="text-xs text-slate-400">Anteprima studente</span>
         </div>
         <div className="flex-1 overflow-hidden">
-          <ChatbotModule
-            sessionId="teacher-preview"
-            initialTeacherbotId={selectedBot}
-            isTeacherPreview={true}
-          />
+          <Suspense fallback={
+            <div className="flex h-full items-center justify-center">
+              <Loader2 className="h-6 w-6 animate-spin text-slate-500" />
+            </div>
+          }>
+            <ChatbotModule
+              sessionId="teacher-preview"
+              initialTeacherbotId={selectedBot}
+              isTeacherPreview={true}
+            />
+          </Suspense>
         </div>
       </div>
     )

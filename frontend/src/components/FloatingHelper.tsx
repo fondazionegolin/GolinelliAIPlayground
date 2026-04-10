@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { MessageSquarePlus, X, Send, Loader2, CheckCircle } from 'lucide-react'
+import { MessageSquarePlus, X, Send, Loader2, CheckCircle, Image as ImageIcon } from 'lucide-react'
 import { feedbackApi } from '@/lib/api'
 
 // Collect up to N recent console errors captured since page load
@@ -35,6 +35,15 @@ function getBrowserInfo() {
   }
 }
 
+function fileToDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(reader.result as string)
+    reader.onerror = reject
+    reader.readAsDataURL(file)
+  })
+}
+
 export interface FloatingHelperProps {
   module?: string | null
 }
@@ -43,6 +52,7 @@ export function FloatingHelper(_props: FloatingHelperProps = {}) {
   const [open, setOpen] = useState(false)
   const [message, setMessage] = useState('')
   const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle')
+  const [screenshot, setScreenshot] = useState<string | null>(null) // data URI
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   useEffect(() => {
@@ -51,6 +61,7 @@ export function FloatingHelper(_props: FloatingHelperProps = {}) {
     }
     if (!open) {
       setMessage('')
+      setScreenshot(null)
       if (status !== 'success') setStatus('idle')
     }
   }, [open])
@@ -62,6 +73,7 @@ export function FloatingHelper(_props: FloatingHelperProps = {}) {
         setOpen(false)
         setStatus('idle')
         setMessage('')
+        setScreenshot(null)
       }, 2500)
       return () => clearTimeout(t)
     }
@@ -76,6 +88,7 @@ export function FloatingHelper(_props: FloatingHelperProps = {}) {
         page_url: window.location.href,
         browser_info: getBrowserInfo(),
         console_errors: [...capturedErrors],
+        screenshot_base64: screenshot ?? undefined,
       })
       setStatus('success')
     } catch {
@@ -90,13 +103,30 @@ export function FloatingHelper(_props: FloatingHelperProps = {}) {
     }
   }
 
+  const handlePaste = async (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const items = Array.from(e.clipboardData.items)
+    const imageItem = items.find(item => item.kind === 'file' && item.type.startsWith('image/'))
+    if (!imageItem) return
+    e.preventDefault()
+    const file = imageItem.getAsFile()
+    if (!file) return
+    try {
+      const dataUrl = await fileToDataUrl(file)
+      setScreenshot(dataUrl)
+    } catch {
+      // ignore
+    }
+  }
+
   return (
     <>
-      {/* Floating button */}
+      {/* Floating button — orange glassy */}
       <button
         onClick={() => setOpen(v => !v)}
-        className={`fixed bottom-20 left-4 sm:bottom-5 sm:left-5 z-40 w-11 h-11 rounded-full shadow-lg flex items-center justify-center transition-all duration-200 hover:shadow-xl hover:scale-105 ${
-          open ? 'bg-slate-800 text-white' : 'bg-white border border-slate-200 text-slate-500 hover:text-slate-800'
+        className={`fixed bottom-20 left-4 sm:bottom-5 sm:left-5 z-40 w-11 h-11 rounded-full flex items-center justify-center transition-all duration-200 hover:scale-105 ${
+          open
+            ? 'bg-orange-500 text-white shadow-lg shadow-orange-200'
+            : 'bg-white/70 backdrop-blur-md border-2 border-orange-400 text-orange-500 shadow-md shadow-orange-100 hover:bg-orange-50/80'
         }`}
         title="Segnala un problema"
         aria-label="Apri feedback"
@@ -132,11 +162,32 @@ export function FloatingHelper(_props: FloatingHelperProps = {}) {
                 value={message}
                 onChange={e => setMessage(e.target.value)}
                 onKeyDown={handleKeyDown}
+                onPaste={handlePaste}
                 placeholder="Descrivi cosa è successo... (Ctrl+Invio per inviare)"
                 rows={4}
                 className="w-full text-sm text-slate-800 placeholder:text-slate-300 border border-slate-200 rounded-xl px-3 py-2.5 resize-none focus:outline-none focus:ring-2 focus:ring-pink-200 focus:border-pink-300 transition-all"
                 disabled={status === 'loading'}
               />
+
+              {/* Screenshot preview */}
+              {screenshot && (
+                <div className="relative rounded-lg overflow-hidden border border-slate-200">
+                  <img src={screenshot} alt="Screenshot allegato" className="w-full object-cover max-h-32" />
+                  <button
+                    onClick={() => setScreenshot(null)}
+                    className="absolute top-1.5 right-1.5 w-5 h-5 rounded-full bg-black/50 flex items-center justify-center text-white hover:bg-black/70 transition-colors"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </div>
+              )}
+
+              {!screenshot && (
+                <p className="text-[10px] text-slate-300 flex items-center gap-1">
+                  <ImageIcon className="h-3 w-3" />
+                  Incolla uno screenshot con Ctrl+V
+                </p>
+              )}
 
               {status === 'error' && (
                 <p className="text-xs text-red-500">Errore nell'invio. Riprova.</p>

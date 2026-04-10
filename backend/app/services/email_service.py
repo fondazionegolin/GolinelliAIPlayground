@@ -271,4 +271,54 @@ Se non hai richiesto questo account, puoi ignorare questa email.
         return await self.send_email(to_email, subject, html_content, text_content)
 
 
+    async def send_password_reset_link_email(
+        self,
+        to_email: str,
+        first_name: str,
+        last_name: str,
+        reset_link: str,
+        subject_template: Optional[str] = None,
+        html_template: Optional[str] = None,
+        text_template: Optional[str] = None,
+    ) -> bool:
+        context = {
+            "first_name": first_name or "",
+            "last_name": last_name or "",
+            "reset_link": reset_link,
+        }
+        subject = self._render_template(
+            subject_template or "🔐 Reimposta la tua password — Golinelli.ai",
+            context,
+        )
+        default_html = """<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="font-family: Arial, sans-serif; line-height: 1.6; color: #1f2937; max-width: 520px; margin: 0 auto; padding: 32px 16px;">
+  <h2 style="margin-top:0;">Ciao {first_name}!</h2>
+  <p>Un amministratore ha richiesto la reimpostazione della password del tuo account su <strong>Golinelli.ai</strong>.</p>
+  <p>Clicca il pulsante qui sotto per scegliere una nuova password. Il link è valido per <strong>24 ore</strong>.</p>
+  <p style="margin: 28px 0; text-align: center;">
+    <a href="{reset_link}"
+       style="background:#4f46e5;color:#fff;padding:14px 28px;border-radius:8px;text-decoration:none;font-weight:bold;font-size:15px;">
+      Reimposta password
+    </a>
+  </p>
+  <p style="font-size:0.85rem;color:#6b7280;">Oppure copia questo link nel browser:<br>
+    <a href="{reset_link}" style="color:#4f46e5;">{reset_link}</a>
+  </p>
+  <hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0;">
+  <p style="font-size:0.8rem;color:#9ca3af;">Se non hai richiesto questo reset, puoi ignorare questa email.</p>
+</body>
+</html>"""
+        default_text = (
+            "Ciao {first_name},\n\n"
+            "È stata richiesta la reimpostazione della password del tuo account su Golinelli.ai.\n\n"
+            "Clicca il link per scegliere una nuova password (valido 24 ore):\n{reset_link}\n\n"
+            "Se non hai richiesto questo reset, ignora questa email."
+        )
+        html_content = self._render_template(html_template or default_html, context)
+        text_content = self._render_template(text_template or default_text, context)
+        return await self.send_email(to_email, subject, html_content, text_content)
+
+
 email_service = EmailService()

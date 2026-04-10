@@ -561,6 +561,108 @@ export default function ClassificationModule({ sessionId }: { sessionId?: string
 
 // ─── MLLabHome ────────────────────────────────────────────────────────────────
 
+// Inline SVG illustrations for each mode
+function ImagesIllustration() {
+  return (
+    <svg viewBox="0 0 200 130" className="w-full h-full" fill="none" xmlns="http://www.w3.org/2000/svg">
+      {/* Background */}
+      <rect width="200" height="130" rx="12" fill="#fff1f2" />
+      {/* Camera body */}
+      <rect x="60" y="35" width="80" height="60" rx="8" fill="#fb7185" opacity="0.9" />
+      <rect x="68" y="42" width="64" height="46" rx="5" fill="#ffe4e6" />
+      {/* Lens */}
+      <circle cx="100" cy="65" r="16" fill="#f43f5e" />
+      <circle cx="100" cy="65" r="11" fill="#fff1f2" />
+      <circle cx="100" cy="65" r="7" fill="#f43f5e" opacity="0.6" />
+      <circle cx="96" cy="61" r="2" fill="white" opacity="0.8" />
+      {/* Shutter button */}
+      <rect x="88" y="30" width="14" height="7" rx="3.5" fill="#fb7185" />
+      {/* Flash */}
+      <rect x="66" y="30" width="10" height="7" rx="3" fill="#fda4af" />
+      {/* Classification labels floating */}
+      <rect x="14" y="20" width="40" height="16" rx="8" fill="#f43f5e" opacity="0.15" />
+      <text x="34" y="31" textAnchor="middle" fontSize="7" fill="#f43f5e" fontWeight="700">Gatto 🐱</text>
+      <rect x="146" y="24" width="40" height="16" rx="8" fill="#f43f5e" opacity="0.15" />
+      <text x="166" y="35" textAnchor="middle" fontSize="7" fill="#f43f5e" fontWeight="700">Cane 🐶</text>
+      <rect x="14" y="95" width="44" height="16" rx="8" fill="#f43f5e" opacity="0.15" />
+      <text x="36" y="106" textAnchor="middle" fontSize="7" fill="#f43f5e" fontWeight="700">Fiore 🌸</text>
+      {/* Accuracy badge */}
+      <rect x="136" y="95" width="50" height="18" rx="9" fill="#f43f5e" />
+      <text x="161" y="107" textAnchor="middle" fontSize="8" fill="white" fontWeight="800">98% ✓</text>
+    </svg>
+  )
+}
+
+function TextIllustration() {
+  return (
+    <svg viewBox="0 0 200 130" className="w-full h-full" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect width="200" height="130" rx="12" fill="#eff6ff" />
+      {/* Document */}
+      <rect x="30" y="20" width="100" height="90" rx="8" fill="white" />
+      <rect x="30" y="20" width="100" height="90" rx="8" stroke="#bfdbfe" strokeWidth="1.5" />
+      {/* Text lines */}
+      <rect x="42" y="34" width="76" height="5" rx="2.5" fill="#bfdbfe" />
+      <rect x="42" y="44" width="60" height="5" rx="2.5" fill="#bfdbfe" />
+      <rect x="42" y="54" width="70" height="5" rx="2.5" fill="#bfdbfe" />
+      <rect x="42" y="64" width="55" height="5" rx="2.5" fill="#dbeafe" />
+      <rect x="42" y="74" width="65" height="5" rx="2.5" fill="#bfdbfe" />
+      <rect x="42" y="84" width="50" height="5" rx="2.5" fill="#dbeafe" />
+      {/* Highlight on "important" word */}
+      <rect x="42" y="54" width="36" height="5" rx="2.5" fill="#3b82f6" opacity="0.4" />
+      {/* Category badges */}
+      <rect x="142" y="25" width="46" height="18" rx="9" fill="#3b82f6" />
+      <text x="165" y="37" textAnchor="middle" fontSize="8" fill="white" fontWeight="700">Positivo</text>
+      <rect x="145" y="50" width="40" height="18" rx="9" fill="#6366f1" opacity="0.85" />
+      <text x="165" y="62" textAnchor="middle" fontSize="7.5" fill="white" fontWeight="700">Neutrale</text>
+      <rect x="142" y="75" width="46" height="18" rx="9" fill="#ef4444" opacity="0.8" />
+      <text x="165" y="87" textAnchor="middle" fontSize="8" fill="white" fontWeight="700">Negativo</text>
+      {/* Connecting lines */}
+      <line x1="130" y1="57" x2="142" y2="57" stroke="#3b82f6" strokeWidth="1" strokeDasharray="3,2" opacity="0.5" />
+      <line x1="130" y1="69" x2="145" y2="62" stroke="#6366f1" strokeWidth="1" strokeDasharray="3,2" opacity="0.5" />
+      <line x1="130" y1="77" x2="142" y2="82" stroke="#ef4444" strokeWidth="1" strokeDasharray="3,2" opacity="0.5" />
+    </svg>
+  )
+}
+
+function DataIllustration() {
+  return (
+    <svg viewBox="0 0 200 130" className="w-full h-full" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect width="200" height="130" rx="12" fill="#f0fdf4" />
+      {/* Bar chart */}
+      <rect x="25" y="90" width="20" height="30" rx="3" fill="#34d399" opacity="0.8" />
+      <rect x="50" y="70" width="20" height="50" rx="3" fill="#10b981" opacity="0.9" />
+      <rect x="75" y="50" width="20" height="70" rx="3" fill="#059669" />
+      <rect x="100" y="65" width="20" height="55" rx="3" fill="#10b981" opacity="0.85" />
+      <rect x="125" y="40" width="20" height="80" rx="3" fill="#059669" />
+      {/* Trend line */}
+      <polyline points="35,75 60,55 85,38 110,50 135,30" stroke="#6ee7b7" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+      {/* Data points */}
+      <circle cx="35" cy="75" r="4" fill="white" stroke="#10b981" strokeWidth="2" />
+      <circle cx="60" cy="55" r="4" fill="white" stroke="#10b981" strokeWidth="2" />
+      <circle cx="85" cy="38" r="4" fill="white" stroke="#10b981" strokeWidth="2" />
+      <circle cx="110" cy="50" r="4" fill="white" stroke="#10b981" strokeWidth="2" />
+      <circle cx="135" cy="30" r="5" fill="#10b981" stroke="white" strokeWidth="2" />
+      {/* Table snippet */}
+      <rect x="150" y="20" width="40" height="90" rx="6" fill="white" stroke="#bbf7d0" strokeWidth="1.5" />
+      <rect x="150" y="20" width="40" height="16" rx="6" fill="#bbf7d0" />
+      <rect x="150" y="28" width="40" height="8" fill="#bbf7d0" />
+      <text x="170" y="32" textAnchor="middle" fontSize="6" fill="#065f46" fontWeight="700">Feature</text>
+      {[0,1,2,3,4].map(i => (
+        <g key={i}>
+          <rect x="152" y={40 + i*14} width="36" height="12" rx="2" fill={i % 2 === 0 ? '#f0fdf4' : 'white'} />
+          <rect x="154" y={43 + i*14} width="14" height="5" rx="1.5" fill="#6ee7b7" />
+          <rect x="172" y={43 + i*14} width="12" height="5" rx="1.5" fill="#a7f3d0" />
+        </g>
+      ))}
+      {/* Accuracy badge */}
+      <rect x="15" y="15" width="56" height="20" rx="10" fill="#10b981" />
+      <text x="43" y="28" textAnchor="middle" fontSize="8.5" fill="white" fontWeight="800">Accuratezza</text>
+      <rect x="19" y="37" width="48" height="16" rx="8" fill="#10b981" opacity="0.2" />
+      <text x="43" y="48" textAnchor="middle" fontSize="9" fill="#059669" fontWeight="800">94.2%</text>
+    </svg>
+  )
+}
+
 function MLLabHome({
   onSelect,
   t,
@@ -572,94 +674,167 @@ function MLLabHome({
     {
       key: 'images' as const,
       icon: Camera,
-      iconBg: 'bg-rose-100',
-      iconColor: 'text-rose-600',
-      cardBorder: 'border-rose-200 hover:border-rose-300',
-      cardBg: 'hover:bg-rose-50/40',
+      gradient: 'from-rose-500 to-pink-600',
+      gradientLight: 'from-rose-50 to-pink-50',
+      borderColor: 'border-rose-200',
+      hoverBorder: 'hover:border-rose-400',
+      accentColor: 'text-rose-600',
+      badgeBg: 'bg-rose-100 text-rose-700',
       title: t('classification.mode_images'),
       description: t('classification.mode_images_desc'),
+      features: ['Webcam in tempo reale', 'Addestramento in-browser', 'Fino a 10 classi'],
+      illustration: ImagesIllustration,
     },
     {
       key: 'text' as const,
       icon: Type,
-      iconBg: 'bg-blue-100',
-      iconColor: 'text-blue-600',
-      cardBorder: 'border-blue-200 hover:border-blue-300',
-      cardBg: 'hover:bg-blue-50/40',
+      gradient: 'from-blue-500 to-indigo-600',
+      gradientLight: 'from-blue-50 to-indigo-50',
+      borderColor: 'border-blue-200',
+      hoverBorder: 'hover:border-blue-400',
+      accentColor: 'text-blue-600',
+      badgeBg: 'bg-blue-100 text-blue-700',
       title: t('classification.mode_text'),
       description: t('classification.mode_text_desc'),
+      features: ['Analisi del sentiment', 'Dataset generabili via AI', 'Classificazione multiclasse'],
+      illustration: TextIllustration,
     },
     {
       key: 'data' as const,
       icon: Database,
-      iconBg: 'bg-emerald-100',
-      iconColor: 'text-emerald-600',
-      cardBorder: 'border-emerald-200 hover:border-emerald-300',
-      cardBg: 'hover:bg-emerald-50/40',
+      gradient: 'from-emerald-500 to-teal-600',
+      gradientLight: 'from-emerald-50 to-teal-50',
+      borderColor: 'border-emerald-200',
+      hoverBorder: 'hover:border-emerald-400',
+      accentColor: 'text-emerald-600',
+      badgeBg: 'bg-emerald-100 text-emerald-700',
       title: t('classification.mode_data'),
       description: t('classification.mode_data_desc'),
+      features: ['Import CSV / Excel', 'Visualizzazione interattiva', 'Modello personalizzabile'],
+      illustration: DataIllustration,
     },
   ]
 
   return (
-    <div className="p-6 md:p-8">
-      <div className="max-w-5xl mx-auto">
-        {/* Title */}
-        <div className="mb-6">
-          <h2 className="text-xl font-bold text-slate-800">{t('classification.title')}</h2>
-          <p className="text-sm text-slate-500 mt-1">{t('classification.subtitle')}</p>
-        </div>
+    <div className="min-h-full bg-gradient-to-br from-slate-50 via-white to-slate-50 p-6 md:p-10">
+      <div className="max-w-6xl mx-auto">
+
+        {/* Hero header */}
+        <motion.div
+          initial={{ opacity: 0, y: -16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5 }}
+          className="text-center mb-10"
+        >
+          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-gradient-to-r from-violet-100 to-indigo-100 border border-violet-200/60 mb-4">
+            <Sparkles className="h-3.5 w-3.5 text-violet-600" />
+            <span className="text-xs font-semibold text-violet-700 uppercase tracking-wide">Machine Learning Lab</span>
+          </div>
+          <h1 className="text-3xl md:text-4xl font-extrabold text-slate-900 mb-3">
+            {t('classification.title')}
+          </h1>
+          <p className="text-base text-slate-500 max-w-xl mx-auto leading-relaxed">
+            {t('classification.subtitle')}
+          </p>
+        </motion.div>
 
         {/* Educational banner */}
-        <div className="mb-6 rounded-2xl bg-gradient-to-r from-indigo-50 to-violet-50 border border-indigo-100 p-4 flex gap-3">
-          <div className="flex-shrink-0 w-9 h-9 rounded-xl bg-indigo-500 flex items-center justify-center">
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.45, delay: 0.1 }}
+          className="mb-8 rounded-2xl bg-gradient-to-r from-indigo-600 to-violet-600 p-5 flex gap-4 shadow-lg shadow-indigo-200/50"
+        >
+          <div className="flex-shrink-0 w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center">
             <Lightbulb className="h-5 w-5 text-white" />
           </div>
           <div>
-            <p className="text-sm font-semibold text-indigo-800 mb-1">Come usare il ML Lab</p>
-            <ul className="text-xs text-indigo-700 space-y-0.5">
-              <li className="flex items-start gap-1.5">
-                <span className="mt-0.5 inline-block w-1.5 h-1.5 rounded-full bg-indigo-400 flex-shrink-0" />
-                Puoi <strong className="mx-0.5">generare dataset</strong> nella sezione Chatbot (assistente Dataset Generator) e usarli qui per la classificazione testo e dati.
+            <p className="text-sm font-bold text-white mb-1.5">Come usare il ML Lab</p>
+            <ul className="text-xs text-indigo-100 space-y-1">
+              <li className="flex items-start gap-2">
+                <span className="mt-1 inline-block w-1.5 h-1.5 rounded-full bg-indigo-300 flex-shrink-0" />
+                Puoi <strong className="text-white mx-0.5">generare dataset</strong> nella sezione Chatbot (assistente Dataset Generator) e usarli qui per la classificazione testo e dati.
               </li>
-              <li className="flex items-start gap-1.5">
-                <span className="mt-0.5 inline-block w-1.5 h-1.5 rounded-full bg-violet-400 flex-shrink-0" />
-                Puoi <strong className="mx-0.5">classificare immagini</strong> addestrando un modello direttamente dalla tua fotocamera!
+              <li className="flex items-start gap-2">
+                <span className="mt-1 inline-block w-1.5 h-1.5 rounded-full bg-violet-300 flex-shrink-0" />
+                Puoi <strong className="text-white mx-0.5">classificare immagini</strong> addestrando un modello direttamente dalla tua fotocamera in tempo reale!
               </li>
             </ul>
           </div>
-        </div>
+        </motion.div>
 
         {/* Mode cards */}
-        <div className="flex flex-col sm:flex-row gap-4">
-          {modes.map(m => (
-            <motion.div
-              key={m.key}
-              whileTap={{ scale: 0.98 }}
-              className={`flex-1 flex items-start gap-4 p-5 rounded-xl border bg-white shadow-sm transition-all cursor-pointer ${m.cardBorder} ${m.cardBg}`}
-              onClick={() => onSelect(m.key)}
-            >
-              <div className={`flex-shrink-0 w-14 h-14 rounded-2xl ${m.iconBg} ${m.iconColor} flex items-center justify-center`}>
-                <m.icon className="h-7 w-7" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-lg font-bold text-slate-800 leading-tight">{m.title}</p>
-                <p className="text-sm text-slate-500 mt-1 leading-snug line-clamp-3">{m.description}</p>
-                <div className="mt-3">
-                  <Button size="sm" variant="outline" className="gap-1 pointer-events-none">
-                    Avvia <ChevronRight className="h-3.5 w-3.5" />
-                  </Button>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {modes.map((m, i) => {
+            const Illustration = m.illustration
+            return (
+              <motion.div
+                key={m.key}
+                initial={{ opacity: 0, y: 30 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.5, delay: 0.15 + i * 0.1 }}
+                whileHover={{ y: -6, scale: 1.01 }}
+                whileTap={{ scale: 0.97 }}
+                onClick={() => onSelect(m.key)}
+                className={`group relative rounded-2xl border-2 ${m.borderColor} ${m.hoverBorder} bg-white shadow-md hover:shadow-xl transition-all duration-300 cursor-pointer overflow-hidden`}
+              >
+                {/* Illustration area */}
+                <div className={`relative h-44 bg-gradient-to-br ${m.gradientLight} p-4 overflow-hidden`}>
+                  <div className="absolute inset-0 opacity-10">
+                    <div className="absolute -top-4 -right-4 w-24 h-24 rounded-full bg-current" />
+                    <div className="absolute -bottom-6 -left-6 w-32 h-32 rounded-full bg-current" />
+                  </div>
+                  <Illustration />
                 </div>
-              </div>
-            </motion.div>
-          ))}
+
+                {/* Content */}
+                <div className="p-5">
+                  {/* Icon + title */}
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${m.gradient} flex items-center justify-center shadow-md`}>
+                      <m.icon className="h-5 w-5 text-white" />
+                    </div>
+                    <h3 className="text-base font-bold text-slate-800 leading-tight">{m.title}</h3>
+                  </div>
+
+                  {/* Description */}
+                  <p className="text-sm text-slate-500 leading-relaxed mb-4">{m.description}</p>
+
+                  {/* Feature pills */}
+                  <div className="flex flex-wrap gap-1.5 mb-4">
+                    {m.features.map(f => (
+                      <span key={f} className={`text-[11px] font-medium px-2.5 py-0.5 rounded-full ${m.badgeBg}`}>
+                        {f}
+                      </span>
+                    ))}
+                  </div>
+
+                  {/* CTA */}
+                  <div className={`flex items-center gap-1.5 text-sm font-semibold ${m.accentColor} group-hover:gap-2.5 transition-all duration-200`}>
+                    Inizia ora
+                    <ChevronRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
+                  </div>
+                </div>
+
+                {/* Top-right badge */}
+                <div className={`absolute top-3 right-3 w-8 h-8 rounded-full bg-gradient-to-br ${m.gradient} flex items-center justify-center shadow-lg opacity-80 group-hover:opacity-100 transition-opacity`}>
+                  <m.icon className="h-4 w-4 text-white" />
+                </div>
+              </motion.div>
+            )
+          })}
         </div>
 
         {/* Footer note */}
-        <p className="mt-6 text-xs text-slate-400 text-center flex items-center justify-center gap-1.5">
+        <motion.p
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.6 }}
+          className="mt-8 text-xs text-slate-400 text-center flex items-center justify-center gap-1.5"
+        >
           <Info className="h-3.5 w-3.5" />
-          Il processing avviene interamente nel browser, senza inviare dati al server.
-        </p>
+          Il processing avviene interamente nel browser — nessun dato viene inviato al server.
+        </motion.p>
       </div>
     </div>
   )

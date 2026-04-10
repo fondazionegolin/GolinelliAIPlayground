@@ -10,42 +10,26 @@ interface AppBackgroundProps {
 
 export function AppBackground({ className = "", gradient = DEFAULT_GRADIENT, children }: AppBackgroundProps) {
     return (
-        <div className={`min-h-screen w-full ${className} relative overflow-hidden`}>
-            <style>
-                {`
-                @keyframes mesh-shift {
-                    0%   { transform: translate(0%, 0%); }
-                    33%  { transform: translate(-12%, -8%); }
-                    66%  { transform: translate(-8%, -15%); }
-                    100% { transform: translate(0%, 0%); }
-                }
-                .animate-mesh {
-                    animation: mesh-shift 60s ease-in-out infinite;
-                    will-change: transform;
-                }
-                @media (prefers-reduced-motion: reduce) {
-                    .animate-mesh {
-                        animation: none;
-                    }
-                }
-                `}
-            </style>
+        <div className={`w-full ${className} relative overflow-hidden`}>
             {gradient && (
                 <>
-                    {/* Oversized so translate() never exposes edges */}
                     <div
                         aria-hidden="true"
-                        className="animate-mesh"
+                        className="fixed inset-0"
                         style={{
-                            position: 'fixed',
-                            top: '-20%',
-                            left: '-20%',
-                            width: '140%',
-                            height: '140%',
                             zIndex: -1,
-                            background: gradient,
-                            opacity: 0.9,
+                            backgroundColor: gradient,
                         }}
+                    />
+                    <div
+                        aria-hidden="true"
+                        className="pointer-events-none fixed left-[-8rem] top-[5rem] h-[18rem] w-[18rem] rounded-full blur-3xl"
+                        style={{ zIndex: -1, backgroundColor: 'rgba(255,255,255,0.72)' }}
+                    />
+                    <div
+                        aria-hidden="true"
+                        className="pointer-events-none fixed bottom-[-8rem] right-[-6rem] h-[20rem] w-[20rem] rounded-full blur-3xl"
+                        style={{ zIndex: -1, backgroundColor: 'rgba(255,255,255,0.56)' }}
                     />
                 </>
             )}

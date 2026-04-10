@@ -1,11 +1,14 @@
 import { useState, useRef, useEffect } from 'react'
-import { useQuery, useMutation } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Button } from '@/components/ui/button'
 import { ArrowLeft, Send, Bot, Loader2, RefreshCw } from 'lucide-react'
 import { useToast } from '@/components/ui/use-toast'
 import { teacherbotsApi } from '@/lib/api'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import { markdownCodeComponents } from '@/components/CodeBlock'
+import EnvironmentalImpactPill from '@/components/chat/EnvironmentalImpactPill'
+import type { TokenUsageJson } from '@/lib/environmentalImpact'
 
 interface TeacherbotTestChatProps {
   teacherbotId: string
@@ -17,10 +20,14 @@ interface Message {
   role: 'user' | 'assistant'
   content: string
   timestamp: Date
+  provider?: string
+  model?: string
+  token_usage_json?: TokenUsageJson | null
 }
 
 export default function TeacherbotTestChat({ teacherbotId, onBack }: TeacherbotTestChatProps) {
   const { toast } = useToast()
+  const queryClient = useQueryClient()
   const [messages, setMessages] = useState<Message[]>([])
   const [inputText, setInputText] = useState('')
   const [isLoading, setIsLoading] = useState(false)
@@ -63,8 +70,12 @@ export default function TeacherbotTestChat({ teacherbotId, onBack }: TeacherbotT
         role: 'assistant',
         content: response.data.content,
         timestamp: new Date(),
+        provider: response.data.provider,
+        model: response.data.model,
+        token_usage_json: response.data.token_usage_json,
       }
       setMessages(prev => [...prev, assistantMsg])
+      queryClient.invalidateQueries({ queryKey: ['llm-environmental-footprint'] })
     },
     onError: () => {
       toast({ title: 'Errore', description: 'Impossibile testare il teacherbot', variant: 'destructive' })
@@ -177,11 +188,20 @@ export default function TeacherbotTestChat({ teacherbotId, onBack }: TeacherbotT
                     <ReactMarkdown
                       remarkPlugins={[remarkGfm]}
                       className="prose prose-sm max-w-none prose-p:my-1"
+                      components={markdownCodeComponents()}
                     >
                       {msg.content}
                     </ReactMarkdown>
                   ) : (
                     <p className="text-sm">{msg.content}</p>
+                  )}
+                  {msg.role === 'assistant' && (
+                    <EnvironmentalImpactPill
+                      className="mt-3"
+                      provider={msg.provider}
+                      model={msg.model}
+                      tokenUsage={msg.token_usage_json}
+                    />
                   )}
                 </div>
               </div>

@@ -18,7 +18,8 @@ from app.api.deps import get_current_teacher, get_current_student, get_student_o
 from app.models.user import User
 from app.models.session import Session, SessionStudent, Class
 from app.models.llm import LLMProfile, Conversation, ConversationMessage, AuditEvent
-from app.models.enums import MessageRole
+from app.models.credits import CreditTransaction
+from app.models.enums import MessageRole, CreditTransactionType
 from app.schemas.llm import (
     LLMProfileResponse, ConversationCreate, ConversationResponse,
     MessageCreate, ConversationMessageResponse, ExplainRequest, ExplainResponse,
@@ -29,6 +30,10 @@ from app.services.chatbot_profiles import get_profile, get_all_profiles, CHATBOT
 from app.services.education_level import get_school_grade_instruction
 from app.services.document_processor import document_processor
 from app.services.moderation_service import moderation_service
+from app.services.environmental_impact import (
+    build_estimated_token_usage,
+    enrich_usage_with_environmental_impact,
+)
 from app.models.alert import ContentAlert
 from app.realtime.gateway import notify_teacher_content_alert, sio
 
@@ -72,6 +77,194 @@ async def safe_track_usage(
 async def list_chatbot_profiles():
     """Get all available chatbot profiles with their configurations"""
     return get_all_profiles()
+
+
+@router.get("/environmental-footprint")
+async def get_environmental_footprint(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    auth: Annotated[StudentOrTeacher, Depends(get_student_or_teacher)],
+):
+    query = select(CreditTransaction).where(CreditTransaction.transaction_type == CreditTransactionType.API_CALL)
+    actor_type = "teacher" if auth.is_teacher else "student"
+    if auth.is_teacher:
+        query = query.where(CreditTransaction.teacher_id == auth.teacher.id)
+    else:
+        query = query.where(CreditTransaction.student_id == auth.student.id)
+
+    result = await db.execute(query.order_by(CreditTransaction.timestamp.asc()))
+    transactions = result.scalars().all()
+
+    totals = {
+        "energy_wh": 0.0,
+        "co2_grams": 0.0,
+        "water_ml": 0.0,
+        "water_drops": 0,
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "total_tokens": 0,
+        "image_count": 0,
+        "interaction_count": len(transactions),
+        "estimated_entry_count": 0,
+    }
+
+    for tx in transactions:
+        usage = dict(tx.usage_details or {})
+        enriched = enrich_usage_with_environmental_impact(usage, provider=tx.provider, model=tx.model)
+        impact = enriched.get("environmental_impact") or {}
+        totals["energy_wh"] += float(impact.get("energy_wh") or 0)
+        totals["co2_grams"] += float(impact.get("co2_grams") or 0)
+        totals["water_ml"] += float(impact.get("water_ml") or 0)
+        totals["water_drops"] += int(impact.get("water_drops") or 0)
+        totals["prompt_tokens"] += int(enriched.get("prompt_tokens") or 0)
+        totals["completion_tokens"] += int(enriched.get("completion_tokens") or 0)
+        totals["total_tokens"] += int(enriched.get("total_tokens") or 0)
+        totals["image_count"] += int(enriched.get("image_count") or 0)
+        if enriched.get("estimated_tokens"):
+            totals["estimated_entry_count"] += 1
+
+    return {
+        "actor_type": actor_type,
+        "totals": {
+            **totals,
+            "energy_wh": round(totals["energy_wh"], 4),
+            "co2_grams": round(totals["co2_grams"], 4),
+            "water_ml": round(totals["water_ml"], 4),
+        },
+    }
+
+
+@router.post("/files/preview")
+async def preview_file(
+    file: UploadFile = File(...),
+    auth: Annotated[StudentOrTeacher, Depends(get_student_or_teacher)] = None,
+):
+    """
+    Quick file preview — no LLM calls, just metadata extraction.
+    Used by the frontend to show rich attachment cards before sending.
+    Returns: { filename, type, sheets, rows, columns, column_types, stats, sample, suggested_prompts }
+    """
+    try:
+        file_bytes = await file.read()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Cannot read file")
+
+    filename = file.filename or "file"
+    mime_type = file.content_type or "application/octet-stream"
+    fn_lower = filename.lower()
+
+    base = {"filename": filename, "mime_type": mime_type, "size_bytes": len(file_bytes)}
+
+    # ── Data file: XLSX / XLS ────────────────────────────────────────────────
+    if fn_lower.endswith((".xlsx", ".xls")) or "spreadsheet" in mime_type or "excel" in mime_type:
+        try:
+            import pandas as pd
+            import io as _io
+            xl = pd.ExcelFile(_io.BytesIO(file_bytes))
+            sheets_info = []
+            for sheet_name in xl.sheet_names[:6]:
+                df = xl.parse(sheet_name)
+                rows, cols = df.shape
+                col_names = [str(c) for c in df.columns.tolist()]
+                col_types = {}
+                for c in df.columns:
+                    dtype = df[c].dtype
+                    if str(dtype).startswith("int") or str(dtype).startswith("float"):
+                        col_types[str(c)] = "number"
+                    elif "datetime" in str(dtype):
+                        col_types[str(c)] = "date"
+                    else:
+                        col_types[str(c)] = "text"
+                stats = {}
+                for c in df.select_dtypes(include="number").columns[:8]:
+                    s = df[c].dropna()
+                    if len(s):
+                        stats[str(c)] = {
+                            "min": float(s.min()), "max": float(s.max()),
+                            "mean": round(float(s.mean()), 3),
+                            "nulls": int(df[c].isna().sum()),
+                        }
+                sample = df.head(5).fillna("").astype(str).values.tolist()
+                sheets_info.append({
+                    "name": sheet_name, "rows": rows, "columns": col_names,
+                    "column_types": col_types, "stats": stats, "sample": sample
+                })
+            suggested = [
+                "Analizza questi dati e fornisci un riassunto",
+                "Identifica eventuali valori anomali o outlier",
+                "Calcola le statistiche principali per ogni colonna numerica",
+                "Quali sono le tendenze principali in questo dataset?",
+            ]
+            return {**base, "type": "xlsx", "sheets": sheets_info,
+                    "active_sheet": sheets_info[0] if sheets_info else None,
+                    "suggested_prompts": suggested}
+        except Exception as e:
+            logger.warning(f"XLSX preview failed: {e}")
+            return {**base, "type": "xlsx", "error": str(e)}
+
+    # ── Data file: CSV ───────────────────────────────────────────────────────
+    if fn_lower.endswith(".csv") or "csv" in mime_type:
+        try:
+            import pandas as pd
+            import io as _io
+            for enc in ("utf-8", "latin-1", "cp1252"):
+                try:
+                    df = pd.read_csv(_io.BytesIO(file_bytes), encoding=enc, nrows=500)
+                    break
+                except Exception:
+                    continue
+            else:
+                return {**base, "type": "csv"}
+            rows = len(df)
+            col_names = [str(c) for c in df.columns.tolist()]
+            col_types = {}
+            for c in df.columns:
+                dtype = df[c].dtype
+                col_types[str(c)] = "number" if str(dtype).startswith(("int", "float")) else "text"
+            stats = {}
+            for c in df.select_dtypes(include="number").columns[:8]:
+                s = df[c].dropna()
+                if len(s):
+                    stats[str(c)] = {"min": float(s.min()), "max": float(s.max()), "mean": round(float(s.mean()), 3)}
+            sample = df.head(5).fillna("").astype(str).values.tolist()
+            suggested = [
+                "Analizza questo CSV e fornisci un riassunto dei dati",
+                "Identifica correlazioni tra le colonne",
+                "Trova i valori più frequenti per ogni categoria",
+            ]
+            return {**base, "type": "csv", "rows": rows, "columns": col_names,
+                    "column_types": col_types, "stats": stats, "sample": sample,
+                    "suggested_prompts": suggested}
+        except Exception as e:
+            return {**base, "type": "csv", "error": str(e)}
+
+    # ── JSON ─────────────────────────────────────────────────────────────────
+    if fn_lower.endswith(".json") or "json" in mime_type:
+        try:
+            import json as _json
+            data = _json.loads(file_bytes.decode("utf-8", errors="ignore"))
+            if isinstance(data, list):
+                return {**base, "type": "json", "records": len(data),
+                        "keys": list(data[0].keys())[:15] if data and isinstance(data[0], dict) else [],
+                        "suggested_prompts": ["Analizza questi dati JSON", "Riassumi la struttura"]}
+            elif isinstance(data, dict):
+                return {**base, "type": "json", "keys": list(data.keys())[:15],
+                        "suggested_prompts": ["Analizza questo JSON", "Spiega la struttura"]}
+        except Exception:
+            pass
+        return {**base, "type": "json"}
+
+    # ── Other document types ──────────────────────────────────────────────────
+    suggested_by_type = {
+        "pdf": ["Riassumi questo documento", "Quali sono i punti chiave?", "Estrai le informazioni principali"],
+        "docx": ["Analizza questo documento", "Riassumi il contenuto", "Trova i punti principali"],
+        "pptx": ["Analizza questa presentazione", "Riassumi le slide", "Quali sono i messaggi chiave?"],
+    }
+    for ext, prompts in suggested_by_type.items():
+        if fn_lower.endswith(f".{ext}"):
+            return {**base, "type": ext, "suggested_prompts": prompts}
+
+    return {**base, "type": "document",
+            "suggested_prompts": ["Analizza questo file", "Riassumi il contenuto"]}
 
 
 @router.get("/available-models")
@@ -640,13 +833,22 @@ async def send_message(
             provider = "openai" if image_provider in openai_providers else "flux"
             model_map = {"dall-e": "dall-e-3", "gpt-image-1": "gpt-image-1"}
             model = model_map.get(image_provider, image_provider)
-            token_usage = {"prompt_tokens": 0, "completion_tokens": 0}
+            token_usage = enrich_usage_with_environmental_impact(
+                {"prompt_tokens": 0, "completion_tokens": 0, "image_count": 1},
+                provider=provider,
+                model=model,
+            )
             
             # TRACK IMAGE COST
             img_cost = credit_service.calculate_cost_for_model(provider, model, 0, 0, image_count=1)
             await safe_track_usage(
                 db, student.tenant_id, provider, model, img_cost,
-                {"image_prompt": image_prompt, "size": image_size},
+                {
+                    "image_prompt": image_prompt,
+                    "size": image_size,
+                    "image_count": 1,
+                    **token_usage,
+                },
                 teacher_id=class_obj.teacher_id, class_id=class_obj.id, session_id=session_obj.id, student_id=student.id,
                 context="image_generation"
             )
@@ -675,7 +877,27 @@ async def send_message(
             )
             provider = conversation.llm_provider or "openai"
             model = conversation.llm_model or "gpt-5-mini"
-            token_usage = {"prompt_tokens": 0, "completion_tokens": 0}
+            token_usage = enrich_usage_with_environmental_impact(
+                build_estimated_token_usage(messages, assistant_content),
+                provider=provider,
+                model=model,
+            )
+            estimated_cost = credit_service.calculate_cost_for_model(
+                provider,
+                model,
+                token_usage["prompt_tokens"],
+                token_usage["completion_tokens"],
+            )
+            await safe_track_usage(
+                db, student.tenant_id, provider, model, estimated_cost,
+                {
+                    **token_usage,
+                    "type": "student_chat_estimated",
+                    "profile_key": conversation.profile_key,
+                },
+                class_obj.teacher_id, class_obj.id, session_obj.id, student.id,
+                context="student_chat_estimated",
+            )
 
         except Exception as e:
             logger.error(f"Teacher agent error for student: {e}")
@@ -722,6 +944,262 @@ async def send_message(
     }, room=f"session:{conversation.session_id}")
 
     return assistant_message
+
+
+@router.post("/conversations/{conversation_id}/message-stream")
+async def send_message_stream(
+    conversation_id: UUID,
+    request: MessageCreate,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    student: Annotated[SessionStudent, Depends(get_current_student)],
+):
+    """
+    Streaming SSE version of send_message.
+    Performs the same credit/moderation checks and DB persistence,
+    but streams the LLM response as Server-Sent Events with typewriter effect.
+    """
+    result = await db.execute(
+        select(Conversation).where(Conversation.id == conversation_id)
+    )
+    conversation = result.scalar_one_or_none()
+    if not conversation:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found")
+
+    if conversation.student_id != student.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
+
+    session_result = await db.execute(
+        select(Session, Class)
+        .join(Class, Session.class_id == Class.id)
+        .where(Session.id == conversation.session_id)
+    )
+    session_rw = session_result.first()
+    if not session_rw:
+        raise HTTPException(status_code=404, detail="Session not found")
+    session_obj, class_obj = session_rw
+
+    is_allowed = await credit_service.check_availability(
+        db,
+        student.tenant_id,
+        estimated_cost=0.0001,
+        teacher_id=class_obj.teacher_id,
+        class_id=class_obj.id,
+        session_id=session_obj.id,
+        student_id=student.id,
+    )
+    if not is_allowed:
+        raise HTTPException(
+            status_code=status.HTTP_402_PAYMENT_REQUIRED,
+            detail="Credit limit exceeded for this session/class.",
+        )
+
+    # Content moderation
+    moderation_result = await moderation_service.check(request.content or "")
+    effective_content = moderation_result.masked_text or request.content
+
+    if not moderation_result.is_safe and moderation_result.flagged:
+        # Flagged: block and return immediately (no streaming needed)
+        db.add(ContentAlert(
+            tenant_id=student.tenant_id,
+            session_id=conversation.session_id,
+            student_id=student.id,
+            conversation_id=conversation_id,
+            alert_type=moderation_result.alert_type or "offensive",
+            status="pending",
+            original_message=request.content or "",
+            masked_message=moderation_result.masked_text,
+            risk_score=moderation_result.risk_score,
+            details={
+                "flagged_categories": moderation_result.flagged_categories,
+                "pii_found": moderation_result.pii_found,
+            },
+        ))
+        blocked_user_msg = ConversationMessage(
+            tenant_id=student.tenant_id,
+            conversation_id=conversation_id,
+            role=MessageRole.USER,
+            content=f"[BLOCCATO] {effective_content}",
+        )
+        blocked_reply = ConversationMessage(
+            tenant_id=student.tenant_id,
+            conversation_id=conversation_id,
+            role=MessageRole.ASSISTANT,
+            content="🚫 Il tuo messaggio è stato bloccato perché contiene contenuto non appropriato. Questo evento è stato segnalato al tuo docente.",
+            provider="system",
+            model="moderation",
+            token_usage_json={"prompt_tokens": 0, "completion_tokens": 0},
+        )
+        db.add(blocked_user_msg)
+        db.add(blocked_reply)
+        conversation.updated_at = datetime.utcnow()
+        await db.commit()
+        try:
+            await notify_teacher_content_alert(
+                session_id=str(conversation.session_id),
+                alert_id=str(blocked_user_msg.id),
+                student_id=str(student.id),
+                nickname=student.nickname or "Studente",
+                alert_type=moderation_result.alert_type or "offensive",
+                risk_score=moderation_result.risk_score,
+                preview=(request.content or "")[:100],
+            )
+        except Exception:
+            pass
+
+        async def blocked_stream():
+            yield f"data: {json.dumps({'type': 'done', 'content': blocked_reply.content, 'message_id': str(blocked_reply.id), 'provider': blocked_reply.provider, 'model': blocked_reply.model, 'token_usage': blocked_reply.token_usage_json})}\n\n"
+
+        return StreamingResponse(blocked_stream(), media_type="text/event-stream",
+                                 headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+    elif moderation_result.pii_found:
+        db.add(ContentAlert(
+            tenant_id=student.tenant_id,
+            session_id=conversation.session_id,
+            student_id=student.id,
+            conversation_id=conversation_id,
+            alert_type="pii_detected",
+            status="pending",
+            original_message=request.content or "",
+            masked_message=effective_content,
+            risk_score=0.3,
+            details={"pii_found": moderation_result.pii_found},
+        ))
+        await db.flush()
+
+    # Save user message
+    user_message = ConversationMessage(
+        tenant_id=student.tenant_id,
+        conversation_id=conversation_id,
+        role=MessageRole.USER,
+        content=effective_content,
+        content_json=request.content_json,
+    )
+    db.add(user_message)
+    db.add(AuditEvent(
+        tenant_id=student.tenant_id,
+        session_id=conversation.session_id,
+        actor_type="STUDENT",
+        actor_student_id=student.id,
+        event_type="PROMPT_SUBMITTED",
+        payload_json={
+            "conversation_id": str(conversation_id),
+            "content_preview": request.content[:200] if request.content else "",
+        },
+    ))
+    await db.flush()
+
+    # Build message history for LLM
+    hist_result = await db.execute(
+        select(ConversationMessage)
+        .where(ConversationMessage.conversation_id == conversation_id)
+        .order_by(ConversationMessage.created_at.asc())
+    )
+    messages = [{"role": m.role.value, "content": m.content or ""} for m in hist_result.scalars().all()]
+
+    pii_prefix = ""
+    if moderation_result.pii_found:
+        pii_label = moderation_service.pii_label_list(moderation_result.pii_found)
+        pii_prefix = f"⚠️ *Nota: il tuo messaggio conteneva dati sensibili ({pii_label}) che sono stati automaticamente rimossi per la tua sicurezza.*\n\n"
+
+    provider = conversation.llm_provider or "openai"
+    model = conversation.llm_model or "gpt-5-mini"
+    profile_key = conversation.profile_key or "tutor"
+
+    # Load any teacher-defined custom prompt for this profile+session
+    from app.models.session import SessionProfileOverride
+    override_result = await db.execute(
+        select(SessionProfileOverride)
+        .where(SessionProfileOverride.session_id == conversation.session_id)
+        .where(SessionProfileOverride.profile_key == profile_key)
+    )
+    profile_override = override_result.scalar_one_or_none()
+    custom_profile_prompt = profile_override.custom_system_prompt if profile_override else None
+
+    async def generate_stream():
+        from app.services.teacher_agent import generate_generic_response_stream
+        from app.services.llm_service import _needs_web_search
+
+        try:
+            if _needs_web_search(messages):
+                yield f"data: {json.dumps({'type': 'status', 'message': '🔍 Ricerca sul web in corso...'})}\n\n"
+            else:
+                yield f"data: {json.dumps({'type': 'status', 'message': '💬 Elaborazione risposta...'})}\n\n"
+
+            full_content = pii_prefix
+            async for chunk in generate_generic_response_stream(
+                messages, provider, model, profile_key,
+                custom_system_prompt=custom_profile_prompt,
+            ):
+                full_content += chunk
+                yield f"data: {json.dumps({'type': 'chunk', 'content': chunk})}\n\n"
+
+            # Persist assistant message
+            estimated_usage = enrich_usage_with_environmental_impact(
+                build_estimated_token_usage(messages, full_content),
+                provider=provider,
+                model=model,
+            )
+
+            assistant_message = ConversationMessage(
+                tenant_id=student.tenant_id,
+                conversation_id=conversation_id,
+                role=MessageRole.ASSISTANT,
+                content=full_content,
+                provider=provider,
+                model=model,
+                token_usage_json=estimated_usage,
+            )
+            db.add(assistant_message)
+            conversation.updated_at = datetime.utcnow()
+            await db.commit()
+            await db.refresh(assistant_message)
+
+            estimated_cost = credit_service.calculate_cost_for_model(
+                provider,
+                model,
+                int(estimated_usage.get("prompt_tokens") or 0),
+                int(estimated_usage.get("completion_tokens") or 0),
+            )
+            await safe_track_usage(
+                db, student.tenant_id, provider, model, estimated_cost,
+                {
+                    **estimated_usage,
+                    "type": "student_chat_stream",
+                    "profile_key": profile_key,
+                },
+                class_obj.teacher_id, class_obj.id, session_obj.id, student.id,
+                context="student_chat_stream",
+            )
+
+            yield f"data: {json.dumps({'type': 'done', 'content': full_content, 'message_id': str(assistant_message.id), 'provider': provider, 'model': model, 'token_usage': estimated_usage})}\n\n"
+
+            # Notify teacher of updated conversation
+            try:
+                from sqlalchemy import func as sql_func
+                count_result = await db.execute(
+                    select(sql_func.count()).select_from(ConversationMessage)
+                    .where(ConversationMessage.conversation_id == conversation_id)
+                )
+                msg_count = count_result.scalar_one() or 0
+                await sio.emit("conversation_updated", {
+                    "conversation_id": str(conversation_id),
+                    "session_id": str(conversation.session_id),
+                    "message_count": msg_count,
+                    "updated_at": conversation.updated_at.isoformat(),
+                }, room=f"session:{conversation.session_id}")
+            except Exception as e:
+                logger.warning(f"Socket notify failed: {e}")
+
+        except Exception as e:
+            logger.error(f"Student stream error: {e}")
+            yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+
+    return StreamingResponse(
+        generate_stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 @router.post("/student/chat")
@@ -857,7 +1335,11 @@ async def generate_image(
     cost = credit_service.calculate_cost_for_model(real_provider, real_model, 0, 0, image_count=1)
     await safe_track_usage(
         db, tenant_id, real_provider, real_model, cost,
-        {"prompt": prompt, "type": "direct_generation"},
+        enrich_usage_with_environmental_impact(
+            {"prompt": prompt, "type": "direct_generation", "image_count": 1},
+            provider=real_provider,
+            model=real_model,
+        ),
         teacher_id, class_id, session_id, student_id,
         context="generate_image"
     )
@@ -1067,12 +1549,25 @@ async def send_message_with_files(
             assistant_content = f"🎨 Ecco l'immagine che hai richiesto:\n\n![Immagine generata]({image_url})\n\n*Generata con {provider_label} - Prompt: {image_prompt}*"
             provider = "flux"
             model = image_provider
+            token_usage = enrich_usage_with_environmental_impact(
+                {"prompt_tokens": 0, "completion_tokens": 0, "image_count": 1},
+                provider=provider,
+                model=model,
+            )
             
             # Track Usage
             img_cost = credit_service.calculate_cost_for_model(provider, model, 0, 0, image_count=1)
             await safe_track_usage(
                 db, student.tenant_id, provider, model, img_cost,
-                {"image_prompt": image_prompt, "type": "img2img" if image_base64 else "txt2img"},
+                enrich_usage_with_environmental_impact(
+                    {
+                        "image_prompt": image_prompt,
+                        "type": "img2img" if image_base64 else "txt2img",
+                        "image_count": 1,
+                    },
+                    provider=provider,
+                    model=model,
+                ),
                 teacher_id=class_obj.teacher_id, class_id=class_obj.id, session_id=session_obj.id, student_id=student.id,
                 context="image_generation_files"
             )
@@ -1108,10 +1603,14 @@ async def send_message_with_files(
         assistant_content = llm_response.content
         provider = llm_response.provider
         model = llm_response.model
-        token_usage = {
-            "prompt_tokens": llm_response.prompt_tokens,
-            "completion_tokens": llm_response.completion_tokens,
-        }
+        token_usage = enrich_usage_with_environmental_impact(
+            {
+                "prompt_tokens": llm_response.prompt_tokens,
+                "completion_tokens": llm_response.completion_tokens,
+            },
+            provider=provider,
+            model=model,
+        )
 
         # Track Usage
         cost = credit_service.calculate_cost_for_model(provider, model, token_usage["prompt_tokens"], token_usage["completion_tokens"])
@@ -1359,7 +1858,16 @@ IMPORTANTE: Usa questi dati reali per rispondere alle domande del docente. Quand
             )
             await safe_track_usage(
                 db, teacher.tenant_id, llm_response.provider, llm_response.model, cost,
-                {"type": "teacher_chat", "profile": profile_key},
+                enrich_usage_with_environmental_impact(
+                    {
+                        "type": "teacher_chat",
+                        "profile": profile_key,
+                        "prompt_tokens": llm_response.prompt_tokens,
+                        "completion_tokens": llm_response.completion_tokens,
+                    },
+                    provider=llm_response.provider,
+                    model=llm_response.model,
+                ),
                 teacher_id=teacher.id,
                 context="teacher_chat",
             )
@@ -1390,6 +1898,7 @@ async def teacher_chat_stream(
     history = request.get("history", [])
     provider = request.get("provider", "openai")
     model = request.get("model", "gpt-5-mini")
+    agent_mode = request.get("agent_mode", "default")
 
     if not content:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Content required")
@@ -1415,8 +1924,117 @@ async def teacher_chat_stream(
             TeacherIntent,
         )
 
+        async def build_done_event(result_content: str, stream_type: str) -> str:
+            estimated_usage = enrich_usage_with_environmental_impact(
+                build_estimated_token_usage(messages, result_content),
+                provider=provider,
+                model=model,
+            )
+            estimated_cost = credit_service.calculate_cost_for_model(
+                provider,
+                model,
+                int(estimated_usage.get("prompt_tokens") or 0),
+                int(estimated_usage.get("completion_tokens") or 0),
+            )
+            await safe_track_usage(
+                db, teacher.tenant_id, provider, model, estimated_cost,
+                {
+                    **estimated_usage,
+                    "type": stream_type,
+                    "agent_mode": agent_mode,
+                },
+                teacher_id=teacher.id,
+                context=stream_type,
+            )
+            return json.dumps({
+                "type": "done",
+                "content": result_content,
+                "provider": provider,
+                "model": model,
+                "token_usage": estimated_usage,
+            })
+
         try:
-            # Step 1: Classify intent
+            # If mode is "default" (chat), skip intent recognition — stream text directly
+            if agent_mode == "default":
+                import re as _re
+                from datetime import date as _date, time as _time
+                from app.services.llm_service import _needs_web_search
+                from app.services.teacher_agent import generate_with_analytics_stream
+                from app.models.calendar import SessionCalendarEvent as _CalEvent
+
+                session_id_str = request.get("session_id")
+
+                # Yield status immediately so NGINX/client know the connection is alive
+                if _needs_web_search(messages):
+                    yield f"data: {json.dumps({'type': 'status', 'message': '🔍 Ricerca sul web in corso...'})}\n\n"
+                else:
+                    yield f"data: {json.dumps({'type': 'status', 'message': '💬 Elaborazione risposta...'})}\n\n"
+
+                context, _ = await load_teacher_context(db, teacher)
+
+                # Build datetime-aware calendar addendum
+                now = datetime.now()
+                _days_it = ["lunedì","martedì","mercoledì","giovedì","venerdì","sabato","domenica"]
+                _months_it = ["gennaio","febbraio","marzo","aprile","maggio","giugno",
+                              "luglio","agosto","settembre","ottobre","novembre","dicembre"]
+                now_str = f"{_days_it[now.weekday()]} {now.day} {_months_it[now.month-1]} {now.year}, ore {now.strftime('%H:%M')}"
+                cal_addendum = f"\n\n---\nData e ora attuali (server): {now_str}.\n"
+                if session_id_str:
+                    cal_addendum += (
+                        "Se il docente chiede di creare un evento in calendario, "
+                        "al termine della risposta includi questo blocco e nient'altro:\n"
+                        "<CALENDAR_EVENT>{\"title\": \"Titolo\", \"event_date\": \"YYYY-MM-DD\", "
+                        "\"event_time\": \"HH:MM\", \"color\": \"#6366f1\"}</CALENDAR_EVENT>\n"
+                        "Calcola le date relative (es. 'domani', 'lunedì prossimo') dalla data attuale.\n"
+                        "Includi il tag SOLO se ti viene chiesto esplicitamente di creare un evento."
+                    )
+
+                full_content = ''
+                async for chunk in generate_with_analytics_stream(
+                    messages, context + cal_addendum, provider, model,
+                    custom_system_prompt=teacher.support_chat_system_prompt or None,
+                ):
+                    full_content += chunk
+                    yield f"data: {json.dumps({'type': 'chunk', 'content': chunk})}\n\n"
+
+                # Extract and execute CALENDAR_EVENT actions
+                _cal_pat = _re.compile(r'<CALENDAR_EVENT>(.*?)</CALENDAR_EVENT>', _re.DOTALL)
+                _matches = _cal_pat.findall(full_content)
+                clean_content = _cal_pat.sub('', full_content).strip()
+
+                for _m in _matches:
+                    try:
+                        evt = json.loads(_m.strip())
+                        if not evt.get('event_date') or not session_id_str:
+                            continue
+                        _sess = (await db.execute(
+                            select(Session).where(Session.id == UUID(session_id_str))
+                        )).scalar_one_or_none()
+                        if not _sess or _sess.tenant_id != teacher.tenant_id:
+                            continue
+                        _ev_time = _time.fromisoformat(evt['event_time']) if evt.get('event_time') else None
+                        _new_ev = _CalEvent(
+                            session_id=UUID(session_id_str),
+                            tenant_id=teacher.tenant_id,
+                            created_by_teacher_id=teacher.id,
+                            title=str(evt.get('title', 'Evento'))[:200],
+                            description=evt.get('description'),
+                            event_date=_date.fromisoformat(evt['event_date']),
+                            event_time=_ev_time,
+                            color=str(evt.get('color', '#6366f1')),
+                        )
+                        db.add(_new_ev)
+                        await db.flush()
+                        await db.commit()
+                        yield f"data: {json.dumps({'type': 'calendar_event_created', 'event': {'id': str(_new_ev.id), 'title': _new_ev.title, 'event_date': str(_new_ev.event_date), 'event_time': str(_new_ev.event_time) if _new_ev.event_time else None, 'color': _new_ev.color}})}\n\n"
+                    except Exception as _exc:
+                        logging.warning(f"Failed to create calendar event from chat: {_exc}")
+
+                yield f"data: {await build_done_event(clean_content, 'teacher_chat_stream_default')}\n\n"
+                return
+
+            # Step 1: Classify intent (only for non-default modes)
             yield f"data: {json.dumps({'type': 'status', 'message': '🧠 Analisi della richiesta...'})}\n\n"
 
             intent_result = await classify_intent(content, history)
@@ -1429,28 +2047,28 @@ async def teacher_chat_stream(
                 context, _ = await load_teacher_context(db, teacher)
                 from app.services.teacher_agent import generate_with_analytics
                 result = await generate_with_analytics(messages, context, provider, model)
-                yield f"data: {json.dumps({'type': 'done', 'content': result})}\n\n"
+                yield f"data: {await build_done_event(result, 'teacher_chat_stream_web_fallback')}\n\n"
 
             elif intent_result.intent == TeacherIntent.QUIZ_GENERATION:
                 yield f"data: {json.dumps({'type': 'status', 'message': '❓ Modalità: Generazione Quiz'})}\n\n"
                 yield f"data: {json.dumps({'type': 'status', 'message': '⏳ Creazione domande...'})}\n\n"
 
                 result = await generate_quiz_with_tools(messages, provider, model)
-                yield f"data: {json.dumps({'type': 'done', 'content': result})}\n\n"
+                yield f"data: {await build_done_event(result, 'teacher_chat_stream_quiz')}\n\n"
 
             elif intent_result.intent == TeacherIntent.EXERCISE_GENERATION:
                 yield f"data: {json.dumps({'type': 'status', 'message': '💪 Modalità: Generazione Esercizio'})}\n\n"
                 yield f"data: {json.dumps({'type': 'status', 'message': '⏳ Creazione esercizio...'})}\n\n"
 
                 result = await generate_exercise_with_tools(messages, provider, model)
-                yield f"data: {json.dumps({'type': 'done', 'content': result})}\n\n"
+                yield f"data: {await build_done_event(result, 'teacher_chat_stream_exercise')}\n\n"
 
             elif intent_result.intent == TeacherIntent.DATASET_GENERATION:
                 yield f"data: {json.dumps({'type': 'status', 'message': '📊 Modalità: Generazione Dataset'})}\n\n"
                 yield f"data: {json.dumps({'type': 'status', 'message': '⏳ Creazione dataset CSV...'})}\n\n"
 
                 result = await generate_dataset(messages, provider, model)
-                yield f"data: {json.dumps({'type': 'done', 'content': result})}\n\n"
+                yield f"data: {await build_done_event(result, 'teacher_chat_stream_dataset')}\n\n"
 
             elif intent_result.intent == TeacherIntent.REPORT_GENERATION:
                 yield f"data: {json.dumps({'type': 'status', 'message': '📊 Modalità: Generazione Report'})}\n\n"
@@ -1462,14 +2080,14 @@ async def teacher_chat_stream(
                     full_context=full_ctx, messages=messages,
                     provider=provider, model=model,
                 )
-                yield f"data: {json.dumps({'type': 'done', 'content': result})}\n\n"
+                yield f"data: {await build_done_event(result, 'teacher_chat_stream_report')}\n\n"
 
             elif intent_result.intent == TeacherIntent.ACTION_MENU:
                 yield f"data: {json.dumps({'type': 'status', 'message': '📋 Apertura Menu Azioni'})}\n\n"
                 
                 from app.services.teacher_agent import generate_action_menu_widget
                 result = await generate_action_menu_widget()
-                yield f"data: {json.dumps({'type': 'done', 'content': result})}\n\n"
+                yield f"data: {await build_done_event(result, 'teacher_chat_stream_action_menu')}\n\n"
 
             else:
                 yield f"data: {json.dumps({'type': 'status', 'message': '📊 Modalità: Analytics'})}\n\n"
@@ -1477,7 +2095,7 @@ async def teacher_chat_stream(
 
                 context, _ = await load_teacher_context(db, teacher)
                 result = await generate_with_analytics(messages, context, provider, model)
-                yield f"data: {json.dumps({'type': 'done', 'content': result})}\n\n"
+                yield f"data: {await build_done_event(result, 'teacher_chat_stream_analytics')}\n\n"
 
         except Exception as e:
             logger.error(f"Streaming error: {e}")
@@ -1526,12 +2144,22 @@ async def teacher_chat_with_files(
             continue
 
         try:
+            fn_lower = file_name.lower()
+            is_spreadsheet = (
+                fn_lower.endswith((".xlsx", ".xls", ".csv"))
+                or "spreadsheet" in file_type
+                or "excel" in file_type
+                or file_type in ("text/csv", "application/csv")
+            )
             analysis = await document_processor.process(
                 file_bytes=file_data,
                 filename=file_name,
                 mime_type=file_type,
-                llm_service=llm_service,
-                analyze_visuals=True,
+                # Skip LLM-based summarisation for spreadsheets — the raw
+                # structured extract is already informative and the extra LLM
+                # call makes the request too slow / too large.
+                llm_service=None if is_spreadsheet else llm_service,
+                analyze_visuals=not is_spreadsheet,
             )
             file_extracts.append(analysis.structured_extract)
             logger.info(
@@ -1575,6 +2203,29 @@ async def teacher_chat_with_files(
             model=model,
             temperature=temperature,
             max_tokens=1500,
+        )
+
+        cost = credit_service.calculate_cost_for_model(
+            llm_response.provider,
+            llm_response.model,
+            llm_response.prompt_tokens,
+            llm_response.completion_tokens,
+        )
+        await safe_track_usage(
+            db, teacher.tenant_id, llm_response.provider, llm_response.model, cost,
+            enrich_usage_with_environmental_impact(
+                {
+                    "type": "teacher_chat_with_files",
+                    "profile": profile_key,
+                    "file_count": len(files),
+                    "prompt_tokens": llm_response.prompt_tokens,
+                    "completion_tokens": llm_response.completion_tokens,
+                },
+                provider=llm_response.provider,
+                model=llm_response.model,
+            ),
+            teacher_id=teacher.id,
+            context="teacher_chat_with_files",
         )
 
         return {

@@ -126,7 +126,21 @@ class DocumentProcessor:
             text = self._extract_pptx(file_bytes, steps)
             return text, 1, []
 
-        if mime_type.startswith("text/") or fn_lower.endswith((".txt", ".md", ".csv")):
+        if (
+            mime_type in (
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                "application/vnd.ms-excel",
+            )
+            or fn_lower.endswith((".xlsx", ".xls"))
+        ):
+            text = self._extract_xlsx(file_bytes, steps)
+            return text, 1, []
+
+        if fn_lower.endswith(".csv") or mime_type in ("text/csv", "application/csv"):
+            text = self._extract_csv(file_bytes, steps)
+            return text, 1, []
+
+        if mime_type.startswith("text/") or fn_lower.endswith((".txt", ".md")):
             try:
                 text = file_bytes.decode("utf-8", errors="ignore")
             except Exception:
@@ -141,6 +155,105 @@ class DocumentProcessor:
 
         steps.append(f"Tipo file non supportato: {mime_type}")
         return "", 0, []
+
+    def _extract_csv(self, file_bytes: bytes, steps: list) -> str:
+        """Parse CSV and convert to readable markdown table + stats."""
+        try:
+            import pandas as pd
+            import io as _io
+            # Try common encodings
+            for enc in ("utf-8", "latin-1", "cp1252"):
+                try:
+                    df = pd.read_csv(_io.BytesIO(file_bytes), encoding=enc)
+                    break
+                except Exception:
+                    continue
+            else:
+                text = file_bytes.decode("utf-8", errors="ignore")[:MAX_TEXT_CHARS]
+                steps.append("CSV letto come testo grezzo (encoding fallback)")
+                return text
+
+            text = self._dataframe_to_text(df, steps, "CSV")
+            return text
+        except Exception as e:
+            steps.append(f"Errore lettura CSV ({e}), fallback testo grezzo")
+            try:
+                return file_bytes.decode("utf-8", errors="ignore")[:MAX_TEXT_CHARS]
+            except Exception:
+                return ""
+
+    def _extract_xlsx(self, file_bytes: bytes, steps: list) -> str:
+        """Parse XLSX and convert all sheets to readable text."""
+        try:
+            import pandas as pd
+            import io as _io
+            xl = pd.ExcelFile(_io.BytesIO(file_bytes))
+            sheet_parts: list[str] = []
+            total_chars = 0
+            for sheet_name in xl.sheet_names:
+                df = xl.parse(sheet_name)
+                sheet_text = f"## Foglio: {sheet_name}\n" + self._dataframe_to_text(df, steps, sheet_name)
+                sheet_parts.append(sheet_text)
+                total_chars += len(sheet_text)
+                if total_chars > MAX_TEXT_CHARS:
+                    sheet_parts.append("[...ulteriori fogli troncati]")
+                    break
+            text = "\n\n".join(sheet_parts)[:MAX_TEXT_CHARS]
+            steps.append(f"XLSX estratto: {len(xl.sheet_names)} fogli")
+            return text
+        except Exception as e:
+            steps.append(f"Errore lettura XLSX: {e}")
+            return ""
+
+    def _dataframe_to_text(self, df, steps: list, label: str) -> str:
+        """Convert a DataFrame to a readable text representation for RAG."""
+        try:
+            rows, cols = df.shape
+            col_names = list(df.columns)
+
+            lines: list[str] = []
+            lines.append(f"Tabella: {rows} righe × {cols} colonne")
+            lines.append(f"Colonne: {', '.join(str(c) for c in col_names)}")
+
+            # Numeric statistics for numeric columns
+            num_cols = df.select_dtypes(include="number").columns.tolist()
+            if num_cols:
+                lines.append("\n### Statistiche colonne numeriche")
+                for col in num_cols[:10]:
+                    s = df[col].dropna()
+                    if len(s):
+                        lines.append(
+                            f"- {col}: min={s.min():.4g}, max={s.max():.4g}, "
+                            f"media={s.mean():.4g}, mediana={s.median():.4g}, "
+                            f"tot={s.sum():.4g} ({len(s)} valori)"
+                        )
+
+            # Value counts for categorical columns
+            cat_cols = df.select_dtypes(exclude="number").columns.tolist()
+            if cat_cols:
+                lines.append("\n### Valori categorici principali")
+                for col in cat_cols[:5]:
+                    vc = df[col].value_counts().head(10)
+                    lines.append(f"- {col}: " + ", ".join(f"{v} ({c})" for v, c in vc.items()))
+
+            # Full table as markdown (limited rows)
+            lines.append("\n### Dati tabella")
+            max_rows = min(rows, 200)
+            try:
+                table_md = df.head(max_rows).to_markdown(index=False)
+                lines.append(table_md)
+                if rows > max_rows:
+                    lines.append(f"\n[...{rows - max_rows} righe aggiuntive non mostrate]")
+            except Exception:
+                # Fallback: CSV repr
+                lines.append(df.head(max_rows).to_csv(index=False))
+
+            text = "\n".join(lines)
+            steps.append(f"{label} convertito: {rows} righe, {cols} colonne")
+            return text[:MAX_TEXT_CHARS]
+        except Exception as e:
+            steps.append(f"Errore conversione dataframe ({e})")
+            return str(df)[:MAX_TEXT_CHARS]
 
     async def _extract_pdf(self, file_bytes: bytes, steps: list) -> tuple:
         try:

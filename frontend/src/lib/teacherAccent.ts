@@ -1,4 +1,4 @@
-export type TeacherAccentId = 'pink' | 'slate' | 'black' | 'indigo' | 'purple'
+export type TeacherAccentId = 'cyan' | 'orange' | 'black' | 'red'
 
 export interface TeacherAccentTheme {
   id: TeacherAccentId
@@ -11,58 +11,48 @@ export interface TeacherAccentTheme {
   border: string
 }
 
-export const DEFAULT_TEACHER_ACCENT: TeacherAccentId = 'slate'
+export const DEFAULT_TEACHER_ACCENT: TeacherAccentId = 'cyan'
 
 export const TEACHER_ACCENTS: Record<TeacherAccentId, TeacherAccentTheme> = {
-  pink: {
-    id: 'pink',
-    label: 'Brand Pink',
-    accent: '#e85c8d', // Logo Pink
-    text: '#c13d6a',
-    soft: '#fff5f8',
-    softMid: '#ffe4ee',
-    softStrong: '#ffc9db',
-    border: '#f9a8d4',
+  cyan: {
+    id: 'cyan',
+    label: 'Soft Cyan',
+    accent: '#22b8cf',
+    text: '#0f6f82',
+    soft: '#f4fcfd',
+    softMid: '#ddf6f8',
+    softStrong: '#c5edf1',
+    border: '#9ad9e1',
   },
-  slate: {
-    id: 'slate',
-    label: 'Brand Slate',
-    accent: '#2d2d2d', // Logo Slate
-    text: '#1a1a1a',
-    soft: '#f8f8f8',
-    softMid: '#eeeeee',
-    softStrong: '#e0e0e0',
-    border: '#cccccc',
+  orange: {
+    id: 'orange',
+    label: 'Soft Apricot',
+    accent: '#f19b61',
+    text: '#a85a26',
+    soft: '#fff9f4',
+    softMid: '#fde8d6',
+    softStrong: '#f8d4b8',
+    border: '#efc2a0',
   },
   black: {
     id: 'black',
-    label: 'High Contrast',
-    accent: '#000000', // Black
-    text: '#000000',
-    soft: '#f3f4f6',
-    softMid: '#e5e7eb',
-    softStrong: '#d1d5db',
-    border: '#9ca3af',
+    label: 'Graphite Mist',
+    accent: '#475569',
+    text: '#334155',
+    soft: '#f7f8fb',
+    softMid: '#eaedf3',
+    softStrong: '#d9dfe9',
+    border: '#c3cad7',
   },
-  indigo: {
-    id: 'indigo',
-    label: 'Professional Indigo',
-    accent: '#6366f1',
-    text: '#4f46e5',
-    soft: '#eef2ff',
-    softMid: '#e0e7ff',
-    softStrong: '#c7d2fe',
-    border: '#a5b4fc',
-  },
-  purple: {
-    id: 'purple',
-    label: 'Dark Purple',
-    accent: '#7c3aed',
-    text: '#6d28d9',
-    soft: '#f5f3ff',
-    softMid: '#ede9fe',
-    softStrong: '#ddd6fe',
-    border: '#c4b5fd',
+  red: {
+    id: 'red',
+    label: 'Soft Rose',
+    accent: '#e27c92',
+    text: '#a94f66',
+    soft: '#fff7f8',
+    softMid: '#fde3e8',
+    softStrong: '#f8cdd7',
+    border: '#ebb4c1',
   },
 }
 

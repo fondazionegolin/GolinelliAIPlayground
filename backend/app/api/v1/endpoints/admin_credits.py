@@ -40,6 +40,54 @@ def _tenant_template_args(tenant: Tenant | None, template_key: str) -> dict:
         "text_template": activation.get("text"),
     }
 
+
+async def _create_activation_token_for_user(db: AsyncSession, user: User) -> tuple[ActivationToken, str]:
+    old_tokens = (await db.execute(
+        select(ActivationToken).where(
+            ActivationToken.user_id == user.id,
+            ActivationToken.is_used == False,  # noqa: E712
+        )
+    )).scalars().all()
+    for tok in old_tokens:
+        tok.is_used = True
+        tok.used_at = datetime.utcnow()
+
+    temp_password = secrets.token_urlsafe(12)
+    activation_token = secrets.token_urlsafe(48)
+    activation = ActivationToken(
+        user_id=user.id,
+        token=activation_token,
+        temporary_password=temp_password,
+        expires_at=datetime.utcnow() + timedelta(hours=72),
+    )
+    user.password_hash = get_password_hash(temp_password)
+    db.add(activation)
+    await db.flush()
+    return activation, activation_token
+
+
+async def _send_platform_invitation_email(
+    *,
+    db: AsyncSession,
+    request: Request,
+    admin: User,
+    invitation: PlatformInvitation,
+    activation_token: str,
+) -> None:
+    tenant = (await db.execute(select(Tenant).where(Tenant.id == admin.tenant_id))).scalar_one_or_none()
+    templates = _tenant_template_args(tenant, "teacher_invitation")
+    activation_link = f"{resolve_frontend_url(request.headers.get('origin'))}/activate/{activation_token}"
+    await email_service.send_invitation_email(
+        to_email=invitation.email,
+        first_name=invitation.first_name or "Docente",
+        link=activation_link,
+        custom_message=invitation.custom_message,
+        group_tag=invitation.group_tag,
+        subject_template=templates.get("subject_template"),
+        html_template=templates.get("html_template"),
+        text_template=templates.get("text_template"),
+    )
+
 # ==================== ANALYTICS ====================
 
 @router.get("/stats", response_model=ConsumptionStats)
@@ -244,28 +292,27 @@ async def invite_teacher(
     admin: Annotated[User, Depends(get_current_admin)],
 ):
     """Invite a new teacher via email"""
-    # Check if user already exists
-    stmt = select(User).where(User.email == invitation.email).order_by(desc(User.created_at))
+    email = invitation.email.strip().lower()
+
+    # Check if user already exists — use .limit(1) to avoid MultipleResultsFound
+    stmt = select(User).where(User.email == email).order_by(desc(User.created_at)).limit(1)
     existing_user = (await db.execute(stmt)).scalar_one_or_none()
-    if existing_user and existing_user.is_active:
-        raise HTTPException(status_code=400, detail="User with this email already exists")
-    
-    # Check if invitation already exists — if the user was deleted/deactivated, cancel the old invite and allow re-invite
-    stmt = select(PlatformInvitation).where(PlatformInvitation.email == invitation.email, PlatformInvitation.status == "pending")
-    existing_inv = (await db.execute(stmt)).scalar_one_or_none()
-    if existing_inv:
-        # User was deleted/deactivated (we already raised above if still active) — delete the stale invite
-        await db.delete(existing_inv)
-        await db.flush()
-    
-    token = secrets.token_urlsafe(32)
-    temp_password = secrets.token_urlsafe(12)
-    activation_token = secrets.token_urlsafe(48)
+    # Any active user can be reinvited; their role will be set/confirmed to TEACHER
+    can_reinvite_existing_user = bool(existing_user and existing_user.is_active)
+
+    existing_pending_invitations = (await db.execute(
+        select(PlatformInvitation).where(
+            PlatformInvitation.email == email,
+            PlatformInvitation.status == InvitationStatus.PENDING.value,
+        )
+    )).scalars().all()
+    for existing_inv in existing_pending_invitations:
+        existing_inv.status = InvitationStatus.EXPIRED.value
+        existing_inv.responded_at = datetime.utcnow()
 
     if existing_user and not existing_user.is_active:
         user = existing_user
         user.tenant_id = admin.tenant_id
-        user.password_hash = get_password_hash(temp_password)
         user.role = UserRole.TEACHER
         user.first_name = invitation.first_name
         user.last_name = invitation.last_name
@@ -275,11 +322,20 @@ async def invite_teacher(
         user.deactivated_at = None
         user.deactivated_by_admin_id = None
         await db.flush()
+    elif can_reinvite_existing_user and existing_user:
+        user = existing_user
+        user.tenant_id = admin.tenant_id
+        user.role = UserRole.TEACHER
+        user.first_name = invitation.first_name
+        user.last_name = invitation.last_name
+        user.institution = invitation.school
+        user.is_verified = True
+        await db.flush()
     else:
         user = User(
             tenant_id=admin.tenant_id,
-            email=invitation.email,
-            password_hash=get_password_hash(temp_password),
+            email=email,
+            password_hash="",
             role=UserRole.TEACHER,
             first_name=invitation.first_name,
             last_name=invitation.last_name,
@@ -289,17 +345,11 @@ async def invite_teacher(
         db.add(user)
         await db.flush()
 
-    activation = ActivationToken(
-        user_id=user.id,
-        token=activation_token,
-        temporary_password=temp_password,
-        expires_at=datetime.utcnow() + timedelta(hours=72),
-    )
-    db.add(activation)
+    _activation, activation_token = await _create_activation_token_for_user(db, user)
 
     inv = PlatformInvitation(
         tenant_id=admin.tenant_id,
-        email=invitation.email,
+        email=email,
         first_name=invitation.first_name,
         last_name=invitation.last_name,
         school=invitation.school,
@@ -315,21 +365,122 @@ async def invite_teacher(
     await db.commit()
     await db.refresh(inv)
 
-    tenant = (await db.execute(select(Tenant).where(Tenant.id == admin.tenant_id))).scalar_one_or_none()
-    templates = _tenant_template_args(tenant, "teacher_invitation")
-    activation_link = f"{resolve_frontend_url(request.headers.get('origin'))}/activate/{activation_token}"
-    await email_service.send_invitation_email(
-        to_email=invitation.email,
-        first_name=invitation.first_name or "Docente",
-        link=activation_link,
-        custom_message=invitation.custom_message,
-        group_tag=invitation.group_tag,
-        subject_template=templates.get("subject_template"),
-        html_template=templates.get("html_template"),
-        text_template=templates.get("text_template"),
+    await _send_platform_invitation_email(
+        db=db,
+        request=request,
+        admin=admin,
+        invitation=inv,
+        activation_token=activation_token,
     )
 
     return inv
+
+
+@router.post("/invitations/{invitation_id}/resend", response_model=PlatformInvitationResponse)
+async def resend_teacher_invitation(
+    invitation_id: uuid.UUID,
+    request: Request,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    admin: Annotated[User, Depends(get_current_admin)],
+):
+    invitation = (await db.execute(
+        select(PlatformInvitation).where(
+            PlatformInvitation.id == invitation_id,
+            PlatformInvitation.tenant_id == admin.tenant_id,
+        )
+    )).scalar_one_or_none()
+    if not invitation:
+        raise HTTPException(status_code=404, detail="Invitation not found")
+    user = (await db.execute(
+        select(User).where(User.email == invitation.email).order_by(desc(User.created_at)).limit(1)
+    )).scalar_one_or_none()
+    if user and not user.is_active:
+        user.is_active = True
+        user.deactivated_at = None
+        user.deactivated_by_admin_id = None
+    if user:
+        user.tenant_id = admin.tenant_id
+        user.role = UserRole.TEACHER
+        user.first_name = invitation.first_name
+        user.last_name = invitation.last_name
+        user.institution = invitation.school
+        user.is_verified = True
+        await db.flush()
+    else:
+        user = User(
+            tenant_id=admin.tenant_id,
+            email=invitation.email,
+            password_hash="",
+            role=UserRole.TEACHER,
+            first_name=invitation.first_name,
+            last_name=invitation.last_name,
+            institution=invitation.school,
+            is_verified=True,
+        )
+        db.add(user)
+        await db.flush()
+
+    _activation, activation_token = await _create_activation_token_for_user(db, user)
+
+    invitation.status = InvitationStatus.PENDING.value
+    invitation.responded_at = None
+    invitation.expires_at = datetime.utcnow() + timedelta(days=7)
+    invitation.token = secrets.token_urlsafe(32)
+    invitation.invited_by_id = admin.id
+
+    await db.commit()
+    await db.refresh(invitation)
+
+    await _send_platform_invitation_email(
+        db=db,
+        request=request,
+        admin=admin,
+        invitation=invitation,
+        activation_token=activation_token,
+    )
+
+    return invitation
+
+
+@router.delete("/invitations/{invitation_id}")
+async def delete_teacher_invitation(
+    invitation_id: uuid.UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    admin: Annotated[User, Depends(get_current_admin)],
+):
+    invitation = (await db.execute(
+        select(PlatformInvitation).where(
+            PlatformInvitation.id == invitation_id,
+            PlatformInvitation.tenant_id == admin.tenant_id,
+        )
+    )).scalar_one_or_none()
+    if not invitation:
+        raise HTTPException(status_code=404, detail="Invitation not found")
+
+    user = (await db.execute(
+        select(User).where(User.email == invitation.email).order_by(desc(User.created_at)).limit(1)
+    )).scalar_one_or_none()
+
+    if user and not user.last_login_at:
+        # Never logged in → safe to deactivate the account and cancel tokens
+        user.is_active = False
+        user.deactivated_at = datetime.utcnow()
+        user.deactivated_by_admin_id = admin.id
+        old_tokens = (await db.execute(
+            select(ActivationToken).where(
+                ActivationToken.user_id == user.id,
+                ActivationToken.is_used == False,  # noqa: E712
+            )
+        )).scalars().all()
+        for tok in old_tokens:
+            tok.is_used = True
+            tok.used_at = datetime.utcnow()
+    # If user has logged in, only remove the invitation record — leave the account intact.
+
+    await db.delete(invitation)
+    await db.commit()
+
+    return {"message": f"Invito rimosso per {invitation.email}"}
 
 @router.post("/invitations/bulk", response_model=List[PlatformInvitationResponse])
 async def bulk_invite_teachers(
@@ -351,7 +502,7 @@ async def bulk_invite_teachers(
             continue
             
         # Basic check
-        stmt = select(User).where(User.email == email).order_by(desc(User.created_at))
+        stmt = select(User).where(User.email == email).order_by(desc(User.created_at)).limit(1)
         existing_user = (await db.execute(stmt)).scalar_one_or_none()
         if existing_user and existing_user.is_active:
             continue
@@ -454,7 +605,7 @@ async def bulk_invite_teachers_json(
     for item in payload.teachers:
         email = str(item.email).lower().strip()
 
-        stmt = select(User).where(User.email == email).order_by(desc(User.created_at))
+        stmt = select(User).where(User.email == email).order_by(desc(User.created_at)).limit(1)
         existing_user = (await db.execute(stmt)).scalar_one_or_none()
         if existing_user and existing_user.is_active:
             continue
@@ -550,5 +701,33 @@ async def list_invitations(
     admin: Annotated[User, Depends(get_current_admin)],
 ):
     stmt = select(PlatformInvitation).where(PlatformInvitation.tenant_id == admin.tenant_id).order_by(desc(PlatformInvitation.created_at))
-    result = await db.execute(stmt)
-    return result.scalars().all()
+    invitations = (await db.execute(stmt)).scalars().all()
+
+    changed = False
+    from datetime import timezone as _tz
+    now = datetime.now(_tz.utc)
+    for invitation in invitations:
+        if invitation.status != InvitationStatus.PENDING.value:
+            continue
+
+        user = (await db.execute(
+            select(User).where(func.lower(User.email) == invitation.email.lower()).order_by(desc(User.created_at)).limit(1)
+        )).scalar_one_or_none()
+
+        if user and user.last_login_at:
+            invitation.status = InvitationStatus.ACCEPTED.value
+            invitation.responded_at = user.last_login_at
+            changed = True
+            continue
+
+        if invitation.expires_at and invitation.expires_at < now:
+            invitation.status = InvitationStatus.EXPIRED.value
+            invitation.responded_at = invitation.responded_at or invitation.expires_at
+            changed = True
+
+    if changed:
+        await db.commit()
+        for invitation in invitations:
+            await db.refresh(invitation)
+
+    return invitations

@@ -11,6 +11,9 @@ const TeacherMLLabPage   = lazy(() => import('./TeacherMLLabPage'))
 const UDAListPage        = lazy(() => import('./UDAListPage'))
 const UDACreatorPage     = lazy(() => import('./UDACreatorPage'))
 const TeacherDemoPage    = lazy(() => import('./TeacherDemoPage'))
+const NotebookListPage   = lazy(() => import('../notebook/NotebookListPage'))
+const NotebookPage       = lazy(() => import('../notebook/NotebookPage'))
+const DesktopPage        = lazy(() => import('../shared/DesktopPage'))
 // TeacherSupportChat is the index route — load eagerly for fast first paint
 import TeacherSupportChat from './TeacherSupportChat'
 import { TeacherNavbar } from '@/components/TeacherNavbar'
@@ -18,10 +21,12 @@ import ChatSidebar from '@/components/ChatSidebar'
 import { teacherApi } from '@/lib/api'
 import { AppBackground } from '@/components/ui/AppBackground'
 import { getTeacherAccentTheme, type TeacherAccentId } from '@/lib/teacherAccent'
+import { type StudentAccentId } from '@/lib/studentAccent'
 import { getAppBackgroundGradient } from '@/lib/theme'
 import { useMobile } from '@/hooks/useMobile'
 import { useTeacherProfile } from '@/hooks/useTeacherProfile'
 import { FloatingHelper } from '@/components/FloatingHelper'
+import WhatsNewModal, { shouldShowWhatsNew } from '@/components/WhatsNewModal'
 
 const CHATBAR_AUTO_HIDE_BREAKPOINT = 1280
 
@@ -41,6 +46,7 @@ export default function TeacherDashboard() {
   const [teacherProfile, setTeacherProfile] = useState<{ id: string, name: string, uiAccent?: TeacherAccentId } | null>(null)
   const [sidebarWidth, setSidebarWidth] = useState(380)
   const [showSidebar, setShowSidebar] = useState(true)
+  const [showWhatsNew, setShowWhatsNew] = useState(() => shouldShowWhatsNew())
 
   const getPersistedSession = (): { id: string, name: string, className: string } | null => {
     try {
@@ -228,7 +234,7 @@ export default function TeacherDashboard() {
           </div>
         )}
 
-        <main className="flex-1 overflow-y-auto relative">
+        <main className={`flex-1 relative ${location.pathname.includes('/notebooks/notebook/') ? 'overflow-hidden flex flex-col' : 'overflow-y-auto'}`}>
           <Suspense fallback={<div className="flex items-center justify-center h-full min-h-[40vh] text-sm text-slate-400">Caricamento...</div>}>
             <Routes>
               <Route index element={<TeacherSupportChat />} />
@@ -240,6 +246,16 @@ export default function TeacherDashboard() {
               <Route path="classes/:classId/uda" element={<UDAListPage />} />
               <Route path="classes/:classId/uda/:udaId" element={<UDACreatorPage />} />
               <Route path="demo" element={<TeacherDemoPage />} />
+              <Route path="notebooks" element={<NotebookListPage />} />
+              <Route path="notebooks/notebook/:notebookId" element={<NotebookPage />} />
+              <Route path="desktop" element={
+                <DesktopPage
+                  sessionId={activeSessionId ?? undefined}
+                  sessionName={currentSession?.name}
+                  userType="teacher"
+                  accentColor={teacherTheme.accent}
+                />
+              } />
             </Routes>
           </Suspense>
         </main>
@@ -262,6 +278,7 @@ export default function TeacherDashboard() {
                 onWidthChange={setSidebarWidth}
                 initialWidth={sidebarWidth}
                 className="h-full w-full"
+                studentAccent={teacherProfile.uiAccent as StudentAccentId}
               />
             ) : (
               <div className="h-full flex flex-col items-center justify-center p-8 text-center">
@@ -303,6 +320,7 @@ export default function TeacherDashboard() {
         </nav>
       )}
       <FloatingHelper />
+      {showWhatsNew && <WhatsNewModal onClose={() => setShowWhatsNew(false)} />}
     </AppBackground>
   )
 }

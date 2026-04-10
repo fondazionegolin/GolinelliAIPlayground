@@ -1,5 +1,6 @@
 /* Base Font - Lexend */
 @import url('https://fonts.googleapis.com/css2?family=Lexend:wght@300;400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Space+Mono:wght@400;700&family=Courier+Prime:wght@400;700&family=Victor+Mono:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -109,4 +110,43 @@
   0% { background-position: 0% 50% }
   50% { background-position: 100% 50% }
   100% { background-position: 0% 50% }
+}
+
+.animate-gentle-bounce {
+  animation: gentle-bounce 2.8s ease-in-out infinite;
+}
+
+@keyframes gentle-bounce {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-7px); }
+}
+
+/* ── Desktop widget resize handles ───────────────────────────────────────── */
+.react-grid-item .react-resizable-handle {
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+.react-grid-item:hover .react-resizable-handle {
+  opacity: 1;
+}
+.react-grid-item .react-resizable-handle::after {
+  border-color: rgba(99, 102, 241, 0.45);
+  width: 7px;
+  height: 7px;
+  transition: border-color 0.15s ease, width 0.15s ease, height 0.15s ease;
+}
+.react-grid-item .react-resizable-handle:hover::after {
+  border-color: rgba(99, 102, 241, 0.95);
+  width: 9px;
+  height: 9px;
+}
+
+/* ── CodeMirror 6 selection highlight ───────────────────────────────────── */
+/* Override CM6 base theme which only styles selection when focused.         */
+/* Match the exact DOM path CM6 uses so specificity beats the base rule.     */
+.cm-editor .cm-scroller .cm-selectionLayer .cm-selectionBackground {
+  background: rgba(250, 204, 21, 0.55) !important;
+}
+.cm-editor.cm-focused .cm-scroller .cm-selectionLayer .cm-selectionBackground {
+  background: rgba(250, 204, 21, 0.75) !important;
 }

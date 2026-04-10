@@ -136,14 +136,14 @@ class RAGService:
                 d.title as document_title,
                 c.text,
                 c.page,
-                1 - (e.embedding <=> :embedding::vector) as score
+                1 - (e.embedding <=> CAST(:embedding AS vector)) as score
             FROM rag_chunks c
             JOIN rag_embeddings e ON e.chunk_id = c.id
             JOIN rag_documents d ON d.id = c.document_id
             WHERE d.tenant_id = :tenant_id
             AND d.status = 'ready'
             AND (d.session_id = :session_id OR d.scope = 'CLASS')
-            ORDER BY e.embedding <=> :embedding::vector
+            ORDER BY e.embedding <=> CAST(:embedding AS vector)
             LIMIT :top_k
         """)
         
@@ -171,6 +171,57 @@ class RAGService:
             for row in rows
         ]
     
+    async def search_teacherbot_kb(
+        self,
+        db: AsyncSession,
+        query: str,
+        teacherbot_id: UUID,
+        tenant_id: UUID,
+        top_k: int = 5,
+    ) -> list[ChunkResult]:
+        """Search the knowledge base documents attached to a specific teacherbot."""
+        embeddings = await llm_service.compute_embeddings([query])
+        query_embedding = embeddings[0]
+        embedding_str = "[" + ",".join(map(str, query_embedding)) + "]"
+
+        sql = text("""
+            SELECT
+                c.id as chunk_id,
+                c.document_id,
+                d.title as document_title,
+                c.text,
+                c.page,
+                1 - (e.embedding <=> CAST(:embedding AS vector)) as score
+            FROM rag_chunks c
+            JOIN rag_embeddings e ON e.chunk_id = c.id
+            JOIN rag_documents d ON d.id = c.document_id
+            WHERE d.teacherbot_id = :teacherbot_id
+            AND d.tenant_id = :tenant_id
+            AND d.status = 'ready'
+            ORDER BY e.embedding <=> CAST(:embedding AS vector)
+            LIMIT :top_k
+        """)
+
+        result = await db.execute(sql, {
+            "embedding": embedding_str,
+            "teacherbot_id": str(teacherbot_id),
+            "tenant_id": str(tenant_id),
+            "top_k": top_k,
+        })
+
+        rows = result.fetchall()
+        return [
+            ChunkResult(
+                chunk_id=row.chunk_id,
+                document_id=row.document_id,
+                document_title=row.document_title,
+                text=row.text,
+                page=row.page,
+                score=row.score,
+            )
+            for row in rows
+        ]
+
     async def create_citations(
         self,
         db: AsyncSession,
