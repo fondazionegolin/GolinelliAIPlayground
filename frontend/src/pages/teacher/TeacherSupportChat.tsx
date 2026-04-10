@@ -8,7 +8,7 @@ import {
 } from 'lucide-react'
 import { llmApi, teacherApi } from '@/lib/api'
 import { useToast } from '@/components/ui/use-toast'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
@@ -25,6 +25,7 @@ import { useTeacherProfile } from '@/hooks/useTeacherProfile'
 import { VoiceRecorder } from '@/components/VoiceRecorder'
 import { useTranslation } from 'react-i18next'
 import EnvironmentalImpactPill from '@/components/chat/EnvironmentalImpactPill'
+import type { TokenUsageJson } from '@/lib/environmentalImpact'
 
 // Constants
 const FALLBACK_MODELS = [
@@ -77,6 +78,9 @@ interface Message {
   role: 'user' | 'assistant' | 'system'
   content: string
   timestamp: Date
+  provider?: string
+  model?: string
+  token_usage_json?: TokenUsageJson | null
 }
 
 interface Conversation {
@@ -97,6 +101,7 @@ interface AttachedFile {
 
 export default function TeacherSupportChat() {
   const { t } = useTranslation()
+  const queryClient = useQueryClient()
   const { toast } = useToast()
   const { isMobile } = useMobile()
   const [activeTab, setActiveTab] = useState<'chat' | 'teacherbots'>('chat')
@@ -494,7 +499,10 @@ export default function TeacherSupportChat() {
             id: m.id,
             role: m.role,
             content: m.content,
-            timestamp: new Date(m.created_at)
+            timestamp: new Date(m.created_at),
+            provider: m.provider,
+            model: m.model,
+            token_usage_json: m.token_usage_json,
           }))
           setMessages(serverMessages)
           setHasMoreMessages(conv.has_more ?? false)
@@ -528,7 +536,10 @@ export default function TeacherSupportChat() {
           id: m.id,
           role: m.role,
           content: m.content,
-          timestamp: new Date(m.created_at)
+          timestamp: new Date(m.created_at),
+          provider: m.provider,
+          model: m.model,
+          token_usage_json: m.token_usage_json,
         }))
         setMessages(prev => [...older, ...prev])
         setHasMoreMessages(conv.has_more ?? false)
@@ -716,7 +727,9 @@ export default function TeacherSupportChat() {
       await teacherApi.addMessage(convId, {
         role: assistantMsg.role,
         content: assistantMsg.content,
-        model: model
+        model: assistantMsg.model || model,
+        provider: assistantMsg.provider,
+        token_usage_json: assistantMsg.token_usage_json ? { ...assistantMsg.token_usage_json } as Record<string, unknown> : undefined,
       })
     } catch (e) {
       console.error('Failed to save messages:', e)
@@ -736,7 +749,7 @@ export default function TeacherSupportChat() {
       onStatus?: (status: string) => void
       onCalendarEvent?: (event: { id: string; title: string; event_date: string; event_time?: string; color: string }) => void
     }
-  ): Promise<string> => {
+  ): Promise<{ content: string; provider?: string; model?: string; token_usage_json?: TokenUsageJson | null }> => {
     const modelInfo = availableModels.find(m => m.id === selectedModel)
     try {
       const response = await fetch('/api/v1/llm/teacher/chat-stream', {
@@ -758,6 +771,9 @@ export default function TeacherSupportChat() {
       const reader = response.body?.getReader()
       const decoder = new TextDecoder()
       let finalContent = ''
+      let finalProvider: string | undefined
+      let finalModel: string | undefined
+      let finalTokenUsage: TokenUsageJson | null = null
 
       if (reader) {
         while (true) {
@@ -782,6 +798,9 @@ export default function TeacherSupportChat() {
             } else if (data.type === 'done') {
               // done carries the clean content (tags stripped)
               if (data.content) finalContent = data.content
+              finalProvider = data.provider
+              finalModel = data.model
+              finalTokenUsage = data.token_usage || null
             } else if (data.type === 'status') {
               opts?.onStatus?.(data.message)
             } else if (data.type === 'calendar_event_created') {
@@ -793,7 +812,12 @@ export default function TeacherSupportChat() {
         }
       }
 
-      return finalContent || 'Nessun risultato dalla generazione.'
+      return {
+        content: finalContent || 'Nessun risultato dalla generazione.',
+        provider: finalProvider,
+        model: finalModel,
+        token_usage_json: finalTokenUsage,
+      }
     } catch (e) {
       throw e
     }
@@ -913,10 +937,14 @@ REGOLE IMPORTANTI:
             id: `resp-${Date.now()}`,
             role: 'assistant',
             content: `**Immagine Generata**\n\n![Generata](${imageUrl})\n\n**Prompt Effettivo:**\n\`${enhancedPrompt}\``,
-            timestamp: new Date()
+            timestamp: new Date(),
+            provider: imageProvider === 'dall-e' || imageProvider === 'gpt-image-1' ? 'openai' : 'flux',
+            model: imageProvider === 'dall-e' ? 'dall-e-3' : imageProvider,
+            token_usage_json: { image_count: 1 },
           }
           // IMPORTANTE: Aggiorna anche messages per mostrare subito l'immagine nella chat
           setMessages(prev => [...prev, assistantMessage])
+          queryClient.invalidateQueries({ queryKey: ['llm-environmental-footprint'] })
 
           // Save to server
           await saveMessageToServer(convId, userMessage, assistantMessage, selectedModel)
@@ -944,17 +972,22 @@ REGOLE IMPORTANTI:
         setStreamingStatus(null)
         setMessages(prev => prev.map(m => m.id === assistantId ? { ...m, content: fullContent } : m))
         const finalMsg: Message = { id: assistantId, role: 'assistant', content: fullContent, timestamp: new Date() }
+        queryClient.invalidateQueries({ queryKey: ['llm-environmental-footprint'] })
         await saveMessageToServer(convId, userMessage, finalMsg, selectedModel)
 
       } else if (agentMode === 'web_search' || agentMode === 'quiz' || agentMode === 'dataset' || agentMode === 'report') {
-        const finalContent = await runStreamingRequest(messageContent, [...messages, userMessage])
+        const streamResult = await runStreamingRequest(messageContent, [...messages, userMessage])
         const assistantMessage: Message = {
           id: `resp-${Date.now()}`,
           role: 'assistant',
-          content: finalContent,
-          timestamp: new Date()
+          content: streamResult.content,
+          timestamp: new Date(),
+          provider: streamResult.provider,
+          model: streamResult.model,
+          token_usage_json: streamResult.token_usage_json,
         }
         setMessages(prev => [...prev, assistantMessage])
+        queryClient.invalidateQueries({ queryKey: ['llm-environmental-footprint'] })
         await saveMessageToServer(convId, userMessage, assistantMessage, 'claude-haiku-4-5-20251001')
       } else {
         // STANDARD CHAT FLOW
@@ -977,9 +1010,16 @@ REGOLE IMPORTANTI:
             id: `resp-${Date.now()}`,
             role: 'assistant',
             content: response.data?.response || 'Errore nella risposta.',
-            timestamp: new Date()
+            timestamp: new Date(),
+            provider: response.data?.provider,
+            model: response.data?.model,
+            token_usage_json: {
+              prompt_tokens: response.data?.prompt_tokens,
+              completion_tokens: response.data?.completion_tokens,
+            },
           }
           setMessages(prev => [...prev, assistantMessage])
+          queryClient.invalidateQueries({ queryKey: ['llm-environmental-footprint'] })
           await saveMessageToServer(convId, userMessage, assistantMessage, selectedModel)
         } else {
           // Text-only: use streaming endpoint for typewriter effect
@@ -992,7 +1032,7 @@ REGOLE IMPORTANTI:
           })()
 
           // history already excludes the current user message — backend appends it via `content`
-          const finalContent = await runStreamingRequest(messageContent, messages, {
+          const streamResult = await runStreamingRequest(messageContent, messages, {
             sessionId: _sessionId,
             onChunk: (chunk) => {
               setMessages(prev => prev.map(m =>
@@ -1014,10 +1054,25 @@ REGOLE IMPORTANTI:
 
           // Always replace with clean final content (strips any CALENDAR_EVENT tags)
           setMessages(prev => prev.map(m =>
-            m.id === assistantId ? { ...m, content: finalContent || m.content } : m
+            m.id === assistantId ? {
+              ...m,
+              content: streamResult.content || m.content,
+              provider: streamResult.provider,
+              model: streamResult.model,
+              token_usage_json: streamResult.token_usage_json,
+            } : m
           ))
+          queryClient.invalidateQueries({ queryKey: ['llm-environmental-footprint'] })
 
-          const finalMsg: Message = { id: assistantId, role: 'assistant', content: finalContent, timestamp: new Date() }
+          const finalMsg: Message = {
+            id: assistantId,
+            role: 'assistant',
+            content: streamResult.content,
+            timestamp: new Date(),
+            provider: streamResult.provider,
+            model: streamResult.model,
+            token_usage_json: streamResult.token_usage_json,
+          }
           await saveMessageToServer(convId, userMessage, finalMsg, selectedModel)
         }
       }
@@ -1838,7 +1893,13 @@ REGOLE IMPORTANTI:
                                 </ReactMarkdown>
                               )}
                               {msg.role === 'assistant' && (
-                                <EnvironmentalImpactPill darkMode={chatBgIsDark} className="mt-3" />
+                                <EnvironmentalImpactPill
+                                  darkMode={chatBgIsDark}
+                                  className="mt-3"
+                                  provider={msg.provider}
+                                  model={msg.model}
+                                  tokenUsage={msg.token_usage_json}
+                                />
                               )}
                             </div>
                             <span className={`text-[10px] px-1 ${chatBgIsDark ? 'text-white/70' : 'text-slate-400'}`}>{msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>

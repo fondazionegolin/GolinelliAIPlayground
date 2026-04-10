@@ -1,14 +1,16 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, BookOpen, Trash2, Loader2, Clock, FileCode2 } from 'lucide-react'
+import { Plus, BookOpen, Trash2, Loader2, Clock, FileCode2, Sparkles } from 'lucide-react'
 import { notebooksApi } from '@/lib/api'
 import { formatDistanceToNow } from 'date-fns'
 import { it } from 'date-fns/locale'
+import type { NotebookProjectType } from '@/components/notebook/types'
 
 interface NotebookMeta {
   id: string
   title: string
+  project_type: NotebookProjectType
   cell_count: number
   created_at: string
   updated_at: string
@@ -23,6 +25,7 @@ export default function NotebookListPage({ onOpen }: Props = {}) {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [newTitle, setNewTitle] = useState('')
+  const [newProjectType, setNewProjectType] = useState<NotebookProjectType>('python')
   const [showCreate, setShowCreate] = useState(false)
 
   const openNotebook = (id: string) => onOpen ? onOpen(id) : navigate(`notebook/${id}`)
@@ -36,7 +39,8 @@ export default function NotebookListPage({ onOpen }: Props = {}) {
   })
 
   const createMutation = useMutation({
-    mutationFn: (title: string) => notebooksApi.create(title),
+    mutationFn: ({ title, projectType }: { title: string; projectType: NotebookProjectType }) =>
+      notebooksApi.create(title, projectType),
     onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ['notebooks'] })
       openNotebook(res.data.id)
@@ -49,8 +53,12 @@ export default function NotebookListPage({ onOpen }: Props = {}) {
   })
 
   const handleCreate = () => {
-    createMutation.mutate(newTitle.trim() || 'Nuovo Notebook')
+    createMutation.mutate({
+      title: newTitle.trim() || (newProjectType === 'python' ? 'Nuovo Notebook Python' : 'Nuovo Sketch p5.js'),
+      projectType: newProjectType,
+    })
     setNewTitle('')
+    setNewProjectType('python')
     setShowCreate(false)
   }
 
@@ -64,7 +72,7 @@ export default function NotebookListPage({ onOpen }: Props = {}) {
             I miei Notebook
           </h1>
           <p className="text-sm text-slate-500 mt-1">
-            Editor Python con Pyodide — esegui codice direttamente nel browser
+            Notebook Python e sketch p5.js con editor avanzato e tutor AI
           </p>
         </div>
         <button
@@ -80,6 +88,40 @@ export default function NotebookListPage({ onOpen }: Props = {}) {
       {showCreate && (
         <div className="mb-6 bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
           <p className="text-sm font-medium text-slate-700 mb-2">Titolo del notebook</p>
+          <div className="mb-3 grid gap-2 md:grid-cols-2">
+            {[
+              {
+                value: 'python' as const,
+                title: 'Notebook Python',
+                description: 'Celle eseguibili con Pyodide nel browser',
+              },
+              {
+                value: 'p5js' as const,
+                title: 'Sketch p5.js',
+                description: 'Editor JavaScript creativo con preview affiancata',
+              },
+            ].map((option) => (
+              <button
+                key={option.value}
+                onClick={() => setNewProjectType(option.value)}
+                className={`rounded-xl border px-4 py-3 text-left transition ${
+                  newProjectType === option.value
+                    ? 'border-indigo-500 bg-indigo-50 shadow-sm'
+                    : 'border-slate-200 hover:border-slate-300'
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  {option.value === 'python' ? (
+                    <FileCode2 className="h-4 w-4 text-indigo-600" />
+                  ) : (
+                    <Sparkles className="h-4 w-4 text-emerald-600" />
+                  )}
+                  <span className="text-sm font-semibold text-slate-800">{option.title}</span>
+                </div>
+                <p className="mt-1 text-xs text-slate-500">{option.description}</p>
+              </button>
+            ))}
+          </div>
           <div className="flex gap-2">
             <input
               type="text"
@@ -118,7 +160,7 @@ export default function NotebookListPage({ onOpen }: Props = {}) {
             <BookOpen className="h-8 w-8 text-indigo-400" />
           </div>
           <p className="text-slate-700 font-medium">Nessun notebook ancora</p>
-          <p className="text-slate-400 text-sm mt-1">Crea il tuo primo notebook Python</p>
+          <p className="text-slate-400 text-sm mt-1">Crea il tuo primo notebook Python o sketch p5.js</p>
           <button
             onClick={() => setShowCreate(true)}
             className="mt-4 flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-xl text-sm font-medium transition-colors"
@@ -136,11 +178,22 @@ export default function NotebookListPage({ onOpen }: Props = {}) {
               onClick={() => openNotebook(nb.id)}
             >
               <div className="w-10 h-10 rounded-lg bg-indigo-50 flex items-center justify-center flex-shrink-0">
-                <FileCode2 className="h-5 w-5 text-indigo-600" />
+                {nb.project_type === 'python' ? (
+                  <FileCode2 className="h-5 w-5 text-indigo-600" />
+                ) : (
+                  <Sparkles className="h-5 w-5 text-emerald-600" />
+                )}
               </div>
               <div className="flex-1 min-w-0">
                 <p className="font-medium text-slate-800 truncate">{nb.title}</p>
                 <div className="flex items-center gap-3 mt-0.5">
+                  <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
+                    nb.project_type === 'python'
+                      ? 'bg-indigo-50 text-indigo-700'
+                      : 'bg-emerald-50 text-emerald-700'
+                  }`}>
+                    {nb.project_type}
+                  </span>
                   <span className="text-xs text-slate-400">
                     {nb.cell_count} {nb.cell_count === 1 ? 'cella' : 'celle'}
                   </span>

@@ -1,9 +1,10 @@
-import { useState, useRef, useEffect } from 'react'
-import { Bot, Send, Loader2, GraduationCap, ChevronDown } from 'lucide-react'
+import { useState, useRef, useEffect, useCallback } from 'react'
+import { Bot, Send, Loader2, GraduationCap, ChevronDown, ChevronUp, GripHorizontal } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { markdownCodeComponents } from '@/components/CodeBlock'
 import { notebooksApi } from '@/lib/api'
+import type { NotebookCodeProposal, NotebookProjectType } from './types'
 
 interface Message {
   role: 'user' | 'assistant'
@@ -13,25 +14,70 @@ interface Message {
 interface Props {
   notebookId: string
   notebookTitle: string
+  projectType: NotebookProjectType
   currentCellSource?: string
   lastOutput?: string
+  pendingProposals?: NotebookCodeProposal[]
+  variant?: 'docked' | 'floating' | 'sidebar'
+  className?: string
 }
 
-export default function NotebookTutorChat({ notebookId, notebookTitle, currentCellSource, lastOutput }: Props) {
-  const [open, setOpen] = useState(false)
+export default function NotebookTutorChat({
+  notebookId,
+  notebookTitle,
+  projectType,
+  currentCellSource,
+  lastOutput,
+  pendingProposals = [],
+  variant = 'docked',
+  className = '',
+}: Props) {
+  const isFloating = variant === 'floating'
+  const isSidebar = variant === 'sidebar'
+
+  const [collapsed, setCollapsed] = useState(false)
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
+  const [dragPos, setDragPos] = useState<{ x: number; y: number } | null>(null)
+  const [isDragging, setIsDragging] = useState(false)
+  const rootRef = useRef<HTMLDivElement>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
 
-  useEffect(() => {
-    if (open) bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages, open])
+  const handleDragStart = useCallback((e: React.MouseEvent) => {
+    if (!isFloating) return
+    e.preventDefault()
+    const rect = rootRef.current?.getBoundingClientRect()
+    if (!rect) return
+    const startMouseX = e.clientX
+    const startMouseY = e.clientY
+    const startElemX = rect.left
+    const startElemY = rect.top
+    setIsDragging(true)
+
+    const onMove = (ev: MouseEvent) => {
+      setDragPos({
+        x: startElemX + (ev.clientX - startMouseX),
+        y: startElemY + (ev.clientY - startMouseY),
+      })
+    }
+    const onUp = () => {
+      setIsDragging(false)
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+    }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+  }, [isFloating])
 
   useEffect(() => {
-    if (open) inputRef.current?.focus()
-  }, [open])
+    if (!collapsed) bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [messages, collapsed])
+
+  useEffect(() => {
+    if (!collapsed) inputRef.current?.focus()
+  }, [collapsed])
 
   const send = async () => {
     const msg = input.trim()
@@ -46,10 +92,11 @@ export default function NotebookTutorChat({ notebookId, notebookTitle, currentCe
         history: messages.slice(-10),
         current_cell_source: currentCellSource,
         last_output: lastOutput,
+        pending_proposals: pendingProposals,
       })
       setMessages([...newMessages, { role: 'assistant', content: res.data.response }])
     } catch {
-      setMessages([...newMessages, { role: 'assistant', content: '⚠️ Errore nella risposta del tutor. Riprova.' }])
+      setMessages([...newMessages, { role: 'assistant', content: 'Errore nella risposta del tutor. Riprova.' }])
     } finally {
       setLoading(false)
     }
@@ -62,139 +109,181 @@ export default function NotebookTutorChat({ notebookId, notebookTitle, currentCe
     }
   }
 
-  // Floating button
-  if (!open) {
-    return (
-      <button
-        onClick={() => setOpen(true)}
-        className="absolute bottom-6 right-6 z-30 w-14 h-14 rounded-full bg-indigo-600 hover:bg-indigo-500 shadow-2xl flex items-center justify-center group animate-gentle-bounce hover:[animation-play-state:paused]"
-        title="Apri tutor AI"
-      >
-        <GraduationCap className="h-6 w-6 text-white" />
-        <span className="absolute right-16 bg-slate-900 text-white text-xs px-2 py-1 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">
-          Tutor Python
-        </span>
-      </button>
-    )
+  // ── Root container classes ────────────────────────────────────────────────
+  let rootClass = `flex flex-col overflow-hidden bg-white/95 backdrop-blur-xl `
+
+  if (isFloating) {
+    rootClass += `${isDragging ? '' : 'transition-[height,width] duration-200'} `
+    rootClass += `${collapsed ? 'h-[56px] w-[320px]' : 'h-[640px] w-[400px]'} `
+    rootClass += `rounded-[24px] border border-slate-200 shadow-[0_18px_50px_rgba(15,23,42,0.24)] pointer-events-auto `
+  } else if (isSidebar) {
+    rootClass += `h-full rounded-[24px] border border-slate-200 shadow-[0_4px_24px_rgba(15,23,42,0.12)] `
+  } else {
+    // docked
+    rootClass += `${collapsed ? 'h-[58px]' : 'h-[300px] md:h-[340px]'} border-t border-slate-200 `
   }
 
-  return (
-    <div className="absolute bottom-6 right-6 z-30 w-[380px] h-[520px] bg-[#1a1d23] rounded-2xl shadow-2xl border border-[#2a2d36] flex flex-col overflow-hidden">
-      {/* Header */}
-      <div className="flex items-center gap-3 px-4 py-3 bg-indigo-700 flex-shrink-0">
-        <div className="w-8 h-8 rounded-lg bg-white/20 flex items-center justify-center">
-          <GraduationCap className="h-4 w-4 text-white" />
-        </div>
-        <div className="flex-1 min-w-0">
-          <p className="text-sm font-semibold text-white">Tutor Python</p>
-          <p className="text-[10px] text-indigo-200 truncate">{notebookTitle}</p>
-        </div>
-        <button onClick={() => setOpen(false)} className="text-white/70 hover:text-white transition-colors">
-          <ChevronDown className="h-5 w-5" />
-        </button>
-      </div>
+  rootClass += className
 
-      {/* Context strip */}
-      {currentCellSource && (
-        <div className="px-3 py-1.5 bg-[#21242c] border-b border-[#2a2d36] flex-shrink-0">
-          <p className="text-[10px] text-slate-400 font-mono truncate">
-            📍 Cella corrente: <span className="text-emerald-400">{currentCellSource.split('\n')[0].slice(0, 50)}</span>
-          </p>
+  return (
+    <div
+      ref={rootRef}
+      className={rootClass}
+      style={isFloating ? {
+        position: 'fixed',
+        zIndex: 50,
+        userSelect: isDragging ? 'none' : undefined,
+        ...(dragPos ? { left: dragPos.x, top: dragPos.y } : { bottom: '2rem', right: '2rem' }),
+      } : undefined}
+    >
+      {/* Drag handle — floating only, hidden when collapsed */}
+      {isFloating && !collapsed && (
+        <div
+          onMouseDown={handleDragStart}
+          className="flex shrink-0 cursor-grab items-center justify-center border-b border-slate-100 bg-slate-50 py-1.5 active:cursor-grabbing"
+          title="Trascina per spostare"
+        >
+          <GripHorizontal className="h-3.5 w-3.5 text-slate-300" />
         </div>
       )}
 
-      {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-3 py-3 space-y-3">
-        {messages.length === 0 && (
-          <div className="flex flex-col items-center justify-center h-full text-center gap-3 text-slate-500">
-            <Bot className="h-10 w-10 text-indigo-500/50" />
-            <div>
-              <p className="text-sm font-medium text-slate-400">Ciao! Sono il tuo tutor Python 🐍</p>
-              <p className="text-xs mt-1">Dimmi dove sei bloccato e ti aiuterò a capire senza darti la soluzione direttamente.</p>
-            </div>
-            <div className="grid grid-cols-1 gap-1.5 w-full mt-2">
-              {[
-                'Come faccio a leggere un CSV con pandas?',
-                'Perché questo errore non va via?',
-                'Spiegami come funziona questa funzione',
-              ].map((s) => (
-                <button
-                  key={s}
-                  onClick={() => setInput(s)}
-                  className="text-xs text-left bg-[#21242c] hover:bg-[#2a2d36] text-slate-300 px-3 py-2 rounded-lg transition-colors border border-[#2a2d36]"
-                >
-                  {s}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-        {messages.map((m, i) => (
-          <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-            {m.role === 'assistant' && (
-              <div className="w-6 h-6 rounded-full bg-indigo-600 flex items-center justify-center mr-2 flex-shrink-0 mt-0.5">
-                <Bot className="h-3 w-3 text-white" />
-              </div>
-            )}
-            <div
-              className={`max-w-[85%] rounded-xl px-3 py-2 text-sm ${
-                m.role === 'user'
-                  ? 'bg-indigo-600 text-white rounded-tr-sm'
-                  : 'bg-[#21242c] text-slate-200 rounded-tl-sm border border-[#2a2d36]'
-              }`}
-            >
-              {m.role === 'assistant' ? (
-                <div className="prose prose-sm prose-invert max-w-none prose-p:my-1">
-                  <ReactMarkdown
-                    remarkPlugins={[remarkGfm]}
-                    components={markdownCodeComponents(true)}
-                  >
-                    {m.content}
-                  </ReactMarkdown>
-                </div>
-              ) : (
-                <p className="whitespace-pre-wrap">{m.content}</p>
-              )}
-            </div>
-          </div>
-        ))}
-        {loading && (
-          <div className="flex justify-start">
-            <div className="w-6 h-6 rounded-full bg-indigo-600 flex items-center justify-center mr-2 flex-shrink-0">
-              <Bot className="h-3 w-3 text-white" />
-            </div>
-            <div className="bg-[#21242c] border border-[#2a2d36] rounded-xl rounded-tl-sm px-4 py-3">
-              <Loader2 className="h-4 w-4 animate-spin text-indigo-400" />
-            </div>
-          </div>
-        )}
-        <div ref={bottomRef} />
+      {/* Header */}
+      <div className="flex shrink-0 items-center gap-3 border-b border-slate-200 bg-white px-4 py-3">
+        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-100">
+          <GraduationCap className="h-4 w-4 text-indigo-700" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-semibold text-slate-900">Tutor {projectType === 'python' ? 'Python' : 'p5.js'}</p>
+          <p className="truncate text-[10px] text-slate-500">
+            {isFloating ? 'Supporto AI' : notebookTitle}
+          </p>
+        </div>
+        <button
+          onClick={() => setCollapsed((v) => !v)}
+          className="text-slate-500 transition-colors hover:text-slate-900"
+          title={collapsed ? 'Espandi tutor' : 'Nascondi tutor'}
+        >
+          {collapsed ? <ChevronUp className="h-5 w-5" /> : <ChevronDown className="h-5 w-5" />}
+        </button>
       </div>
 
-      {/* Input */}
-      <div className="px-3 pb-3 flex-shrink-0">
-        <div className="flex gap-2 bg-[#21242c] rounded-xl border border-[#2a2d36] p-2">
-          <textarea
-            ref={inputRef}
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={handleKey}
-            placeholder="Chiedi al tutor… (Invio per inviare)"
-            rows={2}
-            className="flex-1 bg-transparent text-sm text-slate-200 placeholder-slate-500 resize-none outline-none leading-relaxed"
-          />
-          <button
-            onClick={send}
-            disabled={!input.trim() || loading}
-            className="self-end w-8 h-8 rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 flex items-center justify-center transition-colors flex-shrink-0"
-          >
-            <Send className="h-3.5 w-3.5 text-white" />
-          </button>
+      {/* Body */}
+      {!collapsed && (
+        <>
+          {currentCellSource && (
+            <div className="shrink-0 border-b border-slate-200 bg-slate-50 px-3 py-1.5">
+              <p className="truncate font-mono text-[10px] text-slate-500">
+                Cella corrente: <span className="text-emerald-700">{currentCellSource.split('\n')[0].slice(0, 70)}</span>
+              </p>
+              {pendingProposals.length > 0 && (
+                <p className="mt-1 text-[10px] text-amber-600">
+                  {pendingProposals.length} proposta/e in attesa di approvazione: posso spiegarti il perché.
+                </p>
+              )}
+            </div>
+          )}
+
+          <div className="flex-1 overflow-y-auto space-y-3 px-3 py-3">
+            {messages.length === 0 && (
+              <div className="flex h-full flex-col items-center justify-center gap-3 text-center text-slate-500">
+                <Bot className="h-10 w-10 text-indigo-300" />
+                <div>
+                  <p className="text-sm font-medium text-slate-700">Sono il tutor {projectType === 'python' ? 'Python' : 'p5.js'}</p>
+                  <p className="mt-1 text-xs">Spiego errori e proposte di modifica lasciando allo studente il controllo del codice.</p>
+                </div>
+                <div className="mt-2 grid w-full grid-cols-1 gap-1.5">
+                  {(projectType === 'python'
+                    ? [
+                      'Perché questa proposta migliora il codice?',
+                      'Che cosa ho sbagliato in questa funzione?',
+                      'Mostrami il ragionamento dietro la correzione',
+                    ]
+                    : [
+                      'Perché questa modifica migliora lo sketch?',
+                      'Che ruolo ha setup() in questo caso?',
+                      'Come posso evitare questo errore di canvas?',
+                    ]).map((suggestion) => (
+                    <button
+                      key={suggestion}
+                      onClick={() => setInput(suggestion)}
+                      className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-left text-xs text-slate-700 transition-colors hover:bg-slate-50"
+                    >
+                      {suggestion}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+            {messages.map((message, index) => (
+              <div key={index} className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                {message.role === 'assistant' && (
+                  <div className="mr-2 mt-0.5 flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-indigo-600">
+                    <Bot className="h-3 w-3 text-white" />
+                  </div>
+                )}
+                <div
+                  className={`max-w-[85%] rounded-xl px-3 py-2 text-sm ${
+                    message.role === 'user'
+                      ? 'rounded-tr-sm bg-indigo-600 text-white'
+                      : 'rounded-tl-sm border border-slate-200 bg-slate-50 text-slate-700'
+                  }`}
+                >
+                  {message.role === 'assistant' ? (
+                    <div className="prose prose-sm max-w-none prose-p:my-1 prose-code:text-indigo-700">
+                      <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownCodeComponents(false)}>
+                        {message.content}
+                      </ReactMarkdown>
+                    </div>
+                  ) : (
+                    <p className="whitespace-pre-wrap">{message.content}</p>
+                  )}
+                </div>
+              </div>
+            ))}
+            {loading && (
+              <div className="flex justify-start">
+                <div className="mr-2 flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-indigo-600">
+                  <Bot className="h-3 w-3 text-white" />
+                </div>
+                <div className="rounded-xl rounded-tl-sm border border-slate-200 bg-slate-50 px-4 py-3">
+                  <Loader2 className="h-4 w-4 animate-spin text-indigo-400" />
+                </div>
+              </div>
+            )}
+            <div ref={bottomRef} />
+          </div>
+
+          <div className="shrink-0 px-3 pb-3">
+            <div className="flex gap-2 rounded-xl border border-slate-200 bg-white p-2">
+              <textarea
+                ref={inputRef}
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={handleKey}
+                placeholder="Chiedi al tutor perché una proposta è utile o cosa non ti è chiaro"
+                rows={2}
+                className="flex-1 resize-none bg-transparent text-sm leading-relaxed text-slate-700 outline-none placeholder:text-slate-400"
+              />
+              <button
+                onClick={send}
+                disabled={!input.trim() || loading}
+                className="self-end flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-indigo-600 transition-colors hover:bg-indigo-500 disabled:opacity-40"
+              >
+                <Send className="h-3.5 w-3.5 text-white" />
+              </button>
+            </div>
+            <p className="mt-1 text-center text-[10px] text-slate-400">
+              Supporto didattico: spiega, non sostituisce il ragionamento dello studente.
+            </p>
+          </div>
+        </>
+      )}
+
+      {collapsed && variant === 'docked' && (
+        <div className="px-4 py-2 text-xs text-slate-500">
+          Tutor nascosto. Usa la freccia per riaprirlo.
         </div>
-        <p className="text-[10px] text-slate-600 mt-1 text-center">
-          Il tutor suggerisce, non scrive il codice per te 🎓
-        </p>
-      </div>
+      )}
     </div>
   )
 }

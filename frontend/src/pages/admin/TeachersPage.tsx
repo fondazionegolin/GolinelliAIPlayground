@@ -97,6 +97,8 @@ export default function TeachersPage() {
   const [days] = useState(30)
   const [editingCapId, setEditingCapId] = useState<string | null>(null)
   const [editingCapValue, setEditingCapValue] = useState('')
+  const [hardDeleteId, setHardDeleteId] = useState<string | null>(null)
+  const [hardDeleteEmail, setHardDeleteEmail] = useState('')
 
   /* ── queries ── */
   const { data: requests, isLoading: loadingRequests } = useQuery<TeacherRequest[]>({
@@ -179,7 +181,39 @@ export default function TeachersPage() {
       const description = Array.isArray(detail)
         ? detail.map((e: any) => e.msg ?? String(e)).join(', ')
         : typeof detail === 'string' ? detail : 'Errore sconosciuto'
-      toast({ variant: 'destructive', title: 'Invito fallito', description })
+      const normalizedEmail = inviteEmail.trim().toLowerCase()
+      const existingTeacher = (teachersStatus?.items || []).find((teacher) => teacher.email.toLowerCase() === normalizedEmail)
+      toast({
+        variant: 'destructive',
+        title: 'Invito fallito',
+        description: existingTeacher
+          ? `${description}. Per questa email usa "Reinvia accesso".`
+          : description,
+      })
+    },
+  })
+
+  const resendInvitationMutation = useMutation({
+    mutationFn: (invitationId: string) => creditsApi.resendInvitation(invitationId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin-platform-invitations'] })
+      queryClient.invalidateQueries({ queryKey: ['admin-teacher-status'] })
+      toast({ title: 'Invito reinviato' })
+    },
+    onError: (error: any) => {
+      toast({ variant: 'destructive', title: 'Reinvio fallito', description: error.response?.data?.detail || 'Impossibile reinviare l’invito' })
+    },
+  })
+
+  const deleteInvitationMutation = useMutation({
+    mutationFn: (invitationId: string) => creditsApi.deleteInvitation(invitationId),
+    onSuccess: (res) => {
+      queryClient.invalidateQueries({ queryKey: ['admin-platform-invitations'] })
+      queryClient.invalidateQueries({ queryKey: ['admin-teacher-status'] })
+      toast({ title: 'Invito rimosso', description: res.data?.message })
+    },
+    onError: (error: any) => {
+      toast({ variant: 'destructive', title: 'Rimozione fallita', description: error.response?.data?.detail || 'Impossibile rimuovere l’invito' })
     },
   })
 
@@ -192,6 +226,21 @@ export default function TeachersPage() {
       toast({ title: 'Limite aggiornato' })
     },
     onError: () => toast({ variant: 'destructive', title: 'Errore aggiornamento limite' }),
+  })
+
+  const hardDeleteMutation = useMutation({
+    mutationFn: ({ userId, confirmEmail }: { userId: string; confirmEmail: string }) =>
+      adminApi.hardDeleteUser(userId, confirmEmail),
+    onSuccess: (res) => {
+      queryClient.invalidateQueries({ queryKey: ['admin-teacher-status'] })
+      queryClient.invalidateQueries({ queryKey: ['admin-platform-invitations'] })
+      setHardDeleteId(null)
+      setHardDeleteEmail('')
+      toast({ title: 'Utente eliminato definitivamente', description: res.data.message })
+    },
+    onError: (error: any) => {
+      toast({ variant: 'destructive', title: 'Eliminazione fallita', description: error.response?.data?.detail })
+    },
   })
 
   /* ── CSV helpers ── */
@@ -285,6 +334,17 @@ export default function TeachersPage() {
   const sentCount = csvRows.filter(r => r.status === 'sent').length
   const allIdleSelected = csvRows.filter(r => r.status === 'idle').length > 0 &&
     csvRows.filter(r => r.status === 'idle').every(r => r.selected)
+  const normalizedInviteEmail = inviteEmail.trim().toLowerCase()
+  const inviteTargetTeacher = (teachersStatus?.items || []).find((teacher) => teacher.email.toLowerCase() === normalizedInviteEmail)
+  const teacherByEmail: Record<string, TeacherStatus> = {}
+  ;(teachersStatus?.items || []).forEach((teacher) => {
+    teacherByEmail[teacher.email.toLowerCase()] = teacher
+  })
+  const filteredInvitations = (invitations || []).filter((inv: any) => {
+    if (!search.trim()) return true
+    const q = search.toLowerCase()
+    return [inv.email, inv.first_name, inv.last_name, inv.group_tag].join(' ').toLowerCase().includes(q)
+  })
 
   /* ── render ── */
   return (
@@ -311,6 +371,16 @@ export default function TeachersPage() {
           Invita docente
           {showInvite ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
         </Button>
+      </div>
+
+      <div className="relative max-w-xs">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+        <Input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Cerca docente o invitato…"
+          className="pl-9 h-9 text-sm"
+        />
       </div>
 
       {/* Approval result banner */}
@@ -356,6 +426,120 @@ export default function TeachersPage() {
         </div>
       )}
 
+      {/* Invite history — always visible and near the top */}
+      {(invitations || []).length > 0 && (
+        <Card className="border-rose-200/70">
+          <CardContent className="p-4">
+            <div className="mb-3 flex items-center justify-between">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-rose-600">Inviti docenti</p>
+                <p className="mt-1 text-sm text-slate-500">
+                  {filteredInvitations.length} risultati
+                  {search.trim() ? ` per "${search}"` : ` su ${(invitations || []).length} inviti`}
+                </p>
+              </div>
+              <span className="flex items-center gap-1 text-[10px] text-slate-400">
+                <span className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                aggiornamento automatico
+              </span>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[720px] text-xs">
+                <thead>
+                  <tr className="border-b text-left text-[11px] uppercase text-slate-400">
+                    <th className="pb-1.5 font-medium">Docente</th>
+                    <th className="pb-1.5 font-medium">Gruppo</th>
+                    <th className="pb-1.5 font-medium">Invito</th>
+                    <th className="pb-1.5 font-medium">Piattaforma</th>
+                    <th className="pb-1.5 font-medium">Inviato</th>
+                    <th className="pb-1.5 font-medium">Scadenza</th>
+                    <th className="pb-1.5 text-right font-medium">Azioni</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredInvitations.length === 0 ? (
+                    <tr>
+                      <td colSpan={7} className="py-8 text-center text-sm text-slate-400">
+                        Nessun invito trovato
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredInvitations.slice(0, 50).map((inv: any) => {
+                      const teacher = teacherByEmail[inv.email?.toLowerCase()]
+                      const hasLoggedIn = !!teacher?.last_login_at
+                      const isAccepted = inv.status === 'accepted' || hasLoggedIn
+                      const isExpired = !isAccepted && !inv.responded_at && new Date(inv.expires_at) < new Date()
+                      return (
+                        <tr key={inv.id} className="border-t border-slate-100">
+                          <td className="py-2">
+                            <div>
+                              <p className="font-medium text-slate-700">{[inv.first_name, inv.last_name].filter(Boolean).join(' ') || '—'}</p>
+                              <p className="font-mono text-[10px] text-slate-400">{inv.email}</p>
+                            </div>
+                          </td>
+                          <td className="py-2">
+                            {inv.group_tag
+                              ? <span className="rounded-full border border-indigo-100 bg-indigo-50 px-1.5 py-0.5 text-[10px] font-medium text-indigo-600">{inv.group_tag}</span>
+                              : <span className="text-slate-300">—</span>}
+                          </td>
+                          <td className="py-2">
+                            {isAccepted
+                              ? <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700">
+                                  <CheckCircle2 className="h-3 w-3" />accettato
+                                  <span className="font-normal opacity-70">· {formatDate(inv.responded_at || teacher?.last_login_at)}</span>
+                                </span>
+                              : isExpired
+                                ? <span className="rounded-full bg-red-50 px-1.5 py-0.5 text-[10px] font-medium text-red-500">scaduto</span>
+                                : <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-700">in attesa</span>}
+                          </td>
+                          <td className="py-2">
+                            {hasLoggedIn
+                              ? <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-1.5 py-0.5 text-[10px] font-semibold text-blue-700">
+                                  <LogIn className="h-3 w-3" />entrato
+                                  <span className="font-normal opacity-70">· {formatDate(teacher!.last_login_at)}</span>
+                                </span>
+                              : <span className="text-[10px] text-slate-300">mai</span>}
+                          </td>
+                          <td className="py-2 text-slate-500">{formatDate(inv.created_at)}</td>
+                          <td className="py-2 text-slate-500">{formatDate(inv.expires_at)}</td>
+                          <td className="py-2 text-right">
+                            <div className="flex items-center justify-end gap-2">
+                              <button
+                                onClick={() => resendInvitationMutation.mutate(inv.id)}
+                                disabled={resendInvitationMutation.isPending || deleteInvitationMutation.isPending}
+                                className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 py-1 text-[11px] font-medium text-slate-600 transition-colors hover:border-[#e85c8d]/30 hover:text-[#e85c8d] disabled:opacity-50"
+                                title={isAccepted ? 'Invia un nuovo link di attivazione' : 'Reinvia email di invito'}
+                              >
+                                <Send className="h-3 w-3" />
+                                {isAccepted ? 'Nuovo link' : 'Reinvia'}
+                              </button>
+                              <button
+                                onClick={() => {
+                                  const msg = hasLoggedIn
+                                    ? `Rimuovere l'invito per ${inv.email}? L'account rimarrà attivo.`
+                                    : `Rimuovere l'invito per ${inv.email}? L'account verrà disattivato.`
+                                  if (confirm(msg)) deleteInvitationMutation.mutate(inv.id)
+                                }}
+                                disabled={deleteInvitationMutation.isPending || resendInvitationMutation.isPending}
+                                className="inline-flex items-center gap-1 rounded-lg border border-red-200 bg-red-50 px-2 py-1 text-[11px] font-medium text-red-600 transition-colors hover:bg-red-100 disabled:opacity-50"
+                                title={hasLoggedIn ? 'Rimuove solo il record invito (account rimane)' : 'Rimuove invito e disattiva account'}
+                              >
+                                <Trash2 className="h-3 w-3" />
+                                Rimuovi invito
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      )
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* ── INVITE PANEL ─────────────────────────────── */}
       {showInvite && (
         <div className="rounded-xl border border-[#e85c8d]/30 bg-rose-50/40 p-5 space-y-5">
@@ -385,15 +569,36 @@ export default function TeachersPage() {
                 <Input value={inviteSchool} onChange={e => setInviteSchool(e.target.value)} placeholder="Istituto…" className="h-8 text-sm" />
               </div>
             </div>
-            <Button
-              className="h-8 text-sm"
-              style={{ backgroundColor: '#e85c8d' }}
-              disabled={!inviteEmail.trim() || inviteMutation.isPending}
-              onClick={() => inviteMutation.mutate({ email: inviteEmail.trim(), firstName: inviteFirstName.trim() || undefined, lastName: inviteLastName.trim() || undefined, school: inviteSchool.trim() || undefined })}
-            >
-              <UserPlus className="h-3.5 w-3.5 mr-1.5" />
-              {inviteMutation.isPending ? 'Invio…' : 'Invia invito'}
-            </Button>
+            {inviteTargetTeacher ? (
+              <div className="rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800">
+                Questa email appartiene già al docente{' '}
+                <strong>{[inviteTargetTeacher.first_name, inviteTargetTeacher.last_name].filter(Boolean).join(' ') || inviteTargetTeacher.email}</strong>.
+                Usa <strong>Reinvia accesso</strong> invece di creare un nuovo invito.
+              </div>
+            ) : null}
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                className="h-8 text-sm"
+                style={{ backgroundColor: '#e85c8d' }}
+                disabled={!inviteEmail.trim() || !!inviteTargetTeacher || inviteMutation.isPending}
+                onClick={() => inviteMutation.mutate({ email: inviteEmail.trim(), firstName: inviteFirstName.trim() || undefined, lastName: inviteLastName.trim() || undefined, school: inviteSchool.trim() || undefined })}
+              >
+                <UserPlus className="h-3.5 w-3.5 mr-1.5" />
+                {inviteMutation.isPending ? 'Invio…' : 'Invia invito'}
+              </Button>
+              {inviteTargetTeacher ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-8 border-sky-200 bg-white text-sm text-sky-700 hover:bg-sky-50"
+                  disabled={resetMutation.isPending}
+                  onClick={() => resetMutation.mutate(inviteTargetTeacher.id)}
+                >
+                  <Key className="mr-1.5 h-3.5 w-3.5" />
+                  {resetMutation.isPending ? 'Invio link…' : 'Reinvia accesso'}
+                </Button>
+              ) : null}
+            </div>
           </div>
 
           {/* ── CSV import ── */}
@@ -550,79 +755,6 @@ export default function TeachersPage() {
             )}
           </div>
 
-          {/* Invite history — real-time (polls every 20s) */}
-          {(invitations || []).length > 0 && (() => {
-            // Build email→teacher map for cross-referencing login status
-            const teacherByEmail: Record<string, TeacherStatus> = {}
-            ;(teachersStatus?.items || []).forEach(t => { teacherByEmail[t.email.toLowerCase()] = t })
-            return (
-              <div className="bg-white rounded-xl border border-slate-200 p-4">
-                <div className="flex items-center justify-between mb-3">
-                  <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Inviti recenti</p>
-                  <span className="text-[10px] text-slate-400 flex items-center gap-1">
-                    <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                    aggiornamento automatico
-                  </span>
-                </div>
-                <div className="overflow-x-auto">
-                  <table className="w-full min-w-[640px] text-xs">
-                    <thead>
-                      <tr className="text-left text-[11px] uppercase text-slate-400 border-b">
-                        <th className="pb-1.5 font-medium">Docente</th>
-                        <th className="pb-1.5 font-medium">Gruppo</th>
-                        <th className="pb-1.5 font-medium">Invito</th>
-                        <th className="pb-1.5 font-medium">Piattaforma</th>
-                        <th className="pb-1.5 font-medium">Inviato</th>
-                        <th className="pb-1.5 font-medium">Scadenza</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {(invitations || []).slice(0, 20).map((inv: any) => {
-                        const teacher = teacherByEmail[inv.email?.toLowerCase()]
-                        const hasLoggedIn = !!teacher?.last_login_at
-                        const isExpired = !inv.responded_at && new Date(inv.expires_at) < new Date()
-                        return (
-                          <tr key={inv.id} className="border-t border-slate-100">
-                            <td className="py-2">
-                              <div>
-                                <p className="font-medium text-slate-700">{[inv.first_name, inv.last_name].filter(Boolean).join(' ') || '—'}</p>
-                                <p className="text-[10px] text-slate-400 font-mono">{inv.email}</p>
-                              </div>
-                            </td>
-                            <td className="py-2">
-                              {inv.group_tag
-                                ? <span className="px-1.5 py-0.5 rounded-full bg-indigo-50 text-indigo-600 text-[10px] font-medium border border-indigo-100">{inv.group_tag}</span>
-                                : <span className="text-slate-300">—</span>}
-                            </td>
-                            <td className="py-2">
-                              {inv.status === 'accepted'
-                                ? <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700 text-[10px] font-semibold">
-                                    <CheckCircle2 className="h-3 w-3" />accettato
-                                    {inv.responded_at && <span className="opacity-70 font-normal">· {formatDate(inv.responded_at)}</span>}
-                                  </span>
-                                : isExpired
-                                  ? <span className="px-1.5 py-0.5 rounded-full bg-red-50 text-red-500 text-[10px] font-medium">scaduto</span>
-                                  : <span className="px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 text-[10px] font-medium">in attesa</span>}
-                            </td>
-                            <td className="py-2">
-                              {hasLoggedIn
-                                ? <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-blue-50 text-blue-700 text-[10px] font-semibold">
-                                    <LogIn className="h-3 w-3" />entrato
-                                    <span className="opacity-70 font-normal">· {formatDate(teacher!.last_login_at)}</span>
-                                  </span>
-                                : <span className="text-slate-300 text-[10px]">mai</span>}
-                            </td>
-                            <td className="py-2 text-slate-500">{formatDate(inv.created_at)}</td>
-                            <td className="py-2 text-slate-500">{formatDate(inv.expires_at)}</td>
-                          </tr>
-                        )
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )
-          })()}
         </div>
       )}
 
@@ -684,17 +816,6 @@ export default function TeachersPage() {
 
       {/* ── TEACHERS TABLE ─────────────────────────────── */}
       <div className="space-y-3">
-        {/* Search bar */}
-        <div className="relative max-w-xs">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-          <Input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Cerca docente…"
-            className="pl-9 h-9 text-sm"
-          />
-        </div>
-
         {/* Table card */}
         <Card>
           <CardContent className="p-0">
@@ -868,44 +989,87 @@ export default function TeachersPage() {
 
                         {/* Actions */}
                         <td className="px-4 py-3">
-                          <div className="flex items-center justify-end gap-1.5">
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              className="h-7 px-2 text-xs text-slate-600 hover:text-slate-900 hover:bg-slate-100"
-                              onClick={() => resetMutation.mutate(teacher.id)}
-                              disabled={resetMutation.isPending}
-                              title="Reset password"
-                            >
-                              <Key className="h-3.5 w-3.5 mr-1" />
-                              <span className="hidden lg:inline">Reset PWD</span>
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              className="h-7 px-2 text-xs text-amber-600 hover:text-amber-800 hover:bg-amber-50"
-                              onClick={() => {
-                                if (confirm(`Promuovere ${teacher.email} ad amministratore? Non sarà più un docente.`))
-                                  promoteMutation.mutate(teacher.id)
-                              }}
-                              disabled={promoteMutation.isPending}
-                              title="Promuovi ad amministratore"
-                            >
-                              <ShieldCheck className="h-3.5 w-3.5" />
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              className="h-7 px-2 text-xs text-red-500 hover:text-red-700 hover:bg-red-50"
-                              onClick={() => {
-                                if (confirm(`Elimina ${teacher.email}?`)) deleteMutation.mutate(teacher.id)
-                              }}
-                              disabled={deleteMutation.isPending}
-                              title="Elimina docente"
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </Button>
-                          </div>
+                          {hardDeleteId === teacher.id ? (
+                            <div className="flex items-center gap-1 justify-end flex-wrap">
+                              <span className="text-[10px] text-red-600 font-medium mr-1">Digita email per confermare:</span>
+                              <input
+                                type="email"
+                                autoFocus
+                                value={hardDeleteEmail}
+                                onChange={(e) => setHardDeleteEmail(e.target.value)}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Escape') { setHardDeleteId(null); setHardDeleteEmail('') }
+                                  if (e.key === 'Enter' && hardDeleteEmail.trim().toLowerCase() === teacher.email.toLowerCase()) {
+                                    hardDeleteMutation.mutate({ userId: teacher.id, confirmEmail: hardDeleteEmail.trim() })
+                                  }
+                                }}
+                                className="h-6 w-36 border border-red-300 rounded px-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-red-400"
+                                placeholder={teacher.email}
+                              />
+                              <button
+                                onClick={() => hardDeleteMutation.mutate({ userId: teacher.id, confirmEmail: hardDeleteEmail.trim() })}
+                                disabled={hardDeleteEmail.trim().toLowerCase() !== teacher.email.toLowerCase() || hardDeleteMutation.isPending}
+                                className="h-6 px-2 rounded bg-red-600 text-white text-[10px] font-medium disabled:opacity-40 hover:bg-red-700"
+                              >
+                                Elimina
+                              </button>
+                              <button
+                                onClick={() => { setHardDeleteId(null); setHardDeleteEmail('') }}
+                                className="h-6 px-1.5 rounded border border-slate-200 text-slate-500 text-[10px] hover:bg-slate-50"
+                              >
+                                Annulla
+                              </button>
+                            </div>
+                          ) : (
+                            <div className="flex items-center justify-end gap-1.5">
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="h-7 px-2 text-xs text-slate-600 hover:text-slate-900 hover:bg-slate-100"
+                                onClick={() => resetMutation.mutate(teacher.id)}
+                                disabled={resetMutation.isPending}
+                                title="Invia link reset password"
+                              >
+                                <Key className="h-3.5 w-3.5 mr-1" />
+                                <span className="hidden lg:inline">Reset password</span>
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="h-7 px-2 text-xs text-amber-600 hover:text-amber-800 hover:bg-amber-50"
+                                onClick={() => {
+                                  if (confirm(`Promuovere ${teacher.email} ad amministratore? Non sarà più un docente.`))
+                                    promoteMutation.mutate(teacher.id)
+                                }}
+                                disabled={promoteMutation.isPending}
+                                title="Promuovi ad amministratore"
+                              >
+                                <ShieldCheck className="h-3.5 w-3.5" />
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="h-7 px-2 text-xs text-orange-500 hover:text-orange-700 hover:bg-orange-50"
+                                onClick={() => {
+                                  if (confirm(`Disattivare ${teacher.email}? L'account verrà nascosto ma resterà nel database.`))
+                                    deleteMutation.mutate(teacher.id)
+                                }}
+                                disabled={deleteMutation.isPending}
+                                title="Disattiva account (soft-delete)"
+                              >
+                                <X className="h-3.5 w-3.5" />
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="h-7 px-2 text-xs text-red-500 hover:text-red-700 hover:bg-red-50"
+                                onClick={() => { setHardDeleteId(teacher.id); setHardDeleteEmail('') }}
+                                title="Elimina definitivamente dal database"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </Button>
+                            </div>
+                          )}
                         </td>
                       </tr>
                     ))}

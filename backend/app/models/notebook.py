@@ -14,10 +14,11 @@ class Notebook(Base):
     owner_id = Column(UUID(as_uuid=True), nullable=False, index=True)
 
     title = Column(String(255), nullable=False, default="Nuovo Notebook")
+    project_type = Column(String(32), nullable=False, default="python", server_default="python")
     # Array of cell objects:
     # { id, type: "code"|"markdown", source, outputs: [...], execution_count }
     cells = Column(JSONB, nullable=False, default=list)
+    editor_settings = Column(JSONB, nullable=False, default=dict, server_default="{}")
 
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
-

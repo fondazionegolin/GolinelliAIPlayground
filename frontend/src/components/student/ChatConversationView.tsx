@@ -10,12 +10,16 @@ import remarkMath from 'remark-math'
 import rehypeKatex from 'rehype-katex'
 import { markdownCodeComponents } from '@/components/CodeBlock'
 import EnvironmentalImpactPill from '@/components/chat/EnvironmentalImpactPill'
+import type { TokenUsageJson } from '@/lib/environmentalImpact'
 
 interface Message {
   id: string
   role: 'user' | 'assistant'
   content: string
   timestamp: Date
+  provider?: string
+  model?: string
+  token_usage_json?: TokenUsageJson | null
 }
 
 interface AttachedFile {
@@ -397,7 +401,11 @@ const MessageBubble = memo(function MessageBubble({
         {!isUser && (
           <>
             <div className="mt-3 flex items-center justify-between gap-3">
-              <EnvironmentalImpactPill />
+              <EnvironmentalImpactPill
+                provider={message.provider}
+                model={message.model}
+                tokenUsage={message.token_usage_json}
+              />
             </div>
             <button
               onClick={onCopy}

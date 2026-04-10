@@ -234,7 +234,7 @@ export default function TeacherDashboard() {
           </div>
         )}
 
-        <main className="flex-1 overflow-y-auto relative">
+        <main className={`flex-1 relative ${location.pathname.includes('/notebooks/notebook/') ? 'overflow-hidden flex flex-col' : 'overflow-y-auto'}`}>
           <Suspense fallback={<div className="flex items-center justify-center h-full min-h-[40vh] text-sm text-slate-400">Caricamento...</div>}>
             <Routes>
               <Route index element={<TeacherSupportChat />} />

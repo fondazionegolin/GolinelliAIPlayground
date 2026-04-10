@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback, useMemo, type CSSProperties } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useMutation, useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
 import { llmApi, studentApi, teacherbotsApi } from '@/lib/api'
 import DataFileCard, { type DataFilePreview } from '@/components/DataFileCard'
@@ -25,12 +25,16 @@ import ChatConversationView from '@/components/student/ChatConversationView'
 import { VoiceRecorder } from '@/components/VoiceRecorder'
 import { DEFAULT_STUDENT_ACCENT, getStudentAccentTheme, loadStudentAccent, type StudentAccentId } from '@/lib/studentAccent'
 import EnvironmentalImpactPill from '@/components/chat/EnvironmentalImpactPill'
+import type { TokenUsageJson } from '@/lib/environmentalImpact'
 
 interface Message {
   id: string
   role: 'user' | 'assistant'
   content: string
   timestamp: Date
+  provider?: string
+  model?: string
+  token_usage_json?: TokenUsageJson | null
 }
 
 interface QuizQuestion {
@@ -347,6 +351,7 @@ type MobileViewState = 'profiles' | 'conversations' | 'chat'
 
 export default function ChatbotModule({ sessionId, studentId, initialTeacherbotId, oggiImparoContext, onOggiImparoContextConsumed, onInputFocusChange, isTeacherPreview, studentAccent: accentProp }: ChatbotModuleProps) {
   const { t } = useTranslation()
+  const queryClient = useQueryClient()
   const FALLBACK_PROFILES = getFallbackProfiles(t)
   const PROFILE_INTERVIEWS = getProfileInterviews(t)
   const [messages, setMessages] = useState<Message[]>([])
@@ -933,11 +938,16 @@ export default function ChatbotModule({ sessionId, studentId, initialTeacherbotI
             } else if (data.type === 'status') {
               setStreamingStatus(data.message)
             } else if (data.type === 'done') {
-              if (data.content) {
-                setMessages(prev => prev.map(m =>
-                  m.id === assistantId ? { ...m, content: data.content } : m
-                ))
-              }
+              setMessages(prev => prev.map(m =>
+                m.id === assistantId ? {
+                  ...m,
+                  content: data.content || m.content,
+                  provider: data.provider,
+                  model: data.model,
+                  token_usage_json: data.token_usage,
+                } : m
+              ))
+              queryClient.invalidateQueries({ queryKey: ['llm-environmental-footprint'] })
             } else if (data.type === 'error') {
               throw new Error(data.message || 'Errore stream')
             }
@@ -957,7 +967,7 @@ export default function ChatbotModule({ sessionId, studentId, initialTeacherbotI
       refetchConversations()
       setTimeout(() => inputRef.current?.focus(), 0)
     }
-  }, [refetchConversations, inputRef])
+  }, [queryClient, refetchConversations, inputRef])
 
   const currentProfile = profiles.find(p => p.key === selectedProfile)
   const buildMasterPrompt = useCallback((profileKey: ProactiveProfileKey, answers: Record<string, string>) => {
@@ -1095,9 +1105,13 @@ export default function ChatbotModule({ sessionId, studentId, initialTeacherbotI
         role: 'assistant',
         content: hasBase64Image ? fullContent : '',
         timestamp: new Date(),
+        provider: data.provider,
+        model: data.model,
+        token_usage_json: data.token_usage_json,
       }
       setMessages((prev) => [...prev, assistantMessage])
       setAttachedFiles([])
+      queryClient.invalidateQueries({ queryKey: ['llm-environmental-footprint'] })
 
       if (!hasBase64Image) {
         typewriterEffect(fullContent, messageId)
@@ -1171,8 +1185,12 @@ REGOLE IMPORTANTI:
           role: 'assistant',
           content: `**Immagine Generata**\n\n![Generata](${imageUrl})\n\n**Prompt:** \`${enhancedPrompt}\``,
           timestamp: new Date(),
+          provider: imageProvider === 'dall-e' || imageProvider === 'gpt-image-1' ? 'openai' : 'flux',
+          model: imageProvider === 'dall-e' ? 'dall-e-3' : imageProvider,
+          token_usage_json: { image_count: 1 },
         }
         setMessages(prev => [...prev, assistantMessage])
+        queryClient.invalidateQueries({ queryKey: ['llm-environmental-footprint'] })
       } else {
         throw new Error('Nessuna immagine ricevuta dal server')
       }
@@ -1186,7 +1204,7 @@ REGOLE IMPORTANTI:
       }
       setMessages(prev => [...prev, errMessage])
     }
-  }, [messages, imageProvider])
+  }, [messages, imageProvider, queryClient])
 
   const handleSend = useCallback((content?: string, files?: globalThis.File[]) => {
     const messageContent = content ?? input
@@ -1448,7 +1466,10 @@ REGOLE IMPORTANTI:
           id: m.id,
           role: m.role,
           content: m.content,
-          timestamp: new Date(m.created_at)
+          timestamp: new Date(m.created_at),
+          provider: m.provider,
+          model: m.model,
+          token_usage_json: m.token_usage_json,
         }))
         setMessages(loadedMessages)
         if (isMobile) setMobileView('chat')
@@ -1465,11 +1486,14 @@ REGOLE IMPORTANTI:
     try {
       const res = await llmApi.getMessages(convId)
       if (loadingConvIdRef.current !== convId) return  // Stale response — a newer load superseded this one
-      const serverMessages: Message[] = res.data.map((m: { id: string; role: string; content: string; created_at: string }) => ({
+      const serverMessages: Message[] = res.data.map((m: { id: string; role: string; content: string; created_at: string; provider?: string; model?: string; token_usage_json?: TokenUsageJson }) => ({
         id: m.id,
         role: m.role as 'user' | 'assistant',
         content: m.content,
         timestamp: new Date(m.created_at),
+        provider: m.provider,
+        model: m.model,
+        token_usage_json: m.token_usage_json,
       }))
       const learningSession = activeLearningSessionRef.current
         ? learningSessions.find((session) => session.id === activeLearningSessionRef.current)
@@ -1860,8 +1884,7 @@ REGOLE IMPORTANTI:
     return acc
   }, {})
   const topProfiles = Object.entries(profileUsageCounts).sort((a, b) => b[1] - a[1]).slice(0, 4)
-  const maxUsage = Math.max(1, ...topProfiles.map(([, count]) => count))
-  const learningTopics = [...new Set(learningSessions.map((session) => session.topic).filter(Boolean))]
+const learningTopics = [...new Set(learningSessions.map((session) => session.topic).filter(Boolean))]
   const openDesktopSection = (tab: 'assistants' | 'teacherbots' | 'learning') => {
     setMainTab(tab)
     if (!isDesktopSelection) {
@@ -2050,22 +2073,21 @@ REGOLE IMPORTANTI:
         style={{ borderRightColor: accentTheme.id === 'black' ? hexToRgba('#0f172a', 0.08) : hexToRgba(accentTheme.accent, 0.14) }}
       >
         <div
-          className="px-10 py-10 border-b"
+          className="border-b px-5 py-4"
           style={{
             borderBottomColor: accentTheme.id === 'black' ? hexToRgba('#0f172a', 0.08) : hexToRgba(accentTheme.accent, 0.14),
             backgroundColor: accentTheme.id === 'black' ? 'rgba(255,255,255,0.96)' : hexToRgba(accentTheme.accent, 0.08),
           }}
         >
-          <p className="text-[11px] font-semibold uppercase tracking-[0.18em]" style={{ color: accentTheme.text }}>Chatbot</p>
-          <h2 className="mt-2 text-xl font-semibold text-slate-900">Spazio AI studente</h2>
-          <p className="mt-1 text-sm leading-6 text-slate-600">Navigazione stabile, superfici più morbide e colori pastello coerenti con il pannello studente.</p>
+          <p className="text-[10px] font-semibold uppercase tracking-[0.18em]" style={{ color: accentTheme.text }}>Chatbot</p>
+          <h2 className="mt-0.5 text-base font-semibold text-slate-900">Spazio AI</h2>
         </div>
 
-        <nav className="px-10 py-8 space-y-4">
+        <nav className="px-3 py-3 space-y-1">
           {[
-            { key: 'assistants' as const, label: 'Assistenti AI', icon: Bot, badge: profiles.length, note: 'Tutor, quiz e strumenti di studio' },
-            { key: 'teacherbots' as const, label: 'Teacherbot', icon: Wand2, badge: availableTeacherbots.length, note: 'Assistenti coordinati dal docente' },
-            { key: 'learning' as const, label: 'Oggi Imparo', icon: BookOpen, badge: learningSessions.length, note: 'Microlezioni e ripasso strutturato' },
+            { key: 'assistants' as const, label: 'Assistenti AI', icon: Bot, badge: profiles.length, note: 'Tutor, quiz e strumenti' },
+            { key: 'teacherbots' as const, label: 'Teacherbot', icon: Wand2, badge: availableTeacherbots.length, note: 'Dal tuo docente' },
+            { key: 'learning' as const, label: 'Oggi Imparo', icon: BookOpen, badge: learningSessions.length, note: 'Microlezioni' },
           ].map(({ key, label, icon: Icon, badge, note }) => {
             const active = mainTab === key
             const menuTheme = getSidebarMenuTheme(key)
@@ -2073,47 +2095,31 @@ REGOLE IMPORTANTI:
               <button
                 key={key}
                 onClick={() => openDesktopSection(key)}
-                className={`w-full rounded-[24px] border px-5 py-4 text-left transition-all ${
-                  active ? 'shadow-sm' : 'hover:shadow-sm'
-                }`}
+                className={`w-full rounded-2xl border px-3 py-2.5 text-left transition-all ${active ? 'shadow-sm' : 'hover:shadow-sm'}`}
                 style={active ? {
-                  borderColor: accentTheme.id === 'black' ? hexToRgba('#ffffff', 0.12) : hexToRgba(accentTheme.accent, 0.16),
+                  borderColor: accentTheme.id === 'black' ? hexToRgba('#0f172a', 0.12) : hexToRgba(accentTheme.accent, 0.2),
                   backgroundColor: menuTheme.surface,
                 } : {
-                  borderColor: hexToRgba('#ffffff', 0),
+                  borderColor: 'rgba(203,213,225,0.3)',
                   backgroundColor: 'rgba(255,255,255,0.74)',
                 }}
               >
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2.5">
                   <div
-                    className="flex h-11 w-11 items-center justify-center rounded-2xl"
-                    style={active ? {
-                      backgroundColor: menuTheme.surfaceStrong,
-                      color: menuTheme.iconColor,
-                    } : {
-                      backgroundColor: menuTheme.iconBg,
-                      color: menuTheme.iconColor,
-                    }}
+                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl"
+                    style={{ backgroundColor: active ? menuTheme.surfaceStrong : menuTheme.iconBg, color: menuTheme.iconColor }}
                   >
-                    <Icon className="h-4 w-4" />
+                    <Icon className="h-3.5 w-3.5" />
                   </div>
                   <div className="min-w-0 flex-1">
-                    <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center justify-between gap-1">
                       <span className="text-sm font-semibold text-slate-800">{label}</span>
-                      <span
-                        className="rounded-full px-2 py-0.5 text-[11px] font-semibold"
-                        style={active ? {
-                          backgroundColor: 'rgba(255,255,255,0.82)',
-                          color: menuTheme.iconColor,
-                        } : {
-                          backgroundColor: 'rgba(255,255,255,0.82)',
-                          color: menuTheme.iconColor,
-                        }}
-                      >
+                      <span className="rounded-full px-1.5 py-0.5 text-[10px] font-bold"
+                        style={{ backgroundColor: 'rgba(255,255,255,0.9)', color: menuTheme.iconColor }}>
                         {badge}
                       </span>
                     </div>
-                    <p className="mt-0.5 text-xs leading-5 text-slate-600">{note}</p>
+                    <p className="text-[11px] text-slate-500">{note}</p>
                   </div>
                 </div>
               </button>
@@ -2121,18 +2127,15 @@ REGOLE IMPORTANTI:
           })}
         </nav>
 
-        <div className="mt-auto px-10 pb-10 pt-6">
-          <div className="rounded-[24px] border p-5" style={{ borderColor: accentTheme.id === 'black' ? hexToRgba('#ffffff', 0.1) : hexToRgba(accentTheme.accent, 0.14), backgroundColor: accentTheme.id === 'black' ? 'rgba(255,255,255,0.92)' : hexToRgba(accentTheme.accent, 0.08) }}>
-            <p className="text-xs font-semibold" style={{ color: accentTheme.text }}>Panoramica</p>
-            <div className="mt-3 grid grid-cols-2 gap-2">
-              <div className="rounded-2xl bg-white/90 p-3.5 border" style={{ borderColor: accentTheme.id === 'black' ? hexToRgba('#0f172a', 0.06) : hexToRgba(accentTheme.accent, 0.12) }}>
-                <div className="text-[11px] text-slate-400">Chat salvate</div>
-                <div className="mt-1 text-lg font-semibold text-slate-900">{conversations.length}</div>
-              </div>
-              <div className="rounded-2xl bg-white/90 p-3.5 border" style={{ borderColor: accentTheme.id === 'black' ? hexToRgba('#0f172a', 0.06) : hexToRgba(accentTheme.accent, 0.12) }}>
-                <div className="text-[11px] text-slate-400">Lezioni</div>
-                <div className="mt-1 text-lg font-semibold text-slate-900">{learningSessions.length}</div>
-              </div>
+        <div className="mt-auto border-t px-3 py-3" style={{ borderTopColor: accentTheme.id === 'black' ? hexToRgba('#0f172a', 0.06) : hexToRgba(accentTheme.accent, 0.1) }}>
+          <div className="grid grid-cols-2 gap-1.5">
+            <div className="rounded-xl border bg-white/90 px-3 py-2" style={{ borderColor: accentTheme.id === 'black' ? hexToRgba('#0f172a', 0.06) : hexToRgba(accentTheme.accent, 0.12) }}>
+              <div className="text-[10px] uppercase tracking-wide text-slate-400">Chat</div>
+              <div className="mt-0.5 text-base font-semibold text-slate-900">{conversations.length}</div>
+            </div>
+            <div className="rounded-xl border bg-white/90 px-3 py-2" style={{ borderColor: accentTheme.id === 'black' ? hexToRgba('#0f172a', 0.06) : hexToRgba(accentTheme.accent, 0.12) }}>
+              <div className="text-[10px] uppercase tracking-wide text-slate-400">Lezioni</div>
+              <div className="mt-0.5 text-base font-semibold text-slate-900">{learningSessions.length}</div>
             </div>
           </div>
         </div>
@@ -2326,114 +2329,84 @@ REGOLE IMPORTANTI:
           {isDesktopSelection ? (
             <>
               <div
-                className="border-b bg-white px-6 py-5"
+                className="flex shrink-0 items-center justify-between border-b px-5 py-3"
                 style={{
                   borderBottomColor: accentTheme.border,
                   backgroundColor: accentTheme.id === 'black' ? 'rgba(255,255,255,0.96)' : accentTheme.soft,
                 }}
               >
-                {mainTab === 'assistants' && (
-                  <div className="flex items-end justify-between gap-4">
-                    <div>
-                      <p className="text-[11px] font-semibold uppercase tracking-[0.18em]" style={{ color: accentTheme.text }}>Assistenti AI</p>
-                      <h3 className="mt-2 text-2xl font-semibold text-slate-900">Scegli il tipo di supporto</h3>
-                      <p className="mt-1 text-sm text-slate-600">Landing iniziale del modulo: nessun chatbot viene aperto automaticamente.</p>
-                    </div>
-                    <div className="hidden xl:flex gap-3">
-                      {topProfiles.map(([key, count]) => (
-                        <div key={key} className="rounded-2xl border px-4 py-3 min-w-[132px]" style={{ borderColor: accentTheme.border, backgroundColor: accentTheme.soft }}>
-                          <div className="text-[11px] text-slate-400">{profiles.find((profile) => profile.key === key)?.name || key}</div>
-                          <div className="mt-1 text-lg font-semibold text-slate-900">{count}</div>
-                        </div>
+                <div className="flex items-center gap-2">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.18em]" style={{ color: accentTheme.text }}>
+                    {mainTab === 'assistants' ? 'Assistenti AI' : mainTab === 'teacherbots' ? 'Teacherbot' : 'Oggi Imparo'}
+                  </p>
+                  {mainTab === 'teacherbots' && (
+                    <span className="rounded-full px-1.5 py-0.5 text-[10px] font-bold" style={{ backgroundColor: accentTheme.soft, color: accentTheme.text }}>
+                      {availableTeacherbots.length}
+                    </span>
+                  )}
+                  {mainTab === 'assistants' && topProfiles.length > 0 && (
+                    <div className="hidden xl:flex gap-2 ml-4">
+                      {topProfiles.slice(0, 3).map(([key, count]) => (
+                        <span key={key} className="rounded-full border px-2 py-0.5 text-[10px] font-medium" style={{ borderColor: accentTheme.border, backgroundColor: accentTheme.soft, color: accentTheme.text }}>
+                          {profiles.find(p => p.key === key)?.name || key} · {count}
+                        </span>
                       ))}
                     </div>
-                  </div>
-                )}
-                {mainTab === 'teacherbots' && (
-                  <div className="flex items-end justify-between gap-4">
-                    <div>
-                      <p className="text-[11px] font-semibold uppercase tracking-[0.18em]" style={{ color: accentTheme.text }}>Teacherbot</p>
-                      <h3 className="mt-2 text-2xl font-semibold text-slate-900">Assistenti pubblicati dal docente</h3>
-                      <p className="mt-1 text-sm text-slate-600">Card uniformi, più ordinate e con una resa visiva coerente con la tipologia.</p>
-                    </div>
-                    <div className="rounded-2xl border px-4 py-3" style={{ borderColor: accentTheme.border, backgroundColor: accentTheme.soft }}>
-                      <div className="text-[11px] text-slate-400">Disponibili ora</div>
-                      <div className="mt-1 text-lg font-semibold text-slate-900">{availableTeacherbots.length}</div>
-                    </div>
-                  </div>
-                )}
+                  )}
+                </div>
                 {mainTab === 'learning' && (
-                  <div className="flex items-end justify-between gap-4">
-                    <div>
-                      <p className="text-[11px] font-semibold uppercase tracking-[0.18em]" style={{ color: accentTheme.text }}>Oggi Imparo</p>
-                      <h3 className="mt-2 text-2xl font-semibold text-slate-900">Microlezioni organizzate</h3>
-                      <p className="mt-1 text-sm text-slate-600">Vista più strutturata, con indicatori sintetici e tabella dei contenuti.</p>
-                    </div>
-                    <Button
-                      onClick={() => setShowNewLessonDialog(true)}
-                      className="rounded-xl text-white shadow-sm"
-                      style={selectedSolidStyle}
-                    >
-                      <Plus className="mr-2 h-4 w-4" />
-                      Nuova microlezione
-                    </Button>
-                  </div>
+                  <Button size="sm" onClick={() => setShowNewLessonDialog(true)} className="rounded-xl text-white shadow-sm" style={selectedSolidStyle}>
+                    <Plus className="mr-1.5 h-3.5 w-3.5" />
+                    Nuova lezione
+                  </Button>
                 )}
               </div>
 
-              <div className="flex-1 overflow-y-auto p-6">
+              <div className="flex-1 overflow-y-auto p-4">
                 {mainTab === 'assistants' && (
-                  <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                  <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                     {profiles.map((profile) => {
                       const usage = profileUsageCounts[profile.key] || 0
                       const accent = profile.key === 'tutor'
-                        ? { surface: 'rgba(220,252,231,0.72)', icon: 'rgba(16,185,129,0.14)', color: '#0f766e' }
+                        ? { surface: 'rgba(220,252,231,0.72)', icon: 'rgba(16,185,129,0.18)', color: '#0f766e', border: 'rgba(16,185,129,0.22)' }
                         : profile.key === 'quiz'
-                          ? { surface: 'rgba(255,228,230,0.72)', icon: 'rgba(244,63,94,0.14)', color: '#be123c' }
+                          ? { surface: 'rgba(255,228,230,0.72)', icon: 'rgba(244,63,94,0.16)', color: '#be123c', border: 'rgba(244,63,94,0.18)' }
                           : profile.key === 'interview'
-                            ? { surface: 'rgba(243,232,255,0.74)', icon: 'rgba(139,92,246,0.14)', color: '#7c3aed' }
+                            ? { surface: 'rgba(243,232,255,0.74)', icon: 'rgba(139,92,246,0.16)', color: '#7c3aed', border: 'rgba(139,92,246,0.2)' }
                             : profile.key === 'oral_exam'
-                              ? { surface: 'rgba(255,237,213,0.78)', icon: 'rgba(245,158,11,0.14)', color: '#c2410c' }
+                              ? { surface: 'rgba(255,237,213,0.78)', icon: 'rgba(245,158,11,0.16)', color: '#c2410c', border: 'rgba(245,158,11,0.2)' }
                               : profile.key === 'dataset_generator'
-                                ? { surface: 'rgba(207,250,254,0.78)', icon: 'rgba(14,165,233,0.14)', color: '#0369a1' }
-                                : { surface: 'rgba(224,231,255,0.76)', icon: 'rgba(99,102,241,0.14)', color: '#4338ca' }
+                                ? { surface: 'rgba(207,250,254,0.78)', icon: 'rgba(14,165,233,0.16)', color: '#0369a1', border: 'rgba(14,165,233,0.2)' }
+                                : { surface: 'rgba(224,231,255,0.76)', icon: 'rgba(99,102,241,0.16)', color: '#4338ca', border: 'rgba(99,102,241,0.2)' }
 
                       return (
                         <motion.button
                           key={profile.key}
                           whileTap={{ scale: 0.99 }}
                           onClick={() => handleSelectProfile(profile.key)}
-                          className="group relative flex h-[220px] flex-col overflow-hidden rounded-3xl border bg-white p-5 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md"
-                          style={{ borderColor: accentTheme.border }}
+                          className="group relative flex flex-col overflow-hidden rounded-2xl border bg-white p-4 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md"
+                          style={{ borderColor: accent.border }}
                         >
-                          <div className="absolute inset-x-0 top-0 h-28" style={{ backgroundColor: accent.surface }} />
-                          <div className="relative flex h-full flex-col">
-                            <div className="flex items-start justify-between gap-3">
-                              <div className="flex h-12 w-12 items-center justify-center rounded-2xl shadow-sm" style={{ backgroundColor: accent.icon, color: accent.color }}>
-                                <div className="scale-90">{PROFILE_ICONS[profile.key] || <Bot className="h-5 w-5" />}</div>
+                          <div className="absolute inset-x-0 top-0 h-16" style={{ backgroundColor: accent.surface }} />
+                          <div className="relative flex flex-col">
+                            <div className="flex items-center justify-between gap-2">
+                              <div className="flex h-9 w-9 items-center justify-center rounded-xl shadow-sm" style={{ backgroundColor: accent.icon, color: accent.color }}>
+                                <div className="scale-75">{PROFILE_ICONS[profile.key] || <Bot className="h-5 w-5" />}</div>
                               </div>
-                              <span className="rounded-full px-2.5 py-1 text-[11px] font-medium" style={{ backgroundColor: accentTheme.soft, color: accentTheme.text }}>
+                              <span className="rounded-full px-2 py-0.5 text-[10px] font-semibold" style={{ backgroundColor: 'rgba(255,255,255,0.9)', color: accent.color }}>
                                 {usage > 0 ? `${usage} chat` : 'Nuovo'}
                               </span>
                             </div>
-                            <div className="mt-5">
-                              <h4 className="text-base font-semibold text-slate-900">{profile.name}</h4>
-                              <p className="mt-2 line-clamp-3 text-sm leading-6 text-slate-600">{profile.description}</p>
+                            <div className="mt-3">
+                              <h4 className="text-sm font-semibold text-slate-900">{profile.name}</h4>
+                              <p className="mt-1 line-clamp-2 text-xs leading-5 text-slate-500">{profile.description}</p>
                             </div>
-                            <div className="mt-auto">
-                              <div className="flex flex-wrap gap-1.5">
-                                {(profile.suggested_prompts || []).slice(0, 2).map((prompt) => (
-                                  <span key={prompt} className="rounded-full border px-2.5 py-1 text-[11px]" style={{ borderColor: accentTheme.border, backgroundColor: accentTheme.soft, color: accentTheme.text }}>
-                                    {prompt}
-                                  </span>
-                                ))}
-                              </div>
-                              <div className="mt-4 h-1.5 rounded-full bg-slate-100 overflow-hidden">
-                                <div
-                                  className="h-full rounded-full"
-                                  style={{ width: `${(usage / maxUsage) * 100}%`, backgroundColor: accentTheme.accent }}
-                                />
-                              </div>
+                            <div className="mt-3 flex flex-wrap gap-1">
+                              {(profile.suggested_prompts || []).slice(0, 1).map((prompt) => (
+                                <span key={prompt} className="rounded-full border px-2 py-0.5 text-[10px] line-clamp-1" style={{ borderColor: accent.border, backgroundColor: accent.surface, color: accent.color }}>
+                                  {prompt}
+                                </span>
+                              ))}
                             </div>
                           </div>
                         </motion.button>
@@ -2452,7 +2425,7 @@ REGOLE IMPORTANTI:
                       </div>
                     </div>
                   ) : (
-                    <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                       {availableTeacherbots.map((bot) => {
                         const visual = getTeacherbotVisual(bot)
                         const surface = getTeacherbotSurface(bot.color)
@@ -2461,28 +2434,28 @@ REGOLE IMPORTANTI:
                             key={bot.id}
                             whileTap={{ scale: 0.99 }}
                             onClick={() => handleSelectTeacherbot(bot)}
-                            className={`group flex h-[258px] flex-col overflow-hidden rounded-3xl border bg-white text-left shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md ${surface.border}`}
+                            className={`group flex flex-col overflow-hidden rounded-2xl border bg-white text-left shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md ${surface.border}`}
                           >
-                            <div className={`relative overflow-hidden border-b px-5 py-5 ${surface.soft} ${surface.border}`}>
-                              <div className="absolute -right-4 -top-4 h-24 w-24 rounded-full bg-white/55" />
-                              <div className="absolute right-5 bottom-4 opacity-10">
-                                <visual.Icon className="h-16 w-16 text-slate-900" />
+                            <div className={`relative overflow-hidden border-b px-4 py-3 ${surface.soft} ${surface.border}`}>
+                              <div className="absolute right-3 bottom-2 opacity-[0.08]">
+                                <visual.Icon className="h-12 w-12 text-slate-900" />
                               </div>
-                              <div className={`relative flex h-12 w-12 items-center justify-center rounded-2xl ${surface.icon}`}>
-                                <visual.Icon className="h-5 w-5" />
-                              </div>
-                              <div className="relative mt-4">
-                                <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">{visual.label}</p>
-                                <p className="mt-1 text-sm text-slate-600">{visual.detail}</p>
+                              <div className="flex items-center gap-2.5">
+                                <div className={`relative flex h-9 w-9 items-center justify-center rounded-xl ${surface.icon}`}>
+                                  <visual.Icon className="h-4 w-4" />
+                                </div>
+                                <div>
+                                  <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">{visual.label}</p>
+                                  <p className="text-[11px] text-slate-500">{visual.detail}</p>
+                                </div>
                               </div>
                             </div>
-                            <div className="flex flex-1 flex-col px-5 py-4">
-                              <div className="flex items-start justify-between gap-3">
-                                <h4 className="line-clamp-2 text-base font-semibold text-slate-900">{bot.name}</h4>
-                                <span className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${surface.badge}`}>Docente</span>
+                            <div className="flex flex-1 flex-col px-4 py-3">
+                              <div className="flex items-start justify-between gap-2">
+                                <h4 className="text-sm font-semibold text-slate-900">{bot.name}</h4>
+                                <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${surface.badge}`}>Dal docente</span>
                               </div>
-                              <p className="mt-3 line-clamp-4 text-sm leading-6 text-slate-500">{bot.synopsis || bot.description || 'Assistente personalizzato per la sessione.'}</p>
-                              <div className="mt-auto pt-4 text-xs font-medium text-slate-400">Apri conversazione</div>
+                              <p className="mt-1.5 line-clamp-2 text-xs leading-5 text-slate-500">{bot.synopsis || bot.description || 'Assistente personalizzato per la sessione.'}</p>
                             </div>
                           </motion.button>
                         )
@@ -2492,28 +2465,28 @@ REGOLE IMPORTANTI:
                 )}
 
                 {mainTab === 'learning' && (
-                  <div className="space-y-5">
-                    <div className="grid gap-4 md:grid-cols-3">
+                  <div className="space-y-3">
+                    <div className="grid gap-2 grid-cols-3">
                       {[
                         { label: 'Microlezioni', value: learningSessions.length, icon: BookOpen },
-                        { label: 'Con chat attiva', value: learningSessions.filter((session) => session.conversationId).length, icon: ClipboardCheck },
-                        { label: 'Argomenti unici', value: learningTopics.length, icon: Sparkles },
+                        { label: 'Chat attiva', value: learningSessions.filter((session) => session.conversationId).length, icon: ClipboardCheck },
+                        { label: 'Argomenti', value: learningTopics.length, icon: Sparkles },
                       ].map(({ label, value, icon: Icon }) => (
-                        <div key={label} className="rounded-3xl border bg-white p-5 shadow-sm" style={{ borderColor: accentTheme.border }}>
-                          <div className="flex items-center justify-between">
-                            <p className="text-sm font-medium text-slate-600">{label}</p>
-                            <div className="flex h-10 w-10 items-center justify-center rounded-2xl" style={{ backgroundColor: accentTheme.soft, color: accentTheme.text }}>
-                              <Icon className="h-4 w-4" />
+                        <div key={label} className="rounded-2xl border bg-white px-3 py-2.5 shadow-sm" style={{ borderColor: accentTheme.border }}>
+                          <div className="flex items-center justify-between gap-1">
+                            <p className="text-[10px] uppercase tracking-wide text-slate-400">{label}</p>
+                            <div className="flex h-6 w-6 items-center justify-center rounded-lg" style={{ backgroundColor: accentTheme.soft, color: accentTheme.text }}>
+                              <Icon className="h-3 w-3" />
                             </div>
                           </div>
-                          <div className="mt-4 text-3xl font-semibold text-slate-900">{value}</div>
+                          <div className="mt-1 text-xl font-semibold text-slate-900">{value}</div>
                         </div>
                       ))}
                     </div>
 
-                    <div className="overflow-hidden rounded-3xl border bg-white shadow-sm" style={{ borderColor: accentTheme.border }}>
+                    <div className="overflow-hidden rounded-2xl border bg-white shadow-sm" style={{ borderColor: accentTheme.border }}>
                       <div
-                        className="grid grid-cols-[minmax(0,1.2fr)_minmax(0,2fr)_140px_120px] gap-4 border-b px-5 py-3 text-[11px] font-semibold uppercase tracking-[0.16em]"
+                        className="grid grid-cols-[minmax(0,1.2fr)_minmax(0,2fr)_110px_100px] gap-3 border-b px-4 py-2 text-[10px] font-semibold uppercase tracking-[0.16em]"
                         style={{ borderBottomColor: accentTheme.border, backgroundColor: accentTheme.soft, color: accentTheme.text }}
                       >
                         <div>Argomento</div>
@@ -2522,30 +2495,29 @@ REGOLE IMPORTANTI:
                         <div>Stato</div>
                       </div>
                       {learningSessions.length === 0 ? (
-                        <div className="px-5 py-14 text-center">
-                          <BookOpen className="mx-auto h-10 w-10 text-slate-300" />
-                          <p className="mt-4 text-sm font-medium text-slate-500">Nessuna microlezione disponibile</p>
-                          <p className="mt-1 text-sm text-slate-400">Usa il pulsante in alto per crearne una nuova.</p>
+                        <div className="px-5 py-10 text-center">
+                          <BookOpen className="mx-auto h-8 w-8 text-slate-300" />
+                          <p className="mt-3 text-sm font-medium text-slate-500">Nessuna microlezione</p>
                         </div>
                       ) : (
                         learningSessions.map((session) => (
                           <button
                             key={session.id}
                             onClick={() => expandingLearningSessionId !== session.id && openLearningSession(session)}
-                            className="grid w-full grid-cols-[minmax(0,1.2fr)_minmax(0,2fr)_140px_120px] gap-4 border-b px-5 py-4 text-left transition-colors last:border-b-0"
+                            className="grid w-full grid-cols-[minmax(0,1.2fr)_minmax(0,2fr)_110px_100px] gap-3 border-b px-4 py-3 text-left transition-colors hover:bg-slate-50 last:border-b-0"
                             style={{ borderBottomColor: accentTheme.softStrong }}
                           >
                             <div className="min-w-0">
                               <div className="truncate text-sm font-semibold text-slate-900">{session.topic}</div>
                             </div>
                             <div className="min-w-0">
-                              <p className="line-clamp-2 text-sm leading-6 text-slate-600">{session.lesson}</p>
+                              <p className="line-clamp-2 text-xs leading-5 text-slate-500">{session.lesson}</p>
                             </div>
-                            <div className="text-sm text-slate-600">
-                              {new Date(session.createdAt).toLocaleDateString('it-IT', { day: '2-digit', month: 'short', year: 'numeric' })}
+                            <div className="text-xs text-slate-400">
+                              {new Date(session.createdAt).toLocaleDateString('it-IT', { day: '2-digit', month: 'short', year: '2-digit' })}
                             </div>
                             <div>
-                              <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${expandingLearningSessionId === session.id ? 'bg-amber-100 text-amber-700' : session.conversationId ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}>
+                              <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${expandingLearningSessionId === session.id ? 'bg-amber-100 text-amber-700' : session.conversationId ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}>
                                 {expandingLearningSessionId === session.id ? 'Espansione...' : session.conversationId ? 'Chat attiva' : 'Solo lezione'}
                               </span>
                             </div>
@@ -2791,7 +2763,13 @@ REGOLE IMPORTANTI:
                     <p className="text-sm whitespace-pre-wrap">{message.content}</p>
                   )}
                   {message.role === 'assistant' && (
-                    <EnvironmentalImpactPill darkMode={chatBgIsDark} className="mt-3" />
+                    <EnvironmentalImpactPill
+                      darkMode={chatBgIsDark}
+                      className="mt-3"
+                      provider={message.provider}
+                      model={message.model}
+                      tokenUsage={message.token_usage_json}
+                    />
                   )}
                 </div>
                 {message.role === 'user' && (

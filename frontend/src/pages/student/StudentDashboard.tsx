@@ -324,6 +324,7 @@ export default function StudentDashboard() {
           onToggleChatSidebar={() => setShowSidebar(v => !v)}
           accent={studentAccent}
           onAccentChange={setStudentAccent}
+          enabledModules={enabledModules}
         />
       </div>
 
@@ -367,7 +368,7 @@ export default function StudentDashboard() {
       {/* Main Layout with Chat Sidebar */}
       <div className={`flex flex-1 overflow-hidden ${isMobile ? 'pt-14' : ''}`}>
         {/* Main Content Area */}
-        <main className={`flex-1 min-h-0 relative ${activeModule === 'chatbot' || activeModule === 'classe' || activeModule === 'documents' || activeModule === 'desktop' ? 'overflow-hidden flex flex-col' : 'overflow-y-auto'}`}>
+        <main className={`flex-1 min-h-0 relative ${activeModule === 'chatbot' || activeModule === 'classe' || activeModule === 'documents' || activeModule === 'desktop' || activeModule === 'notebook' ? 'overflow-hidden flex flex-col' : 'overflow-y-auto'}`}>
           <AnimatePresence mode="wait">
             <motion.div
               key={activeModule || 'home'}
@@ -376,7 +377,7 @@ export default function StudentDashboard() {
               animate="animate"
               exit="exit"
               transition={{ duration: 0.2, ease: 'easeInOut' }}
-              className={`${activeModule === 'chatbot' || activeModule === 'classe' || activeModule === 'documents' || activeModule === 'desktop' ? 'p-0 h-full min-h-0' : 'p-4 md:p-6'}`}
+              className={`${activeModule === 'chatbot' || activeModule === 'classe' || activeModule === 'documents' || activeModule === 'desktop' || activeModule === 'notebook' ? 'p-0 h-full min-h-0' : 'p-4 md:p-6'}`}
               style={swipeState.isActive ? { transform: `translateX(${swipeState.x}px)` } : undefined}
             >
               {!activeModule ? (
@@ -390,7 +391,7 @@ export default function StudentDashboard() {
                 />
               ) : (
                 <div className="h-full min-h-0 flex flex-col">
-                  {activeModule !== 'documents' && activeModule !== 'desktop' && activeModule !== 'chatbot' && activeModule !== 'classe' && (
+                  {activeModule !== 'documents' && activeModule !== 'desktop' && activeModule !== 'chatbot' && activeModule !== 'classe' && activeModule !== 'notebook' && (
                     <div className={`mb-4 ${activeModule === 'chatbot' || activeModule === 'classe' ? 'hidden md:block' : ''}`}>
                       <Button
                         variant="ghost"
@@ -460,6 +461,7 @@ export default function StudentDashboard() {
         activeModule={activeModule}
         onNavigate={setActiveModule}
         hidden={isKeyboardOpen}
+        enabledModules={enabledModules}
       />
       <FloatingHelper module={activeModule} />
     </AppBackground>
@@ -723,7 +725,7 @@ function ModuleView({ moduleKey, sessionId, sessionName, openTaskId, studentId, 
 
   if (moduleKey === 'notebook') {
     return (
-      <div className="h-[calc(100dvh-7rem)] md:h-full flex flex-col overflow-hidden">
+      <div className="h-full min-h-0 flex flex-col overflow-hidden">
         <StudentNotebookModule />
       </div>
     )

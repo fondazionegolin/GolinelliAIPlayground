@@ -3,7 +3,7 @@ import { Routes, Route, useLocation, useNavigate, Navigate } from 'react-router-
 import { motion } from 'framer-motion'
 import { useAuthStore } from '@/stores/auth'
 import { AppBackground } from '@/components/ui/AppBackground'
-import { LogOut, LayoutDashboard, GraduationCap, BarChart3, Mail, School, Bug, KeyRound, X, Loader2 } from 'lucide-react'
+import { LogOut, LayoutDashboard, GraduationCap, BarChart3, Mail, School, Bug, KeyRound, X, Loader2, BookOpen } from 'lucide-react'
 import { useMutation } from '@tanstack/react-query'
 import { adminApi } from '@/lib/api'
 import { useToast } from '@/components/ui/use-toast'
@@ -153,6 +153,16 @@ export default function AdminDashboard() {
           </div>
 
           <div className="flex-1" />
+
+          {/* Switch to teacher panel */}
+          <button
+            onClick={() => navigate('/teacher')}
+            className="flex items-center gap-1.5 text-white/55 hover:text-white text-sm transition-colors"
+            title="Vai al pannello docente"
+          >
+            <BookOpen className="h-4 w-4" />
+            <span className="hidden sm:inline text-xs">Docente</span>
+          </button>
 
           {/* Change password */}
           <button

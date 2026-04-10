@@ -1,4 +1,5 @@
 import axios from 'axios'
+import type { EnvironmentalFootprintResponse } from '@/lib/environmentalImpact'
 
 const api = axios.create({
   baseURL: '/api/v1',
@@ -131,6 +132,8 @@ export const adminApi = {
     api.post('/admin/change-password', { current_password: currentPassword, new_password: newPassword }),
   promoteToAdmin: (userId: string) =>
     api.post(`/admin/users/${userId}/promote-admin`),
+  hardDeleteUser: (userId: string, confirmEmail: string) =>
+    api.delete(`/admin/users/${userId}/permanent`, { data: { confirm_email: confirmEmail } }),
 }
 
 export const teacherApi = {
@@ -228,7 +231,7 @@ export const teacherApi = {
     api.delete('/teacher/conversations'),
   updateConversation: (conversationId: string, data: { title?: string; agent_mode?: string }) =>
     api.patch(`/teacher/conversations/${conversationId}`, data),
-  addMessage: (conversationId: string, data: { role: string; content: string; provider?: string; model?: string }) =>
+  addMessage: (conversationId: string, data: { role: string; content: string; provider?: string; model?: string; token_usage_json?: Record<string, unknown> }) =>
     api.post(`/teacher/conversations/${conversationId}/messages`, data),
   listDocumentDrafts: (sessionId?: string) => api.get('/teacher/documents/drafts', { params: { session_id: sessionId } }),
   createDocumentDraft: (data: { title: string; doc_type: string; content_json: string; session_id?: string }) =>
@@ -372,6 +375,8 @@ export const llmApi = {
       headers: { 'Content-Type': 'multipart/form-data' }
     })
   },
+  getEnvironmentalFootprint: () =>
+    api.get<EnvironmentalFootprintResponse>('/llm/environmental-footprint'),
 }
 
 export const ragApi = {
@@ -540,6 +545,10 @@ export const creditsApi = {
   bulkInviteJson: (teachers: Array<{ email: string; first_name?: string; last_name?: string; school?: string }>, groupTag?: string, customMessage?: string) =>
     api.post('/credits/invitations/bulk-json', { teachers, group_tag: groupTag, custom_message: customMessage }),
   getInvitations: () => api.get('/credits/invitations'),
+  resendInvitation: (invitationId: string) =>
+    api.post(`/credits/invitations/${invitationId}/resend`),
+  deleteInvitation: (invitationId: string) =>
+    api.delete(`/credits/invitations/${invitationId}`),
 }
 
 export const feedbackApi = {
@@ -567,16 +576,22 @@ export const feedbackApi = {
 
 export const notebooksApi = {
   list: () => api.get('/notebooks'),
-  create: (title: string) => api.post('/notebooks', { title }),
+  create: (title: string, projectType: 'python' | 'p5js') => api.post('/notebooks', { title, project_type: projectType }),
   get: (id: string) => api.get(`/notebooks/${id}`),
-  update: (id: string, data: { title?: string; cells?: unknown[] }) => api.put(`/notebooks/${id}`, data),
+  update: (id: string, data: { title?: string; cells?: unknown[]; project_type?: 'python' | 'p5js'; editor_settings?: Record<string, unknown> }) => api.put(`/notebooks/${id}`, data),
   delete: (id: string) => api.delete(`/notebooks/${id}`),
   tutorChat: (id: string, data: {
     message: string
     history: { role: string; content: string }[]
     current_cell_source?: string
     last_output?: string
+    pending_proposals?: unknown[]
   }) => api.post(`/notebooks/${id}/tutor`, data),
+  assist: (id: string, data: {
+    message?: string
+    current_cell_source?: string
+    last_output?: string
+  }) => api.post(`/notebooks/${id}/assist`, data),
 }
 
 export const desktopApi = {

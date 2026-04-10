@@ -23,8 +23,8 @@ export function NavTab({ icon: Icon, label, isActive, isAdjacent, onClick, accen
         'group flex items-center px-2.5 py-1.5 rounded-xl text-[12px] font-medium',
         'transition-all duration-150 border',
         isActive
-          ? `${accentClass ?? 'bg-slate-900'} ${accentTextClass ?? 'text-white'} border-white/20 shadow-sm`
-          : 'text-slate-500 hover:bg-slate-100 hover:text-slate-900 border-transparent',
+          ? `${accentClass ?? 'bg-slate-900'} ${accentTextClass ?? 'text-white'} border-white/35`
+          : 'text-slate-500 hover:bg-white hover:text-slate-900 border-transparent',
       ].join(' ')}
     >
       <Icon className="h-4 w-4 shrink-0" />

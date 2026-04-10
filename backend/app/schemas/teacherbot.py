@@ -162,6 +162,7 @@ class TeacherbotTestResponse(BaseModel):
     content: str
     provider: str
     model: str
+    token_usage_json: Optional[dict[str, Any]] = None
 
 
 # ==================== Report Schemas ====================

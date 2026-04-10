@@ -2280,6 +2280,7 @@ class TeacherMessageCreate(BaseModel):
     provider: Optional[str] = None
     model: Optional[str] = None
     attachments_json: Optional[dict] = None
+    token_usage_json: Optional[dict] = None
 
 
 class TeacherMessageResponse(BaseModel):
@@ -2288,6 +2289,7 @@ class TeacherMessageResponse(BaseModel):
     content: Optional[str]
     provider: Optional[str]
     model: Optional[str]
+    token_usage_json: Optional[dict] = None
     created_at: datetime
 
     class Config:
@@ -2420,6 +2422,7 @@ async def get_teacher_conversation(
                 "content": m.content,
                 "provider": m.provider,
                 "model": m.model,
+                "token_usage_json": (m.attachments_json or {}).get("token_usage_json"),
                 "created_at": m.created_at.isoformat(),
             }
             for m in messages
@@ -2448,6 +2451,10 @@ async def add_message_to_conversation(
     if not conversation:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found")
     
+    attachments_json = dict(request.attachments_json or {})
+    if request.token_usage_json:
+        attachments_json["token_usage_json"] = request.token_usage_json
+
     message = TeacherConversationMessage(
         tenant_id=teacher.tenant_id,
         conversation_id=conversation_id,
@@ -2455,7 +2462,7 @@ async def add_message_to_conversation(
         content=request.content,
         provider=request.provider,
         model=request.model,
-        attachments_json=request.attachments_json,
+        attachments_json=attachments_json or None,
     )
     db.add(message)
     
@@ -2469,7 +2476,15 @@ async def add_message_to_conversation(
     await db.commit()
     await db.refresh(message)
     
-    return message
+    return TeacherMessageResponse(
+        id=message.id,
+        role=message.role,
+        content=message.content,
+        provider=message.provider,
+        model=message.model,
+        token_usage_json=(message.attachments_json or {}).get("token_usage_json"),
+        created_at=message.created_at,
+    )
 
 
 @router.delete("/conversations/{conversation_id}")

@@ -165,8 +165,8 @@ self.onmessage = async function(event) {
 
 // ── Hook ─────────────────────────────────────────────────────────────────────
 
-export function usePyodide() {
-  const [status, setStatus]    = useState<PyodideStatus>('loading')
+export function usePyodide(enabled = true) {
+  const [status, setStatus]    = useState<PyodideStatus>(enabled ? 'loading' : 'idle')
   const [error, setError]      = useState<string | null>(null)
   const [inputState, setInput] = useState<InputState | null>(null)
 
@@ -251,11 +251,22 @@ export function usePyodide() {
   }, [])
 
   useEffect(() => {
+    if (!enabled) {
+      workerRef.current?.terminate()
+      workerRef.current = null
+      pendingRef.current.clear()
+      setInput(null)
+      setError(null)
+      setStatus('idle')
+      initedRef.current = false
+      return
+    }
     if (initedRef.current) return
     initedRef.current = true
+    setStatus('loading')
     workerRef.current = createWorker()
     return () => { workerRef.current?.terminate(); workerRef.current = null }
-  }, [createWorker])
+  }, [createWorker, enabled])
 
   const runCell = useCallback((code: string): Promise<CellOutput[]> =>
     new Promise((resolve) => {
@@ -265,13 +276,14 @@ export function usePyodide() {
     }), [])
 
   const restartKernel = useCallback(() => {
+    if (!enabled) return
     workerRef.current?.terminate()
     URL.revokeObjectURL  // no-op, just to hint GC
     pendingRef.current.clear()
     setInput(null)
     setStatus('loading')
     workerRef.current = createWorker()
-  }, [createWorker])
+  }, [createWorker, enabled])
 
   return { status, error, runCell, restartKernel, inputState }
 }

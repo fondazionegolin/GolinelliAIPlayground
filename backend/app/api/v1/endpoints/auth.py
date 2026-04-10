@@ -13,6 +13,7 @@ from app.core.security import verify_password, create_access_token, get_password
 from app.core.config import settings
 from app.core.url_utils import resolve_frontend_url
 from app.models.user import User, TeacherRequest, ActivationToken, PasswordResetToken
+from app.models.invitation import PlatformInvitation
 from app.models.tenant import Tenant
 from app.models.enums import UserRole, TeacherRequestStatus
 from app.schemas.auth import LoginRequest, LoginResponse, TeacherRequestCreate, TeacherRequestResponse
@@ -360,6 +361,18 @@ async def change_password_with_token(
     # Mark token as used
     token_record.is_used = True
     token_record.used_at = datetime.now(timezone.utc)
+
+    pending_invitation = (await db.execute(
+        select(PlatformInvitation)
+        .where(
+            PlatformInvitation.email == user.email,
+            PlatformInvitation.status == "pending",
+        )
+        .order_by(PlatformInvitation.created_at.desc())
+    )).scalars().first()
+    if pending_invitation:
+        pending_invitation.status = "accepted"
+        pending_invitation.responded_at = datetime.now(timezone.utc)
     
     await db.commit()
     

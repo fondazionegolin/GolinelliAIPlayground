@@ -23,7 +23,6 @@ export default function StudentNotebookModule() {
         {notebookId ? (
           <NotebookPage
             notebookIdOverride={notebookId}
-            onBack={() => setNotebookId(null)}
           />
         ) : (
           <NotebookListPage onOpen={(id) => setNotebookId(id)} />

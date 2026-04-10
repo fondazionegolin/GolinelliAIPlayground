@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, type CSSProperties } from 'react'
 import { Link, useNavigate, useLocation } from 'react-router-dom'
-import { User, Settings, LogOut, ChevronDown, Users, MessageSquare, FileText, Check, Brain, MonitorPlay, FileCode2, KeyRound, Loader2, LayoutDashboard } from 'lucide-react'
+import { User, Settings, LogOut, ChevronDown, Users, MessageSquare, FileText, Check, Brain, MonitorPlay, FileCode2, KeyRound, Loader2, LayoutDashboard, ShieldCheck } from 'lucide-react'
 import { Button } from './ui/button'
 import { useToast } from '@/components/ui/use-toast'
 import { LogoMark } from './LogoMark'
@@ -50,10 +50,12 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
   const location = useLocation()
   const navigate = useNavigate()
 
+  const { user: authUser } = useAuthStore()
   const { data: profileData } = useTeacherProfile()
   const invalidateProfile = useInvalidateTeacherProfile()
   const queryClient = useQueryClient()
   const profile: TeacherProfile = profileData ?? { firstName: '', lastName: '', email: '', avatarUrl: '', uiAccent: DEFAULT_TEACHER_ACCENT }
+  const isAdmin = authUser?.role === 'ADMIN'
   const [activeSessions, setActiveSessions] = useState<ActiveSession[]>([])
   const [showDropdown, setShowDropdown] = useState(false)
   const [showSessionsMenu, setShowSessionsMenu] = useState(false)
@@ -67,11 +69,11 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
     '--teacher-accent-soft': accentTheme.soft,
     '--teacher-accent-soft-strong': accentTheme.softStrong,
     '--teacher-accent-border': accentTheme.border,
-    backgroundColor: 'rgba(255, 255, 255, 0.88)',
-    backdropFilter: 'blur(14px)',
-    WebkitBackdropFilter: 'blur(14px)',
-    borderBottomColor: accentTheme.softStrong,
-    borderBottomWidth: '2px',
+    backgroundColor: 'rgba(255, 255, 255, 0.94)',
+    backdropFilter: 'blur(12px)',
+    WebkitBackdropFilter: 'blur(12px)',
+    borderBottomColor: accentTheme.border,
+    borderBottomWidth: '1px',
   } as CSSProperties
 
   // Global notifications state
@@ -301,7 +303,7 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
 
   return (
     <>
-      <nav className="fixed top-0 left-0 right-0 z-50 bg-white/98 border-b shadow-sm" style={accentVars}>
+      <nav className="fixed top-0 left-0 right-0 z-50 border-b" style={accentVars}>
         <div className="max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             {/* Logo/Brand */}
@@ -491,6 +493,17 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
                       <Settings className="h-4 w-4" />
                       {t('navbar.settings')}
                     </button>
+                    {isAdmin && (
+                      <>
+                        <button
+                          onClick={() => { setShowDropdown(false); navigate('/admin') }}
+                          className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-indigo-700 hover:bg-indigo-50 transition-colors"
+                        >
+                          <ShieldCheck className="h-4 w-4" />
+                          Pannello amministratore
+                        </button>
+                      </>
+                    )}
                     <div className="h-px bg-slate-50 my-1"></div>
                     <button
                       onClick={handleLogout}

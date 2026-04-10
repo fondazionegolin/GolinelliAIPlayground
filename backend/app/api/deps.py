@@ -76,7 +76,7 @@ async def get_current_admin(
 async def get_current_teacher(
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> User:
-    if current_user.role != UserRole.TEACHER:
+    if current_user.role not in (UserRole.TEACHER, UserRole.ADMIN):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Teacher access required",
@@ -200,7 +200,7 @@ async def get_student_or_teacher(
         user_id = payload.get("sub")
         result = await db.execute(select(User).where(User.id == uuid.UUID(user_id)))
         user = result.scalar_one_or_none()
-        if not user or user.role != UserRole.TEACHER or not user.is_active:
+        if not user or user.role not in (UserRole.TEACHER, UserRole.ADMIN) or not user.is_active:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Teacher access required")
         return StudentOrTeacher(teacher=user)
     

@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Request, Body
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, desc
+from sqlalchemy import select, func, desc, delete as sa_delete, update as sa_update
 from typing import Annotated, Optional
 from datetime import datetime, timedelta, timezone
 from uuid import UUID
@@ -16,7 +16,7 @@ from app.models.tenant import Tenant
 from app.models.template_version import TenantTemplateVersion
 from app.models.session import Session, SessionStudent, Class as TeacherClass
 from app.models.llm import ConversationMessage, TeacherConversation, TeacherConversationMessage
-from app.models.credits import CreditLimit, CreditTransaction
+from app.models.credits import CreditLimit, CreditTransaction, CreditRequest
 from app.models.invitation import PlatformInvitation
 from app.models.enums import UserRole, TeacherRequestStatus, TenantStatus, LimitLevel
 from app.schemas.tenant import TenantCreate, TenantUpdate, TenantResponse
@@ -402,6 +402,88 @@ async def delete_user(
     return {
         "message": f"User {user_name} ({user_email}) deactivated successfully",
     }
+
+
+@router.delete("/users/{user_id}/permanent")
+async def permanently_delete_user(
+    user_id: UUID,
+    body: dict,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    admin: Annotated[User, Depends(get_current_admin)],
+):
+    """Hard-delete a user from the database. Irreversible. Requires email confirmation."""
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="Utente non trovato")
+    if user.id == admin.id:
+        raise HTTPException(status_code=400, detail="Non puoi eliminare te stesso")
+    if user.role == UserRole.ADMIN:
+        raise HTTPException(status_code=400, detail="Non puoi eliminare altri amministratori")
+
+    confirm_email = (body.get("confirm_email") or "").strip().lower()
+    if confirm_email != (user.email or "").strip().lower():
+        raise HTTPException(status_code=400, detail="Email di conferma non corretta")
+
+    # Block if teacher owns classes (content would be orphaned)
+    class_count = (
+        await db.execute(
+            select(func.count(TeacherClass.id)).where(TeacherClass.teacher_id == user_id)
+        )
+    ).scalar() or 0
+    if class_count > 0:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Il docente ha {class_count} class{'i' if class_count > 1 else 'e'}. "
+                   "Elimina prima le classi dalla piattaforma, poi riprova.",
+        )
+
+    user_email = user.email or ""
+    user_name = f"{user.first_name or ''} {user.last_name or ''}".strip()
+
+    # Delete activation and password-reset tokens
+    await db.execute(sa_delete(ActivationToken).where(ActivationToken.user_id == user_id))
+    await db.execute(sa_delete(PasswordResetToken).where(PasswordResetToken.user_id == user_id))
+
+    # Nullify credit transactions (keep financial history, just remove user ref)
+    await db.execute(
+        sa_update(CreditTransaction)
+        .where(CreditTransaction.teacher_id == user_id)
+        .values(teacher_id=None)
+    )
+
+    # Delete credit limits for this teacher
+    await db.execute(sa_delete(CreditLimit).where(CreditLimit.teacher_id == user_id))
+
+    # Delete credit requests submitted by this teacher; nullify reviewed_by
+    await db.execute(
+        sa_update(CreditRequest)
+        .where(CreditRequest.reviewed_by_id == user_id)
+        .values(reviewed_by_id=None)
+    )
+    await db.execute(sa_delete(CreditRequest).where(CreditRequest.requester_id == user_id))
+
+    # Delete platform invitations for this email
+    await db.execute(
+        sa_delete(PlatformInvitation).where(PlatformInvitation.email == user_email)
+    )
+
+    # Nullify back-references from other records
+    await db.execute(
+        sa_update(TeacherRequest)
+        .where(TeacherRequest.reviewed_by_admin_id == user_id)
+        .values(reviewed_by_admin_id=None)
+    )
+    await db.execute(
+        sa_update(User)
+        .where(User.deactivated_by_admin_id == user_id)
+        .values(deactivated_by_admin_id=None)
+    )
+
+    await db.delete(user)
+    await db.commit()
+
+    return {"message": f"Utente {user_name} ({user_email}) eliminato definitivamente dal database"}
 
 
 @router.post("/users/{user_id}/reactivate")

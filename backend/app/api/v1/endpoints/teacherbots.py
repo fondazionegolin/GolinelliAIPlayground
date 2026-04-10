@@ -30,6 +30,7 @@ from app.schemas.teacherbot import (
 from app.services.llm_service import llm_service
 from app.services.credit_service import credit_service
 from app.services.education_level import get_school_grade_instruction
+from app.services.environmental_impact import enrich_usage_with_environmental_impact
 from app.services.rag_service import rag_service
 from app.services.document_processor import document_processor
 from app.models.rag import RAGDocument
@@ -285,7 +286,16 @@ async def test_teacherbot(
     cost = credit_service.calculate_cost_for_model(llm_response.provider, llm_response.model, llm_response.prompt_tokens, llm_response.completion_tokens)
     await credit_service.track_usage(
         db, teacher.tenant_id, llm_response.provider, llm_response.model, cost,
-        {"type": "teacherbot_test", "bot_id": str(bot.id)},
+        enrich_usage_with_environmental_impact(
+            {
+                "type": "teacherbot_test",
+                "bot_id": str(bot.id),
+                "prompt_tokens": llm_response.prompt_tokens,
+                "completion_tokens": llm_response.completion_tokens,
+            },
+            provider=llm_response.provider,
+            model=llm_response.model,
+        ),
         teacher_id=teacher.id
     )
 
@@ -298,6 +308,14 @@ async def test_teacherbot(
         content=llm_response.content,
         provider=llm_response.provider,
         model=llm_response.model,
+        token_usage_json=enrich_usage_with_environmental_impact(
+            {
+                "prompt_tokens": llm_response.prompt_tokens,
+                "completion_tokens": llm_response.completion_tokens,
+            },
+            provider=llm_response.provider,
+            model=llm_response.model,
+        ),
     )
 
 
@@ -1003,7 +1021,16 @@ async def send_teacherbot_message(
     cost = credit_service.calculate_cost_for_model(llm_response.provider, llm_response.model, llm_response.prompt_tokens, llm_response.completion_tokens)
     await credit_service.track_usage(
         db, student.tenant_id, llm_response.provider, llm_response.model, cost,
-        {"type": "teacherbot_chat", "bot_id": str(bot.id)},
+        enrich_usage_with_environmental_impact(
+            {
+                "type": "teacherbot_chat",
+                "bot_id": str(bot.id),
+                "prompt_tokens": llm_response.prompt_tokens,
+                "completion_tokens": llm_response.completion_tokens,
+            },
+            provider=llm_response.provider,
+            model=llm_response.model,
+        ),
         teacher_id=class_obj.teacher_id, class_id=class_obj.id, session_id=session_obj.id, student_id=student.id
     )
 
@@ -1015,11 +1042,14 @@ async def send_teacherbot_message(
         content=llm_response.content,
         provider=llm_response.provider,
         model=llm_response.model,
-        token_usage_json={
-            "prompt_tokens": llm_response.prompt_tokens,
-            "completion_tokens": llm_response.completion_tokens,
-            "total_tokens": llm_response.prompt_tokens + llm_response.completion_tokens,
-        },
+        token_usage_json=enrich_usage_with_environmental_impact(
+            {
+                "prompt_tokens": llm_response.prompt_tokens,
+                "completion_tokens": llm_response.completion_tokens,
+            },
+            provider=llm_response.provider,
+            model=llm_response.model,
+        ),
     )
     db.add(assistant_msg)
 
@@ -1274,6 +1304,22 @@ async def send_teacherbot_message_with_files(
             )
             
             assistant_content = f"🎨 Ecco l'immagine che hai richiesto:\n\n![Immagine generata]({image_url})\n\n*Generata con FLUX - Prompt: {image_prompt}*"
+            image_usage = enrich_usage_with_environmental_impact(
+                {"prompt_tokens": 0, "completion_tokens": 0, "image_count": 1},
+                provider="flux",
+                model="flux-schnell",
+            )
+            img_cost = credit_service.calculate_cost_for_model("flux", "flux-schnell", 0, 0, image_count=1)
+            await credit_service.track_usage(
+                db, student.tenant_id, "flux", "flux-schnell", img_cost,
+                {
+                    **image_usage,
+                    "type": "teacherbot_image_generation",
+                    "bot_id": str(bot.id),
+                    "image_prompt": image_prompt,
+                },
+                teacher_id=class_obj.teacher_id, class_id=class_obj.id, session_id=session_obj.id, student_id=student.id,
+            )
             
             # Save assistant message
             assistant_msg = TeacherbotMessage(
@@ -1283,6 +1329,7 @@ async def send_teacherbot_message_with_files(
                 content=assistant_content,
                 provider="flux",
                 model="flux-schnell",
+                token_usage_json=image_usage,
             )
             db.add(assistant_msg)
             await db.commit()
@@ -1314,7 +1361,16 @@ async def send_teacherbot_message_with_files(
     cost = credit_service.calculate_cost_for_model(llm_response.provider, llm_response.model, llm_response.prompt_tokens, llm_response.completion_tokens)
     await credit_service.track_usage(
         db, student.tenant_id, llm_response.provider, llm_response.model, cost,
-        {"type": "teacherbot_chat", "bot_id": str(bot.id)},
+        enrich_usage_with_environmental_impact(
+            {
+                "type": "teacherbot_chat",
+                "bot_id": str(bot.id),
+                "prompt_tokens": llm_response.prompt_tokens,
+                "completion_tokens": llm_response.completion_tokens,
+            },
+            provider=llm_response.provider,
+            model=llm_response.model,
+        ),
         teacher_id=class_obj.teacher_id, class_id=class_obj.id, session_id=session_obj.id, student_id=student.id
     )
 
@@ -1326,11 +1382,14 @@ async def send_teacherbot_message_with_files(
         content=llm_response.content,
         provider=llm_response.provider,
         model=llm_response.model,
-        token_usage_json={
-            "prompt_tokens": llm_response.prompt_tokens,
-            "completion_tokens": llm_response.completion_tokens,
-            "total_tokens": llm_response.prompt_tokens + llm_response.completion_tokens,
-        },
+        token_usage_json=enrich_usage_with_environmental_impact(
+            {
+                "prompt_tokens": llm_response.prompt_tokens,
+                "completion_tokens": llm_response.completion_tokens,
+            },
+            provider=llm_response.provider,
+            model=llm_response.model,
+        ),
     )
     db.add(assistant_msg)
 

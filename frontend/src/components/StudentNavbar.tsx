@@ -28,6 +28,7 @@ interface StudentNavbarProps {
   onToggleChatSidebar?: () => void
   accent?: StudentAccentId
   onAccentChange?: (accent: StudentAccentId) => void
+  enabledModules?: string[]
 }
 
 export function StudentNavbar({
@@ -39,7 +40,8 @@ export function StudentNavbar({
   chatSidebarOpen = false,
   onToggleChatSidebar,
   accent = DEFAULT_STUDENT_ACCENT,
-  onAccentChange
+  onAccentChange,
+  enabledModules,
 }: StudentNavbarProps) {
   const navigate = useNavigate()
   const logout = useAuthStore((s) => s.logout)
@@ -79,11 +81,11 @@ export function StudentNavbar({
     '--student-accent-soft-strong': accentTheme.softStrong,
     '--student-accent-border': accentTheme.border,
     '--student-accent-text': accentTheme.text,
-    backgroundColor: 'rgba(255, 255, 255, 0.88)',
-    backdropFilter: 'blur(14px)',
-    WebkitBackdropFilter: 'blur(14px)',
-    borderBottomColor: accentTheme.softStrong,
-    borderBottomWidth: '2px',
+    backgroundColor: 'rgba(255, 255, 255, 0.94)',
+    backdropFilter: 'blur(12px)',
+    WebkitBackdropFilter: 'blur(12px)',
+    borderBottomColor: accentTheme.border,
+    borderBottomWidth: '1px',
   } as CSSProperties
 
   // Load profile from API
@@ -153,7 +155,7 @@ export function StudentNavbar({
     navigate('/join')
   }
 
-  const navItems = [
+  const ALL_NAV_ITEMS = [
     { key: 'desktop', label: 'Desktop', icon: LayoutDashboard },
     { key: 'chatbot', label: 'Chatbot', icon: Bot },
     { key: 'classification', label: 'ML Lab', icon: Brain },
@@ -161,6 +163,11 @@ export function StudentNavbar({
     { key: 'self_assessment', label: 'Compiti', icon: Award },
     { key: 'notebook', label: 'Notebook', icon: FileCode2 },
   ]
+  // Always show desktop and documents; filter optional modules by session settings
+  const ALWAYS_SHOWN = new Set(['desktop', 'documents', 'notebook'])
+  const navItems = enabledModules
+    ? ALL_NAV_ITEMS.filter(item => ALWAYS_SHOWN.has(item.key) || enabledModules.includes(item.key))
+    : ALL_NAV_ITEMS
 
   return (
     <>
@@ -178,7 +185,7 @@ export function StudentNavbar({
         </div>
       )}
       <nav
-        className={`fixed left-0 right-0 z-50 bg-white/98 border-b shadow-sm ${isPreviewMode ? 'top-8' : 'top-0'}`}
+        className={`fixed left-0 right-0 z-50 border-b ${isPreviewMode ? 'top-8' : 'top-0'}`}
         style={accentVars}
       >
         <div className="max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -211,7 +218,7 @@ export function StudentNavbar({
 
             {/* Desktop Navigation */}
             {onNavigate && (
-              <div className="hidden md:flex items-center gap-0.5 h-10 bg-white p-0.5 rounded-2xl border border-slate-200 shadow-sm">
+              <div className="hidden md:flex items-center gap-0.5 h-11 rounded-[18px] border p-1" style={{ backgroundColor: 'rgba(255,255,255,0.78)', borderColor: accentTheme.border }}>
                 {(() => {
                   const activeIdx = navItems.findIndex(item => activeModule === item.key)
                   return navItems.map((item, idx) => (
