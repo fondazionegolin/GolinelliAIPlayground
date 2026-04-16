@@ -16,6 +16,19 @@ export default {
     extend: {
       fontFamily: {
         sans: ['Lexend', 'system-ui', 'sans-serif'],
+        brand: ['SofiaPro', 'Lexend', 'system-ui', 'sans-serif'],
+        mono: ['JetBrains Mono', 'IBM Plex Mono', 'monospace'],
+      },
+      fontSize: {
+        xs: ['var(--font-size-xs)', { lineHeight: 'var(--line-height-xs)' }],
+        sm: ['var(--font-size-sm)', { lineHeight: 'var(--line-height-sm)' }],
+        base: ['var(--font-size-md)', { lineHeight: 'var(--line-height-md)' }],
+        lg: ['var(--font-size-lg)', { lineHeight: 'var(--line-height-lg)' }],
+        xl: ['var(--font-size-xl)', { lineHeight: 'var(--line-height-title)', letterSpacing: 'var(--letter-spacing-tight)' }],
+        '2xl': ['var(--font-size-2xl)', { lineHeight: 'var(--line-height-title)', letterSpacing: 'var(--letter-spacing-tight)' }],
+        '3xl': ['var(--font-size-3xl)', { lineHeight: 'var(--line-height-title)', letterSpacing: 'var(--letter-spacing-tight)' }],
+        '4xl': ['var(--font-size-4xl)', { lineHeight: '1.05', letterSpacing: 'var(--letter-spacing-tight)' }],
+        '5xl': ['var(--font-size-5xl)', { lineHeight: '1', letterSpacing: 'var(--letter-spacing-tight)' }],
       },
       colors: {
         border: "hsl(var(--border))",

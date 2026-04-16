@@ -9,7 +9,6 @@ import {
   Copy,
   Edit2,
   Eye,
-  Loader2,
   MonitorPlay,
   Pause,
   Play,
@@ -23,12 +22,27 @@ import {
   Users,
   X,
 } from 'lucide-react'
+import {
+  Badge,
+  Button,
+  Card,
+  Dialog,
+  DialogBody,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  IconButton,
+  Input,
+  Select,
+  Spinner,
+} from '@/design'
 import { teacherApi } from '@/lib/api'
 import { getTeacherAccentTheme } from '@/lib/teacherAccent'
+import { hexToRgba } from '@/design/themes/colorUtils'
 import { useTeacherProfile } from '@/hooks/useTeacherProfile'
 import { TeachersManagementModal } from '@/components/TeachersManagementModal'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { useToast } from '@/components/ui/use-toast'
 
 interface ClassData {
@@ -65,18 +79,6 @@ const STATUS_META: Record<string, { label: string; tone: string; dot: string }> 
   paused: { label: 'In pausa', tone: 'bg-amber-100 text-amber-700', dot: 'bg-amber-500' },
   finished: { label: 'Terminata', tone: 'bg-rose-100 text-rose-700', dot: 'bg-rose-500' },
   ended: { label: 'Terminata', tone: 'bg-rose-100 text-rose-700', dot: 'bg-rose-500' },
-}
-
-function hexToRgba(hex: string, opacity: number) {
-  const normalized = hex.replace('#', '')
-  const full = normalized.length === 3
-    ? normalized.split('').map((char) => char + char).join('')
-    : normalized
-  const bigint = parseInt(full, 16)
-  const r = (bigint >> 16) & 255
-  const g = (bigint >> 8) & 255
-  const b = bigint & 255
-  return `rgba(${r}, ${g}, ${b}, ${opacity})`
 }
 
 export default function TeacherClassesSessionsManager({
@@ -309,8 +311,8 @@ export default function TeacherClassesSessionsManager({
               </div>
               <Button
                 onClick={() => setShowNewClassForm((value) => !value)}
-                size="sm"
-                className="shrink-0 rounded-xl text-white shadow-sm"
+                density="compact"
+                className="shrink-0 rounded-xl shadow-sm"
                 style={{ backgroundColor: accentTheme.accent }}
               >
                 <Plus className="mr-1.5 h-3.5 w-3.5" />
@@ -326,23 +328,24 @@ export default function TeacherClassesSessionsManager({
                   placeholder="es. 3A Informatica - A.S. 2025/26"
                   value={newClassName}
                   onChange={(e) => setNewClassName(e.target.value)}
+                  surface="base"
                   className="border-white/0 bg-white"
                 />
-                <select
+                <Select
                   value={newClassGrade}
                   onChange={(e) => setNewClassGrade(e.target.value)}
-                  className="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm focus:outline-none"
+                  surface="base"
                 >
                   {SCHOOL_GRADE_OPTIONS.map((grade) => (
                     <option key={grade} value={grade}>{grade}</option>
                   ))}
-                </select>
+                </Select>
                 <div className="flex items-center gap-2">
-                  <Button type="submit" disabled={createClassMutation.isPending || !newClassName.trim()} className="rounded-xl text-white" style={{ backgroundColor: accentTheme.accent }}>
-                    {createClassMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                  <Button type="submit" disabled={createClassMutation.isPending || !newClassName.trim()} className="rounded-xl" style={{ backgroundColor: accentTheme.accent }}>
+                    {createClassMutation.isPending ? <Spinner className="mr-2" size="sm" tone="inverse" /> : null}
                     Crea
                   </Button>
-                  <Button type="button" variant="ghost" onClick={() => setShowNewClassForm(false)}>
+                  <Button type="button" surface="ghost" tone="neutral" onClick={() => setShowNewClassForm(false)}>
                     Annulla
                   </Button>
                 </div>
@@ -457,27 +460,29 @@ export default function TeacherClassesSessionsManager({
                         <Input
                           value={editClassName}
                           onChange={(e) => setEditClassName(e.target.value)}
-                          className="h-9 w-60 bg-white text-sm"
+                          density="compact"
+                          className="w-60 bg-white text-sm"
                           onKeyDown={(e) => {
                             if (e.key === 'Enter') handleSaveClass()
                             if (e.key === 'Escape') setIsEditingClass(false)
                           }}
                         />
-                        <select
+                        <Select
                           value={editClassGrade}
                           onChange={(e) => setEditClassGrade(e.target.value)}
-                          className="h-9 rounded-md border border-slate-200 bg-white px-2 text-xs focus:outline-none"
+                          density="compact"
+                          className="text-xs"
                         >
                           {SCHOOL_GRADE_OPTIONS.map((grade) => (
                             <option key={grade} value={grade}>{grade}</option>
                           ))}
-                        </select>
-                        <button onClick={handleSaveClass} disabled={updateClassMutation.isPending} title="Salva" className="rounded-lg p-2 text-emerald-600 hover:bg-emerald-50">
-                          {updateClassMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
-                        </button>
-                        <button onClick={() => setIsEditingClass(false)} title="Annulla" className="rounded-lg p-2 text-slate-400 hover:bg-slate-100">
+                        </Select>
+                        <IconButton onClick={handleSaveClass} disabled={updateClassMutation.isPending} title="Salva" tone="success" surface="ghost" size="default">
+                          {updateClassMutation.isPending ? <Spinner size="sm" tone="success" /> : <Check className="h-4 w-4" />}
+                        </IconButton>
+                        <IconButton onClick={() => setIsEditingClass(false)} title="Annulla" tone="neutral" surface="ghost" size="default">
                           <X className="h-4 w-4" />
-                        </button>
+                        </IconButton>
                       </div>
                     ) : (
                       <div className="flex flex-wrap items-center gap-2">
@@ -503,22 +508,22 @@ export default function TeacherClassesSessionsManager({
 
                   {!isEditingClass && (
                     <div className="flex shrink-0 items-center gap-1.5">
-                      <button onClick={() => setIsEditingClass(true)} title="Rinomina classe" className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 hover:text-slate-800">
+                      <IconButton onClick={() => setIsEditingClass(true)} title="Rinomina classe" tone="neutral" surface="outline" size="default">
                         <Edit2 className="h-3.5 w-3.5" />
-                      </button>
-                      <button onClick={() => setShowTeachersModal(true)} title="Gestisci docenti" className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 hover:text-slate-800">
+                      </IconButton>
+                      <IconButton onClick={() => setShowTeachersModal(true)} title="Gestisci docenti" tone="neutral" surface="outline" size="default">
                         <UserPlus className="h-3.5 w-3.5" />
-                      </button>
-                      <button onClick={() => navigate(`/teacher/classes/${selectedClass.id}/uda`)} title="UDA" className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 hover:text-slate-800">
+                      </IconButton>
+                      <IconButton onClick={() => navigate(`/teacher/classes/${selectedClass.id}/uda`)} title="UDA" tone="neutral" surface="outline" size="default">
                         <BookOpen className="h-3.5 w-3.5" />
-                      </button>
+                      </IconButton>
                       <Button
-                        size="sm"
+                        density="compact"
                         onClick={() => {
                           setNewSessionTitle(`Lezione del ${new Date().toLocaleDateString('it-IT')}`)
                           setShowNewSessionDialog(true)
                         }}
-                        className="rounded-xl text-white shadow-sm"
+                        className="rounded-xl shadow-sm"
                         style={{ backgroundColor: accentTheme.accent }}
                       >
                         <Plus className="mr-1.5 h-3.5 w-3.5" />
@@ -601,32 +606,43 @@ export default function TeacherClassesSessionsManager({
       )}
 
       {showNewSessionDialog && selectedClass && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-md rounded-[24px] border bg-white p-6 shadow-xl" style={{ borderColor: accentTheme.id === 'black' ? hexToRgba('#0f172a', 0.08) : hexToRgba(accentTheme.accent, 0.14) }}>
-            <h3 className="text-lg font-semibold text-slate-900">Nuova sessione</h3>
-            <p className="mt-1 text-sm text-slate-500">Stai lavorando su <strong>{selectedClass.name}</strong>. Dai un nome chiaro alla sessione.</p>
-            <Input
-              autoFocus
-              value={newSessionTitle}
-              onChange={(e) => setNewSessionTitle(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') handleCreateSession()
-                if (e.key === 'Escape') setShowNewSessionDialog(false)
-              }}
-              className="mt-4 bg-white"
-              placeholder="Es. Ripasso sistemi operativi"
-            />
-            <div className="mt-5 flex items-center justify-end gap-2">
-              <Button variant="ghost" onClick={() => setShowNewSessionDialog(false)}>
+        <Dialog open={showNewSessionDialog} onOpenChange={setShowNewSessionDialog}>
+          <DialogContent
+            size="sm"
+            surface="elevated"
+            className="rounded-[24px]"
+            style={{ borderColor: accentTheme.id === 'black' ? hexToRgba('#0f172a', 0.08) : hexToRgba(accentTheme.accent, 0.14) }}
+          >
+            <DialogHeader>
+              <DialogTitle>Nuova sessione</DialogTitle>
+              <DialogDescription>
+                Stai lavorando su <strong>{selectedClass.name}</strong>. Dai un nome chiaro alla sessione.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogBody>
+              <Input
+                autoFocus
+                value={newSessionTitle}
+                onChange={(e) => setNewSessionTitle(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleCreateSession()
+                  if (e.key === 'Escape') setShowNewSessionDialog(false)
+                }}
+                className="bg-white"
+                placeholder="Es. Ripasso sistemi operativi"
+              />
+            </DialogBody>
+            <DialogFooter>
+              <Button surface="ghost" tone="neutral" onClick={() => setShowNewSessionDialog(false)}>
                 Annulla
               </Button>
-              <Button onClick={handleCreateSession} disabled={createSessionMutation.isPending} className="text-white" style={{ backgroundColor: accentTheme.accent }}>
-                {createSessionMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              <Button onClick={handleCreateSession} disabled={createSessionMutation.isPending} style={{ backgroundColor: accentTheme.accent }}>
+                {createSessionMutation.isPending ? <Spinner className="mr-2" size="sm" tone="inverse" /> : null}
                 Crea sessione
               </Button>
-            </div>
-          </div>
-        </div>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       )}
     </div>
   )
@@ -651,8 +667,9 @@ function MetricCard({
   accent: { accent: string; soft: string; id: string }
 }) {
   return (
-    <div
-      className="rounded-2xl border px-3 py-2.5"
+    <Card
+      surface="base"
+      className="rounded-2xl px-3 py-2.5"
       style={{
         borderColor: accent.id === 'black' ? 'rgba(15,23,42,0.08)' : hexToRgba(accent.accent, 0.14),
         backgroundColor: accent.id === 'black' ? 'rgba(255,255,255,0.92)' : accent.soft,
@@ -660,7 +677,7 @@ function MetricCard({
     >
       <div className="text-[10px] uppercase tracking-[0.16em] text-slate-400">{label}</div>
       <div className="mt-0.5 text-xl font-semibold text-slate-900">{value}</div>
-    </div>
+    </Card>
   )
 }
 
@@ -701,7 +718,7 @@ function SessionSection({
     <div className="space-y-2">
       <h3 className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">{title}</h3>
 
-      <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+      <Card surface="base" className="overflow-hidden rounded-2xl border-slate-200 bg-white shadow-sm">
         <div className="hidden grid-cols-[minmax(0,2fr)_100px_90px_80px_60px_96px] gap-3 border-b border-slate-100 bg-slate-50 px-4 py-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400 lg:grid">
           <span>Sessione</span>
           <span>Stato</span>
@@ -730,7 +747,7 @@ function SessionSection({
             />
           ))}
         </div>
-      </div>
+      </Card>
     </div>
   )
 }
@@ -770,51 +787,57 @@ function SessionRow({
   const isDraft = session.status === 'draft'
   const isActive = session.status === 'active'
 
-  const iconBtn = 'flex h-7 w-7 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-800 disabled:opacity-40'
-  const accentBtn = 'flex h-7 w-7 items-center justify-center rounded-lg border text-white transition-colors disabled:opacity-40'
+  const navigate = useNavigate()
 
   return (
-    <div className="px-4 py-3 lg:grid lg:grid-cols-[minmax(0,2fr)_100px_90px_80px_60px_96px] lg:items-center lg:gap-3">
+    <div
+      className="px-4 py-3 lg:grid lg:grid-cols-[minmax(0,2fr)_100px_90px_80px_60px_96px] lg:items-center lg:gap-3 cursor-pointer hover:bg-slate-50/80 transition-colors"
+      onClick={() => navigate(`/teacher/sessions/${session.id}`)}
+    >
       {/* Title */}
-      <div className="min-w-0">
+      <div className="min-w-0" onClick={e => e.stopPropagation()}>
         <div className="flex items-center gap-2">
           <span className={`block h-2 w-2 shrink-0 rounded-full ${meta.dot} ${isActive ? 'animate-pulse' : ''}`} />
           {editingTitleId === session.id ? (
             <form className="flex min-w-0 flex-1 items-center gap-1" onSubmit={(e) => { e.preventDefault(); onRename(session.id) }}>
-              <input
+              <Input
                 autoFocus
                 value={editingTitleValue}
                 onChange={(e) => setEditingTitleValue(e.target.value)}
                 onKeyDown={(e) => { if (e.key === 'Escape') setEditingTitleId(null) }}
-                className="h-7 min-w-0 flex-1 rounded-md border border-slate-200 bg-white px-2 text-sm text-slate-800 focus:outline-none"
+                density="compact"
+                className="min-w-0 flex-1 bg-white text-sm text-slate-800"
               />
-              <button type="submit" disabled={renamePending} className="rounded p-1 text-emerald-600 hover:bg-emerald-50">
-                {renamePending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
-              </button>
-              <button type="button" onClick={() => setEditingTitleId(null)} className="rounded p-1 text-slate-400 hover:bg-slate-100">
+              <IconButton type="submit" disabled={renamePending} tone="success" surface="ghost" size="sm">
+                {renamePending ? <Spinner size="sm" tone="success" /> : <Check className="h-3.5 w-3.5" />}
+              </IconButton>
+              <IconButton type="button" onClick={() => setEditingTitleId(null)} tone="neutral" surface="ghost" size="sm">
                 <X className="h-3.5 w-3.5" />
-              </button>
+              </IconButton>
             </form>
           ) : (
             <div className="flex min-w-0 items-center gap-1">
               <span className="truncate text-sm font-medium text-slate-800">{session.title}</span>
-              <button
+              <IconButton
                 onClick={() => { setEditingTitleId(session.id); setEditingTitleValue(session.title) }}
-                className="shrink-0 rounded p-0.5 text-slate-300 hover:bg-slate-100 hover:text-slate-500"
+                className="shrink-0"
+                tone="neutral"
+                surface="ghost"
+                size="sm"
                 title="Rinomina"
               >
                 <Edit2 className="h-3 w-3" />
-              </button>
+              </IconButton>
             </div>
           )}
         </div>
         {/* Mobile-only meta row */}
         <div className="ml-4 mt-1 flex flex-wrap items-center gap-1.5 text-[11px] text-slate-400 lg:hidden">
-          <span className={`rounded-full px-1.5 py-0.5 font-medium ${meta.tone}`}>{meta.label}</span>
+          <StatusBadge meta={meta} />
           {session.join_code && (
-            <button onClick={() => onCopyCode(session.join_code)} className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-slate-600">
+            <Button onClick={() => onCopyCode(session.join_code)} tone="neutral" surface="soft" density="compact" className="font-mono text-[11px]">
               {session.join_code}
-            </button>
+            </Button>
           )}
           <span>{new Date(session.created_at).toLocaleDateString('it-IT')}</span>
         </div>
@@ -822,16 +845,16 @@ function SessionRow({
 
       {/* Status */}
       <div className="hidden lg:block">
-        <span className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold ${meta.tone}`}>{meta.label}</span>
+        <StatusBadge meta={meta} />
       </div>
 
       {/* Code */}
-      <div className="hidden lg:block">
+      <div className="hidden lg:block" onClick={e => e.stopPropagation()}>
         {session.join_code ? (
-          <button onClick={() => onCopyCode(session.join_code)} className="inline-flex items-center gap-1 rounded-lg bg-slate-100 px-2 py-1 font-mono text-[11px] font-semibold text-slate-600 hover:bg-slate-200">
+          <Button onClick={() => onCopyCode(session.join_code)} tone="neutral" surface="soft" density="compact" className="inline-flex items-center gap-1 font-mono text-[11px] font-semibold text-slate-600">
             {session.join_code}
             <Copy className="h-2.5 w-2.5" />
-          </button>
+          </Button>
         ) : <span className="text-xs text-slate-300">—</span>}
       </div>
 
@@ -846,45 +869,61 @@ function SessionRow({
       </div>
 
       {/* Actions — icon-only */}
-      <div className="mt-3 flex items-center gap-1 lg:mt-0">
+      <div className="mt-3 flex items-center gap-1 lg:mt-0" onClick={e => e.stopPropagation()}>
         {isDraft && (
-          <button onClick={() => onStatusChange(session.id, 'active')} disabled={updatePending} title="Avvia sessione"
-            className={accentBtn} style={{ backgroundColor: accentTheme.accent, borderColor: accentTheme.accent }}>
+          <IconButton onClick={() => onStatusChange(session.id, 'active')} disabled={updatePending} title="Avvia sessione" size="sm"
+            style={{ backgroundColor: accentTheme.accent, borderColor: accentTheme.accent }} className="text-white">
             <Play className="h-3.5 w-3.5" />
-          </button>
+          </IconButton>
         )}
         {isActive && (
           <>
-            <button onClick={() => onStatusChange(session.id, 'paused')} disabled={updatePending} title="Metti in pausa"
-              className={iconBtn}>
+            <IconButton onClick={() => onStatusChange(session.id, 'paused')} disabled={updatePending} title="Metti in pausa" tone="neutral" surface="outline" size="sm">
               <Pause className="h-3.5 w-3.5" />
-            </button>
-            <button onClick={() => onStatusChange(session.id, 'ended')} disabled={updatePending} title="Chiudi sessione"
-              className="flex h-7 w-7 items-center justify-center rounded-lg border border-rose-200 bg-rose-50 text-rose-600 transition-colors hover:bg-rose-100 disabled:opacity-40">
+            </IconButton>
+            <IconButton onClick={() => onStatusChange(session.id, 'ended')} disabled={updatePending} title="Chiudi sessione" tone="danger" surface="soft" size="sm">
               <Square className="h-3.5 w-3.5" />
-            </button>
+            </IconButton>
           </>
         )}
         {isPaused && (
-          <button onClick={() => onStatusChange(session.id, 'active')} disabled={updatePending} title="Riprendi sessione"
-            className={accentBtn} style={{ backgroundColor: accentTheme.accent, borderColor: accentTheme.accent }}>
+          <IconButton onClick={() => onStatusChange(session.id, 'active')} disabled={updatePending} title="Riprendi sessione" size="sm"
+            style={{ backgroundColor: accentTheme.accent, borderColor: accentTheme.accent }} className="text-white">
             <PlayCircle className="h-3.5 w-3.5" />
-          </button>
+          </IconButton>
         )}
         <Link to={`/teacher/sessions/${session.id}`} title="Apri sessione">
-          <span className={iconBtn}>
-            <Eye className="h-3.5 w-3.5" />
+          <span className="pointer-events-none">
+            <IconButton tone="neutral" surface="outline" size="sm">
+              <Eye className="h-3.5 w-3.5" />
+            </IconButton>
           </span>
         </Link>
         {isEnded && (
-          <button
+          <IconButton
             onClick={() => { if (confirm('Eliminare questa sessione?')) onDelete(session.id) }}
             disabled={deletePending} title="Elimina sessione"
-            className="flex h-7 w-7 items-center justify-center rounded-lg border border-rose-200 bg-rose-50 text-rose-600 transition-colors hover:bg-rose-100 disabled:opacity-40">
+            tone="danger"
+            surface="soft"
+            size="sm"
+          >
             <Trash2 className="h-3.5 w-3.5" />
-          </button>
+          </IconButton>
         )}
       </div>
     </div>
   )
+}
+
+function StatusBadge({ meta }: { meta: { label: string; tone: string } }) {
+  if (meta.tone.includes('emerald')) {
+    return <Badge tone="success" surface="soft" density="compact">{meta.label}</Badge>
+  }
+  if (meta.tone.includes('amber')) {
+    return <Badge tone="warning" surface="soft" density="compact">{meta.label}</Badge>
+  }
+  if (meta.tone.includes('rose')) {
+    return <Badge tone="danger" surface="soft" density="compact">{meta.label}</Badge>
+  }
+  return <Badge tone="neutral" surface="soft" density="compact">{meta.label}</Badge>
 }
