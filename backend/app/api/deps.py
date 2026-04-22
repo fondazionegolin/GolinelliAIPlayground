@@ -9,7 +9,7 @@ from app.core.database import get_db
 from app.core.security import decode_token
 from app.models.user import User
 from app.models.session import SessionStudent, Session
-from app.models.enums import UserRole
+from app.models.enums import UserRole, SessionStatus
 
 security = HTTPBearer(auto_error=False)
 
@@ -140,6 +140,31 @@ async def get_current_student(
             status_code=status.HTTP_403_FORBIDDEN,
             detail=f"Account frozen: {student.frozen_reason or 'Contact teacher'}",
         )
+
+    session_result = await db.execute(
+        select(Session).where(Session.id == student.session_id)
+    )
+    session = session_result.scalar_one_or_none()
+    if not session:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Session not found",
+        )
+    if session.status == SessionStatus.PAUSED:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Session paused",
+        )
+    if session.status == SessionStatus.ENDED:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Session ended",
+        )
+    if session.status != SessionStatus.ACTIVE:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Session unavailable",
+        )
     
     return student
 
@@ -194,6 +219,18 @@ async def get_student_or_teacher(
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Student not found")
         if student.is_frozen:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Account frozen")
+        session_result = await db.execute(
+            select(Session).where(Session.id == student.session_id)
+        )
+        session = session_result.scalar_one_or_none()
+        if not session:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Session not found")
+        if session.status == SessionStatus.PAUSED:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Session paused")
+        if session.status == SessionStatus.ENDED:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Session ended")
+        if session.status != SessionStatus.ACTIVE:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Session unavailable")
         return StudentOrTeacher(student=student)
     
     elif token_type == "access":

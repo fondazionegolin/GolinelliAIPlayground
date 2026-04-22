@@ -41,6 +41,7 @@ import {
 import { teacherApi } from '@/lib/api'
 import { getTeacherAccentTheme } from '@/lib/teacherAccent'
 import { hexToRgba } from '@/design/themes/colorUtils'
+import { PASTEL_SURFACES, type PastelTone } from '@/design/themes/pastelSurfaces'
 import { useTeacherProfile } from '@/hooks/useTeacherProfile'
 import { TeachersManagementModal } from '@/components/TeachersManagementModal'
 import { useToast } from '@/components/ui/use-toast'
@@ -284,13 +285,13 @@ export default function TeacherClassesSessionsManager({
   return (
     <div className="p-6 md:p-8">
       <div
-        className="mx-auto flex max-w-[1440px] flex-col overflow-hidden rounded-[28px] border bg-white/92 lg:h-[calc(100vh-9.5rem)] lg:min-h-[720px] lg:flex-row"
+        className="mx-auto flex max-w-[1440px] flex-col overflow-hidden rounded-[24px] border bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(248,250,252,0.96))] shadow-[0_16px_48px_rgba(15,23,42,0.06)] lg:h-[calc(100vh-9.5rem)] lg:min-h-[720px] lg:flex-row"
         style={{
           borderColor: accentTheme.id === 'black' ? hexToRgba('#94a3b8', 0.28) : hexToRgba(accentTheme.accent, 0.2),
         }}
       >
         <aside
-          className="w-full shrink-0 border-b bg-white/96 lg:w-[23rem] lg:border-b-0 lg:border-r"
+          className="w-full shrink-0 border-b bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(248,250,252,0.98))] lg:w-[22rem] lg:border-b-0 lg:border-r"
           style={{
             borderColor: accentTheme.id === 'black' ? hexToRgba('#94a3b8', 0.28) : hexToRgba(accentTheme.accent, 0.2),
           }}
@@ -299,15 +300,18 @@ export default function TeacherClassesSessionsManager({
             className="border-b px-5 py-4"
             style={{
               borderBottomColor: accentTheme.id === 'black' ? hexToRgba('#0f172a', 0.08) : hexToRgba(accentTheme.accent, 0.14),
-              backgroundColor: accentTheme.id === 'black' ? 'rgba(255,255,255,0.96)' : hexToRgba(accentTheme.accent, 0.08),
+              backgroundColor: accentTheme.id === 'black' ? 'rgba(255,255,255,0.92)' : hexToRgba(accentTheme.accent, 0.07),
             }}
           >
-            <div className="flex items-center justify-between gap-2">
-              <div>
-                <p className="text-[10px] font-semibold uppercase tracking-[0.18em]" style={{ color: accentTheme.text }}>
-                  Classi
+            <div className="flex items-start justify-between gap-3">
+              <div className="max-w-[14rem]">
+                <p className="text-[11px] font-semibold tracking-[0.08em]" style={{ color: accentTheme.text }}>
+                  Pannello docente
                 </p>
-                <h1 className="mt-0.5 text-base font-semibold text-slate-900">Gestione classi</h1>
+                <h1 className="mt-1 text-[18px] font-semibold tracking-[var(--letter-spacing-tight)] text-slate-950">Classi e sessioni</h1>
+                <p className="mt-1 text-xs leading-5 text-slate-500">
+                  Organizza classi, docenti invitati e sessioni live senza uscire da questa vista.
+                </p>
               </div>
               <Button
                 onClick={() => setShowNewClassForm((value) => !value)}
@@ -341,7 +345,7 @@ export default function TeacherClassesSessionsManager({
                   ))}
                 </Select>
                 <div className="flex items-center gap-2">
-                  <Button type="submit" disabled={createClassMutation.isPending || !newClassName.trim()} className="rounded-xl" style={{ backgroundColor: accentTheme.accent }}>
+                  <Button type="submit" disabled={createClassMutation.isPending || !newClassName.trim()} className="rounded-2xl" style={{ backgroundColor: accentTheme.accent }}>
                     {createClassMutation.isPending ? <Spinner className="mr-2" size="sm" tone="inverse" /> : null}
                     Crea
                   </Button>
@@ -354,34 +358,33 @@ export default function TeacherClassesSessionsManager({
           )}
 
           <div className="px-5 py-3">
-            <div
-              className="grid grid-cols-3 gap-1.5 rounded-2xl border p-2"
-              style={{
-                borderColor: accentTheme.id === 'black' ? hexToRgba('#0f172a', 0.08) : hexToRgba(accentTheme.accent, 0.12),
-                backgroundColor: accentTheme.id === 'black' ? 'rgba(255,255,255,0.94)' : hexToRgba(accentTheme.accent, 0.06),
-              }}
-            >
-              <SummaryCell label="Classi" value={summary.totalClasses} />
-              <SummaryCell label="Sessioni" value={summary.totalSessions} />
-              <SummaryCell label="Attive" value={summary.activeSessions} />
+            <div className="mb-2 flex items-center justify-between">
+              <p className="text-xs font-medium text-slate-500">Panoramica rapida</p>
+              <span className="text-[11px] text-slate-400">Aggiornamento live</span>
+            </div>
+            <div className="grid grid-cols-3 gap-1.5 rounded-[18px]">
+              <SummaryCell label="Classi" value={summary.totalClasses} tone="indigo" />
+              <SummaryCell label="Sessioni" value={summary.totalSessions} tone="cyan" />
+              <SummaryCell label="Attive" value={summary.activeSessions} tone="emerald" />
             </div>
           </div>
 
-          <div className="max-h-[28rem] overflow-y-auto px-4 pb-4 lg:max-h-[calc(100%-16rem)]">
+          <div className="max-h-[28rem] overflow-y-auto px-3 pb-4 lg:max-h-[calc(100%-16rem)]">
             {isClassesLoading ? (
               <div className="space-y-3 px-2">
                 {[1, 2, 3].map((item) => (
-                  <div key={item} className="h-24 animate-pulse rounded-2xl border border-slate-200 bg-white/80" />
+                  <div key={item} className="h-20 animate-pulse rounded-[18px] border border-slate-200 bg-white/80" />
                 ))}
               </div>
             ) : classes.length === 0 ? (
-              <div className="rounded-[22px] border border-dashed border-slate-200 bg-white/70 px-5 py-10 text-center">
-                <School className="mx-auto h-8 w-8 text-slate-300" />
-                <p className="mt-4 text-sm font-medium text-slate-600">{emptyTitle}</p>
-                <p className="mt-1 text-sm text-slate-400">{emptyBody}</p>
-              </div>
+              <EmptyStateCard
+                icon={<School className="h-8 w-8 text-slate-300" />}
+                title={emptyTitle}
+                body={emptyBody}
+                compact
+              />
             ) : (
-              <div className="space-y-2">
+              <div className="space-y-2.5">
                 {classes.map((cls) => {
                   const isSelected = cls.id === selectedClassId
                   const isShared = cls.role === 'invited'
@@ -389,36 +392,38 @@ export default function TeacherClassesSessionsManager({
                     <button
                       key={cls.id}
                       onClick={() => handleSelectClass(cls.id)}
-                      className="w-full rounded-2xl border px-3 py-3 text-left transition-all hover:shadow-sm"
-                      style={isSelected ? {
-                        borderColor: accentTheme.id === 'black' ? hexToRgba('#0f172a', 0.15) : hexToRgba(accentTheme.accent, 0.22),
-                        backgroundColor: accentTheme.id === 'black' ? 'rgba(255,255,255,0.96)' : hexToRgba(accentTheme.accent, 0.1),
-                      } : {
-                        borderColor: 'rgba(203,213,225,0.4)',
-                        backgroundColor: 'rgba(255,255,255,0.72)',
-                      }}
+                      className={`group relative w-full overflow-hidden rounded-[18px] px-3 py-3 text-left transition-all hover:shadow-[0_8px_18px_rgba(15,23,42,0.06)] ${
+                        isShared
+                          ? PASTEL_SURFACES.cyan
+                          : isSelected
+                            ? PASTEL_SURFACES.indigo
+                            : PASTEL_SURFACES.slate
+                      }`}
                     >
                       <div className="flex items-start gap-2.5">
                         <div
-                          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl"
-                          style={{
-                            backgroundColor: isShared ? 'rgba(34,211,238,0.12)' : hexToRgba(accentTheme.accent, 0.12),
-                            color: isShared ? '#0891b2' : accentTheme.text,
-                          }}
+                          className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${
+                            isShared ? 'bg-cyan-100 text-cyan-700' : isSelected ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-100 text-slate-600'
+                          }`}
                         >
                           <School className="h-4 w-4" />
                         </div>
                         <div className="min-w-0 flex-1">
-                          <div className="flex items-center justify-between gap-1">
-                            <span className="truncate text-sm font-semibold text-slate-800">{cls.name}</span>
-                            <ChevronRight className={`h-3.5 w-3.5 shrink-0 text-slate-300 transition-transform ${isSelected ? 'translate-x-0.5' : ''}`} />
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0">
+                              <span className="block truncate text-sm font-semibold tracking-[-0.01em] text-slate-900">{cls.name}</span>
+                              <span className="mt-1 block text-xs text-slate-500">{cls.school_grade || 'Grado non impostato'}</span>
+                            </div>
+                            <ChevronRight className={`mt-1 h-4 w-4 shrink-0 text-slate-300 transition-transform ${isSelected ? 'translate-x-0.5' : 'group-hover:translate-x-0.5'}`} />
                           </div>
-                          <div className="mt-1 flex items-center gap-1.5 text-[11px]">
-                            <span className="text-slate-400">{cls.school_grade || '—'}</span>
-                            <span className="text-slate-200">·</span>
-                            <span className="font-medium text-slate-500">{cls.session_count || 0} sess.</span>
+                          <div className="mt-2.5 flex flex-wrap items-center gap-1.5 text-[11px]">
+                            <span className={`rounded-full px-2 py-0.5 font-medium ${
+                              isShared ? 'bg-cyan-100 text-cyan-700' : isSelected ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-100 text-slate-600'
+                            }`}>
+                              {cls.session_count || 0} sessioni
+                            </span>
                             {isShared && (
-                              <span className="rounded-full bg-cyan-50 px-1.5 py-0.5 font-medium text-cyan-700">
+                              <span className="rounded-full bg-cyan-50 px-2 py-0.5 font-medium text-cyan-700 ring-1 ring-cyan-100">
                                 {cls.owner_name ? `di ${cls.owner_name}` : 'Condivisa'}
                               </span>
                             )}
@@ -433,28 +438,31 @@ export default function TeacherClassesSessionsManager({
           </div>
         </aside>
 
-        <section className="min-w-0 flex-1 bg-white/70">
+        <section className="min-w-0 flex-1 bg-[linear-gradient(180deg,rgba(255,255,255,0.62),rgba(248,250,252,0.82))]">
           {!selectedClass ? (
             <div className="flex h-full min-h-[420px] items-center justify-center px-6">
-              <div className="max-w-md text-center">
-                <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-100">
-                  <Users className="h-7 w-7 text-slate-400" />
-                </div>
-                <h2 className="mt-5 text-xl font-semibold text-slate-900">{emptyTitle}</h2>
-                <p className="mt-2 text-sm leading-6 text-slate-500">{emptyBody}</p>
+              <div className="w-full max-w-lg">
+                <EmptyStateCard
+                  icon={<Users className="h-7 w-7 text-slate-400" />}
+                  title={emptyTitle}
+                  body={emptyBody}
+                />
               </div>
             </div>
           ) : (
             <div className="flex h-full flex-col">
               <div
-                className="border-b px-5 py-4 lg:px-6"
+                className="border-b px-5 py-4"
                 style={{
                   borderBottomColor: accentTheme.id === 'black' ? hexToRgba('#0f172a', 0.08) : hexToRgba(accentTheme.accent, 0.14),
-                  backgroundColor: accentTheme.id === 'black' ? 'rgba(255,255,255,0.96)' : accentTheme.soft,
+                  backgroundColor: accentTheme.id === 'black' ? 'rgba(255,255,255,0.96)' : hexToRgba(accentTheme.accent, 0.065),
                 }}
               >
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                   <div className="min-w-0">
+                    <p className="text-[11px] font-semibold tracking-[0.08em]" style={{ color: accentTheme.text }}>
+                      Classe selezionata
+                    </p>
                     {isEditingClass ? (
                       <div className="flex flex-wrap items-center gap-2">
                         <Input
@@ -485,10 +493,12 @@ export default function TeacherClassesSessionsManager({
                         </IconButton>
                       </div>
                     ) : (
-                      <div className="flex flex-wrap items-center gap-2">
-                        <h2 className="truncate text-lg font-semibold text-slate-900">{selectedClass.name}</h2>
-                        <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
-                          <span className="rounded-full bg-white/90 px-2 py-0.5 font-medium text-slate-500 ring-1 ring-slate-200">
+                      <div className="mt-1">
+                        <h2 className="truncate text-[22px] font-semibold leading-[1.1] tracking-[var(--letter-spacing-tight)] text-slate-950">
+                          {selectedClass.name}
+                        </h2>
+                        <div className="mt-2.5 flex flex-wrap items-center gap-1.5 text-[11px]">
+                          <span className="rounded-full bg-white px-2 py-0.5 font-medium text-slate-600 ring-1 ring-slate-200/80">
                             {selectedClass.school_grade || '—'}
                           </span>
                           {selectedClass.role === 'invited' && (
@@ -497,7 +507,7 @@ export default function TeacherClassesSessionsManager({
                               {selectedClass.owner_name ? `di ${selectedClass.owner_name}` : 'Condivisa'}
                             </span>
                           )}
-                          <span className="text-slate-400">
+                          <span className="text-slate-500">
                             <Clock className="mr-0.5 inline h-2.5 w-2.5" />
                             {new Date(selectedClass.created_at).toLocaleDateString('it-IT')}
                           </span>
@@ -507,7 +517,7 @@ export default function TeacherClassesSessionsManager({
                   </div>
 
                   {!isEditingClass && (
-                    <div className="flex shrink-0 items-center gap-1.5">
+                    <div className="flex shrink-0 items-center gap-1 self-start sm:pt-0.5">
                       <IconButton onClick={() => setIsEditingClass(true)} title="Rinomina classe" tone="neutral" surface="outline" size="default">
                         <Edit2 className="h-3.5 w-3.5" />
                       </IconButton>
@@ -533,27 +543,28 @@ export default function TeacherClassesSessionsManager({
                   )}
                 </div>
 
-                <div className="mt-3 grid grid-cols-4 gap-2">
-                  <MetricCard label="Aperte" value={groupedSessions.open.length} accent={accentTheme} />
-                  <MetricCard label="Attive" value={summary.activeSessions} accent={accentTheme} />
-                  <MetricCard label="In pausa" value={summary.pausedSessions} accent={accentTheme} />
-                  <MetricCard label="Archivio" value={groupedSessions.archive.length} accent={accentTheme} />
+                <div className="mt-4 grid grid-cols-2 gap-2.5 xl:grid-cols-4">
+                  <MetricCard label="Aperte" value={groupedSessions.open.length} tone="indigo" />
+                  <MetricCard label="Attive" value={summary.activeSessions} tone="emerald" />
+                  <MetricCard label="In pausa" value={summary.pausedSessions} tone="amber" />
+                  <MetricCard label="Archivio" value={groupedSessions.archive.length} tone="rose" />
                 </div>
               </div>
 
-              <div className="flex-1 overflow-y-auto px-5 py-4 lg:px-6">
+              <div className="flex-1 overflow-y-auto px-5 py-4">
                 {isSessionsLoading ? (
                   <div className="space-y-3">
                     {[1, 2, 3].map((item) => (
-                      <div key={item} className="h-20 animate-pulse rounded-2xl border border-slate-200 bg-white/80" />
+                      <div key={item} className="h-24 animate-pulse rounded-[24px] border border-slate-200 bg-white/80" />
                     ))}
                   </div>
                 ) : sessions.length === 0 ? (
-                  <div className="rounded-[24px] border border-dashed border-slate-200 bg-white/80 px-6 py-16 text-center">
-                    <MonitorPlay className="mx-auto h-10 w-10 text-slate-300" />
-                    <h3 className="mt-4 text-lg font-semibold text-slate-900">Nessuna sessione</h3>
-                    <p className="mt-1 text-sm text-slate-500">Questa classe non ha ancora sessioni. Aprine una nuova dal pannello in alto.</p>
-                  </div>
+                  <EmptyStateCard
+                    icon={<MonitorPlay className="h-10 w-10 text-slate-300" />}
+                    title="Nessuna sessione"
+                    body="Questa classe non ha ancora sessioni. Aprine una nuova dal pannello in alto."
+                    tone="indigo"
+                  />
                 ) : (
                   <div className="space-y-6">
                     <SessionSection
@@ -648,11 +659,11 @@ export default function TeacherClassesSessionsManager({
   )
 }
 
-function SummaryCell({ label, value }: { label: string; value: number }) {
+function SummaryCell({ label, value, tone }: { label: string; value: number; tone: PastelTone }) {
   return (
-    <div className="rounded-xl bg-white/85 px-2 py-2 text-center">
-      <div className="text-base font-semibold text-slate-900">{value}</div>
-      <div className="text-[10px] uppercase tracking-[0.14em] text-slate-400">{label}</div>
+    <div className={`rounded-[16px] px-2.5 py-2.5 text-center shadow-[inset_0_1px_0_rgba(255,255,255,0.5)] ${PASTEL_SURFACES[tone]}`}>
+      <div className="text-lg font-semibold tracking-[var(--letter-spacing-tight)] text-slate-950">{value}</div>
+      <div className="mt-1 text-[11px] font-medium text-slate-500">{label}</div>
     </div>
   )
 }
@@ -660,23 +671,55 @@ function SummaryCell({ label, value }: { label: string; value: number }) {
 function MetricCard({
   label,
   value,
-  accent,
+  tone,
 }: {
   label: string
   value: number
-  accent: { accent: string; soft: string; id: string }
+  tone: PastelTone
 }) {
   return (
     <Card
       surface="base"
-      className="rounded-2xl px-3 py-2.5"
-      style={{
-        borderColor: accent.id === 'black' ? 'rgba(15,23,42,0.08)' : hexToRgba(accent.accent, 0.14),
-        backgroundColor: accent.id === 'black' ? 'rgba(255,255,255,0.92)' : accent.soft,
-      }}
+      className={`rounded-[18px] px-3.5 py-3 ${PASTEL_SURFACES[tone]}`}
     >
-      <div className="text-[10px] uppercase tracking-[0.16em] text-slate-400">{label}</div>
-      <div className="mt-0.5 text-xl font-semibold text-slate-900">{value}</div>
+      <div className="text-[11px] font-medium text-slate-500">{label}</div>
+      <div className="mt-1.5 text-[24px] font-semibold leading-none tracking-[var(--letter-spacing-tight)] text-slate-950">{value}</div>
+    </Card>
+  )
+}
+
+function EmptyStateCard({
+  icon,
+  title,
+  body,
+  compact = false,
+  tone = 'slate',
+}: {
+  icon: React.ReactNode
+  title: string
+  body: string
+  compact?: boolean
+  tone?: PastelTone
+}) {
+  return (
+    <Card
+      surface="base"
+      className={`${compact
+        ? 'rounded-[20px] px-5 py-8 text-center'
+        : 'rounded-[24px] px-8 py-14 text-center'} ${PASTEL_SURFACES[tone]}`}
+    >
+      <div className={`mx-auto flex h-12 w-12 items-center justify-center rounded-xl ${
+        tone === 'indigo' ? 'bg-indigo-100 text-indigo-700' :
+        tone === 'emerald' ? 'bg-emerald-100 text-emerald-700' :
+        tone === 'amber' ? 'bg-amber-100 text-amber-700' :
+        tone === 'rose' ? 'bg-rose-100 text-rose-700' :
+        tone === 'cyan' ? 'bg-cyan-100 text-cyan-700' :
+        'bg-slate-100 text-slate-600'
+      }`}>
+        {icon}
+      </div>
+      <h3 className="mt-4 text-lg font-semibold tracking-[var(--letter-spacing-tight)] text-slate-950">{title}</h3>
+      <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-500">{body}</p>
     </Card>
   )
 }
@@ -715,11 +758,25 @@ function SessionSection({
   if (sessions.length === 0) return null
 
   return (
-    <div className="space-y-2">
-      <h3 className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">{title}</h3>
+    <div className="space-y-2.5">
+      <div>
+        <h3 className="text-base font-semibold tracking-[var(--letter-spacing-tight)] text-slate-950">{title}</h3>
+        <p className="text-xs text-slate-500">
+          {sessions.length} {sessions.length === 1 ? 'sessione disponibile' : 'sessioni disponibili'}
+        </p>
+      </div>
 
-      <Card surface="base" className="overflow-hidden rounded-2xl border-slate-200 bg-white shadow-sm">
-        <div className="hidden grid-cols-[minmax(0,2fr)_100px_90px_80px_60px_96px] gap-3 border-b border-slate-100 bg-slate-50 px-4 py-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400 lg:grid">
+      <Card
+        surface="base"
+        className={`overflow-hidden rounded-[20px] shadow-[0_10px_24px_rgba(15,23,42,0.04)] ${
+          title.toLowerCase().includes('archivio') ? 'bg-rose-50/55 border border-rose-200/70' : 'bg-indigo-50/45 border border-indigo-200/70'
+        }`}
+      >
+        <div className={`hidden grid-cols-[minmax(0,2fr)_100px_96px_84px_60px_132px] gap-3 border-b px-5 py-3 text-[11px] font-medium lg:grid ${
+          title.toLowerCase().includes('archivio')
+            ? 'border-rose-200/70 bg-rose-100/70 text-rose-700'
+            : 'border-indigo-200/70 bg-indigo-100/70 text-indigo-700'
+        }`}>
           <span>Sessione</span>
           <span>Stato</span>
           <span>Codice</span>
@@ -791,7 +848,7 @@ function SessionRow({
 
   return (
     <div
-      className="px-4 py-3 lg:grid lg:grid-cols-[minmax(0,2fr)_100px_90px_80px_60px_96px] lg:items-center lg:gap-3 cursor-pointer hover:bg-slate-50/80 transition-colors"
+      className="cursor-pointer px-4 py-3 transition-colors hover:bg-slate-50/80 lg:grid lg:grid-cols-[minmax(0,2fr)_100px_96px_84px_60px_132px] lg:items-center lg:gap-3"
       onClick={() => navigate(`/teacher/sessions/${session.id}`)}
     >
       {/* Title */}
@@ -817,7 +874,7 @@ function SessionRow({
             </form>
           ) : (
             <div className="flex min-w-0 items-center gap-1">
-              <span className="truncate text-sm font-medium text-slate-800">{session.title}</span>
+              <span className="truncate text-[15px] font-medium tracking-[-0.01em] text-slate-900">{session.title}</span>
               <IconButton
                 onClick={() => { setEditingTitleId(session.id); setEditingTitleValue(session.title) }}
                 className="shrink-0"
@@ -832,12 +889,16 @@ function SessionRow({
           )}
         </div>
         {/* Mobile-only meta row */}
-        <div className="ml-4 mt-1 flex flex-wrap items-center gap-1.5 text-[11px] text-slate-400 lg:hidden">
+        <div className="ml-4 mt-1.5 flex flex-wrap items-center gap-1.5 text-[11px] text-slate-400 lg:hidden">
           <StatusBadge meta={meta} />
-          {session.join_code && (
+          {isActive && session.join_code ? (
             <Button onClick={() => onCopyCode(session.join_code)} tone="neutral" surface="soft" density="compact" className="font-mono text-[11px]">
               {session.join_code}
             </Button>
+          ) : (
+            <span className="text-[11px] font-medium text-slate-300">
+              {isPaused ? 'Codice non disponibile' : isEnded ? 'Codice dismesso' : 'Codice non attivo'}
+            </span>
           )}
           <span>{new Date(session.created_at).toLocaleDateString('it-IT')}</span>
         </div>
@@ -850,12 +911,16 @@ function SessionRow({
 
       {/* Code */}
       <div className="hidden lg:block" onClick={e => e.stopPropagation()}>
-        {session.join_code ? (
+        {isActive && session.join_code ? (
           <Button onClick={() => onCopyCode(session.join_code)} tone="neutral" surface="soft" density="compact" className="inline-flex items-center gap-1 font-mono text-[11px] font-semibold text-slate-600">
             {session.join_code}
             <Copy className="h-2.5 w-2.5" />
           </Button>
-        ) : <span className="text-xs text-slate-300">—</span>}
+        ) : (
+          <span className="text-xs text-slate-300">
+            {isPaused ? 'Non disponibile' : isEnded ? 'Dismesso' : '—'}
+          </span>
+        )}
       </div>
 
       {/* Date */}
@@ -869,32 +934,32 @@ function SessionRow({
       </div>
 
       {/* Actions — icon-only */}
-      <div className="mt-3 flex items-center gap-1 lg:mt-0" onClick={e => e.stopPropagation()}>
+      <div className="mt-2 flex items-center justify-end gap-2 lg:mt-0 lg:justify-center" onClick={e => e.stopPropagation()}>
         {isDraft && (
-          <IconButton onClick={() => onStatusChange(session.id, 'active')} disabled={updatePending} title="Avvia sessione" size="sm"
+          <IconButton onClick={() => onStatusChange(session.id, 'active')} disabled={updatePending} title="Avvia sessione" size="default"
             style={{ backgroundColor: accentTheme.accent, borderColor: accentTheme.accent }} className="text-white">
             <Play className="h-3.5 w-3.5" />
           </IconButton>
         )}
         {isActive && (
           <>
-            <IconButton onClick={() => onStatusChange(session.id, 'paused')} disabled={updatePending} title="Metti in pausa" tone="neutral" surface="outline" size="sm">
+            <IconButton onClick={() => onStatusChange(session.id, 'paused')} disabled={updatePending} title="Metti in pausa" tone="neutral" surface="outline" size="default">
               <Pause className="h-3.5 w-3.5" />
             </IconButton>
-            <IconButton onClick={() => onStatusChange(session.id, 'ended')} disabled={updatePending} title="Chiudi sessione" tone="danger" surface="soft" size="sm">
+            <IconButton onClick={() => onStatusChange(session.id, 'ended')} disabled={updatePending} title="Chiudi sessione" tone="danger" surface="soft" size="default">
               <Square className="h-3.5 w-3.5" />
             </IconButton>
           </>
         )}
         {isPaused && (
-          <IconButton onClick={() => onStatusChange(session.id, 'active')} disabled={updatePending} title="Riprendi sessione" size="sm"
+          <IconButton onClick={() => onStatusChange(session.id, 'active')} disabled={updatePending} title="Riprendi sessione" size="default"
             style={{ backgroundColor: accentTheme.accent, borderColor: accentTheme.accent }} className="text-white">
             <PlayCircle className="h-3.5 w-3.5" />
           </IconButton>
         )}
         <Link to={`/teacher/sessions/${session.id}`} title="Apri sessione">
           <span className="pointer-events-none">
-            <IconButton tone="neutral" surface="outline" size="sm">
+            <IconButton tone="neutral" surface="outline" size="default">
               <Eye className="h-3.5 w-3.5" />
             </IconButton>
           </span>
@@ -905,7 +970,7 @@ function SessionRow({
             disabled={deletePending} title="Elimina sessione"
             tone="danger"
             surface="soft"
-            size="sm"
+            size="default"
           >
             <Trash2 className="h-3.5 w-3.5" />
           </IconButton>

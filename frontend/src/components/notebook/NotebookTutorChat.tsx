@@ -4,12 +4,7 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { markdownCodeComponents } from '@/components/CodeBlock'
 import { notebooksApi } from '@/lib/api'
-import type { NotebookCodeProposal, NotebookProjectType } from './types'
-
-interface Message {
-  role: 'user' | 'assistant'
-  content: string
-}
+import type { NotebookCodeProposal, NotebookProjectType, NotebookTutorMessage } from './types'
 
 interface Props {
   notebookId: string
@@ -18,6 +13,7 @@ interface Props {
   currentCellSource?: string
   lastOutput?: string
   pendingProposals?: NotebookCodeProposal[]
+  initialMessages?: NotebookTutorMessage[]
   variant?: 'docked' | 'floating' | 'sidebar'
   className?: string
 }
@@ -29,14 +25,20 @@ export default function NotebookTutorChat({
   currentCellSource,
   lastOutput,
   pendingProposals = [],
+  initialMessages = [],
   variant = 'docked',
   className = '',
 }: Props) {
   const isFloating = variant === 'floating'
   const isSidebar = variant === 'sidebar'
 
+  // Accent palette — teal for p5js, indigo for python
+  const accent = projectType === 'p5js'
+    ? { iconBg: 'bg-teal-100', iconText: 'text-teal-700', bubble: 'bg-teal-600', avatar: 'bg-teal-600', spinner: 'text-teal-400', prose: 'prose-code:text-teal-700' }
+    : { iconBg: 'bg-indigo-100', iconText: 'text-indigo-700', bubble: 'bg-indigo-600', avatar: 'bg-indigo-600', spinner: 'text-indigo-400', prose: 'prose-code:text-indigo-700' }
+
   const [collapsed, setCollapsed] = useState(false)
-  const [messages, setMessages] = useState<Message[]>([])
+  const [messages, setMessages] = useState<NotebookTutorMessage[]>(initialMessages)
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const [dragPos, setDragPos] = useState<{ x: number; y: number } | null>(null)
@@ -79,22 +81,26 @@ export default function NotebookTutorChat({
     if (!collapsed) inputRef.current?.focus()
   }, [collapsed])
 
+  useEffect(() => {
+    setMessages(initialMessages)
+  }, [initialMessages, notebookId])
+
   const send = async () => {
     const msg = input.trim()
     if (!msg || loading) return
     setInput('')
-    const newMessages: Message[] = [...messages, { role: 'user', content: msg }]
+    const newMessages: NotebookTutorMessage[] = [...messages, { role: 'user', content: msg }]
     setMessages(newMessages)
     setLoading(true)
     try {
       const res = await notebooksApi.tutorChat(notebookId, {
         message: msg,
-        history: messages.slice(-10),
         current_cell_source: currentCellSource,
         last_output: lastOutput,
         pending_proposals: pendingProposals,
       })
-      setMessages([...newMessages, { role: 'assistant', content: res.data.response }])
+      const history = Array.isArray(res.data.history) ? res.data.history as NotebookTutorMessage[] : null
+      setMessages(history ?? [...newMessages, { role: 'assistant', content: res.data.response }])
     } catch {
       setMessages([...newMessages, { role: 'assistant', content: 'Errore nella risposta del tutor. Riprova.' }])
     } finally {
@@ -149,8 +155,8 @@ export default function NotebookTutorChat({
 
       {/* Header */}
       <div className="flex shrink-0 items-center gap-3 border-b border-slate-200 bg-white px-4 py-3">
-        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-100">
-          <GraduationCap className="h-4 w-4 text-indigo-700" />
+        <div className={`flex h-8 w-8 items-center justify-center rounded-lg ${accent.iconBg}`}>
+          <GraduationCap className={`h-4 w-4 ${accent.iconText}`} />
         </div>
         <div className="min-w-0 flex-1">
           <p className="text-sm font-semibold text-slate-900">Tutor {projectType === 'python' ? 'Python' : 'p5.js'}</p>
@@ -186,7 +192,7 @@ export default function NotebookTutorChat({
           <div className="flex-1 overflow-y-auto space-y-3 px-3 py-3">
             {messages.length === 0 && (
               <div className="flex h-full flex-col items-center justify-center gap-3 text-center text-slate-500">
-                <Bot className="h-10 w-10 text-indigo-300" />
+                <Bot className={`h-10 w-10 ${accent.iconText} opacity-40`} />
                 <div>
                   <p className="text-sm font-medium text-slate-700">Sono il tutor {projectType === 'python' ? 'Python' : 'p5.js'}</p>
                   <p className="mt-1 text-xs">Spiego errori e proposte di modifica lasciando allo studente il controllo del codice.</p>
@@ -217,19 +223,19 @@ export default function NotebookTutorChat({
             {messages.map((message, index) => (
               <div key={index} className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                 {message.role === 'assistant' && (
-                  <div className="mr-2 mt-0.5 flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-indigo-600">
+                  <div className={`mr-2 mt-0.5 flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full ${accent.avatar}`}>
                     <Bot className="h-3 w-3 text-white" />
                   </div>
                 )}
                 <div
                   className={`max-w-[85%] rounded-xl px-3 py-2 text-sm ${
                     message.role === 'user'
-                      ? 'rounded-tr-sm bg-indigo-600 text-white'
+                      ? `rounded-tr-sm ${accent.bubble} text-white`
                       : 'rounded-tl-sm border border-slate-200 bg-slate-50 text-slate-700'
                   }`}
                 >
                   {message.role === 'assistant' ? (
-                    <div className="prose prose-sm max-w-none prose-p:my-1 prose-code:text-indigo-700">
+                    <div className={`prose prose-sm max-w-none prose-p:my-1 ${accent.prose}`}>
                       <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownCodeComponents(false)}>
                         {message.content}
                       </ReactMarkdown>
@@ -242,11 +248,11 @@ export default function NotebookTutorChat({
             ))}
             {loading && (
               <div className="flex justify-start">
-                <div className="mr-2 flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-indigo-600">
+                <div className={`mr-2 flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full ${accent.avatar}`}>
                   <Bot className="h-3 w-3 text-white" />
                 </div>
                 <div className="rounded-xl rounded-tl-sm border border-slate-200 bg-slate-50 px-4 py-3">
-                  <Loader2 className="h-4 w-4 animate-spin text-indigo-400" />
+                  <Loader2 className={`h-4 w-4 animate-spin ${accent.spinner}`} />
                 </div>
               </div>
             )}
@@ -267,7 +273,7 @@ export default function NotebookTutorChat({
               <button
                 onClick={send}
                 disabled={!input.trim() || loading}
-                className="self-end flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-indigo-600 transition-colors hover:bg-indigo-500 disabled:opacity-40"
+                className={`self-end flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg ${accent.bubble} transition-colors hover:opacity-90 disabled:opacity-40`}
               >
                 <Send className="h-3.5 w-3.5 text-white" />
               </button>

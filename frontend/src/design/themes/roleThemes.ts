@@ -17,47 +17,47 @@ export interface AccentTheme {
 export const ACCENT_THEMES: Record<AccentId, AccentTheme> = {
   cyan: {
     id: 'cyan',
-    label: 'Soft Cyan',
-    accent: colorTokens.cyan[500],
-    text: colorTokens.cyan[700],
-    soft: '#f4fcfd',
-    softMid: '#ddf6f8',
-    softStrong: '#c5edf1',
-    border: colorTokens.cyan[300],
+    label: 'Logo Blue',
+    accent: colorTokens.info[500],
+    text: colorTokens.info[700],
+    soft: colorTokens.info[50],
+    softMid: colorTokens.info[100],
+    softStrong: colorTokens.info[200],
+    border: colorTokens.info[200],
   },
   orange: {
     id: 'orange',
-    label: 'Soft Apricot',
-    accent: colorTokens.orange[500],
-    text: colorTokens.orange[700],
-    soft: '#fff9f4',
-    softMid: '#fde8d6',
-    softStrong: '#f8d4b8',
-    border: colorTokens.orange[300],
+    label: 'Logo Violet',
+    accent: colorTokens.overlap[500],
+    text: colorTokens.overlap[700],
+    soft: colorTokens.overlap[50],
+    softMid: colorTokens.overlap[100],
+    softStrong: colorTokens.overlap[200],
+    border: colorTokens.overlap[200],
   },
   black: {
     id: 'black',
-    label: 'Graphite Mist',
-    accent: colorTokens.slate[600],
-    text: colorTokens.slate[700],
-    soft: '#f7f8fb',
-    softMid: '#eaedf3',
-    softStrong: '#d9dfe9',
-    border: '#c3cad7',
+    label: 'Soft Graphite',
+    accent: colorTokens.neutral[600],
+    text: colorTokens.neutral[700],
+    soft: '#faf6fb',
+    softMid: '#f1e7f5',
+    softStrong: '#e6d9ec',
+    border: '#d8c5e0',
   },
   red: {
     id: 'red',
-    label: 'Soft Rose',
-    accent: colorTokens.rose[500],
-    text: colorTokens.rose[700],
-    soft: '#fff7f8',
-    softMid: '#fde3e8',
-    softStrong: '#f8cdd7',
-    border: colorTokens.rose[300],
+    label: 'Logo Magenta',
+    accent: colorTokens.brand[500],
+    text: colorTokens.brand[700],
+    soft: colorTokens.brand[50],
+    softMid: colorTokens.brand[100],
+    softStrong: colorTokens.brand[200],
+    border: colorTokens.brand[200],
   },
 }
 
-export const DEFAULT_ACCENT: AccentId = 'cyan'
+export const DEFAULT_ACCENT: AccentId = 'red'
 
 export interface RoleTheme {
   role: RoleThemeId
@@ -65,8 +65,8 @@ export interface RoleTheme {
 }
 
 export const roleThemes: Record<RoleThemeId, RoleTheme> = {
-  teacher: { role: 'teacher', defaultAccent: 'cyan' },
-  student: { role: 'student', defaultAccent: 'cyan' },
+  teacher: { role: 'teacher', defaultAccent: 'red' },
+  student: { role: 'student', defaultAccent: 'red' },
   admin: { role: 'admin', defaultAccent: 'black' },
 }
 

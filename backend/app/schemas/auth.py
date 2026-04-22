@@ -40,6 +40,19 @@ class TeacherRequestResponse(BaseModel):
 class StudentJoinRequest(BaseModel):
     join_code: str
     nickname: str
+    password: Optional[str] = None
+
+
+class StudentAccessCheckRequest(BaseModel):
+    join_code: str
+    nickname: str
+
+
+class StudentAccessCheckResponse(BaseModel):
+    session_id: UUID
+    session_title: str
+    normalized_nickname: str
+    access_mode: str
 
 
 class StudentJoinResponse(BaseModel):

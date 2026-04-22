@@ -44,55 +44,55 @@ const buttonVariants = cva(
         tone: 'accent',
         surface: 'solid',
         className:
-          'bg-primary text-primary-foreground shadow-sm hover:bg-primary/90 focus-visible:ring-primary/40',
+          'bg-[#E91E63] text-white shadow-sm hover:bg-[#d61b5b] focus-visible:ring-[#f4b6cf]',
       },
       {
         tone: 'success',
         surface: 'solid',
         className:
-          'bg-emerald-600 text-white shadow-sm hover:bg-emerald-500 focus-visible:ring-emerald-400',
+          'bg-[#2196F3] text-white shadow-sm hover:bg-[#1d84d8] focus-visible:ring-[#b5dbfb]',
       },
       {
         tone: 'warning',
         surface: 'solid',
         className:
-          'bg-amber-500 text-slate-950 shadow-sm hover:bg-amber-400 focus-visible:ring-amber-300',
+          'bg-[#BA68C8] text-white shadow-sm hover:bg-[#a95db5] focus-visible:ring-[#d8bbe3]',
       },
       {
         tone: 'danger',
         surface: 'solid',
         className:
-          'bg-rose-600 text-white shadow-sm hover:bg-rose-500 focus-visible:ring-rose-400',
+          'bg-[#E91E63] text-white shadow-sm hover:bg-[#d61b5b] focus-visible:ring-[#f4b6cf]',
       },
       {
         tone: 'neutral',
         surface: 'soft',
         className:
-          'bg-slate-100 text-slate-700 hover:bg-slate-200 focus-visible:ring-slate-300',
+          'bg-[#f1e7f5] text-[#6a5872] hover:bg-[#e6d9ec] focus-visible:ring-[#d8c5e0]',
       },
       {
         tone: 'accent',
         surface: 'soft',
         className:
-          'bg-accent text-accent-foreground hover:bg-accent/80 focus-visible:ring-primary/30',
+          'bg-[#fad6e4] text-[#b51f5f] hover:bg-[#f4b6cf] focus-visible:ring-[#f4b6cf]',
       },
       {
         tone: 'success',
         surface: 'soft',
         className:
-          'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 focus-visible:ring-emerald-200',
+          'bg-[#d8ecfd] text-[#1d7dd8] hover:bg-[#b5dbfb] focus-visible:ring-[#b5dbfb]',
       },
       {
         tone: 'warning',
         surface: 'soft',
         className:
-          'bg-amber-50 text-amber-700 hover:bg-amber-100 focus-visible:ring-amber-200',
+          'bg-[#ead8ef] text-[#9452a3] hover:bg-[#d8bbe3] focus-visible:ring-[#d8bbe3]',
       },
       {
         tone: 'danger',
         surface: 'soft',
         className:
-          'bg-rose-50 text-rose-700 hover:bg-rose-100 focus-visible:ring-rose-200',
+          'bg-[#fad6e4] text-[#b51f5f] hover:bg-[#f4b6cf] focus-visible:ring-[#f4b6cf]',
       },
       {
         tone: 'neutral',
@@ -104,25 +104,25 @@ const buttonVariants = cva(
         tone: 'accent',
         surface: 'outline',
         className:
-          'border border-primary/25 bg-[var(--surface-base)] text-primary hover:bg-primary/5 focus-visible:ring-primary/30',
+          'border border-[#f4b6cf] bg-[var(--surface-base)] text-[#b51f5f] hover:bg-[#fdf0f5] focus-visible:ring-[#f4b6cf]',
       },
       {
         tone: 'success',
         surface: 'outline',
         className:
-          'border border-emerald-200 bg-[var(--surface-base)] text-emerald-700 hover:bg-emerald-50 focus-visible:ring-emerald-200',
+          'border border-[#b5dbfb] bg-[var(--surface-base)] text-[#1d7dd8] hover:bg-[#eef7fe] focus-visible:ring-[#b5dbfb]',
       },
       {
         tone: 'warning',
         surface: 'outline',
         className:
-          'border border-amber-200 bg-[var(--surface-base)] text-amber-700 hover:bg-amber-50 focus-visible:ring-amber-200',
+          'border border-[#d8bbe3] bg-[var(--surface-base)] text-[#9452a3] hover:bg-[#f7eff9] focus-visible:ring-[#d8bbe3]',
       },
       {
         tone: 'danger',
         surface: 'outline',
         className:
-          'border border-rose-200 bg-[var(--surface-base)] text-rose-700 hover:bg-rose-50 focus-visible:ring-rose-200',
+          'border border-[#f4b6cf] bg-[var(--surface-base)] text-[#b51f5f] hover:bg-[#fdf0f5] focus-visible:ring-[#f4b6cf]',
       },
       {
         tone: 'neutral',
@@ -134,25 +134,25 @@ const buttonVariants = cva(
         tone: 'accent',
         surface: 'ghost',
         className:
-          'text-primary hover:bg-primary/10 focus-visible:ring-primary/30',
+          'text-[#b51f5f] hover:bg-[#fdf0f5] focus-visible:ring-[#f4b6cf]',
       },
       {
         tone: 'success',
         surface: 'ghost',
         className:
-          'text-emerald-700 hover:bg-emerald-50 focus-visible:ring-emerald-200',
+          'text-[#1d7dd8] hover:bg-[#eef7fe] focus-visible:ring-[#b5dbfb]',
       },
       {
         tone: 'warning',
         surface: 'ghost',
         className:
-          'text-amber-700 hover:bg-amber-50 focus-visible:ring-amber-200',
+          'text-[#9452a3] hover:bg-[#f7eff9] focus-visible:ring-[#d8bbe3]',
       },
       {
         tone: 'danger',
         surface: 'ghost',
         className:
-          'text-rose-700 hover:bg-rose-50 focus-visible:ring-rose-200',
+          'text-[#b51f5f] hover:bg-[#fdf0f5] focus-visible:ring-[#f4b6cf]',
       },
       {
         tone: 'neutral',
@@ -162,22 +162,22 @@ const buttonVariants = cva(
       {
         tone: 'accent',
         surface: 'link',
-        className: 'text-primary',
+        className: 'text-[#b51f5f]',
       },
       {
         tone: 'success',
         surface: 'link',
-        className: 'text-emerald-700',
+        className: 'text-[#1d7dd8]',
       },
       {
         tone: 'warning',
         surface: 'link',
-        className: 'text-amber-700',
+        className: 'text-[#9452a3]',
       },
       {
         tone: 'danger',
         surface: 'link',
-        className: 'text-rose-700',
+        className: 'text-[#b51f5f]',
       },
     ],
     defaultVariants: {

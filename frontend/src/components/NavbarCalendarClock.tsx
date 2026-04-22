@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
-import { ChevronLeft, ChevronRight, Clock } from 'lucide-react'
+import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { calendarApi } from '@/lib/api'
 import { useQuery } from '@tanstack/react-query'
 
@@ -59,9 +59,8 @@ export function NavbarCalendarClock({ sessionId, accentColor }: { sessionId?: st
     <div ref={ref} className="relative hidden lg:flex">
       <button
         onClick={() => setOpen(v => !v)}
-        className="flex items-center gap-2 h-auto py-1.5 px-3 rounded-xl border bg-white border-slate-200 hover:bg-slate-50 hover:border-slate-300 transition-colors shadow-sm cursor-pointer"
+        className="flex items-center gap-2 h-auto py-1.5 px-3 rounded-xl bg-white/88 hover:bg-white transition-colors shadow-sm cursor-pointer"
       >
-        <Clock className="h-3.5 w-3.5 text-slate-400 flex-shrink-0" />
         <div className="text-left">
           <div className="text-[13px] font-semibold text-slate-700 tabular-nums leading-tight">{hh}:{mm}</div>
           <div className="text-[9px] text-slate-400 leading-tight">

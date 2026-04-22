@@ -14,10 +14,16 @@ import { UnifiedToolbar } from '@/components/UnifiedToolbar'
 import { SheetChartConfig, SpreadsheetEditor } from '@/components/SpreadsheetEditor'
 import { CollaborativeCanvas } from '@/components/CollaborativeCanvas'
 import { Editor } from '@tiptap/react'
+import {
+  PASTEL_ICON_BACKGROUNDS,
+  PASTEL_ICON_TEXT,
+  PASTEL_SURFACES,
+  type PastelTone,
+} from '@/design/themes/pastelSurfaces'
 
 // Types
 type Format = 'a4' | '16:9' | '4:3'
-type EditorMode = 'slides' | 'document' | 'sheet' | 'canvas'
+type EditorMode = 'slides' | 'document' | 'sheet' | 'canvas' | 'web'
 
 // Reuse SlideBlock type
 type Block = SlideBlock
@@ -45,6 +51,7 @@ interface Document {
   sheetData?: string[][]
   sheetChart?: SheetChartConfig
   canvasContent?: string
+  webUrl?: string
 }
 
 // Stored Document Metadata for Sidebar
@@ -86,6 +93,11 @@ const DEFAULT_SHEET_CHART: SheetChartConfig = {
   showRegression: true,
 }
 const DEFAULT_CANVAS_CONTENT = JSON.stringify({ type: 'canvas_v1', items: [] })
+const isFullHtmlDocument = (value?: string | null) => {
+  if (!value) return false
+  const trimmed = value.trim().toLowerCase()
+  return trimmed.startsWith('<!doctype html') || trimmed.startsWith('<html')
+}
 const parseCanvasContent = (raw?: string) => {
   if (!raw) return { type: 'canvas_v1', items: [] as any[] }
   try {
@@ -96,6 +108,15 @@ const parseCanvasContent = (raw?: string) => {
   }
   return { type: 'canvas_v1', items: [] as any[] }
 }
+
+const DOC_TYPE_TONES: Record<'presentation' | 'document' | 'sheet' | 'canvas', PastelTone> = {
+  presentation: 'indigo',
+  document: 'emerald',
+  sheet: 'sky',
+  canvas: 'amber',
+}
+
+const docTone = (type: 'presentation' | 'document' | 'sheet' | 'canvas') => DOC_TYPE_TONES[type]
 
 export default function TeacherDocumentsPage() {
   const { toast } = useToast()
@@ -119,6 +140,7 @@ export default function TeacherDocumentsPage() {
     sheetData: DEFAULT_SHEET_DATA,
     sheetChart: DEFAULT_SHEET_CHART,
     canvasContent: DEFAULT_CANVAS_CONTENT,
+    webUrl: '',
   })
   
   // Sidebar State
@@ -169,6 +191,7 @@ export default function TeacherDocumentsPage() {
       sheetData: DEFAULT_SHEET_DATA,
       sheetChart: DEFAULT_SHEET_CHART,
       canvasContent: DEFAULT_CANVAS_CONTENT,
+      webUrl: '',
     })
     setMode('document')
     setCurrentSlideIndex(0)
@@ -189,6 +212,7 @@ export default function TeacherDocumentsPage() {
       sheetData: DEFAULT_SHEET_DATA,
       sheetChart: DEFAULT_SHEET_CHART,
       canvasContent: DEFAULT_CANVAS_CONTENT,
+      webUrl: '',
     })
     setMode('slides')
     setCurrentSlideIndex(0)
@@ -209,6 +233,7 @@ export default function TeacherDocumentsPage() {
       sheetData: DEFAULT_SHEET_DATA,
       sheetChart: DEFAULT_SHEET_CHART,
       canvasContent: DEFAULT_CANVAS_CONTENT,
+      webUrl: '',
     })
     setMode('canvas')
     setCurrentSlideIndex(0)
@@ -430,7 +455,23 @@ export default function TeacherDocumentsPage() {
     try {
       const content = JSON.parse(doc.contentJson)
       
-      if (doc.type === 'presentation' || content.type === 'presentation_v2' || content.slides) {
+      if (isFullHtmlDocument(content.htmlContent) || isFullHtmlDocument(content.content)) {
+        setMode('web')
+        setDraftId(null)
+        draftIdRef.current = null
+        setDocument({
+          id: doc.id,
+          title: doc.title,
+          format: 'a4',
+          slides: [],
+          textContent: content.htmlContent || content.content || '',
+          header: { title: '', subtitle: '', logoUrl: '' },
+          sheetData: DEFAULT_SHEET_DATA,
+          sheetChart: DEFAULT_SHEET_CHART,
+          canvasContent: DEFAULT_CANVAS_CONTENT,
+          webUrl: content.url || '',
+        })
+      } else if (doc.type === 'presentation' || content.type === 'presentation_v2' || content.slides) {
         setMode('slides')
         setDraftId(null)
         draftIdRef.current = null
@@ -447,7 +488,8 @@ export default function TeacherDocumentsPage() {
           title: doc.title,
           format: content.format || '16:9',
           slides: safeSlides,
-          textContent: ''
+          textContent: '',
+          webUrl: '',
         })
         setCurrentSlideIndex(0)
         setSelectedBlockId(null)
@@ -464,6 +506,7 @@ export default function TeacherDocumentsPage() {
           sheetData: Array.isArray(content.data) ? content.data : DEFAULT_SHEET_DATA,
           sheetChart: content.chart || DEFAULT_SHEET_CHART,
           canvasContent: DEFAULT_CANVAS_CONTENT,
+          webUrl: '',
         })
       } else if (doc.type === 'canvas' || content.type === 'canvas_v1' || content.items) {
         setMode('canvas')
@@ -478,6 +521,7 @@ export default function TeacherDocumentsPage() {
           sheetData: DEFAULT_SHEET_DATA,
           sheetChart: DEFAULT_SHEET_CHART,
           canvasContent: JSON.stringify({ type: 'canvas_v1', items: Array.isArray(content.items) ? content.items : [] }),
+          webUrl: '',
         })
       } else {
         setMode('document')
@@ -499,6 +543,7 @@ export default function TeacherDocumentsPage() {
           sheetData: DEFAULT_SHEET_DATA,
           sheetChart: DEFAULT_SHEET_CHART,
           canvasContent: DEFAULT_CANVAS_CONTENT,
+          webUrl: '',
         })
       }
       
@@ -512,7 +557,23 @@ export default function TeacherDocumentsPage() {
   const loadDraft = (doc: DraftDocument) => {
     try {
       const content = JSON.parse(doc.contentJson)
-      if (doc.type === 'presentation' || content.type === 'presentation_v2' || content.slides) {
+      if (isFullHtmlDocument(content.htmlContent) || isFullHtmlDocument(content.content)) {
+        setMode('web')
+        setDraftId(doc.id)
+        draftIdRef.current = doc.id
+        setDocument({
+          id: doc.id,
+          title: doc.title,
+          format: 'a4',
+          slides: [],
+          textContent: content.htmlContent || content.content || '',
+          header: { title: '', subtitle: '', logoUrl: '' },
+          sheetData: DEFAULT_SHEET_DATA,
+          sheetChart: DEFAULT_SHEET_CHART,
+          canvasContent: DEFAULT_CANVAS_CONTENT,
+          webUrl: content.url || '',
+        })
+      } else if (doc.type === 'presentation' || content.type === 'presentation_v2' || content.slides) {
         setMode('slides')
         setDraftId(doc.id)
         draftIdRef.current = doc.id
@@ -529,7 +590,8 @@ export default function TeacherDocumentsPage() {
           title: doc.title,
           format: content.format || '16:9',
           slides: safeSlides,
-          textContent: ''
+          textContent: '',
+          webUrl: '',
         })
         setCurrentSlideIndex(0)
         setSelectedBlockId(null)
@@ -546,6 +608,7 @@ export default function TeacherDocumentsPage() {
           sheetData: Array.isArray(content.data) ? content.data : DEFAULT_SHEET_DATA,
           sheetChart: content.chart || DEFAULT_SHEET_CHART,
           canvasContent: DEFAULT_CANVAS_CONTENT,
+          webUrl: '',
         })
       } else if (doc.type === 'canvas' || content.type === 'canvas_v1' || content.items) {
         setMode('canvas')
@@ -560,6 +623,7 @@ export default function TeacherDocumentsPage() {
           sheetData: DEFAULT_SHEET_DATA,
           sheetChart: DEFAULT_SHEET_CHART,
           canvasContent: JSON.stringify({ type: 'canvas_v1', items: Array.isArray(content.items) ? content.items : [] }),
+          webUrl: '',
         })
       } else {
         setMode('document')
@@ -581,6 +645,7 @@ export default function TeacherDocumentsPage() {
           sheetData: DEFAULT_SHEET_DATA,
           sheetChart: DEFAULT_SHEET_CHART,
           canvasContent: DEFAULT_CANVAS_CONTENT,
+          webUrl: '',
         })
       }
       setViewMode('editor')
@@ -816,21 +881,17 @@ export default function TeacherDocumentsPage() {
       if (type === 'canvas') return <PenTool className="h-5 w-5" />
       return <FileText className="h-5 w-5" />
     }
-    const docColor = (type: string) => {
-      if (type === 'presentation') return 'bg-indigo-500 text-white'
-      if (type === 'sheet') return 'bg-sky-500 text-white'
-      if (type === 'canvas') return 'bg-amber-500 text-white'
-      return 'bg-emerald-500 text-white'
-    }
+    const docColor = (type: 'presentation' | 'document' | 'sheet' | 'canvas') =>
+      `${PASTEL_ICON_BACKGROUNDS[docTone(type)]} ${PASTEL_ICON_TEXT[docTone(type)]}`
     return (
       <>
-        <div className="h-full flex flex-col bg-slate-50 overflow-hidden">
-          <div className="h-14 bg-white border-b flex items-center justify-between px-6 z-20 shadow-sm shrink-0">
+        <div className="h-full flex flex-col bg-slate-100 overflow-hidden">
+          <div className="h-14 bg-white/90 border-b border-slate-200/80 flex items-center justify-between px-6 z-20 shadow-sm shrink-0 backdrop-blur-sm">
             <div className="flex items-center gap-2">
               <FileText className="h-4 w-4 text-slate-500" />
               <h1 className="text-base font-bold text-slate-800">Documenti</h1>
             </div>
-            <Button onClick={() => setShowNewModal(true)} className="bg-red-500 text-white hover:bg-red-600">
+            <Button onClick={() => setShowNewModal(true)} className="bg-[#E91E63] text-white hover:bg-[#d61b5b]">
               <Plus className="h-4 w-4 mr-2" />
               Nuovo
             </Button>
@@ -841,14 +902,14 @@ export default function TeacherDocumentsPage() {
 
               {/* Search */}
               {(draftDocuments.length > 0 || storedDocuments.length > 0) && (
-                <div className="relative max-w-sm">
+                <div className={`relative max-w-sm rounded-2xl px-3 py-2 shadow-sm ${PASTEL_SURFACES.slate}`}>
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
                   <input
                     type="text"
                     placeholder="Cerca documenti..."
                     value={docSearch}
                     onChange={e => setDocSearch(e.target.value)}
-                    className="w-full pl-9 pr-8 py-2 text-sm bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-300 focus:border-slate-400 transition-colors"
+                    className="w-full pl-9 pr-8 py-2 text-sm bg-transparent border-0 rounded-lg focus:outline-none focus:ring-0 text-slate-700"
                   />
                   {docSearch && (
                     <button onClick={() => setDocSearch('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
@@ -859,13 +920,13 @@ export default function TeacherDocumentsPage() {
               )}
 
               {draftDocuments.length === 0 && storedDocuments.length === 0 && (
-                <div className="flex flex-col items-center justify-center py-24 text-center">
-                  <div className="w-20 h-20 rounded-full bg-slate-100 flex items-center justify-center mb-5">
-                    <FileText className="h-10 w-10 text-slate-300" />
+                <div className={`flex flex-col items-center justify-center py-24 text-center rounded-[28px] shadow-sm ${PASTEL_SURFACES.slate}`}>
+                  <div className="w-20 h-20 rounded-[24px] bg-slate-100 flex items-center justify-center mb-5">
+                    <FileText className="h-10 w-10 text-slate-500" />
                   </div>
                   <h3 className="text-lg font-bold text-slate-700 mb-1">Nessun documento</h3>
                   <p className="text-sm text-slate-400 mb-6">Crea il tuo primo documento per iniziare</p>
-                  <Button onClick={() => setShowNewModal(true)} className="bg-red-500 text-white hover:bg-red-600">
+                  <Button onClick={() => setShowNewModal(true)} className="bg-[#E91E63] text-white hover:bg-[#d61b5b]">
                     <Plus className="h-4 w-4 mr-2" />
                     Crea documento
                   </Button>
@@ -880,7 +941,7 @@ export default function TeacherDocumentsPage() {
                       <div
                         key={doc.id}
                         onClick={() => loadDraft(doc)}
-                        className="group cursor-pointer bg-white rounded-2xl border border-slate-200 p-4 hover:border-violet-200 hover:shadow-md transition-all"
+                        className={`group cursor-pointer rounded-[24px] p-4 shadow-sm transition-all ${PASTEL_SURFACES[docTone(doc.type)]}`}
                       >
                         <div className={`w-10 h-10 rounded-xl mb-3 flex items-center justify-center ${docColor(doc.type)}`}>
                           {docIcon(doc.type)}
@@ -914,7 +975,7 @@ export default function TeacherDocumentsPage() {
                       <div
                         key={doc.id}
                         onClick={() => loadDocument(doc)}
-                        className="group cursor-pointer bg-white rounded-2xl border border-slate-200 p-4 hover:border-violet-200 hover:shadow-md transition-all"
+                        className={`group cursor-pointer rounded-[24px] p-4 shadow-sm transition-all ${PASTEL_SURFACES[docTone(doc.type)]}`}
                       >
                         <div className={`w-10 h-10 rounded-xl mb-3 flex items-center justify-center ${docColor(doc.type)}`}>
                           {docIcon(doc.type)}
@@ -938,17 +999,17 @@ export default function TeacherDocumentsPage() {
 
         {showNewModal && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-            <div className="bg-white rounded-lg p-6 w-full max-w-md mx-4 shadow-xl">
+            <div className={`w-full max-w-md mx-4 rounded-[28px] p-6 shadow-xl ${PASTEL_SURFACES.slate}`}>
               <h3 className="text-lg font-semibold mb-2">Crea nuovo</h3>
               <p className="text-sm text-gray-600 mb-4">Scegli il tipo di contenuto da creare.</p>
               <div className="flex flex-col gap-3">
-                <Button className="w-full justify-center bg-red-500 hover:bg-red-600 text-white" onClick={() => { createNewDocument(); setShowNewModal(false) }}>
+                <Button className="w-full justify-center bg-[#E91E63] hover:bg-[#d61b5b] text-white" onClick={() => { createNewDocument(); setShowNewModal(false) }}>
                   <FileText className="h-4 w-4 mr-2" />Nuovo documento
                 </Button>
-                <Button className="w-full justify-center bg-red-500 hover:bg-red-600 text-white" onClick={() => { createNewPresentation(); setShowNewModal(false) }}>
+                <Button className="w-full justify-center bg-[#E91E63] hover:bg-[#d61b5b] text-white" onClick={() => { createNewPresentation(); setShowNewModal(false) }}>
                   <Monitor className="h-4 w-4 mr-2" />Nuova presentazione
                 </Button>
-                <Button className="w-full justify-center bg-red-500 hover:bg-red-600 text-white" onClick={() => { createNewCanvas(); setShowNewModal(false) }}>
+                <Button className="w-full justify-center bg-[#E91E63] hover:bg-[#d61b5b] text-white" onClick={() => { createNewCanvas(); setShowNewModal(false) }}>
                   <PenTool className="h-4 w-4 mr-2" />Nuova lavagna
                 </Button>
               </div>
@@ -1026,7 +1087,7 @@ export default function TeacherDocumentsPage() {
       <div className="h-full flex flex-col bg-slate-100 overflow-hidden">
 
         {/* Header / Meta-Toolbar */}
-        <div className="h-14 bg-white border-b flex items-center justify-between px-4 z-20 shadow-sm shrink-0">
+        <div className="h-14 bg-white/90 border-b border-slate-200/80 flex items-center justify-between px-4 z-20 shadow-sm shrink-0 backdrop-blur-sm">
           <div className="flex items-center gap-4">
              <Button
                variant="ghost"
@@ -1049,7 +1110,7 @@ export default function TeacherDocumentsPage() {
 
              <Button
                onClick={() => setShowNewModal(true)}
-               className="bg-red-500 text-white hover:bg-red-600 px-4"
+               className="bg-[#E91E63] text-white hover:bg-[#d61b5b] px-4"
              >
                <Plus className="h-4 w-4 mr-2" />
                Nuovo
@@ -1088,7 +1149,7 @@ export default function TeacherDocumentsPage() {
         </div>
 
         {/* Unified Toolbar */}
-        {mode !== 'sheet' && mode !== 'canvas' && (
+        {mode !== 'sheet' && mode !== 'canvas' && mode !== 'web' && (
         <div ref={toolbarHostRef}>
           <UnifiedToolbar
             mode={mode}
@@ -1127,12 +1188,12 @@ export default function TeacherDocumentsPage() {
         <div className="flex-1 flex overflow-hidden"> 
           
           {/* LEFT SIDEBAR: Documents & Slides */}
-          <div className={`${showSidebar ? 'w-72' : 'w-0'} bg-slate-50 border-r flex flex-col transition-all duration-300 overflow-hidden shrink-0`}>
+          <div className={`${showSidebar ? 'w-72' : 'w-0'} bg-slate-100 border-r border-slate-200/80 flex flex-col transition-all duration-300 overflow-hidden shrink-0`}>
             
             {/* Slide Navigation (Only in Slide Mode) */}
             {mode === 'slides' && (
-              <div className="flex-shrink-0 flex flex-col overflow-hidden max-h-64 border-b bg-white">
-                 <div className="p-3 border-b flex justify-between items-center">
+              <div className="flex-shrink-0 flex flex-col overflow-hidden max-h-64 border-b border-slate-200/80 bg-white/70 backdrop-blur-sm">
+                 <div className="p-3 border-b border-slate-200/70 flex justify-between items-center">
                    <span className="font-bold text-[10px] uppercase tracking-widest text-slate-400">Pagine / Slide</span>
                    <Button size="icon" variant="ghost" className="h-6 w-6" onClick={addSlide}>
                      <Plus className="h-4 w-4" />
@@ -1143,12 +1204,12 @@ export default function TeacherDocumentsPage() {
                      <div 
                        key={slide.id}
                        onClick={() => { setCurrentSlideIndex(idx); setSelectedBlockId(null); }}
-                       className={`p-3 rounded-2xl border transition-all group relative backdrop-blur-md ${currentSlideIndex === idx 
-                         ? 'bg-violet-500/10 border-violet-500/40 shadow-sm' 
-                         : 'bg-white hover:bg-slate-50 border-transparent hover:border-slate-200'}`}
+                       className={`p-3 rounded-2xl transition-all group relative shadow-sm ${currentSlideIndex === idx
+                         ? PASTEL_SURFACES.indigo
+                         : PASTEL_SURFACES.slate}`}
                      >
                        <div className="text-[10px] font-bold text-slate-400 uppercase mb-1">Slide {idx + 1}</div>
-                       <div className={`text-sm truncate font-bold ${currentSlideIndex === idx ? 'text-violet-700' : 'text-slate-700'}`}>{slide.title}</div>
+                       <div className={`text-sm truncate font-bold ${currentSlideIndex === idx ? 'text-indigo-700' : 'text-slate-700'}`}>{slide.title}</div>
                        <button 
                          onClick={(e) => { e.stopPropagation(); deleteSlide(idx); }}
                          className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-500 transition-opacity"
@@ -1172,7 +1233,7 @@ export default function TeacherDocumentsPage() {
                 
                 <div className="space-y-2">
                   {draftDocuments.length === 0 && (
-                    <div className="text-center py-6 px-4 bg-white/40 rounded-2xl border border-dashed border-slate-200">
+                    <div className={`text-center py-6 px-4 rounded-2xl border border-dashed shadow-sm ${PASTEL_SURFACES.slate}`}>
                       <p className="text-[10px] font-medium text-slate-400">Nessuna bozza salvata</p>
                     </div>
                   )}
@@ -1180,27 +1241,17 @@ export default function TeacherDocumentsPage() {
                     <div
                       key={doc.id}
                       onClick={() => loadDraft(doc)}
-                      className={`
-                        group flex flex-col p-3 rounded-2xl transition-all border cursor-pointer backdrop-blur-md
-                        ${draftId === doc.id
-                          ? 'bg-white border-violet-500/30 shadow-md ring-1 ring-violet-500/10' 
-                          : 'bg-white/60 border-slate-200/60 hover:bg-white hover:border-slate-300'}
-                      `}
+                      className={`group flex flex-col p-3 rounded-2xl transition-all cursor-pointer shadow-sm ${draftId === doc.id ? PASTEL_SURFACES[docTone(doc.type)] : PASTEL_SURFACES.slate}`}
                     >
                       <div className="flex items-center gap-3 mb-2">
-                        <div className={`p-2 rounded-xl shadow-sm ${
-                          doc.type === 'presentation' ? 'bg-indigo-100 text-indigo-600' : 
-                          doc.type === 'sheet' ? 'bg-sky-100 text-sky-700' : 
-                          doc.type === 'canvas' ? 'bg-amber-100 text-amber-700' : 
-                          'bg-emerald-100 text-emerald-600'
-                        }`}>
+                        <div className={`p-2 rounded-xl shadow-sm ${PASTEL_ICON_BACKGROUNDS[docTone(doc.type)]} ${PASTEL_ICON_TEXT[docTone(doc.type)]}`}>
                           {doc.type === 'presentation' ? <MonitorPlay className="h-4 w-4" /> : 
                            doc.type === 'sheet' ? <FileSpreadsheet className="h-4 w-4" /> : 
                            doc.type === 'canvas' ? <PenTool className="h-4 w-4" /> : 
                            <FileText className="h-4 w-4" />}
                         </div>
                         <div className="flex-1 min-w-0">
-                          <p className={`text-sm font-bold truncate ${draftId === doc.id ? 'text-violet-900' : 'text-slate-800'}`}>
+                          <p className={`text-sm font-bold truncate ${draftId === doc.id ? PASTEL_ICON_TEXT[docTone(doc.type)] : 'text-slate-800'}`}>
                             {doc.title}
                           </p>
                         </div>
@@ -1229,12 +1280,12 @@ export default function TeacherDocumentsPage() {
               <section>
                 <div className="flex items-center justify-between mb-3 px-1">
                   <h3 className="font-bold text-[10px] uppercase tracking-widest text-slate-400">Salvati nelle Sessioni</h3>
-                  <span className="text-[10px] font-bold bg-violet-100 text-violet-600 px-1.5 py-0.5 rounded-full">{storedDocuments.length}</span>
+                  <span className="text-[10px] font-bold bg-indigo-100 text-indigo-600 px-1.5 py-0.5 rounded-full">{storedDocuments.length}</span>
                 </div>
 
                 <div className="space-y-2">
                   {storedDocuments.length === 0 && (
-                    <div className="text-center py-6 px-4 bg-white/40 rounded-2xl border border-dashed border-slate-200">
+                    <div className={`text-center py-6 px-4 rounded-2xl border border-dashed shadow-sm ${PASTEL_SURFACES.slate}`}>
                       <p className="text-[10px] font-medium text-slate-400">Nessun contenuto pubblicato nelle sessioni</p>
                     </div>
                   )}
@@ -1242,29 +1293,20 @@ export default function TeacherDocumentsPage() {
                     <div
                       key={doc.id}
                       onClick={() => loadDocument(doc)}
-                      className={`
-                        group flex flex-col p-3 rounded-2xl transition-all border cursor-pointer backdrop-blur-md
-                        ${document.id === doc.id
-                          ? 'bg-violet-500/10 border-violet-500/40 shadow-md ring-1 ring-violet-500/10' 
-                          : 'bg-white/60 border-slate-200/60 hover:bg-white hover:border-slate-300'}
-                      `}
+                      className={`group flex flex-col p-3 rounded-2xl transition-all cursor-pointer shadow-sm ${document.id === doc.id ? PASTEL_SURFACES[docTone(doc.type)] : PASTEL_SURFACES.slate}`}
                     >
                       <div className="flex items-center gap-3 mb-2">
-                        <div className={`p-2 rounded-xl shadow-sm ${
-                          doc.type === 'presentation' ? 'bg-indigo-500 text-white' : 
-                          doc.type === 'canvas' ? 'bg-amber-500 text-white' : 
-                          'bg-emerald-500 text-white'
-                        }`}>
+                        <div className={`p-2 rounded-xl shadow-sm ${PASTEL_ICON_BACKGROUNDS[docTone(doc.type)]} ${PASTEL_ICON_TEXT[docTone(doc.type)]}`}>
                           {doc.type === 'presentation' ? <Monitor className="h-4 w-4" /> : 
                            doc.type === 'canvas' ? <PenTool className="h-4 w-4" /> : 
                            <BookOpen className="h-4 w-4" />}
                         </div>
                         <div className="flex-1 min-w-0">
-                          <p className={`text-sm font-bold truncate ${document.id === doc.id ? 'text-violet-900' : 'text-slate-800'}`}>
+                          <p className={`text-sm font-bold truncate ${document.id === doc.id ? PASTEL_ICON_TEXT[docTone(doc.type)] : 'text-slate-800'}`}>
                             {doc.title}
                           </p>
                           <p className="text-[10px] font-medium text-slate-500 flex items-center gap-1">
-                            <User className="h-2.5 w-2.5 text-violet-500" />
+                            <User className="h-2.5 w-2.5 text-indigo-500" />
                             {doc.authorName} • {doc.className}
                           </p>
                         </div>
@@ -1282,7 +1324,7 @@ export default function TeacherDocumentsPage() {
                           <Calendar className="h-3 w-3" />
                           {new Date(doc.updatedAt).toLocaleDateString('it-IT', { day: 'numeric', month: 'short' })}
                         </div>
-                        <div className="flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-violet-50 border border-violet-100 text-[9px] font-black uppercase tracking-tighter text-violet-600">
+                        <div className="flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-indigo-50 border border-indigo-200/70 text-[9px] font-black uppercase tracking-tighter text-indigo-600">
                           <Share2 className="h-2 w-2" />
                           Published
                         </div>
@@ -1298,6 +1340,25 @@ export default function TeacherDocumentsPage() {
           <div className="flex-1 bg-slate-100 flex items-start justify-center p-2 md:p-3 relative overflow-y-auto" 
                onClick={() => setSelectedBlockId(null)} // Deselect block when clicking background
           > 
+
+             {mode === 'web' && (
+               <div className="w-full max-w-6xl h-[calc(100vh-10rem)] bg-white rounded-2xl shadow-[0_10px_30px_rgba(15,23,42,0.12)] overflow-hidden">
+                 {document.webUrl ? (
+                   <iframe
+                     src={document.webUrl}
+                     className="w-full h-full border-0"
+                     title={document.title}
+                   />
+                 ) : (
+                   <iframe
+                     srcDoc={document.textContent || ''}
+                     sandbox="allow-same-origin allow-scripts"
+                     className="w-full h-full border-0"
+                     title={document.title}
+                   />
+                 )}
+               </div>
+             )}
              
              {/* MODE: DOCUMENT */}
              {mode === 'document' && (

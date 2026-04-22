@@ -356,7 +356,7 @@ async def invite_teacher(
         group_tag=invitation.group_tag,
         custom_message=invitation.custom_message,
         role="TEACHER",
-        token=token,
+        token=secrets.token_urlsafe(32),
         status="pending",
         invited_by_id=admin.id,
         expires_at=datetime.utcnow() + timedelta(days=7)

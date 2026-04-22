@@ -1,9 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Button } from '@/components/ui/button'
-import { ArrowLeft, Save, Loader2, Globe, Check, X, Upload, Trash2, FileText, Database, AlertCircle } from 'lucide-react'
+import { ArrowLeft, Save, Loader2, Globe, Check, X, Upload, Trash2, FileText, Database, AlertCircle, CheckCircle2, ChevronDown, ChevronUp, Sparkles, Layers } from 'lucide-react'
 import { useToast } from '@/components/ui/use-toast'
-import { Switch } from '@/components/ui/switch'
 import { teacherbotsApi, teacherApi } from '@/lib/api'
 import { TeacherbotPromptOptimizer } from './TeacherbotPromptOptimizer'
 import { useTranslation } from 'react-i18next'
@@ -48,11 +47,22 @@ interface KnowledgeBaseSectionProps {
   onPendingFilesChange?: (files: File[]) => void
 }
 
+const EMBED_STEPS = [
+  { label: 'Estrazione testo dal documento…' },
+  { label: 'Analisi struttura e contenuto…' },
+  { label: 'Divisione in blocchi semantici…' },
+  { label: 'Generazione embedding vettoriali…' },
+  { label: 'Indicizzazione nella knowledge base…' },
+]
+
 function KnowledgeBaseSection({ teacherbotId, pendingFiles, onPendingFilesChange }: KnowledgeBaseSectionProps) {
   const { toast } = useToast()
   const queryClient = useQueryClient()
   const kbInputRef = useRef<HTMLInputElement>(null)
   const [uploading, setUploading] = useState(false)
+  const [embedStep, setEmbedStep] = useState(0)
+  const [embedResult, setEmbedResult] = useState<{ filename: string; chunk_count: number } | null>(null)
+  const [explainerOpen, setExplainerOpen] = useState(false)
 
   // Only fetch from API when we have a saved teacherbot
   const { data: docs, isLoading } = useQuery({
@@ -78,18 +88,26 @@ function KnowledgeBaseSection({ teacherbotId, pendingFiles, onPendingFilesChange
     if (kbInputRef.current) kbInputRef.current.value = ''
 
     if (!teacherbotId) {
-      // Creation mode: accumulate locally
       onPendingFilesChange?.([...(pendingFiles || []), ...fileArray])
       return
     }
 
-    // Edit mode: upload immediately
+    // Edit mode: upload with animated progress
     setUploading(true)
-    let uploaded = 0
+    setEmbedStep(0)
+    setEmbedResult(null)
+
+    const stepTimings = [300, 700, 1100, 1500, 1900]
+    stepTimings.forEach((delay, i) => {
+      setTimeout(() => setEmbedStep(i + 1), delay)
+    })
+
+    let lastChunkCount = 0
     for (const file of fileArray) {
       try {
-        await teacherbotsApi.uploadKbDocument(teacherbotId, file)
-        uploaded++
+        const res = await teacherbotsApi.uploadKbDocument(teacherbotId, file)
+        lastChunkCount = res.data?.chunk_count || 0
+        setEmbedResult({ filename: file.name, chunk_count: lastChunkCount })
       } catch (e: any) {
         toast({
           title: 'Errore caricamento',
@@ -99,10 +117,7 @@ function KnowledgeBaseSection({ teacherbotId, pendingFiles, onPendingFilesChange
       }
     }
     setUploading(false)
-    if (uploaded > 0) {
-      queryClient.invalidateQueries({ queryKey: ['teacherbot-kb', teacherbotId] })
-      toast({ title: `${uploaded} documento/i aggiunto/i alla knowledge base` })
-    }
+    queryClient.invalidateQueries({ queryKey: ['teacherbot-kb', teacherbotId] })
   }
 
   const removePending = (idx: number) => {
@@ -127,16 +142,16 @@ function KnowledgeBaseSection({ teacherbotId, pendingFiles, onPendingFilesChange
   const getExt = (filename: string) => filename.split('.').pop()?.toLowerCase() || ''
 
   return (
-    <div className="mt-6 bg-white rounded-xl border border-slate-200 p-5">
-      <div className="flex items-center justify-between mb-4">
+    <div className="mt-6 bg-white rounded-2xl border border-slate-200 p-6 space-y-4">
+      <div className="flex items-center justify-between">
         <div>
           <h3 className="font-semibold text-slate-800 flex items-center gap-2">
             <Database className="h-4 w-4 text-indigo-600" />
-            Knowledge Base
+            Knowledge Base RAG
           </h3>
           <p className="text-xs text-slate-500 mt-0.5">
             {teacherbotId
-              ? 'Carica documenti per specializzare il bot su contenuti specifici (PDF, Word, Excel, CSV, TXT)'
+              ? 'Carica documenti — il bot userà queste fonti per rispondere con citazioni accurate'
               : 'Aggiungi documenti ora — verranno caricati automaticamente al salvataggio'}
           </p>
         </div>
@@ -158,26 +173,79 @@ function KnowledgeBaseSection({ teacherbotId, pendingFiles, onPendingFilesChange
             className="border-indigo-200 text-indigo-700 hover:bg-indigo-50"
           >
             {uploading ? <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> : <Upload className="h-3.5 w-3.5 mr-1.5" />}
-            {uploading ? 'Caricamento…' : 'Aggiungi documento'}
+            {uploading ? 'Elaborazione…' : 'Aggiungi documento'}
           </Button>
         </div>
       </div>
+
+      {/* Embedding progress animation */}
+      {uploading && (
+        <div className="rounded-xl border border-indigo-200 bg-indigo-50 p-4">
+          <p className="text-xs font-semibold text-indigo-700 mb-3 flex items-center gap-2">
+            <Layers className="h-3.5 w-3.5" />
+            Pipeline di indicizzazione in corso…
+          </p>
+          <div className="space-y-2">
+            {EMBED_STEPS.map((step, i) => (
+              <div key={i} className="flex items-center gap-3">
+                {i < embedStep ? (
+                  <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0" />
+                ) : i === embedStep ? (
+                  <Loader2 className="h-4 w-4 text-indigo-500 animate-spin shrink-0" />
+                ) : (
+                  <div className="h-4 w-4 rounded-full border-2 border-slate-300 shrink-0" />
+                )}
+                <span className={`text-xs ${i <= embedStep ? 'text-slate-800 font-medium' : 'text-slate-400'}`}>
+                  {step.label}
+                </span>
+              </div>
+            ))}
+          </div>
+          <div className="mt-3 h-1.5 bg-indigo-200 rounded-full overflow-hidden">
+            <div
+              className="h-full bg-indigo-600 rounded-full transition-all duration-500"
+              style={{ width: `${Math.min(100, (embedStep / EMBED_STEPS.length) * 100)}%` }}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Embedding result + explainability */}
+      {embedResult && !uploading && (
+        <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 space-y-3">
+          <div className="flex items-center gap-2 text-emerald-700">
+            <CheckCircle2 className="h-4 w-4" />
+            <span className="text-sm font-semibold">Indicizzazione completata: {embedResult.filename}</span>
+          </div>
+          <div className="grid grid-cols-3 gap-3 text-center">
+            <div className="bg-white rounded-xl p-3 border border-emerald-100">
+              <p className="text-2xl font-bold text-indigo-600">{embedResult.chunk_count}</p>
+              <p className="text-[11px] text-slate-500 mt-0.5">blocchi semantici</p>
+            </div>
+            <div className="bg-white rounded-xl p-3 border border-emerald-100">
+              <p className="text-2xl font-bold text-indigo-600">{embedResult.chunk_count}</p>
+              <p className="text-[11px] text-slate-500 mt-0.5">vettori embedding</p>
+            </div>
+            <div className="bg-white rounded-xl p-3 border border-emerald-100">
+              <p className="text-2xl font-bold text-indigo-600">1536</p>
+              <p className="text-[11px] text-slate-500 mt-0.5">dimensioni/vettore</p>
+            </div>
+          </div>
+          <p className="text-xs text-emerald-700">
+            Il bot utilizzerà questi {embedResult.chunk_count} blocchi come contesto per rispondere con precisione alle domande degli studenti.
+          </p>
+        </div>
+      )}
 
       {/* Pending files (creation mode) */}
       {!teacherbotId && pendingFiles && pendingFiles.length > 0 && (
         <div className="space-y-2">
           {pendingFiles.map((file, idx) => (
-            <div key={idx} className="flex items-center gap-3 px-3 py-2 rounded-lg bg-indigo-50 border border-indigo-100">
+            <div key={idx} className="flex items-center gap-3 px-3 py-2 rounded-xl bg-indigo-50 border border-indigo-100">
               {DOC_TYPE_ICON[getExt(file.name)] || <FileText className="h-4 w-4 text-slate-400" />}
               <span className="flex-1 text-sm text-slate-700 truncate">{file.name}</span>
-              <span className="text-xs px-2 py-0.5 rounded-full font-medium text-indigo-600 bg-indigo-100">
-                In attesa
-              </span>
-              <button
-                type="button"
-                onClick={() => removePending(idx)}
-                className="text-slate-300 hover:text-red-500 transition-colors flex-shrink-0"
-              >
+              <span className="text-xs px-2 py-0.5 rounded-full font-medium text-indigo-600 bg-indigo-100">In attesa</span>
+              <button type="button" onClick={() => removePending(idx)} className="text-slate-300 hover:text-red-500 transition-colors flex-shrink-0">
                 <Trash2 className="h-4 w-4" />
               </button>
             </div>
@@ -185,9 +253,9 @@ function KnowledgeBaseSection({ teacherbotId, pendingFiles, onPendingFilesChange
         </div>
       )}
 
-      {/* Empty state (creation mode, no files yet) */}
+      {/* Empty state (creation mode) */}
       {!teacherbotId && (!pendingFiles || pendingFiles.length === 0) && (
-        <div className="flex flex-col items-center justify-center py-8 text-slate-400 text-sm border-2 border-dashed border-slate-200 rounded-lg">
+        <div className="flex flex-col items-center justify-center py-8 text-slate-400 text-sm border-2 border-dashed border-slate-200 rounded-xl">
           <Database className="h-8 w-8 mb-2 opacity-30" />
           <p>Nessun documento aggiunto</p>
           <p className="text-xs mt-1">Opzionale — puoi aggiungerne anche dopo il salvataggio</p>
@@ -203,10 +271,10 @@ function KnowledgeBaseSection({ teacherbotId, pendingFiles, onPendingFilesChange
 
       {/* Saved bot: empty */}
       {teacherbotId && !isLoading && (!docs || docs.length === 0) && (
-        <div className="flex flex-col items-center justify-center py-8 text-slate-400 text-sm border-2 border-dashed border-slate-200 rounded-lg">
+        <div className="flex flex-col items-center justify-center py-8 text-slate-400 text-sm border-2 border-dashed border-slate-200 rounded-xl">
           <Database className="h-8 w-8 mb-2 opacity-30" />
           <p>Nessun documento nella knowledge base</p>
-          <p className="text-xs mt-1">I documenti caricati guidano le risposte del bot</p>
+          <p className="text-xs mt-1">I documenti caricati guidano le risposte del bot con recupero contestuale</p>
         </div>
       )}
 
@@ -214,15 +282,13 @@ function KnowledgeBaseSection({ teacherbotId, pendingFiles, onPendingFilesChange
       {teacherbotId && !isLoading && docs && docs.length > 0 && (
         <div className="space-y-2">
           {docs.map((doc) => (
-            <div key={doc.id} className="flex items-center gap-3 px-3 py-2 rounded-lg bg-slate-50 border border-slate-100">
+            <div key={doc.id} className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-slate-50 border border-slate-100">
               {DOC_TYPE_ICON[doc.doc_type] || <FileText className="h-4 w-4 text-slate-400" />}
               <span className="flex-1 text-sm text-slate-700 truncate">{doc.title}</span>
               <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${statusColor(doc.status)}`}>
                 {statusLabel(doc.status)}
               </span>
-              {doc.status === 'failed' && (
-                <AlertCircle className="h-4 w-4 text-red-400 flex-shrink-0" />
-              )}
+              {doc.status === 'failed' && <AlertCircle className="h-4 w-4 text-red-400 flex-shrink-0" />}
               <button
                 type="button"
                 onClick={() => deleteMutation.mutate(doc.id)}
@@ -235,6 +301,47 @@ function KnowledgeBaseSection({ teacherbotId, pendingFiles, onPendingFilesChange
           ))}
         </div>
       )}
+
+      {/* Explainability accordion */}
+      <div className="rounded-xl border border-slate-200 overflow-hidden">
+        <button
+          type="button"
+          onClick={() => setExplainerOpen(!explainerOpen)}
+          className="flex w-full items-center gap-2 px-4 py-2.5 text-left bg-slate-50 hover:bg-slate-100 transition-colors"
+        >
+          <Sparkles className="h-3.5 w-3.5 text-indigo-500 shrink-0" />
+          <span className="text-xs font-semibold text-slate-600 flex-1">Come funziona la Knowledge Base RAG?</span>
+          {explainerOpen ? <ChevronUp className="h-3.5 w-3.5 text-slate-400" /> : <ChevronDown className="h-3.5 w-3.5 text-slate-400" />}
+        </button>
+        {explainerOpen && (
+          <div className="px-4 py-3 bg-white space-y-3 text-xs text-slate-600">
+            <div className="flex gap-3 items-start">
+              <div className="h-6 w-6 rounded-full bg-indigo-100 text-indigo-700 font-bold flex items-center justify-center shrink-0 text-[11px]">1</div>
+              <div>
+                <strong>Chunking semantico:</strong> il documento viene diviso in blocchi di ~1000 caratteri rispettando le frasi complete. Ogni blocco è un'unità di conoscenza autonoma.
+              </div>
+            </div>
+            <div className="flex gap-3 items-start">
+              <div className="h-6 w-6 rounded-full bg-indigo-100 text-indigo-700 font-bold flex items-center justify-center shrink-0 text-[11px]">2</div>
+              <div>
+                <strong>Embedding vettoriale:</strong> ogni blocco viene trasformato in un vettore di 1536 numeri tramite il modello <code className="bg-slate-100 px-1 rounded">text-embedding-3-small</code>. Il vettore codifica il <em>significato</em> del testo, non solo le parole.
+              </div>
+            </div>
+            <div className="flex gap-3 items-start">
+              <div className="h-6 w-6 rounded-full bg-indigo-100 text-indigo-700 font-bold flex items-center justify-center shrink-0 text-[11px]">3</div>
+              <div>
+                <strong>Ricerca per coseno:</strong> quando uno studente fa una domanda, anche essa viene trasformata in vettore e vengono trovati i blocchi più simili usando la <em>distanza del coseno</em> tra vettori (pgvector).
+              </div>
+            </div>
+            <div className="flex gap-3 items-start">
+              <div className="h-6 w-6 rounded-full bg-indigo-100 text-indigo-700 font-bold flex items-center justify-center shrink-0 text-[11px]">4</div>
+              <div>
+                <strong>Generazione aumentata:</strong> i top-5 blocchi vengono passati all'LLM come contesto. Il modello risponde <em>solo</em> basandosi su queste fonti, riducendo drasticamente le allucinazioni.
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   )
 }
@@ -487,7 +594,7 @@ export default function TeacherbotForm({ teacherbotId, onBack, onSaved }: Teache
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Left Column - Basic Info */}
           <div className="space-y-6">
-            <div className="bg-white rounded-xl border border-slate-200 p-5">
+            <div className="bg-white rounded-2xl border border-slate-200 p-6">
               <h3 className="font-semibold text-slate-800 mb-4">{t('teacherbot.basic_info')}</h3>
 
               <div className="space-y-4">
@@ -499,7 +606,7 @@ export default function TeacherbotForm({ teacherbotId, onBack, onSaved }: Teache
                     type="text"
                     value={formData.name}
                     onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                    className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-[#181b1e] focus:border-transparent"
+                    className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#181b1e] focus:border-transparent"
                     placeholder="es. Tutor di Matematica"
                     maxLength={100}
                   />
@@ -513,7 +620,7 @@ export default function TeacherbotForm({ teacherbotId, onBack, onSaved }: Teache
                     type="text"
                     value={formData.synopsis}
                     onChange={(e) => setFormData({ ...formData, synopsis: e.target.value })}
-                    className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-[#181b1e] focus:border-transparent"
+                    className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#181b1e] focus:border-transparent"
                     placeholder="es. Un assistente per esercizi di algebra"
                     maxLength={255}
                   />
@@ -536,7 +643,7 @@ export default function TeacherbotForm({ teacherbotId, onBack, onSaved }: Teache
             </div>
 
             {/* Options */}
-            <div className="bg-white rounded-xl border border-slate-200 p-5">
+            <div className="bg-white rounded-2xl border border-slate-200 p-6">
               <h3 className="font-semibold text-slate-800 mb-4">{t('teacherbot.options_section')}</h3>
 
               <div className="space-y-4">
@@ -545,10 +652,19 @@ export default function TeacherbotForm({ teacherbotId, onBack, onSaved }: Teache
                     <label className="font-medium text-slate-700">{t('teacherbot.proactive')}</label>
                     <p className="text-sm text-slate-500">{t('teacherbot.proactive_desc')}</p>
                   </div>
-                  <Switch
-                    checked={formData.is_proactive}
-                    onCheckedChange={(checked) => setFormData({ ...formData, is_proactive: checked })}
-                  />
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={formData.is_proactive}
+                    onClick={() => setFormData({ ...formData, is_proactive: !formData.is_proactive })}
+                    className={`relative w-12 h-6 rounded-full transition-colors flex-shrink-0 ${
+                      formData.is_proactive ? 'bg-[#181b1e]' : 'bg-slate-200'
+                    }`}
+                  >
+                    <span className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${
+                      formData.is_proactive ? 'translate-x-7' : 'translate-x-1'
+                    }`} />
+                  </button>
                 </div>
 
                 {formData.is_proactive && (
@@ -559,7 +675,7 @@ export default function TeacherbotForm({ teacherbotId, onBack, onSaved }: Teache
                     <textarea
                       value={formData.proactive_message}
                       onChange={(e) => setFormData({ ...formData, proactive_message: e.target.value })}
-                      className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-[#181b1e] focus:border-transparent"
+                      className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#181b1e] focus:border-transparent"
                       placeholder={t('teacherbot.initial_message_placeholder')}
                       rows={2}
                     />
@@ -572,10 +688,19 @@ export default function TeacherbotForm({ teacherbotId, onBack, onSaved }: Teache
                       <label className="font-medium text-slate-700">{t('teacherbot.reporting')}</label>
                       <p className="text-sm text-slate-500">{t('teacherbot.reporting_desc')}</p>
                     </div>
-                    <Switch
-                      checked={formData.enable_reporting}
-                      onCheckedChange={(checked) => setFormData({ ...formData, enable_reporting: checked })}
-                    />
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={formData.enable_reporting}
+                      onClick={() => setFormData({ ...formData, enable_reporting: !formData.enable_reporting })}
+                      className={`relative w-12 h-6 rounded-full transition-colors flex-shrink-0 ${
+                        formData.enable_reporting ? 'bg-[#181b1e]' : 'bg-slate-200'
+                      }`}
+                    >
+                      <span className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${
+                        formData.enable_reporting ? 'translate-x-7' : 'translate-x-1'
+                      }`} />
+                    </button>
                   </div>
                 </div>
 
@@ -587,7 +712,7 @@ export default function TeacherbotForm({ teacherbotId, onBack, onSaved }: Teache
                     <textarea
                       value={formData.report_prompt}
                       onChange={(e) => setFormData({ ...formData, report_prompt: e.target.value })}
-                      className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-[#181b1e] focus:border-transparent text-sm"
+                      className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#181b1e] focus:border-transparent text-sm"
                       placeholder={t('teacherbot.report_prompt_placeholder')}
                       rows={3}
                     />
@@ -617,7 +742,7 @@ export default function TeacherbotForm({ teacherbotId, onBack, onSaved }: Teache
           </div>
 
           {/* Right Column - System Prompt */}
-          <div className="bg-white rounded-xl border border-slate-200 p-5 flex flex-col relative h-[520px] lg:h-[640px]">
+          <div className="bg-white rounded-2xl border border-slate-200 p-6 flex flex-col relative h-[520px] lg:h-[640px]">
             <h3 className="font-semibold text-slate-800 mb-2">
               System Prompt <span className="text-red-500">*</span>
             </h3>
@@ -634,7 +759,7 @@ export default function TeacherbotForm({ teacherbotId, onBack, onSaved }: Teache
               value={formData.system_prompt}
               onChange={(e) => setFormData({ ...formData, system_prompt: e.target.value })}
               onMouseUp={handleMouseUpWithEvent}
-              className="flex-1 w-full px-4 py-3 border border-slate-200 rounded-lg focus:ring-2 focus:ring-[#181b1e] focus:border-transparent font-mono text-sm resize-none"
+              className="flex-1 w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#181b1e] focus:border-transparent font-mono text-sm resize-none"
               placeholder={`Esempio:
 Sei un tutor esperto di matematica per studenti delle scuole superiori.
 
@@ -688,7 +813,7 @@ Il tuo obiettivo è:
       {/* Publish Modal includes are kept same as before */}
       {showPublishModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl p-6 w-full max-w-md shadow-2xl">
+          <div className="bg-white rounded-2xl p-8 w-full max-w-md shadow-2xl">
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-lg font-bold text-slate-800">{t('teacherbot.publish_title')}</h3>
               <Button variant="ghost" size="icon" onClick={() => setShowPublishModal(false)}>
@@ -706,7 +831,7 @@ Il tuo obiettivo è:
                 <label className="block text-sm font-medium text-slate-700 mb-2">{t('teacherbot.published_on')}</label>
                 <div className="space-y-2">
                   {publications.filter((p: any) => p.is_active).map((pub: any) => (
-                    <div key={pub.id} className="flex items-center justify-between p-2 bg-green-50 rounded-lg border border-green-200">
+                    <div key={pub.id} className="flex items-center justify-between p-3 bg-green-50 rounded-xl border border-green-200">
                       <span className="text-sm text-green-700 flex items-center gap-2">
                         <Check className="h-4 w-4" />
                         {pub.class_name}
@@ -732,7 +857,7 @@ Il tuo obiettivo è:
                   key={cls.id}
                   type="button"
                   onClick={() => setSelectedClassId(cls.id)}
-                  className={`w-full text-left p-3 rounded-lg border transition-all ${selectedClassId === cls.id
+                  className={`w-full text-left p-3 rounded-xl border transition-all ${selectedClassId === cls.id
                     ? 'border-[#181b1e]/40 bg-[#181b1e]/5'
                     : 'border-slate-200 hover:border-[#181b1e]/20 hover:bg-slate-50'
                     }`}

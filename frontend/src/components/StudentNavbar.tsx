@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, type CSSProperties } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { User, Settings, LogOut, ChevronDown, Bot, Brain, Award, FileEdit, Menu, X, MessageSquare, Check, FileCode2, MonitorPlay, LayoutDashboard } from 'lucide-react'
+import { User, Settings, LogOut, ChevronDown, Bot, Brain, Award, FileEdit, Menu, X, MessageSquare, Check, FileCode2, MonitorPlay, LayoutDashboard, BookOpen } from 'lucide-react'
 import { Button } from './ui/button'
 import { LogoMark } from './LogoMark'
 import { studentApi } from '@/lib/api'
@@ -10,6 +10,7 @@ import { useTranslation } from 'react-i18next'
 import { LanguageSwitcher } from '@/components/LanguageSwitcher'
 import { useAuthStore } from '@/stores/auth'
 import { NavbarCalendarClock } from './NavbarCalendarClock'
+import WhatsNewModal from './WhatsNewModal'
 
 interface StudentProfile {
   id?: string
@@ -29,6 +30,7 @@ interface StudentNavbarProps {
   accent?: StudentAccentId
   onAccentChange?: (accent: StudentAccentId) => void
   enabledModules?: string[]
+  chatAvailable?: boolean
 }
 
 export function StudentNavbar({
@@ -42,6 +44,7 @@ export function StudentNavbar({
   accent = DEFAULT_STUDENT_ACCENT,
   onAccentChange,
   enabledModules,
+  chatAvailable = true,
 }: StudentNavbarProps) {
   const navigate = useNavigate()
   const logout = useAuthStore((s) => s.logout)
@@ -67,6 +70,7 @@ export function StudentNavbar({
   const [showDropdown, setShowDropdown] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
   const [showMobileMenu, setShowMobileMenu] = useState(false)
+  const [showWhatsNew, setShowWhatsNew] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
   const mobileMenuRef = useRef<HTMLDivElement>(null)
 
@@ -158,13 +162,14 @@ export function StudentNavbar({
   const ALL_NAV_ITEMS = [
     { key: 'desktop', label: 'Desktop', icon: LayoutDashboard },
     { key: 'chatbot', label: 'Chatbot', icon: Bot },
+    { key: 'wiki', label: 'Wiki', icon: BookOpen },
     { key: 'classification', label: 'ML Lab', icon: Brain },
     { key: 'documents', label: 'Documenti', icon: FileEdit },
     { key: 'self_assessment', label: 'Compiti', icon: Award },
     { key: 'notebook', label: 'Notebook', icon: FileCode2 },
   ]
   // Always show desktop and documents; filter optional modules by session settings
-  const ALWAYS_SHOWN = new Set(['desktop', 'documents', 'notebook'])
+  const ALWAYS_SHOWN = new Set(['desktop', 'documents', 'notebook', 'wiki'])
   const navItems = enabledModules
     ? ALL_NAV_ITEMS.filter(item => ALWAYS_SHOWN.has(item.key) || enabledModules.includes(item.key))
     : ALL_NAV_ITEMS
@@ -200,7 +205,16 @@ export function StudentNavbar({
                   </span>
                   <span className="font-black text-[#e85c8d]">.ai</span>
                 </span>
-                <span className="text-[9px] font-extrabold uppercase tracking-widest px-1.5 py-0.5 rounded-md bg-amber-50 text-amber-500 border border-amber-200 leading-none">BETA</span>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    setShowWhatsNew(true)
+                  }}
+                  className="text-[9px] font-extrabold uppercase tracking-widest px-1.5 py-0.5 rounded-md bg-amber-50 text-amber-500 border border-amber-200 leading-none transition-colors hover:bg-amber-100"
+                >
+                  BETA
+                </button>
               </div>
             </div>
 
@@ -257,16 +271,18 @@ export function StudentNavbar({
                 </div>
               )}
 
-              <button
-                className={`hidden lg:flex items-center justify-center w-10 h-10 rounded-full border transition-colors duration-150 shadow-sm`}
-                style={chatSidebarOpen
-                  ? { backgroundColor: accentTheme.accent, borderColor: accentTheme.accent, color: '#fff' }
-                  : { backgroundColor: `${accentTheme.accent}18`, borderColor: `${accentTheme.accent}50`, color: accentTheme.text }}
-                onClick={onToggleChatSidebar}
-                title={chatSidebarOpen ? t('navbar.hide_class_chat') : t('navbar.show_class_chat')}
-              >
-                <MessageSquare className="h-4 w-4 flex-shrink-0" />
-              </button>
+              {chatAvailable && onToggleChatSidebar && (
+                <button
+                  className={`hidden lg:flex items-center justify-center w-10 h-10 rounded-full border transition-colors duration-150 shadow-sm`}
+                  style={chatSidebarOpen
+                    ? { backgroundColor: accentTheme.accent, borderColor: accentTheme.accent, color: '#fff' }
+                    : { backgroundColor: `${accentTheme.accent}18`, borderColor: `${accentTheme.accent}50`, color: accentTheme.text }}
+                  onClick={onToggleChatSidebar}
+                  title={chatSidebarOpen ? t('navbar.hide_class_chat') : t('navbar.show_class_chat')}
+                >
+                  <MessageSquare className="h-4 w-4 flex-shrink-0" />
+                </button>
+              )}
 
               {/* Avatar Dropdown */}
               <div className="relative" ref={dropdownRef}>
@@ -349,6 +365,7 @@ export function StudentNavbar({
           )}
         </div>
       </nav>
+      {showWhatsNew && <WhatsNewModal onClose={() => setShowWhatsNew(false)} />}
 
       {/* Settings Modal */}
       {showSettings && (

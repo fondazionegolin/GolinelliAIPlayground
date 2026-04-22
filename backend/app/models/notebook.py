@@ -19,6 +19,7 @@ class Notebook(Base):
     # { id, type: "code"|"markdown", source, outputs: [...], execution_count }
     cells = Column(JSONB, nullable=False, default=list)
     editor_settings = Column(JSONB, nullable=False, default=dict, server_default="{}")
+    tutor_messages = Column(JSONB, nullable=False, default=list, server_default="[]")
 
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)

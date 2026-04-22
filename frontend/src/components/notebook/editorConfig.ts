@@ -1,6 +1,6 @@
 import { autocompletion, completeFromList } from '@codemirror/autocomplete'
 import { indentWithTab } from '@codemirror/commands'
-import { javascript } from '@codemirror/lang-javascript'
+import { javascript, javascriptLanguage } from '@codemirror/lang-javascript'
 import { python } from '@codemirror/lang-python'
 import { HighlightStyle, indentUnit, syntaxHighlighting } from '@codemirror/language'
 import { type Extension, RangeSetBuilder } from '@codemirror/state'
@@ -10,14 +10,79 @@ import { EditorView, keymap } from '@codemirror/view'
 import type { NotebookCodeProposal, NotebookFontFamily, NotebookProjectType, NotebookTheme } from './types'
 
 const p5ApiCompletions = completeFromList([
-  'setup', 'draw', 'preload', 'createCanvas', 'resizeCanvas', 'background', 'fill', 'stroke',
-  'strokeWeight', 'noStroke', 'noFill', 'circle', 'ellipse', 'rect', 'square', 'line', 'triangle',
-  'quad', 'arc', 'text', 'textSize', 'textAlign', 'image', 'loadImage', 'loadFont', 'loadJSON',
-  'loadSound', 'mouseX', 'mouseY', 'pmouseX', 'pmouseY', 'width', 'height', 'windowWidth',
-  'windowHeight', 'frameRate', 'random', 'noise', 'map', 'dist', 'lerp', 'constrain', 'translate',
-  'rotate', 'scale', 'push', 'pop', 'color', 'createVector', 'sin', 'cos', 'tan', 'PI', 'TWO_PI',
-  'HALF_PI', 'WEBGL', 'noLoop', 'loop', 'redraw', 'saveCanvas', 'blendMode', 'imageMode',
-  'rectMode', 'angleMode', 'mousePressed', 'mouseReleased', 'keyPressed', 'touchStarted',
+  // Lifecycle
+  'setup', 'draw', 'preload',
+  // Canvas
+  'createCanvas', 'resizeCanvas', 'noCanvas', 'createGraphics', 'blendMode',
+  // Environment
+  'frameRate', 'frameCount', 'deltaTime', 'focused', 'displayWidth', 'displayHeight',
+  'windowWidth', 'windowHeight', 'width', 'height', 'pixelDensity', 'displayDensity',
+  'windowResized', 'fullscreen',
+  // Shape - 2D primitives
+  'arc', 'ellipse', 'circle', 'line', 'point', 'quad', 'rect', 'square', 'triangle',
+  // Shape - curves
+  'bezier', 'bezierPoint', 'bezierTangent', 'curve', 'curvePoint', 'curveTangent', 'curveTightness',
+  // Shape - vertex
+  'beginShape', 'endShape', 'vertex', 'curveVertex', 'bezierVertex', 'quadraticVertex', 'CLOSE',
+  // Shape - 3D primitives
+  'box', 'cone', 'cylinder', 'ellipsoid', 'plane', 'sphere', 'torus',
+  // Shape modes
+  'rectMode', 'ellipseMode', 'imageMode', 'strokeCap', 'strokeJoin', 'strokeWeight',
+  'CENTER', 'CORNER', 'CORNERS', 'RADIUS',
+  // Color
+  'background', 'clear', 'colorMode', 'fill', 'noFill', 'stroke', 'noStroke',
+  'color', 'red', 'green', 'blue', 'alpha', 'hue', 'saturation', 'brightness',
+  'lerpColor', 'RGB', 'HSB', 'HSL',
+  // Transforms
+  'translate', 'rotate', 'rotateX', 'rotateY', 'rotateZ', 'scale', 'shearX', 'shearY',
+  'push', 'pop', 'applyMatrix', 'resetMatrix', 'printMatrix',
+  // Text / Typography
+  'text', 'textAlign', 'textLeading', 'textSize', 'textStyle', 'textWidth', 'textAscent',
+  'textDescent', 'textFont', 'loadFont', 'createFont',
+  'LEFT', 'RIGHT', 'TOP', 'BOTTOM', 'BASELINE', 'BOLD', 'ITALIC', 'NORMAL',
+  // Image
+  'image', 'loadImage', 'createImage', 'imageMode', 'tint', 'noTint', 'copy',
+  'filter', 'get', 'set', 'loadPixels', 'updatePixels', 'pixels',
+  'GRAY', 'INVERT', 'POSTERIZE', 'BLUR', 'OPAQUE', 'ERODE', 'DILATE', 'THRESHOLD',
+  // Math
+  'abs', 'ceil', 'constrain', 'dist', 'exp', 'floor', 'lerp', 'log', 'mag', 'map',
+  'max', 'min', 'norm', 'pow', 'round', 'sq', 'sqrt',
+  'sin', 'cos', 'tan', 'asin', 'acos', 'atan', 'atan2',
+  'degrees', 'radians', 'angleMode', 'DEGREES', 'RADIANS',
+  'noise', 'noiseDetail', 'noiseSeed', 'random', 'randomGaussian', 'randomSeed',
+  'PI', 'TWO_PI', 'HALF_PI', 'QUARTER_PI', 'TAU',
+  // Vector
+  'createVector',
+  // Input - mouse
+  'mouseX', 'mouseY', 'pmouseX', 'pmouseY', 'winMouseX', 'winMouseY',
+  'mouseButton', 'mouseIsPressed',
+  'mousePressed', 'mouseReleased', 'mouseMoved', 'mouseDragged', 'mouseClicked', 'mouseWheel',
+  'LEFT', 'RIGHT', 'CENTER',
+  // Input - keyboard
+  'key', 'keyCode', 'keyIsPressed', 'keyIsDown',
+  'keyPressed', 'keyReleased', 'keyTyped',
+  'BACKSPACE', 'DELETE', 'ENTER', 'RETURN', 'TAB', 'ESCAPE', 'SHIFT', 'CONTROL', 'ALT',
+  'UP_ARROW', 'DOWN_ARROW', 'LEFT_ARROW', 'RIGHT_ARROW',
+  // Input - touch
+  'touches', 'touchStarted', 'touchMoved', 'touchEnded',
+  // Output
+  'print', 'saveCanvas', 'save', 'saveTable', 'saveStrings', 'saveJSON',
+  // Data - conversion
+  'boolean', 'byte', 'char', 'float', 'int', 'str', 'hex', 'unhex', 'binary', 'unbinary',
+  // Data - string
+  'join', 'match', 'matchAll', 'nf', 'nfc', 'nfp', 'nfs', 'split', 'splitTokens', 'trim',
+  // Data - array
+  'append', 'arrayCopy', 'concat', 'reverse', 'shorten', 'shuffle', 'sort', 'splice', 'subset',
+  // DOM / Utility
+  'createDiv', 'createP', 'createSpan', 'createButton', 'createCheckbox', 'createSelect',
+  'createSlider', 'createInput', 'createFileInput', 'select', 'selectAll', 'removeElements',
+  // Control
+  'loop', 'noLoop', 'redraw', 'isLooping', 'frameRate', 'noCursor', 'cursor',
+  // Renderer
+  'WEBGL', 'P2D', 'createFramebuffer',
+  // Loading
+  'loadJSON', 'loadStrings', 'loadTable', 'loadBytes', 'loadShader',
+  'httpGet', 'httpPost',
 ].map((label) => ({ label, type: 'function' })))
 
 // ── Per-theme syntax highlight styles ────────────────────────────────────────
@@ -118,8 +183,8 @@ const themePalette: Record<NotebookTheme, Extension> = {
     '.cm-scroller': { backgroundColor: '#111827' },
     '&.cm-focused .cm-cursor': { borderLeftColor: '#60a5fa' },
     '.cm-gutters': { backgroundColor: '#0f172a', color: '#93c5fd', border: 'none' },
-    '.cm-activeLine': { backgroundColor: 'rgba(23,32,51,0.85)' },
-    '.cm-activeLineGutter': { backgroundColor: 'rgba(23,32,51,0.85)' },
+    '.cm-activeLine': { backgroundColor: 'transparent' },
+    '.cm-activeLineGutter': { backgroundColor: 'transparent', color: '#fef08a', fontWeight: '700' },
   }, { dark: true }),
   dracula: EditorView.theme({
     '&': { color: '#f8f8f2', backgroundColor: '#1f2230' },
@@ -127,8 +192,8 @@ const themePalette: Record<NotebookTheme, Extension> = {
     '.cm-scroller': { backgroundColor: '#1f2230' },
     '&.cm-focused .cm-cursor': { borderLeftColor: '#ff79c6' },
     '.cm-gutters': { backgroundColor: '#171a26', color: '#98a2c8', border: 'none' },
-    '.cm-activeLine': { backgroundColor: 'rgba(43,48,66,0.85)' },
-    '.cm-activeLineGutter': { backgroundColor: 'rgba(43,48,66,0.85)' },
+    '.cm-activeLine': { backgroundColor: 'transparent' },
+    '.cm-activeLineGutter': { backgroundColor: 'transparent', color: '#fef08a', fontWeight: '700' },
   }, { dark: true }),
   light: EditorView.theme({
     '&': { color: '#0f172a', backgroundColor: '#ffffff' },
@@ -136,8 +201,8 @@ const themePalette: Record<NotebookTheme, Extension> = {
     '.cm-scroller': { backgroundColor: '#ffffff' },
     '&.cm-focused .cm-cursor': { borderLeftColor: '#0f766e' },
     '.cm-gutters': { backgroundColor: '#f1f5f9', color: '#64748b', border: 'none' },
-    '.cm-activeLine': { backgroundColor: 'rgba(248,250,252,0.9)' },
-    '.cm-activeLineGutter': { backgroundColor: '#e2e8f0' },
+    '.cm-activeLine': { backgroundColor: 'transparent' },
+    '.cm-activeLineGutter': { backgroundColor: 'transparent', color: '#a16207', fontWeight: '700' },
   }),
   fancy: EditorView.theme({
     '&': { color: '#fff7ed', backgroundColor: '#1f2937' },
@@ -145,8 +210,8 @@ const themePalette: Record<NotebookTheme, Extension> = {
     '.cm-scroller': { backgroundColor: '#1f2937' },
     '&.cm-focused .cm-cursor': { borderLeftColor: '#f97316' },
     '.cm-gutters': { backgroundColor: '#111827', color: '#fdba74', border: 'none' },
-    '.cm-activeLine': { backgroundColor: 'rgba(249,115,22,0.08)' },
-    '.cm-activeLineGutter': { backgroundColor: 'rgba(249,115,22,0.15)' },
+    '.cm-activeLine': { backgroundColor: 'transparent' },
+    '.cm-activeLineGutter': { backgroundColor: 'transparent', color: '#fde047', fontWeight: '700' },
   }, { dark: true }),
   p5js: EditorView.theme({
     '&': { color: '#f0fdfa', backgroundColor: '#0f172a' },
@@ -154,8 +219,8 @@ const themePalette: Record<NotebookTheme, Extension> = {
     '.cm-scroller': { backgroundColor: '#0f172a' },
     '&.cm-focused .cm-cursor': { borderLeftColor: '#2dd4bf' },
     '.cm-gutters': { backgroundColor: '#111827', color: '#5eead4', border: 'none' },
-    '.cm-activeLine': { backgroundColor: 'rgba(13,148,136,0.12)' },
-    '.cm-activeLineGutter': { backgroundColor: 'rgba(13,148,136,0.18)' },
+    '.cm-activeLine': { backgroundColor: 'transparent' },
+    '.cm-activeLineGutter': { backgroundColor: 'transparent', color: '#fde68a', fontWeight: '700' },
   }, { dark: true }),
 }
 
@@ -218,14 +283,18 @@ export function getEditorExtensions(
     ? python()
     : javascript({ jsx: false, typescript: false })
 
-  const extraAutocomplete = projectType === 'p5js'
-    ? autocompletion({ override: [p5ApiCompletions], activateOnTypingDelay: 50, maxRenderedOptions: 12 })
-    : autocompletion({ activateOnTypingDelay: 50, maxRenderedOptions: 12 })
+  // For p5js: register completions as language data so they merge with JS built-ins
+  const p5LanguageData = projectType === 'p5js'
+    ? javascriptLanguage.data.of({ autocomplete: p5ApiCompletions })
+    : []
+
+  const extraAutocomplete = autocompletion({ activateOnTypingDelay: 50, maxRenderedOptions: 16 })
 
   return [
     themePalette[theme] ?? themePalette.dark,
     syntaxHighlighting(highlightStyles[theme] ?? highlightStyles.dark),
     language,
+    p5LanguageData,
     indentUnit.of('  '),
     extraAutocomplete,
     runKeys,
@@ -250,6 +319,9 @@ export const sharedEditorBaseTheme = (fontFamily: NotebookFontFamily, fontWeight
     fontWeight: String(fontWeight),
     fontVariantLigatures: 'common-ligatures contextual',
     fontFeatureSettings: '"calt" 1, "liga" 1',
+  },
+  '&.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection': {
+    backgroundColor: 'rgba(253, 230, 138, 0.38)',
   },
   '.cm-gutters': { fontFamily: fontStacks[fontFamily] },
   '.cm-ai-proposal': {

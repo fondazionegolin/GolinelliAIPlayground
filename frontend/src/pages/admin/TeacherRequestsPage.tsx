@@ -237,7 +237,7 @@ function VisualEmailEditor({
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="flex items-center gap-2 text-sm font-semibold">
-            <Palette className="h-4 w-4 text-[#e85c8d]" />
+            <Palette className="h-4 w-4 text-slate-500" />
             Tema
           </CardTitle>
         </CardHeader>
@@ -500,7 +500,7 @@ export default function EmailPage() {
                   Caso d'uso
                 </Label>
                 <select
-                  className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-1 focus:ring-[#e85c8d]"
+                  className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-1 focus:ring-slate-400"
                   value={templateKey}
                   onChange={(e) => setTemplateKey(e.target.value)}
                 >
@@ -540,7 +540,7 @@ export default function EmailPage() {
                   onClick={() => handleSwitchToVisual()}
                   className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-all ${
                     mode === 'visual'
-                      ? 'bg-[#e85c8d] text-white shadow-sm'
+                      ? 'bg-slate-800 text-white shadow-sm'
                       : 'border border-slate-200 bg-white text-slate-600 hover:border-slate-300'
                   }`}
                 >
@@ -642,8 +642,7 @@ export default function EmailPage() {
               {resetTemplateMutation.isPending ? 'Ripristino…' : 'Ripristina default'}
             </Button>
             <Button
-              className="gap-2"
-              style={{ backgroundColor: '#e85c8d' }}
+              className="gap-2 bg-slate-800 hover:bg-slate-900 text-white"
               onClick={() => saveTemplatesMutation.mutate()}
               disabled={
                 saveTemplatesMutation.isPending ||

@@ -19,10 +19,19 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-MAX_TEXT_CHARS = 30000
-MAX_VISUAL_PAGES = 4
+MAX_SUMMARY_SOURCE_CHARS = 12000
+MAX_STRUCTURED_PREVIEW_CHARS = 4000
+MAX_VISUAL_PAGES = 8
 VISION_MODEL = "gpt-4o"
 VISION_PROVIDER = "openai"
+
+
+@dataclass
+class DocumentSegment:
+    text: str
+    page: Optional[int] = None
+    kind: str = "text"
+    meta: dict = field(default_factory=dict)
 
 
 @dataclass
@@ -35,12 +44,62 @@ class DocumentAnalysis:
     key_concepts: list
     entities: list
     visual_descriptions: list
+    rag_segments: list[DocumentSegment]
     structured_extract: str       # Ready-to-inject context block
     has_visual_content: bool
     processing_steps: list
 
 
 class DocumentProcessor:
+    def _stringify_cell(self, value) -> str:
+        text = str(value).strip()
+        if not text or text.lower() == "nan":
+            return ""
+        if len(text) > 200:
+            return text[:197] + "..."
+        return text
+
+    def _segments_from_blocks(
+        self,
+        text: str,
+        *,
+        page: Optional[int] = None,
+        kind: str = "text",
+        target_chars: int = 1500,
+    ) -> list[DocumentSegment]:
+        blocks = [block.strip() for block in re.split(r"\n\s*\n", text or "") if block.strip()]
+        if not blocks:
+            return []
+
+        segments: list[DocumentSegment] = []
+        current_blocks: list[str] = []
+        current_len = 0
+
+        for block in blocks:
+            block_len = len(block)
+            if current_blocks and current_len + block_len + 2 > target_chars:
+                segments.append(
+                    DocumentSegment(
+                        text="\n\n".join(current_blocks),
+                        page=page,
+                        kind=kind,
+                    )
+                )
+                current_blocks = []
+                current_len = 0
+            current_blocks.append(block)
+            current_len += block_len + 2
+
+        if current_blocks:
+            segments.append(
+                DocumentSegment(
+                    text="\n\n".join(current_blocks),
+                    page=page,
+                    kind=kind,
+                )
+            )
+
+        return segments
 
     async def process(
         self,
@@ -53,24 +112,26 @@ class DocumentProcessor:
         steps: list[str] = []
 
         # Step 1: Extract text
-        raw_text, page_count, visual_page_indices = await self._extract_content(
+        raw_text, page_count, visual_page_indices, rag_segments = await self._extract_content(
             file_bytes, filename, mime_type, steps
         )
 
         # Step 2: Analyze visual pages
-        visual_descriptions: list[str] = []
+        visual_segments: list[DocumentSegment] = []
         has_visual = len(visual_page_indices) > 0
 
         if analyze_visuals and has_visual and llm_service:
             fn_lower = filename.lower()
             if mime_type == "application/pdf" or fn_lower.endswith(".pdf"):
-                visual_descriptions = await self._analyze_pdf_visuals(
+                visual_segments = await self._analyze_pdf_visuals(
                     file_bytes, visual_page_indices, llm_service, steps
                 )
             elif visual_page_indices == [-1]:
-                visual_descriptions = await self._analyze_image_file(
+                visual_segments = await self._analyze_image_file(
                     file_bytes, filename, mime_type, llm_service, steps
                 )
+        visual_descriptions = [segment.text for segment in visual_segments]
+        rag_segments.extend(visual_segments)
 
         # Step 3: Structured summary
         summary, key_concepts, entities = await self._generate_summary(
@@ -91,6 +152,7 @@ class DocumentProcessor:
             key_concepts=key_concepts,
             entities=entities,
             visual_descriptions=visual_descriptions,
+            rag_segments=rag_segments,
             structured_extract=structured_extract,
             has_visual_content=has_visual,
             processing_steps=steps,
@@ -103,7 +165,7 @@ class DocumentProcessor:
     async def _extract_content(
         self, file_bytes: bytes, filename: str, mime_type: str, steps: list
     ) -> tuple:
-        """Returns (raw_text, page_count, visual_page_indices)."""
+        """Returns (raw_text, page_count, visual_page_indices, rag_segments)."""
         fn_lower = filename.lower()
 
         if mime_type == "application/pdf" or fn_lower.endswith(".pdf"):
@@ -113,8 +175,8 @@ class DocumentProcessor:
             mime_type == "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
             or fn_lower.endswith(".docx")
         ):
-            text = self._extract_docx(file_bytes, steps)
-            return text, 1, []
+            text, segments = self._extract_docx(file_bytes, steps)
+            return text, 1, [], segments
 
         if (
             mime_type in (
@@ -123,8 +185,8 @@ class DocumentProcessor:
             )
             or fn_lower.endswith((".pptx", ".ppt"))
         ):
-            text = self._extract_pptx(file_bytes, steps)
-            return text, 1, []
+            text, segments = self._extract_pptx(file_bytes, steps)
+            return text, 1, [], segments
 
         if (
             mime_type in (
@@ -133,30 +195,29 @@ class DocumentProcessor:
             )
             or fn_lower.endswith((".xlsx", ".xls"))
         ):
-            text = self._extract_xlsx(file_bytes, steps)
-            return text, 1, []
+            text, segments = self._extract_xlsx(file_bytes, steps)
+            return text, 1, [], segments
 
         if fn_lower.endswith(".csv") or mime_type in ("text/csv", "application/csv"):
-            text = self._extract_csv(file_bytes, steps)
-            return text, 1, []
+            text, segments = self._extract_csv(file_bytes, steps)
+            return text, 1, [], segments
 
         if mime_type.startswith("text/") or fn_lower.endswith((".txt", ".md")):
             try:
                 text = file_bytes.decode("utf-8", errors="ignore")
             except Exception:
                 text = ""
-            text = text[:MAX_TEXT_CHARS]
             steps.append(f"Testo piano estratto ({len(text)} caratteri)")
-            return text, 1, []
+            return text, 1, [], self._segments_from_blocks(text)
 
         if mime_type.startswith("image/"):
             steps.append("File immagine: analisi visiva")
-            return "", 1, [-1]
+            return "", 1, [-1], []
 
         steps.append(f"Tipo file non supportato: {mime_type}")
-        return "", 0, []
+        return "", 0, [], []
 
-    def _extract_csv(self, file_bytes: bytes, steps: list) -> str:
+    def _extract_csv(self, file_bytes: bytes, steps: list) -> tuple[str, list[DocumentSegment]]:
         """Parse CSV and convert to readable markdown table + stats."""
         try:
             import pandas as pd
@@ -169,60 +230,62 @@ class DocumentProcessor:
                 except Exception:
                     continue
             else:
-                text = file_bytes.decode("utf-8", errors="ignore")[:MAX_TEXT_CHARS]
+                text = file_bytes.decode("utf-8", errors="ignore")
                 steps.append("CSV letto come testo grezzo (encoding fallback)")
-                return text
+                return text, self._segments_from_blocks(text)
 
-            text = self._dataframe_to_text(df, steps, "CSV")
-            return text
+            text, segments = self._dataframe_to_text(df, steps, "CSV")
+            return text, segments
         except Exception as e:
             steps.append(f"Errore lettura CSV ({e}), fallback testo grezzo")
             try:
-                return file_bytes.decode("utf-8", errors="ignore")[:MAX_TEXT_CHARS]
+                text = file_bytes.decode("utf-8", errors="ignore")
+                return text, self._segments_from_blocks(text)
             except Exception:
-                return ""
+                return "", []
 
-    def _extract_xlsx(self, file_bytes: bytes, steps: list) -> str:
+    def _extract_xlsx(self, file_bytes: bytes, steps: list) -> tuple[str, list[DocumentSegment]]:
         """Parse XLSX and convert all sheets to readable text."""
         try:
             import pandas as pd
             import io as _io
             xl = pd.ExcelFile(_io.BytesIO(file_bytes))
             sheet_parts: list[str] = []
-            total_chars = 0
+            segments: list[DocumentSegment] = []
             for sheet_name in xl.sheet_names:
                 df = xl.parse(sheet_name)
-                sheet_text = f"## Foglio: {sheet_name}\n" + self._dataframe_to_text(df, steps, sheet_name)
+                sheet_text, sheet_segments = self._dataframe_to_text(df, steps, sheet_name)
                 sheet_parts.append(sheet_text)
-                total_chars += len(sheet_text)
-                if total_chars > MAX_TEXT_CHARS:
-                    sheet_parts.append("[...ulteriori fogli troncati]")
-                    break
-            text = "\n\n".join(sheet_parts)[:MAX_TEXT_CHARS]
+                for segment in sheet_segments:
+                    segment.meta.setdefault("sheet_name", sheet_name)
+                segments.extend(sheet_segments)
+            text = "\n\n".join(sheet_parts)
             steps.append(f"XLSX estratto: {len(xl.sheet_names)} fogli")
-            return text
+            return text, segments
         except Exception as e:
             steps.append(f"Errore lettura XLSX: {e}")
-            return ""
+            return "", []
 
-    def _dataframe_to_text(self, df, steps: list, label: str) -> str:
-        """Convert a DataFrame to a readable text representation for RAG."""
+    def _dataframe_to_text(self, df, steps: list, label: str) -> tuple[str, list[DocumentSegment]]:
+        """Convert a DataFrame to a full readable text representation for RAG."""
         try:
+            import pandas as pd
+
             rows, cols = df.shape
             col_names = list(df.columns)
 
-            lines: list[str] = []
-            lines.append(f"Tabella: {rows} righe × {cols} colonne")
-            lines.append(f"Colonne: {', '.join(str(c) for c in col_names)}")
+            summary_lines: list[str] = []
+            summary_lines.append(f"Tabella {label}: {rows} righe × {cols} colonne")
+            summary_lines.append(f"Colonne: {', '.join(str(c) for c in col_names)}")
 
             # Numeric statistics for numeric columns
             num_cols = df.select_dtypes(include="number").columns.tolist()
             if num_cols:
-                lines.append("\n### Statistiche colonne numeriche")
+                summary_lines.append("\n### Statistiche colonne numeriche")
                 for col in num_cols[:10]:
                     s = df[col].dropna()
                     if len(s):
-                        lines.append(
+                        summary_lines.append(
                             f"- {col}: min={s.min():.4g}, max={s.max():.4g}, "
                             f"media={s.mean():.4g}, mediana={s.median():.4g}, "
                             f"tot={s.sum():.4g} ({len(s)} valori)"
@@ -231,29 +294,50 @@ class DocumentProcessor:
             # Value counts for categorical columns
             cat_cols = df.select_dtypes(exclude="number").columns.tolist()
             if cat_cols:
-                lines.append("\n### Valori categorici principali")
+                summary_lines.append("\n### Valori categorici principali")
                 for col in cat_cols[:5]:
                     vc = df[col].value_counts().head(10)
-                    lines.append(f"- {col}: " + ", ".join(f"{v} ({c})" for v, c in vc.items()))
+                    summary_lines.append(f"- {col}: " + ", ".join(f"{v} ({c})" for v, c in vc.items()))
 
-            # Full table as markdown (limited rows)
-            lines.append("\n### Dati tabella")
-            max_rows = min(rows, 200)
-            try:
-                table_md = df.head(max_rows).to_markdown(index=False)
-                lines.append(table_md)
-                if rows > max_rows:
-                    lines.append(f"\n[...{rows - max_rows} righe aggiuntive non mostrate]")
-            except Exception:
-                # Fallback: CSV repr
-                lines.append(df.head(max_rows).to_csv(index=False))
+            normalized = df.where(pd.notnull(df), "")
+            row_segments: list[DocumentSegment] = []
+            batch_size = 50
+            for start in range(0, rows, batch_size):
+                end = min(start + batch_size, rows)
+                batch_lines = [f"### {label} righe {start + 1}-{end}"]
+                for row_idx in range(start, end):
+                    row = normalized.iloc[row_idx]
+                    cells = []
+                    for col_name, value in row.items():
+                        rendered = self._stringify_cell(value)
+                        if rendered:
+                            cells.append(f"{col_name}={rendered}")
+                    if cells:
+                        batch_lines.append(f"Riga {row_idx + 1}: " + " | ".join(cells))
+                if len(batch_lines) > 1:
+                    row_segments.append(
+                        DocumentSegment(
+                            text="\n".join(batch_lines),
+                            kind="table_rows",
+                            meta={"source_label": label, "row_start": start + 1, "row_end": end},
+                        )
+                    )
 
-            text = "\n".join(lines)
+            segments = [
+                DocumentSegment(
+                    text="\n".join(summary_lines),
+                    kind="table_summary",
+                    meta={"source_label": label},
+                )
+            ] + row_segments
+
+            text = "\n\n".join(segment.text for segment in segments if segment.text.strip())
             steps.append(f"{label} convertito: {rows} righe, {cols} colonne")
-            return text[:MAX_TEXT_CHARS]
+            return text, segments
         except Exception as e:
             steps.append(f"Errore conversione dataframe ({e})")
-            return str(df)[:MAX_TEXT_CHARS]
+            fallback = str(df)
+            return fallback, self._segments_from_blocks(fallback)
 
     async def _extract_pdf(self, file_bytes: bytes, steps: list) -> tuple:
         try:
@@ -262,33 +346,46 @@ class DocumentProcessor:
             page_count = len(doc)
             parts: list[str] = []
             visual_pages: list[int] = []
-            total_chars = 0
+            segments: list[DocumentSegment] = []
 
             for i in range(page_count):
                 page = doc[i]
-                page_text = page.get_text()
+                page_text = (page.get_text() or "").strip()
                 text_len = len(page_text.strip())
 
                 n_images = len(page.get_images())
                 n_drawings = len(page.get_drawings())
-                is_visual = (n_images > 0 and text_len < 500) or (n_drawings > 2 and text_len < 300)
+                table_count = 0
+                if hasattr(page, "find_tables"):
+                    try:
+                        tables = page.find_tables()
+                        table_count = len(getattr(tables, "tables", []) or [])
+                    except Exception:
+                        table_count = 0
+                is_visual = bool(n_images or table_count or (n_drawings > 2 and text_len < 800))
 
                 if is_visual and len(visual_pages) < MAX_VISUAL_PAGES:
                     visual_pages.append(i)
 
-                parts.append(f"[Pagina {i + 1}]\n{page_text}")
-                total_chars += text_len
-
-                if total_chars > MAX_TEXT_CHARS:
-                    parts.append(f"\n[Troncato a pagina {i + 1}/{page_count}]")
-                    break
+                page_header = f"[Pagina {i + 1}]"
+                if page_text:
+                    page_content = f"{page_header}\n{page_text}"
+                    parts.append(page_content)
+                    segments.append(
+                        DocumentSegment(
+                            text=page_content,
+                            page=i + 1,
+                            kind="page_text",
+                            meta={"page_number": i + 1},
+                        )
+                    )
 
             doc.close()
             full_text = "\n\n".join(parts)
             steps.append(
-                f"PDF estratto con PyMuPDF: {page_count} pagine, {len(visual_pages)} pagine visive"
+                f"PDF estratto con PyMuPDF: {page_count} pagine, {len(segments)} pagine testuali, {len(visual_pages)} pagine visive"
             )
-            return full_text, page_count, visual_pages
+            return full_text, page_count, visual_pages, segments
 
         except ImportError:
             steps.append("PyMuPDF non disponibile, uso PyPDF2")
@@ -301,36 +398,47 @@ class DocumentProcessor:
         try:
             from PyPDF2 import PdfReader
             reader = PdfReader(io.BytesIO(file_bytes))
-            text = ""
-            for page in reader.pages:
-                text += page.extract_text() or ""
-                if len(text) > MAX_TEXT_CHARS:
-                    break
-            text = text[:MAX_TEXT_CHARS]
+            parts: list[str] = []
+            segments: list[DocumentSegment] = []
+            for idx, page in enumerate(reader.pages, 1):
+                page_text = (page.extract_text() or "").strip()
+                if not page_text:
+                    continue
+                page_content = f"[Pagina {idx}]\n{page_text}"
+                parts.append(page_content)
+                segments.append(
+                    DocumentSegment(
+                        text=page_content,
+                        page=idx,
+                        kind="page_text",
+                        meta={"page_number": idx},
+                    )
+                )
+            text = "\n\n".join(parts)
             steps.append(f"PDF estratto con PyPDF2: {len(reader.pages)} pagine")
-            return text, len(reader.pages), []
+            return text, len(reader.pages), [], segments
         except Exception as e:
             steps.append(f"Errore PyPDF2: {e}")
-            return "", 0, []
+            return "", 0, [], []
 
-    def _extract_docx(self, file_bytes: bytes, steps: list) -> str:
+    def _extract_docx(self, file_bytes: bytes, steps: list) -> tuple[str, list[DocumentSegment]]:
         try:
             from docx import Document
             doc = Document(io.BytesIO(file_bytes))
             paragraphs = [p.text for p in doc.paragraphs if p.text.strip()]
-            text = "\n".join(paragraphs)[:MAX_TEXT_CHARS]
+            text = "\n\n".join(paragraphs)
             steps.append(f"DOCX estratto: {len(paragraphs)} paragrafi")
-            return text
+            return text, self._segments_from_blocks(text)
         except Exception as e:
             steps.append(f"Errore DOCX: {e}")
-            return ""
+            return "", []
 
-    def _extract_pptx(self, file_bytes: bytes, steps: list) -> str:
+    def _extract_pptx(self, file_bytes: bytes, steps: list) -> tuple[str, list[DocumentSegment]]:
         try:
             from pptx import Presentation
-            from pptx.util import Pt
             prs = Presentation(io.BytesIO(file_bytes))
             slide_texts: list[str] = []
+            segments: list[DocumentSegment] = []
             for i, slide in enumerate(prs.slides, 1):
                 parts: list[str] = []
                 for shape in slide.shapes:
@@ -341,13 +449,22 @@ class DocumentProcessor:
                         if line.strip():
                             parts.append(line.strip())
                 if parts:
-                    slide_texts.append(f"## Slide {i}\n" + "\n".join(parts))
-            text = "\n\n".join(slide_texts)[:MAX_TEXT_CHARS]
+                    slide_text = f"## Slide {i}\n" + "\n".join(parts)
+                    slide_texts.append(slide_text)
+                    segments.append(
+                        DocumentSegment(
+                            text=slide_text,
+                            page=i,
+                            kind="slide_text",
+                            meta={"slide_number": i},
+                        )
+                    )
+            text = "\n\n".join(slide_texts)
             steps.append(f"PPTX estratto: {len(prs.slides)} slide, {len(text)} caratteri")
-            return text
+            return text, segments
         except Exception as e:
             steps.append(f"Errore PPTX: {e}")
-            return ""
+            return "", []
 
     # -------------------------------------------------------------------------
     # Visual analysis
@@ -355,8 +472,8 @@ class DocumentProcessor:
 
     async def _analyze_pdf_visuals(
         self, file_bytes: bytes, page_indices: list, llm_service, steps: list
-    ) -> list[str]:
-        descriptions: list[str] = []
+    ) -> list[DocumentSegment]:
+        descriptions: list[DocumentSegment] = []
         try:
             import fitz
             doc = fitz.open(stream=file_bytes, filetype="pdf")
@@ -391,7 +508,14 @@ class DocumentProcessor:
                         temperature=0.2,
                         max_tokens=500,
                     )
-                    descriptions.append(f"[Pagina {page_idx + 1}]: {vision_resp.content}")
+                    descriptions.append(
+                        DocumentSegment(
+                            text=f"[Pagina {page_idx + 1}] Analisi visiva: {vision_resp.content}",
+                            page=page_idx + 1,
+                            kind="visual_analysis",
+                            meta={"page_number": page_idx + 1, "visual_analysis": True},
+                        )
+                    )
                     steps.append(f"Analizzata pagina visiva {page_idx + 1}")
                 except Exception as e:
                     steps.append(f"Errore analisi visiva pagina {page_idx + 1}: {e}")
@@ -406,7 +530,7 @@ class DocumentProcessor:
 
     async def _analyze_image_file(
         self, file_bytes: bytes, filename: str, mime_type: str, llm_service, steps: list
-    ) -> list[str]:
+    ) -> list[DocumentSegment]:
         try:
             img_b64 = base64.b64encode(file_bytes).decode("utf-8")
             vision_resp = await llm_service.generate(
@@ -433,7 +557,13 @@ class DocumentProcessor:
                 max_tokens=600,
             )
             steps.append("Immagine analizzata")
-            return [f"[{filename}]: {vision_resp.content}"]
+            return [
+                DocumentSegment(
+                    text=f"[{filename}] Analisi immagine: {vision_resp.content}",
+                    kind="visual_analysis",
+                    meta={"filename": filename, "visual_analysis": True},
+                )
+            ]
         except Exception as e:
             steps.append(f"Errore analisi immagine: {e}")
             return []
@@ -454,7 +584,7 @@ class DocumentProcessor:
             summary = " ".join(words[:80]) + "..." if len(words) > 80 else raw_text
             return summary, [], []
 
-        content = raw_text[:6000]
+        content = raw_text[:MAX_SUMMARY_SOURCE_CHARS]
         if visual_descriptions:
             content += "\n\nCONTENUTO VISIVO:\n" + "\n".join(visual_descriptions[:3])
 
@@ -527,9 +657,9 @@ class DocumentProcessor:
                 parts.append(desc)
 
         if raw_text:
-            preview = raw_text[:4000]
+            preview = raw_text[:MAX_STRUCTURED_PREVIEW_CHARS]
             parts.append(f"\n### Contenuto testuale\n{preview}")
-            if len(raw_text) > 4000:
+            if len(raw_text) > MAX_STRUCTURED_PREVIEW_CHARS:
                 parts.append(f"\n[...testo troncato ({len(raw_text)} caratteri totali)]")
 
         return "\n".join(parts)

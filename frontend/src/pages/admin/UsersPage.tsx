@@ -72,8 +72,8 @@ export default function CostsPage() {
 
       {/* Summary pills */}
       <div className="grid grid-cols-2 gap-3">
-        <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 flex items-center gap-3">
-          <TrendingUp className="h-5 w-5 text-rose-500 flex-shrink-0" />
+        <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 flex items-center gap-3">
+          <TrendingUp className="h-5 w-5 text-slate-500 flex-shrink-0" />
           <div>
             <p className="text-xs text-slate-500">Costo totale</p>
             <p className="text-xl font-bold text-slate-900">{formatCurrencyShort(totalCost)}</p>
@@ -103,7 +103,7 @@ export default function CostsPage() {
               <Tooltip />
               <Legend />
               <Line yAxisId="left" type="monotone" dataKey="calls" stroke="#6366f1" strokeWidth={2} dot={false} name="Chiamate" />
-              <Line yAxisId="right" type="monotone" dataKey="cost" stroke="#e85c8d" strokeWidth={2} dot={false} name="Costo €" />
+              <Line yAxisId="right" type="monotone" dataKey="cost" stroke="#64748b" strokeWidth={2} dot={false} name="Costo €" />
             </LineChart>
           </ResponsiveContainer>
         </CardContent>
@@ -132,7 +132,7 @@ export default function CostsPage() {
                     </div>
                     <div className="h-1.5 rounded-full bg-slate-100 overflow-hidden">
                       <div
-                        className="h-full rounded-full bg-[#e85c8d]"
+                        className="h-full rounded-full bg-slate-500"
                         style={{ width: `${pct}%` }}
                       />
                     </div>

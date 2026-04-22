@@ -88,6 +88,7 @@ class SessionStudent(Base):
     session_id = Column(UUID(as_uuid=True), ForeignKey("sessions.id"), nullable=False, index=True)
     nickname = Column(String, nullable=False)
     join_token = Column(Text, unique=True, nullable=False)
+    password_hash = Column(Text, nullable=True)
     avatar_url = Column(Text, nullable=True)
     ui_accent = Column(String(32), nullable=True)
     is_frozen = Column(Boolean, default=False, nullable=False)

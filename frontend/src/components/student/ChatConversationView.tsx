@@ -132,7 +132,7 @@ export function ChatConversationView({
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden bg-slate-50">
       {/* Mobile Header */}
-      <div className="md:hidden flex-shrink-0 bg-white border-b border-slate-200 px-3 py-2 flex items-center gap-3">
+      <div className="md:hidden flex-shrink-0 bg-white border-b border-slate-200 px-3 py-2 flex items-center gap-2.5">
         <Button
           variant="ghost"
           size="sm"
@@ -140,19 +140,19 @@ export function ChatConversationView({
             triggerHaptic('light')
             onBack()
           }}
-          className="h-9 w-9 p-0 rounded-full"
+          className="h-8 w-8 p-0 rounded-xl"
         >
-          <ArrowLeft className="h-5 w-5 text-slate-600" />
+          <ArrowLeft className="h-4 w-4 text-slate-700" />
         </Button>
         {profileIcon && (
-          <div className={`w-9 h-9 rounded-xl ${avatarColorClass} flex items-center justify-center shadow-md`}>
+          <div className={`w-8 h-8 rounded-xl ${avatarColorClass} flex items-center justify-center shadow-sm`}>
             <div className="text-white scale-75">{profileIcon}</div>
           </div>
         )}
         <div className="flex-1 min-w-0">
-          <h3 className="font-semibold text-slate-800 text-sm truncate">{profileName}</h3>
+          <h3 className="font-semibold text-slate-900 text-sm truncate">{profileName}</h3>
           {isLoading && (
-            <p className="text-xs text-slate-500">Sta scrivendo...</p>
+            <p className="text-[11px] text-slate-500">Sta scrivendo...</p>
           )}
         </div>
       </div>
@@ -160,29 +160,29 @@ export function ChatConversationView({
       {/* Messages area */}
       <div
         ref={messagesContainerRef}
-        className="flex-1 min-h-0 overflow-y-auto px-6 py-4 space-y-4"
+        className="flex-1 min-h-0 overflow-y-auto px-3 md:px-6 py-3 md:py-4 space-y-3 md:space-y-4"
         style={{
-          paddingBottom: isKeyboardOpen ? keyboardHeight + 80 : 80,
+          paddingBottom: isKeyboardOpen ? keyboardHeight + 88 : 88,
           WebkitOverflowScrolling: 'touch',
         }}
       >
         {/* Empty state with suggestions */}
         {messages.length === 0 && (
-          <div className="text-center py-8">
-            <div className={`inline-flex items-center justify-center w-16 h-16 rounded-2xl ${avatarColorClass} mb-4 shadow-lg`}>
+          <div className="text-center py-5">
+            <div className={`inline-flex items-center justify-center w-12 h-12 rounded-2xl ${avatarColorClass} mb-3 shadow-md`}>
               {profileIcon ? (
-                <div className="text-white scale-110">{profileIcon}</div>
+                <div className="text-white scale-95">{profileIcon}</div>
               ) : (
-                <Bot className="h-8 w-8 text-white" />
+                <Bot className="h-6 w-6 text-white" />
               )}
             </div>
-            <h3 className="font-bold text-lg text-slate-800 mb-2">Ciao! Sono {profileName}</h3>
-            <p className="text-slate-500 text-sm max-w-xs mx-auto mb-6">
+            <h3 className="font-bold text-base text-slate-900 mb-1.5">Sono {profileName}</h3>
+            <p className="text-slate-600 text-sm max-w-xs mx-auto mb-4">
               Come posso aiutarti oggi?
             </p>
             {suggestedPrompts.length > 0 && (
               <div className="flex flex-wrap gap-2 justify-center max-w-sm mx-auto">
-                {suggestedPrompts.slice(0, 3).map((prompt) => (
+                {suggestedPrompts.slice(0, 2).map((prompt) => (
                   <button
                     key={prompt}
                     onClick={() => {
@@ -190,7 +190,7 @@ export function ChatConversationView({
                       setInput(prompt)
                       inputRef.current?.focus()
                     }}
-                    className="px-3 py-2 bg-white border border-slate-200 rounded-full text-sm text-slate-600 hover:bg-slate-50 active:bg-slate-100 transition-colors shadow-sm"
+                    className="px-3 py-2 bg-white border border-slate-200 rounded-xl text-sm text-slate-700 hover:bg-slate-50 active:bg-slate-100 transition-colors shadow-sm"
                   >
                     {prompt}
                   </button>
@@ -241,9 +241,9 @@ export function ChatConversationView({
       {/* Input area - Fixed at bottom */}
       <div
         className={`
-          fixed left-0 right-0 bg-white border-t border-slate-200 px-3 py-2 z-40
+          fixed left-0 right-0 bg-white/96 border-t border-slate-200 px-3 py-2 z-40 backdrop-blur-xl
           transition-all duration-200
-          ${isKeyboardOpen ? 'bottom-0' : 'bottom-[calc(3.5rem+env(safe-area-inset-bottom))]'}
+          bottom-0
         `}
       >
         {/* Attached files preview */}
@@ -258,9 +258,9 @@ export function ChatConversationView({
               {attachedFiles.map((af, idx) => (
                 <div key={idx} className="relative flex-shrink-0">
                   {af.type === 'image' && af.preview ? (
-                    <img src={af.preview} alt="Preview" className="w-14 h-14 object-cover rounded-lg border" />
+                    <img src={af.preview} alt="Preview" className="w-14 h-14 object-cover rounded-xl border" />
                   ) : (
-                    <div className="w-14 h-14 bg-slate-100 rounded-lg border flex items-center justify-center">
+                    <div className="w-14 h-14 bg-slate-100 rounded-xl border flex items-center justify-center">
                       <File className="h-6 w-6 text-slate-400" />
                     </div>
                   )}
@@ -297,7 +297,7 @@ export function ChatConversationView({
               triggerHaptic('selection')
               fileInputRef.current?.click()
             }}
-            className="h-10 w-10 p-0 rounded-full text-slate-500 hover:text-sky-600 hover:bg-sky-50"
+            className="h-10 w-10 p-0 rounded-xl text-slate-500 hover:text-sky-700 hover:bg-sky-50"
           >
             <Paperclip className="h-5 w-5" />
           </Button>
@@ -316,7 +316,7 @@ export function ChatConversationView({
             }}
             placeholder={attachedFiles.length > 0 ? "Aggiungi una descrizione..." : "Scrivi un messaggio..."}
             disabled={isLoading}
-            className="flex-1 px-4 py-2.5 bg-slate-100 border-0 rounded-full text-sm focus:outline-none focus:ring-2 focus:ring-sky-500 transition-all"
+            className="flex-1 px-4 py-2.5 bg-slate-100 border border-slate-200 rounded-xl text-[15px] text-slate-900 focus:outline-none focus:ring-2 focus:ring-sky-500 transition-all"
           />
 
           {/* Send button */}
@@ -324,7 +324,7 @@ export function ChatConversationView({
             onClick={handleSend}
             disabled={(!input.trim() && attachedFiles.length === 0) || isLoading}
             size="sm"
-            className="h-10 w-10 p-0 rounded-full bg-gradient-to-br from-sky-500 to-blue-600 hover:from-sky-600 hover:to-blue-700 shadow-md transition-all disabled:opacity-50"
+            className="h-10 w-10 p-0 rounded-xl bg-slate-950 hover:bg-slate-800 shadow-md transition-all disabled:opacity-50"
           >
             <Send className="h-4 w-4" />
           </Button>
@@ -334,8 +334,8 @@ export function ChatConversationView({
   )
 }
 
-// Memoized message bubble for performance
-const MessageBubble = memo(function MessageBubble({
+// Memoized message bubble for performance — exported for reuse in teacher history view
+export const MessageBubble = memo(function MessageBubble({
   message,
   profileIcon,
   avatarColorClass = 'bg-gradient-to-br from-sky-500 to-blue-600',
@@ -354,15 +354,15 @@ const MessageBubble = memo(function MessageBubble({
     <motion.div
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
-      className={`flex gap-3 ${isUser ? 'justify-end' : 'justify-start'}`}
+      className={`flex gap-2 ${isUser ? 'justify-end' : 'justify-start'}`}
     >
       {/* Assistant avatar */}
       {!isUser && (
-        <div className={`w-9 h-9 rounded-xl ${avatarColorClass} flex items-center justify-center flex-shrink-0 shadow-md`}>
+        <div className={`mt-0.5 h-7 w-7 rounded-lg ${avatarColorClass} flex items-center justify-center flex-shrink-0 shadow-sm`}>
           {profileIcon ? (
-            <div className="text-white scale-75">{profileIcon}</div>
+            <div className="text-white scale-[0.68]">{profileIcon}</div>
           ) : (
-            <Bot className="h-5 w-5 text-white" />
+            <Bot className="h-4 w-4 text-white" />
           )}
         </div>
       )}
@@ -370,26 +370,26 @@ const MessageBubble = memo(function MessageBubble({
       {/* Message content */}
       <div
         className={`
-          max-w-[80%] rounded-2xl px-4 py-3 relative group
+          max-w-[92%] md:max-w-[80%] rounded-2xl px-3.5 py-3 relative group
           ${isUser
-            ? 'bg-gradient-to-br from-sky-500 to-blue-600 text-white rounded-br-md shadow-md'
-            : 'bg-white border border-slate-100 shadow-sm rounded-bl-md'
+            ? 'bg-slate-950 text-white rounded-br-md shadow-sm'
+            : 'bg-white border border-slate-200 shadow-sm rounded-bl-md'
           }
         `}
       >
         {isUser ? (
-          <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+          <p className="whitespace-pre-wrap text-[15px] leading-6">{message.content}</p>
         ) : (
           <div className="prose prose-sm prose-slate max-w-none">
             <ReactMarkdown
               remarkPlugins={[remarkGfm, remarkMath]}
               rehypePlugins={[rehypeKatex]}
               components={{
-                p: ({ children }) => <p className="mb-2 last:mb-0 text-sm">{children}</p>,
+                p: ({ children }) => <p className="mb-2 last:mb-0 text-[15px] leading-6 text-slate-800">{children}</p>,
                 ...markdownCodeComponents(),
-                ul: ({ children }) => <ul className="list-disc pl-4 mb-2 space-y-1">{children}</ul>,
-                ol: ({ children }) => <ol className="list-decimal pl-4 mb-2 space-y-1">{children}</ol>,
-                li: ({ children }) => <li className="text-sm">{children}</li>,
+                ul: ({ children }) => <ul className="list-disc pl-4 mb-2 space-y-1.5">{children}</ul>,
+                ol: ({ children }) => <ol className="list-decimal pl-4 mb-2 space-y-1.5">{children}</ol>,
+                li: ({ children }) => <li className="text-[15px] leading-6 text-slate-800">{children}</li>,
               }}
             >
               {message.content}
@@ -409,7 +409,7 @@ const MessageBubble = memo(function MessageBubble({
             </div>
             <button
               onClick={onCopy}
-              className="absolute -bottom-2 -right-2 w-7 h-7 bg-white border border-slate-200 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 group-active:opacity-100 transition-opacity shadow-sm"
+              className="absolute -bottom-2 -right-2 w-7 h-7 bg-white border border-slate-200 rounded-full flex items-center justify-center opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity shadow-sm"
             >
               {isCopied ? (
                 <Check className="h-3.5 w-3.5 text-green-500" />
