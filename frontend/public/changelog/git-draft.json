@@ -1,19 +1,14 @@
 {
-  "generated_at": "2026-04-23T08:24:22.922745+00:00",
-  "version_label": "2026.04.23-29f65006",
+  "generated_at": "2026-04-23T08:26:19.250744+00:00",
+  "version_label": "2026.04.23-96bc1b42",
   "title": "Aggiornamenti branch staging",
-  "summary": "Bozza generata automaticamente da 2 commit nuovi.",
-  "git_ref": "29f65006f853696caebc54b479953ceb0dccc9bd",
+  "summary": "Bozza generata automaticamente da 1 commit nuovi.",
+  "git_ref": "96bc1b42cf3f72ea6d3ea6e2c6621a8695b98301",
   "items": [
     {
-      "category": "new",
-      "title": "Deliver RAG, wiki, notebook and teacher chat updates",
-      "description": "Deliver RAG, wiki, notebook and teacher chat updates"
-    },
-    {
       "category": "improved",
-      "title": "Merge: bring uirefactor into staging",
-      "description": "Merge: bring uirefactor into staging"
+      "title": "Update generated changelog after staging merge",
+      "description": "Update generated changelog after staging merge"
     }
   ]
 }
