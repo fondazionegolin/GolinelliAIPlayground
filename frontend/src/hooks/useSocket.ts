@@ -410,6 +410,12 @@ export function useSocket(sessionId?: string): UseSocketReturn {
       }, 150)
     })
 
+    socket.on('module_toggled', (data: { module_key: string; is_enabled: boolean }) => {
+      if (studentToken && data.module_key === 'chat' && !data.is_enabled) {
+        window.dispatchEvent(new CustomEvent('studentPrivateChatDisabled', { detail: data }))
+      }
+    })
+
     socket.on('task_published', (data: { task_id: string; title: string; task_type: string }) => {
       const notification: ChatMessage = {
         id: `notif-${Date.now()}`,
@@ -485,6 +491,13 @@ export function useSocket(sessionId?: string): UseSocketReturn {
         notification_data: data,
       }
       setNotifications(prev => [...prev, notification])
+    })
+
+    socket.on('session_access_revoked', (data: { status: string; reason: string; session_id: string }) => {
+      if (studentToken) {
+        window.dispatchEvent(new CustomEvent('studentSessionAccessRevoked', { detail: data }))
+      }
+      socket.disconnect()
     })
 
     return () => {

@@ -1,14 +1,14 @@
 import json
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, or_
+from sqlalchemy import select, or_, func
 from typing import Annotated
 from datetime import datetime
 from uuid import UUID
 from pydantic import BaseModel
 
 from app.core.database import get_db
-from app.core.security import create_student_join_token
+from app.core.security import create_student_join_token, get_password_hash, verify_password
 from app.api.deps import get_current_student
 from app.models.session import Session, SessionStudent, SessionModule
 from app.models.credits import CreditLimit
@@ -16,9 +16,16 @@ from app.models.enums import LimitLevel
 from app.models.task import Task, TaskSubmission, TaskStatus, TaskType
 from app.models.document_draft import DocumentDraft
 from app.models.session_canvas import SessionCanvas
+from app.models.user import User
+from app.models.session import Class
 from app.schemas.document_draft import DocumentDraftCreate, DocumentDraftUpdate
 from app.models.enums import SessionStatus
-from app.schemas.auth import StudentJoinRequest, StudentJoinResponse
+from app.schemas.auth import (
+    StudentAccessCheckRequest,
+    StudentAccessCheckResponse,
+    StudentJoinRequest,
+    StudentJoinResponse,
+)
 from app.schemas.session import SessionResponse, SessionModuleResponse
 from app.realtime.gateway import sio
 
@@ -44,72 +51,143 @@ class CanvasUpsertRequest(BaseModel):
     base_version: int | None = None
 
 
-@router.post("/join", response_model=StudentJoinResponse)
-async def join_session(
-    request: StudentJoinRequest,
-    db: Annotated[AsyncSession, Depends(get_db)],
-):
-    # Find session by join code
+def _normalize_join_code(value: str) -> str:
+    return (value or "").strip().upper()
+
+
+def _normalize_nickname(value: str) -> str:
+    nickname = (value or "").strip()
+    if not nickname:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Nickname required",
+        )
+    if len(nickname) > 20:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Nickname too long",
+        )
+    return nickname
+
+
+def _validate_student_password(password: str | None) -> str:
+    cleaned = (password or "").strip()
+    if len(cleaned) < 8:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Password must be at least 8 characters",
+        )
+    return cleaned
+
+
+async def _get_access_session(db: AsyncSession, join_code: str) -> Session:
     result = await db.execute(
-        select(Session).where(Session.join_code == request.join_code.upper())
+        select(Session).where(Session.join_code == _normalize_join_code(join_code))
     )
     session = result.scalar_one_or_none()
-    
     if not session:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Invalid join code",
         )
-    
     if session.status != SessionStatus.ACTIVE:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Session is not active",
         )
-    
-    # Check if nickname already exists in session
+    return session
+
+
+async def _get_student_by_nickname(db: AsyncSession, session_id: UUID, nickname: str) -> SessionStudent | None:
     result = await db.execute(
         select(SessionStudent)
-        .where(SessionStudent.session_id == session.id)
-        .where(SessionStudent.nickname == request.nickname)
+        .where(SessionStudent.session_id == session_id)
+        .where(func.lower(SessionStudent.nickname) == nickname.lower())
+        .order_by(SessionStudent.created_at.desc())
+        .limit(1)
     )
-    existing = result.scalar_one_or_none()
-    
+    return result.scalar_one_or_none()
+
+
+def _build_student_join_response(student: SessionStudent, session: Session) -> StudentJoinResponse:
+    join_token = create_student_join_token(str(session.id), str(student.id), student.nickname)
+    student.join_token = join_token
+    return StudentJoinResponse(
+        join_token=join_token,
+        student_id=student.id,
+        session_id=session.id,
+        session_title=session.title,
+    )
+
+
+@router.post("/check-access", response_model=StudentAccessCheckResponse)
+async def check_session_access(
+    request: StudentAccessCheckRequest,
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    session = await _get_access_session(db, request.join_code)
+    nickname = _normalize_nickname(request.nickname)
+    existing = await _get_student_by_nickname(db, session.id, nickname)
+
+    if not existing:
+        access_mode = "register"
+    elif existing.password_hash:
+        access_mode = "login"
+    else:
+        access_mode = "claim"
+
+    return StudentAccessCheckResponse(
+        session_id=session.id,
+        session_title=session.title,
+        normalized_nickname=existing.nickname if existing else nickname,
+        access_mode=access_mode,
+    )
+
+
+@router.post("/join", response_model=StudentJoinResponse)
+async def join_session(
+    request: StudentJoinRequest,
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    session = await _get_access_session(db, request.join_code)
+    nickname = _normalize_nickname(request.nickname)
+    existing = await _get_student_by_nickname(db, session.id, nickname)
+
     if existing:
-        # Return existing token if student rejoins
         if existing.is_frozen:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail=f"Account frozen: {existing.frozen_reason or 'Contact teacher'}",
             )
-        
+
+        password = _validate_student_password(request.password)
+        if existing.password_hash:
+            if not verify_password(password, existing.password_hash):
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Password non corretta",
+                )
+        else:
+            existing.password_hash = get_password_hash(password)
+
         existing.last_seen_at = datetime.utcnow()
+        response = _build_student_join_response(existing, session)
         await db.commit()
-        
-        join_token = create_student_join_token(str(session.id), str(existing.id), existing.nickname)
-        
-        return StudentJoinResponse(
-            join_token=join_token,
-            student_id=existing.id,
-            session_id=session.id,
-            session_title=session.title,
-        )
-    
-    # Create new student
+        return response
+
+    password = _validate_student_password(request.password)
     join_token_placeholder = "pending"
     student = SessionStudent(
         tenant_id=session.tenant_id,
         session_id=session.id,
-        nickname=request.nickname,
+        nickname=nickname,
         join_token=join_token_placeholder,
+        password_hash=get_password_hash(password),
         last_seen_at=datetime.utcnow(),
     )
     db.add(student)
     await db.flush()
-    
-    # Generate actual token
-    join_token = create_student_join_token(str(session.id), str(student.id), student.nickname)
-    student.join_token = join_token
+    response = _build_student_join_response(student, session)
 
     # Create default monthly credit limit for student (2€/month)
     from datetime import timezone as _tz
@@ -131,13 +209,7 @@ async def join_session(
 
     await db.commit()
     await db.refresh(student)
-    
-    return StudentJoinResponse(
-        join_token=join_token,
-        student_id=student.id,
-        session_id=session.id,
-        session_title=session.title,
-    )
+    return response
 
 
 @router.get("/session")
@@ -160,6 +232,22 @@ async def get_session_info(
         .where(SessionModule.is_enabled == True)
     )
     modules = result.scalars().all()
+
+    teacher_result = await db.execute(
+        select(User.id, User.first_name, User.last_name)
+        .join(Class, Class.teacher_id == User.id)
+        .join(Session, Session.class_id == Class.id)
+        .where(Session.id == session.id)
+    )
+    teacher_row = teacher_result.first()
+    teacher_payload = None
+    if teacher_row:
+        teacher_id, first_name, last_name = teacher_row
+        teacher_name = f"{first_name or ''} {last_name or ''}".strip() or "Docente"
+        teacher_payload = {
+            "id": str(teacher_id),
+            "name": teacher_name,
+        }
     
     return {
         "session": SessionResponse.model_validate(session),
@@ -168,6 +256,7 @@ async def get_session_info(
             "nickname": student.nickname,
             "is_frozen": student.is_frozen,
         },
+        "teacher": teacher_payload,
         "enabled_modules": [
             {
                 "key": m.module_key,

@@ -48,7 +48,7 @@ interface ResetResult {
 }
 
 interface CsvRow {
-  id: string      // local key
+  id: string
   email: string
   firstName: string
   lastName: string
@@ -80,6 +80,7 @@ export default function TeachersPage() {
 
   const [search, setSearch] = useState('')
   const [showInvite, setShowInvite] = useState(false)
+  const [showInvitations, setShowInvitations] = useState(true)
   const [inviteEmail, setInviteEmail] = useState('')
   const [inviteFirstName, setInviteFirstName] = useState('')
   const [inviteLastName, setInviteLastName] = useState('')
@@ -114,7 +115,7 @@ export default function TeachersPage() {
   const { data: invitations } = useQuery<any[]>({
     queryKey: ['admin-platform-invitations'],
     queryFn: async () => (await creditsApi.getInvitations()).data,
-    refetchInterval: 20_000,   // poll ogni 20s per aggiornamenti real-time
+    refetchInterval: 20_000,
     staleTime: 10_000,
   })
 
@@ -201,7 +202,7 @@ export default function TeachersPage() {
       toast({ title: 'Invito reinviato' })
     },
     onError: (error: any) => {
-      toast({ variant: 'destructive', title: 'Reinvio fallito', description: error.response?.data?.detail || 'Impossibile reinviare l’invito' })
+      toast({ variant: 'destructive', title: 'Reinvio fallito', description: error.response?.data?.detail || 'Impossibile reinviare l\'invito' })
     },
   })
 
@@ -213,7 +214,7 @@ export default function TeachersPage() {
       toast({ title: 'Invito rimosso', description: res.data?.message })
     },
     onError: (error: any) => {
-      toast({ variant: 'destructive', title: 'Rimozione fallita', description: error.response?.data?.detail || 'Impossibile rimuovere l’invito' })
+      toast({ variant: 'destructive', title: 'Rimozione fallita', description: error.response?.data?.detail || 'Impossibile rimuovere l\'invito' })
     },
   })
 
@@ -247,23 +248,19 @@ export default function TeachersPage() {
   const parseCsv = useCallback((text: string) => {
     const lines = text.split('\n').map(l => l.trim()).filter(Boolean)
     if (lines.length === 0) return
-    // Detect header row
     const firstLower = lines[0].toLowerCase()
     const hasHeader = firstLower.includes('email') || firstLower.includes('nome') || firstLower.includes('first')
     const dataLines = hasHeader ? lines.slice(1) : lines
-    // Detect separator
     const sep = lines[0].includes(';') ? ';' : ','
-    // Detect column order from header (or assume email,nome,cognome,scuola)
     let colEmail = 0, colFirst = 1, colLast = 2, colSchool = 3
     if (hasHeader) {
       const headers = lines[0].split(sep).map(h => h.trim().toLowerCase())
-      // NOTE: 'cognome'.includes('nome') === true, so check cognome BEFORE nome and use exact/negative matches
       const ei = headers.findIndex(h => h.includes('email') || h === 'e-mail')
       const li = headers.findIndex(h => h.includes('cognome') || h === 'last_name' || h === 'last' || h === 'surname')
       const fi = headers.findIndex(h => (h === 'nome' || h === 'first_name' || h === 'first' || h === 'name') && !h.includes('cognome'))
       const si = headers.findIndex(h => h.includes('scuola') || h.includes('school') || h.includes('istituto'))
       colEmail = ei >= 0 ? ei : 0
-      colFirst = fi >= 0 ? fi : (li === 1 ? 2 : 1)   // fallback avoids colliding with lastName col
+      colFirst = fi >= 0 ? fi : (li === 1 ? 2 : 1)
       colLast  = li >= 0 ? li : (fi === 2 ? 1 : 2)
       colSchool = si >= 0 ? si : 3
     }
@@ -325,9 +322,7 @@ export default function TeachersPage() {
   const teachers = (teachersStatus?.items || []).filter((t) => {
     if (!search.trim()) return true
     const q = search.toLowerCase()
-    return (
-      [t.first_name, t.last_name, t.email, t.institution].join(' ').toLowerCase().includes(q)
-    )
+    return [t.first_name, t.last_name, t.email, t.institution].join(' ').toLowerCase().includes(q)
   })
 
   const selectedCount = csvRows.filter(r => r.selected && r.status === 'idle').length
@@ -340,7 +335,15 @@ export default function TeachersPage() {
   ;(teachersStatus?.items || []).forEach((teacher) => {
     teacherByEmail[teacher.email.toLowerCase()] = teacher
   })
-  const filteredInvitations = (invitations || []).filter((inv: any) => {
+
+  // Only show pending/expired invitations — accepted ones are already in the teachers table
+  const pendingOnlyInvitations = (invitations || []).filter((inv: any) => {
+    const teacher = teacherByEmail[inv.email?.toLowerCase()]
+    const hasLoggedIn = !!teacher?.last_login_at
+    return !(inv.status === 'accepted' || hasLoggedIn)
+  })
+
+  const filteredInvitations = pendingOnlyInvitations.filter((inv: any) => {
     if (!search.trim()) return true
     const q = search.toLowerCase()
     return [inv.email, inv.first_name, inv.last_name, inv.group_tag].join(' ').toLowerCase().includes(q)
@@ -364,8 +367,7 @@ export default function TeachersPage() {
         </div>
         <Button
           onClick={() => setShowInvite((v) => !v)}
-          className="gap-2 flex-shrink-0"
-          style={{ backgroundColor: '#e85c8d' }}
+          className="gap-2 flex-shrink-0 bg-slate-800 hover:bg-slate-900 text-white"
         >
           <UserPlus className="h-4 w-4" />
           Invita docente
@@ -426,131 +428,17 @@ export default function TeachersPage() {
         </div>
       )}
 
-      {/* Invite history — always visible and near the top */}
-      {(invitations || []).length > 0 && (
-        <Card className="border-rose-200/70">
-          <CardContent className="p-4">
-            <div className="mb-3 flex items-center justify-between">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-wide text-rose-600">Inviti docenti</p>
-                <p className="mt-1 text-sm text-slate-500">
-                  {filteredInvitations.length} risultati
-                  {search.trim() ? ` per "${search}"` : ` su ${(invitations || []).length} inviti`}
-                </p>
-              </div>
-              <span className="flex items-center gap-1 text-[10px] text-slate-400">
-                <span className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                aggiornamento automatico
-              </span>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[720px] text-xs">
-                <thead>
-                  <tr className="border-b text-left text-[11px] uppercase text-slate-400">
-                    <th className="pb-1.5 font-medium">Docente</th>
-                    <th className="pb-1.5 font-medium">Gruppo</th>
-                    <th className="pb-1.5 font-medium">Invito</th>
-                    <th className="pb-1.5 font-medium">Piattaforma</th>
-                    <th className="pb-1.5 font-medium">Inviato</th>
-                    <th className="pb-1.5 font-medium">Scadenza</th>
-                    <th className="pb-1.5 text-right font-medium">Azioni</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredInvitations.length === 0 ? (
-                    <tr>
-                      <td colSpan={7} className="py-8 text-center text-sm text-slate-400">
-                        Nessun invito trovato
-                      </td>
-                    </tr>
-                  ) : (
-                    filteredInvitations.slice(0, 50).map((inv: any) => {
-                      const teacher = teacherByEmail[inv.email?.toLowerCase()]
-                      const hasLoggedIn = !!teacher?.last_login_at
-                      const isAccepted = inv.status === 'accepted' || hasLoggedIn
-                      const isExpired = !isAccepted && !inv.responded_at && new Date(inv.expires_at) < new Date()
-                      return (
-                        <tr key={inv.id} className="border-t border-slate-100">
-                          <td className="py-2">
-                            <div>
-                              <p className="font-medium text-slate-700">{[inv.first_name, inv.last_name].filter(Boolean).join(' ') || '—'}</p>
-                              <p className="font-mono text-[10px] text-slate-400">{inv.email}</p>
-                            </div>
-                          </td>
-                          <td className="py-2">
-                            {inv.group_tag
-                              ? <span className="rounded-full border border-indigo-100 bg-indigo-50 px-1.5 py-0.5 text-[10px] font-medium text-indigo-600">{inv.group_tag}</span>
-                              : <span className="text-slate-300">—</span>}
-                          </td>
-                          <td className="py-2">
-                            {isAccepted
-                              ? <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700">
-                                  <CheckCircle2 className="h-3 w-3" />accettato
-                                  <span className="font-normal opacity-70">· {formatDate(inv.responded_at || teacher?.last_login_at)}</span>
-                                </span>
-                              : isExpired
-                                ? <span className="rounded-full bg-red-50 px-1.5 py-0.5 text-[10px] font-medium text-red-500">scaduto</span>
-                                : <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-700">in attesa</span>}
-                          </td>
-                          <td className="py-2">
-                            {hasLoggedIn
-                              ? <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-1.5 py-0.5 text-[10px] font-semibold text-blue-700">
-                                  <LogIn className="h-3 w-3" />entrato
-                                  <span className="font-normal opacity-70">· {formatDate(teacher!.last_login_at)}</span>
-                                </span>
-                              : <span className="text-[10px] text-slate-300">mai</span>}
-                          </td>
-                          <td className="py-2 text-slate-500">{formatDate(inv.created_at)}</td>
-                          <td className="py-2 text-slate-500">{formatDate(inv.expires_at)}</td>
-                          <td className="py-2 text-right">
-                            <div className="flex items-center justify-end gap-2">
-                              <button
-                                onClick={() => resendInvitationMutation.mutate(inv.id)}
-                                disabled={resendInvitationMutation.isPending || deleteInvitationMutation.isPending}
-                                className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 py-1 text-[11px] font-medium text-slate-600 transition-colors hover:border-[#e85c8d]/30 hover:text-[#e85c8d] disabled:opacity-50"
-                                title={isAccepted ? 'Invia un nuovo link di attivazione' : 'Reinvia email di invito'}
-                              >
-                                <Send className="h-3 w-3" />
-                                {isAccepted ? 'Nuovo link' : 'Reinvia'}
-                              </button>
-                              <button
-                                onClick={() => {
-                                  const msg = hasLoggedIn
-                                    ? `Rimuovere l'invito per ${inv.email}? L'account rimarrà attivo.`
-                                    : `Rimuovere l'invito per ${inv.email}? L'account verrà disattivato.`
-                                  if (confirm(msg)) deleteInvitationMutation.mutate(inv.id)
-                                }}
-                                disabled={deleteInvitationMutation.isPending || resendInvitationMutation.isPending}
-                                className="inline-flex items-center gap-1 rounded-lg border border-red-200 bg-red-50 px-2 py-1 text-[11px] font-medium text-red-600 transition-colors hover:bg-red-100 disabled:opacity-50"
-                                title={hasLoggedIn ? 'Rimuove solo il record invito (account rimane)' : 'Rimuove invito e disattiva account'}
-                              >
-                                <Trash2 className="h-3 w-3" />
-                                Rimuovi invito
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      )
-                    })
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
       {/* ── INVITE PANEL ─────────────────────────────── */}
       {showInvite && (
-        <div className="rounded-xl border border-[#e85c8d]/30 bg-rose-50/40 p-5 space-y-5">
-          <h3 className="font-semibold text-slate-800 flex items-center gap-2">
-            <Mail className="h-4 w-4 text-[#e85c8d]" />
-            Importa docenti da CSV
+        <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-5 space-y-5">
+          <h3 className="font-semibold text-slate-700 flex items-center gap-2">
+            <Mail className="h-4 w-4 text-slate-500" />
+            Invita docenti
           </h3>
 
           {/* ── single invite row ── */}
           <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-3">
-            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Invito singolo</p>
+            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Invito singolo</p>
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 md:grid-cols-4">
               <div className="space-y-1">
                 <Label className="text-xs">Email *</Label>
@@ -578,8 +466,7 @@ export default function TeachersPage() {
             ) : null}
             <div className="flex flex-wrap items-center gap-2">
               <Button
-                className="h-8 text-sm"
-                style={{ backgroundColor: '#e85c8d' }}
+                className="h-8 text-sm bg-slate-800 hover:bg-slate-900 text-white"
                 disabled={!inviteEmail.trim() || !!inviteTargetTeacher || inviteMutation.isPending}
                 onClick={() => inviteMutation.mutate({ email: inviteEmail.trim(), firstName: inviteFirstName.trim() || undefined, lastName: inviteLastName.trim() || undefined, school: inviteSchool.trim() || undefined })}
               >
@@ -603,12 +490,12 @@ export default function TeachersPage() {
 
           {/* ── CSV import ── */}
           <div className="space-y-4">
-            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Importazione CSV</p>
+            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Importazione CSV</p>
 
             {/* Drop zone */}
             {csvRows.length === 0 && (
               <div
-                className={`relative rounded-xl border-2 border-dashed transition-colors cursor-pointer flex flex-col items-center justify-center gap-3 py-10 ${dragOver ? 'border-[#e85c8d] bg-rose-50' : 'border-slate-200 bg-white hover:border-slate-300'}`}
+                className={`relative rounded-xl border-2 border-dashed transition-colors cursor-pointer flex flex-col items-center justify-center gap-3 py-10 ${dragOver ? 'border-slate-500 bg-slate-100' : 'border-slate-200 bg-white hover:border-slate-300'}`}
                 onDragOver={e => { e.preventDefault(); setDragOver(true) }}
                 onDragLeave={() => setDragOver(false)}
                 onDrop={e => {
@@ -644,8 +531,7 @@ export default function TeachersPage() {
                     </Button>
                     <Button
                       size="sm"
-                      className="h-7 text-xs gap-1.5"
-                      style={{ backgroundColor: '#e85c8d' }}
+                      className="h-7 text-xs gap-1.5 bg-slate-800 hover:bg-slate-900 text-white"
                       disabled={selectedCount === 0 || isSendingAll}
                       onClick={sendAllSelected}
                     >
@@ -680,7 +566,7 @@ export default function TeachersPage() {
                       value={customMessage}
                       onChange={e => setCustomMessage(e.target.value)}
                       placeholder="Testo aggiuntivo che apparirà nell'email di invito (facoltativo)…"
-                      className="w-full rounded-lg border border-slate-200 p-3 text-sm resize-none focus:outline-none focus:ring-1 focus:ring-[#e85c8d] min-h-[80px]"
+                      className="w-full rounded-lg border border-slate-200 p-3 text-sm resize-none focus:outline-none focus:ring-1 focus:ring-slate-300 min-h-[80px]"
                     />
                   )}
                 </div>
@@ -737,7 +623,7 @@ export default function TeachersPage() {
                             {row.status === 'idle' && (
                               <button
                                 onClick={() => sendSingleRow(row)}
-                                className="text-xs text-[#e85c8d] hover:text-[#c44a76] font-medium"
+                                className="text-xs text-slate-700 hover:text-slate-900 font-medium"
                               >
                                 Invia
                               </button>
@@ -754,8 +640,113 @@ export default function TeachersPage() {
               </div>
             )}
           </div>
-
         </div>
+      )}
+
+      {/* ── INVITI IN ATTESA (pending/scaduti) ─────────── */}
+      {pendingOnlyInvitations.length > 0 && (
+        <Card className="border-slate-200">
+          <CardContent className="p-4">
+            <div className="mb-3 flex items-center justify-between">
+              <button
+                onClick={() => setShowInvitations(v => !v)}
+                className="flex items-center gap-2 text-left group"
+              >
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 group-hover:text-slate-700 transition-colors">
+                    Inviti in attesa
+                  </p>
+                  <p className="mt-0.5 text-sm text-slate-400">
+                    {filteredInvitations.length} risultati
+                    {search.trim() ? ` per "${search}"` : ` · ${pendingOnlyInvitations.length} non ancora accettati`}
+                  </p>
+                </div>
+                {showInvitations
+                  ? <ChevronUp className="h-4 w-4 text-slate-400 ml-2" />
+                  : <ChevronDown className="h-4 w-4 text-slate-400 ml-2" />}
+              </button>
+              <span className="flex items-center gap-1 text-[10px] text-slate-400">
+                <span className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                aggiornamento automatico
+              </span>
+            </div>
+
+            {showInvitations && (
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[720px] text-xs">
+                  <thead>
+                    <tr className="border-b text-left text-[11px] uppercase text-slate-400">
+                      <th className="pb-1.5 font-medium">Docente</th>
+                      <th className="pb-1.5 font-medium">Gruppo</th>
+                      <th className="pb-1.5 font-medium">Stato</th>
+                      <th className="pb-1.5 font-medium">Inviato</th>
+                      <th className="pb-1.5 font-medium">Scadenza</th>
+                      <th className="pb-1.5 text-right font-medium">Azioni</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredInvitations.length === 0 ? (
+                      <tr>
+                        <td colSpan={6} className="py-8 text-center text-sm text-slate-400">
+                          Nessun invito trovato
+                        </td>
+                      </tr>
+                    ) : (
+                      filteredInvitations.slice(0, 50).map((inv: any) => {
+                        const isExpired = !inv.responded_at && new Date(inv.expires_at) < new Date()
+                        return (
+                          <tr key={inv.id} className="border-t border-slate-100">
+                            <td className="py-2">
+                              <div>
+                                <p className="font-medium text-slate-700">{[inv.first_name, inv.last_name].filter(Boolean).join(' ') || '—'}</p>
+                                <p className="font-mono text-[10px] text-slate-400">{inv.email}</p>
+                              </div>
+                            </td>
+                            <td className="py-2">
+                              {inv.group_tag
+                                ? <span className="rounded-full border border-indigo-100 bg-indigo-50 px-1.5 py-0.5 text-[10px] font-medium text-indigo-600">{inv.group_tag}</span>
+                                : <span className="text-slate-300">—</span>}
+                            </td>
+                            <td className="py-2">
+                              {isExpired
+                                ? <span className="rounded-full bg-red-50 px-1.5 py-0.5 text-[10px] font-medium text-red-500">scaduto</span>
+                                : <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-700">in attesa</span>}
+                            </td>
+                            <td className="py-2 text-slate-500">{formatDate(inv.created_at)}</td>
+                            <td className="py-2 text-slate-500">{formatDate(inv.expires_at)}</td>
+                            <td className="py-2 text-right">
+                              <div className="flex items-center justify-end gap-2">
+                                <button
+                                  onClick={() => resendInvitationMutation.mutate(inv.id)}
+                                  disabled={resendInvitationMutation.isPending || deleteInvitationMutation.isPending}
+                                  className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 py-1 text-[11px] font-medium text-slate-600 transition-colors hover:border-slate-400 hover:text-slate-800 disabled:opacity-50"
+                                >
+                                  <Send className="h-3 w-3" />
+                                  Reinvia
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    if (confirm(`Rimuovere l'invito per ${inv.email}? L'account verrà disattivato.`))
+                                      deleteInvitationMutation.mutate(inv.id)
+                                  }}
+                                  disabled={deleteInvitationMutation.isPending || resendInvitationMutation.isPending}
+                                  className="inline-flex items-center gap-1 rounded-lg border border-red-200 bg-red-50 px-2 py-1 text-[11px] font-medium text-red-600 transition-colors hover:bg-red-100 disabled:opacity-50"
+                                >
+                                  <Trash2 className="h-3 w-3" />
+                                  Rimuovi
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        )
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </CardContent>
+        </Card>
       )}
 
       {/* ── PENDING APPROVALS BLOCK ────────────────────── */}
@@ -816,7 +807,6 @@ export default function TeachersPage() {
 
       {/* ── TEACHERS TABLE ─────────────────────────────── */}
       <div className="space-y-3">
-        {/* Table card */}
         <Card>
           <CardContent className="p-0">
             {loadingTeachers ? (
@@ -866,8 +856,8 @@ export default function TeachersPage() {
                         {/* Name / email / badge */}
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-2.5">
-                            <div className="w-8 h-8 rounded-full bg-[#1a1a2e]/10 flex items-center justify-center flex-shrink-0">
-                              <GraduationCap className="h-4 w-4 text-[#1a1a2e]" />
+                            <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center flex-shrink-0">
+                              <GraduationCap className="h-4 w-4 text-slate-500" />
                             </div>
                             <div>
                               <p className="font-semibold text-slate-800 leading-tight">
@@ -920,7 +910,7 @@ export default function TeachersPage() {
                                 type="number"
                                 min="0"
                                 step="0.5"
-                                className="w-16 h-6 border border-slate-300 rounded px-1 text-xs focus:outline-none focus:ring-1 focus:ring-[#1a1a2e]"
+                                className="w-16 h-6 border border-slate-300 rounded px-1 text-xs focus:outline-none focus:ring-1 focus:ring-slate-400"
                                 value={editingCapValue}
                                 onChange={(e) => setEditingCapValue(e.target.value)}
                                 autoFocus

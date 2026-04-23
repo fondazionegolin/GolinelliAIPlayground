@@ -88,6 +88,7 @@ class TeacherConversation(Base):
     teacher_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
     title = Column(String(255), nullable=True)
     agent_mode = Column(String(50), nullable=True)  # 'default', 'quiz', 'report', 'image', 'dataset'
+    document_json = Column(JSONB, nullable=True)  # generated document (brochure/dispensa)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 

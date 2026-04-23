@@ -1,134 +1,136 @@
-import { X, Sparkles, FileSpreadsheet, MessageSquareDiff, Wand2, Database, Bot, Zap } from 'lucide-react'
+import { useQuery } from '@tanstack/react-query'
+import { Sparkles, Wand2, Wrench, X } from 'lucide-react'
+
+import { platformApi } from '@/lib/api'
 import { Button } from '@/components/ui/button'
 
-// Bump this string on every release to re-trigger the modal for all users.
-export const WHATS_NEW_VERSION = 'v2026.03.2'
-const LS_KEY = 'whats_new_seen'
-
-export function shouldShowWhatsNew(): boolean {
-  try {
-    return localStorage.getItem(LS_KEY) !== WHATS_NEW_VERSION
-  } catch {
-    return false
-  }
-}
-
-export function markWhatsNewSeen() {
-  try {
-    localStorage.setItem(LS_KEY, WHATS_NEW_VERSION)
-  } catch {}
-}
-
-interface Feature {
-  icon: React.ReactNode
+interface ChangelogItem {
+  category: 'new' | 'improved' | 'fixed'
   title: string
   description: string
-  badge: 'new' | 'improved'
 }
 
-const FEATURES: Feature[] = [
-  {
-    icon: <Database className="h-5 w-5 text-indigo-600" />,
-    title: 'Knowledge Base per Teacherbot',
-    description: 'Carica PDF, Word, Excel o CSV direttamente nel builder del tuo teacherbot. Il bot risponderà agli studenti usando i tuoi documenti come fonte di riferimento.',
-    badge: 'new',
-  },
-  {
-    icon: <MessageSquareDiff className="h-5 w-5 text-purple-600" />,
-    title: 'System prompt personalizzabili',
-    description: 'Modifica il comportamento del tuo assistente docente e di ogni chatbot di sessione. Ogni sessione può avere configurazioni diverse.',
-    badge: 'new',
-  },
-  {
-    icon: <FileSpreadsheet className="h-5 w-5 text-emerald-600" />,
-    title: 'File Excel e CSV nei chatbot',
-    description: 'Allega fogli Excel e file CSV ai chatbot. Il sistema mostra un\'anteprima ricca con statistiche per colonna e suggerisce analisi pertinenti.',
-    badge: 'new',
-  },
-  {
-    icon: <Wand2 className="h-5 w-5 text-amber-600" />,
-    title: 'Assistente prompt granulare',
-    description: 'Seleziona una porzione del system prompt e ottieni espansioni AI con regole comportamentali precise. Utile per raffinare il comportamento senza riscrivere tutto.',
-    badge: 'new',
-  },
-  {
-    icon: <Zap className="h-5 w-5 text-sky-600" />,
-    title: 'Gemini Flash e nuovi modelli',
-    description: 'Sono ora disponibili Gemini Flash Lite e ulteriori modelli veloci. Selezionali nelle impostazioni di sessione o nel builder del teacherbot.',
-    badge: 'improved',
-  },
-  {
-    icon: <Bot className="h-5 w-5 text-rose-600" />,
-    title: 'Miglioramenti al pannello admin',
-    description: 'Nuovo layout del pannello di controllo, gestione limiti di costo per docente, log transazioni e personalizzazione email.',
-    badge: 'improved',
-  },
-]
-
-const BADGE_STYLES = {
-  new: 'bg-emerald-100 text-emerald-700',
-  improved: 'bg-sky-100 text-sky-700',
+interface ChangelogRelease {
+  id: string
+  version_label: string
+  title: string
+  summary?: string | null
+  git_ref?: string | null
+  items: ChangelogItem[]
+  published_at?: string | null
 }
 
-interface WhatsNewModalProps {
-  onClose: () => void
+const CATEGORY_META = {
+  new: {
+    label: 'Nuovo',
+    icon: Sparkles,
+    badgeClass: 'bg-fuchsia-100 text-fuchsia-700 border border-fuchsia-200',
+  },
+  improved: {
+    label: 'Migliorato',
+    icon: Wand2,
+    badgeClass: 'bg-sky-100 text-sky-700 border border-sky-200',
+  },
+  fixed: {
+    label: 'Corretto',
+    icon: Wrench,
+    badgeClass: 'bg-emerald-100 text-emerald-700 border border-emerald-200',
+  },
 }
 
-export default function WhatsNewModal({ onClose }: WhatsNewModalProps) {
-  const handleClose = () => {
-    markWhatsNewSeen()
-    onClose()
-  }
+export default function WhatsNewModal({ onClose }: { onClose: () => void }) {
+  const { data: releases = [], isLoading } = useQuery<ChangelogRelease[]>({
+    queryKey: ['platform-changelog'],
+    queryFn: async () => {
+      const res = await platformApi.listChangelog()
+      return res.data
+    },
+  })
 
   return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[200] flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden">
-        {/* Header */}
-        <div className="px-6 pt-6 pb-4 border-b border-slate-100 flex items-start justify-between flex-shrink-0">
+    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
+      <div className="flex max-h-[90vh] w-full max-w-4xl flex-col overflow-hidden rounded-[28px] bg-white shadow-2xl">
+        <div className="flex items-start justify-between border-b border-slate-100 px-6 pb-4 pt-6">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-md">
+            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-fuchsia-500 via-pink-500 to-sky-500 shadow-lg shadow-fuchsia-500/20">
               <Sparkles className="h-5 w-5 text-white" />
             </div>
             <div>
-              <h2 className="text-lg font-bold text-slate-900">Novità nella piattaforma</h2>
-              <p className="text-xs text-slate-400 mt-0.5">{WHATS_NEW_VERSION} · Marzo 2026</p>
+              <h2 className="text-lg font-semibold text-slate-900">Changelog piattaforma</h2>
+              <p className="mt-1 text-sm text-slate-500">Novità, miglioramenti e correzioni visibili da studenti e docenti tramite il badge beta.</p>
             </div>
           </div>
-          <button
-            onClick={handleClose}
-            className="text-slate-400 hover:text-slate-600 transition-colors mt-0.5"
-          >
+          <button onClick={onClose} className="rounded-xl p-2 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600">
             <X className="h-5 w-5" />
           </button>
         </div>
 
-        {/* Feature list */}
-        <div className="overflow-y-auto flex-1 px-6 py-4 space-y-3">
-          {FEATURES.map((f, i) => (
-            <div key={i} className="flex gap-4 p-3 rounded-xl hover:bg-slate-50 transition-colors">
-              <div className="w-9 h-9 rounded-lg bg-slate-100 flex items-center justify-center flex-shrink-0 mt-0.5">
-                {f.icon}
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="font-semibold text-slate-800 text-sm">{f.title}</span>
-                  <span className={`text-[10px] font-bold uppercase px-1.5 py-0.5 rounded ${BADGE_STYLES[f.badge]}`}>
-                    {f.badge === 'new' ? 'Nuovo' : 'Migliorato'}
-                  </span>
-                </div>
-                <p className="text-sm text-slate-500 mt-0.5 leading-relaxed">{f.description}</p>
-              </div>
+        <div className="flex-1 overflow-y-auto px-6 py-5">
+          {isLoading ? (
+            <div className="rounded-[24px] border border-slate-200 bg-slate-50 p-6 text-sm text-slate-500">
+              Caricamento changelog…
             </div>
-          ))}
+          ) : releases.length === 0 ? (
+            <div className="rounded-[24px] border border-dashed border-slate-300 bg-slate-50 p-6 text-sm text-slate-500">
+              Nessuna release pubblicata al momento.
+            </div>
+          ) : (
+            <div className="space-y-5">
+              {releases.map((release) => (
+                <section key={release.id} className="rounded-[28px] border border-slate-200 bg-slate-50/80 p-5">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="rounded-full bg-slate-900 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-white">
+                          {release.version_label}
+                        </span>
+                        {release.published_at && (
+                          <span className="text-xs text-slate-400">
+                            {new Date(release.published_at).toLocaleDateString('it-IT', { day: '2-digit', month: 'long', year: 'numeric' })}
+                          </span>
+                        )}
+                      </div>
+                      <h3 className="mt-3 text-xl font-semibold text-slate-900">{release.title}</h3>
+                      {release.summary && <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">{release.summary}</p>}
+                    </div>
+                    {release.git_ref && (
+                      <span className="rounded-full border border-slate-200 bg-white px-3 py-1 font-mono text-[11px] text-slate-500">
+                        {release.git_ref}
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="mt-4 space-y-3">
+                    {release.items.map((item, index) => {
+                      const meta = CATEGORY_META[item.category] ?? CATEGORY_META.improved
+                      const Icon = meta.icon
+                      return (
+                        <div key={`${release.id}-${index}`} className="flex gap-4 rounded-[22px] border border-slate-200 bg-white px-4 py-4">
+                          <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-2xl bg-slate-100">
+                            <Icon className="h-5 w-5 text-slate-700" />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="text-sm font-semibold text-slate-900">{item.title}</span>
+                              <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${meta.badgeClass}`}>
+                                {meta.label}
+                              </span>
+                            </div>
+                            <p className="mt-1 text-sm leading-6 text-slate-600">{item.description}</p>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </section>
+              ))}
+            </div>
+          )}
         </div>
 
-        {/* Footer */}
-        <div className="px-6 pb-5 pt-4 border-t border-slate-100 flex justify-end flex-shrink-0">
-          <Button
-            onClick={handleClose}
-            className="bg-[#181b1e] hover:bg-[#0f1113] text-white px-6"
-          >
-            Ottimo, grazie!
+        <div className="flex justify-end border-t border-slate-100 px-6 py-4">
+          <Button onClick={onClose} className="bg-[#181b1e] hover:bg-[#0f1113] text-white">
+            Chiudi
           </Button>
         </div>
       </div>

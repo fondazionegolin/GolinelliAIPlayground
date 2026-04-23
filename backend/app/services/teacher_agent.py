@@ -603,6 +603,45 @@ STILE:
 - Feedback costruttivo nelle soluzioni"""
 
 
+def _extract_quiz_payload(raw_text: str) -> Optional[dict]:
+    text = (raw_text or "").strip()
+    candidates: list[str] = []
+
+    quiz_match = re.search(r"```quiz\s*([\s\S]*?)```", text, re.IGNORECASE)
+    if quiz_match:
+        candidates.append(quiz_match.group(1).strip())
+
+    json_match = re.search(r"```json\s*([\s\S]*?)```", text, re.IGNORECASE)
+    if json_match:
+        candidates.append(json_match.group(1).strip())
+
+    object_match = re.search(r"\{[\s\S]*\"questions\"[\s\S]*\}", text)
+    if object_match:
+        candidates.append(object_match.group(0).strip())
+
+    for candidate in candidates:
+        try:
+            parsed = json.loads(candidate)
+            validated = QuizData(**parsed)
+            return validated.model_dump()
+        except Exception:
+            continue
+
+    return None
+
+
+def _format_quiz_response(raw_text: str, quiz_payload: dict) -> str:
+    intro = re.sub(r"```quiz[\s\S]*?```", "", raw_text or "", flags=re.IGNORECASE)
+    intro = re.sub(r"```json[\s\S]*?```", "", intro, flags=re.IGNORECASE).strip()
+    if not intro:
+        question_count = len(quiz_payload.get("questions", []))
+        intro = f"Ho creato un quiz di {question_count} domande, pronto per la pubblicazione."
+    return (
+        f"{intro}\n\n"
+        f"```quiz\n{json.dumps(quiz_payload, indent=2, ensure_ascii=False)}\n```"
+    )
+
+
 # ============================================================================
 # TOOL EXECUTOR FUNCTIONS
 # ============================================================================
@@ -736,9 +775,9 @@ async def generate_quiz_with_tools(
                 # No more tool calls, return final response
                 response_text = message.content or ""
 
-                # Ensure response has quiz block
-                if quiz_json and "```quiz" not in response_text:
-                    response_text += f"\n\n```quiz\n{json.dumps(quiz_json, indent=2, ensure_ascii=False)}\n```"
+                normalized_quiz = quiz_json or _extract_quiz_payload(response_text)
+                if normalized_quiz:
+                    return _format_quiz_response(response_text, normalized_quiz)
 
                 return response_text
 
@@ -749,7 +788,7 @@ async def generate_quiz_with_tools(
 
     # Max iterations reached, return with quiz if we have one
     if quiz_json:
-        return f"Quiz generato:\n\n```quiz\n{json.dumps(quiz_json, indent=2, ensure_ascii=False)}\n```"
+        return _format_quiz_response("", quiz_json)
 
     return "Mi dispiace, non sono riuscito a completare la generazione del quiz."
 
@@ -855,6 +894,9 @@ async def generate_quiz_without_tools(messages: list[dict], provider: str, model
         temperature=0.7,
         max_tokens=2048,
     )
+    quiz_payload = _extract_quiz_payload(response.content)
+    if quiz_payload:
+        return _format_quiz_response(response.content, quiz_payload)
     return response.content
 
 
@@ -1380,9 +1422,47 @@ async def generate_report_widgets(
     if not structured_context:
         return "Non ho dati sufficienti per mostrarti i selettori. Assicurati di avere classi e sessioni attive."
 
+    report_type_patterns = {
+        "dashboard_classe": ["dashboard", "cruscotto", "classe", "panoramica classe", "overview classe"],
+        "apprendimenti": ["apprendimenti", "competenze", "learning", "risultati didattici"],
+        "partecipazione": ["partecipazione", "engagement", "interazione", "chat", "coinvolgimento"],
+        "classifiche": ["classifiche", "ranking", "top", "graduatoria"],
+        "criticita": ["criticità", "criticita", "rischi", "fragilità", "attenzione"],
+    }
+
+    report_type_meta = {
+        "dashboard_classe": {
+            "label": "Dashboard Classe",
+            "focus": "panoramica completa della sessione con KPI, trend, classifica sintetica e azioni consigliate",
+        },
+        "apprendimenti": {
+            "label": "Apprendimenti",
+            "focus": "evidenze di apprendimento, competenze emerse, lacune, studenti da consolidare e priorità didattiche",
+        },
+        "partecipazione": {
+            "label": "Partecipazione",
+            "focus": "engagement, presenza in chat, partecipazione ai task, uso di chatbot/teacherbot e segnali di coinvolgimento",
+        },
+        "classifiche": {
+            "label": "Classifiche",
+            "focus": "ranking, top performer, studenti costanti, studenti da recuperare e confronto tra indicatori",
+        },
+        "criticita": {
+            "label": "Criticità e Rischi",
+            "focus": "studenti o dinamiche critiche, consegne mancanti, cali di attività e interventi urgenti",
+        },
+    }
+
+    selected_report_type = None
+    message_lower = message.lower()
+    for report_type, patterns in report_type_patterns.items():
+        if any(pattern in message_lower for pattern in patterns):
+            selected_report_type = report_type
+            break
+
     # ---------------------------------------------------------------
     # Detect if a session has already been selected (UUID in parens)
-    # Frontend sends: "Generami un report per la sessione: Title (UUID)"
+    # Frontend sends: "Generami un report ... per la sessione: Title (UUID)"
     # ---------------------------------------------------------------
     uuid_match = re.search(r"\(([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\)", message, re.IGNORECASE)
     if uuid_match:
@@ -1392,23 +1472,55 @@ async def generate_report_widgets(
         session_info = next((s for s in sessions if s.get("id") == session_id), None)
         session_label = session_info["title"] if session_info else session_id
 
+        if not selected_report_type:
+            report_type_options = [
+                {"id": key, "label": value["label"], "description": value["focus"]}
+                for key, value in report_type_meta.items()
+            ]
+            response = [
+                f"Ho caricato il contesto completo della sessione **{session_label}**.",
+                "",
+                "Ora scegli il tipo di reportistica che vuoi ottenere:",
+                "",
+                "```session_selector",
+                json.dumps([session_info] if session_info else [{"id": session_id, "title": session_label, "class_name": "", "status": "selected"}], indent=2, ensure_ascii=False),
+                "```",
+                "",
+                "```report_type_selector",
+                json.dumps(report_type_options, indent=2, ensure_ascii=False),
+                "```",
+            ]
+            return "\n".join(response)
+
+        selected_meta = report_type_meta[selected_report_type]
+
         report_system = f"""Sei un assistente specializzato nell'analisi delle sessioni didattiche.
 Il docente ha richiesto un report dettagliato per la sessione: **{session_label}**.
+Tipologia richiesta: **{selected_meta["label"]}**.
 
 Hai accesso ai seguenti dati reali della piattaforma:
 {full_context}
 
-Genera un report professionale e dettagliato per questa specifica sessione con le sezioni:
+Genera un report professionale, molto concreto e orientato a una dashboard interattiva.
+
+Vincoli:
+- Basati esclusivamente sui dati forniti.
+- Se un dato manca, dichiaralo esplicitamente.
+- Evidenzia numeri, ranking, distribuzioni e studenti/attività da attenzionare.
+- Usa tabelle markdown dove utile.
+- Inserisci SEMPRE queste sezioni:
 ## 📊 Report: {session_label}
-### Panoramica
-### Partecipazione Studenti
-### Compiti e Consegne
-### Andamento della Chat
-### Osservazioni e Suggerimenti
+### Tipo di report richiesto
+### KPI chiave
+### Evidenze dai dati
+### Classifiche o segmentazioni
+### Apprendimenti e criticità
+### Azioni consigliate al docente
 
-Usa tabelle markdown dove utile. Sii preciso, basati esclusivamente sui dati forniti."""
+Focus specifico richiesto:
+{selected_meta["focus"]}"""
 
-        report_messages = [{"role": "user", "content": f"Genera il report completo per la sessione '{session_label}' (ID: {session_id})."}]
+        report_messages = [{"role": "user", "content": f"Genera il report {selected_meta['label']} per la sessione '{session_label}' (ID: {session_id})."}]
         response = await llm_service.generate(
             messages=report_messages,
             system_prompt=report_system,
@@ -1452,10 +1564,9 @@ Usa tabelle markdown dove utile. Sii preciso, basati esclusivamente sui dati for
     # ---------------------------------------------------------------
     # No selection yet — show the widget for the user to pick
     # ---------------------------------------------------------------
-    message_lower = message.lower()
     is_student_report = any(kw in message_lower for kw in ["studente", "studenti", "ragazz"])
 
-    response = "Certamente! Per procedere con il report, seleziona gli elementi di tuo interesse:\n\n"
+    response = "Per generare la reportistica devo prima capire due cose: quale sessione vuoi analizzare e quale taglio di report ti serve.\n\n"
 
     if is_student_report:
         students = structured_context.get("students", [])
@@ -1475,8 +1586,16 @@ Usa tabelle markdown dove utile. Sii preciso, basati esclusivamente sui dati for
         response += "```session_selector\n"
         response += json.dumps(sessions, indent=2, ensure_ascii=False)
         response += "\n```"
+        response += "\n\n### Tipo di Report\n"
+        response += "Scegli il formato di analisi che vuoi ottenere.\n\n"
+        response += "```report_type_selector\n"
+        response += json.dumps([
+            {"id": key, "label": value["label"], "description": value["focus"]}
+            for key, value in report_type_meta.items()
+        ], indent=2, ensure_ascii=False)
+        response += "\n```"
 
-    response += "\n\nUna volta effettuata la selezione, clicca su 'Genera Report' per procedere."
+    response += "\n\nDopo la selezione genero il report completo e la relativa dashboard interattiva."
     return response
 
 

@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useParams } from 'react-router-dom'
 import {
@@ -12,6 +12,12 @@ import { notebooksApi } from '@/lib/api'
 import { usePyodide } from '@/hooks/usePyodide'
 import { markdownCodeComponents } from '@/components/CodeBlock'
 import NotebookCell from '@/components/notebook/NotebookCell'
+import {
+  PASTEL_ICON_BACKGROUNDS,
+  PASTEL_ICON_TEXT,
+  PASTEL_SURFACES,
+  type PastelTone,
+} from '@/design/themes/pastelSurfaces'
 import type {
   Cell,
   NotebookCodeProposal,
@@ -52,14 +58,8 @@ interface Props {
   notebookIdOverride?: string
 }
 
-const tutorFallback = (
-  <div className="flex h-[280px] items-center justify-center border-t border-slate-200 bg-white/95">
-    <Loader2 className="h-6 w-6 animate-spin text-indigo-400" />
-  </div>
-)
-
 const previewFallback = (
-  <div className="flex h-full min-h-[260px] items-center justify-center rounded-[24px] border border-slate-200 bg-white">
+  <div className={`flex h-full min-h-[260px] items-center justify-center rounded-[24px] shadow-sm ${PASTEL_SURFACES.indigo}`}>
     <Loader2 className="h-6 w-6 animate-spin text-indigo-400" />
   </div>
 )
@@ -96,7 +96,10 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
   const [assistantProposals, setAssistantProposals] = useState<Record<string, NotebookCodeProposal[]>>({})
   const [p5SplitRatio, setP5SplitRatio] = useState(0.58)
   const [p5Playing, setP5Playing] = useState(true)
-  const [chatSidebarOpen, setChatSidebarOpen] = useState(false)
+  const [chatSidebarOpen, setChatSidebarOpen] = useState(true)
+  const [tutorSidebarWidth, setTutorSidebarWidth] = useState(340)
+  const [isP5Resizing, setIsP5Resizing] = useState(false)
+  const [isTutorResizing, setIsTutorResizing] = useState(false)
   const [renamingCellId, setRenamingCellId] = useState<string | null>(null)
   const [renameValue, setRenameValue] = useState('')
   const p5IframeWindowRef = useRef<Window | null>(null)
@@ -146,6 +149,11 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
     setCells(nextCells)
     setActiveCellId((prev) => (prev && nextCells.some((cell) => cell.id === prev) ? prev : nextCells[0]?.id ?? null))
   }, [notebookData])
+
+  useEffect(() => () => {
+    document.body.style.userSelect = ''
+    document.body.style.cursor = ''
+  }, [])
 
   const saveMutation = useMutation({
     mutationFn: (data: { title?: string; cells?: Cell[]; editor_settings?: NotebookEditorSettings }) =>
@@ -413,26 +421,6 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
     scheduleSave(cells, title)
   }
 
-  const runAssistant = useCallback(async () => {
-    if (!notebookId || !activeCell) return
-    setAssistantLoading(true)
-    try {
-      const res = await notebooksApi.assist(notebookId, {
-        current_cell_source: activeCell.source,
-        last_output: lastOutput,
-      })
-      setAssistantSummary(res.data.summary || '')
-      setAssistantProposals((prev) => ({
-        ...prev,
-        [activeCell.id]: res.data.proposals || [],
-      }))
-    } catch {
-      setAssistantSummary('Non sono riuscito ad analizzare il codice in questo momento.')
-    } finally {
-      setAssistantLoading(false)
-    }
-  }, [activeCell, lastOutput, notebookId])
-
   const applyProposal = useCallback((cellId: string, proposalId: string) => {
     const proposal = (assistantProposals[cellId] || []).find((item) => item.id === proposalId)
     if (!proposal) return
@@ -474,7 +462,6 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
     try {
       const res = await notebooksApi.tutorChat(notebookId, {
         message: `Analizza questo errore nel codice p5.js e spiega la causa in modo didattico.\n\nErrore:\n${errorLines}\n\nCodice:\n${activeCell.source}`,
-        history: [],
         current_cell_source: activeCell.source,
         last_output: errorLines,
         pending_proposals: [],
@@ -511,24 +498,78 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
     }
   }, [activeCell, consoleEntries, notebookId, previewRuntimeError])
 
-  const startP5Resize = useCallback((startEvent: ReactMouseEvent<HTMLDivElement>) => {
+  const beginHorizontalResize = useCallback((
+    startEvent: ReactPointerEvent<HTMLDivElement>,
+    onMove: (clientX: number) => void,
+    onResizeStart: () => void,
+    onResizeEnd: () => void,
+  ) => {
+    if (startEvent.button !== 0) return
     startEvent.preventDefault()
+
+    const handle = startEvent.currentTarget
+    let finished = false
+
+    const handlePointerMove = (event: PointerEvent) => {
+      onMove(event.clientX)
+    }
+
+    const finish = () => {
+      if (finished) return
+      finished = true
+      document.body.style.userSelect = ''
+      document.body.style.cursor = ''
+      onResizeEnd()
+      handle.removeEventListener('pointermove', handlePointerMove)
+      handle.removeEventListener('pointerup', finish)
+      handle.removeEventListener('pointercancel', finish)
+      handle.removeEventListener('lostpointercapture', finish)
+      window.removeEventListener('blur', finish)
+      if (handle.hasPointerCapture?.(startEvent.pointerId)) {
+        handle.releasePointerCapture(startEvent.pointerId)
+      }
+    }
+
+    onResizeStart()
+    document.body.style.userSelect = 'none'
+    document.body.style.cursor = 'col-resize'
+    handle.setPointerCapture?.(startEvent.pointerId)
+    handle.addEventListener('pointermove', handlePointerMove)
+    handle.addEventListener('pointerup', finish)
+    handle.addEventListener('pointercancel', finish)
+    handle.addEventListener('lostpointercapture', finish)
+    window.addEventListener('blur', finish)
+  }, [])
+
+  const startP5Resize = useCallback((startEvent: ReactPointerEvent<HTMLDivElement>) => {
     const startX = startEvent.clientX
     const startRatio = p5SplitRatio
 
-    const onMove = (event: MouseEvent) => {
-      const delta = (event.clientX - startX) / window.innerWidth
-      setP5SplitRatio(Math.min(0.72, Math.max(0.34, startRatio + delta)))
-    }
+    beginHorizontalResize(
+      startEvent,
+      (clientX) => {
+        const delta = (clientX - startX) / window.innerWidth
+        setP5SplitRatio(Math.min(0.72, Math.max(0.34, startRatio + delta)))
+      },
+      () => setIsP5Resizing(true),
+      () => setIsP5Resizing(false),
+    )
+  }, [beginHorizontalResize, p5SplitRatio])
 
-    const onUp = () => {
-      window.removeEventListener('mousemove', onMove)
-      window.removeEventListener('mouseup', onUp)
-    }
+  const startTutorResize = useCallback((startEvent: ReactPointerEvent<HTMLDivElement>) => {
+    const startX = startEvent.clientX
+    const startWidth = tutorSidebarWidth
 
-    window.addEventListener('mousemove', onMove)
-    window.addEventListener('mouseup', onUp)
-  }, [p5SplitRatio])
+    beginHorizontalResize(
+      startEvent,
+      (clientX) => {
+        const delta = startX - clientX
+        setTutorSidebarWidth(Math.min(580, Math.max(280, startWidth + delta)))
+      },
+      () => setIsTutorResizing(true),
+      () => setIsTutorResizing(false),
+    )
+  }, [beginHorizontalResize, tutorSidebarWidth])
 
   const pyStatusIcon = {
     idle: <Cpu className="h-3 w-3 text-slate-500" />,
@@ -553,13 +594,14 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
   }
 
   const fontWeight = editorSettings.font_weight ?? 400
+  const projectTone: PastelTone = projectType === 'python' ? 'indigo' : 'emerald'
 
   return (
-    <div className="flex h-full min-h-0 gap-3 p-4">
+    <div className="flex h-full min-h-0 gap-3 bg-slate-100 p-4">
       {/* ── Main notebook card ───────────────────────────────────────────── */}
-      <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[32px] border border-white/70 bg-white/92 text-slate-900 shadow-[0_18px_60px_rgba(15,23,42,0.16)] backdrop-blur-xl">
+      <div className={`flex min-h-0 flex-1 flex-col overflow-hidden rounded-[28px] text-slate-900 shadow-[0_18px_60px_rgba(15,23,42,0.12)] ${PASTEL_SURFACES[projectTone]}`}>
         {/* Row 1: Title bar */}
-        <div className="flex items-center gap-3 border-b border-slate-100/80 bg-white/95 px-4 py-3">
+        <div className="flex items-center gap-3 border-b border-slate-200/70 bg-white/60 px-4 py-3 backdrop-blur-sm">
           {editingTitle ? (
             <input
               ref={titleRef}
@@ -567,7 +609,7 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
               onChange={(e) => setTitle(e.target.value)}
               onBlur={handleTitleSave}
               onKeyDown={(e) => e.key === 'Enter' && handleTitleSave()}
-              className="max-w-sm flex-1 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-900 outline-none"
+              className="max-w-sm flex-1 rounded-xl border border-slate-300/80 bg-white/80 px-3 py-2 text-sm font-semibold text-slate-900 outline-none"
               autoFocus
             />
           ) : (
@@ -581,7 +623,7 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
           )}
 
           <span className={`rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] ${
-            projectType === 'python' ? 'bg-indigo-100 text-indigo-700' : 'bg-emerald-100 text-emerald-700'
+            `${PASTEL_ICON_BACKGROUNDS[projectTone]} ${PASTEL_ICON_TEXT[projectTone]}`
           }`}>
             {projectType}
           </span>
@@ -613,10 +655,10 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
             <button
               onClick={() => setChatSidebarOpen((v) => !v)}
               title={chatSidebarOpen ? 'Chiudi sidebar tutor' : 'Apri tutor come sidebar'}
-              className={`rounded-lg p-1.5 transition-colors ${
+              className={`rounded-xl p-1.5 transition-colors ${
                 chatSidebarOpen
-                  ? 'bg-indigo-100 text-indigo-700 hover:bg-indigo-200'
-                  : 'text-slate-400 hover:bg-slate-100 hover:text-slate-700'
+                  ? `${PASTEL_ICON_BACKGROUNDS[projectTone]} ${PASTEL_ICON_TEXT[projectTone]}`
+                  : 'text-slate-400 hover:bg-white/70 hover:text-slate-700'
               }`}
             >
               <PanelRight className="h-4 w-4" />
@@ -625,13 +667,13 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
         </div>
 
         {/* Row 2: Toolbar */}
-        <div className="flex flex-wrap items-center gap-2 border-b border-slate-200/80 bg-white/90 px-4 py-2">
+        <div className="flex flex-wrap items-center gap-2 border-b border-slate-200/80 bg-white/45 px-4 py-2 backdrop-blur-sm">
           <label className="flex items-center gap-1.5 text-xs text-slate-500">
             Tema
             <select
               value={editorSettings.theme}
               onChange={(e) => updateEditorSettings({ theme: e.target.value as NotebookTheme })}
-              className="rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-slate-700 outline-none"
+              className="rounded-lg border border-slate-300/80 bg-white/80 px-2 py-1.5 text-slate-700 outline-none"
             >
               <option value="dark">Scuro</option>
               <option value="light">Chiaro</option>
@@ -646,7 +688,7 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
             <select
               value={editorSettings.font_size}
               onChange={(e) => updateEditorSettings({ font_size: Number(e.target.value) })}
-              className="rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-slate-700 outline-none"
+              className="rounded-lg border border-slate-300/80 bg-white/80 px-2 py-1.5 text-slate-700 outline-none"
             >
               {[12, 14, 16, 18, 20].map((size) => (
                 <option key={size} value={size}>{size}px</option>
@@ -659,7 +701,7 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
             <select
               value={editorSettings.font_family}
               onChange={(e) => updateEditorSettings({ font_family: e.target.value as NotebookFontFamily })}
-              className="rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-slate-700 outline-none"
+              className="rounded-lg border border-slate-300/80 bg-white/80 px-2 py-1.5 text-slate-700 outline-none"
             >
               <option value="jetbrains">JetBrains Mono</option>
               <option value="space">Space Mono</option>
@@ -702,7 +744,7 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
               <button
                 onClick={() => insertCellBelow(activeCellId ?? cells[cells.length - 1]?.id)}
                 title="Aggiungi cella"
-                className="flex items-center gap-1 rounded-xl border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-700 transition-colors hover:bg-slate-50"
+                className={`flex items-center gap-1 rounded-xl px-3 py-1.5 text-xs shadow-sm transition-colors ${PASTEL_SURFACES.slate}`}
               >
                 <Plus className="h-3 w-3" />
                 Cella
@@ -713,7 +755,7 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
                 <button
                   onClick={handleP5Play}
                   title="Esegui sketch"
-                  className="flex items-center gap-1 rounded-xl bg-emerald-600 px-3 py-1.5 text-xs text-white transition-colors hover:bg-emerald-500"
+                  className="flex items-center gap-1 rounded-xl bg-[#2196F3] px-3 py-1.5 text-xs text-white transition-colors hover:bg-[#1d84d8]"
                 >
                   <Play className="h-3 w-3" />
                   Play
@@ -722,7 +764,7 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
                   onClick={handleP5Stop}
                   disabled={!p5Playing}
                   title="Ferma sketch"
-                  className="flex items-center gap-1 rounded-xl border border-red-200 bg-red-50 px-3 py-1.5 text-xs text-red-700 transition-colors hover:bg-red-100 disabled:opacity-40"
+                  className={`flex items-center gap-1 rounded-xl px-3 py-1.5 text-xs shadow-sm transition-colors disabled:opacity-40 ${PASTEL_SURFACES.rose} ${PASTEL_ICON_TEXT.rose}`}
                 >
                   <Pause className="h-3 w-3" />
                   Stop
@@ -732,25 +774,17 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
               <button
                 onClick={runAll}
                 disabled={pyStatus !== 'ready' || !!runningCellId}
-                className="flex items-center gap-1 rounded-xl bg-indigo-600 px-3 py-1.5 text-xs text-white transition-colors hover:bg-indigo-500 disabled:opacity-40"
+                className="flex items-center gap-1 rounded-xl bg-[#E91E63] px-3 py-1.5 text-xs text-white transition-colors hover:bg-[#d61b5b] disabled:opacity-40"
               >
                 <Play className="h-3 w-3" />
                 Esegui tutto
               </button>
             )}
-            <button
-              onClick={runAssistant}
-              disabled={!activeCell || assistantLoading}
-              className="flex items-center gap-1 rounded-xl border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-xs text-indigo-700 transition-colors hover:bg-indigo-100 disabled:opacity-40"
-            >
-              {assistantLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
-              Proponi modifiche
-            </button>
             {projectType === 'python' && (
               runningCellId ? (
                 <button
                   onClick={handleStop}
-                  className="flex items-center gap-1 rounded-xl border border-red-200 bg-red-50 px-3 py-1.5 text-xs text-red-700 transition-colors hover:bg-red-100"
+                  className={`flex items-center gap-1 rounded-xl px-3 py-1.5 text-xs shadow-sm transition-colors ${PASTEL_SURFACES.rose} ${PASTEL_ICON_TEXT.rose}`}
                 >
                   <Square className="h-3 w-3 fill-current" />
                   Stop
@@ -759,7 +793,7 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
                 <button
                   onClick={handleRestart}
                   disabled={pyStatus !== 'ready'}
-                  className="flex items-center gap-1 rounded-xl border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-700 transition-colors hover:bg-slate-50 disabled:opacity-40"
+                  className={`flex items-center gap-1 rounded-xl px-3 py-1.5 text-xs shadow-sm transition-colors disabled:opacity-40 ${PASTEL_SURFACES.slate}`}
                 >
                   <RotateCcw className="h-3 w-3" />
                   Restart
@@ -795,7 +829,7 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
 
           {projectType === 'p5js' ? (
             <div className="flex min-h-0 flex-1 flex-col p-4 gap-2">
-              <div className="flex min-h-0 flex-1 overflow-hidden rounded-[28px] border border-slate-200 bg-slate-100">
+              <div className={`flex min-h-0 flex-1 overflow-hidden rounded-[28px] shadow-sm ${PASTEL_SURFACES.slate}`}>
                 {/* Left panel: file tabs + editor */}
                 <div
                   className="flex min-h-0 min-w-0 flex-col overflow-hidden bg-slate-950"
@@ -879,15 +913,15 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
 
                 {/* Resize handle */}
                 <div
-                  onMouseDown={startP5Resize}
-                  className="group relative w-2 flex-shrink-0 cursor-col-resize bg-slate-200 hover:bg-indigo-200"
+                  onPointerDown={startP5Resize}
+                  className={`group relative w-2 flex-shrink-0 cursor-col-resize touch-none ${isP5Resizing ? 'bg-indigo-200' : 'bg-slate-200 hover:bg-indigo-200'}`}
                   title="Ridimensiona editor e preview"
                 >
-                  <div className="absolute inset-0 m-auto h-14 w-1 rounded-full bg-slate-400 transition group-hover:bg-indigo-500" />
+                  <div className={`absolute inset-0 m-auto h-14 w-1 rounded-full transition ${isP5Resizing ? 'bg-indigo-500' : 'bg-slate-400 group-hover:bg-indigo-500'}`} />
                 </div>
 
                 {/* Right panel: preview */}
-                <div className="relative min-h-0 min-w-0 flex-1 p-4">
+                <div className={`relative min-h-0 min-w-0 flex-1 p-4 ${isP5Resizing ? 'pointer-events-none' : ''}`}>
                   <Suspense fallback={previewFallback}>
                     <NotebookP5Preview
                       files={p5Files}
@@ -915,7 +949,7 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
                         <Terminal className="h-3.5 w-3.5 text-slate-400" />
                         <span className="text-xs font-semibold text-slate-400">Console</span>
                         {consoleEntries.length > 0 && (
-                          <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold text-white ${hasErrors ? 'bg-red-600' : 'bg-indigo-600'}`}>
+                          <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold text-white ${hasErrors ? 'bg-[#BA68C8]' : 'bg-[#E91E63]'}`}>
                             {consoleEntries.length}
                           </span>
                         )}
@@ -935,7 +969,7 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
                           onClick={(e) => { e.stopPropagation(); analyzeConsoleError() }}
                           disabled={consoleAiLoading}
                           title="Chiedi all'AI perché c'è l'errore"
-                          className="flex items-center gap-1 rounded-lg bg-indigo-600 px-2.5 py-1 text-[11px] font-semibold text-white transition hover:bg-indigo-500 disabled:opacity-50"
+                          className="flex items-center gap-1 rounded-lg bg-[#E91E63] px-2.5 py-1 text-[11px] font-semibold text-white transition hover:bg-[#d61b5b] disabled:opacity-50"
                         >
                           {consoleAiLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Bot className="h-3 w-3" />}
                           Analizza
@@ -1056,7 +1090,7 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
                 ))}
 
                 {inputState && (
-                  <div className="sticky bottom-4 mx-auto flex max-w-xl flex-col gap-3 rounded-2xl border border-indigo-200 bg-white p-4 shadow-lg">
+                    <div className={`sticky bottom-4 mx-auto flex max-w-xl flex-col gap-3 rounded-[24px] bg-white/90 p-4 shadow-lg backdrop-blur-sm ${PASTEL_SURFACES[projectTone]}`}>
                     <div className="flex items-center gap-2 text-xs font-medium text-indigo-500">
                       <Terminal className="h-3.5 w-3.5" />
                       Il programma chiede un valore
@@ -1079,14 +1113,14 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
                           }
                         }}
                         placeholder="Scrivi qui la risposta…"
-                        className="flex-1 rounded-lg border border-slate-300 bg-white px-3 py-1.5 font-mono text-sm text-slate-900 outline-none transition-colors focus:border-indigo-500"
+                        className="flex-1 rounded-lg border border-slate-300/80 bg-white/85 px-3 py-1.5 font-mono text-sm text-slate-900 outline-none transition-colors focus:border-indigo-500"
                       />
                       <button
                         onClick={() => {
                           inputState.submit(inputValue)
                           setInputValue('')
                         }}
-                        className="rounded-lg bg-indigo-600 px-4 py-1.5 text-xs font-medium text-white transition-colors hover:bg-indigo-500"
+                        className="rounded-lg bg-[#E91E63] px-4 py-1.5 text-xs font-medium text-white transition-colors hover:bg-[#d61b5b]"
                       >
                         Invia
                       </button>
@@ -1106,56 +1140,44 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
           )}
         </div>
 
-        {/* Python tutor docked at bottom — only when sidebar is closed */}
-        {notebookId && projectType !== 'p5js' && !chatSidebarOpen && (
-          <Suspense fallback={tutorFallback}>
-            <NotebookTutorChat
-              notebookId={notebookId}
-              notebookTitle={title}
-              projectType={projectType}
-              currentCellSource={activeCell?.source}
-              lastOutput={lastOutput}
-              pendingProposals={activeCell ? (assistantProposals[activeCell.id] || []) : []}
-              variant="docked"
-            />
-          </Suspense>
-        )}
       </div>
 
       {/* ── Right sidebar panel ──────────────────────────────────────────── */}
       {chatSidebarOpen && notebookId && (
-        <div className="hidden lg:flex w-[340px] shrink-0 flex-col gap-3 min-h-0">
-          <Suspense fallback={null}>
-            <NotebookTutorChat
-              notebookId={notebookId}
-              notebookTitle={title}
-              projectType={projectType}
-              currentCellSource={activeCell?.source}
-              lastOutput={lastOutput}
-              pendingProposals={activeCell ? (assistantProposals[activeCell.id] || []) : []}
-              variant="sidebar"
-            />
-          </Suspense>
-          {/* slot per la chat di classe — quando implementata, va qui */}
+        <div className="hidden lg:flex shrink-0 min-h-0" style={{ width: tutorSidebarWidth }}>
+          {/* Resize handle — left edge of sidebar */}
+          <div
+            onPointerDown={startTutorResize}
+            className={`group relative w-2 flex-shrink-0 cursor-col-resize touch-none ${
+              projectType === 'python'
+                ? (isTutorResizing ? 'bg-[#f4b6cf]' : 'bg-[#f8d6e5] hover:bg-[#f4b6cf]')
+                : (isTutorResizing ? 'bg-[#b5dbfb]' : 'bg-[#d9ecfd] hover:bg-[#b5dbfb]')
+            }`}
+            title="Ridimensiona sidebar tutor"
+          >
+            <div className={`absolute inset-0 m-auto h-14 w-1 rounded-full transition ${
+              projectType === 'python'
+                ? (isTutorResizing ? 'bg-[#d61b5b]' : 'bg-[#E91E63] group-hover:bg-[#d61b5b]')
+                : (isTutorResizing ? 'bg-[#1d84d8]' : 'bg-[#2196F3] group-hover:bg-[#1d84d8]')
+            }`} />
+          </div>
+          <div className={`flex flex-1 flex-col gap-3 min-h-0 min-w-0 overflow-hidden rounded-[28px] shadow-sm ${PASTEL_SURFACES[projectTone]}`}>
+            <Suspense fallback={null}>
+              <NotebookTutorChat
+                notebookId={notebookId}
+                notebookTitle={title}
+                projectType={projectType}
+                currentCellSource={activeCell?.source}
+                lastOutput={lastOutput}
+                pendingProposals={activeCell ? (assistantProposals[activeCell.id] || []) : []}
+                initialMessages={notebookData?.tutor_messages || []}
+                variant="sidebar"
+              />
+            </Suspense>
+          </div>
         </div>
       )}
 
-      {/* p5js floating tutor — only when sidebar is closed */}
-      {notebookId && projectType === 'p5js' && !chatSidebarOpen && (
-        <div className="hidden lg:block">
-          <Suspense fallback={null}>
-            <NotebookTutorChat
-              notebookId={notebookId}
-              notebookTitle={title}
-              projectType={projectType}
-              currentCellSource={activeCell?.source}
-              lastOutput={lastOutput}
-              pendingProposals={activeCell ? (assistantProposals[activeCell.id] || []) : []}
-              variant="floating"
-            />
-          </Suspense>
-        </div>
-      )}
     </div>
   )
 }

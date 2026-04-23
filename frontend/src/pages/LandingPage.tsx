@@ -8,20 +8,26 @@ import {
   Eye,
   GraduationCap,
   School,
-  ArrowRight,
   Menu,
   X,
   FlaskConical
 } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth'
-import { authApi, studentApi } from '@/lib/api'
-import { connectSocket } from '@/lib/socket'
+import { authApi } from '@/lib/api'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useToast } from '@/components/ui/use-toast'
 import { useTranslation } from 'react-i18next'
 import { LanguageSwitcher } from '@/components/LanguageSwitcher'
+import { StudentAccessForm } from '@/components/auth/StudentAccessForm'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 
 // --- Dotted Grid Background with "ball under paper" deformation ---
 const DottedGridBackground = () => {
@@ -142,6 +148,20 @@ export default function LandingPage() {
   const { t } = useTranslation()
   const [activeTab, setActiveTab] = useState<'home' | 'teachers' | 'students'>('home')
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
+  const [openDocument, setOpenDocument] = useState<null | 'privacy' | 'ai-act'>(null)
+
+  const documentMeta = {
+    privacy: {
+      title: 'Privacy',
+      description: 'Informativa privacy della piattaforma Golinelli.ai',
+      src: '/docs/informativa-privacy.pdf#toolbar=0&navpanes=0&scrollbar=0&view=FitH',
+    },
+    'ai-act': {
+      title: 'AI Act',
+      description: 'Audit AI Act e conformità del sistema Golinelli.ai',
+      src: '/docs/audit-ai.pdf#toolbar=0&navpanes=0&scrollbar=0&view=FitH',
+    },
+  } as const
 
   const switchTab = (tab: 'home' | 'teachers' | 'students') => {
     setActiveTab(tab)
@@ -181,13 +201,20 @@ export default function LandingPage() {
         </div>
 
         <div className="hidden md:flex items-center gap-3">
-          <Link
-            to="/privacy"
+          <button
+            onClick={() => setOpenDocument('privacy')}
             className="flex items-center gap-1.5 text-xs font-medium text-slate-500 hover:text-[#e85c8d] transition-colors px-2 py-1"
           >
             <ShieldCheck size={13} />
             Privacy
-          </Link>
+          </button>
+          <button
+            onClick={() => setOpenDocument('ai-act')}
+            className="flex items-center gap-1.5 text-xs font-medium text-slate-500 hover:text-[#a855f7] transition-colors px-2 py-1"
+          >
+            <Sparkles size={13} />
+            AI Act
+          </button>
           <LanguageSwitcher variant="row" />
         </div>
 
@@ -209,9 +236,18 @@ export default function LandingPage() {
             <Button variant={activeTab === 'home' ? 'default' : 'ghost'} onClick={() => switchTab('home')} className="w-full justify-start">{t('landing.nav_explore')}</Button>
             <Button variant={activeTab === 'teachers' ? 'default' : 'ghost'} onClick={() => switchTab('teachers')} className="w-full justify-start">{t('landing.nav_teacher_area')}</Button>
             <Button variant={activeTab === 'students' ? 'default' : 'ghost'} onClick={() => switchTab('students')} className="w-full justify-start">{t('landing.nav_student_area')}</Button>
-            <Link to="/privacy" className="flex items-center gap-2 px-3 py-2 text-sm text-slate-600 hover:text-[#e85c8d] transition-colors">
-              <ShieldCheck size={15} /> Privacy Policy
-            </Link>
+            <button
+              onClick={() => { setOpenDocument('privacy'); setIsMobileMenuOpen(false) }}
+              className="flex items-center gap-2 px-3 py-2 text-sm text-slate-600 hover:text-[#e85c8d] transition-colors"
+            >
+              <ShieldCheck size={15} /> Privacy
+            </button>
+            <button
+              onClick={() => { setOpenDocument('ai-act'); setIsMobileMenuOpen(false) }}
+              className="flex items-center gap-2 px-3 py-2 text-sm text-slate-600 hover:text-[#a855f7] transition-colors"
+            >
+              <Sparkles size={15} /> AI Act
+            </button>
             <div className="pt-1"><LanguageSwitcher variant="full" /></div>
           </motion.div>
         )}
@@ -241,11 +277,45 @@ export default function LandingPage() {
           </a>
         </p>
         <p className="mt-2">
-          <Link to="/privacy" className="text-xs text-slate-400 hover:text-[#e85c8d] transition-colors underline underline-offset-2">
-            Privacy Policy & AI Act Compliance
-          </Link>
+          <span className="inline-flex items-center gap-3 text-xs">
+            <button
+              onClick={() => setOpenDocument('privacy')}
+              className="text-slate-400 hover:text-[#e85c8d] transition-colors underline underline-offset-2"
+            >
+              Privacy
+            </button>
+            <span className="text-slate-300">•</span>
+            <button
+              onClick={() => setOpenDocument('ai-act')}
+              className="text-slate-400 hover:text-[#a855f7] transition-colors underline underline-offset-2"
+            >
+              AI Act
+            </button>
+          </span>
         </p>
       </footer>
+
+      <Dialog open={openDocument !== null} onOpenChange={(open) => !open && setOpenDocument(null)}>
+        <DialogContent className="max-w-6xl h-[90vh] p-0 overflow-hidden gap-0 flex flex-col">
+          {openDocument && (
+            <>
+              <DialogHeader className="border-b border-slate-200 bg-white/92 px-5 py-3 backdrop-blur-sm shrink-0">
+                <DialogTitle className="text-base">{documentMeta[openDocument].title}</DialogTitle>
+                <DialogDescription className="text-xs">
+                  {documentMeta[openDocument].description}
+                </DialogDescription>
+              </DialogHeader>
+              <div className="flex-1 min-h-0 bg-slate-100">
+                <iframe
+                  src={documentMeta[openDocument].src}
+                  title={documentMeta[openDocument].title}
+                  className="h-full w-full border-0"
+                />
+              </div>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
@@ -529,34 +599,6 @@ function TeachersSection() {
 
 function StudentsSection() {
   const { t } = useTranslation()
-  const [joinCode, setJoinCode] = useState('')
-  const [nickname, setNickname] = useState('')
-  const [loading, setLoading] = useState(false)
-  const navigate = useNavigate()
-  const { setStudentSession } = useAuthStore()
-  const { toast } = useToast()
-
-  const handleJoin = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setLoading(true)
-    try {
-      const response = await studentApi.join(joinCode.toUpperCase(), nickname)
-      const { join_token, student_id, session_id, session_title } = response.data
-      setStudentSession({ student_id, session_id, session_title, nickname }, join_token)
-      connectSocket(join_token)
-      navigate('/student')
-    } catch (error: unknown) {
-      const err = error as { response?: { data?: { detail?: string } } }
-      toast({
-        variant: 'destructive',
-        title: t('common.error'),
-        description: err.response?.data?.detail || 'Impossibile partecipare alla sessione',
-      })
-    } finally {
-      setLoading(false)
-    }
-  }
-
   return (
     <motion.div
       initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }}
@@ -570,43 +612,10 @@ function StudentsSection() {
         </div>
 
         <div className="p-8">
-          <form onSubmit={handleJoin} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="joinCode">{t('student_join.code_label')}</Label>
-              <Input
-                id="joinCode"
-                type="text"
-                placeholder={t('student_join.code_placeholder')}
-                value={joinCode}
-                onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
-                maxLength={5}
-                className="border-slate-200 bg-slate-50 text-center font-mono text-2xl tracking-widest focus:ring-teal-500"
-                required
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="nickname">{t('student_join.nickname_label')}</Label>
-              <Input
-                id="nickname"
-                type="text"
-                placeholder={t('student_join.nickname_placeholder')}
-                value={nickname}
-                onChange={(e) => setNickname(e.target.value)}
-                maxLength={20}
-                className="border-slate-200 bg-slate-50 focus:ring-teal-500"
-                required
-              />
-            </div>
-            <Button
-              type="submit"
-              className="group h-11 w-full text-base"
-              style={{ backgroundColor: '#0ea5e9' }}
-              disabled={loading}
-            >
-              {loading ? t('student_join.joining') : t('student_join.join_btn')}
-              {!loading && <ArrowRight className="ml-2 w-4 h-4 group-hover:translate-x-1 transition-transform" />}
-            </Button>
-          </form>
+          <StudentAccessForm
+            submitButtonClassName="group h-11 w-full text-base"
+            submitButtonStyle={{ backgroundColor: '#0ea5e9' }}
+          />
         </div>
       </div>
     </motion.div>

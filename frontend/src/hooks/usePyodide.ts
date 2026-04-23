@@ -28,6 +28,32 @@ const PYODIDE_URL = '${PYODIDE_CDN}'
 let pyodide = null
 let inputSignal = null  // Int32Array over SharedArrayBuffer
 let inputData   = null  // Uint8Array over SharedArrayBuffer
+let micropipReady = false
+
+const IMPORT_PACKAGE_MAP = {
+    PIL: 'pillow',
+    bs4: 'beautifulsoup4',
+    sklearn: 'scikit-learn',
+    skimage: 'scikit-image',
+    yaml: 'pyyaml',
+    cv2: 'opencv-python',
+}
+
+const FALLBACK_MICROPIP_PACKAGES = [
+    'pandas',
+    'sympy',
+    'scipy',
+    'seaborn',
+    'statsmodels',
+    'networkx',
+    'openpyxl',
+    'xlsxwriter',
+    'pyyaml',
+    'beautifulsoup4',
+    'lxml',
+    'requests',
+    'pillow',
+]
 
 /* ── Python setup code ─────────────────────────────────────────────────── */
 const SETUP_CODE = \`
@@ -48,6 +74,37 @@ sys.stderr = _cap_err
 import matplotlib
 matplotlib.use('agg')
 import matplotlib.pyplot as plt
+import importlib
+
+def _extract_imports(code):
+    modules = []
+    for raw in str(code).splitlines():
+        line = raw.strip()
+        if line.startswith('import '):
+            payload = line[len('import '):]
+            for part in payload.split(','):
+                root = part.strip().split(' as ')[0].split('.')[0].strip()
+                if root:
+                    modules.append(root)
+        elif line.startswith('from '):
+            payload = line[len('from '):]
+            root = payload.split(' import ')[0].split('.')[0].strip()
+            if root:
+                modules.append(root)
+    ordered = []
+    seen = set()
+    for module in modules:
+        if module not in seen:
+            ordered.append(module)
+            seen.add(module)
+    return ordered
+
+def _probe_import(module_name):
+    try:
+        importlib.import_module(module_name)
+        return True
+    except Exception:
+        return False
 
 def _collect():
     out = _cap_out.getvalue(); err = _cap_err.getvalue()
@@ -107,13 +164,55 @@ async function init(sharedBuffers) {
     try {
         importScripts(PYODIDE_URL + 'pyodide.js')
         pyodide = await loadPyodide({ indexURL: PYODIDE_URL })
-        await pyodide.loadPackage(['matplotlib', 'numpy'])
+        await pyodide.loadPackage(['matplotlib', 'numpy', 'micropip'])
         await pyodide.runPythonAsync(SETUP_CODE)
         await pyodide.runPythonAsync(INPUT_OVERRIDE)
+        await pyodide.runPythonAsync('import micropip')
+        micropipReady = true
         self.postMessage({ type: 'ready' })
     } catch (e) {
         self.postMessage({ type: 'init_error', message: String(e && e.message ? e.message : e) })
     }
+}
+
+async function ensureMicropipImports(code) {
+    if (!pyodide || !micropipReady) return []
+    let imports = []
+    try {
+        imports = pyodide.globals.get('_extract_imports')(code).toJs({ create_proxies: false }) || []
+    } catch (_) {
+        imports = []
+    }
+    if (!imports.length) return []
+
+    const installed = []
+    for (const moduleName of imports) {
+        let alreadyAvailable = false
+        try {
+          alreadyAvailable = !!pyodide.globals.get('_probe_import')(moduleName)
+        } catch (_) {
+          alreadyAvailable = false
+        }
+        if (alreadyAvailable) continue
+
+        const packageName = IMPORT_PACKAGE_MAP[moduleName] || moduleName
+        const shouldTry = FALLBACK_MICROPIP_PACKAGES.includes(packageName) || moduleName === packageName
+        if (!shouldTry) continue
+
+        try {
+            await pyodide.runPythonAsync(\`import micropip; await micropip.install("\${packageName}")\`)
+            installed.push(packageName)
+        } catch (error) {
+            const msg = error && error.message ? error.message : String(error)
+            self.postMessage({
+                type: 'package_warning',
+                package: packageName,
+                module: moduleName,
+                message: msg,
+            })
+        }
+    }
+    return installed
 }
 
 /* ── Run cell ───────────────────────────────────────────────────────────── */
@@ -125,9 +224,13 @@ async function runCell(id, code) {
     var outputs = []
     try {
         await pyodide.loadPackagesFromImports(code)
+        const micropipInstalled = await ensureMicropipImports(code)
         var result = await pyodide.runPythonAsync(code)
         var raw  = pyodide.runPython('_collect()')
         var data = JSON.parse(raw)
+        if (micropipInstalled.length) {
+            outputs.push({ output_type: 'stream', text: '[runtime] Pacchetti caricati con micropip: ' + micropipInstalled.join(', ') + '\\n' })
+        }
         if (data.out) outputs.push({ output_type: 'stream', text: data.out })
         if (data.err) outputs.push({ output_type: 'stream', text: '\\x1b[31m' + data.err + '\\x1b[0m' })
         for (var i = 0; i < data.figs.length; i++) {
@@ -203,6 +306,10 @@ export function usePyodide(enabled = true) {
           if (resolve) { resolve(msg.outputs); pendingRef.current.delete(msg.id) }
           break
         }
+
+        case 'package_warning':
+          console.warn('[pyodide] package install warning', msg.package, msg.message)
+          break
 
         case 'input_unavailable': {
           // SAB not available: resolve any pending cell with an explanatory error

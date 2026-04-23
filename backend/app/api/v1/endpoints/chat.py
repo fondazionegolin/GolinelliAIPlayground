@@ -11,13 +11,24 @@ from app.core.config import settings
 from app.api.deps import get_current_teacher, get_current_student, get_student_or_teacher, StudentOrTeacher
 from app.core.permissions import teacher_can_access_session
 from app.models.user import User
-from app.models.session import Session, SessionStudent, Class
+from app.models.session import Session, SessionStudent, Class, SessionModule
 from app.models.chat import ChatRoom, ChatMessage
 from app.models.enums import ChatRoomType, SenderType
 from app.schemas.chat import ChatRoomResponse, ChatMessageCreate, ChatMessageResponse, DMRoomCreate, SessionMessageCreate
 from app.realtime.gateway import sio
 
 router = APIRouter()
+
+
+async def is_private_chat_enabled_for_students(db: AsyncSession, session_id: UUID) -> bool:
+    result = await db.execute(
+        select(SessionModule.is_enabled)
+        .where(SessionModule.session_id == session_id)
+        .where(SessionModule.module_key == "chat")
+        .limit(1)
+    )
+    enabled = result.scalar_one_or_none()
+    return True if enabled is None else bool(enabled)
 
 
 async def get_or_create_public_room(db: AsyncSession, session_id: UUID, tenant_id: UUID) -> ChatRoom:
@@ -384,6 +395,8 @@ async def get_room_messages(
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
         if room.room_type == ChatRoomType.DM and room.student_id != auth.student.id:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
+        if room.room_type == ChatRoomType.DM and not await is_private_chat_enabled_for_students(db, auth.student.session_id):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Private chat disabled")
     else:
         if not await teacher_can_access_session(db, auth.teacher, room.session_id):
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
@@ -422,6 +435,8 @@ async def send_message(
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
         if room.room_type == ChatRoomType.DM and room.student_id != auth.student.id:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
+        if room.room_type == ChatRoomType.DM and not await is_private_chat_enabled_for_students(db, auth.student.session_id):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Private chat disabled")
         
         sender_type = SenderType.STUDENT
         sender_student_id = auth.student.id

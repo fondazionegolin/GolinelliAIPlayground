@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, Dispatch, SetStateAction, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
-import { filesApi } from '@/lib/api'
+import { chatApi, filesApi } from '@/lib/api'
 import FileViewerModal from '@/components/ui/FileViewerModal'
 import { useSocket, ChatMessage, OnlineUser } from '@/hooks/useSocket'
 import { Button } from '@/components/ui/button'
@@ -42,6 +42,8 @@ interface ChatSidebarProps {
   userType: 'teacher' | 'student'
   currentUserId: string
   currentUserName: string
+  teacherTarget?: { id: string; name: string }
+  privateChatEnabled?: boolean
   studentAccent?: StudentAccentId
   onNotificationClick?: (notification: ChatMessage) => void
   isMobileView?: boolean
@@ -57,6 +59,8 @@ export default function ChatSidebar({
   sessionId,
   userType,
   currentUserId,
+  teacherTarget,
+  privateChatEnabled = true,
   studentAccent = DEFAULT_STUDENT_ACCENT,
   onNotificationClick,
   isMobileView = false,
@@ -114,6 +118,10 @@ export default function ChatSidebar({
     loadingOlderPublicMessages,
     loadingInitialMessages
   } = useSocket(sessionId)
+
+  const availableTabs: TabType[] = userType === 'student'
+    ? ['session', ...(privateChatEnabled ? (['private'] as const) : []), 'files']
+    : ['session', 'private', 'files', 'users']
 
   const getRelativePath = (file: File) => {
     const relativePath = (file as any).webkitRelativePath as string | undefined
@@ -355,6 +363,8 @@ export default function ChatSidebar({
 
   // Listen for external openPrivateChat events (e.g., from Chat Diretta action)
   useEffect(() => {
+    if (userType !== 'teacher') return
+
     const handleOpenPrivateChat = (event: CustomEvent<{ id: string; nickname: string }>) => {
       const student = event.detail
       if (student && student.id) {
@@ -374,7 +384,41 @@ export default function ChatSidebar({
     return () => {
       window.removeEventListener('openPrivateChat', handleOpenPrivateChat as EventListener)
     }
-  }, [startPrivateChat])
+  }, [startPrivateChat, userType])
+
+  const uploadFilesForMessage = useCallback(async (files: File[]) => {
+    if (files.length === 0) {
+      return { uploadedUrls: [] as string[], filenameMap: {} as Record<string, string> }
+    }
+
+    const originalNames = files.map((file) => getDisplayName(file))
+    const optimizedFiles = await optimizeImagesForUpload(files)
+    const response = await chatApi.uploadFiles(sessionId, optimizedFiles)
+    const uploadedUrls: string[] = response.data?.urls || []
+    const filenameMap: Record<string, string> = {}
+    uploadedUrls.forEach((url, index) => {
+      filenameMap[url] = originalNames[index] || url.split('/').pop() || 'file'
+    })
+    return { uploadedUrls, filenameMap }
+  }, [sessionId])
+
+  const shareDroppedFilesToSession = useCallback(async (files: File[], fallbackText: string) => {
+    if (activeTab !== 'session') {
+      setAttachedFiles(prev => [...prev, ...files])
+      return
+    }
+
+    try {
+      const { uploadedUrls, filenameMap } = await uploadFilesForMessage(files)
+      if (uploadedUrls.length > 0) {
+        await sendPublicMessage(fallbackText, uploadedUrls, filenameMap)
+        void loadSessionFiles(true)
+      }
+    } catch (error) {
+      console.error('Failed to share dropped files to session', error)
+      setAttachedFiles(prev => [...prev, ...files])
+    }
+  }, [activeTab, loadSessionFiles, sendPublicMessage, uploadFilesForMessage])
 
   const handleSend = async () => {
     if (!inputText.trim() && attachedFiles.length === 0) return
@@ -386,39 +430,10 @@ export default function ChatSidebar({
     let uploadedUrls: string[] = []
     let filenameMap: Record<string, string> = {}
     if (attachedFiles.length > 0) {
-      const originalNames = attachedFiles.map(f => getDisplayName(f))
       try {
-        const optimizedFiles = await optimizeImagesForUpload(attachedFiles)
-        const formData = new FormData()
-        optimizedFiles.forEach(file => {
-          formData.append('files', file, getDisplayName(file))
-        })
-
-        const studentToken = localStorage.getItem('student_token')
-        const accessToken = localStorage.getItem('access_token') || localStorage.getItem('token')
-
-        const headers: Record<string, string> = {}
-        if (studentToken) {
-          headers['student-token'] = studentToken
-        } else if (accessToken) {
-          headers['Authorization'] = `Bearer ${accessToken}`
-        }
-
-        const res = await fetch(`/api/v1/chat/upload?session_id=${sessionId}`, {
-          method: 'POST',
-          headers,
-          body: formData
-        })
-
-        if (!res.ok) {
-          throw new Error('Upload failed')
-        }
-
-        const data = await res.json()
-        uploadedUrls = data.urls || []
-        uploadedUrls.forEach((url, i) => {
-          filenameMap[url] = originalNames[i] || url.split('/').pop() || 'file'
-        })
+        const uploadResult = await uploadFilesForMessage(attachedFiles)
+        uploadedUrls = uploadResult.uploadedUrls
+        filenameMap = uploadResult.filenameMap
       } catch (e) {
         console.error("Failed to upload files", e)
       }
@@ -489,7 +504,7 @@ export default function ChatSidebar({
         const fileObj = new globalThis.File([blob], data.filename || 'file', {
           type: data.mime_type || blob.type || 'application/octet-stream'
         })
-        setAttachedFiles(prev => [...prev, fileObj])
+        await shareDroppedFilesToSession([fileObj], `📎 ${data.filename || 'File condiviso'}`)
         return
       } catch (err) {
         console.error('Failed to handle session file drop', err)
@@ -516,10 +531,31 @@ export default function ChatSidebar({
         const fileType = blob.type || 'image/png'
         // Create file object
         const fileObj = new (window.File as any)([blob], filename, { type: fileType }) as File
-        setAttachedFiles(prev => [...prev, fileObj])
+        await shareDroppedFilesToSession([fileObj], `🖼️ ${filename}`)
         return
       } catch (err) {
         console.error('Failed to parse custom drag data', err)
+      }
+    }
+
+    // Check for document (brochure/dispensa/pdf) from teacher canvas
+    const docData = e.dataTransfer.getData('application/x-chatbot-document')
+    if (docData) {
+      try {
+        const data = JSON.parse(docData) as { type: string; content?: string; blobUrl?: string; filename: string; title: string; mimeType: string }
+        if (data.blobUrl) {
+          const response = await fetch(data.blobUrl)
+          const blob = await response.blob()
+          const fileObj = new (window.File as any)([blob], data.filename, { type: 'application/pdf' }) as File
+          await shareDroppedFilesToSession([fileObj], `📄 ${data.title || data.filename}`)
+        } else if (data.content) {
+          const blob = new Blob([data.content], { type: data.mimeType || 'text/plain' })
+          const fileObj = new (window.File as any)([blob], data.filename, { type: data.mimeType || 'text/plain' }) as File
+          await shareDroppedFilesToSession([fileObj], `📄 ${data.title || data.filename}`)
+        }
+        return
+      } catch (err) {
+        console.error('Failed to parse document drag data', err)
       }
     }
 
@@ -530,7 +566,7 @@ export default function ChatSidebar({
         const blob = new Blob([csvData], { type: 'text/csv' })
         const filename = `dataset_${Date.now()}.csv`
         const fileObj = new (window.File as any)([blob], filename, { type: 'text/csv' }) as File
-        setAttachedFiles(prev => [...prev, fileObj])
+        await shareDroppedFilesToSession([fileObj], `📊 ${filename}`)
         return
       } catch (err) {
         console.error('Failed to parse CSV drag data', err)
@@ -611,6 +647,29 @@ export default function ChatSidebar({
     }
     e.target.value = ''
   }
+
+  useEffect(() => {
+    if (!availableTabs.includes(activeTab)) {
+      setActiveTab(availableTabs[0])
+    }
+  }, [activeTab, availableTabs])
+
+  useEffect(() => {
+    if (userType === 'student' && !privateChatEnabled && activeTab === 'private') {
+      setActiveTab('session')
+      setActivePrivateChat(null)
+    }
+  }, [userType, privateChatEnabled, activeTab])
+
+  useEffect(() => {
+    if (userType !== 'student' || !privateChatEnabled || !teacherTarget?.id) return
+    startPrivateChat({
+      student_id: teacherTarget.id,
+      nickname: teacherTarget.name,
+      role: 'teacher',
+    })
+    setActivePrivateChat((current) => current || teacherTarget.id)
+  }, [userType, privateChatEnabled, teacherTarget, startPrivateChat])
 
   const removeFile = (index: number) => {
     setAttachedFiles(prev => prev.filter((_, i) => i !== index))
@@ -954,7 +1013,9 @@ export default function ChatSidebar({
         <div className="flex-1 flex flex-col items-center justify-center text-slate-300 opacity-50 p-4">
           <MessagesSquare className="h-8 w-8 mb-2" />
           <p className="text-[10px] font-medium uppercase text-center">{t('chat_sidebar.no_private_chat')}</p>
-          <p className="text-[9px] mt-1 text-center">{t('chat_sidebar.start_chat_from_students')}</p>
+          <p className="text-[9px] mt-1 text-center">
+            {userType === 'teacher' ? t('chat_sidebar.start_chat_from_students') : t('chat_sidebar.wait_teacher_private_chat')}
+          </p>
         </div>
       )
     }
@@ -1128,7 +1189,7 @@ export default function ChatSidebar({
                   </div>
                 </div>
               </div>
-              {user.student_id !== currentUserId && (
+              {userType === 'teacher' && user.role === 'student' && user.student_id !== currentUserId && (
                 <Button
                   size="sm"
                   variant="ghost"
@@ -1577,7 +1638,9 @@ export default function ChatSidebar({
       <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100 bg-white">
         <div className="flex items-center gap-2">
           <div className={`w-2 h-2 rounded-full ${connected ? 'bg-emerald-500 animate-pulse' : 'bg-slate-300'}`} />
-          <h3 className="font-bold text-xs uppercase tracking-widest text-slate-500">Live Chat</h3>
+          <h3 className="font-bold text-xs uppercase tracking-widest text-slate-500">
+            {userType === 'student' ? 'Chat di classe' : 'Chat live'}
+          </h3>
         </div>
         <div className="flex items-center gap-1">
           {onPinToggle && (
@@ -1610,9 +1673,9 @@ export default function ChatSidebar({
           className="flex items-center gap-0.5 p-0.5 rounded-xl"
           style={{ backgroundColor: studentAccentTheme.softMid }}
         >
-          {(['session', 'private', 'files', 'users'] as const).map((tab) => {
+          {availableTabs.map((tab) => {
             const isTabActive = activeTab === tab
-            const tabLabels = { session: 'Sessione', private: 'Private', files: 'File', users: 'Utenti' }
+            const tabLabels = { session: 'Classe', private: 'Privata', files: 'File', users: 'Utenti' }
             const TabIcons = { session: MessageSquare, private: MessagesSquare, files: Folder, users: Users }
             const TabIcon = TabIcons[tab]
             return (
@@ -1622,7 +1685,13 @@ export default function ChatSidebar({
                 {...(tab === 'session' ? {
                   onDragEnter: (e: React.DragEvent) => {
                     const types = Array.from(e.dataTransfer.types || [])
-                    if (types.includes('application/x-session-file') || types.includes('Files')) setActiveTab('session')
+                    if (
+                      types.includes('application/x-session-file')
+                      || types.includes('application/x-chatbot-document')
+                      || types.includes('application/x-chatbot-csv')
+                      || types.includes('application/x-chatbot-image')
+                      || types.includes('Files')
+                    ) setActiveTab('session')
                   }
                 } : {})}
                 className="flex-1 flex items-center justify-center gap-1 py-1.5 text-[10px] font-bold rounded-lg transition-all duration-200 relative"

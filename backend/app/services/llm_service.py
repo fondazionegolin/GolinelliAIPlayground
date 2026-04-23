@@ -126,10 +126,11 @@ class LLMService:
         model: Optional[str] = None,
         temperature: float = 0.7,
         max_tokens: int = 2048,
+        allow_web_search: bool = True,
     ) -> LLMResponse:
         provider = provider or settings.DEFAULT_LLM_PROVIDER
         model = model or settings.DEFAULT_LLM_MODEL
-        use_web_search = _needs_web_search(messages)
+        use_web_search = allow_web_search and _needs_web_search(messages)
         if use_web_search:
             logger.info("Web search enabled for %s/%s", provider, model)
 

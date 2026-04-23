@@ -1,4 +1,5 @@
-import { useState, useRef, useEffect, useCallback, useMemo, type CSSProperties } from 'react'
+import { useState, useRef, useEffect, useCallback, useMemo, lazy, type CSSProperties, Suspense } from 'react'
+import { type RagSession, getRagSessions, saveRagSession, createRagSession, deleteRagSession } from '@/lib/ragSessions'
 import { useTranslation } from 'react-i18next'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
@@ -26,6 +27,8 @@ import { VoiceRecorder } from '@/components/VoiceRecorder'
 import { DEFAULT_STUDENT_ACCENT, getStudentAccentTheme, loadStudentAccent, type StudentAccentId } from '@/lib/studentAccent'
 import EnvironmentalImpactPill from '@/components/chat/EnvironmentalImpactPill'
 import type { TokenUsageJson } from '@/lib/environmentalImpact'
+
+const StudentRagWorkspace = lazy(() => import('@/components/student/StudentRagWorkspace'))
 
 interface Message {
   id: string
@@ -271,7 +274,7 @@ function buildLearningImagePrompt(topic: string, unit: LearningUnit) {
   ].join('\n')}`
 }
 
-function getSidebarMenuTheme(key: 'assistants' | 'teacherbots' | 'learning') {
+function getSidebarMenuTheme(key: 'assistants' | 'teacherbots' | 'learning' | 'rag') {
   if (key === 'assistants') {
     return {
       surface: 'rgba(186, 230, 253, 0.34)',
@@ -286,6 +289,14 @@ function getSidebarMenuTheme(key: 'assistants' | 'teacherbots' | 'learning') {
       surfaceStrong: 'rgba(196, 181, 253, 0.28)',
       iconBg: 'rgba(139,92,246,0.14)',
       iconColor: '#6d28d9',
+    }
+  }
+  if (key === 'rag') {
+    return {
+      surface: 'rgba(237, 233, 254, 0.5)',
+      surfaceStrong: 'rgba(221, 214, 254, 0.34)',
+      iconBg: 'rgba(124,58,237,0.14)',
+      iconColor: '#7c3aed',
     }
   }
   return {
@@ -366,7 +377,9 @@ export default function ChatbotModule({ sessionId, studentId, initialTeacherbotI
   const [imageProvider, setImageProvider] = useState<'dall-e' | 'gpt-image-1'>('dall-e')
   const messagesContainerRef = useRef<HTMLDivElement>(null)
   const [imageSize, setImageSize] = useState<string>('1024x1024')
-  const [imageMode, setImageMode] = useState(false)
+  const [chatMode, setChatMode] = useState<'normal' | 'image' | 'quiz' | 'dataset'>('normal')
+  const [showChatModeMenu, setShowChatModeMenu] = useState(false)
+  const [expandedSection, setExpandedSection] = useState<'assistants' | 'teacherbots' | 'learning' | 'rag' | null>(null)
   const [imageGenerationProgress, setImageGenerationProgress] = useState<{
     status: string
     step: 'enhancing' | 'generating' | 'done' | 'error'
@@ -390,7 +403,10 @@ export default function ChatbotModule({ sessionId, studentId, initialTeacherbotI
   const [activeMasterPrompt, setActiveMasterPrompt] = useState<string | null>(null)
   const [isMasterPromptApplied, setIsMasterPromptApplied] = useState(false)
   // Learning section
-  const [mainTab, setMainTab] = useState<'assistants' | 'teacherbots' | 'learning'>('assistants')
+  const [mainTab, setMainTab] = useState<'assistants' | 'teacherbots' | 'learning' | 'rag'>('assistants')
+  const [navCollapsed, setNavCollapsed] = useState(false)
+  const [ragSessions, setRagSessions] = useState<RagSession[]>(() => getRagSessions())
+  const [activeRagSessionId, setActiveRagSessionId] = useState<string | null>(null)
   const [learningSessions, setLearningSessions] = useState<LearningSession[]>([])
   const [activeLearningSession, setActiveLearningSession] = useState<LearningSession | null>(null)
   const [learningMode, setLearningMode] = useState(false)
@@ -913,7 +929,7 @@ export default function ChatbotModule({ sessionId, studentId, initialTeacherbotI
           ...(studentToken ? { 'student-token': studentToken } : {}),
         },
         credentials: 'include',
-        body: JSON.stringify({ content }),
+        body: JSON.stringify({ content, chat_mode: chatMode }),
       })
 
       if (!response.ok) throw new Error('Stream request failed')
@@ -1268,8 +1284,8 @@ REGOLE IMPORTANTI:
       return
     }
 
-    // IMAGE GENERATION MODE — intercept before normal flow
-    if (imageMode && !selectedTeacherbot && !profileInterview.active) {
+    // IMAGE GENERATION MODE — intercept before normal flow (works for both regular chatbot and teacherbot)
+    if (chatMode === 'image' && !profileInterview.active) {
       handleImageGeneration(messageContent.trim())
       return
     }
@@ -1288,6 +1304,31 @@ REGOLE IMPORTANTI:
     if (!selectedTeacherbot && activeMasterPrompt && !isMasterPromptApplied && rawUserContent) {
       contentForApi = `CONTESTO DIDATTICO DA APPLICARE:\n${activeMasterPrompt}\n\nRichiesta studente:\n${rawUserContent}`
       setIsMasterPromptApplied(true)
+    }
+
+    // QUIZ MODE — inject structured quiz generation instruction (works for both regular chatbot and teacherbot)
+    if (chatMode === 'quiz' && !profileInterview.active) {
+      const quizInstruction = [
+        'Genera un quiz a scelta multipla in italiano basato sulla richiesta seguente.',
+        'Rispondi ESCLUSIVAMENTE con un blocco ```quiz contenente JSON valido nel formato:',
+        '{"title":"titolo quiz","questions":[{"question":"...","options":["a","b","c","d"],"correctIndex":0,"explanation":"..."}]}',
+        'Crea esattamente 4 domande con 4 opzioni ciascuna. Una sola opzione corretta. Aggiungi una breve spiegazione per ogni risposta.',
+        '',
+        'Richiesta: ' + rawUserContent,
+      ].join('\n')
+      contentForApi = quizInstruction
+    }
+
+    // DATASET MODE — inject dataset generation instruction (works for both regular chatbot and teacherbot)
+    if (chatMode === 'dataset' && !profileInterview.active) {
+      const datasetInstruction = [
+        'Genera un dataset strutturato, realistico e immediatamente utilizzabile basato sulla richiesta seguente.',
+        'Rispondi con il dataset in formato CSV (colonne ben definite, dati realistici, almeno 10 righe).',
+        'Se la richiesta specifica JSON o altro formato, usa quello. Non aggiungere testo aggiuntivo fuori dal dataset.',
+        '',
+        'Richiesta: ' + rawUserContent,
+      ].join('\n')
+      contentForApi = datasetInstruction
     }
 
     const userMessage: Message = {
@@ -1326,7 +1367,7 @@ REGOLE IMPORTANTI:
     isStreaming,
     isTeacherPreview,
     runStudentStreamRequest,
-    imageMode,
+    chatMode,
     handleImageGeneration,
   ])
 
@@ -1367,82 +1408,6 @@ REGOLE IMPORTANTI:
       setMobileView('profiles')
     }
   }, [isMobile, learningMode, teacherbotConversationId, resetProfileInterview])
-
-  const handleSelectProfile = useCallback(async (profileKey: string) => {
-    triggerHaptic('selection')
-
-    // End teacherbot conversation if switching from teacherbot to profile
-    if (teacherbotConversationId) {
-      try {
-        await teacherbotsApi.endConversation(teacherbotConversationId)
-      } catch (err) {
-        console.error('Error ending teacherbot conversation:', err)
-      }
-    }
-
-    setSelectedProfile(profileKey)
-    setMainTab('assistants')
-    setSelectedTeacherbot(null)
-    setTeacherbotConversationId(null)
-    setMessages([])
-    setConversationId(null)
-    setActiveMasterPrompt(null)
-    setIsMasterPromptApplied(false)
-    resetProfileInterview()
-    if (isMobile) {
-      setMobileView('conversations')
-    }
-    if (PROACTIVE_PROFILE_KEYS.includes(profileKey as ProactiveProfileKey)) {
-      startProfileInterview(profileKey as ProactiveProfileKey)
-      if (isMobile) {
-        setMobileView('chat')
-      }
-    }
-  }, [isMobile, teacherbotConversationId, resetProfileInterview, startProfileInterview])
-
-  const handleStartNewConversation = useCallback(() => {
-    triggerHaptic('light')
-    setMessages([])
-    setConversationId(null)
-    setTeacherbotConversationId(null)
-    setActiveMasterPrompt(null)
-    setIsMasterPromptApplied(false)
-    resetProfileInterview()
-    if (isMobile) {
-      setMobileView('chat')
-    }
-  }, [isMobile, resetProfileInterview])
-
-  const handleGenerateLesson = async () => {
-    if (!newLessonTopic.trim() || generatingLesson) return
-    setGeneratingLesson(true)
-    const prompt = `Genera una microlezione educativa breve in italiano sull'argomento: "${newLessonTopic.trim()}". La microlezione deve essere un fatto interessante, un concetto chiave o una curiosità stimolante per studenti delle scuole superiori o universitari. MASSIMO 400 caratteri. Rispondi SOLO con il testo della microlezione, senza titoli né introduzioni.`
-    try {
-      const res = await llmApi.studentChat(prompt, [], 'tutor')
-      const text: string = res.data?.response ?? res.data?.content ?? ''
-      const lesson = text.trim().slice(0, 420)
-      const newSession: LearningSession = {
-        id: crypto.randomUUID(),
-        topic: newLessonTopic.trim(),
-        lesson,
-        createdAt: new Date().toISOString(),
-      }
-      addLearningSession(newSession)
-      setShowNewLessonDialog(false)
-      setNewLessonTopic('')
-      openLearningSession(newSession)
-    } catch {
-      // silently fail
-    } finally {
-      setGeneratingLesson(false)
-    }
-  }
-
-  const handleChangeModel = (model: LLMModel | null) => {
-    setSelectedModel(model)
-    setConversationId(null)
-    setShowModelMenu(false)
-  }
 
   const loadConversation = async (convId: string, isTeacherbotMsg = false) => {
     loadingConvIdRef.current = convId
@@ -1526,6 +1491,94 @@ REGOLE IMPORTANTI:
     }
   }
 
+  const handleSelectProfile = useCallback(async (profileKey: string) => {
+    triggerHaptic('selection')
+
+    // End teacherbot conversation if switching from teacherbot to profile
+    if (teacherbotConversationId) {
+      try {
+        await teacherbotsApi.endConversation(teacherbotConversationId)
+      } catch (err) {
+        console.error('Error ending teacherbot conversation:', err)
+      }
+    }
+
+    setSelectedProfile(profileKey)
+    setMainTab('assistants')
+    setSelectedTeacherbot(null)
+    setTeacherbotConversationId(null)
+    setMessages([])
+    setConversationId(null)
+    setActiveMasterPrompt(null)
+    setIsMasterPromptApplied(false)
+    resetProfileInterview()
+    if (isMobile) {
+      setMobileView('conversations')
+    }
+
+    // Auto-resume most recent conversation for this profile
+    const recentConv = (conversationsData || [])
+      .slice() // don't mutate
+      .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
+      .find(c => c.profile_key === profileKey)
+
+    if (recentConv) {
+      loadConversation(recentConv.id)
+      return
+    }
+
+    if (PROACTIVE_PROFILE_KEYS.includes(profileKey as ProactiveProfileKey) && chatMode !== 'dataset') {
+      startProfileInterview(profileKey as ProactiveProfileKey)
+      if (isMobile) {
+        setMobileView('chat')
+      }
+    }
+  }, [isMobile, teacherbotConversationId, resetProfileInterview, startProfileInterview, conversationsData, loadConversation, chatMode])
+
+  const handleStartNewConversation = useCallback(() => {
+    triggerHaptic('light')
+    setMessages([])
+    setConversationId(null)
+    setTeacherbotConversationId(null)
+    setActiveMasterPrompt(null)
+    setIsMasterPromptApplied(false)
+    resetProfileInterview()
+    if (isMobile) {
+      setMobileView('chat')
+    }
+  }, [isMobile, resetProfileInterview])
+
+  const handleGenerateLesson = async () => {
+    if (!newLessonTopic.trim() || generatingLesson) return
+    setGeneratingLesson(true)
+    const prompt = `Genera una microlezione educativa breve in italiano sull'argomento: "${newLessonTopic.trim()}". La microlezione deve essere un fatto interessante, un concetto chiave o una curiosità stimolante per studenti delle scuole superiori o universitari. MASSIMO 400 caratteri. Rispondi SOLO con il testo della microlezione, senza titoli né introduzioni.`
+    try {
+      const res = await llmApi.studentChat(prompt, [], 'tutor')
+      const text: string = res.data?.response ?? res.data?.content ?? ''
+      const lesson = text.trim().slice(0, 420)
+      const newSession: LearningSession = {
+        id: crypto.randomUUID(),
+        topic: newLessonTopic.trim(),
+        lesson,
+        createdAt: new Date().toISOString(),
+      }
+      addLearningSession(newSession)
+      setShowNewLessonDialog(false)
+      setNewLessonTopic('')
+      openLearningSession(newSession)
+    } catch {
+      // silently fail
+    } finally {
+      setGeneratingLesson(false)
+    }
+  }
+
+  const handleChangeModel = (model: LLMModel | null) => {
+    setSelectedModel(model)
+    setConversationId(null)
+    setShowModelMenu(false)
+  }
+
   const handleDeleteConversation = useCallback(async (convId: string) => {
     triggerHaptic('warning')
     await llmApi.deleteConversation(convId)
@@ -1556,6 +1609,19 @@ REGOLE IMPORTANTI:
     setIsMasterPromptApplied(false)
     resetProfileInterview()
 
+    // Auto-resume most recent teacherbot conversation
+    const recentTBConv = (teacherbotConversationsData || [])
+      .slice()
+      .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
+      .find(c => c.teacherbot_id === teacherbot.id)
+
+    if (recentTBConv) {
+      setTeacherbotConversationId(recentTBConv.id)
+      loadConversation(recentTBConv.id, true)
+      if (isMobile) setMobileView('conversations')
+      return
+    }
+
     // If proactive, show initial message
     if (teacherbot.is_proactive && teacherbot.proactive_message) {
       setMessages([{
@@ -1571,7 +1637,7 @@ REGOLE IMPORTANTI:
     if (isMobile) {
       setMobileView('conversations')
     }
-  }, [isMobile, teacherbotConversationId, resetProfileInterview])
+  }, [isMobile, teacherbotConversationId, resetProfileInterview, teacherbotConversationsData, loadConversation])
 
   const conversations = [
     ...(conversationsData || []),
@@ -1641,6 +1707,31 @@ REGOLE IMPORTANTI:
     }
   }, [initialTeacherbotId, availableTeacherbots, selectedTeacherbot, handleSelectTeacherbot])
 
+  const activeRagSession = ragSessions.find((s) => s.id === activeRagSessionId) ?? null
+
+  const handleDeleteRagSession = useCallback((id: string) => {
+    deleteRagSession(id)
+    const updatedSessions = getRagSessions()
+    setRagSessions(updatedSessions)
+
+    if (activeRagSessionId === id) {
+      if (updatedSessions.length > 0) {
+        setActiveRagSessionId(updatedSessions[0].id)
+      } else {
+        const nextSession = createRagSession()
+        saveRagSession(nextSession)
+        setRagSessions([nextSession])
+        setActiveRagSessionId(nextSession.id)
+      }
+    }
+  }, [activeRagSessionId])
+
+  useEffect(() => {
+    if (!activeRagSessionId && ragSessions.length > 0) {
+      setActiveRagSessionId(ragSessions[0].id)
+    }
+  }, [activeRagSessionId, ragSessions])
+
   // Mobile: Profile selection screen
   if (isMobile && mobileView === 'profiles') {
     const BOT_SURFACES_MOB: Record<string, { bg: string; icon: string; text: string }> = {
@@ -1670,6 +1761,7 @@ REGOLE IMPORTANTI:
             { key: 'assistants' as const, label: 'Assistenti AI', icon: <Bot className="h-3 w-3" /> },
             { key: 'teacherbots' as const, label: 'Teacherbots', icon: <Wand2 className="h-3 w-3" />, badge: availableTeacherbots.length },
             { key: 'learning' as const, label: 'Oggi Imparo', icon: <BookOpen className="h-3 w-3" />, badge: learningSessions.length },
+            { key: 'rag' as const, label: 'RAG', icon: <Database className="h-3 w-3" /> },
           ]).map(({ key, label, icon, badge }) => (
             <button key={key} onClick={() => setMainTab(key)}
               className={`flex items-center gap-1 px-3 py-1.5 rounded-xl text-[11px] font-semibold transition-all whitespace-nowrap flex-shrink-0 ${
@@ -1782,6 +1874,33 @@ REGOLE IMPORTANTI:
               ))}
             </div>
           )}
+
+          {/* Mobile: RAG workspace */}
+          {mainTab === 'rag' && (
+            <div className="-mx-3 -mb-4 h-[calc(100vh-120px)]">
+              <Suspense fallback={<div className="flex items-center justify-center h-full"><Loader2 className="h-6 w-6 animate-spin text-violet-400" /></div>}>
+                {activeRagSession && (
+                  <StudentRagWorkspace
+                    key={activeRagSession.id}
+                    theme={accentTheme}
+                    session={activeRagSession}
+                    onSessionUpdate={() => setRagSessions(getRagSessions())}
+                    onNewSession={() => {
+                      const s = createRagSession()
+                      saveRagSession(s)
+                      setRagSessions(getRagSessions())
+                      setActiveRagSessionId(s.id)
+                    }}
+                    onSwitchSession={(id) => {
+                      setRagSessions(getRagSessions())
+                      setActiveRagSessionId(id)
+                    }}
+                    onDeleteSession={handleDeleteRagSession}
+                  />
+                )}
+              </Suspense>
+            </div>
+          )}
         </div>
 
         {/* New lesson dialog */}
@@ -1878,19 +1997,13 @@ REGOLE IMPORTANTI:
     )
   }
 
-  const isDesktopSelection = !selectedProfile && !selectedTeacherbot && !learningMode
+  const isDesktopSelection = !selectedProfile && !selectedTeacherbot && !learningMode && mainTab !== 'rag'
   const profileUsageCounts = (conversationsData || []).reduce<Record<string, number>>((acc, c) => {
     acc[c.profile_key] = (acc[c.profile_key] || 0) + 1
     return acc
   }, {})
   const topProfiles = Object.entries(profileUsageCounts).sort((a, b) => b[1] - a[1]).slice(0, 4)
 const learningTopics = [...new Set(learningSessions.map((session) => session.topic).filter(Boolean))]
-  const openDesktopSection = (tab: 'assistants' | 'teacherbots' | 'learning') => {
-    setMainTab(tab)
-    if (!isDesktopSelection) {
-      void handleNewChat()
-    }
-  }
   const composerContent = (
     <>
       {attachedFiles.length > 0 && (
@@ -1971,14 +2084,59 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
             <Paperclip className="h-5 w-5" />
           </Button>
 
-          <Button
-            variant="ghost" size="icon"
-            className={`h-9 w-9 rounded-full flex-shrink-0 transition-all ${imageMode ? 'bg-fuchsia-50 text-fuchsia-600' : 'text-slate-400 hover:bg-slate-100'}`}
-            onClick={() => setImageMode(v => !v)}
-            title={imageMode ? 'Disattiva modalità immagini' : 'Attiva modalità immagini'}
-          >
-            <ImageIcon className="h-5 w-5" />
-          </Button>
+          <div className="relative hidden md:block flex-shrink-0">
+            <button
+              type="button"
+              onClick={() => setShowChatModeMenu((prev) => !prev)}
+              className="ai-mode-pill inline-flex items-center gap-2 rounded-full px-2.5 py-1.5 text-[11px] font-semibold text-slate-900 ring-1 ring-white/70"
+              title="Cambia modalità"
+            >
+              <span className="px-1.5">Modalita</span>
+              <span
+                className={`rounded-full px-2.5 py-1 text-[10px] font-bold ${
+                  chatMode === 'normal'
+                    ? 'bg-slate-900 text-white'
+                    : chatMode === 'image'
+                      ? 'bg-fuchsia-600 text-white'
+                      : chatMode === 'quiz'
+                        ? 'bg-amber-500 text-white'
+                        : 'bg-emerald-600 text-white'
+                }`}
+              >
+                {chatMode === 'normal' ? 'Chat' : chatMode === 'image' ? 'Immagine' : chatMode === 'quiz' ? 'Quiz' : 'Dataset'}
+              </span>
+              <ChevronDown className={`h-3 w-3 text-slate-700 transition-transform ${showChatModeMenu ? 'rotate-180' : ''}`} />
+            </button>
+            {showChatModeMenu && (
+              <div className="absolute bottom-full left-0 mb-2 w-44 rounded-2xl border border-slate-200 bg-white/96 p-1.5 shadow-xl backdrop-blur-xl">
+                {([
+                  { mode: 'normal' as const, label: 'Chat', icon: null },
+                  { mode: 'image' as const, label: 'Immagine', icon: <ImageIcon className="h-3.5 w-3.5" /> },
+                  { mode: 'quiz' as const, label: 'Quiz', icon: <ClipboardCheck className="h-3.5 w-3.5" /> },
+                  { mode: 'dataset' as const, label: 'Dataset', icon: <Database className="h-3.5 w-3.5" /> },
+                ] as const).map(({ mode, label, icon }) => {
+                  const isSelected = chatMode === mode
+                  return (
+                    <button
+                      key={mode}
+                      type="button"
+                      onClick={() => {
+                        setChatMode(mode)
+                        setShowChatModeMenu(false)
+                      }}
+                      className={`flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-xs font-medium transition-colors ${
+                        isSelected ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'
+                      }`}
+                    >
+                      {icon}
+                      <span className="flex-1">{label}</span>
+                      {isSelected && <Check className="h-3.5 w-3.5" />}
+                    </button>
+                  )
+                })}
+              </div>
+            )}
+          </div>
 
           <div className="flex-1 relative min-w-0">
             <input
@@ -2002,7 +2160,7 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
                 }
               }}
               onPaste={handleInputPaste}
-              placeholder={profileInterview.active ? t('chatbot.guided_placeholder') : (imageMode ? 'Descrivi l\'immagine da generare...' : (attachedFiles.length > 0 ? t('chatbot.describe_placeholder') : 'Scrivi un messaggio...'))}
+              placeholder={profileInterview.active ? t('chatbot.guided_placeholder') : (chatMode === 'image' ? 'Descrivi l\'immagine da generare...' : chatMode === 'quiz' ? 'Di cosa vuoi un quiz?' : chatMode === 'dataset' ? 'Descrivi il dataset da generare...' : (attachedFiles.length > 0 ? t('chatbot.describe_placeholder') : 'Scrivi un messaggio...'))}
               disabled={sendMessageMutation.isPending || isStreaming}
               className="w-full py-2.5 bg-transparent border-none text-sm focus:ring-0 focus:outline-none outline-none placeholder:text-slate-400"
             />
@@ -2020,7 +2178,7 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
         </div>
       </div>
 
-      {imageMode && (
+      {(chatMode === 'image') && (
         <div className="flex items-center justify-center gap-4 mt-2 pb-3 flex-wrap animate-in fade-in slide-in-from-bottom-1 duration-150">
           <div className="flex items-center gap-2">
             <span className="text-xs text-slate-400">Modello:</span>
@@ -2069,9 +2227,32 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
       }}
     >
       <aside
-        className="hidden md:flex w-[24.5rem] shrink-0 border-r bg-white/88 backdrop-blur-xl flex-col"
+        className={`hidden md:flex shrink-0 border-r bg-white/88 backdrop-blur-xl flex-col transition-all duration-300 ${navCollapsed && mainTab === 'rag' ? 'w-12' : 'w-[24.5rem]'}`}
         style={{ borderRightColor: accentTheme.id === 'black' ? hexToRgba('#0f172a', 0.08) : hexToRgba(accentTheme.accent, 0.14) }}
       >
+        {navCollapsed && mainTab === 'rag' ? (
+          /* Collapsed strip */
+          <div className="flex flex-col items-center gap-3 p-2 pt-3 h-full">
+            <button onClick={() => setNavCollapsed(false)} title="Espandi sidebar"
+              className="p-2 rounded-xl hover:bg-slate-100 transition-colors">
+              <ChevronRight className="h-4 w-4 text-slate-500" />
+            </button>
+            <div className="w-px flex-1 bg-slate-200 mx-auto" />
+            {[
+              { key: 'assistants' as const, icon: Bot },
+              { key: 'teacherbots' as const, icon: Wand2 },
+              { key: 'learning' as const, icon: BookOpen },
+              { key: 'rag' as const, icon: Database },
+            ].map(({ key, icon: Icon }) => (
+              <button key={key} onClick={() => { setNavCollapsed(false); setMainTab(key) }}
+                title={key}
+                className={`p-2 rounded-xl transition-colors ${mainTab === key ? 'bg-violet-100 text-violet-600' : 'text-slate-400 hover:bg-slate-100'}`}>
+                <Icon className="h-4 w-4" />
+              </button>
+            ))}
+          </div>
+        ) : (
+          <>
         <div
           className="border-b px-5 py-4"
           style={{
@@ -2079,55 +2260,227 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
             backgroundColor: accentTheme.id === 'black' ? 'rgba(255,255,255,0.96)' : hexToRgba(accentTheme.accent, 0.08),
           }}
         >
-          <p className="text-[10px] font-semibold uppercase tracking-[0.18em]" style={{ color: accentTheme.text }}>Chatbot</p>
-          <h2 className="mt-0.5 text-base font-semibold text-slate-900">Spazio AI</h2>
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-[10px] font-semibold uppercase tracking-[0.18em]" style={{ color: accentTheme.text }}>Chatbot</p>
+              <h2 className="mt-0.5 text-base font-semibold text-slate-900">Spazio AI</h2>
+            </div>
+            {mainTab === 'rag' && (
+              <button onClick={() => setNavCollapsed(true)} title="Comprimi sidebar"
+                className="p-1.5 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors">
+                <ChevronLeft className="h-4 w-4" />
+              </button>
+            )}
+          </div>
         </div>
 
-        <nav className="px-3 py-3 space-y-1">
+        <nav className="px-3 py-3 space-y-1 flex-1 overflow-y-auto">
           {[
             { key: 'assistants' as const, label: 'Assistenti AI', icon: Bot, badge: profiles.length, note: 'Tutor, quiz e strumenti' },
             { key: 'teacherbots' as const, label: 'Teacherbot', icon: Wand2, badge: availableTeacherbots.length, note: 'Dal tuo docente' },
             { key: 'learning' as const, label: 'Oggi Imparo', icon: BookOpen, badge: learningSessions.length, note: 'Microlezioni' },
+            { key: 'rag' as const, label: 'RAG', icon: Database, badge: undefined, note: 'Documenti & citazioni' },
           ].map(({ key, label, icon: Icon, badge, note }) => {
             const active = mainTab === key
+            const isExpanded = expandedSection === key
             const menuTheme = getSidebarMenuTheme(key)
             return (
-              <button
-                key={key}
-                onClick={() => openDesktopSection(key)}
-                className={`w-full rounded-2xl border px-3 py-2.5 text-left transition-all ${active ? 'shadow-sm' : 'hover:shadow-sm'}`}
-                style={active ? {
-                  borderColor: accentTheme.id === 'black' ? hexToRgba('#0f172a', 0.12) : hexToRgba(accentTheme.accent, 0.2),
-                  backgroundColor: menuTheme.surface,
-                } : {
-                  borderColor: 'rgba(203,213,225,0.3)',
-                  backgroundColor: 'rgba(255,255,255,0.74)',
-                }}
-              >
-                <div className="flex items-center gap-2.5">
-                  <div
-                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl"
-                    style={{ backgroundColor: active ? menuTheme.surfaceStrong : menuTheme.iconBg, color: menuTheme.iconColor }}
-                  >
-                    <Icon className="h-3.5 w-3.5" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center justify-between gap-1">
-                      <span className="text-sm font-semibold text-slate-800">{label}</span>
-                      <span className="rounded-full px-1.5 py-0.5 text-[10px] font-bold"
-                        style={{ backgroundColor: 'rgba(255,255,255,0.9)', color: menuTheme.iconColor }}>
-                        {badge}
-                      </span>
+              <div key={key}>
+                <button
+                  className={`w-full rounded-2xl border px-3 py-2.5 text-left transition-all ${active || isExpanded ? 'shadow-sm' : 'hover:shadow-sm'}`}
+                  style={active || isExpanded ? {
+                    borderColor: accentTheme.id === 'black' ? hexToRgba('#0f172a', 0.12) : hexToRgba(accentTheme.accent, 0.2),
+                    backgroundColor: menuTheme.surface,
+                  } : {
+                    borderColor: 'rgba(203,213,225,0.3)',
+                    backgroundColor: 'rgba(255,255,255,0.74)',
+                  }}
+                  onClick={() => {
+                    if (key === 'rag') {
+                      const already = expandedSection === 'rag'
+                      setExpandedSection(already ? null : 'rag')
+                      // If no sessions yet, auto-create one and navigate
+                      if (!already && ragSessions.length === 0) {
+                        const s = createRagSession()
+                        saveRagSession(s)
+                        setRagSessions([s])
+                        setActiveRagSessionId(s.id)
+                        setMainTab('rag')
+                        setExpandedSection(null)
+                      }
+                    } else {
+                      setExpandedSection(prev => prev === key ? null : key)
+                    }
+                  }}
+                >
+                  <div className="flex items-center gap-2.5">
+                    <div
+                      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl"
+                      style={{ backgroundColor: active || isExpanded ? menuTheme.surfaceStrong : menuTheme.iconBg, color: menuTheme.iconColor }}
+                    >
+                      <Icon className="h-3.5 w-3.5" />
                     </div>
-                    <p className="text-[11px] text-slate-500">{note}</p>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center justify-between gap-1">
+                        <span className="text-sm font-semibold text-slate-800">{label}</span>
+                        <div className="flex items-center gap-1">
+                          <span className="rounded-full px-1.5 py-0.5 text-[10px] font-bold"
+                            style={{ backgroundColor: 'rgba(255,255,255,0.9)', color: menuTheme.iconColor }}>
+                            {badge}
+                          </span>
+                          <ChevronDown className={`h-3 w-3 transition-transform text-slate-400 ${isExpanded ? 'rotate-180' : ''}`} />
+                        </div>
+                      </div>
+                      <p className="text-[11px] text-slate-500">{note}</p>
+                    </div>
                   </div>
-                </div>
-              </button>
+                </button>
+
+                {/* Expanded sub-items */}
+                {isExpanded && key === 'assistants' && (
+                  <div className="mt-1 ml-2 space-y-0.5">
+                    {profiles.map((profile) => {
+                      const isActive = selectedProfile === profile.key && !selectedTeacherbot && !learningMode
+                      return (
+                        <button
+                          key={profile.key}
+                          onClick={() => handleSelectProfile(profile.key)}
+                          className={`w-full flex items-start gap-3 px-3 py-3 rounded-xl text-left transition-all ${isActive ? 'bg-white shadow-sm' : 'hover:bg-white/70'}`}
+                          style={isActive ? { borderLeft: `3px solid ${menuTheme.iconColor}`, paddingLeft: '9px' } : undefined}
+                        >
+                          <div className="w-8 h-8 rounded-xl flex items-center justify-center shrink-0"
+                            style={{ backgroundColor: menuTheme.iconBg, color: menuTheme.iconColor }}>
+                            {PROFILE_ICONS[profile.key] || <Bot className="h-4 w-4" />}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <div className="text-sm font-semibold text-slate-700 truncate">{profile.name}</div>
+                            {profile.description && (
+                              <div className="text-[11px] text-slate-400 mt-0.5 line-clamp-2 leading-relaxed">{profile.description}</div>
+                            )}
+                          </div>
+                        </button>
+                      )
+                    })}
+                  </div>
+                )}
+
+                {isExpanded && key === 'teacherbots' && (
+                  <div className="mt-1 ml-2 space-y-0.5">
+                    {availableTeacherbots.length === 0 ? (
+                      <p className="text-xs text-slate-400 px-3 py-2">Nessun teacherbot disponibile</p>
+                    ) : availableTeacherbots.map((bot) => {
+                      const isActive = selectedTeacherbot?.id === bot.id
+                      return (
+                        <button
+                          key={bot.id}
+                          onClick={() => handleSelectTeacherbot(bot)}
+                          className={`w-full flex items-start gap-3 px-3 py-3 rounded-xl text-left transition-all ${isActive ? 'bg-white shadow-sm' : 'hover:bg-white/70'}`}
+                          style={isActive ? { borderLeft: `3px solid ${menuTheme.iconColor}`, paddingLeft: '9px' } : undefined}
+                        >
+                          <div className="w-8 h-8 rounded-xl flex items-center justify-center shrink-0"
+                            style={{ backgroundColor: menuTheme.iconBg, color: menuTheme.iconColor }}>
+                            <Wand2 className="h-4 w-4" />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <div className="text-sm font-semibold text-slate-700 truncate">{bot.name}</div>
+                            {bot.synopsis && (
+                              <div className="text-[11px] text-slate-400 mt-0.5 line-clamp-2 leading-relaxed">{bot.synopsis}</div>
+                            )}
+                          </div>
+                        </button>
+                      )
+                    })}
+                  </div>
+                )}
+
+                {isExpanded && key === 'rag' && (
+                  <div className="mt-1 ml-2 space-y-0.5">
+                    <button
+                      onClick={() => {
+                        const s = createRagSession()
+                        saveRagSession(s)
+                        setRagSessions(getRagSessions())
+                        setActiveRagSessionId(s.id)
+                        setMainTab('rag')
+                        setExpandedSection(null)
+                        setNavCollapsed(false)
+                      }}
+                      className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-left hover:bg-white/70 transition-all"
+                    >
+                      <div className="w-6 h-6 rounded-lg flex items-center justify-center shrink-0"
+                        style={{ backgroundColor: menuTheme.iconBg, color: menuTheme.iconColor }}>
+                        <Plus className="h-3 w-3" />
+                      </div>
+                      <div className="text-xs font-semibold text-slate-700">Nuova sessione</div>
+                    </button>
+                    {ragSessions.slice(0, 8).map((ragSession) => {
+                      const isActive = activeRagSessionId === ragSession.id && mainTab === 'rag'
+                      const lastMsg = ragSession.messages.filter(m => m.role === 'user').pop()
+                      return (
+                        <button
+                          key={ragSession.id}
+                          onClick={() => {
+                            setActiveRagSessionId(ragSession.id)
+                            setMainTab('rag')
+                            setExpandedSection(null)
+                            setNavCollapsed(false)
+                          }}
+                          className={`w-full flex items-center gap-2 px-3 py-2 rounded-xl text-left transition-all ${isActive ? 'bg-white shadow-sm' : 'hover:bg-white/70'}`}
+                          style={isActive ? { borderLeft: `3px solid ${menuTheme.iconColor}`, paddingLeft: '9px' } : undefined}
+                        >
+                          <div className="w-6 h-6 rounded-lg flex items-center justify-center shrink-0"
+                            style={{ backgroundColor: menuTheme.iconBg, color: menuTheme.iconColor }}>
+                            <Database className="h-3 w-3" />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <div className="text-xs font-semibold text-slate-700 truncate">{ragSession.name}</div>
+                            {lastMsg && (
+                              <div className="text-[10px] text-slate-400 truncate">{lastMsg.content.slice(0, 40)}</div>
+                            )}
+                          </div>
+                        </button>
+                      )
+                    })}
+                  </div>
+                )}
+
+                {isExpanded && key === 'learning' && (
+                  <div className="mt-1 ml-2 space-y-0.5">
+                    <button
+                      onClick={() => setShowNewLessonDialog(true)}
+                      className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-left hover:bg-white/70 transition-all"
+                    >
+                      <div className="w-6 h-6 rounded-lg flex items-center justify-center shrink-0"
+                        style={{ backgroundColor: menuTheme.iconBg, color: menuTheme.iconColor }}>
+                        <Plus className="h-3 w-3" />
+                      </div>
+                      <div className="text-xs font-semibold text-slate-700">Nuova microlezione</div>
+                    </button>
+                    {learningSessions.slice(0, 5).map((session) => {
+                      const isActive = activeLearningSession?.id === session.id
+                      return (
+                        <button
+                          key={session.id}
+                          onClick={() => openLearningSession(session)}
+                          className={`w-full flex items-center gap-2 px-3 py-2 rounded-xl text-left transition-all ${isActive ? 'bg-white shadow-sm' : 'hover:bg-white/70'}`}
+                          style={isActive ? { borderLeft: `3px solid ${menuTheme.iconColor}`, paddingLeft: '9px' } : undefined}
+                        >
+                          <div className="w-6 h-6 rounded-lg flex items-center justify-center shrink-0"
+                            style={{ backgroundColor: menuTheme.iconBg, color: menuTheme.iconColor }}>
+                            <BookOpen className="h-3 w-3" />
+                          </div>
+                          <div className="text-xs font-semibold text-slate-700 truncate">{session.topic}</div>
+                        </button>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
             )
           })}
         </nav>
 
-        <div className="mt-auto border-t px-3 py-3" style={{ borderTopColor: accentTheme.id === 'black' ? hexToRgba('#0f172a', 0.06) : hexToRgba(accentTheme.accent, 0.1) }}>
+        <div className="border-t px-3 py-3" style={{ borderTopColor: accentTheme.id === 'black' ? hexToRgba('#0f172a', 0.06) : hexToRgba(accentTheme.accent, 0.1) }}>
           <div className="grid grid-cols-2 gap-1.5">
             <div className="rounded-xl border bg-white/90 px-3 py-2" style={{ borderColor: accentTheme.id === 'black' ? hexToRgba('#0f172a', 0.06) : hexToRgba(accentTheme.accent, 0.12) }}>
               <div className="text-[10px] uppercase tracking-wide text-slate-400">Chat</div>
@@ -2139,6 +2492,8 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
             </div>
           </div>
         </div>
+          </>
+        )}
       </aside>
 
       <div className="flex-1 min-w-0 min-h-0 flex overflow-hidden">
@@ -2182,6 +2537,24 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
                         style={conversationId === conv.id ? selectedSoftStyle : undefined}
                         onClick={() => loadConversation(conv.id)}
                       >
+                        {(() => {
+                          if (conv.profile_key.startsWith('teacherbot-')) {
+                            const tbId = conv.profile_key.replace('teacherbot-', '')
+                            const bot = availableTeacherbots.find(b => b.id === tbId)
+                            return bot ? (
+                              <div className="text-[10px] font-semibold text-violet-600 mb-0.5 flex items-center gap-1">
+                                <Wand2 className="h-2.5 w-2.5" />
+                                {bot.name}
+                              </div>
+                            ) : null
+                          }
+                          const profile = profiles.find(p => p.key === conv.profile_key)
+                          return profile ? (
+                            <div className="text-[10px] font-semibold mb-0.5" style={{ color: accentTheme.text }}>
+                              {profile.name}
+                            </div>
+                          ) : null
+                        })()}
                         <div className="truncate font-medium pr-6">{conv.title || 'Conversazione'}</div>
                         <div className="text-xs text-slate-400">
                           {new Date(conv.updated_at).toLocaleDateString('it-IT', {
@@ -2326,7 +2699,29 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
           files.forEach(file => addFileWithPreview(file as globalThis.File))
         }}
         >
-          {isDesktopSelection ? (
+          {mainTab === 'rag' ? (
+            <Suspense fallback={<div className="flex h-full items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-violet-400" /></div>}>
+              {activeRagSession && (
+                  <StudentRagWorkspace
+                    key={activeRagSession.id}
+                    theme={accentTheme}
+                    session={activeRagSession}
+                    onSessionUpdate={() => setRagSessions(getRagSessions())}
+                    onNewSession={() => {
+                      const s = createRagSession()
+                      saveRagSession(s)
+                      setRagSessions(getRagSessions())
+                      setActiveRagSessionId(s.id)
+                    }}
+                    onSwitchSession={(id) => {
+                      setRagSessions(getRagSessions())
+                      setActiveRagSessionId(id)
+                    }}
+                    onDeleteSession={handleDeleteRagSession}
+                  />
+                )}
+            </Suspense>
+          ) : isDesktopSelection ? (
             <>
               <div
                 className="flex shrink-0 items-center justify-between border-b px-5 py-3"
@@ -2699,6 +3094,7 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
                 )}
               </div>
 
+              {/* Mode toolbar */}
               <div
                 ref={messagesContainerRef}
                 className={`flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-6 py-4 md:px-10 md:py-6 space-y-3 md:space-y-6 ${chatBgIsDark ? 'text-white' : ''}`}
@@ -2836,7 +3232,7 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
               </div>
 
               {isMobile ? (
-                <div className={`fixed transition-all duration-200 z-50 ${isInputFocused ? 'bottom-0 left-0 right-0 p-2 bg-white border-t border-slate-200' : 'bottom-[calc(2.5rem+env(safe-area-inset-bottom))] left-2 right-2'}`}>
+                <div className={`fixed left-0 right-0 bottom-0 transition-all duration-200 z-50 ${isInputFocused ? 'p-2 bg-white border-t border-slate-200' : 'p-2'}`}>
                   {composerContent}
                 </div>
               ) : (

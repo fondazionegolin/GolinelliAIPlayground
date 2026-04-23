@@ -11,14 +11,7 @@ import WidgetShell from '@/components/desktop/WidgetShell'
 import WallpaperPicker, { getWallpaperStyle } from '@/components/desktop/WallpaperPicker'
 import WidgetPalette from '@/components/desktop/WidgetPalette'
 import DesktopSwitcher from '@/components/desktop/DesktopSwitcher'
-import ClockWidget from '@/components/desktop/widgets/ClockWidget'
-import NoteWidget from '@/components/desktop/widgets/NoteWidget'
-import TasklistWidget from '@/components/desktop/widgets/TasklistWidget'
-import CalendarWidget from '@/components/desktop/widgets/CalendarWidget'
-import WeeklyCalendarWidget from '@/components/desktop/widgets/WeeklyCalendarWidget'
-import FileRefWidget from '@/components/desktop/widgets/FileRefWidget'
-import ImageRefWidget from '@/components/desktop/widgets/ImageRefWidget'
-import OggiImparoWidget from '@/components/desktop/widgets/OggiImparoWidget'
+import DesktopWidgetContent from '@/components/desktop/DesktopWidgetContent'
 import FileViewerModal from '@/components/ui/FileViewerModal'
 import { useWindowSize } from '@/hooks/useWindowSize'
 
@@ -36,6 +29,7 @@ interface Widget {
   grid_w: number
   grid_h: number
   config_json: Record<string, unknown>
+  is_locked?: boolean
 }
 
 interface Desktop {
@@ -76,81 +70,8 @@ function widgetsToLayout(widgets: Widget[]): LayoutItem[] {
     h: w.grid_h,
     minW: 3,
     minH: 2,
+    static: !!w.is_locked,
   }))
-}
-
-// ── Widget content dispatcher ─────────────────────────────────────────────────
-
-function WidgetContent({
-  widget,
-  onConfigChange,
-  onOpenFile,
-  userType,
-  sessionName,
-}: {
-  widget: Widget
-  onConfigChange: (config: Record<string, unknown>) => void
-  onOpenFile: (file: { url: string; filename: string; type?: string }) => void
-  userType: 'teacher' | 'student'
-  sessionName?: string
-}) {
-  switch (widget.widget_type) {
-    case 'CLOCK':
-      return (
-        <ClockWidget
-          config={widget.config_json as Parameters<typeof ClockWidget>[0]['config']}
-          onConfigChange={onConfigChange as Parameters<typeof ClockWidget>[0]['onConfigChange']}
-        />
-      )
-    case 'NOTE':
-      return (
-        <NoteWidget
-          config={widget.config_json as Parameters<typeof NoteWidget>[0]['config']}
-          onConfigChange={onConfigChange as Parameters<typeof NoteWidget>[0]['onConfigChange']}
-        />
-      )
-    case 'TASKLIST':
-      return (
-        <TasklistWidget
-          config={widget.config_json as Parameters<typeof TasklistWidget>[0]['config']}
-          onConfigChange={onConfigChange as Parameters<typeof TasklistWidget>[0]['onConfigChange']}
-        />
-      )
-    case 'CALENDAR':
-      return (
-        <CalendarWidget
-          config={widget.config_json as Parameters<typeof CalendarWidget>[0]['config']}
-          onConfigChange={onConfigChange as Parameters<typeof CalendarWidget>[0]['onConfigChange']}
-        />
-      )
-    case 'WEEKLY_CALENDAR':
-      return (
-        <WeeklyCalendarWidget
-          config={widget.config_json as Parameters<typeof WeeklyCalendarWidget>[0]['config']}
-          userType={userType}
-        />
-      )
-    case 'FILE_REF':
-      return (
-        <FileRefWidget
-          config={widget.config_json as Parameters<typeof FileRefWidget>[0]['config']}
-          onOpen={onOpenFile}
-        />
-      )
-    case 'IMAGE_REF':
-      return <ImageRefWidget config={widget.config_json as Parameters<typeof ImageRefWidget>[0]['config']} />
-    case 'OGGI_IMPARO':
-      return (
-        <OggiImparoWidget
-          config={widget.config_json as Parameters<typeof OggiImparoWidget>[0]['config']}
-          onConfigChange={onConfigChange as Parameters<typeof OggiImparoWidget>[0]['onConfigChange']}
-          userType={userType}
-          sessionName={sessionName}
-        />
-      )
-    default:
-      return <div className="h-full flex items-center justify-center text-xs text-white/30">{widget.widget_type}</div>
-  }
 }
 
 // ── Main component ────────────────────────────────────────────────────────────
@@ -486,8 +407,9 @@ export default function DesktopPage({
                 <WidgetShell
                   widgetType={widget.widget_type}
                   onDelete={() => deleteWidget.mutate({ desktopId: activeDesktop.id, widgetId: widget.id })}
+                  locked={!!widget.is_locked}
                 >
-                  <WidgetContent
+                  <DesktopWidgetContent
                     widget={widget}
                     onConfigChange={(config) => {
                       updateWidget.mutate({
@@ -499,6 +421,7 @@ export default function DesktopPage({
                     onOpenFile={setViewingFile}
                     userType={userType}
                     sessionName={sessionName}
+                    readOnly={!!widget.is_locked}
                   />
                 </WidgetShell>
               </div>

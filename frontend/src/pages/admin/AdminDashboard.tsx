@@ -3,7 +3,7 @@ import { Routes, Route, useLocation, useNavigate, Navigate } from 'react-router-
 import { motion } from 'framer-motion'
 import { useAuthStore } from '@/stores/auth'
 import { AppBackground } from '@/components/ui/AppBackground'
-import { LogOut, LayoutDashboard, GraduationCap, BarChart3, Mail, School, Bug, KeyRound, X, Loader2, BookOpen } from 'lucide-react'
+import { LogOut, LayoutDashboard, GraduationCap, BarChart3, Mail, School, Bug, KeyRound, X, Loader2, BookOpen, Database } from 'lucide-react'
 import { useMutation } from '@tanstack/react-query'
 import { adminApi } from '@/lib/api'
 import { useToast } from '@/components/ui/use-toast'
@@ -13,6 +13,7 @@ import ClassesPage from './ClassesPage'
 import UsersPage from './UsersPage'
 import TeacherRequestsPage from './TeacherRequestsPage'
 import FeedbackPage from './FeedbackPage'
+import AdminBackendPage from './AdminBackendPage'
 
 const navItems = [
   { path: '/admin', label: 'Panoramica', icon: LayoutDashboard, exact: true },
@@ -21,6 +22,7 @@ const navItems = [
   { path: '/admin/costs', label: 'Costi', icon: BarChart3, exact: false },
   { path: '/admin/email', label: 'Email', icon: Mail, exact: false },
   { path: '/admin/feedback', label: 'Feedback', icon: Bug, exact: false },
+  { path: '/admin/backend', label: 'Backend', icon: Database, exact: false },
 ]
 
 function ChangePasswordModal({ onClose }: { onClose: () => void }) {
@@ -48,8 +50,8 @@ function ChangePasswordModal({ onClose }: { onClose: () => void }) {
       <div className="relative w-full max-w-sm bg-white rounded-2xl shadow-2xl border border-slate-100 overflow-hidden">
         <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ backgroundColor: '#fce7f3' }}>
-              <KeyRound className="h-4 w-4" style={{ color: '#e85c8d' }} />
+            <div className="w-8 h-8 rounded-xl flex items-center justify-center bg-slate-100">
+              <KeyRound className="h-4 w-4 text-slate-600" />
             </div>
             <h2 className="text-sm font-bold text-slate-900">Cambia password admin</h2>
           </div>
@@ -70,7 +72,7 @@ function ChangePasswordModal({ onClose }: { onClose: () => void }) {
                 value={value}
                 onChange={e => set(e.target.value)}
                 placeholder={placeholder}
-                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-pink-200 focus:border-pink-300"
+                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-200 focus:border-slate-300"
               />
             </div>
           ))}
@@ -80,8 +82,7 @@ function ChangePasswordModal({ onClose }: { onClose: () => void }) {
           <button
             onClick={() => mutation.mutate()}
             disabled={!canSubmit || mutation.isPending}
-            className="w-full py-2.5 rounded-xl text-sm font-semibold text-white transition-all disabled:opacity-40 flex items-center justify-center gap-2"
-            style={{ backgroundColor: '#e85c8d' }}
+            className="w-full py-2.5 rounded-xl text-sm font-semibold text-white transition-all disabled:opacity-40 flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-900"
           >
             {mutation.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
             Aggiorna password
@@ -99,7 +100,7 @@ export default function AdminDashboard() {
   const [showChangePwd, setShowChangePwd] = useState(false)
 
   return (
-    <AppBackground className="min-h-screen flex flex-col">
+    <AppBackground className="min-h-screen flex flex-col" gradient="#f8fafc">
       {/* Top Navbar */}
       <nav className="bg-[#1a1a2e] border-b border-white/10 sticky top-0 z-50 shadow-lg">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 flex items-center h-14 gap-4">
@@ -110,12 +111,9 @@ export default function AdminDashboard() {
           >
             <img src="/logo_new.png" alt="Golinelli.ai" className="h-7 w-auto" />
             <span className="text-white font-bold text-base hidden sm:inline">
-              Golinelli<span style={{ color: '#e85c8d' }}>.ai</span>
+              Golinelli<span className="text-slate-400">.ai</span>
             </span>
-            <span
-              className="text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full"
-              style={{ backgroundColor: '#e85c8d' }}
-            >
+            <span className="text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-slate-600">
               ADMIN
             </span>
           </div>
@@ -142,8 +140,7 @@ export default function AdminDashboard() {
                   {isActive && (
                     <motion.div
                       layoutId="admin-nav-indicator"
-                      className="absolute bottom-0 left-2 right-2 h-0.5 rounded-full"
-                      style={{ backgroundColor: '#e85c8d' }}
+                      className="absolute bottom-0 left-2 right-2 h-0.5 rounded-full bg-white/60"
                       transition={{ type: 'spring', stiffness: 400, damping: 30 }}
                     />
                   )}
@@ -193,6 +190,7 @@ export default function AdminDashboard() {
           <Route path="costs" element={<UsersPage />} />
           <Route path="email" element={<TeacherRequestsPage />} />
           <Route path="feedback" element={<FeedbackPage />} />
+          <Route path="backend" element={<AdminBackendPage />} />
           {/* Legacy redirects */}
           <Route path="teacher-requests" element={<Navigate to="/admin/teachers" replace />} />
           <Route path="users" element={<Navigate to="/admin/teachers" replace />} />

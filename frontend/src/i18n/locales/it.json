@@ -77,14 +77,27 @@
 
   "student_join": {
     "title": "Accesso Studente",
-    "subtitle": "Non serve registrazione, solo il codice e un nickname",
+    "subtitle": "Inserisci codice sessione e nickname. Al primo accesso imposti anche la password.",
     "code_label": "Codice Sessione",
     "code_intro": "Inserisci il codice fornito dal docente",
     "code_placeholder": "ABC12",
     "nickname_label": "Il tuo nickname",
     "nickname_placeholder": "Mario",
-    "joining": "Connessione...",
-    "join_btn": "Partecipa",
+    "password_label": "Password",
+    "password_placeholder": "Scegli una password sicura",
+    "confirm_password_label": "Conferma password",
+    "confirm_password_placeholder": "Ripeti la password",
+    "continue_btn": "Continua",
+    "login_btn": "Entra",
+    "create_access_btn": "Crea accesso",
+    "loading": "Connessione...",
+    "change_identity_btn": "Cambia dati",
+    "mode_register": "Nickname libero. Imposta ora la password per conservare il tuo spazio personale.",
+    "mode_login": "Profilo già esistente. Inserisci la password per rientrare nel tuo spazio.",
+    "mode_claim": "Questo profilo esiste già ma non ha ancora una password. Impostala ora per recuperarlo.",
+    "password_mismatch": "Le password non coincidono",
+    "password_min_length": "La password deve essere di almeno 8 caratteri",
+    "error_generic": "Impossibile accedere alla sessione",
     "back_login": "Torna al login docenti"
   },
 
@@ -133,8 +146,8 @@
     "select_session_hint": "Seleziona la sessione di lavoro",
     "no_sessions": "Nessuna sessione disponibile",
     "create_session_hint": "Crea una nuova sessione dalla pagina Classi",
-    "hide_class_chat": "Nascondi chat di classe",
-    "show_class_chat": "Mostra chat di classe",
+    "hide_class_chat": "Nascondi chat sessione",
+    "show_class_chat": "Mostra chat sessione",
     "settings_title": "Impostazioni Profilo",
     "change_photo": "Cambia Foto",
     "first_name": "Nome",
@@ -145,8 +158,8 @@
   },
 
   "teacher_dashboard": {
-    "chat_title": "Chat di Classe",
-    "chat_hint": "Seleziona una sessione per visualizzare la chat."
+    "chat_title": "Chat sessione",
+    "chat_hint": "Seleziona una sessione per visualizzare la chat di classe e le chat private."
   },
 
   "teacher_chat": {
@@ -280,8 +293,8 @@
     "docs_desc": "Crea documenti e presentazioni. Invia i tuoi lavori al docente per la revisione.",
     "quiz_label": "Quiz & Badge",
     "quiz_desc": "Mettiti alla prova! Completa quiz, ottieni badge e traccia i tuoi progressi nell'apprendimento.",
-    "chat_label": "Chat Classe",
-    "chat_desc": "Comunica con la tua classe.",
+    "chat_label": "Chat di classe",
+    "chat_desc": "Partecipa alla chat della sessione e, se abilitata, alla chat privata col docente.",
     "explore": "Esplora",
     "welcome": "Ciao, {{name}}!",
     "welcome_body": "Scegli uno strumento per iniziare a lavorare",
@@ -634,6 +647,7 @@
     "notification": "Notifica",
     "no_private_chat": "Nessuna chat privata",
     "start_chat_from_students": "Inizia una chat dalla lista studenti",
+    "wait_teacher_private_chat": "La chat privata con il docente apparirà qui",
     "start_conversation": "Inizia la conversazione",
     "select_chat": "Seleziona una chat",
     "loading_history": "Caricamento cronologia...",

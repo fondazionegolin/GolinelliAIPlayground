@@ -1,48 +1,14 @@
-import { useState } from 'react'
-import { useNavigate, Link } from 'react-router-dom'
-import { useAuthStore } from '@/stores/auth'
-import { studentApi } from '@/lib/api'
-import { connectSocket } from '@/lib/socket'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
+import { Link } from 'react-router-dom'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { useToast } from '@/components/ui/use-toast'
 import { ArrowLeft } from 'lucide-react'
 import { AppBackground } from '@/components/ui/AppBackground'
 import { LogoMark } from '@/components/LogoMark'
 import { useTranslation } from 'react-i18next'
 import { LanguageSwitcher } from '@/components/LanguageSwitcher'
+import { StudentAccessForm } from '@/components/auth/StudentAccessForm'
 
 export default function StudentJoinPage() {
   const { t } = useTranslation()
-  const [joinCode, setJoinCode] = useState('')
-  const [nickname, setNickname] = useState('')
-  const [loading, setLoading] = useState(false)
-  const navigate = useNavigate()
-  const { setStudentSession } = useAuthStore()
-  const { toast } = useToast()
-
-  const handleJoin = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setLoading(true)
-    try {
-      const response = await studentApi.join(joinCode.toUpperCase(), nickname)
-      const { join_token, student_id, session_id, session_title } = response.data
-      setStudentSession({ student_id, session_id, session_title, nickname }, join_token)
-      connectSocket(join_token)
-      navigate('/student')
-    } catch (error: unknown) {
-      const err = error as { response?: { data?: { detail?: string } } }
-      toast({
-        variant: 'destructive',
-        title: t('common.error'),
-        description: err.response?.data?.detail || 'Impossibile partecipare alla sessione',
-      })
-    } finally {
-      setLoading(false)
-    }
-  }
 
   return (
     <AppBackground className="min-h-screen flex items-center justify-center p-4">
@@ -67,34 +33,7 @@ export default function StudentJoinPage() {
             <CardDescription>{t('student_join.subtitle')}</CardDescription>
           </CardHeader>
           <CardContent>
-            <form onSubmit={handleJoin} className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="joinCode">{t('student_join.code_label')}</Label>
-                <Input
-                  id="joinCode" type="text"
-                  placeholder={t('student_join.code_placeholder')}
-                  value={joinCode}
-                  onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
-                  maxLength={5}
-                  className="text-center text-2xl tracking-widest font-mono"
-                  required
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="nickname">{t('student_join.nickname_label')}</Label>
-                <Input
-                  id="nickname" type="text"
-                  placeholder={t('student_join.nickname_placeholder')}
-                  value={nickname}
-                  onChange={(e) => setNickname(e.target.value)}
-                  maxLength={20}
-                  required
-                />
-              </div>
-              <Button type="submit" className="w-full bg-emerald-600 hover:bg-emerald-700" disabled={loading}>
-                {loading ? t('student_join.joining') : t('student_join.join_btn')}
-              </Button>
-            </form>
+            <StudentAccessForm submitButtonClassName="w-full bg-emerald-600 hover:bg-emerald-700" />
           </CardContent>
         </Card>
 

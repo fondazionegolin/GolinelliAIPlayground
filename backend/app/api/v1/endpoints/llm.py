@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File, Form
+from pydantic import BaseModel
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -1106,6 +1107,12 @@ async def send_message_stream(
     model = conversation.llm_model or "gpt-5-mini"
     profile_key = conversation.profile_key or "tutor"
 
+    # chat_mode overrides the profile so the right system prompt is used
+    if request.chat_mode == "quiz":
+        profile_key = "quiz"
+    elif request.chat_mode == "dataset":
+        profile_key = "dataset_generator"
+
     # Load any teacher-defined custom prompt for this profile+session
     from app.models.session import SessionProfileOverride
     override_result = await db.execute(
@@ -1647,6 +1654,148 @@ async def send_message_with_files(
     return assistant_message
 
 
+async def load_session_context(db: AsyncSession, session_id_str: str, teacher: User) -> str:
+    """Build a rich, session-focused context block injected into the teacher AI chat."""
+    from uuid import UUID as _UUID
+    from sqlalchemy import func as _func
+    from app.models.session import Session, SessionStudent
+    from app.models.llm import Conversation
+    from app.models.teacherbot import TeacherbotConversation, Teacherbot
+    from app.models.task import Task, TaskSubmission
+    from app.models.session import Class
+    from app.models.chat import ChatMessage
+
+    try:
+        sess_uuid = _UUID(session_id_str)
+    except ValueError:
+        return ""
+
+    row = (await db.execute(
+        select(Session, Class)
+        .join(Class, Session.class_id == Class.id)
+        .where(Session.id == sess_uuid, Session.tenant_id == teacher.tenant_id)
+    )).first()
+    if not row:
+        return ""
+    session, cls = row
+
+    parts = [
+        f"## SESSIONE ATTIVA: {session.title}",
+        f"Classe: {cls.name}  |  Stato: {session.status.value}  |  Codice: {session.join_code}",
+    ]
+
+    # Students
+    students = (await db.execute(
+        select(SessionStudent).where(SessionStudent.session_id == sess_uuid)
+    )).scalars().all()
+    parts.append(f"Studenti iscritti: {len(students)}" + (
+        " — " + ", ".join(s.nickname for s in students) if students else ""
+    ))
+    student_map = {str(s.id): s.nickname for s in students}
+
+    # Chatbot conversation stats by profile
+    conv_rows = (await db.execute(
+        select(Conversation.profile_key, _func.count(Conversation.id).label("cnt"))
+        .join(SessionStudent, Conversation.student_id == SessionStudent.id)
+        .where(SessionStudent.session_id == sess_uuid)
+        .group_by(Conversation.profile_key)
+        .order_by(_func.count(Conversation.id).desc())
+    )).all()
+    if conv_rows:
+        total = sum(r.cnt for r in conv_rows)
+        profile_str = ", ".join(f"{r.profile_key}×{r.cnt}" for r in conv_rows[:6])
+        parts.append(f"Conversazioni chatbot: {total} totali — profili: {profile_str}")
+
+        # Most active students by message count
+        top_students = (await db.execute(
+            select(
+                SessionStudent.nickname,
+                _func.count(Conversation.id).label("cnt"),
+            )
+            .join(Conversation, Conversation.student_id == SessionStudent.id)
+            .where(SessionStudent.session_id == sess_uuid)
+            .group_by(SessionStudent.id, SessionStudent.nickname)
+            .order_by(_func.count(Conversation.id).desc())
+            .limit(5)
+        )).all()
+        if top_students:
+            parts.append("Studenti più attivi (chatbot): " + ", ".join(
+                f"{r.nickname} ({r.cnt})" for r in top_students
+            ))
+
+        conv_student_rows = (await db.execute(
+            select(
+                SessionStudent.nickname,
+                Conversation.profile_key,
+                _func.count(Conversation.id).label("cnt"),
+            )
+            .join(Conversation, Conversation.student_id == SessionStudent.id)
+            .where(SessionStudent.session_id == sess_uuid)
+            .group_by(SessionStudent.nickname, Conversation.profile_key)
+            .order_by(SessionStudent.nickname.asc(), _func.count(Conversation.id).desc())
+        )).all()
+        if conv_student_rows:
+            parts.append("Dettaglio conversazioni chatbot per studente:")
+            for row in conv_student_rows:
+                parts.append(f"- {row.nickname}: {row.profile_key}×{row.cnt}")
+
+    # Teacherbot conversations
+    tb_rows = (await db.execute(
+        select(Teacherbot.name, _func.count(TeacherbotConversation.id).label("cnt"))
+        .join(Teacherbot, TeacherbotConversation.teacherbot_id == Teacherbot.id)
+        .where(TeacherbotConversation.session_id == sess_uuid)
+        .group_by(Teacherbot.name)
+        .order_by(_func.count(TeacherbotConversation.id).desc())
+    )).all()
+    if tb_rows:
+        parts.append("Conversazioni teacherbot: " + ", ".join(
+            f"{r.name}×{r.cnt}" for r in tb_rows
+        ))
+
+    # Tasks and submissions
+    tasks = (await db.execute(
+        select(Task).where(Task.session_id == sess_uuid)
+    )).scalars().all()
+    if tasks:
+        parts.append("Compiti e consegne:")
+    for task in tasks:
+        submissions = (await db.execute(
+            select(TaskSubmission).where(TaskSubmission.task_id == task.id)
+        )).scalars().all()
+        sub_cnt = len(submissions)
+        parts.append(
+            f"Compito '{task.title}': {sub_cnt}/{len(students)} consegne, stato: {task.status.value}"
+        )
+        if submissions:
+            scored = [sub for sub in submissions if sub.score is not None]
+            if scored:
+                avg_score = sum(float(sub.score) for sub in scored) / len(scored)
+                parts.append(f"  - media voti: {avg_score:.2f} su {len(scored)} consegne valutate")
+            for sub in submissions[:20]:
+                nickname = student_map.get(str(sub.student_id), "Studente")
+                score_info = f"voto {sub.score}" if sub.score is not None else "non valutato"
+                feedback_info = f" | feedback: {sub.feedback[:120]}" if sub.feedback else ""
+                parts.append(f"  - {nickname}: {score_info}{feedback_info}")
+
+    chat_rows = (await db.execute(
+        select(ChatMessage, SessionStudent)
+        .outerjoin(SessionStudent, ChatMessage.sender_student_id == SessionStudent.id)
+        .where(ChatMessage.session_id == sess_uuid)
+        .order_by(ChatMessage.created_at.desc())
+        .limit(80)
+    )).all()
+    if chat_rows:
+        parts.append(f"Messaggi recenti della chat di sessione ({len(chat_rows)}):")
+        for msg, student in reversed(chat_rows):
+            sender = student.nickname if student else ("Docente" if msg.sender_type.value == "TEACHER" else "Sistema")
+            timestamp = msg.created_at.strftime("%d/%m %H:%M") if msg.created_at else ""
+            text = (msg.message_text or "").strip().replace("\n", " ")
+            if text:
+                parts.append(f"- [{timestamp}] {sender}: {text[:220]}")
+
+    return "\n".join(parts)
+
+
 async def load_teacher_context(db: AsyncSession, teacher: User) -> tuple[str, dict]:
     """
     Load teacher's database context for analytics mode.
@@ -1973,6 +2122,12 @@ async def teacher_chat_stream(
 
                 context, _ = await load_teacher_context(db, teacher)
 
+                # If a session is active, prepend live session metrics to context
+                if session_id_str:
+                    session_ctx = await load_session_context(db, session_id_str, teacher)
+                    if session_ctx:
+                        context = session_ctx + "\n\n---\n\n" + context
+
                 # Build datetime-aware calendar addendum
                 now = datetime.now()
                 _days_it = ["lunedì","martedì","mercoledì","giovedì","venerdì","sabato","domenica"]
@@ -2036,8 +2191,20 @@ async def teacher_chat_stream(
 
             # Step 1: Classify intent (only for non-default modes)
             yield f"data: {json.dumps({'type': 'status', 'message': '🧠 Analisi della richiesta...'})}\n\n"
+            forced_mode_intents = {
+                "web_search": TeacherIntent.WEB_SEARCH,
+                "quiz": TeacherIntent.QUIZ_GENERATION,
+                "dataset": TeacherIntent.DATASET_GENERATION,
+                "report": TeacherIntent.REPORT_GENERATION,
+            }
 
-            intent_result = await classify_intent(content, history)
+            if agent_mode in forced_mode_intents:
+                intent_result = type("ForcedIntentResult", (), {
+                    "intent": forced_mode_intents[agent_mode],
+                    "confidence": 1.0,
+                })()
+            else:
+                intent_result = await classify_intent(content, history)
 
             yield f"data: {json.dumps({'type': 'intent', 'intent': intent_result.intent.value, 'confidence': intent_result.confidence})}\n\n"
 
@@ -2074,10 +2241,17 @@ async def teacher_chat_stream(
                 yield f"data: {json.dumps({'type': 'status', 'message': '📊 Modalità: Generazione Report'})}\n\n"
 
                 from app.services.teacher_agent import generate_report_widgets
+                import re as _re
                 full_ctx, structured_context = await load_teacher_context(db, teacher)
+                report_context = full_ctx
+                session_uuid_match = _re.search(r"\(([0-9a-f]{8}-[0-9a-f-]{27})\)", content, _re.IGNORECASE)
+                if session_uuid_match:
+                    selected_session_ctx = await load_session_context(db, session_uuid_match.group(1), teacher)
+                    if selected_session_ctx:
+                        report_context = selected_session_ctx
                 result = await generate_report_widgets(
                     content, structured_context,
-                    full_context=full_ctx, messages=messages,
+                    full_context=report_context, messages=messages,
                     provider=provider, model=model,
                 )
                 yield f"data: {await build_done_event(result, 'teacher_chat_stream_report')}\n\n"
@@ -2317,7 +2491,7 @@ async def analyze_document(
             rag_doc = rag_doc_result.scalar_one_or_none()
 
             if rag_doc:
-                content_for_rag = analysis.structured_extract or analysis.raw_text
+                content_for_rag = analysis.rag_segments or analysis.structured_extract or analysis.raw_text
                 chunk_count = await _rag_service.ingest_document(db, rag_doc, content_for_rag)
                 result["rag_ingested"] = True
                 result["rag_chunk_count"] = chunk_count
@@ -2358,4 +2532,65 @@ async def explain_message(
         explanation=explanation,
         level="GENERIC",
         created_at=datetime.utcnow(),
+    )
+
+
+class CompileLatexRequest(BaseModel):
+    content: str
+    filename: str = "dispensa"
+
+
+@router.post("/compile-latex")
+async def compile_latex(
+    request: CompileLatexRequest,
+    auth: Annotated[StudentOrTeacher, Depends(get_student_or_teacher)],
+):
+    """Compile a LaTeX document to PDF using pdflatex."""
+    import subprocess
+    import tempfile
+    import shutil
+    import os
+
+    # Check pdflatex is available
+    pdflatex_path = shutil.which("pdflatex")
+    if not pdflatex_path:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="pdflatex non disponibile sul server. Contatta l'amministratore per installare TeXLive."
+        )
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tex_file = os.path.join(tmpdir, "document.tex")
+        pdf_file = os.path.join(tmpdir, "document.pdf")
+
+        # Write LaTeX content
+        with open(tex_file, "w", encoding="utf-8") as f:
+            f.write(request.content)
+
+        # Run pdflatex twice (for TOC/refs)
+        for _ in range(2):
+            result = subprocess.run(
+                [pdflatex_path, "-interaction=nonstopmode", "-output-directory", tmpdir, tex_file],
+                capture_output=True,
+                timeout=60,
+            )
+
+        if not os.path.exists(pdf_file):
+            stdout = (result.stdout or b"").decode("latin-1", errors="replace")
+            stderr = (result.stderr or b"").decode("latin-1", errors="replace")
+            log_output = (stdout + "\n" + stderr)[-4000:] if (stdout or stderr) else "nessun output"
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Compilazione LaTeX fallita. Log:\n{log_output}"
+            )
+
+        with open(pdf_file, "rb") as f:
+            pdf_bytes = f.read()
+
+    safe_name = "".join(c for c in request.filename if c.isalnum() or c in "_-") or "dispensa"
+    from fastapi.responses import Response
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{safe_name}.pdf"'},
     )
