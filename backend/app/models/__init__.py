@@ -16,8 +16,9 @@ from app.models.template_version import TenantTemplateVersion
 from app.models.alert import ContentAlert
 from app.models.feedback import FeedbackReport
 from app.models.notebook import Notebook
-from app.models.desktop import UserDesktop, DesktopWidget
+from app.models.desktop import UserDesktop, DesktopWidget, AdminDesktopWidgetTemplate
 from app.models.calendar import SessionCalendarEvent
+from app.models.changelog import PlatformChangelogRelease
 
 __all__ = [
     "Tenant",
@@ -69,5 +70,7 @@ __all__ = [
     "Notebook",
     "UserDesktop",
     "DesktopWidget",
+    "AdminDesktopWidgetTemplate",
     "SessionCalendarEvent",
+    "PlatformChangelogRelease",
 ]

@@ -35,7 +35,8 @@ api.interceptors.response.use(
       const url: string = error.config?.url ?? ''
       // Only redirect for auth-critical endpoints; never for content/chat calls
       const isContentCall = url.includes('/llm/') || url.includes('/desktop')
-      if (!url.includes('/auth/login') && !isContentCall) {
+      const isStudentAccessFlow = url.includes('/student/join') || url.includes('/student/check-access')
+      if (!url.includes('/auth/login') && !isContentCall && !isStudentAccessFlow) {
         localStorage.removeItem('student_token')
         window.location.href = '/login'
       }
@@ -63,8 +64,10 @@ export const authApi = {
 }
 
 export const studentApi = {
-  join: (join_code: string, nickname: string) =>
-    api.post('/student/join', { join_code, nickname }),
+  checkAccess: (join_code: string, nickname: string) =>
+    api.post('/student/check-access', { join_code, nickname }),
+  join: (join_code: string, nickname: string, password: string) =>
+    api.post('/student/join', { join_code, nickname, password }),
   getSession: () => api.get('/student/session'),
   heartbeat: () => api.post('/student/heartbeat'),
   getTasks: () => api.get('/student/tasks'),
@@ -134,6 +137,58 @@ export const adminApi = {
     api.post(`/admin/users/${userId}/promote-admin`),
   hardDeleteUser: (userId: string, confirmEmail: string) =>
     api.delete(`/admin/users/${userId}/permanent`, { data: { confirm_email: confirmEmail } }),
+  listBackendWidgetTemplates: () =>
+    api.get('/admin/backend/widget-templates'),
+  createBackendWidgetTemplate: (data: {
+    title: string
+    audience: 'all' | 'teacher' | 'student'
+    widget_type: string
+    target_desktop_index?: number
+    grid_x?: number
+    grid_y?: number
+    grid_w?: number
+    grid_h?: number
+    config_json?: Record<string, unknown>
+    is_active?: boolean
+  }) => api.post('/admin/backend/widget-templates', data),
+  updateBackendWidgetTemplate: (templateId: string, data: {
+    title: string
+    audience: 'all' | 'teacher' | 'student'
+    widget_type: string
+    target_desktop_index?: number
+    grid_x?: number
+    grid_y?: number
+    grid_w?: number
+    grid_h?: number
+    config_json?: Record<string, unknown>
+    is_active?: boolean
+  }) => api.patch(`/admin/backend/widget-templates/${templateId}`, data),
+  deleteBackendWidgetTemplate: (templateId: string) =>
+    api.delete(`/admin/backend/widget-templates/${templateId}`),
+  listBackendChangelog: () =>
+    api.get('/admin/backend/changelog'),
+  createBackendChangelog: (data: {
+    version_label: string
+    title: string
+    summary?: string
+    git_ref?: string
+    is_published?: boolean
+    items: Array<{ category: 'new' | 'improved' | 'fixed'; title: string; description: string }>
+  }) => api.post('/admin/backend/changelog', data),
+  updateBackendChangelog: (releaseId: string, data: {
+    version_label: string
+    title: string
+    summary?: string
+    git_ref?: string
+    is_published?: boolean
+    items: Array<{ category: 'new' | 'improved' | 'fixed'; title: string; description: string }>
+  }) => api.patch(`/admin/backend/changelog/${releaseId}`, data),
+  deleteBackendChangelog: (releaseId: string) =>
+    api.delete(`/admin/backend/changelog/${releaseId}`),
+}
+
+export const platformApi = {
+  listChangelog: (limit = 20) => api.get('/changelog', { params: { limit } }),
 }
 
 export const teacherApi = {
@@ -233,6 +288,10 @@ export const teacherApi = {
     api.patch(`/teacher/conversations/${conversationId}`, data),
   addMessage: (conversationId: string, data: { role: string; content: string; provider?: string; model?: string; token_usage_json?: Record<string, unknown> }) =>
     api.post(`/teacher/conversations/${conversationId}/messages`, data),
+  saveConversationDocument: (conversationId: string, doc: { type: string; content: string; version: number; title: string }) =>
+    api.put(`/teacher/conversations/${conversationId}/document`, doc),
+  deleteConversationDocument: (conversationId: string) =>
+    api.delete(`/teacher/conversations/${conversationId}/document`),
   listDocumentDrafts: (sessionId?: string) => api.get('/teacher/documents/drafts', { params: { session_id: sessionId } }),
   createDocumentDraft: (data: { title: string; doc_type: string; content_json: string; session_id?: string }) =>
     api.post('/teacher/documents/drafts', data),
@@ -311,8 +370,8 @@ export const chatApi = {
   uploadFiles: (sessionId: string, files: File[]) => {
     const formData = new FormData()
     files.forEach(file => formData.append('files', file))
-    formData.append('session_id', sessionId)
-    return api.post('/chat/upload', formData, {
+    // session_id must be a URL query param (FastAPI Query(...))
+    return api.post(`/chat/upload?session_id=${encodeURIComponent(sessionId)}`, formData, {
       headers: { 'Content-Type': 'multipart/form-data' }
     })
   },
@@ -377,6 +436,8 @@ export const llmApi = {
   },
   getEnvironmentalFootprint: () =>
     api.get<EnvironmentalFootprintResponse>('/llm/environmental-footprint'),
+  compileLatex: (content: string, filename: string) =>
+    api.post('/llm/compile-latex', { content, filename }, { responseType: 'arraybuffer' }),
 }
 
 export const ragApi = {
@@ -390,6 +451,21 @@ export const ragApi = {
     api.get(`/rag/documents/${docId}/status`),
   search: (query: string, sessionId: string, topK?: number) =>
     api.post('/rag/search', { query, session_id: sessionId, top_k: topK }),
+}
+
+export const studentRagApi = {
+  uploadDocument: (file: File) => {
+    const form = new FormData()
+    form.append('file', file)
+    return api.post('/rag/student/upload', form, { headers: { 'Content-Type': 'multipart/form-data' } })
+  },
+  listDocuments: () => api.get('/rag/student/documents'),
+  deleteDocument: (docId: string) => api.delete(`/rag/student/documents/${docId}`),
+  getChunks: (docId: string) => api.get(`/rag/student/documents/${docId}/chunks`),
+  search: (query: string, docIds?: string[], topK?: number) =>
+    api.post('/rag/student/search', { query, doc_ids: docIds, top_k: topK }),
+  chat: (message: string, history: { role: string; content: string }[], docIds?: string[], topK?: number) =>
+    api.post('/rag/student/chat', { message, history, doc_ids: docIds, top_k: topK }),
 }
 
 export const mlApi = {
@@ -518,6 +594,10 @@ export const teacherbotsApi = {
   },
   endConversation: (conversationId: string) =>
     api.post(`/student/teacherbots/conversations/${conversationId}/end`),
+  getSessionConversations: (sessionId: string) =>
+    api.get(`/teacher/sessions/${sessionId}/teacherbot-conversations`),
+  getTeacherConvMessages: (teacherbotId: string, conversationId: string) =>
+    api.get(`/teacherbots/${teacherbotId}/conversations/${conversationId}/messages`),
 }
 
 export const creditsApi = {
@@ -582,7 +662,7 @@ export const notebooksApi = {
   delete: (id: string) => api.delete(`/notebooks/${id}`),
   tutorChat: (id: string, data: {
     message: string
-    history: { role: string; content: string }[]
+    history?: { role: string; content: string }[]
     current_cell_source?: string
     last_output?: string
     pending_proposals?: unknown[]

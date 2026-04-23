@@ -1,7 +1,7 @@
 import { useState, useEffect, lazy, Suspense } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Routes, Route, useLocation, Link, useNavigate } from 'react-router-dom'
-import { MessageSquare, Users, PlayCircle, Bot, ClipboardList, History, Monitor } from 'lucide-react'
+import { MessageSquare, Users, PlayCircle, Bot, ClipboardList, History, Monitor, BookOpen } from 'lucide-react'
 // Heavy pages loaded lazily — only parsed when first visited
 const ClassesPage        = lazy(() => import('./ClassesPage'))
 const SessionsPage       = lazy(() => import('./SessionsPage'))
@@ -11,6 +11,7 @@ const TeacherMLLabPage   = lazy(() => import('./TeacherMLLabPage'))
 const UDAListPage        = lazy(() => import('./UDAListPage'))
 const UDACreatorPage     = lazy(() => import('./UDACreatorPage'))
 const TeacherDemoPage    = lazy(() => import('./TeacherDemoPage'))
+const TeacherWikiPage    = lazy(() => import('./TeacherWikiPage'))
 const NotebookListPage   = lazy(() => import('../notebook/NotebookListPage'))
 const NotebookPage       = lazy(() => import('../notebook/NotebookPage'))
 const DesktopPage        = lazy(() => import('../shared/DesktopPage'))
@@ -26,7 +27,6 @@ import { getAppBackgroundGradient } from '@/lib/theme'
 import { useMobile } from '@/hooks/useMobile'
 import { useTeacherProfile } from '@/hooks/useTeacherProfile'
 import { FloatingHelper } from '@/components/FloatingHelper'
-import WhatsNewModal, { shouldShowWhatsNew } from '@/components/WhatsNewModal'
 
 const CHATBAR_AUTO_HIDE_BREAKPOINT = 1280
 
@@ -34,6 +34,7 @@ const MOBILE_NAV = [
   { path: '/teacher',          label: 'Chat',     icon: MessageSquare, exact: true },
   { path: '/teacher/classes',  label: 'Classi',   icon: Users },
   { path: '/teacher/sessions', label: 'Sessioni', icon: PlayCircle },
+  { path: '/teacher/wiki',     label: 'Wiki',     icon: BookOpen },
 ]
 
 export default function TeacherDashboard() {
@@ -46,7 +47,6 @@ export default function TeacherDashboard() {
   const [teacherProfile, setTeacherProfile] = useState<{ id: string, name: string, uiAccent?: TeacherAccentId } | null>(null)
   const [sidebarWidth, setSidebarWidth] = useState(380)
   const [showSidebar, setShowSidebar] = useState(true)
-  const [showWhatsNew, setShowWhatsNew] = useState(() => shouldShowWhatsNew())
 
   const getPersistedSession = (): { id: string, name: string, className: string } | null => {
     try {
@@ -239,6 +239,7 @@ export default function TeacherDashboard() {
             <Routes>
               <Route index element={<TeacherSupportChat />} />
               <Route path="documents" element={<TeacherDocumentsPage />} />
+              <Route path="wiki" element={<TeacherWikiPage accentId={teacherProfile?.uiAccent} />} />
               <Route path="ml-lab" element={<TeacherMLLabPage />} />
               <Route path="classes" element={<ClassesPage />} />
               <Route path="sessions" element={<SessionsPage />} />
@@ -320,7 +321,6 @@ export default function TeacherDashboard() {
         </nav>
       )}
       <FloatingHelper />
-      {showWhatsNew && <WhatsNewModal onClose={() => setShowWhatsNew(false)} />}
     </AppBackground>
   )
 }

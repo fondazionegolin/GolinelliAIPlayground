@@ -10,7 +10,7 @@ import logging
 
 from app.core.database import get_db
 from app.api.deps import get_student_or_teacher, StudentOrTeacher
-from app.models.desktop import UserDesktop, DesktopWidget
+from app.models.desktop import UserDesktop, DesktopWidget, AdminDesktopWidgetTemplate
 from app.models.calendar import SessionCalendarEvent
 from app.models.session import Session as SessionModel
 from app.services.llm_service import llm_service
@@ -52,9 +52,98 @@ def _widget_to_dict(w: DesktopWidget) -> dict:
         "grid_w": w.grid_w,
         "grid_h": w.grid_h,
         "config_json": w.config_json,
+        "source_template_id": str(w.source_template_id) if w.source_template_id else None,
+        "is_locked": bool(w.is_locked),
         "created_at": w.created_at.isoformat(),
         "updated_at": w.updated_at.isoformat(),
     }
+
+
+def _template_audiences(actor: StudentOrTeacher) -> list[str]:
+    return ["all", "teacher"] if actor.is_teacher else ["all", "student"]
+
+
+async def _sync_admin_templates(
+    actor: StudentOrTeacher,
+    desktops: list[UserDesktop],
+    db: AsyncSession,
+) -> None:
+    if not desktops:
+        return
+
+    _, _, tenant_id = _owner_filter(actor)
+    template_result = await db.execute(
+        select(AdminDesktopWidgetTemplate)
+        .where(
+            AdminDesktopWidgetTemplate.tenant_id == tenant_id,
+            AdminDesktopWidgetTemplate.is_active == True,
+            AdminDesktopWidgetTemplate.audience.in_(_template_audiences(actor)),
+        )
+        .order_by(
+            AdminDesktopWidgetTemplate.target_desktop_index.asc(),
+            AdminDesktopWidgetTemplate.created_at.asc(),
+        )
+    )
+    templates = template_result.scalars().all()
+
+    desktop_by_index = {idx: desktop for idx, desktop in enumerate(desktops)}
+    desktop_ids = [desktop.id for desktop in desktops]
+    existing_result = await db.execute(
+        select(DesktopWidget).where(
+            DesktopWidget.desktop_id.in_(desktop_ids),
+            DesktopWidget.source_template_id.is_not(None),
+        )
+    )
+    existing_widgets = existing_result.scalars().all()
+    existing_by_template: dict[UUID, DesktopWidget] = {
+        widget.source_template_id: widget
+        for widget in existing_widgets
+        if widget.source_template_id
+    }
+    active_template_ids = {template.id for template in templates}
+    dirty = False
+
+    for widget in existing_widgets:
+        if widget.source_template_id not in active_template_ids:
+            await db.delete(widget)
+            dirty = True
+
+    for template in templates:
+        target_desktop = desktop_by_index.get(template.target_desktop_index)
+        if not target_desktop:
+            continue
+        existing = existing_by_template.get(template.id)
+        payload = {
+            "widget_type": template.widget_type,
+            "grid_x": template.grid_x,
+            "grid_y": template.grid_y,
+            "grid_w": template.grid_w,
+            "grid_h": template.grid_h,
+            "config_json": template.config_json or {},
+            "is_locked": True,
+        }
+        if not existing:
+            db.add(
+                DesktopWidget(
+                    tenant_id=tenant_id,
+                    desktop_id=target_desktop.id,
+                    source_template_id=template.id,
+                    **payload,
+                )
+            )
+            dirty = True
+            continue
+
+        if existing.desktop_id != target_desktop.id:
+            existing.desktop_id = target_desktop.id
+            dirty = True
+        for field, value in payload.items():
+            if getattr(existing, field) != value:
+                setattr(existing, field, value)
+                dirty = True
+
+    if dirty:
+        await db.flush()
 
 
 async def _get_desktop_or_404(
@@ -134,6 +223,9 @@ async def list_desktops(
         await db.commit()
         await db.refresh(desktop)
         desktops = [desktop]
+
+    await _sync_admin_templates(actor, desktops, db)
+    await db.commit()
 
     # Attach widgets
     desktop_ids = [d.id for d in desktops]
@@ -285,6 +377,8 @@ async def update_widget(
     widget = result.scalar_one_or_none()
     if not widget:
         raise HTTPException(status_code=404, detail="Widget not found")
+    if widget.is_locked:
+        raise HTTPException(status_code=403, detail="This widget is managed by the platform admin")
 
     for field in ("grid_x", "grid_y", "grid_w", "grid_h"):
         if field in request:
@@ -314,6 +408,8 @@ async def delete_widget(
     widget = result.scalar_one_or_none()
     if not widget:
         raise HTTPException(status_code=404, detail="Widget not found")
+    if widget.is_locked:
+        raise HTTPException(status_code=403, detail="This widget is managed by the platform admin")
     await db.delete(widget)
     await db.commit()
 

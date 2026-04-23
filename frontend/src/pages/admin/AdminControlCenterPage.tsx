@@ -152,7 +152,7 @@ export default function AdminOverviewPage() {
                   yAxisId="right"
                   type="monotone"
                   dataKey="cost"
-                  stroke="#e85c8d"
+                  stroke="#64748b"
                   strokeWidth={2}
                   dot={false}
                   name="Costo €"

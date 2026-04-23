@@ -18,6 +18,8 @@ import logging
 router = APIRouter()
 logger = logging.getLogger(__name__)
 SUPPORTED_PROJECT_TYPES = {"python", "p5js"}
+NOTEBOOK_CONTEXT_CELL_LIMIT = 6
+NOTEBOOK_SNIPPET_CHAR_LIMIT = 1200
 
 
 def _owner_id_and_tenant(actor: StudentOrTeacher) -> tuple[UUID, UUID]:
@@ -26,6 +28,97 @@ def _owner_id_and_tenant(actor: StudentOrTeacher) -> tuple[UUID, UUID]:
         return actor.teacher.id, actor.teacher.tenant_id
     else:
         return actor.student.id, actor.student.tenant_id
+
+
+def _tokenize_for_match(*parts: str) -> set[str]:
+    tokens: set[str] = set()
+    for part in parts:
+        for token in re.findall(r"[A-Za-z_][A-Za-z0-9_]{2,}", part or ""):
+            lowered = token.lower()
+            if lowered not in {"the", "and", "for", "with", "this", "that", "print", "const", "function"}:
+                tokens.add(lowered)
+    return tokens
+
+
+def _summarize_output(outputs: list[dict] | None) -> str:
+    if not outputs:
+        return ""
+    rendered: list[str] = []
+    for output in outputs[:3]:
+        if not isinstance(output, dict):
+            continue
+        if output.get("output_type") == "error":
+            rendered.append(f"ERRORE: {output.get('ename', 'Error')}: {output.get('evalue', '')}")
+        elif output.get("text"):
+            rendered.append(str(output.get("text")).strip())
+        elif isinstance(output.get("data"), dict):
+            data = output.get("data") or {}
+            text_preview = data.get("text/plain")
+            if text_preview:
+                rendered.append(str(text_preview).strip())
+            elif data.get("image/png"):
+                rendered.append("[grafico generato]")
+    return "\n".join(item for item in rendered if item).strip()[:500]
+
+
+def _score_notebook_cell(cell: dict, query_tokens: set[str], current_cell: str) -> int:
+    source = str(cell.get("source", ""))
+    outputs = _summarize_output(cell.get("outputs"))
+    haystack = f"{source}\n{outputs}".lower()
+    score = sum(1 for token in query_tokens if token in haystack)
+    if current_cell and source.strip() == current_cell.strip():
+        score += 8
+    if cell.get("execution_count"):
+        score += 1
+    if outputs:
+        score += 2
+    return score
+
+
+def _build_notebook_context(nb: Notebook, query: str, current_cell: str, last_output: str) -> str:
+    cells = [cell for cell in (nb.cells or []) if isinstance(cell, dict) and cell.get("type") == "code"]
+    if not cells:
+        return ""
+
+    query_tokens = _tokenize_for_match(query, current_cell, last_output)
+    ranked_cells = sorted(
+        cells,
+        key=lambda cell: _score_notebook_cell(cell, query_tokens, current_cell),
+        reverse=True,
+    )
+
+    selected = ranked_cells[:NOTEBOOK_CONTEXT_CELL_LIMIT]
+    sections: list[str] = []
+    for index, cell in enumerate(selected, start=1):
+        source = str(cell.get("source", "")).strip()
+        output = _summarize_output(cell.get("outputs"))
+        sections.append(
+            "\n".join(filter(None, [
+                f"Cella rilevante #{index}",
+                f"execution_count: {cell.get('execution_count') or 'n.d.'}",
+                f"codice:\n{source[:NOTEBOOK_SNIPPET_CHAR_LIMIT]}",
+                f"output:\n{output}" if output else "",
+            ]))
+        )
+
+    return "\n\n---\n\n".join(sections)
+
+
+def _sanitize_tutor_history(raw_history: object, limit: int = 60) -> list[dict[str, str]]:
+    if not isinstance(raw_history, list):
+        return []
+
+    sanitized: list[dict[str, str]] = []
+    for item in raw_history:
+        if not isinstance(item, dict):
+            continue
+        role = str(item.get("role", "")).strip().lower()
+        content = str(item.get("content", "")).strip()
+        if role not in {"user", "assistant"} or not content:
+            continue
+        sanitized.append({"role": role, "content": content[:4000]})
+
+    return sanitized[-limit:]
 
 
 # ── List notebooks ──────────────────────────────────────────────────────────
@@ -152,7 +245,12 @@ async def notebook_tutor_chat(
     nb = await _get_owned_notebook(db, notebook_id, actor)
 
     message = request.get("message", "")
-    history = request.get("history", [])
+    if not str(message or "").strip():
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Messaggio mancante")
+
+    requested_history = _sanitize_tutor_history(request.get("history", []))
+    server_history = _sanitize_tutor_history(nb.tutor_messages or [])
+    history = server_history or requested_history
     current_cell = request.get("current_cell_source", "")
     last_output = request.get("last_output", "")
     pending_proposals = request.get("pending_proposals", [])
@@ -162,6 +260,7 @@ async def notebook_tutor_chat(
     all_code = "\n\n# --- next cell ---\n".join(
         cell.get("source", "") for cell in (nb.cells or []) if cell.get("type") == "code"
     )
+    relevant_context = _build_notebook_context(nb, message, current_cell, last_output)
 
     language_label = "Python" if project_type == "python" else "p5.js / JavaScript creativo"
     code_fence = "python" if project_type == "python" else "javascript"
@@ -180,6 +279,11 @@ Tipo progetto: {project_type}
 Codice completo del notebook (tutte le celle):
 ```{code_fence}
 {all_code[:3000]}
+```
+
+Contesto notebook recuperato in base alla richiesta e alla cella attiva:
+```text
+{relevant_context[:4000]}
 ```
 
 Cella corrente su cui sta lavorando l'utente:
@@ -201,7 +305,7 @@ Il tuo obiettivo:
 7. Rispondi sempre in italiano a meno che l'utente scriva in un'altra lingua"""
 
     messages = [{"role": m["role"], "content": m["content"]} for m in history[-10:]]
-    messages.append({"role": "user", "content": message})
+    messages.append({"role": "user", "content": str(message).strip()})
 
     provider = "anthropic"
     model = "claude-haiku-4-5-20251001"
@@ -215,7 +319,15 @@ Il tuo obiettivo:
             temperature=0.5,
             max_tokens=1200,
         )
-        return {"response": response.content}
+        updated_history = _sanitize_tutor_history([
+            *history,
+            {"role": "user", "content": str(message).strip()},
+            {"role": "assistant", "content": response.content},
+        ])
+        nb.tutor_messages = updated_history
+        nb.updated_at = datetime.utcnow()
+        await db.commit()
+        return {"response": response.content, "history": updated_history}
     except Exception as e:
         logger.error(f"Tutor chat error: {e}")
         raise HTTPException(status_code=500, detail="Errore del tutor AI")
@@ -239,6 +351,7 @@ async def notebook_assist(
     all_code = "\n\n# --- next cell ---\n".join(
         cell.get("source", "") for cell in (nb.cells or []) if cell.get("type") == "code"
     )
+    relevant_context = _build_notebook_context(nb, user_prompt, active_source, last_output)
 
     system_prompt = f"""Sei un assistente tutor agentico per notebook {project_type}.
 Devi analizzare il codice e restituire SOLO JSON valido, senza markdown.
@@ -276,6 +389,7 @@ Regole:
                 f"Notebook: {nb.title}\n"
                 f"Tipo progetto: {project_type}\n\n"
                 f"Codice completo:\n```{code_fence}\n{all_code[:5000]}\n```\n\n"
+                f"Contesto recuperato del notebook:\n```text\n{relevant_context[:4000]}\n```\n\n"
                 f"Cella corrente:\n```{code_fence}\n{active_source[:2500]}\n```\n\n"
                 f"Ultimo output o errore:\n{last_output[:1200] or '(nessuno)'}\n\n"
                 f"Richiesta utente: {user_prompt}"
@@ -347,6 +461,7 @@ def _notebook_detail(nb: Notebook) -> dict:
         "project_type": nb.project_type or "python",
         "cells": nb.cells or [],
         "editor_settings": _default_editor_settings(nb.project_type or "python") | (nb.editor_settings or {}),
+        "tutor_messages": _sanitize_tutor_history(nb.tutor_messages or []),
         "created_at": nb.created_at.isoformat(),
         "updated_at": nb.updated_at.isoformat(),
     }

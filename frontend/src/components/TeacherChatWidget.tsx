@@ -96,7 +96,7 @@ export function TeacherChatWidget({ isOpen, onClose }: TeacherChatWidgetProps) {
             </div>
             <div className="flex-1 min-w-0">
               <label className="text-xs font-bold text-[#181b1e] uppercase tracking-wide block mb-1">
-                Chat Classe
+                Chat sessione
               </label>
               <select
                 value={selectedSessionId || ''}
@@ -144,7 +144,7 @@ export function TeacherChatWidget({ isOpen, onClose }: TeacherChatWidgetProps) {
                 <MessageSquare className="h-8 w-8 text-slate-300" />
               </div>
               <h3 className="font-semibold text-slate-600 mb-1">Nessuna sessione selezionata</h3>
-              <p className="text-sm">Seleziona una classe dal menu in alto per visualizzare la chat.</p>
+              <p className="text-sm">Seleziona una sessione per visualizzare la chat di classe e le chat private.</p>
             </div>
           )}
         </div>

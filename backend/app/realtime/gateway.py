@@ -7,9 +7,10 @@ from app.core.security import decode_token
 from app.core.config import settings
 from app.core.database import AsyncSessionLocal
 from sqlalchemy import select
-from app.models.session import SessionStudent, Session, Class
+from app.models.session import SessionStudent, Session, Class, SessionModule
 from app.models.invitation import ClassTeacher, SessionTeacher
 from app.models.user import User
+from app.models.enums import SessionStatus
 
 sio = socketio.AsyncServer(
     async_mode="asgi",
@@ -100,6 +101,57 @@ async def can_user_access_session(user: dict, session_id: str) -> bool:
         print(f"[Gateway] can_user_access_session error for user {user.get('id')} session {session_id}: {e}")
         return False
 
+
+async def get_session_status(session_id: str) -> Optional[SessionStatus]:
+    try:
+        async with AsyncSessionLocal() as db:
+            result = await db.execute(
+                select(Session.status).where(Session.id == session_id)
+            )
+            return result.scalar_one_or_none()
+    except Exception as e:
+        print(f"[Gateway] Error fetching session status for {session_id}: {e}")
+        return None
+
+
+async def is_private_chat_enabled(session_id: str) -> bool:
+    try:
+        async with AsyncSessionLocal() as db:
+            result = await db.execute(
+                select(SessionModule.is_enabled)
+                .where(SessionModule.session_id == session_id)
+                .where(SessionModule.module_key == "chat")
+                .limit(1)
+            )
+            enabled = result.scalar_one_or_none()
+            return True if enabled is None else bool(enabled)
+    except Exception as e:
+        print(f"[Gateway] Error fetching private chat state for {session_id}: {e}")
+        return False
+
+
+async def revoke_student_session_access(session_id: str, reason: str, revoked_status: str):
+    student_sids = [
+        sid for sid in list(session_presence.get(session_id, set()))
+        if connected_users.get(sid, {}).get("type") == "student"
+        and str(connected_users.get(sid, {}).get("session_id") or "") == str(session_id)
+    ]
+
+    for sid in student_sids:
+        try:
+            await sio.emit(
+                "session_access_revoked",
+                {
+                    "session_id": session_id,
+                    "status": revoked_status,
+                    "reason": reason,
+                },
+                room=sid,
+            )
+            await sio.disconnect(sid)
+        except Exception as e:
+            print(f"[Gateway] Failed to revoke session access for sid {sid}: {e}")
+
 # Helper to send teacher notification
 async def notify_session_teacher(session_id: str, notification_data: dict):
     teacher_id = await get_session_teacher_id(session_id)
@@ -164,6 +216,10 @@ async def connect(sid, environ, auth):
         session_id = user["session_id"]
         student_id = user["id"]
         nickname = user.get("nickname", "Studente")
+        session_status = await get_session_status(session_id)
+        if session_status != SessionStatus.ACTIVE:
+            print(f"[Gateway] Connection rejected: student {student_id} session {session_id} not active ({session_status})")
+            return False
         
         # Store nickname for later use
         student_nicknames[student_id] = nickname
@@ -176,6 +232,9 @@ async def connect(sid, environ, auth):
                 )
                 student_obj = result.scalar_one_or_none()
                 if student_obj:
+                    if student_obj.is_frozen:
+                        print(f"[Gateway] Connection rejected: student {student_id} frozen")
+                        return False
                     if student_obj.avatar_url:
                         student_avatars[student_id] = student_obj.avatar_url
                     if student_obj.ui_accent:
@@ -296,6 +355,12 @@ async def join_session(sid, data):
         print(f"[Gateway] join_session denied: user {user.get('id')} cannot access session {session_id}")
         return {"error": "Forbidden"}
 
+    if user.get("type") == "student":
+        session_status = await get_session_status(session_id)
+        if session_status != SessionStatus.ACTIVE:
+            print(f"[Gateway] join_session denied: student {user.get('id')} session {session_id} not active ({session_status})")
+            return {"error": "Session unavailable"}
+
     print(f"[Gateway] User {user.get('id')} ({user.get('type')}) joining session {session_id}")
     await sio.enter_room(sid, f"session:{session_id}")
     
@@ -362,6 +427,19 @@ async def heartbeat_activity(sid, data):
     
     student_id = user["id"]
     session_id = user["session_id"]
+    session_status = await get_session_status(session_id)
+    if session_status != SessionStatus.ACTIVE:
+        await sio.emit(
+            "session_access_revoked",
+            {
+                "session_id": session_id,
+                "status": session_status.value if session_status else "unavailable",
+                "reason": "La sessione non è attualmente disponibile.",
+            },
+            room=sid,
+        )
+        await sio.disconnect(sid)
+        return
     
     activity = {
         "module_key": data.get("module_key"),
@@ -531,12 +609,12 @@ async def chat_public_message(sid, data):
                 "session_id": session_id,
                 "student_id": user["id"],
                 "nickname": sender_name,
-                "message": f"{sender_name} ha inviato un messaggio nella chat",
+                "message": f"{sender_name} ha inviato un messaggio nella chat di classe",
                 "preview": text[:100] + ("..." if len(text) > 100 else ""),
                 "timestamp": datetime.utcnow().isoformat(),
             }
         )
-    
+
     return {"success": True}
 
 
@@ -549,6 +627,32 @@ async def chat_private_message(sid, data):
     target_id = data.get("target_id") or data.get("room_id")
     text = data.get("text", "")
     attachments = data.get("attachments", [])
+
+    if not target_id:
+        return {"error": "Target required"}
+
+    session_id = user.get("session_id")
+    if user["type"] == "student":
+        if not session_id:
+            return {"error": "Session unavailable"}
+        if not await is_private_chat_enabled(session_id):
+            return {"error": "Private chat disabled"}
+        teacher_id = await get_session_teacher_id(session_id)
+        if not teacher_id or str(target_id) != str(teacher_id):
+            return {"error": "Students can only message the teacher privately"}
+    else:
+        try:
+            async with AsyncSessionLocal() as db:
+                result = await db.execute(
+                    select(SessionStudent).where(SessionStudent.id == target_id)
+                )
+                target_student = result.scalar_one_or_none()
+                if not target_student:
+                    return {"error": "Student not found in session"}
+                session_id = str(target_student.session_id)
+        except Exception as e:
+            print(f"[Gateway] Error validating DM target {target_id}: {e}")
+            return {"error": "Unable to validate DM target"}
     
     # Refresh sender metadata from DB for consistent cross-client rendering.
     if user["type"] == "student":
@@ -629,7 +733,6 @@ async def chat_private_message(sid, data):
             break
             
     if is_target_teacher and user["type"] == "student":
-        session_id = user.get("session_id")
         await notify_session_teacher(
             session_id,
             {

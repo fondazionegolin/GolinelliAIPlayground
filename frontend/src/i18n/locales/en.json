@@ -77,14 +77,27 @@
 
   "student_join": {
     "title": "Student Login",
-    "subtitle": "No registration needed — just the code and a nickname",
+    "subtitle": "Enter the session code and your nickname. On first access you will also choose a password.",
     "code_label": "Session Code",
     "code_intro": "Enter the code provided by your teacher",
     "code_placeholder": "ABC12",
     "nickname_label": "Your nickname",
     "nickname_placeholder": "Alex",
-    "joining": "Connecting...",
-    "join_btn": "Join",
+    "password_label": "Password",
+    "password_placeholder": "Choose a secure password",
+    "confirm_password_label": "Confirm password",
+    "confirm_password_placeholder": "Repeat the password",
+    "continue_btn": "Continue",
+    "login_btn": "Sign in",
+    "create_access_btn": "Create access",
+    "loading": "Connecting...",
+    "change_identity_btn": "Change details",
+    "mode_register": "Nickname is available. Set a password now to keep your personal workspace.",
+    "mode_login": "This profile already exists. Enter the password to return to your workspace.",
+    "mode_claim": "This profile exists but does not have a password yet. Set it now to recover it.",
+    "password_mismatch": "Passwords do not match",
+    "password_min_length": "Password must be at least 8 characters",
+    "error_generic": "Unable to access the session",
     "back_login": "Back to teacher login"
   },
 
@@ -133,8 +146,8 @@
     "select_session_hint": "Select your working session",
     "no_sessions": "No sessions available",
     "create_session_hint": "Create a new session from the Classes page",
-    "hide_class_chat": "Hide class chat",
-    "show_class_chat": "Show class chat",
+    "hide_class_chat": "Hide session chat",
+    "show_class_chat": "Show session chat",
     "settings_title": "Profile Settings",
     "change_photo": "Change Photo",
     "first_name": "First name",
@@ -145,8 +158,8 @@
   },
 
   "teacher_dashboard": {
-    "chat_title": "Class Chat",
-    "chat_hint": "Select a session to view the chat."
+    "chat_title": "Session chat",
+    "chat_hint": "Select a session to view the class chat and private chats."
   },
 
   "teacher_chat": {
@@ -280,8 +293,8 @@
     "docs_desc": "Create documents and presentations. Send your work to the teacher for review.",
     "quiz_label": "Quiz & Badges",
     "quiz_desc": "Test yourself! Complete quizzes, earn badges and track your learning progress.",
-    "chat_label": "Class Chat",
-    "chat_desc": "Communicate with your class.",
+    "chat_label": "Class chat",
+    "chat_desc": "Join the session chat and, when enabled, the private chat with the teacher.",
     "explore": "Explore",
     "welcome": "Hi, {{name}}!",
     "welcome_body": "Choose a tool to start working",
@@ -634,6 +647,7 @@
     "notification": "Notification",
     "no_private_chat": "No private chats",
     "start_chat_from_students": "Start a chat from the students list",
+    "wait_teacher_private_chat": "Your private chat with the teacher will appear here",
     "start_conversation": "Start the conversation",
     "select_chat": "Select a chat",
     "loading_history": "Loading history...",

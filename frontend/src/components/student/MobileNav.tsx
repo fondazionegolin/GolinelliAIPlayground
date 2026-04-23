@@ -20,8 +20,7 @@ const ALL_NAV_ITEMS = [
 ]
 
 export function MobileNav({ activeModule, onNavigate, unreadMessages = 0, hidden = false, enabledModules }: MobileNavProps) {
-  // Home and classe (chat) always shown; optional modules filtered by session settings
-  const ALWAYS_SHOWN = new Set([null, 'classe'])
+  const ALWAYS_SHOWN = new Set<string | null>([null])
   const NAV_ITEMS = enabledModules
     ? ALL_NAV_ITEMS.filter(item => ALWAYS_SHOWN.has(item.key) || enabledModules.includes(item.key as string))
     : ALL_NAV_ITEMS

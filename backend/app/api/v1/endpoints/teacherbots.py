@@ -353,8 +353,8 @@ async def upload_teacherbot_kb_document(
         analyze_visuals=not is_data,
     )
 
-    if not analysis.raw_text.strip():
-        raise HTTPException(status_code=400, detail="Impossibile estrarre testo dal documento.")
+    if not analysis.rag_segments:
+        raise HTTPException(status_code=400, detail="Impossibile estrarre contenuto dal documento.")
 
     doc = RAGDocument(
         tenant_id=teacher.tenant_id,
@@ -369,7 +369,9 @@ async def upload_teacherbot_kb_document(
     db.add(doc)
     await db.flush()
 
-    chunk_count = await rag_service.ingest_document(db, doc, analysis.raw_text)
+    chunk_count = await rag_service.ingest_document(
+        db, doc, analysis.rag_segments or analysis.raw_text
+    )
     logger.info(f"KB doc ingested for bot {teacherbot_id}: {filename} ({chunk_count} chunks)")
 
     return {
@@ -486,6 +488,50 @@ async def list_session_teacherbots(
             conversation_count=conv_count,
         )
         for bot, conv_count in rows
+    ]
+
+
+@router.get("/teacher/sessions/{session_id}/teacherbot-conversations")
+async def get_session_teacherbot_conversations(
+    session_id: UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    teacher: Annotated[User, Depends(get_current_teacher)],
+):
+    """Return all teacherbot conversations for a session, grouped by student (teacher view)."""
+    from app.core.permissions import teacher_can_access_session
+    if not await teacher_can_access_session(db, teacher, session_id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
+
+    result = await db.execute(
+        select(
+            TeacherbotConversation,
+            SessionStudent,
+            Teacherbot,
+            func.count(TeacherbotMessage.id).label("message_count"),
+        )
+        .join(SessionStudent, TeacherbotConversation.student_id == SessionStudent.id)
+        .join(Teacherbot, TeacherbotConversation.teacherbot_id == Teacherbot.id)
+        .outerjoin(TeacherbotMessage, TeacherbotMessage.conversation_id == TeacherbotConversation.id)
+        .where(TeacherbotConversation.session_id == session_id)
+        .where(Teacherbot.teacher_id == teacher.id)
+        .group_by(TeacherbotConversation.id, SessionStudent.id, Teacherbot.id)
+        .order_by(TeacherbotConversation.created_at.desc())
+    )
+    rows = result.all()
+
+    return [
+        {
+            "id": str(conv.id),
+            "student_id": str(student.id),
+            "student_nickname": student.nickname,
+            "teacherbot_id": str(bot.id),
+            "teacherbot_name": bot.name,
+            "teacherbot_color": bot.color,
+            "message_count": msg_count,
+            "created_at": conv.created_at.isoformat(),
+            "updated_at": (conv.updated_at or conv.created_at).isoformat(),
+        }
+        for conv, student, bot, msg_count in rows
     ]
 
 

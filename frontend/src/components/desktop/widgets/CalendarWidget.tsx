@@ -8,12 +8,13 @@ interface CalendarConfig {
 interface CalendarWidgetProps {
   config: CalendarConfig
   onConfigChange: (config: CalendarConfig) => void
+  readOnly?: boolean
 }
 
 const DAYS = ['L', 'M', 'M', 'G', 'V', 'S', 'D']
 const MONTHS = ['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno','Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre']
 
-export default function CalendarWidget({ config, onConfigChange }: CalendarWidgetProps) {
+export default function CalendarWidget({ config, onConfigChange, readOnly = false }: CalendarWidgetProps) {
   const today = new Date()
   const [viewDate, setViewDate] = useState(new Date(today.getFullYear(), today.getMonth(), 1))
   const notes = config.notes ?? {}
@@ -30,6 +31,7 @@ export default function CalendarWidget({ config, onConfigChange }: CalendarWidge
   const isToday = (d: number) => today.getFullYear() === year && today.getMonth() === month && today.getDate() === d
 
   const handleDayClick = (d: number) => {
+    if (readOnly) return
     const key = fmtKey(d)
     const note = notes[key] ?? ''
     const newNote = window.prompt(`Nota per il ${d}/${month + 1}/${year}:`, note)
@@ -73,7 +75,7 @@ export default function CalendarWidget({ config, onConfigChange }: CalendarWidge
         {cells.map((day, i) => (
           <button
             key={i}
-            disabled={!day}
+            disabled={!day || readOnly}
             onClick={() => day && handleDayClick(day)}
             className={`relative text-center text-sm py-1 rounded-lg transition-colors
               ${!day ? '' : 'hover:bg-white/10'}

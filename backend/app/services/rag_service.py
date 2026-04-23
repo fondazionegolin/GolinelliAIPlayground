@@ -27,8 +27,44 @@ class RAGService:
     def __init__(self):
         self.chunk_size = 1000
         self.chunk_overlap = 200
-    
-    def chunk_text(self, text: str, chunk_size: int = None, overlap: int = None) -> list[dict]:
+
+    def _normalize_segments(self, content) -> list[dict]:
+        if isinstance(content, str):
+            return [{"text": content, "page": None, "meta": {}, "kind": "text"}]
+
+        normalized = []
+        for item in content or []:
+            if item is None:
+                continue
+            text = getattr(item, "text", None)
+            page = getattr(item, "page", None)
+            kind = getattr(item, "kind", "text")
+            meta = getattr(item, "meta", None)
+            if text is None and isinstance(item, dict):
+                text = item.get("text")
+                page = item.get("page")
+                kind = item.get("kind", "text")
+                meta = item.get("meta")
+            if not text or not str(text).strip():
+                continue
+            normalized.append({
+                "text": str(text).strip(),
+                "page": page,
+                "kind": kind or "text",
+                "meta": dict(meta or {}),
+            })
+        return normalized
+
+    def chunk_text(
+        self,
+        text: str,
+        *,
+        page: Optional[int] = None,
+        chunk_size: int = None,
+        overlap: int = None,
+        meta: Optional[dict] = None,
+        kind: str = "text",
+    ) -> list[dict]:
         chunk_size = chunk_size or self.chunk_size
         overlap = overlap or self.chunk_overlap
         
@@ -52,25 +88,47 @@ class RAGService:
                 "text": chunk_text.strip(),
                 "start": start,
                 "end": end,
+                "page": page,
+                "meta": dict(meta or {}),
+                "kind": kind,
             })
             
             chunk_index += 1
             start = end - overlap
         
         return chunks
+
+    def chunk_content(self, content) -> list[dict]:
+        segments = self._normalize_segments(content)
+        chunks: list[dict] = []
+        chunk_index = 0
+
+        for segment in segments:
+            segment_chunks = self.chunk_text(
+                segment["text"],
+                page=segment.get("page"),
+                meta=segment.get("meta"),
+                kind=segment.get("kind", "text"),
+            )
+            for chunk in segment_chunks:
+                chunk["chunk_index"] = chunk_index
+                chunk_index += 1
+                chunks.append(chunk)
+
+        return chunks
     
     async def ingest_document(
         self,
         db: AsyncSession,
         document: RAGDocument,
-        content: str,
+        content,
     ) -> int:
         document.status = DocumentStatus.PROCESSING
         await db.commit()
         
         try:
             # Chunk the content
-            chunks_data = self.chunk_text(content)
+            chunks_data = self.chunk_content(content)
             
             # Create chunk records
             chunks = []
@@ -79,8 +137,14 @@ class RAGService:
                     tenant_id=document.tenant_id,
                     document_id=document.id,
                     chunk_index=chunk_data["chunk_index"],
+                    page=chunk_data.get("page"),
                     text=chunk_data["text"],
-                    meta_json={"start": chunk_data["start"], "end": chunk_data["end"]},
+                    meta_json={
+                        "start": chunk_data["start"],
+                        "end": chunk_data["end"],
+                        "kind": chunk_data.get("kind", "text"),
+                        **chunk_data.get("meta", {}),
+                    },
                 )
                 db.add(chunk)
                 chunks.append(chunk)

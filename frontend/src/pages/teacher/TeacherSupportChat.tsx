@@ -4,8 +4,9 @@ import { Button } from '@/components/ui/button'
 import {
   Send, Bot, Paperclip, X, Trash2, Plus, File, Image as ImageIcon, Loader2,
   Database, Download, ChevronDown, ChevronRight, Edit3, Check, MessageCircle, Sparkles,
-  Palette, FileText, CheckSquare, MessageSquare, Settings, RotateCcw, BarChart2
+  Palette, FileText, CheckSquare, MessageSquare, Settings, RotateCcw, BarChart2, Layout
 } from 'lucide-react'
+import DocumentCanvas, { type GeneratedDoc } from '@/components/teacher/DocumentCanvas'
 import { llmApi, teacherApi } from '@/lib/api'
 import { useToast } from '@/components/ui/use-toast'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
@@ -26,6 +27,19 @@ import { VoiceRecorder } from '@/components/VoiceRecorder'
 import { useTranslation } from 'react-i18next'
 import EnvironmentalImpactPill from '@/components/chat/EnvironmentalImpactPill'
 import type { TokenUsageJson } from '@/lib/environmentalImpact'
+import {
+  parseBrochurePayload,
+  parseDispensaPayload,
+  parseReportPayload,
+  type DispensaPayload,
+  type DispensaSection,
+  type DispensaExercise,
+} from '@/components/teacher/reportTemplates'
+import {
+  PASTEL_ICON_BACKGROUNDS,
+  PASTEL_ICON_TEXT,
+  PASTEL_SURFACES,
+} from '@/design/themes/pastelSurfaces'
 
 // Constants
 const FALLBACK_MODELS = [
@@ -43,10 +57,12 @@ const AGENT_MODES = [
   { id: 'image', label: 'Immagine' },
   { id: 'dataset', label: 'Dataset' },
   { id: 'analysis', label: 'Analisi' },
+  { id: 'brochure', label: 'Brochure' },
+  { id: 'dispensa', label: 'Dispensa' },
 ] as const
 
-// Explicitly include web_search in type even though it's hidden from UI
-type AgentMode = typeof AGENT_MODES[number]['id'] | 'web_search'
+// Explicitly include hidden modes in type even though they're hidden from UI
+type AgentMode = typeof AGENT_MODES[number]['id'] | 'web_search' | 'brochure' | 'dispensa'
 // Width below which the chat history sidebar auto-collapses.
 // Increase this value if you want earlier collapse.
 const CHAT_HISTORY_COLLAPSE_BREAKPOINT = 1360
@@ -86,6 +102,7 @@ interface Message {
 interface Conversation {
   id: string
   title: string
+  agentMode?: AgentMode
   messages: Message[]
   createdAt: Date
 }
@@ -96,6 +113,214 @@ interface AttachedFile {
   type: 'image' | 'document' | 'data'
   dataPreview?: import('@/components/DataFileCard').DataFilePreview
 }
+
+interface DispensaPlanSection {
+  id: string
+  title: string
+  focus: string
+}
+
+interface DispensaPlan {
+  title: string
+  subtitle: string
+  objectives: string[]
+  sections: DispensaPlanSection[]
+  estimatedPages?: string
+  notes?: string[]
+}
+
+interface DispensaMetaPayload {
+  title: string
+  subtitle?: string
+  abstract: string
+  objectives?: string[]
+}
+
+interface DispensaAppendixPayload {
+  exercises?: DispensaExercise[]
+  references?: string[]
+}
+
+function parseDispensaPlan(raw: string): DispensaPlan | null {
+  const match = raw.match(/```dispensa_plan\s*([\s\S]*?)```/i)
+  const candidate = (match ? match[1] : raw).trim()
+  try {
+    const parsed = JSON.parse(candidate) as Partial<DispensaPlan>
+    if (!parsed.title || !Array.isArray(parsed.sections) || parsed.sections.length === 0) return null
+    return {
+      title: parsed.title,
+      subtitle: parsed.subtitle || parsed.title,
+      objectives: Array.isArray(parsed.objectives) ? parsed.objectives.slice(0, 8).map(String) : [],
+      sections: parsed.sections.slice(0, 10).map((section, index) => ({
+        id: section.id || `s${index + 1}`,
+        title: section.title || `Sezione ${index + 1}`,
+        focus: section.focus || '',
+      })),
+      estimatedPages: parsed.estimatedPages,
+      notes: Array.isArray(parsed.notes) ? parsed.notes.slice(0, 6).map(String) : [],
+    }
+  } catch {
+    return null
+  }
+}
+
+function parseJsonBlockLoose<T>(raw: string, blockName: string): T | null {
+  const fenceRe = new RegExp("```" + blockName + "\\s*([\\s\\S]*?)(?:```|$)", 'i')
+  const match = raw.match(fenceRe)
+  const candidate = (match ? match[1] : raw)
+    .replace(/```+$/g, '')
+    .trim()
+  try {
+    return JSON.parse(candidate) as T
+  } catch {
+    return null
+  }
+}
+
+function isAgentMode(value: string | null | undefined): value is AgentMode {
+  if (!value) return false
+  return AGENT_MODES.some((mode) => mode.id === value) || value === 'web_search'
+}
+
+async function consumeSseStream(
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+  onEvent: (data: any) => void
+) {
+  const decoder = new TextDecoder()
+  let buffer = ''
+
+  while (true) {
+    const { done, value } = await reader.read()
+    buffer += done ? decoder.decode() : decoder.decode(value, { stream: true })
+
+    let normalized = buffer.replace(/\r\n/g, '\n')
+    let boundaryIndex = normalized.indexOf('\n\n')
+
+    while (boundaryIndex !== -1) {
+      const rawEvent = normalized.slice(0, boundaryIndex)
+      buffer = normalized.slice(boundaryIndex + 2)
+
+      const payload = rawEvent
+        .split('\n')
+        .filter((line) => line.startsWith('data: '))
+        .map((line) => line.slice(6))
+        .join('\n')
+        .trim()
+
+      if (payload) {
+        try {
+          onEvent(JSON.parse(payload))
+        } catch {
+          // Ignore malformed partial events
+        }
+      }
+
+      normalized = buffer.replace(/\r\n/g, '\n')
+      boundaryIndex = normalized.indexOf('\n\n')
+    }
+
+    if (done) {
+      const trailing = buffer.replace(/\r\n/g, '\n').trim()
+      if (trailing.startsWith('data: ')) {
+        const payload = trailing
+          .split('\n')
+          .filter((line) => line.startsWith('data: '))
+          .map((line) => line.slice(6))
+          .join('\n')
+          .trim()
+        if (payload) {
+          try {
+            onEvent(JSON.parse(payload))
+          } catch {
+            // Ignore malformed trailing events
+          }
+        }
+      }
+      break
+    }
+  }
+}
+
+function parseDispensaMetaPayload(raw: string): DispensaMetaPayload | null {
+  const parsed = parseJsonBlockLoose<Partial<DispensaMetaPayload>>(raw, 'dispensa_meta')
+  if (!parsed?.title || !parsed.abstract) return null
+  return {
+    title: parsed.title,
+    subtitle: parsed.subtitle || parsed.title,
+    abstract: parsed.abstract,
+    objectives: Array.isArray(parsed.objectives) ? parsed.objectives.slice(0, 8).map(String) : [],
+  }
+}
+
+function parseDispensaSectionPayload(raw: string): DispensaSection | null {
+  const parsed = parseJsonBlockLoose<Partial<DispensaSection>>(raw, 'dispensa_section')
+  if (!parsed?.title || !parsed.intro) return null
+  return {
+    id: parsed.id,
+    title: parsed.title,
+    intro: parsed.intro,
+    blocks: Array.isArray(parsed.blocks)
+      ? parsed.blocks.slice(0, 4).map((block) => ({
+        kind: ['definition', 'theorem', 'example', 'warning', 'note'].includes(String(block.kind || ''))
+          ? block.kind as 'definition' | 'theorem' | 'example' | 'warning' | 'note'
+          : 'note',
+        title: block.title || 'Approfondimento',
+        content: block.content || '',
+      }))
+      : [],
+    bulletPoints: Array.isArray(parsed.bulletPoints) ? parsed.bulletPoints.slice(0, 8).map(String) : [],
+    summaryPoints: Array.isArray(parsed.summaryPoints) ? parsed.summaryPoints.slice(0, 6).map(String) : [],
+    table: parsed.table && Array.isArray(parsed.table.columns) && Array.isArray(parsed.table.rows)
+      ? {
+          columns: parsed.table.columns.slice(0, 5).map(String),
+          rows: parsed.table.rows.slice(0, 8).map((row) => Array.isArray(row) ? row.slice(0, 5).map(String) : []),
+        }
+      : undefined,
+  }
+}
+
+function parseDispensaAppendixPayload(raw: string): DispensaAppendixPayload | null {
+  const parsed = parseJsonBlockLoose<Partial<DispensaAppendixPayload>>(raw, 'dispensa_appendix')
+  if (!parsed) return null
+  return {
+    exercises: Array.isArray(parsed.exercises)
+      ? parsed.exercises.slice(0, 6).map((exercise) => ({
+          title: exercise.title || 'Esercizio',
+          prompt: exercise.prompt || '',
+          solution: exercise.solution,
+        }))
+      : [],
+    references: Array.isArray(parsed.references) ? parsed.references.slice(0, 10).map(String) : [],
+  }
+}
+
+const REPORT_TYPE_OPTIONS = [
+  {
+    id: 'dashboard_classe',
+    label: 'Dashboard Classe',
+    description: 'panoramica completa della sessione con KPI, trend, ranking e azioni consigliate',
+  },
+  {
+    id: 'apprendimenti',
+    label: 'Apprendimenti',
+    description: 'competenze emerse, apprendimenti, lacune e priorità didattiche',
+  },
+  {
+    id: 'partecipazione',
+    label: 'Partecipazione',
+    description: 'engagement, chat, task, chatbot e livelli di coinvolgimento',
+  },
+  {
+    id: 'classifiche',
+    label: 'Classifiche',
+    description: 'ranking, top performer, studenti costanti e studenti da recuperare',
+  },
+  {
+    id: 'criticita',
+    label: 'Criticità e Rischi',
+    description: 'consegne mancanti, cali di attività, fragilità e interventi urgenti',
+  },
+] as const
 
 
 
@@ -137,6 +362,14 @@ export default function TeacherSupportChat() {
   const [chatBgDefault, setChatBgDefault] = useState<string>('')
   const [showBgPalette, setShowBgPalette] = useState(false)
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => window.innerWidth < CHAT_HISTORY_COLLAPSE_BREAKPOINT)
+  const [activeDoc, setActiveDoc] = useState<GeneratedDoc | null>(null)
+  const [showCanvas, setShowCanvas] = useState(false)
+  const [isGeneratingDoc, setIsGeneratingDoc] = useState(false)
+  const [convsWithDocs, setConvsWithDocs] = useState<Set<string>>(new Set())
+  const docCacheRef = useRef<Record<string, GeneratedDoc>>({})
+  const [pendingDispensaPlan, setPendingDispensaPlan] = useState<DispensaPlan | null>(null)
+  const [pendingDispensaRequest, setPendingDispensaRequest] = useState<string | null>(null)
+  const [pendingDispensaFilesContext, setPendingDispensaFilesContext] = useState<string>('')
   const modelMenuRef = useRef<HTMLDivElement>(null)
   const modeMenuRef = useRef<HTMLDivElement>(null)
 
@@ -162,6 +395,11 @@ export default function TeacherSupportChat() {
     () => getTeacherAccentTheme(teacherProfileData?.uiAccent || DEFAULT_TEACHER_ACCENT),
     [teacherProfileData]
   )
+  const teacherDisplayName = useMemo(() => {
+    const first = teacherProfileData?.firstName?.trim() || ''
+    const last = teacherProfileData?.lastName?.trim() || ''
+    return [first, last].filter(Boolean).join(' ') || 'Docente'
+  }, [teacherProfileData])
   const accentVars = useMemo(() => ({
     '--teacher-accent': accentTheme.accent,
     '--teacher-accent-text': accentTheme.text,
@@ -419,6 +657,7 @@ export default function TeacherSupportChat() {
         setConversations(serverConversations.map((c: any) => ({
           id: c.id,
           title: c.title || 'Nuova conversazione',
+          agentMode: isAgentMode(c.agent_mode) ? c.agent_mode : 'default',
           messages: [], // Messages loaded on demand when selecting a conversation
           createdAt: new Date(c.created_at),
         })))
@@ -437,6 +676,18 @@ export default function TeacherSupportChat() {
             // ignore cache parse errors
           }
         }
+
+        // Load doc cache
+        try {
+          const docStored = localStorage.getItem('teacher_canvas_docs')
+          if (docStored) {
+            const parsed = JSON.parse(docStored) as Record<string, GeneratedDoc>
+            docCacheRef.current = parsed
+            setConvsWithDocs(new Set(Object.keys(parsed)))
+          }
+        } catch {
+          // ignore
+        }
       } catch (e) {
         console.error('Failed to load conversations from server:', e)
         // Fallback to localStorage for offline/error cases
@@ -446,6 +697,7 @@ export default function TeacherSupportChat() {
             const parsed = JSON.parse(saved)
             setConversations(parsed.map((c: Conversation) => ({
               ...c,
+              agentMode: isAgentMode(c.agentMode) ? c.agentMode : 'default',
               createdAt: new Date(c.createdAt),
               messages: c.messages.map(m => ({ ...m, timestamp: new Date(m.timestamp) }))
             })))
@@ -479,7 +731,18 @@ export default function TeacherSupportChat() {
     if (!currentConversationId) {
       setHasMoreMessages(false)
       setOldestMessageId(null)
+      setActiveDoc(null)
+      setShowCanvas(false)
       return
+    }
+    // Restore canvas doc from local cache while we wait for server
+    const localDoc = docCacheRef.current[currentConversationId]
+    if (localDoc) {
+      setActiveDoc(localDoc)
+      setShowCanvas(true)
+    } else {
+      setActiveDoc(null)
+      setShowCanvas(false)
     }
     const loadMessages = async () => {
       setLoadingMessages(true)
@@ -495,6 +758,9 @@ export default function TeacherSupportChat() {
         const response = await teacherApi.getConversation(currentConversationId)
         const conv = response.data
         if (conv?.messages && currentConversationId_ref.current === currentConversationId) {
+          if (isAgentMode(conv.agent_mode)) {
+            setAgentMode(conv.agent_mode)
+          }
           const serverMessages = conv.messages.map((m: any) => ({
             id: m.id,
             role: m.role,
@@ -504,14 +770,37 @@ export default function TeacherSupportChat() {
             model: m.model,
             token_usage_json: m.token_usage_json,
           }))
-          setMessages(serverMessages)
-          setHasMoreMessages(conv.has_more ?? false)
-          setOldestMessageId(serverMessages[0]?.id ?? null)
-          setConversationCache(prev => {
-            const next = { ...prev, [currentConversationId]: serverMessages }
-            conversationCacheRef.current = next
-            return next
-          })
+          const localMessageCount = cachedMessages?.length || 0
+          const hasLocalPendingMessages = localMessageCount > 0 && serverMessages.length <= localMessageCount
+          if (!hasLocalPendingMessages) {
+            setMessages(serverMessages)
+            setHasMoreMessages(conv.has_more ?? false)
+            setOldestMessageId(serverMessages[0]?.id ?? null)
+            setConversations((prev) => prev.map((item) => (
+              item.id === currentConversationId
+                ? { ...item, title: conv.title || item.title, agentMode: isAgentMode(conv.agent_mode) ? conv.agent_mode : item.agentMode }
+                : item
+            )))
+            setConversationCache(prev => {
+              const next = { ...prev, [currentConversationId]: serverMessages }
+              conversationCacheRef.current = next
+              return next
+            })
+          }
+
+          // Restore document from server (authoritative source)
+          if (currentConversationId_ref.current === currentConversationId) {
+            if (conv.document_json) {
+              const serverDoc = conv.document_json as GeneratedDoc
+              docCacheRef.current[currentConversationId] = serverDoc
+              setConvsWithDocs(prev => new Set([...prev, currentConversationId]))
+              setActiveDoc(serverDoc)
+              setShowCanvas(true)
+            } else if (!localDoc) {
+              setActiveDoc(null)
+              setShowCanvas(false)
+            }
+          }
         }
       } catch (e) {
         console.error('Failed to load messages:', e)
@@ -683,6 +972,26 @@ export default function TeacherSupportChat() {
     }
   }
 
+  const openConversation = (conversation: Conversation) => {
+    setCurrentConversationId(conversation.id)
+    if (conversation.agentMode && isAgentMode(conversation.agentMode)) {
+      setAgentMode(conversation.agentMode)
+    }
+  }
+
+  const syncConversationMode = async (conversationId: string, mode: AgentMode) => {
+    setConversations((prev) => prev.map((conversation) => (
+      conversation.id === conversationId
+        ? { ...conversation, agentMode: mode }
+        : conversation
+    )))
+    try {
+      await teacherApi.updateConversation(conversationId, { agent_mode: mode })
+    } catch (error) {
+      console.error('Failed to persist conversation mode:', error)
+    }
+  }
+
   const ensureConversation = async (titleSeed: string) => {
     if (currentConversationId) return currentConversationId
     try {
@@ -695,6 +1004,7 @@ export default function TeacherSupportChat() {
       setConversations(prev => [{
         id: convId,
         title: response.data.title || 'Nuova conversazione',
+        agentMode: isAgentMode(response.data.agent_mode) ? response.data.agent_mode : agentMode,
         messages: [],
         createdAt: new Date()
       }, ...prev])
@@ -744,6 +1054,7 @@ export default function TeacherSupportChat() {
     opts?: {
       provider?: string
       model?: string
+      mode?: AgentMode
       sessionId?: string
       onChunk?: (chunk: string) => void
       onStatus?: (status: string) => void
@@ -761,7 +1072,7 @@ export default function TeacherSupportChat() {
           history: history.map(m => ({ role: m.role, content: m.content })),
           provider: opts?.provider ?? modelInfo?.provider ?? 'openai',
           model: opts?.model ?? selectedModel,
-          agent_mode: agentMode,
+          agent_mode: opts?.mode ?? agentMode,
           session_id: opts?.sessionId ?? null,
         })
       })
@@ -769,47 +1080,29 @@ export default function TeacherSupportChat() {
       if (!response.ok) throw new Error('Stream request failed')
 
       const reader = response.body?.getReader()
-      const decoder = new TextDecoder()
       let finalContent = ''
       let finalProvider: string | undefined
       let finalModel: string | undefined
       let finalTokenUsage: TokenUsageJson | null = null
 
       if (reader) {
-        while (true) {
-          const { done, value } = await reader.read()
-          if (done) break
-
-          const raw = decoder.decode(value)
-          const lines = raw.split('\n')
-
-          for (const line of lines) {
-            if (!line.startsWith('data: ')) continue
-            let data: any
-            try {
-              data = JSON.parse(line.slice(6))
-            } catch {
-              continue
-            }
-
-            if (data.type === 'chunk') {
-              finalContent += data.content
-              opts?.onChunk?.(data.content)
-            } else if (data.type === 'done') {
-              // done carries the clean content (tags stripped)
-              if (data.content) finalContent = data.content
-              finalProvider = data.provider
-              finalModel = data.model
-              finalTokenUsage = data.token_usage || null
-            } else if (data.type === 'status') {
-              opts?.onStatus?.(data.message)
-            } else if (data.type === 'calendar_event_created') {
-              opts?.onCalendarEvent?.(data.event)
-            } else if (data.type === 'error') {
-              throw new Error(data.message || 'Errore durante lo stream')
-            }
+        await consumeSseStream(reader, (data) => {
+          if (data.type === 'chunk') {
+            finalContent += data.content
+            opts?.onChunk?.(data.content)
+          } else if (data.type === 'done') {
+            if (data.content) finalContent = data.content
+            finalProvider = data.provider
+            finalModel = data.model
+            finalTokenUsage = data.token_usage || null
+          } else if (data.type === 'status') {
+            opts?.onStatus?.(data.message)
+          } else if (data.type === 'calendar_event_created') {
+            opts?.onCalendarEvent?.(data.event)
+          } else if (data.type === 'error') {
+            throw new Error(data.message || 'Errore durante lo stream')
           }
-        }
+        })
       }
 
       return {
@@ -823,8 +1116,430 @@ export default function TeacherSupportChat() {
     }
   }
 
-  const handleSend = async () => {
-    const userInput = inputText.trim()
+  const generateDocument = async (
+    mode: 'brochure' | 'dispensa' | 'report',
+    userRequest: string,
+    chatHistory: Message[],
+    filesContext: string,
+    isEdit: boolean,
+    currentDoc?: GeneratedDoc | null,
+    approvedPlan?: DispensaPlan | null
+  ): Promise<string> => {
+    const historyContext = chatHistory
+      .filter(m => m.role !== 'system')
+      .slice(-6)
+      .map(m => `${m.role === 'user' ? 'Utente' : 'Assistente'}: ${m.content.substring(0, 400)}`)
+      .join('\n')
+
+    let prompt: string
+    const contextSection = [
+      chatHistory.length > 1 ? `\nContesto della chat:\n${historyContext}` : '',
+      filesContext ? `\nMateriale allegato:\n${filesContext}` : '',
+    ].filter(Boolean).join('\n')
+
+    if (mode === 'report') {
+      const matchedReportType = REPORT_TYPE_OPTIONS.find((option) =>
+        userRequest.toLowerCase().includes(option.label.toLowerCase()) || userRequest.toLowerCase().includes(option.id.replace('_', ' '))
+      )
+      const templateId = matchedReportType?.id || 'dashboard_classe'
+      prompt = [
+        'Compila SOLO i dati variabili di un report didattico. Il layout HTML/CSS/JS viene applicato dal sistema tramite template locale.',
+        '',
+        'TEMPLATE SELEZIONATO:',
+        `- templateId: ${templateId}`,
+        `- focus: ${matchedReportType?.description || 'panoramica completa della sessione con KPI, grafici, ranking e azioni'}`,
+        '',
+        'RISPOSTA OBBLIGATORIA:',
+        '- Rispondi SOLO con un blocco ```report_data contenente un JSON valido',
+        '- Nessun commento prima o dopo',
+        '- Non generare HTML',
+        '',
+        'SCHEMA JSON OBBLIGATORIO:',
+        `{
+  "templateId": "${templateId}",
+  "title": "titolo report",
+  "subtitle": "sottotitolo sintetico",
+  "summary": "sintesi esecutiva breve",
+  "metrics": [
+    {"label": "KPI", "value": "numero o testo breve", "trend": "trend breve", "detail": "contesto"}
+  ],
+  "charts": [
+    {"id": "partecipazione", "title": "Titolo grafico", "type": "bar|line|doughnut|radar", "labels": ["A","B"], "values": [1,2], "description": "cosa mostra"}
+  ],
+  "leaderboard": [
+    {"name": "Studente o categoria", "score": "valore", "detail": "spiegazione", "badge": "tag"}
+  ],
+  "strengths": ["punto di forza"],
+  "risks": ["criticità"],
+  "recommendations": ["azione consigliata"],
+  "tables": [
+    {"title": "Tabella opzionale", "columns": ["col1","col2"], "rows": [["v1","v2"]]}
+  ],
+  "assumptions": ["eventuale assunzione o limite"],
+  "methodology": "nota metodologica breve"
+}`,
+        '',
+        'VINCOLI DI COMPILAZIONE:',
+        '- Massimo 6 KPI',
+        '- Massimo 4 grafici',
+        '- Massimo 10 righe in leaderboard',
+        '- Ogni grafico deve avere labels e values della stessa lunghezza',
+        '- Usa solo numeri realmente presenti o inferenze prudenti',
+        '- Se un valore numerico non è disponibile, non inventarlo: usa tabelle, ranking qualitativi o KPI testuali',
+        '- Inserisci in assumptions ciò che è stimato o incompleto',
+        '',
+        'DATI DA TRASFORMARE:',
+        userRequest,
+        '',
+        chatHistory.length > 0 ? `CONTESTO CONVERSAZIONALE:\n${historyContext}` : '',
+        filesContext ? `MATERIALE AGGIUNTIVO:\n${filesContext}` : '',
+      ].filter(Boolean).join('\n')
+    } else if (mode === 'brochure') {
+      const currentPayload = isEdit && currentDoc ? parseBrochurePayload(currentDoc.content) : null
+      prompt = [
+        'Compila SOLO i dati variabili di una brochure. Il layout HTML/CSS è applicato dal sistema tramite template locale.',
+        '',
+        'RISPOSTA OBBLIGATORIA:',
+        '- Rispondi SOLO con un blocco ```brochure_data contenente JSON valido',
+        '- Nessun commento prima o dopo',
+        '- Non generare HTML',
+        '',
+        'SCHEMA JSON OBBLIGATORIO:',
+        `{
+  "title": "titolo brochure",
+  "subtitle": "sottotitolo",
+  "palette": ["#1a1a2e", "#d97745", "#2c6b8a", "#7aa65a", "#f6efe7"],
+  "heroBadge": "categoria",
+  "heroAccent": "parola chiave opzionale",
+  "heroDescription": "descrizione hero",
+  "ctaPrimary": "CTA principale",
+  "ctaSecondary": "CTA secondaria",
+  "overviewTitle": "titolo panoramica",
+  "overviewLead": "testo intro",
+  "keyPoints": ["punto chiave"],
+  "features": [{"icon": "✨", "title": "feature", "description": "descrizione"}],
+  "benefits": ["beneficio"],
+  "steps": ["passaggio"],
+  "stats": [{"value": "42%", "label": "indicatore", "description": "contesto"}],
+  "faq": [{"question": "domanda", "answer": "risposta"}],
+  "closingTitle": "titolo finale",
+  "closingText": "testo finale",
+  "closingQuote": "citazione opzionale",
+  "closingAuthor": "autore citazione"
+}`,
+        '',
+        'VINCOLI DI COMPILAZIONE:',
+        '- Massimo 6 keyPoints',
+        '- Massimo 6 features',
+        '- Massimo 8 benefits',
+        '- Massimo 5 steps',
+        '- Massimo 4 stats',
+        '- Massimo 6 FAQ',
+        '- Testi densi ma sintetici: niente boilerplate di layout',
+        '',
+        isEdit && currentDoc ? 'BROCHURE ATTUALE:' : '',
+        isEdit && currentDoc
+          ? currentPayload
+            ? `\`\`\`brochure_data\n${JSON.stringify(currentPayload, null, 2)}\n\`\`\``
+            : `\`\`\`html\n${currentDoc.content.substring(0, 10000)}\n\`\`\``
+          : '',
+        isEdit ? `MODIFICA RICHIESTA: ${userRequest}` : `TOPIC: ${userRequest}`,
+        contextSection,
+      ].filter(Boolean).join('\n')
+    } else {
+      const currentPayload = isEdit && currentDoc ? parseDispensaPayload(currentDoc.content) : null
+      prompt = [
+        'Compila SOLO i dati variabili di una dispensa universitaria destinata a composizione PDF in stile LaTeX. Il layout finale non va generato dal modello.',
+        '',
+        'RISPOSTA OBBLIGATORIA:',
+        '- Rispondi SOLO con un blocco ```dispensa_data contenente JSON valido',
+        '- Nessun commento prima o dopo',
+        '- Non generare HTML o LaTeX',
+        '',
+        'SCHEMA JSON OBBLIGATORIO:',
+        `{
+  "title": "titolo dispensa",
+  "subtitle": "sottotitolo",
+  "abstract": "abstract iniziale",
+  "objectives": ["obiettivo"],
+  "sections": [
+    {
+      "id": "s1",
+      "title": "titolo sezione",
+      "intro": "testo introduttivo",
+      "blocks": [{"kind": "definition|theorem|example|warning|note", "title": "titolo blocco", "content": "contenuto"}],
+      "bulletPoints": ["punto"],
+      "summaryPoints": ["takeaway"],
+      "table": {"columns": ["col1", "col2"], "rows": [["v1", "v2"]]}
+    }
+  ],
+  "exercises": [{"title": "esercizio", "prompt": "traccia", "solution": "soluzione opzionale"}],
+  "references": ["riferimento"]
+}`,
+        '',
+        'VINCOLI DI COMPILAZIONE:',
+        '- Massimo 8 sections',
+        '- Ogni section deve avere intro sostanziosa',
+        '- Ogni section può avere fino a 4 blocks',
+        '- Usa table solo se realmente utile',
+        '- Massimo 6 exercises',
+        '- Massimo 10 references',
+        '- Non sprecare token in markup o boilerplate',
+        '- Mantieni coerenza rigorosa con il planning approvato',
+        '',
+        approvedPlan ? 'PLANNING APPROVATO:' : '',
+        approvedPlan ? `\`\`\`json\n${JSON.stringify(approvedPlan, null, 2)}\n\`\`\`` : '',
+        isEdit && currentDoc ? 'DISPENSA ATTUALE:' : '',
+        isEdit && currentDoc
+          ? currentPayload
+            ? `\`\`\`dispensa_data\n${JSON.stringify(currentPayload, null, 2)}\n\`\`\``
+            : `\`\`\`html\n${currentDoc.content.substring(0, 10000)}\n\`\`\``
+          : '',
+        isEdit ? `MODIFICA RICHIESTA: ${userRequest}` : `ARGOMENTO: ${userRequest}`,
+        contextSection,
+      ].filter(Boolean).join('\n')
+    }
+
+    // Helper: stream a prompt and return the full content
+    const streamPrompt = async (promptText: string, model = 'claude-sonnet-4-6'): Promise<string> => {
+      const response = await fetch('/api/v1/llm/teacher/chat-stream', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          content: promptText,
+          history: [],
+          provider: 'anthropic',
+          model,
+          agent_mode: 'default',
+        })
+      })
+      if (!response.ok) throw new Error('Stream request failed')
+      const reader = response.body?.getReader()
+      let out = ''
+      if (reader) {
+        await consumeSseStream(reader, (data) => {
+          if (data.type === 'chunk') out += data.content || ''
+          else if (data.type === 'done' && data.content) out = data.content
+        })
+      }
+      return out.trim()
+    }
+
+    const streamPromptValidated = async <T,>(
+      promptText: string,
+      parse: (raw: string) => T | null,
+      label: string,
+      model = 'claude-sonnet-4-6',
+      maxAttempts = 3
+    ): Promise<T> => {
+      let lastOutput = ''
+      for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+        const effectivePrompt = attempt === 0
+          ? promptText
+          : [
+              promptText,
+              '',
+              'ATTENZIONE: la risposta precedente era troncata o JSON non valido.',
+              `Rigenera da zero l intero blocco ${label} completo e valido.`,
+              'Se stai per terminare i token, chiudi comunque correttamente il JSON e il blocco markdown.',
+              lastOutput ? `OUTPUT PRECEDENTE NON VALIDO:\n${lastOutput.slice(-6000)}` : '',
+            ].filter(Boolean).join('\n')
+        lastOutput = (await streamPrompt(effectivePrompt, model)).trim()
+        const parsed = parse(lastOutput)
+        if (parsed) return parsed
+      }
+      throw new Error(`Generazione ${label} non valida o troncata.`)
+    }
+
+    if (mode === 'dispensa' && approvedPlan && !isEdit) {
+      const metaPrompt = [
+        'Compila SOLO i metadati iniziali di una dispensa universitaria in JSON valido.',
+        '',
+        'RISPOSTA OBBLIGATORIA:',
+        '- Rispondi SOLO con un blocco ```dispensa_meta contenente JSON valido',
+        '- Nessun commento prima o dopo',
+        '',
+        'SCHEMA JSON OBBLIGATORIO:',
+        `{
+  "title": "titolo dispensa",
+  "subtitle": "sottotitolo",
+  "abstract": "abstract iniziale denso e completo",
+  "objectives": ["obiettivo"]
+}`,
+        '',
+        'VINCOLI:',
+        '- Abstract ben scritto e completo ma entro 2200 caratteri',
+        '- Obiettivi massimo 8',
+        '- Se i token stanno finendo, chiudi sempre il JSON correttamente',
+        '',
+        `RICHIESTA: ${userRequest}`,
+        `PLANNING APPROVATO:\n${JSON.stringify(approvedPlan, null, 2)}`,
+        contextSection,
+      ].filter(Boolean).join('\n')
+
+      const meta = await streamPromptValidated(metaPrompt, parseDispensaMetaPayload, 'dispensa_meta')
+
+      const sections: DispensaSection[] = []
+      for (const [index, planSection] of approvedPlan.sections.entries()) {
+        const sectionPrompt = [
+          'Compila SOLO una sezione di dispensa universitaria in JSON valido.',
+          '',
+          'RISPOSTA OBBLIGATORIA:',
+          '- Rispondi SOLO con un blocco ```dispensa_section contenente JSON valido',
+          '- Nessun commento prima o dopo',
+          '',
+          'SCHEMA JSON OBBLIGATORIO:',
+          `{
+  "id": "${planSection.id || `s${index + 1}`}",
+  "title": "titolo sezione",
+  "intro": "testo introduttivo corposo",
+  "blocks": [{"kind": "definition|theorem|example|warning|note", "title": "titolo blocco", "content": "contenuto"}],
+  "bulletPoints": ["punto"],
+  "summaryPoints": ["takeaway"],
+  "table": {"columns": ["col1", "col2"], "rows": [["v1", "v2"]]}
+}`,
+          '',
+          'VINCOLI:',
+          '- Genera SOLO questa sezione',
+          '- Intro sostanziosa e continua, niente placeholder',
+          '- Massimo 4 blocks',
+          '- Table solo se davvero utile',
+          '- Non iniziare sezioni successive',
+          '- Se i token stanno finendo, chiudi sempre il JSON correttamente',
+          '',
+          `TITOLO DISPENSA: ${approvedPlan.title}`,
+          `SEZIONE DA GENERARE (${index + 1}/${approvedPlan.sections.length}): ${JSON.stringify(planSection, null, 2)}`,
+          approvedPlan.notes?.length ? `NOTE EDITORIALI:\n${approvedPlan.notes.join('\n')}` : '',
+          contextSection,
+        ].filter(Boolean).join('\n')
+
+        const section = await streamPromptValidated(sectionPrompt, parseDispensaSectionPayload, 'dispensa_section')
+        sections.push({
+          ...section,
+          id: section.id || planSection.id || `s${index + 1}`,
+          title: section.title || planSection.title,
+        })
+      }
+
+      const appendixPrompt = [
+        'Compila SOLO appendici finali di una dispensa universitaria in JSON valido.',
+        '',
+        'RISPOSTA OBBLIGATORIA:',
+        '- Rispondi SOLO con un blocco ```dispensa_appendix contenente JSON valido',
+        '- Nessun commento prima o dopo',
+        '',
+        'SCHEMA JSON OBBLIGATORIO:',
+        `{
+  "exercises": [{"title": "esercizio", "prompt": "traccia", "solution": "soluzione opzionale"}],
+  "references": ["riferimento"]
+}`,
+        '',
+        'VINCOLI:',
+        '- Massimo 6 exercises',
+        '- Massimo 10 references',
+        '- Se non servono esercizi o riferimenti, restituisci array vuoti',
+        '- Se i token stanno finendo, chiudi sempre il JSON correttamente',
+        '',
+        `RICHIESTA: ${userRequest}`,
+        `TITOLO DISPENSA: ${approvedPlan.title}`,
+        contextSection,
+      ].filter(Boolean).join('\n')
+
+      const appendix = await streamPromptValidated(appendixPrompt, parseDispensaAppendixPayload, 'dispensa_appendix')
+      const fullPayload: DispensaPayload = {
+        title: meta.title || approvedPlan.title,
+        subtitle: meta.subtitle || approvedPlan.subtitle || approvedPlan.title,
+        abstract: meta.abstract,
+        objectives: meta.objectives?.length ? meta.objectives : approvedPlan.objectives,
+        sections,
+        exercises: appendix.exercises || [],
+        references: appendix.references || [],
+      }
+
+      return `\`\`\`dispensa_data\n${JSON.stringify(fullPayload, null, 2)}\n\`\`\``
+    }
+
+    if (mode === 'brochure') {
+      const payload = await streamPromptValidated(prompt, parseBrochurePayload, 'brochure_data')
+      return `\`\`\`brochure_data\n${JSON.stringify(payload, null, 2)}\n\`\`\``
+    }
+
+    if (mode === 'dispensa') {
+      const payload = await streamPromptValidated(prompt, parseDispensaPayload, 'dispensa_data')
+      return `\`\`\`dispensa_data\n${JSON.stringify(payload, null, 2)}\n\`\`\``
+    }
+
+    return (await streamPrompt(prompt)).trim()
+  }
+
+  const generateDispensaPlan = async (
+    userRequest: string,
+    chatHistory: Message[],
+    filesContext: string
+  ): Promise<DispensaPlan | null> => {
+    const historyContext = chatHistory
+      .filter(m => m.role !== 'system')
+      .slice(-6)
+      .map(m => `${m.role === 'user' ? 'Utente' : 'Assistente'}: ${m.content.substring(0, 300)}`)
+      .join('\n')
+
+    const prompt = [
+      'Progetta il planning completo di una dispensa PDF ben formattata, destinata a impaginazione LaTeX.',
+      '',
+      'RISPOSTA OBBLIGATORIA:',
+      '- Rispondi SOLO con un blocco ```dispensa_plan contenente JSON valido',
+      '- Nessun commento prima o dopo',
+      '',
+      'SCHEMA JSON OBBLIGATORIO:',
+      `{
+  "title": "titolo dispensa",
+  "subtitle": "sottotitolo",
+  "objectives": ["obiettivo"],
+  "sections": [
+    {"id": "s1", "title": "titolo sezione", "focus": "cosa deve coprire"}
+  ],
+  "estimatedPages": "es. 8-10",
+  "notes": ["vincolo editoriale o didattico"]
+}`,
+      '',
+      'VINCOLI:',
+      '- Struttura l intero documento',
+      '- Pianifica una progressione didattica chiara',
+      '- Prevedi sezioni adatte a formule, codice, box di definizione, esempi e tabelle quando servono',
+      '- Massimo 10 sezioni',
+      '',
+      `RICHIESTA: ${userRequest}`,
+      historyContext ? `CONTESTO CHAT:\n${historyContext}` : '',
+      filesContext ? `MATERIALE ALLEGATO:\n${filesContext}` : '',
+    ].filter(Boolean).join('\n')
+
+    const response = await fetch('/api/v1/llm/teacher/chat-stream', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({
+        content: prompt,
+        history: [],
+        provider: 'anthropic',
+        model: 'claude-sonnet-4-6',
+        agent_mode: 'default',
+      })
+    })
+    if (!response.ok) throw new Error('Planning request failed')
+    const reader = response.body?.getReader()
+    let out = ''
+    if (reader) {
+      await consumeSseStream(reader, (data) => {
+        if (data.type === 'chunk') out += data.content || ''
+        if (data.type === 'done' && data.content) out = data.content
+      })
+    }
+    return parseDispensaPlan(out)
+  }
+
+  const handleSend = async (overrideInput?: string) => {
+    const userInput = (overrideInput ?? inputText).trim()
 
     const canSendAnalysis = agentMode === 'analysis' && analysisTaskId
     if ((!userInput && attachedFiles.length === 0 && !canSendAnalysis) || isLoading) return
@@ -856,17 +1571,15 @@ export default function TeacherSupportChat() {
     }
 
     setMessages(prev => [...prev, userMessage])
-    
-    // Update cache immediately to prevent the useEffect for currentConversationId
-    // from seeing an empty cache and potentially overwriting local state
-    setConversationCache(prev => {
-      const next = { ...prev, [convId]: [userMessage] }
-      conversationCacheRef.current = next
-      localStorage.setItem('teacher_support_messages_cache', JSON.stringify(next))
-      return next
-    })
 
-    setInputText('')
+    const existingCachedMessages = conversationCacheRef.current[convId] || []
+    const nextConversationMessages = [...existingCachedMessages, userMessage]
+    const nextConversationCache = { ...conversationCacheRef.current, [convId]: nextConversationMessages }
+    conversationCacheRef.current = nextConversationCache
+    localStorage.setItem('teacher_support_messages_cache', JSON.stringify(nextConversationCache))
+    setConversationCache(nextConversationCache)
+
+    if (overrideInput === undefined) setInputText('')
     const currentFiles = [...attachedFiles]
     setAttachedFiles([])
     setIsLoading(true)
@@ -975,12 +1688,167 @@ REGOLE IMPORTANTI:
         queryClient.invalidateQueries({ queryKey: ['llm-environmental-footprint'] })
         await saveMessageToServer(convId, userMessage, finalMsg, selectedModel)
 
+      } else if (agentMode === 'brochure' || agentMode === 'dispensa') {
+        // DOCUMENT GENERATION/EDITING FLOW
+        setIsGeneratingDoc(true)
+        const filesContext = currentFiles.map(f => f.file.name).join(', ')
+        const isEdit = showCanvas && activeDoc?.type === agentMode
+        const docLabel = agentMode === 'brochure' ? 'Brochure' : 'Dispensa'
+
+        const shouldPlanDispensa = agentMode === 'dispensa'
+          && !isEdit
+          && (!pendingDispensaPlan || !/^approva/i.test(userInput))
+
+        if (shouldPlanDispensa) {
+          const plan = await generateDispensaPlan(messageContent, messages, filesContext)
+          setIsGeneratingDoc(false)
+          if (!plan) {
+            throw new Error('Planning dispensa non valido.')
+          }
+          setPendingDispensaPlan(plan)
+          setPendingDispensaRequest(messageContent)
+          setPendingDispensaFilesContext(filesContext)
+          const planSummary = [
+            `## Piano dispensa`,
+            `**Titolo:** ${plan.title}`,
+            plan.subtitle ? `**Sottotitolo:** ${plan.subtitle}` : '',
+            plan.estimatedPages ? `**Stima pagine:** ${plan.estimatedPages}` : '',
+            plan.objectives.length ? `**Obiettivi:** ${plan.objectives.join(' · ')}` : '',
+            '',
+            ...plan.sections.map((section, index) => `${index + 1}. **${section.title}**${section.focus ? ` — ${section.focus}` : ''}`),
+          ].filter(Boolean).join('\n')
+          const assistantMessage: Message = {
+            id: `plan-${Date.now()}`,
+            role: 'assistant',
+            content: `${planSummary}\n\nApprova il piano per generare la dispensa PDF oppure modifica la richiesta per rigenerarlo.`,
+            timestamp: new Date(),
+            provider: 'anthropic',
+            model: 'claude-sonnet-4-6',
+          }
+          setMessages(prev => [...prev, assistantMessage])
+          await saveMessageToServer(convId, userMessage, assistantMessage, 'claude-sonnet-4-6')
+          return
+        }
+
+        // Add live progress message
+        const progressId = `progress-${Date.now()}`
+        const progressSteps = isEdit
+          ? ['✏️ Analizzando il documento corrente...', '🔄 Applicando le modifiche richieste...', '🎨 Rigenerando il contenuto...', '✅ Quasi pronto...']
+          : agentMode === 'brochure'
+            ? ['🎨 Progettando il layout e la palette colori...', '✍️ Generando le sezioni di contenuto...', '🖼️ Ottimizzando il design HTML...', '✅ Finalizzando la brochure...']
+            : ['📚 Strutturando capitoli, box e layout HTML...', '✍️ Generando contenuto accademico con formule...', '🔍 Revisione critica del documento...', '✨ Migliorando e finalizzando la dispensa...']
+        setMessages(prev => [...prev, { id: progressId, role: 'assistant' as const, content: progressSteps[0], timestamp: new Date() }])
+
+        // Advance progress steps during generation
+        let stepIdx = 0
+        const progressTimer = setInterval(() => {
+          stepIdx = Math.min(stepIdx + 1, progressSteps.length - 1)
+          setMessages(prev => prev.map(m => m.id === progressId ? { ...m, content: progressSteps[stepIdx] } : m))
+        }, 4000)
+
+        try {
+          const docContent = await generateDocument(
+            agentMode,
+            pendingDispensaPlan && agentMode === 'dispensa' && !isEdit
+              ? (pendingDispensaRequest || messageContent)
+              : messageContent,
+            messages,
+            pendingDispensaPlan && agentMode === 'dispensa' && !isEdit ? pendingDispensaFilesContext : filesContext,
+            isEdit,
+            activeDoc,
+            pendingDispensaPlan && agentMode === 'dispensa' && !isEdit ? pendingDispensaPlan : null
+          )
+
+          clearInterval(progressTimer)
+
+          const parsedDocPayload = agentMode === 'brochure'
+            ? parseBrochurePayload(docContent)
+            : parseDispensaPayload(docContent)
+
+          const newDoc: GeneratedDoc = {
+            type: agentMode,
+            content: parsedDocPayload ? JSON.stringify(parsedDocPayload, null, 2) : docContent,
+            version: isEdit ? (activeDoc?.version ?? 0) + 1 : 1,
+            title: agentMode === 'dispensa' && pendingDispensaPlan ? pendingDispensaPlan.title : messageContent.substring(0, 60),
+          }
+          setActiveDoc(newDoc)
+          setShowCanvas(true)
+          if (agentMode === 'dispensa') {
+            setPendingDispensaPlan(null)
+            setPendingDispensaRequest(null)
+            setPendingDispensaFilesContext('')
+          }
+
+          // Persist doc to server (primary) + localStorage (fallback/offline)
+          docCacheRef.current[convId] = newDoc
+          localStorage.setItem('teacher_canvas_docs', JSON.stringify(docCacheRef.current))
+          setConvsWithDocs(prev => new Set([...prev, convId]))
+          teacherApi.saveConversationDocument(convId, newDoc).catch((e) => {
+            console.warn('Failed to save document to server:', e)
+          })
+
+          // Replace progress message with final result
+          const finalContent = isEdit
+            ? `✅ **${docLabel} aggiornata** (v${newDoc.version}) — le modifiche sono visibili nel canvas a destra.`
+            : `✅ **${docLabel} generata** (v${newDoc.version}) — il documento è aperto nel canvas. Puoi chiedere modifiche continuando la chat.`
+          setMessages(prev => prev.map(m => m.id === progressId ? { ...m, content: finalContent } : m))
+          const assistantMessage: Message = { id: progressId, role: 'assistant', content: finalContent, timestamp: new Date(), provider: 'anthropic', model: 'claude-sonnet-4-6' }
+          await saveMessageToServer(convId, userMessage, assistantMessage, 'claude-sonnet-4-6')
+        } catch (e) {
+          clearInterval(progressTimer)
+          setMessages(prev => prev.filter(m => m.id !== progressId))
+          throw e
+        } finally {
+          setIsGeneratingDoc(false)
+        }
       } else if (agentMode === 'web_search' || agentMode === 'quiz' || agentMode === 'dataset' || agentMode === 'report') {
         const streamResult = await runStreamingRequest(messageContent, [...messages, userMessage])
+        let assistantContent = streamResult.content
+        const shouldBuildReportArtifact = agentMode === 'report'
+          && !/```session_selector[\s\S]*?```/.test(streamResult.content)
+          && !/```report_type_selector[\s\S]*?```/.test(streamResult.content)
+          && !/```student_selector[\s\S]*?```/.test(streamResult.content)
+
+        if (shouldBuildReportArtifact) {
+          setIsGeneratingDoc(true)
+          setStreamingStatus('🧩 Generazione dashboard interattiva...')
+          try {
+            const reportPayloadRaw = await generateDocument(
+              'report',
+              streamResult.content,
+              [...messages, userMessage],
+              '',
+              false,
+              null
+            )
+            const parsedPayload = parseReportPayload(reportPayloadRaw)
+            const reportDoc: GeneratedDoc = {
+              type: 'report',
+              content: parsedPayload ? JSON.stringify(parsedPayload, null, 2) : reportPayloadRaw,
+              version: currentConversationId === convId && activeDoc?.type === 'report'
+                ? (activeDoc.version ?? 0) + 1
+                : ((docCacheRef.current[convId]?.type === 'report' ? docCacheRef.current[convId].version : 0) + 1),
+              title: userInput.substring(0, 80) || 'Report interattivo classe',
+            }
+            setActiveDoc(reportDoc)
+            setShowCanvas(true)
+            docCacheRef.current[convId] = reportDoc
+            localStorage.setItem('teacher_canvas_docs', JSON.stringify(docCacheRef.current))
+            setConvsWithDocs(prev => new Set([...prev, convId]))
+            teacherApi.saveConversationDocument(convId, reportDoc).catch((e) => {
+              console.warn('Failed to save report document to server:', e)
+            })
+            assistantContent = `${streamResult.content}\n\n✅ **Dashboard interattiva generata** — il report avanzato è aperto nel canvas.`
+          } finally {
+            setIsGeneratingDoc(false)
+            setStreamingStatus(null)
+          }
+        }
+
         const assistantMessage: Message = {
           id: `resp-${Date.now()}`,
           role: 'assistant',
-          content: streamResult.content,
+          content: assistantContent,
           timestamp: new Date(),
           provider: streamResult.provider,
           model: streamResult.model,
@@ -1108,6 +1976,8 @@ REGOLE IMPORTANTI:
     setMessages([])
     setCurrentConversationId(null)
     setAttachedFiles([])
+    setActiveDoc(null)
+    setShowCanvas(false)
   }
 
   const handleOpenPromptEditor = async () => {
@@ -1143,10 +2013,15 @@ REGOLE IMPORTANTI:
       setConversations([])
       setMessages([])
       setCurrentConversationId(null)
+      setActiveDoc(null)
+      setShowCanvas(false)
       setConversationCache({})
       conversationCacheRef.current = {}
+      docCacheRef.current = {}
+      setConvsWithDocs(new Set())
       localStorage.removeItem('teacher_support_messages_cache')
       localStorage.removeItem('teacher_support_current_conversation_id')
+      localStorage.removeItem('teacher_canvas_docs')
       toast({ title: 'Cronologia eliminata', description: 'Tutte le conversazioni del docente sono state rimosse.' })
     } catch (e) {
       console.error(e)
@@ -1166,7 +2041,23 @@ REGOLE IMPORTANTI:
     }
     if (mode === 'report') {
       const sessions = classesData || []
-      return `Certamente! Seleziona una delle tue sessioni attive per generare il report:\n\n\`\`\`session_selector\n${JSON.stringify(sessions)}\n\`\`\``
+      return [
+        'Per generare la reportistica devo prima sapere quale sessione analizzare e quale formato vuoi ottenere.',
+        '',
+        '```session_selector',
+        JSON.stringify(sessions, null, 2),
+        '```',
+        '',
+        '```report_type_selector',
+        JSON.stringify(REPORT_TYPE_OPTIONS, null, 2),
+        '```',
+      ].join('\n')
+    }
+    if (mode === 'brochure') {
+      return 'Sei in modalità **Brochure** 🎨 (Claude Sonnet 4.6). Descrivi il contenuto della brochure: argomento, punti chiave, pubblico target. Puoi allegare documenti o incollare link per arricchire il contenuto. Il documento sarà generato come file HTML graficamente ricco.'
+    }
+    if (mode === 'dispensa') {
+      return 'Sei in modalità **Dispensa** 📄 (Claude Sonnet 4.6 + revisione critica). Descrivi il contenuto della dispensa universitaria: argomento, capitoli principali, livello di dettaglio. Il documento sarà generato come HTML ricco con formule MathJax, box definizioni/teoremi/esempi, tabelle e colori. Dopo la generazione viene eseguita automaticamente una revisione critica per migliorare la qualità.'
     }
     return null
   }
@@ -1188,6 +2079,9 @@ REGOLE IMPORTANTI:
     }
 
     setAgentMode(mode)
+    if (currentConversationId) {
+      void syncConversationMode(currentConversationId, mode)
+    }
     if (mode === 'dataset' || mode === 'image' || mode === 'report' || mode === 'quiz') {
       setAttachedFiles([])
       setInputText('')
@@ -1211,7 +2105,6 @@ REGOLE IMPORTANTI:
       let contentJson = ""
       let taskType = ""
       let title = ""
-      let numQuestions = 0
 
       if (publishModal.type === 'quiz') {
         if (!publishModal.data?.questions) {
@@ -1229,7 +2122,6 @@ REGOLE IMPORTANTI:
         })
         taskType = 'quiz'
         title = publishModal.data.title || "Nuovo Quiz"
-        numQuestions = publishModal.data.questions?.length || 0
       } else {
         contentJson = JSON.stringify({
           type: 'exercise',
@@ -1251,21 +2143,9 @@ REGOLE IMPORTANTI:
         await teacherApi.updateTask(sessionId, createdTaskId, { new_status: 'published' })
       }
 
-      if (publishMode === 'published') {
-        const notificationMessage = publishModal.type === 'quiz'
-          ? `**Nuovo Quiz Pubblicato!**\n\n**${title}**\n${numQuestions} domande\n\nVai alla sezione **Compiti** per completarlo!`
-          : `**Nuovo Compito Pubblicato!**\n\n**${title}**\n\nVai alla sezione **Compiti** per completarlo!`
-
-        try {
-          await teacherApi.sendClassMessage(sessionId, notificationMessage)
-        } catch (chatErr) {
-          console.warn("Could not send chat notification:", chatErr)
-        }
-      }
-
       toast({
         title: publishMode === 'published' ? "Compito pubblicato!" : "Compito salvato in bozza",
-        description: publishMode === 'published' ? "Notifica inviata agli studenti" : "Puoi pubblicarlo in seguito dal pannello sessione",
+        description: publishMode === 'published' ? "Notifica automatica inviata agli studenti" : "Puoi pubblicarlo in seguito dal pannello sessione",
         className: "bg-green-500 text-white"
       })
       setPublishModal({ isOpen: false, type: 'quiz', data: null })
@@ -1286,14 +2166,14 @@ REGOLE IMPORTANTI:
         {/* Mobile history slide-over */}
         {isMobile && mobileHistoryOpen && (
           <div className="fixed inset-0 z-50 flex" onClick={() => setMobileHistoryOpen(false)}>
-            <div className="w-72 bg-white h-full shadow-2xl flex flex-col" onClick={e => e.stopPropagation()}>
-              <div className="p-4 border-b border-slate-100 flex items-center justify-between">
+            <div className={`w-72 h-full shadow-2xl flex flex-col ${PASTEL_SURFACES.slate}`} onClick={e => e.stopPropagation()}>
+              <div className="p-4 border-b border-slate-200/70 flex items-center justify-between bg-white/55 backdrop-blur-sm">
                 <h2 className="text-sm font-semibold text-slate-800">Cronologia</h2>
                 <div className="flex gap-1">
-                  <Button variant="ghost" size="sm" onClick={handleNewChat} className="h-8 w-8 p-0 hover:bg-slate-100">
-                    <Plus className="h-4 w-4 text-slate-600" />
+                  <Button variant="ghost" size="sm" onClick={handleNewChat} className={`h-8 w-8 p-0 ${PASTEL_ICON_BACKGROUNDS.indigo} hover:bg-indigo-200/80`}>
+                    <Plus className={`h-4 w-4 ${PASTEL_ICON_TEXT.indigo}`} />
                   </Button>
-                  <Button variant="ghost" size="sm" onClick={() => setMobileHistoryOpen(false)} className="h-8 w-8 p-0 hover:bg-slate-100">
+                  <Button variant="ghost" size="sm" onClick={() => setMobileHistoryOpen(false)} className="h-8 w-8 p-0 hover:bg-white/70">
                     <X className="h-4 w-4 text-slate-400" />
                   </Button>
                 </div>
@@ -1302,8 +2182,8 @@ REGOLE IMPORTANTI:
                 {conversations.map(conv => (
                   <button
                     key={conv.id}
-                    onClick={() => { setCurrentConversationId(conv.id); setMobileHistoryOpen(false) }}
-                    className={`w-full text-left p-3 rounded-lg text-sm transition-all border ${currentConversationId === conv.id ? 'font-medium' : 'text-slate-600 border-transparent hover:bg-slate-50'}`}
+                    onClick={() => { openConversation(conv); setMobileHistoryOpen(false) }}
+                    className={`w-full text-left p-3 rounded-[18px] text-sm transition-all ${currentConversationId === conv.id ? 'font-medium border shadow-sm' : `${PASTEL_SURFACES.slate} text-slate-600 shadow-sm`}`}
                     style={currentConversationId === conv.id ? selectedSoftStyle : undefined}
                   >
                     <div className="truncate">{conv.title}</div>
@@ -1320,12 +2200,12 @@ REGOLE IMPORTANTI:
         )}
 
         {/* Main Content Area */}
-        <div className={`flex-1 overflow-hidden ${isMobile ? 'px-0 pb-0' : 'px-6 pt-6 pb-6'}`}>
-              <div className={`flex h-full ${isMobile ? '' : 'max-w-7xl mx-auto w-full'}`}>
+        <div className={`flex-1 overflow-hidden ${isMobile ? 'px-0 pb-0' : 'px-4 pt-4 pb-4'}`}>
+              <div className={`flex h-full ${isMobile ? '' : 'max-w-[1800px] mx-auto w-full'}`}>
                 {/* Unified card: sidebar + chat together */}
-                <div className={`flex-1 flex h-full overflow-hidden ${isMobile ? '' : 'bg-white rounded-2xl border border-slate-200 shadow-sm'}`}>
+                <div className={`flex-1 flex h-full overflow-hidden ${isMobile ? '' : 'bg-white rounded-[28px] border border-slate-200 shadow-sm'}`}>
                  {/* Sidebar — desktop only */}
-                 <aside className={`${isMobile ? 'hidden' : ''} ${isSidebarCollapsed ? 'w-12' : 'w-64'} flex flex-col transition-all duration-300 flex-shrink-0 overflow-hidden border-r border-slate-100`}>
+                 <aside className={`${isMobile ? 'hidden' : ''} ${isSidebarCollapsed ? 'w-12' : 'w-64'} flex flex-col transition-all duration-300 flex-shrink-0 overflow-hidden border-r border-slate-200/70 bg-slate-50/60 backdrop-blur-sm`}>
                   {isSidebarCollapsed ? (
                     /* Collapsed: just expand button */
                     <div className="p-2 flex flex-col items-center gap-3 pt-3">
@@ -1333,21 +2213,21 @@ REGOLE IMPORTANTI:
                         variant="ghost"
                         size="sm"
                         onClick={() => setIsSidebarCollapsed(false)}
-                        className="h-8 w-8 p-0 hover:bg-slate-100"
+                        className={`h-8 w-8 p-0 shadow-sm ${PASTEL_SURFACES.indigo}`}
                         title="Espandi"
                       >
-                        <ChevronRight className="h-4 w-4 text-slate-600" />
+                        <ChevronRight className={`h-4 w-4 ${PASTEL_ICON_TEXT.indigo}`} />
                       </Button>
                     </div>
                   ) : (
                     <>
                       {/* Section tabs — pill switcher */}
-                      <div className="px-2.5 pt-2 pb-1.5 bg-white border-b border-slate-100 shrink-0 flex items-center gap-1">
-                        <div className="flex-1 flex items-center gap-0.5 bg-slate-100/80 p-0.5 rounded-xl">
+                      <div className="px-2.5 pt-2 pb-1.5 bg-white/60 border-b border-slate-200/70 shrink-0 flex items-center gap-1 backdrop-blur-sm">
+                        <div className={`flex-1 flex items-center gap-1 p-1 rounded-[18px] shadow-sm ${PASTEL_SURFACES.slate}`}>
                           <button
                             onClick={() => setActiveTab('chat')}
-                            className={`flex-1 flex items-center justify-center gap-1 py-1.5 text-[10px] font-bold rounded-lg transition-all duration-200 ${activeTab === 'chat'
-                              ? 'bg-[var(--teacher-accent-soft)] text-[var(--teacher-accent-text)] shadow-sm border border-[var(--teacher-accent-border)]/50'
+                            className={`flex-1 flex items-center justify-center gap-1 py-1.5 text-[10px] font-bold rounded-xl transition-all duration-200 shadow-sm ${activeTab === 'chat'
+                              ? `${PASTEL_SURFACES.indigo} ${PASTEL_ICON_TEXT.indigo}`
                               : 'text-slate-400 hover:text-slate-500'}`}
                           >
                             <MessageCircle className="h-3 w-3" />
@@ -1355,8 +2235,8 @@ REGOLE IMPORTANTI:
                           </button>
                           <button
                             onClick={() => setActiveTab('teacherbots')}
-                            className={`flex-1 flex items-center justify-center gap-1 py-1.5 text-[10px] font-bold rounded-lg transition-all duration-200 ${activeTab === 'teacherbots'
-                              ? 'bg-[var(--teacher-accent-soft)] text-[var(--teacher-accent-text)] shadow-sm border border-[var(--teacher-accent-border)]/50'
+                            className={`flex-1 flex items-center justify-center gap-1 py-1.5 text-[10px] font-bold rounded-xl transition-all duration-200 shadow-sm ${activeTab === 'teacherbots'
+                              ? `${PASTEL_SURFACES.violet} ${PASTEL_ICON_TEXT.violet}`
                               : 'text-slate-400 hover:text-slate-500'}`}
                           >
                             <Sparkles className="h-3 w-3" />
@@ -1367,7 +2247,7 @@ REGOLE IMPORTANTI:
                           variant="ghost"
                           size="sm"
                           onClick={() => setIsSidebarCollapsed(true)}
-                          className="h-7 w-7 p-0 hover:bg-slate-100 flex-shrink-0"
+                          className={`h-7 w-7 p-0 flex-shrink-0 shadow-sm ${PASTEL_SURFACES.slate}`}
                           title="Comprimi"
                         >
                           <ChevronDown className="h-4 w-4 text-slate-400 rotate-90" />
@@ -1377,26 +2257,31 @@ REGOLE IMPORTANTI:
                       {activeTab === 'chat' ? (
                         <>
                           {/* Action bar */}
-                          <div className="px-3 py-2 flex gap-1 border-b border-slate-50 shrink-0">
-                            <Button variant="ghost" size="sm" onClick={handleNewChat} className="h-7 w-7 p-0 hover:bg-slate-100" title="Nuova chat">
-                              <Plus className="h-4 w-4 text-slate-600" />
+                          <div className="px-3 py-2 flex gap-2 border-b border-slate-200/60 shrink-0 bg-white/30">
+                            <Button variant="ghost" size="sm" onClick={handleNewChat} className={`h-8 w-8 p-0 shadow-sm ${PASTEL_SURFACES.indigo}`} title="Nuova chat">
+                              <Plus className={`h-4 w-4 ${PASTEL_ICON_TEXT.indigo}`} />
                             </Button>
-                            <Button variant="ghost" size="sm" onClick={handleClearAllConversations} className="h-7 w-7 p-0 hover:bg-slate-100" title="Pulisci cronologia">
-                              <Trash2 className="h-4 w-4 text-slate-600" />
+                            <Button variant="ghost" size="sm" onClick={handleClearAllConversations} className={`h-8 w-8 p-0 shadow-sm ${PASTEL_SURFACES.rose}`} title="Pulisci cronologia">
+                              <Trash2 className={`h-4 w-4 ${PASTEL_ICON_TEXT.rose}`} />
                             </Button>
                           </div>
                           <div className="flex-1 overflow-y-auto px-3 py-3 space-y-1">
                             {conversations.map(conv => (
                               <button
                                 key={conv.id}
-                                onClick={() => { setCurrentConversationId(conv.id); }}
-                                className={`w-full text-left p-3 rounded-lg text-sm transition-all group border ${currentConversationId === conv.id
-                                  ? 'font-medium'
-                                  : 'text-slate-600 border-transparent hover:bg-slate-50'
+                                onClick={() => { openConversation(conv) }}
+                                className={`w-full text-left p-3 rounded-[18px] text-sm transition-all group ${currentConversationId === conv.id
+                                  ? 'font-medium border shadow-sm'
+                                  : `${PASTEL_SURFACES.slate} text-slate-600 shadow-sm`
                                   }`}
                                 style={currentConversationId === conv.id ? selectedSoftStyle : undefined}
                               >
-                                <div className="truncate">{conv.title}</div>
+                                <div className="flex items-center gap-1 min-w-0">
+                                  <span className="truncate flex-1">{conv.title}</span>
+                                  {convsWithDocs.has(conv.id) && (
+                                    <span title="Ha un documento generato"><Layout className="h-3 w-3 text-fuchsia-400 flex-shrink-0" /></span>
+                                  )}
+                                </div>
                                 <div className="flex items-center justify-between mt-1">
                                   <span className="text-xs text-slate-400">{conv.createdAt.toLocaleDateString()}</span>
                                   <button
@@ -1418,6 +2303,10 @@ REGOLE IMPORTANTI:
                                           localStorage.setItem('teacher_support_messages_cache', JSON.stringify(next))
                                           return next
                                         })
+                                        // Remove doc from cache
+                                        delete docCacheRef.current[conv.id]
+                                        localStorage.setItem('teacher_canvas_docs', JSON.stringify(docCacheRef.current))
+                                        setConvsWithDocs(prev => { const s = new Set(prev); s.delete(conv.id); return s })
                                         if (currentConversationId === conv.id) handleNewChat()
                                       }
                                     }}
@@ -1433,7 +2322,7 @@ REGOLE IMPORTANTI:
                           </div>
                         </>
                       ) : (
-                        <div className="flex-1 overflow-y-auto px-3 py-2">
+                        <div className="flex-1 overflow-y-auto px-3 py-2 bg-white/20">
                           <TeacherbotsPanel
                             onOpenSettings={(id) => setBotPanelTarget(id)}
                             onCreateNew={() => setBotPanelTarget('create')}
@@ -1444,8 +2333,9 @@ REGOLE IMPORTANTI:
                   )}
                 </aside>
 
-                 {/* Chat Main */}
-                 <main className={`flex-1 flex flex-col relative overflow-hidden`} style={chatBg ? { backgroundColor: chatBg } : undefined}>
+                 {/* Chat Main + Canvas split */}
+                 <div className="flex-1 flex overflow-hidden min-w-0">
+                 <main className={`flex-1 flex flex-col relative overflow-hidden min-w-0`} style={chatBg ? { backgroundColor: chatBg } : undefined}>
 
                   {/* Support Chat Prompt Editor Modal */}
                   {showPromptEditor && (
@@ -1554,11 +2444,26 @@ REGOLE IMPORTANTI:
                       <div>
                         <h1 className="text-sm font-bold text-slate-800">Supporto Docente AI</h1>
                         <p className="text-xs text-slate-500">
-                          {(agentMode === 'quiz' || agentMode === 'dataset' || agentMode === 'web_search' || agentMode === 'report' || agentMode === 'analysis')
+                          {(agentMode === 'brochure' || agentMode === 'dispensa')
+                            ? 'Claude Sonnet 4.6'
+                            : (agentMode === 'quiz' || agentMode === 'dataset' || agentMode === 'web_search' || agentMode === 'report' || agentMode === 'analysis')
                             ? 'Claude Haiku'
                             : availableModels.find(m => m.id === selectedModel)?.name}
                         </p>
                       </div>
+                      {/* Reopen canvas button — shown when a doc exists for this conversation but canvas is closed */}
+                      {currentConversationId && convsWithDocs.has(currentConversationId) && !showCanvas && (
+                        <button
+                          onClick={() => {
+                            const doc = docCacheRef.current[currentConversationId]
+                            if (doc) { setActiveDoc(doc); setShowCanvas(true) }
+                          }}
+                          className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold border border-fuchsia-200 bg-fuchsia-50 text-fuchsia-700 hover:bg-fuchsia-100 transition-colors"
+                        >
+                          <Layout className="h-3 w-3" />
+                          Riapri documento
+                        </button>
+                      )}
                     </div>
 
                       <div className="flex items-center gap-4">
@@ -1605,7 +2510,12 @@ REGOLE IMPORTANTI:
                         )}
 
 
-                        {(agentMode === 'quiz' || agentMode === 'dataset' || agentMode === 'web_search' || agentMode === 'report') ? (
+                        {(agentMode === 'brochure' || agentMode === 'dispensa') ? (
+                          <span className="text-[10px] bg-violet-100 text-violet-700 px-2 py-0.5 rounded-full font-medium flex items-center gap-1">
+                            <img src="/icone_ai/anthropic.svg" className="h-3 w-3 object-contain" alt="Anthropic" />
+                            Claude Sonnet 4.6
+                          </span>
+                        ) : (agentMode === 'quiz' || agentMode === 'dataset' || agentMode === 'web_search' || agentMode === 'report') ? (
                           <div className="text-xs rounded-full px-3 py-1.5 font-medium border bg-slate-100 text-slate-700 border-slate-200">
                             Claude Haiku (fisso)
                           </div>
@@ -1892,6 +2802,19 @@ REGOLE IMPORTANTI:
                                   {convertEmoticons(msg.content)}
                                 </ReactMarkdown>
                               )}
+                              {/* Inline "Riapri documento" button for brochure/dispensa result messages */}
+                              {msg.role === 'assistant' && /✅.*\*\*(Brochure|Dispensa)/.test(msg.content) && currentConversationId && convsWithDocs.has(currentConversationId) && (
+                                <button
+                                  onClick={() => {
+                                    const doc = docCacheRef.current[currentConversationId!]
+                                    if (doc) { setActiveDoc(doc); setShowCanvas(true) }
+                                  }}
+                                  className="mt-2 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border border-fuchsia-300 bg-fuchsia-50 text-fuchsia-700 hover:bg-fuchsia-100 transition-colors"
+                                >
+                                  <Layout className="h-3 w-3" />
+                                  {showCanvas ? 'Documento aperto →' : 'Riapri documento'}
+                                </button>
+                              )}
                               {msg.role === 'assistant' && (
                                 <EnvironmentalImpactPill
                                   darkMode={chatBgIsDark}
@@ -1907,7 +2830,20 @@ REGOLE IMPORTANTI:
                         </div>
                       ))
                     )}
-                    {isLoading && !imageGenerationProgress && !streamingStatus && ( // eslint-disable-line
+                    {isLoading && isGeneratingDoc && !imageGenerationProgress && !streamingStatus && (
+                      <div className="flex gap-3 items-start">
+                        <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0" style={selectedSolidStyle ?? { backgroundColor: '#7c3aed' }}>
+                          <Layout className="h-4 w-4 text-white" />
+                        </div>
+                        <div className="bg-white border border-slate-100 shadow-sm rounded-2xl px-4 py-3">
+                          <div className="flex items-center gap-2">
+                            <Loader2 className="h-4 w-4 animate-spin text-violet-600" />
+                            <span className="text-sm text-slate-500">Generazione documento con Claude Sonnet 4.6...</span>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                    {isLoading && !isGeneratingDoc && !imageGenerationProgress && !streamingStatus && ( // eslint-disable-line
                       <div className="flex gap-4 justify-start">
                         <div className="w-8 h-8 rounded-full bg-white border border-slate-200 flex items-center justify-center">
                           <Bot className="h-4 w-4 text-red-500" />
@@ -2014,6 +2950,38 @@ REGOLE IMPORTANTI:
                   <div className={`${isMobile ? 'p-2' : 'p-4'} bg-white border-t border-slate-200`} style={isMobile ? { paddingBottom: 'calc(0.5rem + env(safe-area-inset-bottom))' } : undefined}>
                     <div className={isMobile ? '' : 'max-w-3xl mx-auto'}>
 
+                      {agentMode === 'dispensa' && pendingDispensaPlan && (
+                        <div className="mb-3 rounded-2xl border border-amber-200 bg-amber-50 px-3 py-3">
+                          <div className="flex items-start justify-between gap-3">
+                            <div>
+                              <div className="text-xs font-semibold text-amber-800">Piano dispensa pronto</div>
+                              <div className="text-[11px] text-amber-700 mt-1">
+                                {pendingDispensaPlan.title} · {pendingDispensaPlan.sections.length} sezioni{pendingDispensaPlan.estimatedPages ? ` · ${pendingDispensaPlan.estimatedPages} pagine stimate` : ''}
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <button
+                                onClick={() => {
+                                  setPendingDispensaPlan(null)
+                                  setPendingDispensaRequest(null)
+                                  setPendingDispensaFilesContext('')
+                                }}
+                                className="px-2.5 py-1.5 rounded-lg border border-amber-300 text-[11px] font-semibold text-amber-800 hover:bg-amber-100"
+                              >
+                                Reset
+                              </button>
+                              <button
+                                onClick={() => handleSend('Approva piano dispensa')}
+                                disabled={isLoading}
+                                className="px-2.5 py-1.5 rounded-lg bg-amber-600 text-white text-[11px] font-semibold hover:bg-amber-700 disabled:opacity-50"
+                              >
+                                Approva e genera PDF
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
                       {attachedFiles.length > 0 && (
                         <div className="flex flex-wrap gap-2 mb-2">
                           {attachedFiles.map((f, i) => (
@@ -2118,11 +3086,30 @@ REGOLE IMPORTANTI:
                             <Button
                               variant="ghost"
                               size="sm"
-                              className="h-8 rounded-full px-2 text-slate-500 hover:bg-slate-100 hover:text-slate-900 gap-1.5"
+                              className="ai-mode-pill h-8 rounded-full px-3.5 text-slate-900 gap-1.5 ring-1 ring-white/70 hover:opacity-95"
                               onClick={() => setShowModeMenu(v => !v)}
                               title="Cambia modalità"
                             >
-                              <Sparkles className="h-4 w-4" />
+                              <span className="text-[11px] font-semibold">Modalita</span>
+                              <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                                selectedModeMeta.id === 'default'
+                                  ? 'bg-slate-900 text-white'
+                                  : selectedModeMeta.id === 'report'
+                                    ? 'bg-blue-600 text-white'
+                                    : selectedModeMeta.id === 'quiz'
+                                      ? 'bg-amber-500 text-white'
+                                      : selectedModeMeta.id === 'image'
+                                        ? 'bg-fuchsia-600 text-white'
+                                        : selectedModeMeta.id === 'dataset'
+                                          ? 'bg-emerald-600 text-white'
+                                          : selectedModeMeta.id === 'analysis'
+                                            ? 'bg-violet-600 text-white'
+                                            : selectedModeMeta.id === 'brochure'
+                                              ? 'bg-rose-600 text-white'
+                                              : 'bg-orange-600 text-white'
+                              }`}>
+                                {selectedModeMeta.label}
+                              </span>
                               <ChevronDown className={`h-3 w-3 transition-transform ${showModeMenu ? 'rotate-180' : ''}`} />
                             </Button>
                             {showModeMenu && (
@@ -2136,8 +3123,12 @@ REGOLE IMPORTANTI:
                                         ? <CheckSquare className="h-3.5 w-3.5" />
                                         : m.id === 'image'
                                           ? <ImageIcon className="h-3.5 w-3.5" />
-                                          : m.id === 'analysis'
+                                  : m.id === 'analysis'
                                             ? <BarChart2 className="h-3.5 w-3.5" />
+                                            : m.id === 'brochure'
+                                              ? <Layout className="h-3.5 w-3.5" />
+                                              : m.id === 'dispensa'
+                                                ? <FileText className="h-3.5 w-3.5" />
                                             : <Database className="h-3.5 w-3.5" />
                                   const isSelected = agentMode === m.id
                                   return (
@@ -2192,22 +3183,8 @@ REGOLE IMPORTANTI:
                         />
 
                         {/* Mode tag — desktop only */}
-                        {!isMobile && (
-                          <div className={`flex items-center self-center mb-1 rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide border backdrop-blur-md ${
-                            selectedModeMeta.id === 'default' ? 'bg-slate-100/50 text-slate-500 border-slate-200' :
-                            selectedModeMeta.id === 'report' ? 'bg-blue-50/50 text-blue-600 border-blue-200' :
-                            selectedModeMeta.id === 'quiz' ? 'bg-amber-50/50 text-amber-600 border-amber-200' :
-                            selectedModeMeta.id === 'image' ? 'bg-purple-50/50 text-purple-600 border-purple-200' :
-                            selectedModeMeta.id === 'dataset' ? 'bg-emerald-50/50 text-emerald-600 border-emerald-200' :
-                            selectedModeMeta.id === 'analysis' ? 'bg-violet-50/50 text-violet-600 border-violet-200' :
-                            'bg-slate-100/50 text-slate-600 border-slate-200'
-                          }`}>
-                            {selectedModeMeta.label}
-                          </div>
-                        )}
-
                         <Button
-                          onClick={handleSend}
+                          onClick={() => { void handleSend() }}
                           disabled={((!inputText.trim() && attachedFiles.length === 0) && !(agentMode === 'analysis' && analysisTaskId)) || isLoading}
                           className={`h-9 w-9 rounded-full transition-all flex-shrink-0 ${((!inputText.trim() && attachedFiles.length === 0) && !(agentMode === 'analysis' && analysisTaskId))
                             ? 'bg-slate-100 text-slate-300'
@@ -2221,6 +3198,17 @@ REGOLE IMPORTANTI:
                     </div>
                   </div>
                 </main>
+                {showCanvas && activeDoc && !isMobile && (
+                  <div className="w-[55%] shrink-0 border-l border-slate-200 overflow-hidden">
+                    <DocumentCanvas
+                      doc={activeDoc}
+                      onClose={() => setShowCanvas(false)}
+                      authorName={teacherDisplayName}
+                      sessions={(classesData || []).map((s: any) => ({ id: s.id, title: s.title, class_name: s.class_name }))}
+                    />
+                  </div>
+                )}
+                </div>{/* end chat+canvas flex */}
                 </div>{/* end unified card */}
               </div>
         </div>
@@ -2391,6 +3379,7 @@ function parseContentBlocks(content: string): {
   generationType: string | null;
   sessionSelector: any[] | null;
   studentSelector: any[] | null;
+  reportTypeSelector: any[] | null;
   actionMenu: any[] | null;
 } {
   let textContent = content
@@ -2398,9 +3387,23 @@ function parseContentBlocks(content: string): {
   let csv: string | null = null
   let sessionSelector: any[] | null = null
   let studentSelector: any[] | null = null
+  let reportTypeSelector: any[] | null = null
   let actionMenu: any[] | null = null
   let isGenerating = false
   let generationType: string | null = null
+
+  const tryParseQuizCandidate = (rawCandidate: string | undefined | null): QuizData | null => {
+    if (!rawCandidate) return null
+    try {
+      const parsed = JSON.parse(rawCandidate.trim())
+      if (parsed && Array.isArray(parsed.questions) && parsed.title) {
+        return parsed as QuizData
+      }
+    } catch {
+      return null
+    }
+    return null
+  }
 
   // Check for generation indicators
   const generatingImagePattern = /genero|creo.*immagine|sto.*generando.*immagine|genera.*immagine/i
@@ -2409,7 +3412,7 @@ function parseContentBlocks(content: string): {
 
   const hasBase64Image = content.includes('data:image') && content.includes('base64')
   if (hasBase64Image) {
-    return { quiz, csv, textContent, isGenerating: false, generationType: null, sessionSelector, studentSelector, actionMenu }
+    return { quiz, csv, textContent, isGenerating: false, generationType: null, sessionSelector, studentSelector, reportTypeSelector, actionMenu }
   }
 
   const hasIncompleteQuiz = content.includes('```quiz') && !content.includes('```quiz')
@@ -2433,18 +3436,38 @@ function parseContentBlocks(content: string): {
   // Extract quiz
   const quizMatch = content.match(/```quiz\s*([\s\S]*?)```/)
   if (quizMatch) {
-    try {
-      const parsed = JSON.parse(quizMatch[1].trim())
-      if (parsed && Array.isArray(parsed.questions)) {
-        quiz = parsed
-        textContent = textContent.replace(/```quiz[\s\S]*?```/, '').trim()
-        isGenerating = false
-      }
-    } catch (e) {
+    const parsed = tryParseQuizCandidate(quizMatch[1])
+    if (parsed) {
+      quiz = parsed
+      textContent = textContent.replace(/```quiz[\s\S]*?```/, '').trim()
+      isGenerating = false
+    } else {
       if (quizMatch[1].includes('{')) {
         isGenerating = true
         generationType = 'quiz'
       }
+    }
+  }
+
+  if (!quiz) {
+    const jsonQuizMatch = content.match(/```json\s*([\s\S]*?)```/)
+    const parsed = tryParseQuizCandidate(jsonQuizMatch?.[1])
+    if (parsed) {
+      quiz = parsed
+      textContent = textContent.replace(/```json[\s\S]*?```/, '').trim()
+      isGenerating = false
+    }
+  }
+
+  if (!quiz) {
+    const rawJsonMatch = content.match(/\{[\s\S]*"questions"[\s\S]*\}/)
+    const parsed = tryParseQuizCandidate(rawJsonMatch?.[0])
+    if (parsed) {
+      quiz = parsed
+      textContent = rawJsonMatch?.[0]
+        ? textContent.replace(rawJsonMatch[0], '').trim()
+        : textContent
+      isGenerating = false
     }
   }
 
@@ -2474,6 +3497,14 @@ function parseContentBlocks(content: string): {
     } catch (e) { console.error("Error parsing student selector", e) }
   }
 
+  const reportTypeMatch = content.match(/```report_type_selector\s*([\s\S]*?)```/)
+  if (reportTypeMatch) {
+    try {
+      reportTypeSelector = JSON.parse(reportTypeMatch[1].trim())
+      textContent = textContent.replace(/```report_type_selector[\s\S]*?```/, '').trim()
+    } catch (e) { console.error("Error parsing report type selector", e) }
+  }
+
   // Extract Action Menu
   const actionMenuMatch = content.match(/```action_menu\s*([\s\S]*?)```/)
   if (actionMenuMatch) {
@@ -2483,7 +3514,7 @@ function parseContentBlocks(content: string): {
     } catch (e) { console.error("Error parsing action menu", e) }
   }
 
-  return { quiz, csv, textContent, isGenerating, generationType, sessionSelector, studentSelector, actionMenu }
+  return { quiz, csv, textContent, isGenerating, generationType, sessionSelector, studentSelector, reportTypeSelector, actionMenu }
 }
 
 function SessionSelector({ sessions, onSelect }: { sessions: any[], onSelect: (id: string) => void }) {
@@ -2571,6 +3602,71 @@ function ActionMenu({ actions, onSelect }: { actions: any[], onSelect: (value: s
   )
 }
 
+function ReportConfigurator({
+  sessions,
+  reportTypes,
+  onSubmit,
+}: {
+  sessions: any[]
+  reportTypes: any[]
+  onSubmit: (sessionId: string, reportTypeId: string) => void
+}) {
+  const [selectedSessionId, setSelectedSessionId] = useState('')
+  const [selectedReportType, setSelectedReportType] = useState('')
+  const selectedSession = sessions.find((s) => s.id === selectedSessionId)
+
+  return (
+    <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm my-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
+      <div className="bg-slate-50 px-4 py-2 border-b border-slate-200 flex items-center justify-between">
+        <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">Configurazione Report</span>
+        <span className="text-[10px] text-slate-400">Sessione + tipologia</span>
+      </div>
+      <div className="p-4 space-y-4">
+        <div>
+          <div className="text-[11px] font-semibold text-slate-600 mb-2">Sessione</div>
+          <div className="grid grid-cols-1 gap-2 max-h-52 overflow-y-auto">
+            {sessions.map((s) => (
+              <button
+                key={s.id}
+                onClick={() => setSelectedSessionId(s.id)}
+                className={`rounded-lg border px-3 py-2 text-left transition-all ${selectedSessionId === s.id ? 'bg-red-50 border-red-200 text-red-700' : 'border-slate-200 hover:bg-slate-50 text-slate-700'}`}
+              >
+                <div className="text-sm font-semibold">{s.title}</div>
+                <div className="text-[10px] text-slate-400">{s.class_name} • {s.status}</div>
+              </button>
+            ))}
+          </div>
+        </div>
+        <div>
+          <div className="text-[11px] font-semibold text-slate-600 mb-2">Tipo di report</div>
+          <div className="grid grid-cols-1 gap-2">
+            {reportTypes.map((option) => (
+              <button
+                key={option.id}
+                onClick={() => setSelectedReportType(option.id)}
+                className={`rounded-lg border px-3 py-2 text-left transition-all ${selectedReportType === option.id ? 'bg-blue-50 border-blue-200 text-blue-700' : 'border-slate-200 hover:bg-slate-50 text-slate-700'}`}
+              >
+                <div className="text-sm font-semibold">{option.label}</div>
+                <div className="text-[11px] text-slate-500">{option.description}</div>
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+      <div className="p-3 border-t border-slate-100 bg-slate-50 flex justify-end">
+        <Button
+          size="sm"
+          disabled={!selectedSessionId || !selectedReportType || !selectedSession}
+          className="text-xs bg-red-600 hover:bg-red-700 text-white"
+          onClick={() => onSubmit(selectedSessionId, selectedReportType)}
+        >
+          Genera report avanzato
+        </Button>
+      </div>
+    </div>
+  )
+}
+
 function MessageContent({ content, onPublish, onEdit, onInput, toast, darkMode = false }: { 
   content: string; 
   onPublish: (type: 'quiz' | 'dataset', data: any) => void; 
@@ -2579,7 +3675,7 @@ function MessageContent({ content, onPublish, onEdit, onInput, toast, darkMode =
   toast: any; 
   darkMode?: boolean 
 }) {
-  const { quiz, csv, textContent, isGenerating, generationType, sessionSelector, studentSelector, actionMenu } = parseContentBlocks(content)
+  const { quiz, csv, textContent, isGenerating, generationType, sessionSelector, studentSelector, reportTypeSelector, actionMenu } = parseContentBlocks(content)
   const { cleanContent, images } = extractBase64Images(textContent)
 
   if (isGenerating) {
@@ -2782,7 +3878,19 @@ function MessageContent({ content, onPublish, onEdit, onInput, toast, darkMode =
         </div>
       )}
 
-      {sessionSelector && (
+      {sessionSelector && reportTypeSelector && (
+        <ReportConfigurator
+          sessions={sessionSelector}
+          reportTypes={reportTypeSelector}
+          onSubmit={(sessionId, reportTypeId) => {
+            const session = sessionSelector.find(s => s.id === sessionId)
+            const reportType = reportTypeSelector.find(r => r.id === reportTypeId)
+            onInput(`Generami il report ${reportType?.label || reportTypeId} per la sessione: ${session?.title} (${sessionId})`)
+          }}
+        />
+      )}
+
+      {sessionSelector && !reportTypeSelector && (
         <SessionSelector 
           sessions={sessionSelector} 
           onSelect={(id) => {

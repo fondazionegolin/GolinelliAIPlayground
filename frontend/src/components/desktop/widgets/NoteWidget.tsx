@@ -17,9 +17,10 @@ const NOTE_COLORS: Record<string, string> = {
 interface NoteWidgetProps {
   config: NoteConfig
   onConfigChange: (config: NoteConfig) => void
+  readOnly?: boolean
 }
 
-export default function NoteWidget({ config, onConfigChange }: NoteWidgetProps) {
+export default function NoteWidget({ config, onConfigChange, readOnly = false }: NoteWidgetProps) {
   const [text, setText] = useState(config.text ?? '')
   const saveTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
   const bg = config.color || '#fef08a'
@@ -28,6 +29,7 @@ export default function NoteWidget({ config, onConfigChange }: NoteWidgetProps) 
   useEffect(() => { setText(config.text ?? '') }, [config.text])
 
   const handleChange = (v: string) => {
+    if (readOnly) return
     setText(v)
     if (saveTimeout.current) clearTimeout(saveTimeout.current)
     saveTimeout.current = setTimeout(() => {
@@ -43,8 +45,9 @@ export default function NoteWidget({ config, onConfigChange }: NoteWidgetProps) 
       <textarea
         className="flex-1 w-full resize-none p-4 font-medium bg-transparent outline-none placeholder:opacity-40"
         style={{ color: textColor, fontSize: config.font_size ? `${config.font_size}px` : '16px' }}
-        placeholder="Scrivi una nota..."
+        placeholder={readOnly ? '' : "Scrivi una nota..."}
         value={text}
+        readOnly={readOnly}
         onChange={e => handleChange(e.target.value)}
       />
     </div>

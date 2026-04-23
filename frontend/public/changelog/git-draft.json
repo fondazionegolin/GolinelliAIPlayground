@@ -1,0 +1,14 @@
+{
+  "generated_at": "2026-04-23T08:26:19.250744+00:00",
+  "version_label": "2026.04.23-96bc1b42",
+  "title": "Aggiornamenti branch staging",
+  "summary": "Bozza generata automaticamente da 1 commit nuovi.",
+  "git_ref": "96bc1b42cf3f72ea6d3ea6e2c6621a8695b98301",
+  "items": [
+    {
+      "category": "improved",
+      "title": "Update generated changelog after staging merge",
+      "description": "Update generated changelog after staging merge"
+    }
+  ]
+}

@@ -146,8 +146,8 @@ export default function ClassesPage() {
             <p className="text-lg font-bold text-slate-900">{totalStudents}</p>
           </div>
         </div>
-        <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 flex items-center gap-2.5">
-          <Euro className="h-5 w-5 text-rose-500 flex-shrink-0" />
+        <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 flex items-center gap-2.5">
+          <Euro className="h-5 w-5 text-slate-500 flex-shrink-0" />
           <div>
             <p className="text-[11px] text-slate-500">Costo totale</p>
             <p className="text-lg font-bold text-slate-900">{formatCurrency(totalCost)}</p>

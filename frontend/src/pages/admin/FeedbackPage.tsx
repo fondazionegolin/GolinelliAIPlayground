@@ -39,7 +39,7 @@ function FeedbackCard({ report, onMarkReviewed }: { report: FeedbackReport; onMa
   const isNew = report.status === 'new'
 
   return (
-    <div className={`rounded-xl border transition-all ${isNew ? 'border-pink-200 bg-pink-50/40' : 'border-slate-100 bg-white'}`}>
+    <div className={`rounded-xl border transition-all ${isNew ? 'border-slate-300 bg-slate-50/60' : 'border-slate-100 bg-white'}`}>
       <div className="p-4">
         <div className="flex items-start gap-3">
           {/* User avatar */}
@@ -60,7 +60,7 @@ function FeedbackCard({ report, onMarkReviewed }: { report: FeedbackReport; onMa
                 {report.user_type === 'teacher' ? 'Docente' : 'Studente'}
               </span>
               {isNew && (
-                <span className="text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-pink-100 text-pink-600">
+                <span className="text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-slate-200 text-slate-600">
                   Nuovo
                 </span>
               )}
@@ -170,7 +170,7 @@ export default function FeedbackPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
-            <Bug className="h-6 w-6" style={{ color: '#e85c8d' }} />
+            <Bug className="h-6 w-6 text-slate-600" />
             Feedback Beta
           </h1>
           <p className="text-sm text-slate-500 mt-0.5">
@@ -178,7 +178,7 @@ export default function FeedbackPage() {
           </p>
         </div>
         {newCount > 0 && (
-          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-semibold" style={{ backgroundColor: '#fce7f3', color: '#e85c8d' }}>
+          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-semibold bg-slate-100 text-slate-700">
             <Clock className="h-4 w-4" />
             {newCount} nuovi
           </div>

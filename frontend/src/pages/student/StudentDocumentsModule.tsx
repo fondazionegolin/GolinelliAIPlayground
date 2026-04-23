@@ -4,7 +4,7 @@ import { Input } from '@/components/ui/input'
 import {
   Plus, Trash2, Monitor, FileText, ChevronLeft, ChevronRight, Send, CheckCircle, FileSpreadsheet, BookOpen, PenTool, Share2, User, Clock, MonitorPlay, Search, X
 } from 'lucide-react'
-import { studentApi } from '@/lib/api'
+import { studentApi, filesApi } from '@/lib/api'
 import { useToast } from '@/components/ui/use-toast'
 import { SlideEditor, SlideBlock } from '@/components/SlideEditor'
 import { RichTextEditor } from '@/components/RichTextEditor'
@@ -15,7 +15,7 @@ import { Editor } from '@tiptap/react'
 
 // Types
 type Format = 'a4' | '16:9' | '4:3'
-type EditorMode = 'slides' | 'document' | 'sheet' | 'canvas'
+type EditorMode = 'slides' | 'document' | 'sheet' | 'canvas' | 'pdf' | 'web'
 type Block = SlideBlock
 
 interface Slide {
@@ -41,6 +41,7 @@ interface Document {
   sheetData?: string[][]
   sheetChart?: SheetChartConfig
   canvasContent?: string
+  webUrl?: string
 }
 
 interface DraftDocument {
@@ -55,11 +56,13 @@ interface LessonDocument {
   id: string
   taskId: string
   title: string
-  type: 'presentation' | 'document' | 'canvas'
+  type: 'presentation' | 'document' | 'canvas' | 'pdf' | 'web'
   updatedAt: string
   contentJson: string
   authorName: string
   udaFolder?: string
+  fileUrl?: string
+  mimeType?: string
 }
 
 interface StudentTask {
@@ -90,6 +93,11 @@ const DEFAULT_SHEET_CHART: SheetChartConfig = {
   showRegression: true,
 }
 const DEFAULT_CANVAS_CONTENT = JSON.stringify({ type: 'canvas_v1', items: [] })
+const isFullHtmlDocument = (value?: string | null) => {
+  if (!value) return false
+  const trimmed = value.trim().toLowerCase()
+  return trimmed.startsWith('<!doctype html') || trimmed.startsWith('<html')
+}
 
 interface StudentDocumentsModuleProps {
   sessionId: string
@@ -113,6 +121,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId }: 
     sheetData: DEFAULT_SHEET_DATA,
     sheetChart: DEFAULT_SHEET_CHART,
     canvasContent: DEFAULT_CANVAS_CONTENT,
+    webUrl: '',
   })
 
   // Sidebar State
@@ -165,6 +174,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId }: 
       sheetData: DEFAULT_SHEET_DATA,
       sheetChart: DEFAULT_SHEET_CHART,
       canvasContent: DEFAULT_CANVAS_CONTENT,
+      webUrl: '',
     })
     setMode('document')
     setSubmitted(false)
@@ -187,6 +197,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId }: 
       sheetData: DEFAULT_SHEET_DATA,
       sheetChart: DEFAULT_SHEET_CHART,
       canvasContent: DEFAULT_CANVAS_CONTENT,
+      webUrl: '',
     })
     setMode('slides')
     setSubmitted(false)
@@ -268,9 +279,10 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId }: 
   useEffect(() => {
     const fetchSidebarDocuments = async () => {
       try {
-        const [draftsRes, tasksRes] = await Promise.all([
+        const [draftsRes, tasksRes, filesRes] = await Promise.all([
           studentApi.listDocumentDrafts(),
           studentApi.getTasks(),
+          filesApi.listSessionFiles(sessionId),
         ])
 
         const drafts: DraftDocument[] = (draftsRes.data || []).map((d: any) => ({
@@ -311,13 +323,44 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId }: 
           }, [])
           .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
 
-        setLessonDocuments(lessons)
+        const sharedSessionDocs: LessonDocument[] = ((filesRes.data || []) as any[])
+          .filter((file) => {
+            const filename = String(file?.filename || '').toLowerCase()
+            const mimeType = String(file?.mime_type || '').toLowerCase()
+            return mimeType === 'application/pdf'
+              || filename.endsWith('.pdf')
+              || mimeType === 'text/html'
+              || filename.endsWith('.html')
+              || filename.endsWith('.htm')
+          })
+          .map((file) => {
+            const filename = String(file.filename || 'Documento condiviso')
+            const mimeType = String(file.mime_type || '')
+            const isPdf = mimeType === 'application/pdf' || filename.toLowerCase().endsWith('.pdf')
+            return {
+              id: `shared-file-${file.id}`,
+              taskId: `shared-file-${file.id}`,
+              title: filename,
+              type: (isPdf ? 'pdf' : 'web') as 'pdf' | 'web',
+              updatedAt: file.created_at,
+              contentJson: JSON.stringify(
+                isPdf
+                  ? { type: 'pdf_v1', url: file.url, mimeType: file.mime_type, filename: file.filename }
+                  : { type: 'html_v1', url: file.url, mimeType: file.mime_type, filename: file.filename }
+              ),
+              authorName: file.owner_type === 'teacher' ? 'Docente' : 'Classe',
+              fileUrl: file.url,
+              mimeType: file.mime_type,
+            }
+          })
+
+        setLessonDocuments([...sharedSessionDocs, ...lessons].sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()))
       } catch (e) {
         console.error('Failed to load document sidebar data', e)
       }
     }
     fetchSidebarDocuments()
-  }, [])
+  }, [sessionId])
 
   useEffect(() => {
     if (viewMode !== 'editor') return
@@ -340,7 +383,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId }: 
   }, [document, mode, docMargins, isReadOnlyLesson, viewMode])
 
   const loadDocumentFromJson = (
-    doc: { id: string; title: string; type: 'presentation' | 'document' | 'sheet' | 'canvas'; contentJson: string },
+    doc: { id: string; title: string; type: 'presentation' | 'document' | 'sheet' | 'canvas' | 'pdf' | 'web'; contentJson: string },
     options?: { readOnlyLesson?: boolean; lessonTaskId?: string | null }
   ) => {
     try {
@@ -348,7 +391,37 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId }: 
       setIsReadOnlyLesson(Boolean(options?.readOnlyLesson))
       setActiveLessonTaskId(options?.lessonTaskId || null)
 
-      if (doc.type === 'presentation' || content.type === 'presentation_v2' || content.slides) {
+      if (doc.type === 'pdf' || content.type === 'pdf_v1') {
+        setMode('pdf')
+        setDraftId(null)
+        setDocument({
+          id: doc.id,
+          title: doc.title,
+          format: 'a4',
+          slides: [],
+          textContent: content.url || '',
+          header: { title: '', subtitle: '', logoUrl: '' },
+          sheetData: DEFAULT_SHEET_DATA,
+          sheetChart: DEFAULT_SHEET_CHART,
+          canvasContent: DEFAULT_CANVAS_CONTENT,
+          webUrl: '',
+        })
+      } else if (doc.type === 'web' || content.type === 'html_v1' || isFullHtmlDocument(content.htmlContent) || isFullHtmlDocument(content.content)) {
+        setMode('web')
+        setDraftId(null)
+        setDocument({
+          id: doc.id,
+          title: doc.title,
+          format: 'a4',
+          slides: [],
+          textContent: content.htmlContent || content.content || '',
+          header: { title: '', subtitle: '', logoUrl: '' },
+          sheetData: DEFAULT_SHEET_DATA,
+          sheetChart: DEFAULT_SHEET_CHART,
+          canvasContent: DEFAULT_CANVAS_CONTENT,
+          webUrl: content.url || '',
+        })
+      } else if (doc.type === 'presentation' || content.type === 'presentation_v2' || content.slides) {
         setMode('slides')
         setDraftId(options?.readOnlyLesson ? null : doc.id)
         const safeSlides = (content.slides && Array.isArray(content.slides) && content.slides.length > 0)
@@ -364,7 +437,8 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId }: 
           title: doc.title,
           format: content.format || '16:9',
           slides: safeSlides,
-          textContent: ''
+          textContent: '',
+          webUrl: '',
         })
         setCurrentSlideIndex(0)
         setSelectedBlockId(null)
@@ -380,9 +454,10 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId }: 
           sheetData: Array.isArray(content.data) ? content.data : DEFAULT_SHEET_DATA,
           sheetChart: content.chart || DEFAULT_SHEET_CHART,
           canvasContent: DEFAULT_CANVAS_CONTENT,
+          webUrl: '',
         })
       } else if (doc.type === 'canvas' || content.type === 'canvas_v1' || content.items) {
-        setIsReadOnlyLesson(false)
+        setIsReadOnlyLesson(Boolean(options?.readOnlyLesson))
         setMode('canvas')
         setDraftId(options?.readOnlyLesson ? null : doc.id)
         setDocument({
@@ -394,6 +469,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId }: 
           sheetData: DEFAULT_SHEET_DATA,
           sheetChart: DEFAULT_SHEET_CHART,
           canvasContent: JSON.stringify({ type: 'canvas_v1', items: Array.isArray(content.items) ? content.items : [] }),
+          webUrl: '',
         })
       } else {
         setMode('document')
@@ -414,6 +490,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId }: 
           sheetData: DEFAULT_SHEET_DATA,
           sheetChart: DEFAULT_SHEET_CHART,
           canvasContent: DEFAULT_CANVAS_CONTENT,
+          webUrl: '',
         })
       }
       setViewMode('editor')
@@ -660,12 +737,14 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId }: 
     const filteredLessons = lessonDocuments.filter(d => fuzzyMatch(docSearch, d.title, d.type, d.authorName || ''))
     const docIcon = (type: string) => {
       if (type === 'presentation') return <Monitor className="h-5 w-5" />
+      if (type === 'web') return <MonitorPlay className="h-5 w-5" />
       if (type === 'sheet') return <FileSpreadsheet className="h-5 w-5" />
       if (type === 'canvas') return <PenTool className="h-5 w-5" />
       return <FileText className="h-5 w-5" />
     }
     const docColor = (type: string) => {
       if (type === 'presentation') return 'bg-indigo-100 text-indigo-700'
+      if (type === 'web') return 'bg-fuchsia-100 text-fuchsia-700'
       if (type === 'sheet') return 'bg-sky-100 text-sky-700'
       if (type === 'canvas') return 'bg-amber-100 text-amber-700'
       return 'bg-emerald-100 text-emerald-700'
@@ -900,7 +979,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId }: 
         </div>
 
         {/* Unified Toolbar */}
-        {!isReadOnlyLesson && mode !== 'sheet' && mode !== 'canvas' && (
+        {!isReadOnlyLesson && mode !== 'sheet' && mode !== 'canvas' && mode !== 'pdf' && mode !== 'web' && (
         <div ref={toolbarHostRef}>
           <UnifiedToolbar
             mode={mode}
@@ -1072,10 +1151,14 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId }: 
                       <div className="flex items-center gap-3 mb-2">
                         <div className={`p-2 rounded-xl ${
                           doc.type === 'presentation' ? 'bg-indigo-100 text-indigo-700' :
+                          doc.type === 'pdf' ? 'bg-red-100 text-red-700' :
+                          doc.type === 'web' ? 'bg-fuchsia-100 text-fuchsia-700' :
                           doc.type === 'canvas' ? 'bg-amber-100 text-amber-700' :
                           'bg-emerald-100 text-emerald-700'
                         }`}>
                           {doc.type === 'presentation' ? <Monitor className="h-4 w-4" /> : 
+                           doc.type === 'pdf' ? <FileText className="h-4 w-4" /> :
+                           doc.type === 'web' ? <MonitorPlay className="h-4 w-4" /> :
                            doc.type === 'canvas' ? <PenTool className="h-4 w-4" /> : 
                            <BookOpen className="h-4 w-4" />}
                         </div>
@@ -1123,6 +1206,36 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId }: 
           <div className="flex-1 bg-slate-100 flex items-start justify-center p-2 md:p-3 relative overflow-y-auto"
                onClick={() => setSelectedBlockId(null)}
           >
+
+             {/* MODE: PDF */}
+             {mode === 'pdf' && (
+               <div className="w-full max-w-5xl h-[calc(100vh-10rem)] bg-white rounded-2xl shadow-[0_10px_30px_rgba(15,23,42,0.12)] overflow-hidden">
+                 <iframe
+                   src={document.textContent || ''}
+                   className="w-full h-full border-0"
+                   title={document.title}
+                 />
+               </div>
+             )}
+
+             {mode === 'web' && (
+               <div className="w-full max-w-6xl h-[calc(100vh-10rem)] bg-white rounded-2xl shadow-[0_10px_30px_rgba(15,23,42,0.12)] overflow-hidden">
+                 {document.webUrl ? (
+                   <iframe
+                     src={document.webUrl}
+                     className="w-full h-full border-0"
+                     title={document.title}
+                   />
+                 ) : (
+                   <iframe
+                     srcDoc={document.textContent || ''}
+                     sandbox="allow-same-origin allow-scripts"
+                     className="w-full h-full border-0"
+                     title={document.title}
+                   />
+                 )}
+               </div>
+             )}
 
              {/* MODE: DOCUMENT */}
              {mode === 'document' && (
@@ -1271,12 +1384,12 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId }: 
                    role="student"
                    sessionId={sessionId}
                    title={document.title}
-                   onTitleChange={(nextTitle) => {
-                     handleTitleChange(nextTitle)
-                   }}
-                   initialContent={document.canvasContent || DEFAULT_CANVAS_CONTENT}
-                   onContentChange={(contentJson) => setDocument((d) => ({ ...d, canvasContent: contentJson }))}
-                   readOnly={false}
+                 onTitleChange={(nextTitle) => {
+                   handleTitleChange(nextTitle)
+                  }}
+                  initialContent={document.canvasContent || DEFAULT_CANVAS_CONTENT}
+                  onContentChange={(contentJson) => setDocument((d) => ({ ...d, canvasContent: contentJson }))}
+                  readOnly={isReadOnlyLesson}
                  />
                </div>
              )}

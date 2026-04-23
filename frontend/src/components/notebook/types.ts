@@ -32,12 +32,18 @@ export interface NotebookCodeProposal {
   teacher_note: string
 }
 
+export interface NotebookTutorMessage {
+  role: 'user' | 'assistant'
+  content: string
+}
+
 export interface NotebookDetail {
   id: string
   title: string
   project_type: NotebookProjectType
   cells: Cell[]
   editor_settings: NotebookEditorSettings
+  tutor_messages: NotebookTutorMessage[]
   created_at: string
   updated_at: string
 }

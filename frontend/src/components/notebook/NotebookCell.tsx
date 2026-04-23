@@ -314,7 +314,7 @@ export default function NotebookCell({
             autocompletion: false,
             rectangularSelection: false,
             crosshairCursor: false,
-            highlightActiveLine: true,
+            highlightActiveLine: false,
             highlightSelectionMatches: true,
             closeBracketsKeymap: true,
             defaultKeymap: true,

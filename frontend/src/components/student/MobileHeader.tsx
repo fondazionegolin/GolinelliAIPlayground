@@ -152,7 +152,7 @@ export function ChatbotHeader({
 export function ClassChatHeader({ onlineCount }: { onlineCount?: number }) {
   return (
     <MobileHeader
-      title="Chat Classe"
+      title="Chat di classe"
       subtitle={onlineCount !== undefined ? `${onlineCount} online` : undefined}
     />
   )

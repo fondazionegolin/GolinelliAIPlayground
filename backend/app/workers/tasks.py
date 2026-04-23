@@ -7,6 +7,8 @@ from app.core.database import AsyncSessionLocal
 from app.services.rag_service import rag_service
 from app.services.ml_service import ml_service
 from app.services.storage_service import storage_service
+from app.services.document_processor import document_processor
+from app.services.llm_service import llm_service
 
 
 def run_async(coro):
@@ -44,16 +46,15 @@ def ingest_document_task(self, document_id: str):
             # Download file
             content_bytes = storage_service.download_file(file.storage_key)
             
-            # Parse content based on type
-            if file.mime_type == "text/plain":
-                content = content_bytes.decode("utf-8")
-            elif file.mime_type == "application/pdf":
-                from PyPDF2 import PdfReader
-                import io
-                reader = PdfReader(io.BytesIO(content_bytes))
-                content = "\n".join(page.extract_text() for page in reader.pages)
-            else:
-                content = content_bytes.decode("utf-8", errors="ignore")
+            is_data = (file.filename or "").lower().endswith((".xlsx", ".xls", ".csv"))
+            analysis = await document_processor.process(
+                file_bytes=content_bytes,
+                filename=file.filename,
+                mime_type=file.mime_type,
+                llm_service=None if is_data else llm_service,
+                analyze_visuals=not is_data,
+            )
+            content = analysis.rag_segments or analysis.raw_text
             
             # Ingest
             chunk_count = await rag_service.ingest_document(db, document, content)

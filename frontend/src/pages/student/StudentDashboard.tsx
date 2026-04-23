@@ -3,28 +3,29 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
+import { io } from 'socket.io-client'
 import { useAuthStore } from '@/stores/auth'
 import { studentApi } from '@/lib/api'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import {
   Bot, Brain, Award, MessageSquare, FileEdit,
-  Loader2, ChevronRight, Sparkles, ClipboardList, FileText, LogOut, LayoutDashboard
+  Loader2, ChevronRight, Sparkles, ClipboardList, FileText, LayoutDashboard,
+  Home, FileCode2, Menu, BookOpen
 } from 'lucide-react'
 const ChatbotModule         = lazy(() => import('./ChatbotModule'))
 const TasksModule           = lazy(() => import('./TasksModule'))
 const ClassificationModule  = lazy(() => import('./ClassificationModule'))
 const StudentDocumentsModule = lazy(() => import('./StudentDocumentsModule'))
 const StudentNotebookModule = lazy(() => import('../notebook/StudentNotebookModule'))
+const StudentWikiPage       = lazy(() => import('./StudentWikiPage'))
 const DesktopPage           = lazy(() => import('../shared/DesktopPage'))
 import ChatSidebar from '@/components/ChatSidebar'
-import { MobileNav } from '@/components/student/MobileNav'
-import { MobileHeader } from '@/components/student/MobileHeader'
+import { LogoMark } from '@/components/LogoMark'
 import { StudentNavbar } from '@/components/StudentNavbar'
-import { useMobile, useKeyboard } from '@/hooks/useMobile'
+import { useMobile } from '@/hooks/useMobile'
 import { useSwipeBack } from '@/hooks/useSwipeBack'
 import { AppBackground } from '@/components/ui/AppBackground'
-import { FloatingHelper } from '@/components/FloatingHelper'
 import { getStudentAccentTheme, loadStudentAccent, type StudentAccentId } from '@/lib/studentAccent'
 import { getAppBackgroundGradient } from '@/lib/theme'
 
@@ -40,6 +41,10 @@ interface SessionInfo {
     nickname: string
     is_frozen: boolean
   }
+  teacher?: {
+    id: string
+    name: string
+  } | null
   enabled_modules: Array<{
     key: string
     config: Record<string, unknown>
@@ -114,6 +119,15 @@ function getModuleConfig(t: (key: string) => string): Record<string, ModuleConfi
       borderClass: 'border-indigo-200/70',
       shadowClass: 'shadow-indigo-100/40',
     },
+    wiki: {
+      label: 'Wiki',
+      description: 'Guida completa alle funzioni della piattaforma',
+      icon: BookOpen,
+      colorClass: 'text-cyan-800',
+      bgClass: 'bg-cyan-100',
+      borderClass: 'border-cyan-200/70',
+      shadowClass: 'shadow-cyan-100/40',
+    },
   }
 }
 
@@ -126,7 +140,6 @@ const pageVariants = {
 
 export default function StudentDashboard() {
   const { t } = useTranslation()
-  const moduleConfig = getModuleConfig(t)
   const { studentSession, logout } = useAuthStore()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
@@ -144,8 +157,13 @@ export default function StudentDashboard() {
   const [showSidebar, setShowSidebar] = useState(false)
   const [studentAccent, setStudentAccent] = useState<StudentAccentId>(loadStudentAccent())
 
+  const exitStudentSession = useCallback(() => {
+    localStorage.removeItem('student_token')
+    logout()
+    navigate('/join')
+  }, [logout, navigate])
+
   const { isMobile } = useMobile()
-  const { isOpen: isKeyboardOpen } = useKeyboard()
 
   // Handle swipe back on mobile
   const handleSwipeBack = useCallback(() => {
@@ -238,8 +256,7 @@ export default function StudentDashboard() {
           // Ignore if tasks API fails
         }
       } catch {
-        logout()
-        navigate('/join')
+        exitStudentSession()
       } finally {
         setLoading(false)
       }
@@ -248,11 +265,55 @@ export default function StudentDashboard() {
     fetchSession()
 
     const interval = setInterval(() => {
-      studentApi.heartbeat().catch(() => { })
+      studentApi.heartbeat().catch((error: any) => {
+        const status = error?.response?.status
+        if (status === 401 || status === 403) {
+          exitStudentSession()
+        }
+      })
     }, 30000)
 
     return () => clearInterval(interval)
-  }, [studentSession, navigate, logout, location.search])
+  }, [studentSession, navigate, location.search, exitStudentSession])
+
+  useEffect(() => {
+    const handleSessionRevoked = () => exitStudentSession()
+    window.addEventListener('studentSessionAccessRevoked', handleSessionRevoked)
+    return () => window.removeEventListener('studentSessionAccessRevoked', handleSessionRevoked)
+  }, [exitStudentSession])
+
+  useEffect(() => {
+    const handlePrivateChatDisabled = () => {}
+    window.addEventListener('studentPrivateChatDisabled', handlePrivateChatDisabled)
+    return () => window.removeEventListener('studentPrivateChatDisabled', handlePrivateChatDisabled)
+  }, [])
+
+  useEffect(() => {
+    const studentToken = localStorage.getItem('student_token')
+    if (!studentToken || !sessionInfo?.session?.id) return
+
+    const socket = io(window.location.origin, {
+      path: '/socket.io',
+      auth: { token: studentToken },
+      transports: ['websocket', 'polling'],
+      reconnection: true,
+      reconnectionAttempts: Infinity,
+      reconnectionDelay: 2000,
+      reconnectionDelayMax: 10000,
+      timeout: 20000,
+    })
+
+    socket.on('session_access_revoked', () => exitStudentSession())
+    socket.on('module_toggled', (data: { module_key: string; is_enabled: boolean }) => {
+      if (data.module_key === 'chat' && !data.is_enabled) {
+        window.dispatchEvent(new CustomEvent('studentPrivateChatDisabled', { detail: data }))
+      }
+    })
+
+    return () => {
+      socket.disconnect()
+    }
+  }, [sessionInfo?.session?.id, exitStudentSession])
 
   useEffect(() => {
     const handleResize = () => {
@@ -276,17 +337,9 @@ export default function StudentDashboard() {
     return () => window.removeEventListener('oggi-imparo:expand', handler)
   }, [])
 
-  // Get header config based on active module
-  const getHeaderConfig = () => {
-    if (!activeModule) {
-      return { title: 'GolinelliAI', showBack: false }
-    }
-    const config = moduleConfig[activeModule]
-    return {
-      title: config?.label || activeModule,
-      showBack: true,
-    }
-  }
+  const privateChatEnabled = sessionInfo?.enabled_modules?.some((m) => m.key === 'chat') ?? false
+  const sessionModules = sessionInfo?.enabled_modules?.map(m => m.key).filter(k => k !== 'chat') ?? []
+  const enabledModules = [...new Set([...sessionModules, 'classe', 'documents', 'desktop', 'wiki'])]
 
   if (loading) {
     return (
@@ -300,15 +353,39 @@ export default function StudentDashboard() {
     return null
   }
 
-  // Filter out 'chat' module since it's handled separately
-  // Always include 'documents' module for students
-  const sessionModules = sessionInfo.enabled_modules.map(m => m.key).filter(k => k !== 'chat')
-  const enabledModules = [...new Set([...sessionModules, 'documents', 'desktop'])]
-
-  const headerConfig = getHeaderConfig()
-
   const studentTheme = getStudentAccentTheme(loadStudentAccent())
   const bgGradient = getAppBackgroundGradient(studentTheme)
+
+  if (isMobile) {
+    return (
+      <StudentMobileShell
+        sessionInfo={sessionInfo}
+        enabledModules={enabledModules}
+        activeModule={activeModule}
+        onNavigate={setActiveModule}
+        pendingTasksCount={pendingTasksCount}
+        lastDocument={lastDocument}
+        openTaskId={openTaskId}
+        privateChatEnabled={privateChatEnabled}
+        studentAccent={studentAccent}
+        selectedTeacherbotId={selectedTeacherbotId}
+        oggiImparoLesson={oggiImparoLesson}
+        onOggiImparoLessonConsumed={() => setOggiImparoLesson(null)}
+        openDocumentTaskId={openDocumentTaskId}
+        onOpenDocument={(taskId) => {
+          setOpenDocumentTaskId(taskId)
+          setActiveModule('documents')
+        }}
+        onTeacherbotNotificationClick={handleNotificationClick}
+        onLogout={() => {
+          localStorage.removeItem('student_token')
+          logout()
+          navigate('/join')
+        }}
+        swipeState={swipeState}
+      />
+    )
+  }
 
   return (
     <AppBackground className="h-[100dvh] flex flex-col" gradient={bgGradient}>
@@ -328,45 +405,8 @@ export default function StudentDashboard() {
         />
       </div>
 
-      {/* Mobile Header - only on mobile */}
-      {isMobile && (
-        <MobileHeader
-          title={headerConfig.title}
-          showBack={headerConfig.showBack}
-          onBack={() => setActiveModule(null)}
-          avatar={!headerConfig.showBack ? sessionInfo.student.nickname : undefined}
-          leftIcon={!headerConfig.showBack ? (
-            <div className="w-7 h-7 rounded-xl bg-gradient-to-br from-fuchsia-500 to-violet-600 flex items-center justify-center shadow-sm flex-shrink-0">
-              <Bot className="h-4 w-4 text-white" />
-            </div>
-          ) : undefined}
-          rightAction={!headerConfig.showBack ? (
-            <button
-              onClick={() => {
-                localStorage.removeItem('student_token')
-                logout()
-                navigate('/join')
-              }}
-              className="flex items-center gap-1 text-xs text-slate-500 hover:text-red-500 transition-colors px-2 py-1 rounded-lg hover:bg-red-50"
-            >
-              <LogOut className="h-3.5 w-3.5" />
-              <span>Esci</span>
-            </button>
-          ) : undefined}
-        />
-      )}
-
-      {/* Swipe back overlay */}
-      {swipeState.isActive && (
-        <motion.div
-          className="fixed inset-0 bg-black/10 z-40 pointer-events-none"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: swipeState.progress }}
-        />
-      )}
-
       {/* Main Layout with Chat Sidebar */}
-      <div className={`flex flex-1 overflow-hidden ${isMobile ? 'pt-14' : ''}`}>
+      <div className="flex flex-1 overflow-hidden">
         {/* Main Content Area */}
         <main className={`flex-1 min-h-0 relative ${activeModule === 'chatbot' || activeModule === 'classe' || activeModule === 'documents' || activeModule === 'desktop' || activeModule === 'notebook' ? 'overflow-hidden flex flex-col' : 'overflow-y-auto'}`}>
           <AnimatePresence mode="wait">
@@ -391,7 +431,7 @@ export default function StudentDashboard() {
                 />
               ) : (
                 <div className="h-full min-h-0 flex flex-col">
-                  {activeModule !== 'documents' && activeModule !== 'desktop' && activeModule !== 'chatbot' && activeModule !== 'classe' && activeModule !== 'notebook' && (
+                  {activeModule !== 'documents' && activeModule !== 'desktop' && activeModule !== 'chatbot' && activeModule !== 'classe' && activeModule !== 'notebook' && activeModule !== 'tasks' && activeModule !== 'classification' && (
                     <div className={`mb-4 ${activeModule === 'chatbot' || activeModule === 'classe' ? 'hidden md:block' : ''}`}>
                       <Button
                         variant="ghost"
@@ -425,6 +465,8 @@ export default function StudentDashboard() {
                         setOpenDocumentTaskId(taskId)
                         setActiveModule('documents')
                       }}
+                      teacherTarget={sessionInfo.teacher ?? undefined}
+                      privateChatEnabled={privateChatEnabled}
                     />
                   </Suspense>
                 </div>
@@ -451,21 +493,286 @@ export default function StudentDashboard() {
               initialWidth={sidebarWidth}
               className="h-full w-full"
               onNotificationClick={handleNotificationClick}
+              teacherTarget={sessionInfo.teacher ?? undefined}
+              privateChatEnabled={privateChatEnabled}
             />
           </div>
         ) : null}
       </div>
 
-      {/* Mobile Bottom Navigation */}
-      <MobileNav
-        activeModule={activeModule}
-        onNavigate={setActiveModule}
-        hidden={isKeyboardOpen}
-        enabledModules={enabledModules}
-      />
-      <FloatingHelper module={activeModule} />
     </AppBackground>
   )
+}
+
+function StudentMobileShell({
+  sessionInfo,
+  enabledModules,
+  activeModule,
+  onNavigate,
+  pendingTasksCount,
+  lastDocument,
+  openTaskId,
+  privateChatEnabled,
+  studentAccent,
+  selectedTeacherbotId,
+  oggiImparoLesson,
+  onOggiImparoLessonConsumed,
+  openDocumentTaskId,
+  onOpenDocument,
+  onTeacherbotNotificationClick,
+  onLogout,
+  swipeState,
+}: {
+  sessionInfo: SessionInfo
+  enabledModules: string[]
+  activeModule: string | null
+  onNavigate: (module: string | null) => void
+  pendingTasksCount: number
+  lastDocument: string | null
+  openTaskId: string | null
+  privateChatEnabled: boolean
+  studentAccent: StudentAccentId
+  selectedTeacherbotId: string | null
+  oggiImparoLesson: string | null
+  onOggiImparoLessonConsumed: () => void
+  openDocumentTaskId: string | null
+  onOpenDocument: (taskId: string) => void
+  onTeacherbotNotificationClick: (notification: any) => void
+  onLogout: () => void
+  swipeState: ReturnType<typeof useSwipeBack>
+}) {
+  const { t } = useTranslation()
+  const [menuOpen, setMenuOpen] = useState(false)
+  const studentTheme = getStudentAccentTheme(studentAccent)
+  const bgGradient = getAppBackgroundGradient(studentTheme)
+  const moduleConfig = getModuleConfig(t)
+  const topNav = [
+    { key: null as string | null, label: 'Home', icon: Home },
+    { key: 'chatbot', label: 'AI', icon: Bot },
+    { key: 'wiki', label: 'Wiki', icon: BookOpen },
+    { key: 'classe', label: 'Classe', icon: MessageSquare },
+    { key: 'documents', label: 'Docs', icon: FileText },
+    { key: 'notebook', label: 'Code', icon: FileCode2 },
+    { key: 'classification', label: 'ML', icon: Brain },
+    { key: 'self_assessment', label: 'Task', icon: ClipboardList },
+    { key: 'desktop', label: 'Desktop', icon: LayoutDashboard },
+  ].filter((item) => item.key === null || enabledModules.includes(item.key))
+  const activeTitle = activeModule ? (moduleConfig[activeModule]?.label || activeModule) : 'Home'
+  const homeTiles = [
+    { key: 'chatbot', label: 'AI', icon: Bot, meta: 'Tutor', tint: 'from-sky-500/22 to-cyan-400/8' },
+    { key: 'classe', label: 'Classe', icon: MessageSquare, meta: 'Chat', tint: 'from-indigo-500/22 to-sky-400/8' },
+    { key: 'documents', label: 'Docs', icon: FileText, meta: 'Scrivi', tint: 'from-violet-500/22 to-fuchsia-400/8' },
+    { key: 'notebook', label: 'Code', icon: FileCode2, meta: 'Python', tint: 'from-emerald-500/22 to-teal-400/8' },
+    { key: 'classification', label: 'ML', icon: Brain, meta: 'Lab', tint: 'from-amber-400/22 to-orange-400/8' },
+    { key: 'self_assessment', label: 'Task', icon: ClipboardList, meta: pendingTasksCount > 0 ? `${pendingTasksCount}` : 'Ok', tint: 'from-rose-400/20 to-amber-300/10' },
+  ].filter((item) => enabledModules.includes(item.key))
+
+  const handleNavigate = (module: string | null) => {
+    onNavigate(module)
+    setMenuOpen(false)
+  }
+
+  return (
+    <AppBackground className="h-[100dvh] flex flex-col" gradient={bgGradient}>
+      {swipeState.isActive && (
+        <motion.div
+          className="fixed inset-0 z-40 bg-slate-950/10 pointer-events-none"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: swipeState.progress }}
+        />
+      )}
+
+      <header className="fixed inset-x-0 top-0 z-50 px-2 pt-[env(safe-area-inset-top)]">
+        <div className="mx-auto max-w-screen-sm rounded-[16px] border border-slate-900/10 bg-white/82 backdrop-blur-xl shadow-[0_12px_32px_rgba(15,23,42,0.14)]">
+          <div className="flex h-13 items-center gap-2 px-2.5">
+            <button
+              onClick={() => setMenuOpen((value) => !value)}
+              className="flex h-10 items-center gap-2 rounded-[12px] border border-slate-200 bg-slate-950 px-2.5 text-white shadow-sm"
+              aria-label="Apri menu"
+            >
+              <LogoMark className="h-5 w-auto" />
+              <Menu className="h-4 w-4" />
+            </button>
+            <button
+              onClick={() => handleNavigate(null)}
+              className="flex min-w-0 flex-1 items-center gap-2 rounded-[12px] border border-slate-200 bg-slate-50 px-3 py-2 text-left"
+            >
+              <div className="truncate text-sm font-semibold text-slate-950">{activeTitle === 'Home' ? sessionInfo.session.title : activeTitle}</div>
+            </button>
+          </div>
+        </div>
+        <AnimatePresence>
+          {menuOpen && (
+            <motion.div
+              initial={{ opacity: 0, y: -8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              transition={{ duration: 0.16 }}
+              className="mx-auto mt-2 max-w-screen-sm rounded-[18px] border border-slate-900/10 bg-white/92 p-2 backdrop-blur-xl shadow-[0_18px_48px_rgba(15,23,42,0.18)]"
+            >
+              <div className="grid grid-cols-4 gap-2">
+                {topNav.map((item) => {
+                  const Icon = item.icon
+                  const isActive = activeModule === item.key || (item.key === null && activeModule === null)
+                  return (
+                    <button
+                      key={item.label}
+                      onClick={() => handleNavigate(item.key)}
+                      className={`flex min-h-[56px] flex-col items-center justify-center gap-1 rounded-[14px] border px-2 py-2 text-[11px] font-semibold transition ${
+                        isActive ? 'border-slate-950 bg-slate-950 text-white shadow-md' : 'border-slate-200 bg-slate-50 text-slate-700'
+                      }`}
+                    >
+                      <Icon className="h-4 w-4" />
+                      <span className="truncate">{item.label}</span>
+                    </button>
+                  )
+                })}
+                <button
+                  onClick={onLogout}
+                  className="col-span-4 flex min-h-[48px] items-center justify-center rounded-[14px] border border-rose-200 bg-rose-50 text-xs font-semibold text-rose-700"
+                >
+                  Esci
+                </button>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </header>
+
+      <main className={`flex-1 min-h-0 ${menuOpen ? 'pt-[calc(env(safe-area-inset-top)+8.9rem)]' : 'pt-[calc(env(safe-area-inset-top)+4.1rem)]'}`}>
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={activeModule || 'mobile-home'}
+            variants={pageVariants}
+            initial="initial"
+            animate="animate"
+            exit="exit"
+            transition={{ duration: 0.22, ease: 'easeInOut' }}
+            className="h-full min-h-0 px-2 pb-2"
+            style={swipeState.isActive ? { transform: `translateX(${swipeState.x}px)` } : undefined}
+          >
+            {!activeModule ? (
+              <div className="mx-auto flex h-full max-w-screen-sm flex-col gap-2 overflow-hidden pb-16">
+                <section className="rounded-[16px] border border-slate-900/10 bg-white/86 p-3 shadow-[0_10px_26px_rgba(15,23,42,0.10)]">
+                  <div className="flex items-center gap-2">
+                    <LogoMark className="h-9 w-auto" />
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-sm font-semibold text-slate-950">{sessionInfo.session.title}</div>
+                      <div className="truncate text-[11px] font-medium text-slate-600">{sessionInfo.student.nickname}</div>
+                    </div>
+                    <button
+                      onClick={() => handleNavigate('documents')}
+                      className="rounded-[12px] border border-sky-200 bg-sky-50 px-3 py-2 text-[11px] font-semibold text-sky-800"
+                    >
+                      Docs
+                    </button>
+                  </div>
+                  <div className="mt-3 grid grid-cols-3 gap-2">
+                    <CompactStat label="Task" value={pendingTasksCount > 0 ? `${pendingTasksCount}` : '0'} />
+                    <CompactStat label="Ultimo" value={lastDocument ? 'Doc' : 'AI'} />
+                    <CompactStat label="Mode" value="Full" />
+                  </div>
+                </section>
+
+                <section className="grid flex-1 auto-rows-fr grid-cols-2 gap-2">
+                  {homeTiles.map((tile) => {
+                    const Icon = tile.icon
+                    return (
+                      <button
+                      key={tile.key}
+                      onClick={() => handleNavigate(tile.key)}
+                        className={`rounded-[16px] border p-3 text-left shadow-sm ${getMobileTileClass(tile.key, tile.tint)}`}
+                      >
+                        <div className="flex h-9 w-9 items-center justify-center rounded-[12px] border border-black/5 bg-white/75 text-slate-900 shadow-sm">
+                          <Icon className="h-4 w-4" />
+                        </div>
+                        <div className="mt-4 text-sm font-semibold text-slate-900">{tile.label}</div>
+                        <div className="mt-1 text-[11px] font-medium text-slate-700">{tile.meta}</div>
+                      </button>
+                    )
+                  })}
+                  {enabledModules.includes('desktop') && (
+                    <button
+                      onClick={() => handleNavigate('desktop')}
+                      className="col-span-2 flex items-center justify-between rounded-[16px] border border-slate-200 bg-white px-4 py-3 text-left shadow-sm"
+                    >
+                      <div>
+                        <div className="text-sm font-semibold text-slate-900">Desktop</div>
+                        <div className="text-[11px] font-medium text-slate-600">Workspace completo</div>
+                      </div>
+                      <ChevronRight className="h-4 w-4 text-slate-400" />
+                    </button>
+                  )}
+                </section>
+              </div>
+            ) : (
+              <div className="mx-auto flex h-full max-w-screen-sm min-h-0 flex-col overflow-hidden rounded-[16px] border border-slate-900/10 bg-white/90 shadow-[0_18px_48px_rgba(15,23,42,0.14)]">
+                <div className="flex items-center gap-3 border-b border-slate-200 px-3 py-2.5">
+                  <button onClick={() => handleNavigate(null)} className="rounded-[12px] border border-slate-200 bg-slate-50 px-3 py-2 text-[11px] font-semibold text-slate-700">
+                    Home
+                  </button>
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-sm font-semibold text-slate-900">{activeTitle}</div>
+                    <div className="truncate text-[11px] text-slate-500">{sessionInfo.session.title}</div>
+                  </div>
+                </div>
+                <div className="flex-1 min-h-0 overflow-hidden">
+                  <Suspense fallback={<div className="flex h-full items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-slate-500" /></div>}>
+                    <ModuleView
+                      moduleKey={activeModule}
+                      sessionId={sessionInfo.session.id}
+                      sessionName={sessionInfo.session.title}
+                      openTaskId={openTaskId}
+                      studentId={sessionInfo.student.id}
+                      studentName={sessionInfo.student.nickname}
+                      onTeacherbotNotificationClick={onTeacherbotNotificationClick}
+                      selectedTeacherbotId={selectedTeacherbotId}
+                      oggiImparoLesson={oggiImparoLesson}
+                      onOggiImparoLessonConsumed={onOggiImparoLessonConsumed}
+                      studentAccent={studentAccent}
+                      openDocumentTaskId={openDocumentTaskId}
+                      onOpenDocument={onOpenDocument}
+                      teacherTarget={sessionInfo.teacher ?? undefined}
+                      privateChatEnabled={privateChatEnabled}
+                    />
+                  </Suspense>
+                </div>
+              </div>
+            )}
+          </motion.div>
+        </AnimatePresence>
+      </main>
+
+      {activeModule !== 'chatbot' && (
+        <button
+          onClick={() => handleNavigate('chatbot')}
+          className="fixed bottom-4 right-3 z-50 flex h-12 w-12 items-center justify-center rounded-full bg-slate-950 text-white shadow-[0_18px_40px_rgba(15,23,42,0.28)]"
+        >
+          <Bot className="h-4.5 w-4.5" />
+        </button>
+      )}
+    </AppBackground>
+  )
+}
+
+function CompactStat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-2xl border border-white/35 bg-white/45 px-3 py-2 backdrop-blur-xl">
+      <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">{label}</div>
+      <div className="mt-1 truncate text-sm font-semibold text-slate-900">{value}</div>
+    </div>
+  )
+}
+
+function getMobileTileClass(key: string, tint: string) {
+  const base = 'bg-gradient-to-br'
+  if (key === 'chatbot') return `${base} from-sky-100 to-cyan-50 border-sky-200`
+  if (key === 'classe') return `${base} from-indigo-100 to-sky-50 border-indigo-200`
+  if (key === 'documents') return `${base} from-violet-100 to-fuchsia-50 border-violet-200`
+  if (key === 'notebook') return `${base} from-emerald-100 to-teal-50 border-emerald-200`
+  if (key === 'classification') return `${base} from-amber-100 to-orange-50 border-amber-200`
+  if (key === 'self_assessment') return `${base} from-rose-100 to-amber-50 border-rose-200`
+  return `${base} ${tint} border-slate-200`
 }
 
 // Home View Component
@@ -645,7 +952,7 @@ function HomeView({
   )
 }
 
-function ModuleView({ moduleKey, sessionId, sessionName, openTaskId, studentId, studentName, onTeacherbotNotificationClick, selectedTeacherbotId, oggiImparoLesson, onOggiImparoLessonConsumed, studentAccent, openDocumentTaskId, onOpenDocument }: {
+function ModuleView({ moduleKey, sessionId, sessionName, openTaskId, studentId, studentName, onTeacherbotNotificationClick, selectedTeacherbotId, oggiImparoLesson, onOggiImparoLessonConsumed, studentAccent, openDocumentTaskId, onOpenDocument, teacherTarget, privateChatEnabled }: {
   moduleKey: string;
   sessionId: string;
   sessionName?: string;
@@ -659,6 +966,8 @@ function ModuleView({ moduleKey, sessionId, sessionName, openTaskId, studentId, 
   studentAccent: StudentAccentId;
   openDocumentTaskId?: string | null;
   onOpenDocument?: (taskId: string) => void;
+  teacherTarget?: { id: string; name: string };
+  privateChatEnabled?: boolean;
 }) {
   const { t } = useTranslation()
   // Class chat module - full screen ChatSidebar
@@ -674,6 +983,8 @@ function ModuleView({ moduleKey, sessionId, sessionName, openTaskId, studentId, 
           isMobileView={true}
           className="h-full"
           onNotificationClick={onTeacherbotNotificationClick}
+          teacherTarget={teacherTarget}
+          privateChatEnabled={privateChatEnabled}
         />
       </div>
     )
@@ -737,6 +1048,14 @@ function ModuleView({ moduleKey, sessionId, sessionName, openTaskId, studentId, 
         <Suspense fallback={<div className="flex items-center justify-center h-full"><Loader2 className="h-6 w-6 animate-spin text-slate-400" /></div>}>
           <DesktopPage sessionId={sessionId} sessionName={sessionName} userType="student" accentColor={getStudentAccentTheme(loadStudentAccent()).accent} />
         </Suspense>
+      </div>
+    )
+  }
+
+  if (moduleKey === 'wiki') {
+    return (
+      <div className="h-full overflow-y-auto">
+        <StudentWikiPage />
       </div>
     )
   }

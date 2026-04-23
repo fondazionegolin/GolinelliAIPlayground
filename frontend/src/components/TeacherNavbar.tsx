@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, type CSSProperties } from 'react'
 import { Link, useNavigate, useLocation } from 'react-router-dom'
-import { User, Settings, LogOut, ChevronDown, Users, MessageSquare, FileText, Check, Brain, MonitorPlay, FileCode2, KeyRound, Loader2, LayoutDashboard, ShieldCheck } from 'lucide-react'
+import { User, Settings, LogOut, ChevronDown, Users, MessageSquare, FileText, Check, Brain, MonitorPlay, FileCode2, KeyRound, Loader2, LayoutDashboard, ShieldCheck, BookOpen } from 'lucide-react'
 import { Button } from './ui/button'
 import { useToast } from '@/components/ui/use-toast'
 import { LogoMark } from './LogoMark'
@@ -15,6 +15,7 @@ import { LanguageSwitcher } from '@/components/LanguageSwitcher'
 import { useTeacherProfile, useInvalidateTeacherProfile, TEACHER_PROFILE_KEY } from '@/hooks/useTeacherProfile'
 import { useQueryClient } from '@tanstack/react-query'
 import { NavbarCalendarClock } from './NavbarCalendarClock'
+import WhatsNewModal from './WhatsNewModal'
 
 interface TeacherProfile {
   firstName: string
@@ -60,6 +61,7 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
   const [showDropdown, setShowDropdown] = useState(false)
   const [showSessionsMenu, setShowSessionsMenu] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
+  const [showWhatsNew, setShowWhatsNew] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
   const sessionsMenuRef = useRef<HTMLDivElement>(null)
   const accentTheme = getTeacherAccentTheme(profile.uiAccent)
@@ -273,6 +275,7 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
     { path: '/teacher/classes', label: t('navbar.nav_classes'), icon: Users },
     { path: '/teacher/demo', label: 'Studentbot', icon: MonitorPlay },
     { path: '/teacher/documents', label: t('navbar.nav_documents'), icon: FileText },
+    { path: '/teacher/wiki', label: 'Wiki', icon: BookOpen },
     { path: '/teacher/ml-lab', label: 'ML Lab', icon: Brain },
     { path: '/teacher/notebooks', label: 'Notebook', icon: FileCode2 },
     { path: '/teacher/desktop', label: 'Desktop', icon: LayoutDashboard },
@@ -316,7 +319,16 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
                   </span>
                   <span className="font-black text-[#e85c8d]">.ai</span>
                 </span>
-                <span className="text-[9px] font-extrabold uppercase tracking-widest px-1.5 py-0.5 rounded-md bg-amber-50 text-amber-500 border border-amber-200 leading-none">BETA</span>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    setShowWhatsNew(true)
+                  }}
+                  className="text-[9px] font-extrabold uppercase tracking-widest px-1.5 py-0.5 rounded-md bg-amber-50 text-amber-500 border border-amber-200 leading-none transition-colors hover:bg-amber-100"
+                >
+                  BETA
+                </button>
               </div>
             </div>
 
@@ -537,6 +549,7 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
           </div>
         </div>
       </nav>
+      {showWhatsNew && <WhatsNewModal onClose={() => setShowWhatsNew(false)} />}
 
       {/* Settings Modal */}
       {showSettings && (
