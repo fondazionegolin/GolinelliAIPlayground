@@ -137,10 +137,20 @@
     "settings": "Impostazioni",
     "logout": "Esci",
     "profile": "Profilo",
+    "role_student": "Studente",
+    "role_teacher": "Docente",
     "language_label": "Lingua interfaccia",
     "nav_support": "Supporto",
     "nav_classes": "Classi",
     "nav_documents": "Documenti",
+    "nav_chatbot": "Chatbot",
+    "nav_tasks": "Compiti",
+    "nav_wiki": "Wiki",
+    "nav_ml_lab": "ML Lab",
+    "nav_notebook": "Notebook",
+    "nav_desktop": "Desktop",
+    "nav_studentbot": "Studentbot",
+    "nav_admin": "Pannello amministratore",
     "no_session": "Nessuna sessione",
     "sessions_title": "Sessioni Disponibili",
     "select_session_hint": "Seleziona la sessione di lavoro",
@@ -154,12 +164,22 @@
     "last_name": "Cognome",
     "email": "Email",
     "accent_color": "Colore accento",
-    "students_label": "studenti"
+    "students_label": "studenti",
+    "preview_banner": "Stai visualizzando l'interfaccia studente in modalità anteprima",
+    "preview_exit": "Esci dall'anteprima",
+    "nickname_locked": "Il nickname non può essere modificato",
+    "image_only_error": "Per favore seleziona un file immagine",
+    "image_max_5mb": "Il file deve essere inferiore a 5MB",
+    "image_max_2mb": "Il file deve essere inferiore a 2MB"
   },
 
   "teacher_dashboard": {
     "chat_title": "Chat sessione",
-    "chat_hint": "Seleziona una sessione per visualizzare la chat di classe e le chat private."
+    "chat_hint": "Seleziona una sessione per visualizzare la chat di classe e le chat private.",
+    "mobile_teacher_default": "Docente AI",
+    "session_tasks": "Compiti",
+    "chat_history": "Storico chat",
+    "class_chat": "Chat di classe"
   },
 
   "teacher_chat": {
@@ -312,6 +332,13 @@
     "welcome_body_mobile": "Pronto per una nuova sessione di apprendimento?",
     "tasks_all_done": "Tutto fatto!",
     "docs_your_work": "I tuoi lavori"
+  },
+  "student_nav": {
+    "desktop_label": "Desktop",
+    "desktop_desc": "Il tuo spazio personale con widget.",
+    "wiki_label": "Wiki",
+    "wiki_desc": "Guida completa alle funzioni della piattaforma.",
+    "notebook_label": "Notebook"
   },
 
   "tasks": {
@@ -500,7 +527,27 @@
     "send_error_title": "Errore invio",
     "send_error_body": "Impossibile inviare il documento",
     "select_text_first": "Seleziona prima un testo",
-    "ai_needs_selection": "L'AI ha bisogno di una selezione di testo per funzionare"
+    "ai_needs_selection": "L'AI ha bisogno di una selezione di testo per funzionare",
+    "title_my_documents": "I miei Documenti",
+    "teacher_materials": "Materiali del Docente",
+    "author_teacher": "Docente",
+    "author_class": "Classe",
+    "send_to_teacher_title": "Invia al Docente",
+    "send_to_teacher_body": "Il tuo {{type}} \"{{title}}\" verrà inviato al docente per la revisione."
+  },
+
+  "wiki": {
+    "search_placeholder": "Cerca nella wiki...",
+    "sections_count": "{{count}} sezioni",
+    "features_count": "{{visible}} / {{total}} funzioni",
+    "no_results_title": "Nessun risultato",
+    "no_results_body": "Prova con un termine più semplice.",
+    "active_section": "Sezione attiva",
+    "class_sharing": "Condivisione",
+    "standard_flow": "Flusso standard",
+    "usage_examples": "Esempi d'uso",
+    "output_and_options": "Output e possibilità",
+    "format": "Formato"
   },
 
   "content_editor": {

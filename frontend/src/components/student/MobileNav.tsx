@@ -3,6 +3,7 @@ import { motion } from 'framer-motion'
 import { Home, MessageSquare, Bot, Brain } from 'lucide-react'
 import { triggerHaptic } from '@/lib/haptics'
 import { loadStudentAccent, getStudentAccentTheme } from '@/lib/studentAccent'
+import { useTranslation } from 'react-i18next'
 
 interface MobileNavProps {
   activeModule: string | null
@@ -12,14 +13,14 @@ interface MobileNavProps {
   enabledModules?: string[]
 }
 
-const ALL_NAV_ITEMS = [
-  { key: null as string | null, icon: Home, label: 'Home' },
-  { key: 'chatbot', icon: Bot, label: 'AI' },
-  { key: 'classe', icon: MessageSquare, label: 'Classe' },
-  { key: 'classification', icon: Brain, label: 'ML' },
-]
-
 export function MobileNav({ activeModule, onNavigate, unreadMessages = 0, hidden = false, enabledModules }: MobileNavProps) {
+  const { t } = useTranslation()
+  const ALL_NAV_ITEMS = [
+    { key: null as string | null, icon: Home, label: t('student_dashboard.back_home') },
+    { key: 'chatbot', icon: Bot, label: 'AI' },
+    { key: 'classe', icon: MessageSquare, label: t('student_dashboard.chat_label') },
+    { key: 'classification', icon: Brain, label: 'ML' },
+  ]
   const ALWAYS_SHOWN = new Set<string | null>([null])
   const NAV_ITEMS = enabledModules
     ? ALL_NAV_ITEMS.filter(item => ALWAYS_SHOWN.has(item.key) || enabledModules.includes(item.key as string))

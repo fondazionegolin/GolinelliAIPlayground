@@ -4,7 +4,7 @@ import { cva, type VariantProps } from 'class-variance-authority'
 import { cn } from '@/lib/utils'
 
 const cardVariants = cva(
-  'rounded-2xl border text-[var(--text-primary)] transition-colors',
+  'rounded-xl border text-[var(--text-primary)] transition-colors',
   {
     variants: {
       surface: {
@@ -38,7 +38,7 @@ const cardSectionVariants = cva('', {
     density: {
       compact: 'p-4',
       default: 'p-6',
-      roomy: 'p-7',
+      roomy: 'p-8',
     },
     flushTop: {
       true: 'pt-0',
@@ -98,6 +98,7 @@ const CardTitle = React.forwardRef<
     ref={ref}
     className={cn(
       'text-[var(--font-size-2xl)] font-semibold leading-[var(--line-height-title)] tracking-[var(--letter-spacing-tight)]',
+      'text-[1.125rem]',
       className
     )}
     {...props}

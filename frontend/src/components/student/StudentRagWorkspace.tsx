@@ -113,7 +113,7 @@ function getLatestSessionSourceChunks(messages: RagMessage[]): RagChunk[] | null
 function EmbeddingExplainer({ theme }: { theme: AccentTheme }) {
   const [open, setOpen] = useState(false)
   return (
-    <div className="rounded-2xl border border-slate-200 bg-slate-50 overflow-hidden">
+    <div className="rounded-xl border border-slate-200 bg-slate-50 overflow-hidden">
       <button onClick={() => setOpen(!open)} className="flex w-full items-center gap-2 px-3 py-2 text-left">
         <Sparkles className="h-3.5 w-3.5 shrink-0" style={{ color: theme.text }} />
         <span className="text-[11px] font-semibold text-slate-600 flex-1">Come usa le fonti?</span>
@@ -128,8 +128,8 @@ function EmbeddingExplainer({ theme }: { theme: AccentTheme }) {
             { n: 4, title: 'Risposta vincolata', desc: "Il chatbot deve restare dentro i contenuti caricati e citare i riferimenti [[n]]." },
           ].map(({ n, title, desc }) => (
             <div key={n} className="flex items-start gap-2">
-              <div className="h-5 w-5 rounded-full flex items-center justify-center font-bold shrink-0 mt-0.5 text-[10px]"
-                style={{ backgroundColor: hex2rgba(theme.accent, 0.12), color: theme.text }}>
+              <div className="h-5 w-5 rounded-full flex items-center justify-center font-bold shrink-0 mt-0.5 bg-slate-100 text-[10px]"
+                style={{ color: theme.text }}>
                 {n}
               </div>
               <p><strong>{title}:</strong> {desc}</p>
@@ -169,8 +169,8 @@ function DocumentPanel({
           <BookOpen className="h-4 w-4" style={{ color: theme.text }} />
           <span className="text-sm font-semibold text-slate-800">Documenti</span>
           {docs.length > 0 && (
-            <span className="text-[10px] font-bold rounded-full px-1.5 py-0.5"
-              style={{ backgroundColor: hex2rgba(theme.accent, 0.12), color: theme.text }}>
+            <span className="text-[10px] font-bold rounded-full bg-slate-100 px-1.5 py-0.5"
+              style={{ color: theme.text }}>
               {docs.length}
             </span>
           )}
@@ -180,8 +180,8 @@ function DocumentPanel({
             accept=".pdf,.doc,.docx,.txt,.csv,.xlsx,.xls,.md"
             onChange={(e) => e.target.files && onUpload(e.target.files)} />
           <button onClick={() => fileRef.current?.click()} disabled={isUploading}
-            className="flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-semibold text-white transition disabled:opacity-50"
-            style={{ backgroundColor: theme.accent }}>
+            className="flex items-center gap-1.5 rounded-lg border bg-white px-3 py-1.5 text-xs font-semibold transition hover:bg-slate-50 disabled:opacity-50"
+            style={{ borderColor: hex2rgba(theme.accent, 0.35), color: theme.text }}>
             {isUploading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Upload className="h-3 w-3" />}
             Carica
           </button>
@@ -190,8 +190,8 @@ function DocumentPanel({
 
       {/* Upload progress */}
       {isUploading && (
-        <div className="rounded-2xl border p-3 space-y-2"
-          style={{ borderColor: hex2rgba(theme.accent, 0.25), backgroundColor: hex2rgba(theme.accent, 0.06) }}>
+        <div className="rounded-xl border bg-white p-3 space-y-2"
+          style={{ borderColor: hex2rgba(theme.accent, 0.25) }}>
           <div className="flex items-center gap-2">
             <Loader2 className="h-3.5 w-3.5 animate-spin shrink-0" style={{ color: theme.text }} />
             <p className="text-xs font-semibold" style={{ color: theme.text }}>Elaborazione in corso…</p>
@@ -209,15 +209,15 @@ function DocumentPanel({
             ))}
           </div>
           <div className="h-1.5 rounded-full bg-slate-200 overflow-hidden">
-            <div className="h-full rounded-full transition-all duration-500"
-              style={{ width: `${(uploadStep / (UPLOAD_STEPS.length - 1)) * 100}%`, backgroundColor: theme.accent }} />
+            <div className="h-full rounded-full bg-slate-500 transition-all duration-500"
+              style={{ width: `${(uploadStep / (UPLOAD_STEPS.length - 1)) * 100}%` }} />
           </div>
         </div>
       )}
 
       {/* Upload result */}
       {uploadResult && !isUploading && (
-        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-3 space-y-2">
+        <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 space-y-2">
           <div className="flex items-center gap-2 text-emerald-700">
             <CheckCircle2 className="h-4 w-4" />
             <span className="text-xs font-semibold">Documento pronto per le domande</span>
@@ -237,8 +237,8 @@ function DocumentPanel({
               <p className="text-[10px] font-semibold text-emerald-700 mb-1">Concetti chiave:</p>
               <div className="flex flex-wrap gap-1">
                 {uploadResult.key_concepts.slice(0, 8).map((c) => (
-                  <span key={c} className="text-[10px] rounded-full px-2 py-0.5"
-                    style={{ backgroundColor: hex2rgba(theme.accent, 0.12), color: theme.text }}>
+	                  <span key={c} className="text-[10px] rounded-full bg-white px-2 py-0.5"
+	                    style={{ color: theme.text }}>
                     {c}
                   </span>
                 ))}
@@ -265,16 +265,16 @@ function DocumentPanel({
           const isActive = activeDocForChunks === doc.id
           return (
             <div key={doc.id} onClick={() => onToggleDoc(doc.id)}
-              className="rounded-2xl border p-2.5 transition-all cursor-pointer"
+              className="rounded-xl border p-2.5 transition-all cursor-pointer"
               style={{
                 borderColor: isSelected ? hex2rgba(theme.accent, 0.4) : 'rgba(203,213,225,0.6)',
-                backgroundColor: isSelected ? hex2rgba(theme.accent, 0.07) : 'white',
+                backgroundColor: isSelected ? '#f8fafc' : 'white',
               }}>
               <div className="flex items-start gap-2">
-                <div className="mt-0.5 h-4 w-4 rounded border-2 shrink-0 flex items-center justify-center transition-all"
-                  style={isSelected
-                    ? { borderColor: theme.accent, backgroundColor: theme.accent }
-                    : { borderColor: '#cbd5e1' }}>
+	                  <div className="mt-0.5 h-4 w-4 rounded border-2 shrink-0 flex items-center justify-center transition-all"
+	                    style={isSelected
+	                    ? { borderColor: theme.accent, backgroundColor: '#0f172a' }
+	                    : { borderColor: '#cbd5e1' }}>
                   {isSelected && <CheckCircle2 className="h-3 w-3 text-white" />}
                 </div>
                 <div className="flex-1 min-w-0">
@@ -300,10 +300,10 @@ function DocumentPanel({
                   {(doc.status === 'ready' || doc.status === 'READY') && (
                     <button onClick={(e) => { e.stopPropagation(); onViewChunks(isActive ? null : doc.id) }}
                       title="Visualizza blocchi"
-                      className="p-1 rounded-lg transition-colors"
-                      style={isActive
-                        ? { color: theme.text, backgroundColor: hex2rgba(theme.accent, 0.12) }
-                        : { color: '#94a3b8' }}>
+	                      className="p-1 rounded-lg transition-colors"
+	                      style={isActive
+	                        ? { color: theme.text, backgroundColor: '#f1f5f9' }
+	                        : { color: '#94a3b8' }}>
                       <Layers className="h-3.5 w-3.5" />
                     </button>
                   )}
@@ -346,9 +346,9 @@ function CitedContent({
             <button key={i} onClick={() => chunk && onCitationClick(chunk, idx, sourceChunks)}
               className="inline-flex items-center justify-center h-5 min-w-5 px-1.5 rounded text-[10px] font-bold transition-all mx-0.5"
               style={isActive
-                ? { backgroundColor: theme.accent, color: 'white' }
-                : chunk
-                  ? { backgroundColor: hex2rgba(theme.accent, 0.12), color: theme.text }
+	                ? { backgroundColor: '#0f172a', color: 'white' }
+	                : chunk
+	                  ? { backgroundColor: '#f1f5f9', color: theme.text }
                   : { backgroundColor: '#f1f5f9', color: '#64748b' }}
               title={chunk ? `Fonte: ${chunk.document_title}${chunk.page ? ` — p.${chunk.page}` : ''}` : 'Fonte non disponibile'}>
               {seg.index}
@@ -394,14 +394,14 @@ function ChatPanel({
   return (
     <div className="flex flex-col h-full min-h-0">
       <div
-        className="mb-4 shrink-0 rounded-2xl border px-4 py-3"
-        style={{ borderColor: hex2rgba(theme.accent, 0.18), backgroundColor: hex2rgba(theme.accent, 0.05) }}
+	        className="mb-4 shrink-0 rounded-xl border bg-white px-4 py-3"
+	        style={{ borderColor: hex2rgba(theme.accent, 0.18) }}
       >
         <div className="flex items-center gap-2 flex-wrap">
-          <span
-            className="inline-flex items-center rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.12em]"
-            style={{ backgroundColor: hex2rgba(theme.accent, 0.14), color: theme.text }}
-          >
+	          <span
+	            className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.12em]"
+	            style={{ color: theme.text }}
+	          >
             Ricerca intelligente attiva
           </span>
           <span className="text-xs font-medium text-slate-600">
@@ -437,15 +437,15 @@ function ChatPanel({
         {messages.map((msg) => (
           <div key={msg.id} className={`flex gap-3 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
             {msg.role === 'assistant' && (
-              <div className="h-7 w-7 rounded-xl flex items-center justify-center shrink-0 mt-0.5"
-                style={{ backgroundColor: theme.accent }}>
-                <BookOpen className="h-3.5 w-3.5 text-white" />
-              </div>
+	              <div className="h-7 w-7 rounded-lg flex items-center justify-center shrink-0 mt-0.5 bg-slate-100"
+	                style={{ color: theme.text }}>
+	                <BookOpen className="h-3.5 w-3.5" />
+	              </div>
             )}
-            <div className="max-w-[85%] rounded-2xl px-4 py-3 text-sm"
-              style={msg.role === 'user'
-                ? { backgroundColor: theme.accent, color: 'white', borderRadius: '1rem 1rem 4px 1rem' }
-                : { backgroundColor: 'white', border: '1px solid #e2e8f0', color: '#1e293b', borderRadius: '1rem 1rem 1rem 4px', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
+	            <div className="max-w-[85%] rounded-xl px-4 py-3 text-sm"
+	              style={msg.role === 'user'
+	                ? { backgroundColor: '#0f172a', color: 'white', borderRadius: '0.75rem 0.75rem 4px 0.75rem' }
+	                : { backgroundColor: 'white', border: '1px solid #e2e8f0', color: '#1e293b', borderRadius: '0.75rem 0.75rem 0.75rem 4px', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
               {msg.role === 'assistant' ? (
                 <CitedContent content={msg.content} sourceChunks={msg.sourceChunks || []}
                   onCitationClick={onCitationClick} activeCitationIndex={activeCitationIndex} theme={theme} />
@@ -459,18 +459,17 @@ function ChatPanel({
         {/* Loading phases */}
         {ragPhase === 'searching' && (
           <div className="flex gap-3">
-            <div className="h-7 w-7 rounded-xl flex items-center justify-center shrink-0"
-              style={{ backgroundColor: hex2rgba(theme.accent, 0.12) }}>
+	            <div className="h-7 w-7 rounded-lg flex items-center justify-center shrink-0 bg-slate-100">
               <Search className="h-3.5 w-3.5 animate-pulse" style={{ color: theme.text }} />
             </div>
-            <div className="rounded-2xl rounded-bl-md px-4 py-3 shadow-sm border"
-              style={{ backgroundColor: hex2rgba(theme.accent, 0.06), borderColor: hex2rgba(theme.accent, 0.2) }}>
+	            <div className="rounded-xl rounded-bl-md bg-white px-4 py-3 shadow-sm border"
+	              style={{ borderColor: hex2rgba(theme.accent, 0.2) }}>
               <p className="text-xs font-medium" style={{ color: theme.text }}>Ricerca nelle fonti…</p>
               <p className="mt-1 text-[11px] text-slate-500">Sto combinando significato e corrispondenze testuali.</p>
               <div className="flex gap-1 mt-1.5">
                 {[0, 150, 300].map((d) => (
-                  <span key={d} className="w-1.5 h-1.5 rounded-full animate-bounce"
-                    style={{ backgroundColor: theme.accent, animationDelay: `${d}ms` }} />
+	                  <span key={d} className="w-1.5 h-1.5 rounded-full animate-bounce"
+	                    style={{ backgroundColor: '#64748b', animationDelay: `${d}ms` }} />
                 ))}
               </div>
             </div>
@@ -478,17 +477,16 @@ function ChatPanel({
         )}
         {ragPhase === 'generating' && (
           <div className="flex gap-3">
-            <div className="h-7 w-7 rounded-xl flex items-center justify-center shrink-0"
-              style={{ backgroundColor: theme.accent }}>
-              <Loader2 className="h-3.5 w-3.5 text-white animate-spin" />
-            </div>
-            <div className="bg-white border border-slate-200 rounded-2xl rounded-bl-md px-4 py-3 shadow-sm">
+	            <div className="h-7 w-7 rounded-lg flex items-center justify-center shrink-0 bg-slate-100">
+	              <Loader2 className="h-3.5 w-3.5 animate-spin" style={{ color: theme.text }} />
+	            </div>
+	            <div className="bg-white border border-slate-200 rounded-xl rounded-bl-md px-4 py-3 shadow-sm">
               <p className="text-xs text-slate-500 font-medium">Generazione risposta…</p>
               <p className="mt-1 text-[11px] text-slate-400">La risposta viene costruita solo a partire dai passaggi trovati.</p>
               <div className="flex gap-1 mt-1.5">
                 {[0, 150, 300].map((d) => (
-                  <span key={d} className="w-2 h-2 rounded-full animate-bounce"
-                    style={{ backgroundColor: theme.accent, animationDelay: `${d}ms` }} />
+	                  <span key={d} className="w-2 h-2 rounded-full animate-bounce"
+	                    style={{ backgroundColor: '#64748b', animationDelay: `${d}ms` }} />
                 ))}
               </div>
             </div>
@@ -496,7 +494,7 @@ function ChatPanel({
         )}
 
         {error && (
-          <div className="flex items-start gap-2 bg-red-50 border border-red-200 rounded-2xl px-4 py-3">
+	          <div className="flex items-start gap-2 bg-red-50 border border-red-200 rounded-xl px-4 py-3">
             <AlertCircle className="h-4 w-4 text-red-500 shrink-0 mt-0.5" />
             <p className="text-xs text-red-700">{error}</p>
           </div>
@@ -507,7 +505,7 @@ function ChatPanel({
 
       {/* Input */}
       <div className="shrink-0 pt-3 border-t border-slate-200 mt-3">
-        <div className={`flex gap-2 items-end rounded-2xl border bg-white p-2 transition-all ${isLoading ? 'opacity-70' : ''}`}
+	        <div className={`flex gap-2 items-end rounded-xl border bg-white p-2 transition-all ${isLoading ? 'opacity-70' : ''}`}
           style={{ borderColor: isLoading ? '#e2e8f0' : '#cbd5e1' }}
           onFocus={(e) => { if (!isLoading) (e.currentTarget as HTMLDivElement).style.borderColor = theme.accent }}
           onBlur={(e) => { (e.currentTarget as HTMLDivElement).style.borderColor = '#cbd5e1' }}>
@@ -518,8 +516,7 @@ function ChatPanel({
             rows={2} disabled={isLoading}
             className="flex-1 resize-none bg-transparent text-sm leading-relaxed text-slate-800 outline-none placeholder:text-slate-400 disabled:cursor-not-allowed" />
           <button onClick={handleSend} disabled={!input.trim() || isLoading}
-            className="h-8 w-8 rounded-xl flex items-center justify-center text-white transition disabled:opacity-40 shrink-0"
-            style={{ backgroundColor: theme.accent }}>
+	            className="h-8 w-8 rounded-lg flex items-center justify-center bg-slate-900 text-white transition hover:bg-slate-800 disabled:opacity-40 shrink-0">
             <Send className="h-3.5 w-3.5" />
           </button>
         </div>
@@ -572,7 +569,7 @@ function SourcePanel({
           <span className="text-[10px] px-2 py-0.5 rounded-full shrink-0"
             style={labelBadge.amber
               ? { backgroundColor: '#fef3c7', color: '#92400e' }
-              : { backgroundColor: hex2rgba(theme.accent, 0.1), color: theme.text }}>
+	              : { backgroundColor: '#f1f5f9', color: theme.text }}>
             {labelBadge.text}
           </span>
         )}
@@ -598,17 +595,17 @@ function SourcePanel({
           const isHighlighted = highlightedChunk?.id === chunk.id
           return (
             <div key={chunk.id} ref={isHighlighted ? highlightRef : undefined}
-              className="rounded-2xl border p-3 transition-all duration-300"
+              className="rounded-xl border p-3 transition-all duration-300"
               style={isHighlighted
                 ? {
                     borderColor: hex2rgba(theme.accent, 0.5),
-                    backgroundColor: hex2rgba(theme.accent, 0.07),
+	                    backgroundColor: '#f8fafc',
                     boxShadow: `0 0 0 2px ${hex2rgba(theme.accent, 0.2)}`,
                   }
                 : { borderColor: '#e2e8f0', backgroundColor: 'white' }}>
               <div className="flex items-center gap-2 mb-2">
                 <span className="text-[10px] font-bold rounded-full px-2 py-0.5"
-                  style={{ backgroundColor: hex2rgba(theme.accent, 0.12), color: theme.text }}>
+	                  style={{ backgroundColor: '#f1f5f9', color: theme.text }}>
                   {sourceChunks || pendingChunks ? `[[${i + 1}]]` : `#${(chunk.chunk_index ?? i) + 1}`}
                 </span>
                 {chunk.document_title && (
@@ -618,7 +615,7 @@ function SourcePanel({
                 {chunk.score !== undefined && (
                   <div className="ml-auto shrink-0 flex items-center gap-1.5">
                     <div className="h-1.5 w-14 rounded-full bg-slate-200 overflow-hidden">
-                      <div className="h-full rounded-full" style={{ width: `${Math.min(100, chunk.score * 100)}%`, backgroundColor: theme.accent }} />
+	                      <div className="h-full rounded-full bg-slate-500" style={{ width: `${Math.min(100, chunk.score * 100)}%` }} />
                     </div>
                     <span className="text-[10px] text-slate-400">{(chunk.score * 100).toFixed(0)}%</span>
                   </div>
@@ -839,7 +836,7 @@ export default function StudentRagWorkspace({
         <div className="relative flex-1 min-w-0" ref={sessionMenuRef}>
           <button
             onClick={() => setSessionMenuOpen((o) => !o)}
-            className="flex items-center gap-2 px-3 py-2 rounded-2xl bg-white border border-slate-200 hover:border-slate-300 transition-all text-left w-full max-w-sm shadow-sm"
+            className="flex items-center gap-2 px-3 py-2 rounded-xl bg-white border border-slate-200 hover:border-slate-300 transition-all text-left w-full max-w-sm shadow-sm"
           >
             <Database className="h-3.5 w-3.5 shrink-0" style={{ color: theme.text }} />
             <div className="min-w-0 flex-1">
@@ -850,14 +847,13 @@ export default function StudentRagWorkspace({
           </button>
 
           {sessionMenuOpen && (
-            <div className="absolute top-full left-0 mt-1 w-72 bg-white rounded-2xl border border-slate-200 shadow-xl z-50 overflow-hidden">
+            <div className="absolute top-full left-0 mt-1 w-72 bg-white rounded-xl border border-slate-200 shadow-xl z-50 overflow-hidden">
               <div className="p-2 border-b border-slate-100">
                 <button
                   onClick={() => { setSessionMenuOpen(false); onNewSession() }}
                   className="flex items-center gap-2 w-full px-3 py-2 rounded-xl text-left transition-colors hover:bg-slate-50"
                 >
-                  <div className="h-6 w-6 rounded-lg flex items-center justify-center shrink-0"
-                    style={{ backgroundColor: hex2rgba(theme.accent, 0.12) }}>
+	                  <div className="h-6 w-6 rounded-lg flex items-center justify-center shrink-0 bg-slate-100">
                     <Plus className="h-3.5 w-3.5" style={{ color: theme.text }} />
                   </div>
                   <span className="text-xs font-semibold" style={{ color: theme.text }}>Nuova sessione</span>
@@ -873,7 +869,7 @@ export default function StudentRagWorkspace({
                   return (
                     <div key={s.id}
                       className="flex items-start gap-2 w-full px-3 py-2 rounded-xl text-left transition-colors hover:bg-slate-50"
-                      style={isCurrent ? { backgroundColor: hex2rgba(theme.accent, 0.08) } : {}}>
+	                      style={isCurrent ? { backgroundColor: '#f8fafc' } : {}}>
                       <Clock className="h-3.5 w-3.5 mt-0.5 shrink-0 text-slate-400" />
                       <button
                         onClick={() => { setSessionMenuOpen(false); onSwitchSession(s.id) }}
@@ -882,8 +878,8 @@ export default function StudentRagWorkspace({
                         <div className="flex items-center gap-1">
                           <span className="text-xs font-semibold text-slate-700 truncate">{s.name}</span>
                           {isCurrent && (
-                            <span className="text-[9px] px-1.5 py-0.5 rounded-full shrink-0 font-bold"
-                              style={{ backgroundColor: hex2rgba(theme.accent, 0.12), color: theme.text }}>
+	                            <span className="text-[9px] px-1.5 py-0.5 rounded-full shrink-0 font-bold"
+	                              style={{ backgroundColor: '#f1f5f9', color: theme.text }}>
                               attiva
                             </span>
                           )}
@@ -910,8 +906,7 @@ export default function StudentRagWorkspace({
         <button
           onClick={onNewSession}
           title="Nuova sessione"
-          className="flex items-center gap-1.5 px-3 py-2 rounded-2xl text-xs font-semibold text-white shadow-sm shrink-0 transition-opacity hover:opacity-90"
-          style={{ backgroundColor: theme.accent }}
+	          className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-900 text-xs font-semibold text-white shadow-sm shrink-0 transition-colors hover:bg-slate-800"
         >
           <Plus className="h-3.5 w-3.5" />
           Nuova
@@ -931,10 +926,10 @@ export default function StudentRagWorkspace({
             <div className="w-px flex-1 bg-slate-200 mx-auto" />
             {docs.map((doc) => (
               <div key={doc.id} title={doc.title}
-                className="w-7 h-7 rounded-lg flex items-center justify-center text-[10px] font-bold cursor-pointer transition-colors"
-                style={selectedDocIds.includes(doc.id)
-                  ? { backgroundColor: theme.accent, color: 'white' }
-                  : { backgroundColor: '#f1f5f9', color: '#64748b' }}
+	                className="w-7 h-7 rounded-lg flex items-center justify-center text-[10px] font-bold cursor-pointer transition-colors"
+	                style={selectedDocIds.includes(doc.id)
+	                  ? { backgroundColor: '#0f172a', color: 'white' }
+	                  : { backgroundColor: '#f1f5f9', color: '#64748b' }}
                 onClick={() => toggleDocSelection(doc.id)}>
                 {doc.title.slice(0, 1).toUpperCase()}
               </div>
@@ -966,7 +961,7 @@ export default function StudentRagWorkspace({
       </div>
 
       {/* Center: Chat */}
-      <div className="flex-1 min-w-0 min-h-0 flex flex-col bg-white mx-2 my-3 rounded-[24px] border border-slate-200 shadow-sm overflow-hidden">
+	      <div className="flex-1 min-w-0 min-h-0 flex flex-col bg-white mx-2 my-3 rounded-xl border border-slate-200 shadow-sm overflow-hidden">
         <div className="flex-1 min-h-0 p-4 flex flex-col overflow-hidden">
           <ChatPanel
             messages={messages} ragPhase={ragPhase}
@@ -978,7 +973,7 @@ export default function StudentRagWorkspace({
       </div>
 
       {/* Right: Sources */}
-      <div className="w-72 shrink-0 flex flex-col bg-white mr-2 my-3 rounded-[24px] border border-slate-200 shadow-sm overflow-hidden">
+	      <div className="w-72 shrink-0 flex flex-col bg-white mr-2 my-3 rounded-xl border border-slate-200 shadow-sm overflow-hidden">
         <div className="flex-1 min-h-0 p-4 flex flex-col overflow-hidden">
           <SourcePanel
             activeDoc={activeDoc} chunks={displayChunks}

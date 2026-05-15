@@ -8,10 +8,9 @@ import {
   Eye,
   GraduationCap,
   School,
-  Menu,
-  X,
   FlaskConical
 } from 'lucide-react'
+import { X } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth'
 import { authApi } from '@/lib/api'
 import { Button } from '@/components/ui/button'
@@ -147,7 +146,6 @@ const DottedGridBackground = () => {
 export default function LandingPage() {
   const { t } = useTranslation()
   const [activeTab, setActiveTab] = useState<'home' | 'teachers' | 'students'>('home')
-  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
   const [openDocument, setOpenDocument] = useState<null | 'privacy' | 'ai-act'>(null)
 
   const documentMeta = {
@@ -165,7 +163,6 @@ export default function LandingPage() {
 
   const switchTab = (tab: 'home' | 'teachers' | 'students') => {
     setActiveTab(tab)
-    setIsMobileMenuOpen(false)
   }
 
   return (
@@ -173,90 +170,91 @@ export default function LandingPage() {
       <DottedGridBackground />
 
       {/* --- Navbar --- */}
-      <nav className="sticky top-0 z-50 w-full border-b border-slate-200/80 bg-white/92 px-6 py-4 backdrop-blur-md flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-3 cursor-pointer" onClick={() => switchTab('home')}>
-            <img src="/logo_new.png" alt="Golinelli AI" className="h-10 w-auto shadow-sm rounded-md" />
-            <span className="text-2xl tracking-tight" style={{ fontFamily: '"SofiaPro"' }}>
-              <span className="font-bold text-[#2d2d2d]/85">Golinelli</span>
-              <span className="font-black text-[#e85c8d]">.ai</span>
-            </span>
+      <nav className="sticky top-0 z-50 w-full border-b border-slate-200/80 bg-white px-4 py-4 shadow-sm md:px-6 md:py-4">
+        <div className="mx-auto max-w-screen-2xl">
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-3 cursor-pointer" onClick={() => switchTab('home')}>
+                <img src="/logo_new.png" alt="Golinelli AI" className="h-10 w-auto rounded-md shadow-sm" />
+                <span className="text-2xl tracking-tight" style={{ fontFamily: '"SofiaPro"' }}>
+                  <span className="font-bold text-[#2d2d2d]/85">Golinelli</span>
+                  <span className="font-black text-[#e85c8d]">.ai</span>
+                </span>
+              </div>
+              <div className="mx-1 hidden h-7 w-px bg-slate-200 md:block" />
+              <a
+                href="https://www.fondazionegolinelli.it"
+                target="_blank"
+                rel="noreferrer"
+                className="hidden items-center gap-2 group md:flex"
+              >
+                <img src="/golinelli-logo.svg" alt="Fondazione Golinelli" className="h-8 w-auto opacity-70 transition-opacity group-hover:opacity-100" />
+              </a>
+            </div>
+
+            <div className="hidden md:flex items-center gap-1 rounded-full border border-slate-200/80 bg-slate-50/90 p-1">
+              <TabButton active={activeTab === 'home'} onClick={() => switchTab('home')} color="#e85c8d">{t('landing.nav_explore')}</TabButton>
+              <TabButton active={activeTab === 'teachers'} onClick={() => switchTab('teachers')} color="#a855f7">{t('landing.nav_teachers')}</TabButton>
+              <TabButton active={activeTab === 'students'} onClick={() => switchTab('students')} color="#38bdf8">{t('landing.nav_students')}</TabButton>
+            </div>
+
+            <div className="flex items-center gap-3">
+              <div className="hidden md:flex items-center gap-3">
+                <button
+                  onClick={() => setOpenDocument('privacy')}
+                  className="flex items-center gap-1.5 px-2 py-1 text-xs font-medium text-slate-500 transition-colors hover:text-[#e85c8d]"
+                >
+                  <ShieldCheck size={13} />
+                  Privacy
+                </button>
+                <button
+                  onClick={() => setOpenDocument('ai-act')}
+                  className="flex items-center gap-1.5 px-2 py-1 text-xs font-medium text-slate-500 transition-colors hover:text-[#a855f7]"
+                >
+                  <Sparkles size={13} />
+                  AI Act
+                </button>
+              </div>
+              <LanguageSwitcher variant="row" />
+            </div>
           </div>
-          <div className="hidden md:block h-7 w-px bg-slate-200 mx-1" />
-          <a
-            href="https://www.fondazionegolinelli.it"
-            target="_blank"
-            rel="noreferrer"
-            className="hidden md:flex items-center gap-2 group"
-          >
-            <img src="/golinelli-logo.svg" alt="Fondazione Golinelli" className="h-8 w-auto opacity-70 group-hover:opacity-100 transition-opacity" />
-          </a>
-        </div>
 
-        {/* Desktop Menu */}
-        <div className="hidden md:flex items-center gap-1 rounded-full border border-slate-200/80 bg-slate-50/90 p-1">
-          <TabButton active={activeTab === 'home'} onClick={() => switchTab('home')} color="#e85c8d">{t('landing.nav_explore')}</TabButton>
-          <TabButton active={activeTab === 'teachers'} onClick={() => switchTab('teachers')} color="#a855f7">{t('landing.nav_teachers')}</TabButton>
-          <TabButton active={activeTab === 'students'} onClick={() => switchTab('students')} color="#38bdf8">{t('landing.nav_students')}</TabButton>
+          <div className="mt-4 space-y-3 md:hidden">
+            <div className="grid grid-cols-1 gap-2">
+              <MobileNavButton active={activeTab === 'home'} onClick={() => switchTab('home')} tone="rose">
+                {t('landing.nav_explore')}
+              </MobileNavButton>
+              <MobileNavButton active={activeTab === 'teachers'} onClick={() => switchTab('teachers')} tone="violet">
+                {t('landing.nav_teachers')}
+              </MobileNavButton>
+              <MobileNavButton active={activeTab === 'students'} onClick={() => switchTab('students')} tone="sky">
+                {t('landing.nav_students')}
+              </MobileNavButton>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                onClick={() => setOpenDocument('privacy')}
+                className="flex items-center justify-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm font-medium text-slate-700"
+              >
+                <ShieldCheck size={15} />
+                Privacy
+              </button>
+              <button
+                onClick={() => setOpenDocument('ai-act')}
+                className="flex items-center justify-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm font-medium text-slate-700"
+              >
+                <Sparkles size={15} />
+                AI Act
+              </button>
+            </div>
+          </div>
         </div>
-
-        <div className="hidden md:flex items-center gap-3">
-          <button
-            onClick={() => setOpenDocument('privacy')}
-            className="flex items-center gap-1.5 text-xs font-medium text-slate-500 hover:text-[#e85c8d] transition-colors px-2 py-1"
-          >
-            <ShieldCheck size={13} />
-            Privacy
-          </button>
-          <button
-            onClick={() => setOpenDocument('ai-act')}
-            className="flex items-center gap-1.5 text-xs font-medium text-slate-500 hover:text-[#a855f7] transition-colors px-2 py-1"
-          >
-            <Sparkles size={13} />
-            AI Act
-          </button>
-          <LanguageSwitcher variant="row" />
-        </div>
-
-        {/* Mobile Menu Toggle */}
-        <button className="md:hidden p-2 text-slate-700" onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}>
-          {isMobileMenuOpen ? <X /> : <Menu />}
-        </button>
       </nav>
 
-      {/* --- Mobile Menu Overlay --- */}
-      <AnimatePresence>
-        {isMobileMenuOpen && (
-          <motion.div
-            initial={{ opacity: 0, y: -20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -20 }}
-            className="absolute top-20 left-0 right-0 z-40 border-b border-slate-200 bg-white/96 p-4 md:hidden flex flex-col gap-2"
-          >
-            <Button variant={activeTab === 'home' ? 'default' : 'ghost'} onClick={() => switchTab('home')} className="w-full justify-start">{t('landing.nav_explore')}</Button>
-            <Button variant={activeTab === 'teachers' ? 'default' : 'ghost'} onClick={() => switchTab('teachers')} className="w-full justify-start">{t('landing.nav_teacher_area')}</Button>
-            <Button variant={activeTab === 'students' ? 'default' : 'ghost'} onClick={() => switchTab('students')} className="w-full justify-start">{t('landing.nav_student_area')}</Button>
-            <button
-              onClick={() => { setOpenDocument('privacy'); setIsMobileMenuOpen(false) }}
-              className="flex items-center gap-2 px-3 py-2 text-sm text-slate-600 hover:text-[#e85c8d] transition-colors"
-            >
-              <ShieldCheck size={15} /> Privacy
-            </button>
-            <button
-              onClick={() => { setOpenDocument('ai-act'); setIsMobileMenuOpen(false) }}
-              className="flex items-center gap-2 px-3 py-2 text-sm text-slate-600 hover:text-[#a855f7] transition-colors"
-            >
-              <Sparkles size={15} /> AI Act
-            </button>
-            <div className="pt-1"><LanguageSwitcher variant="full" /></div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
       {/* --- Main Content Area --- */}
-      <main className="flex-grow flex items-center justify-center p-4 md:p-8 relative overflow-hidden">
+      <main className="relative flex flex-grow items-start justify-center overflow-hidden p-4 py-6 md:items-center md:p-8">
         <AnimatePresence mode="wait">
-          {activeTab === 'home' && <HomeSection key="home" onCta={() => switchTab('teachers')} />}
+          {activeTab === 'home' && <HomeSection key="home" onTeacherCta={() => switchTab('teachers')} onStudentCta={() => switchTab('students')} />}
           {activeTab === 'teachers' && <TeachersSection key="teachers" />}
           {activeTab === 'students' && <StudentsSection key="students" />}
         </AnimatePresence>
@@ -320,6 +318,41 @@ export default function LandingPage() {
   )
 }
 
+function MobileNavButton({
+  active,
+  children,
+  onClick,
+  tone,
+}: {
+  active: boolean
+  children: React.ReactNode
+  onClick: () => void
+  tone: 'rose' | 'violet' | 'sky'
+}) {
+  const toneClass = tone === 'rose'
+    ? 'border-rose-200 text-rose-700'
+    : tone === 'violet'
+      ? 'border-violet-200 text-violet-700'
+      : 'border-sky-200 text-sky-700'
+
+  const activeClass = tone === 'rose'
+    ? 'bg-rose-600 border-rose-600 text-white'
+    : tone === 'violet'
+      ? 'bg-violet-600 border-violet-600 text-white'
+      : 'bg-sky-600 border-sky-600 text-white'
+
+  return (
+    <button
+      onClick={onClick}
+      className={`w-full rounded-lg border px-4 py-3 text-left text-sm font-semibold transition-colors ${
+        active ? activeClass : `bg-white ${toneClass}`
+      }`}
+    >
+      {children}
+    </button>
+  )
+}
+
 function TabButton({ active, children, onClick, color = '#1e293b' }: {
   active: boolean
   children: React.ReactNode
@@ -346,7 +379,13 @@ function TabButton({ active, children, onClick, color = '#1e293b' }: {
   )
 }
 
-function HomeSection({ onCta }: { onCta: () => void }) {
+function HomeSection({
+  onTeacherCta,
+  onStudentCta,
+}: {
+  onTeacherCta: () => void
+  onStudentCta: () => void
+}) {
   const { t } = useTranslation()
 
   const FEATURES = [
@@ -376,9 +415,9 @@ function HomeSection({ onCta }: { onCta: () => void }) {
     <motion.div
       initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -20 }} transition={{ duration: 0.5 }}
-      className="max-w-5xl w-full grid md:grid-cols-2 gap-12 items-center"
+      className="grid w-full max-w-5xl gap-6 md:grid-cols-2 md:items-center md:gap-12"
     >
-      <div className="space-y-6 text-center md:text-left">
+      <div className="rounded-2xl border border-slate-200 bg-white p-5 text-left shadow-sm md:border-0 md:bg-transparent md:p-0 md:shadow-none">
         <div className="inline-flex items-center gap-2 rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-xs font-semibold uppercase tracking-wider text-sky-700">
           <span className="relative flex h-2 w-2">
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
@@ -387,30 +426,28 @@ function HomeSection({ onCta }: { onCta: () => void }) {
           {t('landing.nav_explore')}
         </div>
 
-        <h1 className="text-4xl md:text-6xl font-black text-slate-900 leading-tight">
+        <h1 className="mt-4 text-4xl font-black leading-tight text-slate-900 md:text-6xl">
           L'Intelligenza Artificiale <br />
           <span className="text-sky-700">
             entra in classe.
           </span>
         </h1>
 
-        <p className="text-lg text-slate-600 leading-relaxed max-w-lg mx-auto md:mx-0">
+        <p className="mt-4 max-w-lg text-base leading-relaxed text-slate-600 md:text-lg">
           Un ambiente sicuro, controllato e creativo dove docenti e studenti esplorano le potenzialità dell'AI Generativa.
         </p>
 
-        <div className="flex flex-col sm:flex-row gap-4 justify-center md:justify-start">
-          <Button size="lg" onClick={onCta} className="rounded-full bg-slate-900 px-8 text-white hover:bg-slate-800">
-            Inizia Ora
+        <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <Button tone="accent" surface="solid" size="lg" onClick={onTeacherCta} className="h-12 w-full justify-center rounded-lg text-base">
+            Area docenti
           </Button>
-          <a href="https://www.fondazionegolinelli.it" target="_blank" rel="noreferrer">
-            <Button variant="outline" size="lg" className="rounded-full px-8 border-slate-300">
-              Scopri di più
-            </Button>
-          </a>
+          <Button tone="neutral" surface="outline" size="lg" onClick={onStudentCta} className="h-12 w-full justify-center rounded-lg text-base">
+            Accesso studenti
+          </Button>
         </div>
 
-        <div className="flex justify-center md:justify-start">
-          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 text-emerald-700 text-xs font-medium border border-emerald-200">
+        <div className="mt-3 flex">
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700">
             <span className="relative flex h-2 w-2">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
               <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
@@ -420,14 +457,14 @@ function HomeSection({ onCta }: { onCta: () => void }) {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:gap-4">
         {FEATURES.map((f, i) => (
           <motion.div
             key={f.title}
             initial={{ opacity: 0, scale: 0.9 }}
             animate={{ opacity: 1, scale: 1 }}
             transition={{ delay: 0.1 * i }}
-            className="rounded-[28px] border border-slate-200/90 bg-white/90 p-5 transition-all hover:-translate-y-1"
+            className="rounded-2xl border border-slate-200/90 bg-white p-5 transition-all hover:-translate-y-1"
           >
             <div className={`w-10 h-10 rounded-2xl ${f.bg} ${f.color} flex items-center justify-center mb-3`}>
               <f.icon size={20} />
@@ -460,7 +497,7 @@ function ForgotPasswordModal({ onClose }: { onClose: () => void }) {
 
   return (
     <div className="fixed inset-0 z-[200] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl shadow-2xl border border-slate-100 p-6 w-full max-w-sm" onClick={e => e.stopPropagation()}>
+      <div className="bg-white rounded-xl shadow-[var(--shadow-xl)] border border-slate-200 p-6 w-full max-w-sm" onClick={e => e.stopPropagation()}>
         {sent ? (
           <div className="text-center py-4">
             <div className="w-12 h-12 rounded-full bg-green-100 flex items-center justify-center mx-auto mb-4">
@@ -468,7 +505,7 @@ function ForgotPasswordModal({ onClose }: { onClose: () => void }) {
             </div>
             <h3 className="text-base font-bold text-slate-800 mb-1">Email inviata</h3>
             <p className="text-sm text-slate-500 mb-4">Se la mail è registrata riceverai un link per reimpostare la password entro qualche minuto.</p>
-            <button onClick={onClose} className="w-full h-10 rounded-xl bg-slate-900 text-white text-sm font-semibold hover:bg-slate-700 transition-colors">Chiudi</button>
+            <Button tone="neutral" surface="solid" className="w-full">Chiudi</Button>
           </div>
         ) : (
           <>
@@ -489,7 +526,7 @@ function ForgotPasswordModal({ onClose }: { onClose: () => void }) {
                 onChange={e => setEmail(e.target.value)}
                 className="bg-slate-50 border-slate-200"
               />
-              <Button type="submit" className="w-full h-10" style={{ backgroundColor: '#a855f7' }} disabled={loading || !email.trim()}>
+              <Button type="submit" tone="accent" surface="solid" className="w-full" disabled={loading || !email.trim()}>
                 {loading ? (
                   <span className="flex items-center gap-2"><svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/></svg>Invio...</span>
                 ) : 'Invia link di reset'}
@@ -536,18 +573,18 @@ function TeachersSection() {
     <>
     <motion.div
       initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }}
-      exit={{ opacity: 0, x: -20 }} className="max-w-md w-full"
+      exit={{ opacity: 0, x: -20 }} className="w-full max-w-md"
     >
-      <div className="overflow-hidden rounded-[30px] border border-slate-200/90 bg-white/94">
-        <div className="border-b border-violet-200/80 bg-violet-50 p-6 text-center text-slate-900">
+      <div className="overflow-hidden rounded-xl border border-slate-200/90 bg-white/94 shadow-[var(--shadow-md)]">
+        <div className="border-b border-blue-100 bg-blue-50 px-5 py-5 text-left text-slate-900 md:p-6 md:text-center">
           <div className="relative z-10">
-            <School className="mx-auto mb-3 h-12 w-12 text-violet-700" />
+            <School className="mb-3 h-12 w-12 text-blue-700 md:mx-auto" />
             <h2 className="text-2xl font-bold">{t('landing.nav_teacher_area')}</h2>
             <p className="text-sm text-slate-600">{t('login.subtitle')}</p>
           </div>
         </div>
 
-        <div className="p-8">
+        <div className="p-5 md:p-8">
           <form onSubmit={handleLogin} className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="email">{t('teacher_request.email')}</Label>
@@ -555,23 +592,23 @@ function TeachersSection() {
                 id="email" type="email"
                 placeholder={t('login.email_placeholder')}
                 value={email} onChange={(e) => setEmail(e.target.value)}
-                className="border-slate-200 bg-slate-50 focus:ring-indigo-500"
+                className="border-slate-200 bg-slate-50 focus:ring-blue-500"
                 required
               />
             </div>
             <div className="space-y-2">
               <div className="flex justify-between">
                 <Label htmlFor="password">Password</Label>
-                <button type="button" onClick={() => setShowForgot(true)} className="text-xs text-violet-700 hover:underline">Recupera?</button>
+                <button type="button" onClick={() => setShowForgot(true)} className="text-xs text-blue-700 hover:underline">Recupera?</button>
               </div>
               <Input
                 id="password" type="password"
                 value={password} onChange={(e) => setPassword(e.target.value)}
-                className="border-slate-200 bg-slate-50 focus:ring-indigo-500"
+                className="border-slate-200 bg-slate-50 focus:ring-blue-500"
                 required
               />
             </div>
-            <Button type="submit" className="h-11 w-full text-base" style={{ backgroundColor: '#8b5cf6' }} disabled={loading}>
+            <Button type="submit" tone="accent" surface="solid" className="h-12 w-full text-base" disabled={loading}>
               {loading ? t('login.logging_in') : t('login.login_btn')}
             </Button>
           </form>
@@ -579,7 +616,7 @@ function TeachersSection() {
           <div className="mt-8 border-t border-slate-100 pt-6 text-center">
             <p className="text-sm text-slate-500 mb-3">Non hai ancora un account?</p>
             <Link to="/teacher-request">
-              <Button variant="outline" className="w-full border-violet-200 text-violet-700 hover:bg-violet-50 hover:text-violet-800">
+              <Button tone="accent" surface="outline" className="w-full">
                 {t('teacher_request.title')}
               </Button>
             </Link>
@@ -602,19 +639,19 @@ function StudentsSection() {
   return (
     <motion.div
       initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }}
-      exit={{ opacity: 0, x: 20 }} className="max-w-md w-full"
+      exit={{ opacity: 0, x: 20 }} className="w-full max-w-md"
     >
-      <div className="overflow-hidden rounded-[30px] border border-slate-200/90 bg-white/94">
-        <div className="border-b border-sky-200/80 bg-sky-50 p-6 text-center text-slate-900">
-          <GraduationCap className="mx-auto mb-3 h-12 w-12 text-sky-700" />
+      <div className="overflow-hidden rounded-xl border border-slate-200/90 bg-white/94 shadow-[var(--shadow-md)]">
+        <div className="border-b border-blue-100 bg-blue-50 px-5 py-5 text-left text-slate-900 md:p-6 md:text-center">
+          <GraduationCap className="mb-3 h-12 w-12 text-sky-700 md:mx-auto" />
           <h2 className="text-2xl font-bold">{t('landing.nav_student_area')}</h2>
           <p className="text-sm text-slate-600">{t('student_join.subtitle')}</p>
         </div>
 
-        <div className="p-8">
+        <div className="p-5 md:p-8">
           <StudentAccessForm
             submitButtonClassName="group h-11 w-full text-base"
-            submitButtonStyle={{ backgroundColor: '#0ea5e9' }}
+            submitButtonStyle={{}}
           />
         </div>
       </div>

@@ -137,10 +137,20 @@
     "settings": "Settings",
     "logout": "Log out",
     "profile": "Profile",
+    "role_student": "Student",
+    "role_teacher": "Teacher",
     "language_label": "Interface language",
     "nav_support": "Support",
     "nav_classes": "Classes",
     "nav_documents": "Documents",
+    "nav_chatbot": "Chatbot",
+    "nav_tasks": "Tasks",
+    "nav_wiki": "Wiki",
+    "nav_ml_lab": "ML Lab",
+    "nav_notebook": "Notebook",
+    "nav_desktop": "Desktop",
+    "nav_studentbot": "Studentbot",
+    "nav_admin": "Admin panel",
     "no_session": "No session",
     "sessions_title": "Available Sessions",
     "select_session_hint": "Select your working session",
@@ -154,12 +164,22 @@
     "last_name": "Last name",
     "email": "Email",
     "accent_color": "Accent colour",
-    "students_label": "students"
+    "students_label": "students",
+    "preview_banner": "You are viewing the student interface in preview mode",
+    "preview_exit": "Exit preview",
+    "nickname_locked": "The nickname cannot be changed",
+    "image_only_error": "Please select an image file",
+    "image_max_5mb": "The file must be smaller than 5MB",
+    "image_max_2mb": "The file must be smaller than 2MB"
   },
 
   "teacher_dashboard": {
     "chat_title": "Session chat",
-    "chat_hint": "Select a session to view the class chat and private chats."
+    "chat_hint": "Select a session to view the class chat and private chats.",
+    "mobile_teacher_default": "AI Teacher",
+    "session_tasks": "Tasks",
+    "chat_history": "Chat history",
+    "class_chat": "Class chat"
   },
 
   "teacher_chat": {
@@ -312,6 +332,13 @@
     "welcome_body_mobile": "Ready for a new learning session?",
     "tasks_all_done": "All done!",
     "docs_your_work": "Your work"
+  },
+  "student_nav": {
+    "desktop_label": "Desktop",
+    "desktop_desc": "Your personal workspace with widgets.",
+    "wiki_label": "Wiki",
+    "wiki_desc": "A complete guide to the platform features.",
+    "notebook_label": "Notebook"
   },
 
   "tasks": {
@@ -500,7 +527,27 @@
     "send_error_title": "Send error",
     "send_error_body": "Unable to send the document",
     "select_text_first": "Select text first",
-    "ai_needs_selection": "The AI needs a text selection to work"
+    "ai_needs_selection": "The AI needs a text selection to work",
+    "title_my_documents": "My Documents",
+    "teacher_materials": "Teacher Materials",
+    "author_teacher": "Teacher",
+    "author_class": "Class",
+    "send_to_teacher_title": "Send to Teacher",
+    "send_to_teacher_body": "Your {{type}} \"{{title}}\" will be sent to the teacher for review."
+  },
+
+  "wiki": {
+    "search_placeholder": "Search the wiki...",
+    "sections_count": "{{count}} sections",
+    "features_count": "{{visible}} / {{total}} features",
+    "no_results_title": "No results",
+    "no_results_body": "Try a simpler search term.",
+    "active_section": "Active section",
+    "class_sharing": "Sharing",
+    "standard_flow": "Standard flow",
+    "usage_examples": "Usage examples",
+    "output_and_options": "Output and options",
+    "format": "Format"
   },
 
   "content_editor": {

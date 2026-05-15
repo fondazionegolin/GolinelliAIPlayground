@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File, Form
+from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File, Form, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from typing import Annotated, Optional, List
@@ -33,12 +33,21 @@ from app.services.education_level import get_school_grade_instruction
 from app.services.environmental_impact import enrich_usage_with_environmental_impact
 from app.services.rag_service import rag_service
 from app.services.document_processor import document_processor
+from app.services.ui_language import apply_output_language_instruction, resolve_ui_language
 from app.models.rag import RAGDocument
 from app.models.enums import DocumentStatus, Scope
 from app.realtime.gateway import sio
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
+
+def get_ui_language(request: Optional[Request]) -> str:
+    if request is None:
+        return "it"
+    return resolve_ui_language(
+        request.headers.get("x-app-language") or request.headers.get("accept-language")
+    )
 
 # Default report prompt for teacherbots with reporting enabled
 DEFAULT_REPORT_PROMPT = """Genera un report sintetico di questa conversazione.
@@ -240,6 +249,7 @@ async def delete_teacherbot(
 async def test_teacherbot(
     teacherbot_id: UUID,
     request: TeacherbotTestMessage,
+    http_request: Request,
     db: Annotated[AsyncSession, Depends(get_db)],
     teacher: Annotated[User, Depends(get_current_teacher)],
 ):
@@ -272,6 +282,7 @@ async def test_teacherbot(
     system_prompt = bot.system_prompt
     if kb_context:
         system_prompt = f"{system_prompt}\n\n{kb_context}"
+    system_prompt = apply_output_language_instruction(system_prompt, get_ui_language(http_request))
 
     # Call LLM
     llm_response = await llm_service.generate(
@@ -981,6 +992,7 @@ async def get_teacherbot_conversation_messages(
 async def send_teacherbot_message(
     conversation_id: UUID,
     request: TeacherbotMessageCreate,
+    http_request: Request,
     db: Annotated[AsyncSession, Depends(get_db)],
     student: Annotated[SessionStudent, Depends(get_current_student)],
 ):
@@ -1050,9 +1062,11 @@ async def send_teacherbot_message(
     
     # Augment with KB context if the bot has a knowledge base
     kb_context = await _build_kb_context(db, bot, request.content, student.tenant_id)
-    system_prompt = bot.system_prompt
+    grade_instruction = get_school_grade_instruction(class_obj.school_grade)
+    system_prompt = bot.system_prompt + grade_instruction
     if kb_context:
         system_prompt = f"{system_prompt}\n\n{kb_context}"
+    system_prompt = apply_output_language_instruction(system_prompt, get_ui_language(http_request))
 
     # history already includes user_msg because of db.add and flush
     llm_response = await llm_service.generate(
@@ -1112,6 +1126,7 @@ async def send_teacherbot_message(
 @router.post("/student/teacherbots/conversations/{conversation_id}/message-with-files", response_model=TeacherbotMessageResponse)
 async def send_teacherbot_message_with_files(
     conversation_id: UUID,
+    http_request: Request,
     db: Annotated[AsyncSession, Depends(get_db)],
     student: Annotated[SessionStudent, Depends(get_current_student)],
     content: str = Form(""),
@@ -1393,6 +1408,7 @@ async def send_teacherbot_message_with_files(
         + grade_instruction
         + "\n\nQuando l'utente allega documenti, analizzali attentamente e rispondi in base al loro contenuto."
     )
+    system_prompt = apply_output_language_instruction(system_prompt, get_ui_language(http_request))
 
     # Generate response
     llm_response = await llm_service.generate(

@@ -7,13 +7,12 @@ import { Button } from '@/components/ui/button'
 import { useToast } from '@/components/ui/use-toast'
 import {
   ArrowLeft, BookOpen, Lightbulb, List, Zap, Eye, Send,
-  Pencil, Trash2, CheckCircle, Loader2, ChevronDown, ChevronUp,
-  Upload, Bot, X, Save, ChevronLeft, ChevronRight
+  Pencil, Trash2, Loader2, ChevronDown, ChevronUp,
+  Upload, Bot, X, Save, ChevronLeft, ChevronRight, Circle
 } from 'lucide-react'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
-// Items inside the plan JSON (pre-generation, from uda_agent)
 interface PlanItem {
   id: string
   type: string
@@ -22,7 +21,6 @@ interface PlanItem {
   purpose?: string
 }
 
-// Typed content shapes per task type
 interface LessonContent { html: string }
 interface QuizQuestion { question: string; options: string[]; correct: number; explanation?: string }
 interface QuizContent { questions: QuizQuestion[] }
@@ -33,7 +31,6 @@ interface PresentationContent { slides: Slide[] }
 
 type ChildContent = LessonContent | QuizContent | ExerciseContent | PresentationContent | Record<string, unknown>
 
-// Actual child Task records (post-generation)
 interface ChildTask {
   id: string
   title: string
@@ -69,12 +66,12 @@ const PHASE_LABELS: Record<Phase, string> = {
 }
 
 const PHASE_ICONS: Record<Phase, React.ReactNode> = {
-  briefing: <Lightbulb className="h-4 w-4" />,
-  kb: <BookOpen className="h-4 w-4" />,
-  plan: <List className="h-4 w-4" />,
-  generating: <Zap className="h-4 w-4" />,
-  review: <Eye className="h-4 w-4" />,
-  published: <CheckCircle className="h-4 w-4" />,
+  briefing: <Lightbulb className="h-3.5 w-3.5" />,
+  kb: <BookOpen className="h-3.5 w-3.5" />,
+  plan: <List className="h-3.5 w-3.5" />,
+  generating: <Zap className="h-3.5 w-3.5" />,
+  review: <Eye className="h-3.5 w-3.5" />,
+  published: <Circle className="h-3 w-3 fill-current" />,
 }
 
 const TYPE_LABELS: Record<string, string> = {
@@ -83,6 +80,25 @@ const TYPE_LABELS: Record<string, string> = {
   exercise: 'Esercizio',
   presentation: 'Presentazione',
 }
+
+const LANGUAGE_OPTIONS = [
+  { value: 'italiano', label: 'Italiano' },
+  { value: 'english', label: 'English' },
+  { value: 'français', label: 'Français' },
+  { value: 'español', label: 'Español' },
+  { value: 'deutsch', label: 'Deutsch' },
+]
+
+const GRADE_OPTIONS = [
+  { value: '', label: 'Seleziona grado scolastico' },
+  { value: 'Scuola dell\'Infanzia (3–6 anni)', label: 'Infanzia (3–6 anni)' },
+  { value: 'Scuola Primaria – I ciclo (1ª–2ª)', label: 'Primaria I ciclo (1ª–2ª)' },
+  { value: 'Scuola Primaria – II ciclo (3ª–5ª)', label: 'Primaria II ciclo (3ª–5ª)' },
+  { value: 'Scuola Secondaria I grado (6ª–8ª)', label: 'Secondaria I grado (Media)' },
+  { value: 'Scuola Secondaria II grado – Biennio (1ª–2ª)', label: 'Secondaria II grado – Biennio' },
+  { value: 'Scuola Secondaria II grado – Triennio (3ª–5ª)', label: 'Secondaria II grado – Triennio' },
+  { value: 'Università / Formazione superiore', label: 'Università / Formazione superiore' },
+]
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
@@ -95,13 +111,15 @@ export default function UDACreatorPage() {
   const [chatInput, setChatInput] = useState('')
   const [chatMessages, setChatMessages] = useState<{ role: string; content: string }[]>([])
   const [generating, setGenerating] = useState(false)
-  const [genProgress, setGenProgress] = useState<string[]>([])
+  const [genProgress, setGenProgress] = useState<{ text: string; state: 'running' | 'done' | 'error' }[]>([])
   const [editingKb, setEditingKb] = useState(false)
   const [kbDraft, setKbDraft] = useState('')
   const [editingPlan, setEditingPlan] = useState(false)
   const [planDraft, setPlanDraft] = useState('')
   const [uploadFiles, setUploadFiles] = useState<File[]>([])
   const [briefingPrompt, setBriefingPrompt] = useState('')
+  const [selectedLanguage, setSelectedLanguage] = useState('italiano')
+  const [selectedGrade, setSelectedGrade] = useState('')
   const [previewChild, setPreviewChild] = useState<ChildTask | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const chatEndRef = useRef<HTMLDivElement>(null)
@@ -127,7 +145,10 @@ export default function UDACreatorPage() {
 
   const generateKbMutation = useMutation({
     mutationFn: async () => {
-      const res = await udaApi.generateKb(classId!, udaId!, briefingPrompt, uploadFiles)
+      const res = await udaApi.generateKb(
+        classId!, udaId!, briefingPrompt, uploadFiles,
+        selectedLanguage, selectedGrade || undefined
+      )
       return res.data
     },
     onSuccess: () => {
@@ -220,18 +241,18 @@ export default function UDACreatorPage() {
           try {
             const ev = JSON.parse(line.slice(5).trim())
             if (ev.event === 'item_start') {
-              setGenProgress(p => [...p, `⏳ Generando: ${ev.title} (${ev.type})`])
+              setGenProgress(p => [...p, { text: `${ev.title} (${ev.type})`, state: 'running' }])
             } else if (ev.event === 'item_done') {
-              setGenProgress(p => [...p.slice(0, -1), `✅ ${ev.title}`])
+              setGenProgress(p => p.map((item, i) => i === p.length - 1 ? { text: ev.title, state: 'done' } : item))
             } else if (ev.event === 'item_error') {
-              setGenProgress(p => [...p, `❌ Errore: ${ev.error}`])
+              setGenProgress(p => [...p, { text: ev.error, state: 'error' }])
             } else if (ev.event === 'done') {
-              setGenProgress(p => [...p, '🎉 Generazione completata!'])
+              setGenProgress(p => [...p, { text: 'Generazione completata', state: 'done' }])
             }
           } catch { /* ignore */ }
         }
       }
-    } catch (e) {
+    } catch {
       toast({ title: 'Errore generazione contenuti', variant: 'destructive' })
     } finally {
       setGenerating(false)
@@ -270,14 +291,14 @@ export default function UDACreatorPage() {
     <div className="flex flex-col h-full bg-slate-50 overflow-auto">
       {/* Header */}
       <div className="bg-white border-b border-slate-200 px-6 py-4 flex items-center gap-4 sticky top-0 z-10">
-        <Button variant="ghost" size="sm" onClick={() => navigate(-1)} className="h-9 w-9 p-0">
+        <Button variant="ghost" size="sm" onClick={() => navigate(-1)} className="h-9 w-9 p-0 rounded-lg">
           <ArrowLeft className="h-4 w-4" />
         </Button>
         <div className="flex-1 min-w-0">
           <h1 className="text-lg font-bold text-slate-800 truncate">{uda.title}</h1>
           <p className="text-xs text-slate-500">Unità Didattica</p>
         </div>
-        {/* Phase stepper */}
+        {/* Phase stepper — flat, minimal */}
         <div className="hidden md:flex items-center gap-1">
           {PHASES.filter(p => p !== 'generating').map((p, i) => {
             const idx = PHASES.indexOf(p)
@@ -286,28 +307,33 @@ export default function UDACreatorPage() {
             return (
               <div key={p} className="flex items-center gap-1">
                 <div className={`flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium transition-colors
-                  ${active ? 'bg-indigo-100 text-indigo-700' : done ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-400'}`}>
-                  {PHASE_ICONS[p]}
+                  ${active ? 'bg-indigo-100 text-indigo-700' : done ? 'bg-slate-100 text-slate-400' : 'bg-slate-50 text-slate-300'}`}>
+                  {done
+                    ? <span className="h-3.5 w-3.5 flex items-center justify-center"><span className="block w-1.5 h-1.5 rounded-full bg-slate-400" /></span>
+                    : PHASE_ICONS[p]
+                  }
                   <span>{PHASE_LABELS[p]}</span>
                 </div>
-                {i < 4 && <span className="text-slate-300">→</span>}
+                {i < 4 && <span className="text-slate-200">›</span>}
               </div>
             )
           })}
         </div>
         {phase === 'review' && (
           <Button
+            tone="accent"
+            surface="solid"
             onClick={() => publishMutation.mutate()}
             disabled={publishMutation.isPending}
-            className="bg-indigo-600 hover:bg-indigo-700 text-white"
           >
-            {publishMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <CheckCircle className="h-4 w-4 mr-2" />}
+            {publishMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <span className="mr-2 block w-2 h-2 rounded-full bg-white" />}
             Pubblica UDA
           </Button>
         )}
         {phase === 'published' && (
-          <span className="px-3 py-1 bg-green-100 text-green-700 rounded-full text-sm font-medium flex items-center gap-1">
-            <CheckCircle className="h-4 w-4" />Pubblicata
+          <span className="px-3 py-1 bg-slate-100 text-slate-600 rounded-full text-sm font-medium flex items-center gap-1.5">
+            <span className="block w-2 h-2 rounded-full bg-indigo-400" />
+            Pubblicata
           </span>
         )}
       </div>
@@ -322,16 +348,45 @@ export default function UDACreatorPage() {
               {phase === 'briefing' && (
                 <div className="space-y-4">
                   <p className="text-sm text-slate-600">
-                    Descrivi la tua Unità Didattica nel dettaglio: argomento, classe, obiettivi, durata prevista.
-                    Puoi anche allegare documenti di riferimento.
+                    Descrivi la tua Unità Didattica nel dettaglio: argomento, obiettivi, contenuti, durata prevista.
+                    Più è precisa la descrizione, più il contenuto generato sarà fedele e di qualità.
                   </p>
                   <textarea
                     className="w-full border border-slate-200 rounded-lg p-3 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-indigo-500"
                     rows={6}
-                    placeholder="Es: Voglio creare una UDA per la classe 2ª media sull'ecosistema del laghetto. Durata 4 settimane. Gli studenti devono capire le catene alimentari, i cicli dell'acqua e l'equilibrio degli ecosistemi..."
+                    placeholder="Es: Voglio creare una UDA sull'ecosistema del laghetto. Durata 4 settimane. Gli studenti devono capire le catene alimentari, i cicli dell'acqua e l'equilibrio degli ecosistemi, con riferimenti alla biologia di Odum e Margalef..."
                     value={briefingPrompt}
                     onChange={e => setBriefingPrompt(e.target.value)}
                   />
+
+                  {/* Language + Grade selectors */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-500 mb-1.5">Lingua dei contenuti</label>
+                      <select
+                        value={selectedLanguage}
+                        onChange={e => setSelectedLanguage(e.target.value)}
+                        className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                      >
+                        {LANGUAGE_OPTIONS.map(opt => (
+                          <option key={opt.value} value={opt.value}>{opt.label}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-500 mb-1.5">Grado scolastico</label>
+                      <select
+                        value={selectedGrade}
+                        onChange={e => setSelectedGrade(e.target.value)}
+                        className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                      >
+                        {GRADE_OPTIONS.map(opt => (
+                          <option key={opt.value} value={opt.value}>{opt.label}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
                   <div className="flex items-center gap-3">
                     <input
                       ref={fileInputRef}
@@ -341,7 +396,7 @@ export default function UDACreatorPage() {
                       accept=".pdf,.docx,.pptx,.ppt,.txt,.md"
                       onChange={e => setUploadFiles(Array.from(e.target.files || []))}
                     />
-                    <Button variant="outline" size="sm" onClick={() => fileInputRef.current?.click()}>
+                    <Button tone="neutral" surface="outline" size="sm" onClick={() => fileInputRef.current?.click()}>
                       <Upload className="h-4 w-4 mr-2" />
                       Allega documenti
                     </Button>
@@ -349,7 +404,9 @@ export default function UDACreatorPage() {
                       <span className="text-sm text-slate-500">{uploadFiles.length} file selezionati</span>
                     )}
                     <Button
-                      className="ml-auto bg-indigo-600 hover:bg-indigo-700 text-white"
+                      tone="accent"
+                      surface="solid"
+                      className="ml-auto"
                       disabled={!briefingPrompt.trim() || generateKbMutation.isPending}
                       onClick={() => generateKbMutation.mutate()}
                     >
@@ -391,7 +448,8 @@ export default function UDACreatorPage() {
                       </Button>
                       {phase === 'kb' && (
                         <Button
-                          className="bg-indigo-600 hover:bg-indigo-700 text-white"
+                          tone="accent"
+                          surface="solid"
                           size="sm"
                           disabled={generatePlanMutation.isPending}
                           onClick={() => generatePlanMutation.mutate()}
@@ -431,7 +489,7 @@ export default function UDACreatorPage() {
                   <div className="grid gap-2">
                     {uda.plan.items?.map((item, i) => (
                       <div key={item.id || i} className="flex items-center gap-3 bg-slate-50 rounded-lg px-3 py-2 border border-slate-100">
-                        <span className="text-xs font-bold text-slate-400 w-5 text-center">{i + 1}</span>
+                        <span className="text-xs font-bold text-slate-300 w-5 text-center">{i + 1}</span>
                         <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${typeColor(item.type || (item as { task_type?: string }).task_type || 'lesson')}`}>
                           {TYPE_LABELS[item.type || (item as { task_type?: string }).task_type || 'lesson'] || item.type}
                         </span>
@@ -445,7 +503,8 @@ export default function UDACreatorPage() {
                         <Pencil className="h-3 w-3 mr-1" />Modifica Piano
                       </Button>
                       <Button
-                        className="bg-indigo-600 hover:bg-indigo-700 text-white"
+                        tone="accent"
+                        surface="solid"
                         size="sm"
                         disabled={generating}
                         onClick={startGeneration}
@@ -460,14 +519,21 @@ export default function UDACreatorPage() {
             </PhaseCard>
           )}
 
-          {/* Generation progress */}
+          {/* Generation progress — flat minimal */}
           {(generating || genProgress.length > 0) && (
-            <PhaseCard title="Generazione in corso..." icon={<Zap />} active>
-              <div className="space-y-1">
-                {genProgress.map((msg, i) => (
-                  <p key={i} className="text-sm text-slate-700">{msg}</p>
+            <PhaseCard title="Generazione in corso" icon={<Zap />} active>
+              <div className="space-y-1.5">
+                {genProgress.map((item, i) => (
+                  <div key={i} className="flex items-center gap-2.5 text-sm">
+                    {item.state === 'running' && <Loader2 className="h-3.5 w-3.5 animate-spin text-indigo-400 flex-shrink-0" />}
+                    {item.state === 'done' && <span className="flex-shrink-0 w-3.5 h-3.5 flex items-center justify-center"><span className="block w-1.5 h-1.5 rounded-full bg-slate-400" /></span>}
+                    {item.state === 'error' && <span className="flex-shrink-0 text-red-400 text-xs font-bold">!</span>}
+                    <span className={item.state === 'done' ? 'text-slate-500' : item.state === 'error' ? 'text-red-500' : 'text-slate-700'}>
+                      {item.text}
+                    </span>
+                  </div>
                 ))}
-                {generating && <Loader2 className="h-4 w-4 animate-spin text-indigo-500 mt-2" />}
+                {generating && genProgress.length === 0 && <Loader2 className="h-4 w-4 animate-spin text-indigo-400" />}
               </div>
             </PhaseCard>
           )}
@@ -482,10 +548,10 @@ export default function UDACreatorPage() {
                       {TYPE_LABELS[child.task_type] || child.task_type}
                     </span>
                     <span className="text-sm flex-1 font-medium truncate">{child.title}</span>
-                    <span className={`text-xs px-2 py-0.5 rounded-full flex-shrink-0 ${child.status === 'published' ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'}`}>
+                    <span className={`text-xs px-2 py-0.5 rounded-full flex-shrink-0 flex items-center gap-1 ${child.status === 'published' ? 'bg-slate-100 text-slate-500' : 'bg-slate-50 text-slate-400'}`}>
+                      {child.status === 'published' && <span className="block w-1.5 h-1.5 rounded-full bg-indigo-400" />}
                       {child.status === 'published' ? 'Pubblicato' : 'Bozza'}
                     </span>
-                    {/* Preview/Edit button — always visible */}
                     <Button
                       variant="ghost"
                       size="sm"
@@ -644,6 +710,7 @@ function PhaseCard({
 function KbDisplay({ kb }: { kb: Record<string, unknown> }) {
   const labels: Record<string, string> = {
     title: 'Titolo',
+    language: 'Lingua',
     school_level: 'Livello scolastico',
     subject: 'Disciplina',
     duration: 'Durata',
@@ -690,6 +757,58 @@ function typeColor(type: string): string {
 
 // ─── Child Preview / Edit Modal ───────────────────────────────────────────────
 
+// ─── Content normalizers ─────────────────────────────────────────────────────
+// The AI may return non-standard shapes (objects instead of strings/arrays).
+// These helpers coerce the content into the shapes the UI expects.
+
+function normalizeToString(val: unknown): string {
+  if (val == null) return ''
+  if (typeof val === 'string') return val
+  if (typeof val === 'object') {
+    return Object.entries(val as Record<string, unknown>)
+      .map(([k, v]) => `${k}: ${typeof v === 'string' ? v : JSON.stringify(v)}`)
+      .join('\n')
+  }
+  return String(val)
+}
+
+function normalizeQuestions(val: unknown): ExerciseQuestion[] {
+  if (!val) return []
+  if (Array.isArray(val)) {
+    return val.map(q => {
+      if (typeof q === 'string') return { question: q }
+      const qObj = q as Record<string, unknown>
+      return {
+        question: normalizeToString(qObj.question ?? qObj),
+        hint: qObj.hint != null ? normalizeToString(qObj.hint) : undefined,
+      }
+    })
+  }
+  if (typeof val === 'object') {
+    // object keyed by section names
+    return Object.entries(val as Record<string, unknown>).map(([k, v]) => ({
+      question: `${k}: ${normalizeToString(v)}`,
+    }))
+  }
+  return []
+}
+
+function normalizeQuizQuestions(val: unknown): QuizQuestion[] {
+  if (!val || !Array.isArray(val)) return []
+  return val.map(q => {
+    if (typeof q !== 'object' || q == null) return { question: String(q), options: [], correct: 0 }
+    const qObj = q as Record<string, unknown>
+    return {
+      question: normalizeToString(qObj.question),
+      options: Array.isArray(qObj.options) ? (qObj.options as unknown[]).map(o => normalizeToString(o)) : [],
+      correct: typeof qObj.correct === 'number' ? qObj.correct : 0,
+      explanation: qObj.explanation != null ? normalizeToString(qObj.explanation) : undefined,
+    }
+  })
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 function ChildPreviewModal({
   child,
   classId,
@@ -709,17 +828,18 @@ function ChildPreviewModal({
   const [editing, setEditing] = useState(false)
   const [titleDraft, setTitleDraft] = useState(child.title)
 
-  // Per-type edit state
+  const raw = child.content as Record<string, unknown> | undefined
+
   const [lessonHtml, setLessonHtml] = useState(
-    (child.content as { html?: string })?.html ?? ''
+    normalizeToString(raw?.html)
   )
   const [quizQuestions, setQuizQuestions] = useState<QuizQuestion[]>(
-    (child.content as { questions?: QuizQuestion[] })?.questions ?? []
+    normalizeQuizQuestions(raw?.questions)
   )
   const [exerciseDraft, setExerciseDraft] = useState<ExerciseContent>({
-    instructions: (child.content as ExerciseContent)?.instructions ?? '',
-    questions: (child.content as ExerciseContent)?.questions ?? [],
-    evaluation_rubric: (child.content as ExerciseContent)?.evaluation_rubric ?? '',
+    instructions: normalizeToString(raw?.instructions),
+    questions: normalizeQuestions(raw?.questions),
+    evaluation_rubric: normalizeToString(raw?.evaluation_rubric),
   })
   const [slides, setSlides] = useState<Slide[]>(
     (child.content as { slides?: Slide[] })?.slides ?? []
@@ -746,10 +866,8 @@ function ChildPreviewModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
-      {/* Backdrop */}
       <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
 
-      {/* Panel */}
       <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-3xl mx-4 max-h-[90vh] flex flex-col">
         {/* Header */}
         <div className="flex items-center gap-3 px-6 py-4 border-b border-slate-100">
@@ -832,7 +950,7 @@ function ChildPreviewModal({
                         <div key={oi} className="flex items-center gap-2">
                           <button
                             type="button"
-                            className={`w-5 h-5 rounded-full border-2 flex-shrink-0 ${q.correct === oi ? 'border-green-500 bg-green-500' : 'border-slate-300'}`}
+                            className={`w-5 h-5 rounded-full border-2 flex-shrink-0 ${q.correct === oi ? 'border-indigo-500 bg-indigo-500' : 'border-slate-300'}`}
                             onClick={() => {
                               const updated = [...quizQuestions]
                               updated[qi] = { ...q, correct: oi }
@@ -858,13 +976,13 @@ function ChildPreviewModal({
                       <p className="text-sm font-medium text-slate-800">{qi + 1}. {q.question}</p>
                       <div className="grid grid-cols-2 gap-2 mt-2">
                         {q.options.map((opt, oi) => (
-                          <div key={oi} className={`text-xs px-3 py-2 rounded-lg border ${oi === q.correct ? 'bg-green-50 border-green-200 text-green-700 font-medium' : 'bg-slate-50 border-slate-100 text-slate-600'}`}>
+                          <div key={oi} className={`text-xs px-3 py-2 rounded-lg border ${oi === q.correct ? 'bg-indigo-50 border-indigo-200 text-indigo-700 font-medium' : 'bg-slate-50 border-slate-100 text-slate-600'}`}>
                             {opt}
                           </div>
                         ))}
                       </div>
                       {q.explanation && (
-                        <p className="text-xs text-slate-400 mt-1 italic">💡 {q.explanation}</p>
+                        <p className="text-xs text-slate-400 mt-1 italic">{q.explanation}</p>
                       )}
                     </>
                   )}
@@ -904,7 +1022,7 @@ function ChildPreviewModal({
                   ) : (
                     <p className="text-sm text-slate-800">{q.question}</p>
                   )}
-                  {q.hint && <p className="text-xs text-indigo-400 mt-1 italic">💡 {q.hint}</p>}
+                  {q.hint && <p className="text-xs text-indigo-400 mt-1 italic">{q.hint}</p>}
                 </div>
               ))}
               {exerciseDraft.evaluation_rubric && (
@@ -927,7 +1045,6 @@ function ChildPreviewModal({
 
           {child.task_type === 'presentation' && slides.length > 0 && (
             <div className="space-y-4">
-              {/* Slide navigator */}
               <div className="flex items-center justify-between bg-slate-50 rounded-xl px-4 py-2">
                 <Button
                   variant="ghost" size="sm"
@@ -950,7 +1067,6 @@ function ChildPreviewModal({
                 </Button>
               </div>
 
-              {/* Slide content */}
               {slides[slideIndex] && (
                 <div className="border border-slate-200 rounded-xl overflow-hidden">
                   <div className="bg-indigo-600 px-6 py-4">
@@ -991,7 +1107,6 @@ function ChildPreviewModal({
                 </div>
               )}
 
-              {/* Slide thumbnails */}
               <div className="flex gap-2 overflow-x-auto pb-1">
                 {slides.map((s, i) => (
                   <button

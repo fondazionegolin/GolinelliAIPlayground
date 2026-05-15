@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { ArrowLeft, User } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { triggerHaptic } from '@/lib/haptics'
+import { useTranslation } from 'react-i18next'
 
 interface MobileHeaderProps {
   title: string
@@ -150,9 +151,10 @@ export function ChatbotHeader({
 }
 
 export function ClassChatHeader({ onlineCount }: { onlineCount?: number }) {
+  const { t } = useTranslation()
   return (
     <MobileHeader
-      title="Chat di classe"
+      title={t('student_dashboard.chat_label')}
       subtitle={onlineCount !== undefined ? `${onlineCount} online` : undefined}
     />
   )
@@ -165,6 +167,8 @@ export function MLLabHeader({
   mode: string
   onModeChange?: (mode: string) => void
 }) {
+  const { i18n } = useTranslation()
+  const isEnglish = i18n.resolvedLanguage?.startsWith('en') ?? false
   return (
     <MobileHeader
       title="ML Lab"
@@ -176,9 +180,9 @@ export function MLLabHeader({
             onChange={(e) => onModeChange(e.target.value)}
             className="text-xs bg-slate-100 border-0 rounded-lg px-2 py-1 text-slate-600"
           >
-            <option value="images">Immagini</option>
-            <option value="text">Testo</option>
-            <option value="data">Dati</option>
+            <option value="images">{isEnglish ? 'Images' : 'Immagini'}</option>
+            <option value="text">{isEnglish ? 'Text' : 'Testo'}</option>
+            <option value="data">{isEnglish ? 'Data' : 'Dati'}</option>
           </select>
         )
       }

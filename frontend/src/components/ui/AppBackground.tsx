@@ -18,18 +18,18 @@ export function AppBackground({ className = "", gradient = DEFAULT_GRADIENT, chi
                         className="fixed inset-0"
                         style={{
                             zIndex: -1,
-                            backgroundColor: gradient,
+                            backgroundColor: 'var(--app-body-bg)',
                         }}
                     />
                     <div
                         aria-hidden="true"
                         className="pointer-events-none fixed left-[-8rem] top-[5rem] h-[18rem] w-[18rem] rounded-full blur-3xl"
-                        style={{ zIndex: -1, backgroundColor: 'rgba(255,255,255,0.72)' }}
+                        style={{ zIndex: -1, backgroundColor: 'rgba(255,255,255,0.62)' }}
                     />
                     <div
                         aria-hidden="true"
                         className="pointer-events-none fixed bottom-[-8rem] right-[-6rem] h-[20rem] w-[20rem] rounded-full blur-3xl"
-                        style={{ zIndex: -1, backgroundColor: 'rgba(255,255,255,0.56)' }}
+                        style={{ zIndex: -1, backgroundColor: 'rgba(203,213,225,0.34)' }}
                     />
                 </>
             )}

@@ -583,8 +583,8 @@ class LLMService:
         if provider == "dall-e":
             return await self._generate_image_dalle(prompt, size, quality, style)
 
-        if provider == "gpt-image-1":
-            return await self._generate_image_gpt_image_1(prompt, size)
+        if provider in ("gpt-image-1", "gpt-image-1.5", "gpt-image-2"):
+            return await self._generate_image_gpt_image_1(prompt, size, model=provider)
 
         # Fallback to BFL schnell
         return await self._generate_image_bfl(prompt, size, model="flux-schnell")
@@ -767,26 +767,27 @@ class LLMService:
         self,
         prompt: str,
         size: str = "1024x1024",
+        model: str = "gpt-image-1.5",
     ) -> str:
-        """Generate an image using GPT-Image-1 (OpenAI). Returns b64_json, saved locally."""
+        """Generate an image using GPT-Image-1/2 (OpenAI). Returns b64_json, saved locally."""
         if not self.openai_client:
             raise RuntimeError("OpenAI client not configured for image generation")
 
-        # gpt-image-1 supported sizes
+        # gpt-image-1/2 supported sizes
         valid_sizes = {"1024x1024", "1536x1024", "1024x1536"}
         gpt_size = size if size in valid_sizes else "1024x1024"
 
         response = await self.openai_client.images.generate(
-            model="gpt-image-1",
+            model=model,
             prompt=prompt,
             n=1,
             size=gpt_size,
         )
 
-        # gpt-image-1 returns base64 encoded PNG
+        # gpt-image-1/2 returns base64 encoded PNG
         b64_data = response.data[0].b64_json
         if not b64_data:
-            raise RuntimeError("GPT-Image-1 returned no image data")
+            raise RuntimeError(f"{model} returned no image data")
 
         try:
             import base64 as _base64

@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useRef } from 'react'
 import { useParams, Link, useSearchParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import type { Socket } from 'socket.io-client'
+import { useTranslation } from 'react-i18next'
 import { teacherApi, teacherbotsApi } from '@/lib/api'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -62,6 +63,7 @@ export default function SessionLivePage() {
   const { sessionId } = useParams<{ sessionId: string }>()
   const queryClient = useQueryClient()
   const navigate = useNavigate()
+  const { t } = useTranslation()
   const { toast } = useToast()
   useAuthStore() // Keep store connection for auth state
   const [searchParams] = useSearchParams()
@@ -274,7 +276,7 @@ export default function SessionLivePage() {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-full min-h-[40vh] text-sm text-slate-400">
-        Caricamento sessione...
+        {t('common.loading')}
       </div>
     )
   }
@@ -282,7 +284,7 @@ export default function SessionLivePage() {
   if (!data) {
     return (
       <div className="flex items-center justify-center h-full min-h-[40vh] text-sm text-slate-400">
-        Sessione non trovata
+        {t('navbar.no_session')}
       </div>
     )
   }
@@ -290,10 +292,10 @@ export default function SessionLivePage() {
   const { session, students, modules } = data
 
   const statusConfig = {
-    active: { dot: 'bg-emerald-500 animate-pulse', badge: 'bg-emerald-100 text-emerald-700', label: 'Attiva' },
-    paused: { dot: 'bg-amber-500', badge: 'bg-amber-100 text-amber-700', label: 'In Pausa' },
-    ended:  { dot: 'bg-red-400',   badge: 'bg-red-100 text-red-700',     label: 'Terminata' },
-    draft:  { dot: 'bg-slate-400', badge: 'bg-slate-100 text-slate-600', label: 'Bozza' },
+    active: { dot: 'bg-emerald-500 animate-pulse', badge: 'bg-emerald-100 text-emerald-700', label: t('sessions.status_active') },
+    paused: { dot: 'bg-amber-500', badge: 'bg-amber-100 text-amber-700', label: t('sessions.status_paused') },
+    ended:  { dot: 'bg-red-400',   badge: 'bg-red-100 text-red-700',     label: t('sessions.status_ended') },
+    draft:  { dot: 'bg-slate-400', badge: 'bg-slate-100 text-slate-600', label: t('sessions.status_draft') },
   }
   const sc = statusConfig[session.status as keyof typeof statusConfig] ?? statusConfig.draft
   const joinCodeAvailable = session.status === 'active'
@@ -310,7 +312,7 @@ export default function SessionLivePage() {
             <div className="flex items-center justify-between px-5 py-3 border-b border-slate-200 bg-slate-50">
               <div className="flex items-center gap-2 text-sm font-semibold text-slate-700">
                 <MonitorPlay className="h-4 w-4 text-[#e85c8d]" />
-                Modalità Demo
+                {t('teacher_chat.mode_image') === 'Image' ? 'Demo Mode' : 'Modalità Demo'}
               </div>
               <button
                 onClick={() => setDemoBotId(null)}
@@ -340,7 +342,7 @@ export default function SessionLivePage() {
                 className="flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-800 transition-colors flex-shrink-0"
               >
                 <ArrowLeft className="h-4 w-4" />
-                <span className="hidden sm:inline">Classi</span>
+                <span className="hidden sm:inline">{t('navbar.nav_classes')}</span>
               </Link>
               <span className="text-slate-300">/</span>
               <div className="min-w-0">
@@ -548,8 +550,8 @@ export default function SessionLivePage() {
               <div className="flex bg-slate-100 rounded-2xl p-1 gap-1 mb-4">
                 {([
                   { key: 'modules', icon: Brain, label: 'Moduli' },
-                  { key: 'tasks',   icon: ClipboardList, label: 'Compiti' },
-                  { key: 'history', icon: History, label: 'Storico' },
+                  { key: 'tasks',   icon: ClipboardList, label: t('teacher_dashboard.session_tasks') },
+                  { key: 'history', icon: History, label: t('teacher_dashboard.chat_history') },
                 ] as { key: string; icon: React.FC<{ className?: string }>; label: string }[]).map(tab => (
                   <button
                     key={tab.key}
@@ -664,7 +666,7 @@ export default function SessionLivePage() {
                 <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
                   <div className="px-4 py-3 border-b border-slate-100 flex items-center gap-2">
                     <ClipboardList className="h-4 w-4 text-slate-500" />
-                    <span className="font-semibold text-sm text-slate-800">Compiti e Attività</span>
+                    <span className="font-semibold text-sm text-slate-800">{t('teacher_dashboard.session_tasks')}</span>
                     <div className="ml-auto flex gap-2">
                       {data?.session?.class_id && (
                         <Button

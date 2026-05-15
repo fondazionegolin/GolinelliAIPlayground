@@ -6,7 +6,7 @@ import { chatApi, llmApi } from '@/lib/api'
 import { buildBrochureLatex, buildDispensaLatex, buildReportHtml, parseBrochurePayload, parseDispensaPayload, parseReportPayload } from '@/components/teacher/reportTemplates'
 
 export interface GeneratedDoc {
-  type: 'brochure' | 'dispensa' | 'report'
+  type: 'brochure' | 'dispensa' | 'report' | 'html_page'
   content: string
   version: number
   title: string
@@ -367,6 +367,17 @@ section{padding:72px 0}
 .faq-list details summary::-webkit-details-marker{display:none}
 .faq-list details[open] summary{border-bottom:1px solid rgba(255,255,255,.1)}
 .faq-list details p{padding:16px 20px;font-size:.95rem;line-height:1.75;opacity:.85}
+
+/* Print — preserve colors and layout */
+@media print{
+  *{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}
+  body{margin:0!important}
+  section{break-inside:avoid;page-break-inside:avoid}
+  .hero{min-height:auto;page-break-after:avoid}
+  footer{break-inside:avoid}
+  details{open:true}
+  details p{display:block!important}
+}
 `
 
 const BROCHURE_FONTS = `https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Playfair+Display:ital,wght@0,700;0,900;1,700&display=swap`
@@ -435,11 +446,12 @@ function buildBrochureHtmlFromPayload(raw: string, docTitle: string): string | n
         <div class="section-label">Panoramica</div>
         <h2 class="section-title">${payload.overviewTitle || payload.title}</h2>
         <p class="section-lead">${payload.overviewLead || payload.subtitle}</p>
-        <ul class="key-list">
+        ${payload.keyPoints.length > 0 ? `<ul class="key-list">
           ${payload.keyPoints.map((point) => `<li><span class="icon">✦</span><span>${point}</span></li>`).join('')}
-        </ul>
+        </ul>` : ''}
       </div>
     </section>
+    ${payload.features.length > 0 ? `
     <section id="features" style="background:#fff;color:#1a1a2e">
       <div class="container">
         <div class="section-label">Caratteristiche</div>
@@ -454,7 +466,8 @@ function buildBrochureHtmlFromPayload(raw: string, docTitle: string): string | n
           `).join('')}
         </div>
       </div>
-    </section>
+    </section>` : ''}
+    ${payload.benefits.length > 0 ? `
     <section id="benefits" style="background:${payload.palette?.[2] || '#2c6b8a'};color:#fff">
       <div class="container">
         <div class="section-label">Vantaggi</div>
@@ -468,7 +481,8 @@ function buildBrochureHtmlFromPayload(raw: string, docTitle: string): string | n
           `).join('')}
         </ul>
       </div>
-    </section>
+    </section>` : ''}
+    ${payload.steps.length > 0 ? `
     <section id="method" style="background:${payload.palette?.[0] || '#1a1a2e'};color:#fff">
       <div class="container">
         <div class="section-label">Metodo</div>
@@ -482,7 +496,8 @@ function buildBrochureHtmlFromPayload(raw: string, docTitle: string): string | n
           `).join('')}
         </ul>
       </div>
-    </section>
+    </section>` : ''}
+    ${payload.stats.length > 0 ? `
     <section id="stats" style="background:${payload.palette?.[3] || '#7aa65a'};color:#fff">
       <div class="container">
         <div class="section-label">Indicatori</div>
@@ -497,7 +512,8 @@ function buildBrochureHtmlFromPayload(raw: string, docTitle: string): string | n
           `).join('')}
         </div>
       </div>
-    </section>
+    </section>` : ''}
+    ${payload.faq.length > 0 ? `
     <section id="faq" style="background:#fff;color:#1a1a2e">
       <div class="container">
         <div class="section-label">FAQ</div>
@@ -506,7 +522,7 @@ function buildBrochureHtmlFromPayload(raw: string, docTitle: string): string | n
           ${payload.faq.map((item) => `<details><summary>❓ ${item.question}</summary><p>${item.answer}</p></details>`).join('')}
         </div>
       </div>
-    </section>
+    </section>` : ''}
     <section id="cta" style="background:${payload.palette?.[1] || '#d97745'};color:#fff">
       <div class="container">
         <div class="section-label">Call To Action</div>
@@ -668,12 +684,31 @@ export default function DocumentCanvas({ doc, onClose, sessions = [], authorName
       ? `brochure_v${doc.version}.html`
       : doc.type === 'report'
         ? `report_v${doc.version}.html`
-        : `dispensa_v${doc.version}.html`
+        : doc.type === 'html_page'
+          ? `pagina_interattiva_v${doc.version}.html`
+          : `dispensa_v${doc.version}.html`
     a.click()
     URL.revokeObjectURL(url)
   }, [doc, renderedHtml, pdfBlobUrl])
 
   const downloadPdf = useCallback(async () => {
+    // Brochure: use browser print-to-PDF to preserve HTML colors and layout
+    if (doc.type === 'brochure') {
+      const printWindow = window.open('', '_blank', 'width=960,height=800')
+      if (!printWindow) {
+        toast({ title: 'Popup bloccato', description: 'Abilita i popup per questo sito per esportare la brochure come PDF.' })
+        return
+      }
+      printWindow.document.write(renderedHtml)
+      printWindow.document.close()
+      printWindow.addEventListener('load', () => {
+        printWindow.print()
+        printWindow.addEventListener('afterprint', () => printWindow.close())
+      })
+      toast({ title: 'Finestra di stampa aperta', description: 'Seleziona "Salva come PDF" nella finestra di stampa.' })
+      return
+    }
+
     let targetUrl = pdfBlobUrl
     if (!targetUrl && doc.type !== 'report') {
       const compiled = await compilePdf()
@@ -686,9 +721,9 @@ export default function DocumentCanvas({ doc, onClose, sessions = [], authorName
     a.click()
     toast({
       title: 'PDF generato',
-      description: `${doc.type === 'brochure' ? 'Brochure' : 'Dispensa'} pronta in formato PDF.`,
+      description: 'Dispensa pronta in formato PDF.',
     })
-  }, [compilePdf, doc.type, doc.version, pdfBlobUrl, toast])
+  }, [compilePdf, doc.type, doc.version, pdfBlobUrl, renderedHtml, toast])
 
   const printDoc = useCallback(() => {
     if (pdfBlobUrl && doc.type !== 'report') {
@@ -729,7 +764,7 @@ export default function DocumentCanvas({ doc, onClose, sessions = [], authorName
         filename: i === 0 ? filename : url.split('/').pop() || 'file',
       }))
 
-      const label = doc.type === 'brochure' ? '📄 Brochure' : doc.type === 'report' ? '📊 Report interattivo' : '📑 Dispensa'
+      const label = doc.type === 'brochure' ? '📄 Brochure' : doc.type === 'report' ? '📊 Report interattivo' : doc.type === 'html_page' ? '🎮 Pagina Interattiva' : '📑 Dispensa'
       const text = `${label}: **${doc.title || 'Documento generato con AI'}** (v${doc.version})`
       await chatApi.sendSessionMessage(sessionId, text, attachments)
       setSharedSessionIds(prev => new Set([...prev, sessionId]))

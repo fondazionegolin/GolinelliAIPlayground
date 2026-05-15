@@ -186,7 +186,7 @@ export default function NotebookCell({
 
   return (
     <div
-      className={`group relative flex gap-2 rounded-2xl transition-all ${isCompact ? 'h-full' : ''} ${
+      className={`group relative flex gap-2 rounded-xl transition-all ${isCompact ? 'h-full' : ''} ${
         isActive ? 'ring-2 ring-indigo-500/60 shadow-lg shadow-indigo-500/10' : ''
       }`}
       onClick={onActivate}
@@ -204,7 +204,7 @@ export default function NotebookCell({
         </div>
       )}
 
-      <div className={`min-w-0 flex-1 overflow-hidden rounded-2xl shadow-sm ${surface.shell} ${isCompact ? 'flex h-full flex-col' : ''}`}>
+      <div className={`min-w-0 flex-1 overflow-hidden rounded-xl shadow-sm ${surface.shell} ${isCompact ? 'flex h-full flex-col' : ''}`}>
         <div className={`flex flex-shrink-0 items-center justify-between border-b px-3 py-2 ${surface.toolbar}`}>
           <span className={`font-mono text-[10px] ${surface.subtle}`}>
             {projectType === 'python' ? 'python' : 'p5js'} · ln {lineCount}

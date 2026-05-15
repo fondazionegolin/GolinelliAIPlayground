@@ -1,4 +1,5 @@
 import { AlertCircle } from 'lucide-react'
+import { NOTEBOOK_LIBRARIES } from './notebookLibraries'
 
 interface P5File {
   name: string
@@ -12,12 +13,20 @@ interface Props {
   runtimeError: string | null
   onRuntimeMessage: (message: string | null) => void
   onIframeLoad?: (win: Window | null) => void
+  activeLibraries?: string[]  // library IDs to inject
 }
 
 const P5_CDN = 'https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.3/p5.min.js'
 
-function buildPreviewDoc(files: P5File[]) {
+function buildPreviewDoc(files: P5File[], activeLibraries: string[]) {
   const isEmpty = files.every((f) => !f.source.trim())
+
+  // Resolve CDN URLs for active libraries (in order, preserving multi-script libs)
+  const libScriptTags = activeLibraries.flatMap((id) => {
+    const lib = NOTEBOOK_LIBRARIES.find((l) => l.id === id)
+    if (!lib) return []
+    return lib.cdnUrls.map((url) => `    <script src="${url}" crossorigin="anonymous"></script>`)
+  }).join('\n')
 
   const scriptBlocks = files.map((f) => {
     const escaped = f.source.replace(/<\/script>/gi, '<\\/script>')
@@ -90,6 +99,7 @@ function buildPreviewDoc(files: P5File[]) {
       })
     </script>
     <script src="${P5_CDN}"></script>
+${libScriptTags}
     ${isEmpty ? '' : scriptBlocks}
     <script>
       notifyParent('ready', null)
@@ -105,7 +115,18 @@ export default function NotebookP5Preview({
   runtimeError,
   onRuntimeMessage,
   onIframeLoad,
+  activeLibraries = [],
 }: Props) {
+  // Libraries that require camera need relaxed sandbox + allow attribute
+  const needsCamera = activeLibraries.some((id) => {
+    const lib = NOTEBOOK_LIBRARIES.find((l) => l.id === id)
+    return lib?.requiresCamera ?? false
+  })
+
+  const activeLibNames = activeLibraries
+    .map((id) => NOTEBOOK_LIBRARIES.find((l) => l.id === id)?.name)
+    .filter(Boolean)
+
   return (
     <div className="h-full min-h-[360px] overflow-hidden rounded-none border-0 bg-white">
       <div className="flex flex-shrink-0 items-center justify-between gap-3 border-b border-slate-200 bg-slate-50 px-4 py-2">
@@ -113,6 +134,9 @@ export default function NotebookP5Preview({
           <p className="text-sm font-semibold text-slate-700">Preview p5.js</p>
           <p className="text-[11px] text-slate-400">
             {livePreview ? 'Aggiornamento live attivo' : 'Aggiornamento manuale'}
+            {activeLibNames.length > 0 && (
+              <span className="ml-2 text-indigo-500">· {activeLibNames.join(', ')}</span>
+            )}
           </p>
         </div>
       </div>
@@ -120,8 +144,9 @@ export default function NotebookP5Preview({
         <iframe
           key={previewNonce}
           title="Anteprima p5.js"
-          srcDoc={buildPreviewDoc(files)}
-          sandbox="allow-scripts"
+          srcDoc={buildPreviewDoc(files, activeLibraries)}
+          sandbox={needsCamera ? 'allow-scripts allow-same-origin' : 'allow-scripts'}
+          allow={needsCamera ? 'camera; microphone' : undefined}
           className="h-full w-full border-0 bg-white"
           onLoad={(e) => {
             onRuntimeMessage(null)
@@ -129,7 +154,7 @@ export default function NotebookP5Preview({
           }}
         />
         {runtimeError && (
-          <div className="absolute inset-x-4 bottom-4 rounded-2xl border border-red-500/30 bg-red-950/85 px-4 py-3 text-sm text-red-100 backdrop-blur">
+          <div className="absolute inset-x-4 bottom-4 rounded-xl border border-red-500/30 bg-red-950/85 px-4 py-3 text-sm text-red-100 backdrop-blur">
             <div className="mb-1 flex items-center gap-2 text-red-200">
               <AlertCircle className="h-4 w-4" />
               Errore di runtime nello sketch

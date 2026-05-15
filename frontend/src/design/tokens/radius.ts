@@ -1,8 +1,8 @@
 export const radiusTokens = {
-  sm: '0.5rem',
-  md: '0.75rem',
-  lg: '1rem',
-  xl: '1.25rem',
-  '2xl': '1.5rem',
+  sm: '0.25rem',
+  md: '0.375rem',
+  lg: '0.5rem',
+  xl: '0.75rem',
+  '2xl': '0.875rem',
   full: '9999px',
 } as const

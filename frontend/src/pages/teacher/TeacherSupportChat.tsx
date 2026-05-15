@@ -4,7 +4,8 @@ import { Button } from '@/components/ui/button'
 import {
   Send, Bot, Paperclip, X, Trash2, Plus, File, Image as ImageIcon, Loader2,
   Database, Download, ChevronDown, ChevronRight, Edit3, Check, MessageCircle, Sparkles,
-  Palette, FileText, CheckSquare, MessageSquare, Settings, RotateCcw, BarChart2, Layout
+  Palette, FileText, CheckSquare, MessageSquare, Settings, RotateCcw, BarChart2, Layout,
+  Link2, Video
 } from 'lucide-react'
 import DocumentCanvas, { type GeneratedDoc } from '@/components/teacher/DocumentCanvas'
 import { llmApi, teacherApi } from '@/lib/api'
@@ -36,7 +37,6 @@ import {
   type DispensaExercise,
 } from '@/components/teacher/reportTemplates'
 import {
-  PASTEL_ICON_BACKGROUNDS,
   PASTEL_ICON_TEXT,
   PASTEL_SURFACES,
 } from '@/design/themes/pastelSurfaces'
@@ -59,6 +59,7 @@ const AGENT_MODES = [
   { id: 'analysis', label: 'Analisi' },
   { id: 'brochure', label: 'Brochure' },
   { id: 'dispensa', label: 'Dispensa' },
+  { id: 'html_page', label: 'Pagina Interattiva' },
 ] as const
 
 // Explicitly include hidden modes in type even though they're hidden from UI
@@ -89,6 +90,12 @@ interface QuizData {
   time_limit_minutes?: number
 }
 
+interface LessonData {
+  title: string
+  description?: string
+  content: string
+}
+
 interface Message {
   id: string
   role: 'user' | 'assistant' | 'system'
@@ -112,6 +119,16 @@ interface AttachedFile {
   preview?: string
   type: 'image' | 'document' | 'data'
   dataPreview?: import('@/components/DataFileCard').DataFilePreview
+}
+
+interface AttachedYouTube {
+  videoId: string
+  url: string
+  thumbnail: string
+  title?: string | null
+  transcript?: string
+  status: 'loading' | 'ready' | 'error'
+  errorMsg?: string
 }
 
 interface DispensaPlanSection {
@@ -351,9 +368,10 @@ export default function TeacherSupportChat() {
   const [currentConversationId, setCurrentConversationId] = useState<string | null>(null)
   const [, setConversationCache] = useState<Record<string, Message[]>>({})
   const conversationCacheRef = useRef<Record<string, Message[]>>({})
+  const justCreatedConvRef = useRef<Set<string>>(new Set())
   const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([])
   const [agentMode, setAgentMode] = useState<AgentMode>('default')
-  const [imageProvider, setImageProvider] = useState<'dall-e' | 'gpt-image-1'>('dall-e')
+  const [imageProvider, setImageProvider] = useState<'dall-e' | 'gpt-image-1.5'>('gpt-image-1.5')
   const [imageSize, setImageSize] = useState<string>('1024x1024')
   // Analysis mode: session/task picker
   const [analysisSessionId, setAnalysisSessionId] = useState<string>('')
@@ -372,6 +390,10 @@ export default function TeacherSupportChat() {
   const [pendingDispensaFilesContext, setPendingDispensaFilesContext] = useState<string>('')
   const modelMenuRef = useRef<HTMLDivElement>(null)
   const modeMenuRef = useRef<HTMLDivElement>(null)
+  const linkModalRef = useRef<HTMLDivElement>(null)
+  const [attachedYoutube, setAttachedYoutube] = useState<AttachedYouTube | null>(null)
+  const [showLinkModal, setShowLinkModal] = useState(false)
+  const [linkInputValue, setLinkInputValue] = useState('')
 
   const { data: availableModelsResponse } = useQuery({
     queryKey: ['llm-available-models'],
@@ -417,6 +439,16 @@ export default function TeacherSupportChat() {
     backgroundColor: accentTheme.accent,
     color: '#ffffff',
   }) as CSSProperties, [accentTheme])
+  const accentButtonStyle = useMemo(() => ({
+    backgroundColor: accentTheme.soft,
+    color: accentTheme.text,
+    borderColor: accentTheme.border,
+  }) as CSSProperties, [accentTheme])
+  const accentButtonStrongStyle = useMemo(() => ({
+    backgroundColor: accentTheme.softStrong,
+    color: accentTheme.text,
+    borderColor: accentTheme.border,
+  }) as CSSProperties, [accentTheme])
   const selectedModeMeta = useMemo(
     () => AGENT_MODES.find(m => m.id === agentMode) || AGENT_MODES[0],
     [agentMode]
@@ -452,6 +484,9 @@ export default function TeacherSupportChat() {
       }
       if (modeMenuRef.current && !modeMenuRef.current.contains(event.target as Node)) {
         setShowModeMenu(false)
+      }
+      if (linkModalRef.current && !linkModalRef.current.contains(event.target as Node)) {
+        setShowLinkModal(false)
       }
     }
     document.addEventListener('mousedown', handleClickOutside)
@@ -592,7 +627,7 @@ export default function TeacherSupportChat() {
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   // Publish Modal State
-  const [publishModal, setPublishModal] = useState<{ isOpen: boolean, type: 'quiz' | 'dataset', data: any }>({
+  const [publishModal, setPublishModal] = useState<{ isOpen: boolean, type: 'quiz' | 'dataset' | 'lesson', data: any }>({
     isOpen: false,
     type: 'quiz',
     data: null
@@ -600,7 +635,7 @@ export default function TeacherSupportChat() {
   const [publishMode, setPublishMode] = useState<'published' | 'draft'>('published')
 
   // Editor Modal State (for editing quiz before publishing)
-  const [editorModal, setEditorModal] = useState<{ isOpen: boolean, type: 'quiz' | 'dataset', data: any }>({
+  const [editorModal, setEditorModal] = useState<{ isOpen: boolean, type: 'quiz' | 'dataset' | 'lesson', data: any }>({
     isOpen: false,
     type: 'quiz',
     data: null
@@ -745,6 +780,11 @@ export default function TeacherSupportChat() {
       setShowCanvas(false)
     }
     const loadMessages = async () => {
+      if (justCreatedConvRef.current.has(currentConversationId)) {
+        justCreatedConvRef.current.delete(currentConversationId)
+        setLoadingMessages(false)
+        return
+      }
       setLoadingMessages(true)
       setHasMoreMessages(false)
       setOldestMessageId(null)
@@ -897,6 +937,38 @@ export default function TeacherSupportChat() {
     if (files.length > 0) addFiles(files)
   }
 
+  const extractYouTubeId = (url: string): string | null => {
+    const match = url.match(/(?:youtube\.com\/(?:watch\?v=|embed\/|shorts\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/)
+    return match ? match[1] : null
+  }
+
+  const handleConfirmLink = async (url: string) => {
+    const videoId = extractYouTubeId(url)
+    if (!videoId) {
+      setInputText(prev => prev ? `${prev} ${url}` : url)
+      setShowLinkModal(false)
+      setLinkInputValue('')
+      return
+    }
+    const thumbnail = `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`
+    setAttachedYoutube({ videoId, url, thumbnail, status: 'loading' })
+    setShowLinkModal(false)
+    setLinkInputValue('')
+    try {
+      const res = await llmApi.getYoutubeTranscript(url)
+      setAttachedYoutube(prev => prev
+        ? { ...prev, title: res.data.title, transcript: res.data.transcript, status: 'ready' }
+        : null
+      )
+    } catch (err: unknown) {
+      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+      setAttachedYoutube(prev => prev
+        ? { ...prev, status: 'error', errorMsg: detail || 'Trascritto non disponibile' }
+        : null
+      )
+    }
+  }
+
   const removeFile = (index: number) => {
     setAttachedFiles(prev => {
       const newFiles = [...prev]
@@ -1000,6 +1072,7 @@ export default function TeacherSupportChat() {
         agent_mode: agentMode
       })
       const convId = response.data.id
+      justCreatedConvRef.current.add(convId)
       setCurrentConversationId(convId)
       setConversations(prev => [{
         id: convId,
@@ -1117,7 +1190,7 @@ export default function TeacherSupportChat() {
   }
 
   const generateDocument = async (
-    mode: 'brochure' | 'dispensa' | 'report',
+    mode: 'brochure' | 'dispensa' | 'report' | 'html_page',
     userRequest: string,
     chatHistory: Message[],
     filesContext: string,
@@ -1301,7 +1374,7 @@ export default function TeacherSupportChat() {
     }
 
     // Helper: stream a prompt and return the full content
-    const streamPrompt = async (promptText: string, model = 'claude-sonnet-4-6'): Promise<string> => {
+    const streamPrompt = async (promptText: string, model = 'claude-sonnet-4-6', maxTokens = 4096): Promise<string> => {
       const response = await fetch('/api/v1/llm/teacher/chat-stream', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1312,6 +1385,7 @@ export default function TeacherSupportChat() {
           provider: 'anthropic',
           model,
           agent_mode: 'default',
+          max_tokens: maxTokens,
         })
       })
       if (!response.ok) throw new Error('Stream request failed')
@@ -1331,7 +1405,8 @@ export default function TeacherSupportChat() {
       parse: (raw: string) => T | null,
       label: string,
       model = 'claude-sonnet-4-6',
-      maxAttempts = 3
+      maxAttempts = 3,
+      maxTokens = 4096,
     ): Promise<T> => {
       let lastOutput = ''
       for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
@@ -1345,7 +1420,7 @@ export default function TeacherSupportChat() {
               'Se stai per terminare i token, chiudi comunque correttamente il JSON e il blocco markdown.',
               lastOutput ? `OUTPUT PRECEDENTE NON VALIDO:\n${lastOutput.slice(-6000)}` : '',
             ].filter(Boolean).join('\n')
-        lastOutput = (await streamPrompt(effectivePrompt, model)).trim()
+        lastOutput = (await streamPrompt(effectivePrompt, model, maxTokens)).trim()
         const parsed = parse(lastOutput)
         if (parsed) return parsed
       }
@@ -1460,7 +1535,74 @@ export default function TeacherSupportChat() {
       return `\`\`\`dispensa_data\n${JSON.stringify(fullPayload, null, 2)}\n\`\`\``
     }
 
+    if (mode === 'html_page') {
+      const currentHtml = isEdit && currentDoc ? currentDoc.content : null
+
+      // EDIT MODE: backend tool-calling agent — no free-text parsing, fully deterministic
+      if (isEdit && currentHtml) {
+        const response = await llmApi.editHtmlPage(currentHtml, userRequest)
+        return response.data.html
+      }
+
+      // NEW GENERATION (no current doc): generate full self-contained page
+      const parseHtmlPage = (raw: string): string | null => {
+        let m = raw.match(/```html_page\s*([\s\S]*?)```/)
+        if (!m) m = raw.match(/```html\s*([\s\S]*?)```/)
+        let html: string
+        if (m) {
+          html = m[1].trim()
+        } else {
+          const dtIdx = raw.indexOf('<!DOCTYPE')
+          const hIdx = raw.indexOf('<html')
+          const startIdx = dtIdx >= 0 ? dtIdx : hIdx >= 0 ? hIdx : -1
+          html = startIdx >= 0 ? raw.slice(startIdx).trim() : raw.trim()
+        }
+        if (html.includes('</html>') || html.includes('</body>')) return html
+        if (html.includes('<!DOCTYPE') || html.startsWith('<html')) {
+          return html + '\n</body></html>'
+        }
+        return null
+      }
+
+      const htmlPrompt = [
+        'Genera una pagina HTML5 interattiva e animata completa.',
+        '',
+        'REQUISITI TECNICI:',
+        '- Pagina HTML5 completamente self-contained (CSS e JS inline)',
+        '- NO librerie esterne, NO CDN, NO import: solo HTML/CSS/JS vanilla',
+        '- Animazioni tramite CSS transitions/keyframes o canvas/requestAnimationFrame',
+        '- Responsive (funziona su desktop e tablet)',
+        '- Interattività reale: slider, pulsanti, animazioni dinamiche',
+        '',
+        'LIMITI DI DIMENSIONE (rispettali rigorosamente per evitare troncature):',
+        '- CSS: max 120 righe compatte',
+        '- JS: max 180 righe, logica essenziale',
+        '- HTML struttura: max 50 righe',
+        '',
+        'FORMATO RISPOSTA:',
+        '- Rispondi SOLO con il codice HTML completo racchiuso tra ```html e ```',
+        '- Inizia con <!DOCTYPE html> e chiudi sempre con </body></html>',
+        '- Nessun testo fuori dal blocco codice',
+        '- Se stai per terminare i token, chiudi comunque correttamente </body></html>',
+        '',
+        `ARGOMENTO: ${userRequest}`,
+        contextSection,
+      ].filter(Boolean).join('\n')
+
+      const html = await streamPromptValidated(htmlPrompt, parseHtmlPage, 'html_page', 'claude-sonnet-4-6', 3, 10000)
+      return html
+    }
+
     if (mode === 'brochure') {
+      // EDIT MODE: backend tool-calling — surgical field-level merge, no full regeneration
+      if (isEdit && currentDoc) {
+        const currentPayload = parseBrochurePayload(currentDoc.content)
+        if (currentPayload) {
+          const response = await llmApi.editBrochure(currentPayload, userRequest)
+          return `\`\`\`brochure_data\n${JSON.stringify(response.data.payload, null, 2)}\n\`\`\``
+        }
+      }
+      // NEW GENERATION
       const payload = await streamPromptValidated(prompt, parseBrochurePayload, 'brochure_data')
       return `\`\`\`brochure_data\n${JSON.stringify(payload, null, 2)}\n\`\`\``
     }
@@ -1545,6 +1687,7 @@ export default function TeacherSupportChat() {
     if ((!userInput && attachedFiles.length === 0 && !canSendAnalysis) || isLoading) return
 
     const filesInfo = attachedFiles.length > 0 ? ` [Allegati: ${attachedFiles.map(f => f.file.name).join(', ')}]` : ''
+    const youtubeInfo = attachedYoutube ? ` [YouTube: ${attachedYoutube.title || attachedYoutube.videoId}]` : ''
     let messageContent = userInput || (agentMode === 'analysis' ? 'Analizza le risposte degli studenti' : 'Analizza questi documenti')
 
     if (userInput && agentMode !== 'default' && agentMode !== 'image') {
@@ -1566,7 +1709,7 @@ export default function TeacherSupportChat() {
     const userMessage: Message = {
       id: `msg-${Date.now()}`,
       role: 'user',
-      content: messageContent + filesInfo,
+      content: messageContent + filesInfo + youtubeInfo,
       timestamp: new Date()
     }
 
@@ -1582,12 +1725,21 @@ export default function TeacherSupportChat() {
     if (overrideInput === undefined) setInputText('')
     const currentFiles = [...attachedFiles]
     setAttachedFiles([])
+    const currentYoutube = attachedYoutube
+    setAttachedYoutube(null)
     setIsLoading(true)
+
+    // Build LLM content: append transcript if available
+    let llmContent = messageContent
+    if (currentYoutube?.status === 'ready' && currentYoutube.transcript) {
+      const videoLabel = currentYoutube.title ? `"${currentYoutube.title}"` : currentYoutube.url
+      llmContent = `${messageContent}\n\n---\nTRASCRITTO VIDEO YOUTUBE ${videoLabel}:\n${currentYoutube.transcript.substring(0, 25000)}`
+    }
 
     try {
       if (agentMode === 'image') {
         // IMAGE GENERATION FLOW
-        const providerLabel = imageProvider === 'dall-e' ? 'DALL-E 3' : 'GPT Image 1'
+        const providerLabel = imageProvider === 'dall-e' ? 'DALL-E 3' : 'GPT Image 1.5'
 
         // Step 1: Show connecting status
         setImageGenerationProgress({
@@ -1607,7 +1759,7 @@ export default function TeacherSupportChat() {
 
 Basati sulla conversazione precedente per capire se l'utente sta chiedendo una nuova immagine o modifiche a una esistente.
 
-Descrizione utente: "${messageContent}"
+Descrizione utente: "${llmContent}"
 
 REGOLE IMPORTANTI:
 - Scrivi SOLO il prompt in inglese, nient'altro.
@@ -1627,7 +1779,7 @@ REGOLE IMPORTANTI:
           'gpt-5-mini'
         )
 
-        const enhancedPrompt = expansionResponse.data?.response?.trim() || messageContent
+        const enhancedPrompt = expansionResponse.data?.response?.trim() || llmContent
 
         // Step 3: Show enhanced prompt and start generation
         setImageGenerationProgress({
@@ -1651,7 +1803,7 @@ REGOLE IMPORTANTI:
             role: 'assistant',
             content: `**Immagine Generata**\n\n![Generata](${imageUrl})\n\n**Prompt Effettivo:**\n\`${enhancedPrompt}\``,
             timestamp: new Date(),
-            provider: imageProvider === 'dall-e' || imageProvider === 'gpt-image-1' ? 'openai' : 'flux',
+            provider: imageProvider === 'dall-e' || imageProvider === 'gpt-image-1.5' ? 'openai' : 'flux',
             model: imageProvider === 'dall-e' ? 'dall-e-3' : imageProvider,
             token_usage_json: { image_count: 1 },
           }
@@ -1688,6 +1840,62 @@ REGOLE IMPORTANTI:
         queryClient.invalidateQueries({ queryKey: ['llm-environmental-footprint'] })
         await saveMessageToServer(convId, userMessage, finalMsg, selectedModel)
 
+      } else if (agentMode === 'html_page') {
+        // HTML INTERACTIVE PAGE GENERATION
+        setIsGeneratingDoc(true)
+        const filesContext = currentFiles.map(f => f.file.name).join(', ')
+        const isEdit = showCanvas && activeDoc?.type === 'html_page'
+
+        const progressSteps = isEdit
+          ? ['✏️ Analizzando la pagina corrente...', '🔄 Applicando le modifiche richieste...', '🎨 Rigenerando il codice...', 'Quasi pronto...']
+          : ['🎨 Progettando layout e animazioni...', '⚙️ Generando HTML struttura e CSS...', '🔧 Aggiungendo JavaScript interattivo...', 'Finalizzando la pagina...']
+        const progressId = `progress-${Date.now()}`
+        setMessages(prev => [...prev, { id: progressId, role: 'assistant' as const, content: progressSteps[0], timestamp: new Date() }])
+        let stepIdx = 0
+        const progressTimer = setInterval(() => {
+          stepIdx = Math.min(stepIdx + 1, progressSteps.length - 1)
+          setMessages(prev => prev.map(m => m.id === progressId ? { ...m, content: progressSteps[stepIdx] } : m))
+        }, 5000)
+
+        try {
+          const htmlContent = await generateDocument(
+            'html_page',
+            llmContent,
+            messages,
+            filesContext,
+            isEdit,
+            activeDoc,
+          )
+          clearInterval(progressTimer)
+
+          const newDoc: GeneratedDoc = {
+            type: 'html_page',
+            content: htmlContent,
+            version: isEdit ? (activeDoc?.version ?? 0) + 1 : 1,
+            title: messageContent.substring(0, 60),
+          }
+          setActiveDoc(newDoc)
+          setShowCanvas(true)
+          docCacheRef.current[convId] = newDoc
+          localStorage.setItem('teacher_canvas_docs', JSON.stringify(docCacheRef.current))
+          setConvsWithDocs(prev => new Set([...prev, convId]))
+          teacherApi.saveConversationDocument(convId, newDoc).catch((e) => {
+            console.warn('Failed to save document to server:', e)
+          })
+
+          const finalContent = isEdit
+            ? `**Pagina Interattiva aggiornata** (v${newDoc.version}) — le modifiche sono visibili nel canvas a destra.`
+            : `**Pagina Interattiva generata** (v${newDoc.version}) — il codice è aperto nel canvas. Puoi chiedere modifiche continuando la chat.`
+          setMessages(prev => prev.map(m => m.id === progressId ? { ...m, content: finalContent } : m))
+          const assistantMessage: Message = { id: progressId, role: 'assistant', content: finalContent, timestamp: new Date(), provider: 'anthropic', model: 'claude-sonnet-4-6' }
+          await saveMessageToServer(convId, userMessage, assistantMessage, 'claude-sonnet-4-6')
+        } catch (e) {
+          clearInterval(progressTimer)
+          setMessages(prev => prev.filter(m => m.id !== progressId))
+          throw e
+        } finally {
+          setIsGeneratingDoc(false)
+        }
       } else if (agentMode === 'brochure' || agentMode === 'dispensa') {
         // DOCUMENT GENERATION/EDITING FLOW
         setIsGeneratingDoc(true)
@@ -1700,13 +1908,13 @@ REGOLE IMPORTANTI:
           && (!pendingDispensaPlan || !/^approva/i.test(userInput))
 
         if (shouldPlanDispensa) {
-          const plan = await generateDispensaPlan(messageContent, messages, filesContext)
+          const plan = await generateDispensaPlan(llmContent, messages, filesContext)
           setIsGeneratingDoc(false)
           if (!plan) {
             throw new Error('Planning dispensa non valido.')
           }
           setPendingDispensaPlan(plan)
-          setPendingDispensaRequest(messageContent)
+          setPendingDispensaRequest(llmContent)
           setPendingDispensaFilesContext(filesContext)
           const planSummary = [
             `## Piano dispensa`,
@@ -1733,9 +1941,9 @@ REGOLE IMPORTANTI:
         // Add live progress message
         const progressId = `progress-${Date.now()}`
         const progressSteps = isEdit
-          ? ['✏️ Analizzando il documento corrente...', '🔄 Applicando le modifiche richieste...', '🎨 Rigenerando il contenuto...', '✅ Quasi pronto...']
+          ? ['✏️ Analizzando il documento corrente...', '🔄 Applicando le modifiche richieste...', '🎨 Rigenerando il contenuto...', 'Quasi pronto...']
           : agentMode === 'brochure'
-            ? ['🎨 Progettando il layout e la palette colori...', '✍️ Generando le sezioni di contenuto...', '🖼️ Ottimizzando il design HTML...', '✅ Finalizzando la brochure...']
+            ? ['🎨 Progettando il layout e la palette colori...', '✍️ Generando le sezioni di contenuto...', '🖼️ Ottimizzando il design HTML...', 'Finalizzando la brochure...']
             : ['📚 Strutturando capitoli, box e layout HTML...', '✍️ Generando contenuto accademico con formule...', '🔍 Revisione critica del documento...', '✨ Migliorando e finalizzando la dispensa...']
         setMessages(prev => [...prev, { id: progressId, role: 'assistant' as const, content: progressSteps[0], timestamp: new Date() }])
 
@@ -1750,8 +1958,8 @@ REGOLE IMPORTANTI:
           const docContent = await generateDocument(
             agentMode,
             pendingDispensaPlan && agentMode === 'dispensa' && !isEdit
-              ? (pendingDispensaRequest || messageContent)
-              : messageContent,
+              ? (pendingDispensaRequest || llmContent)
+              : llmContent,
             messages,
             pendingDispensaPlan && agentMode === 'dispensa' && !isEdit ? pendingDispensaFilesContext : filesContext,
             isEdit,
@@ -1789,8 +1997,8 @@ REGOLE IMPORTANTI:
 
           // Replace progress message with final result
           const finalContent = isEdit
-            ? `✅ **${docLabel} aggiornata** (v${newDoc.version}) — le modifiche sono visibili nel canvas a destra.`
-            : `✅ **${docLabel} generata** (v${newDoc.version}) — il documento è aperto nel canvas. Puoi chiedere modifiche continuando la chat.`
+            ? `**${docLabel} aggiornata** (v${newDoc.version}) — le modifiche sono visibili nel canvas a destra.`
+            : `**${docLabel} generata** (v${newDoc.version}) — il documento è aperto nel canvas. Puoi chiedere modifiche continuando la chat.`
           setMessages(prev => prev.map(m => m.id === progressId ? { ...m, content: finalContent } : m))
           const assistantMessage: Message = { id: progressId, role: 'assistant', content: finalContent, timestamp: new Date(), provider: 'anthropic', model: 'claude-sonnet-4-6' }
           await saveMessageToServer(convId, userMessage, assistantMessage, 'claude-sonnet-4-6')
@@ -1802,7 +2010,7 @@ REGOLE IMPORTANTI:
           setIsGeneratingDoc(false)
         }
       } else if (agentMode === 'web_search' || agentMode === 'quiz' || agentMode === 'dataset' || agentMode === 'report') {
-        const streamResult = await runStreamingRequest(messageContent, [...messages, userMessage])
+        const streamResult = await runStreamingRequest(llmContent, [...messages, userMessage])
         let assistantContent = streamResult.content
         const shouldBuildReportArtifact = agentMode === 'report'
           && !/```session_selector[\s\S]*?```/.test(streamResult.content)
@@ -1838,7 +2046,7 @@ REGOLE IMPORTANTI:
             teacherApi.saveConversationDocument(convId, reportDoc).catch((e) => {
               console.warn('Failed to save report document to server:', e)
             })
-            assistantContent = `${streamResult.content}\n\n✅ **Dashboard interattiva generata** — il report avanzato è aperto nel canvas.`
+            assistantContent = `${streamResult.content}\n\n**Dashboard interattiva generata** — il report avanzato è aperto nel canvas.`
           } finally {
             setIsGeneratingDoc(false)
             setStreamingStatus(null)
@@ -1865,7 +2073,7 @@ REGOLE IMPORTANTI:
         if (currentFiles.length > 0) {
           // Files: use non-streaming endpoint (files can't go over SSE JSON)
           const response = await llmApi.teacherChatWithFiles(
-            messageContent,
+            llmContent,
             history,
             'teacher_support',
             modelInfo?.provider || 'openai',
@@ -1900,7 +2108,7 @@ REGOLE IMPORTANTI:
           })()
 
           // history already excludes the current user message — backend appends it via `content`
-          const streamResult = await runStreamingRequest(messageContent, messages, {
+          const streamResult = await runStreamingRequest(llmContent, messages, {
             sessionId: _sessionId,
             onChunk: (chunk) => {
               setMessages(prev => prev.map(m =>
@@ -2122,6 +2330,13 @@ REGOLE IMPORTANTI:
         })
         taskType = 'quiz'
         title = publishModal.data.title || "Nuovo Quiz"
+      } else if (publishModal.type === 'lesson') {
+        contentJson = JSON.stringify({
+          type: 'lesson',
+          content: publishModal.data?.content || ''
+        })
+        taskType = 'lesson'
+        title = publishModal.data?.title || "Nuova Lezione"
       } else {
         contentJson = JSON.stringify({
           type: 'exercise',
@@ -2166,12 +2381,12 @@ REGOLE IMPORTANTI:
         {/* Mobile history slide-over */}
         {isMobile && mobileHistoryOpen && (
           <div className="fixed inset-0 z-50 flex" onClick={() => setMobileHistoryOpen(false)}>
-            <div className={`w-72 h-full shadow-2xl flex flex-col ${PASTEL_SURFACES.slate}`} onClick={e => e.stopPropagation()}>
-              <div className="p-4 border-b border-slate-200/70 flex items-center justify-between bg-white/55 backdrop-blur-sm">
+            <div className="w-72 h-full shadow-[var(--shadow-xl)] flex flex-col border-r border-slate-200 bg-white/92 backdrop-blur-sm" onClick={e => e.stopPropagation()}>
+              <div className="p-4 border-b border-slate-200/70 flex items-center justify-between bg-slate-50/80 backdrop-blur-sm">
                 <h2 className="text-sm font-semibold text-slate-800">Cronologia</h2>
                 <div className="flex gap-1">
-                  <Button variant="ghost" size="sm" onClick={handleNewChat} className={`h-8 w-8 p-0 ${PASTEL_ICON_BACKGROUNDS.indigo} hover:bg-indigo-200/80`}>
-                    <Plus className={`h-4 w-4 ${PASTEL_ICON_TEXT.indigo}`} />
+                  <Button variant="ghost" size="sm" onClick={handleNewChat} className="h-8 w-8 rounded-lg border p-0" style={accentButtonStyle}>
+                    <Plus className="h-4 w-4" />
                   </Button>
                   <Button variant="ghost" size="sm" onClick={() => setMobileHistoryOpen(false)} className="h-8 w-8 p-0 hover:bg-white/70">
                     <X className="h-4 w-4 text-slate-400" />
@@ -2183,7 +2398,7 @@ REGOLE IMPORTANTI:
                   <button
                     key={conv.id}
                     onClick={() => { openConversation(conv); setMobileHistoryOpen(false) }}
-                    className={`w-full text-left p-3 rounded-[18px] text-sm transition-all ${currentConversationId === conv.id ? 'font-medium border shadow-sm' : `${PASTEL_SURFACES.slate} text-slate-600 shadow-sm`}`}
+                    className={`w-full text-left p-3 rounded-xl text-sm transition-all ${currentConversationId === conv.id ? 'font-medium border shadow-sm' : 'bg-white text-slate-600 border border-slate-200/70 hover:border-slate-300 hover:bg-slate-50'}`}
                     style={currentConversationId === conv.id ? selectedSoftStyle : undefined}
                   >
                     <div className="truncate">{conv.title}</div>
@@ -2203,9 +2418,9 @@ REGOLE IMPORTANTI:
         <div className={`flex-1 overflow-hidden ${isMobile ? 'px-0 pb-0' : 'px-4 pt-4 pb-4'}`}>
               <div className={`flex h-full ${isMobile ? '' : 'max-w-[1800px] mx-auto w-full'}`}>
                 {/* Unified card: sidebar + chat together */}
-                <div className={`flex-1 flex h-full overflow-hidden ${isMobile ? '' : 'bg-white rounded-[28px] border border-slate-200 shadow-sm'}`}>
+                <div className={`flex-1 flex h-full overflow-hidden ${isMobile ? '' : 'bg-white rounded-2xl border border-slate-200 shadow-[var(--shadow-md)]'}`}>
                  {/* Sidebar — desktop only */}
-                 <aside className={`${isMobile ? 'hidden' : ''} ${isSidebarCollapsed ? 'w-12' : 'w-64'} flex flex-col transition-all duration-300 flex-shrink-0 overflow-hidden border-r border-slate-200/70 bg-slate-50/60 backdrop-blur-sm`}>
+                 <aside className={`${isMobile ? 'hidden' : ''} ${isSidebarCollapsed ? 'w-12' : 'w-64'} flex flex-col transition-all duration-300 flex-shrink-0 overflow-hidden border-r border-slate-200/70 bg-slate-50/90 backdrop-blur-sm`}>
                   {isSidebarCollapsed ? (
                     /* Collapsed: just expand button */
                     <div className="p-2 flex flex-col items-center gap-3 pt-3">
@@ -2222,22 +2437,24 @@ REGOLE IMPORTANTI:
                   ) : (
                     <>
                       {/* Section tabs — pill switcher */}
-                      <div className="px-2.5 pt-2 pb-1.5 bg-white/60 border-b border-slate-200/70 shrink-0 flex items-center gap-1 backdrop-blur-sm">
-                        <div className={`flex-1 flex items-center gap-1 p-1 rounded-[18px] shadow-sm ${PASTEL_SURFACES.slate}`}>
+                      <div className="px-2.5 pt-2 pb-1.5 bg-white/70 border-b border-slate-200/70 shrink-0 flex items-center gap-1 backdrop-blur-sm">
+                        <div className="flex-1 flex items-center gap-1 rounded-xl border border-slate-200 bg-white p-1 shadow-sm">
                           <button
                             onClick={() => setActiveTab('chat')}
-                            className={`flex-1 flex items-center justify-center gap-1 py-1.5 text-[10px] font-bold rounded-xl transition-all duration-200 shadow-sm ${activeTab === 'chat'
-                              ? `${PASTEL_SURFACES.indigo} ${PASTEL_ICON_TEXT.indigo}`
-                              : 'text-slate-400 hover:text-slate-500'}`}
+                            className={`flex-1 flex items-center justify-center gap-1 py-1.5 text-[10px] font-bold rounded-lg transition-all duration-200 ${activeTab === 'chat'
+                              ? 'border'
+                              : 'text-slate-500 hover:text-slate-700 hover:bg-slate-50'}`}
+                            style={activeTab === 'chat' ? accentButtonStyle : undefined}
                           >
                             <MessageCircle className="h-3 w-3" />
                             Cronologia
                           </button>
                           <button
                             onClick={() => setActiveTab('teacherbots')}
-                            className={`flex-1 flex items-center justify-center gap-1 py-1.5 text-[10px] font-bold rounded-xl transition-all duration-200 shadow-sm ${activeTab === 'teacherbots'
-                              ? `${PASTEL_SURFACES.violet} ${PASTEL_ICON_TEXT.violet}`
-                              : 'text-slate-400 hover:text-slate-500'}`}
+                            className={`flex-1 flex items-center justify-center gap-1 py-1.5 text-[10px] font-bold rounded-lg transition-all duration-200 ${activeTab === 'teacherbots'
+                              ? 'border'
+                              : 'text-slate-500 hover:text-slate-700 hover:bg-slate-50'}`}
+                            style={activeTab === 'teacherbots' ? accentButtonStyle : undefined}
                           >
                             <Sparkles className="h-3 w-3" />
                             Teacherbots
@@ -2258,21 +2475,21 @@ REGOLE IMPORTANTI:
                         <>
                           {/* Action bar */}
                           <div className="px-3 py-2 flex gap-2 border-b border-slate-200/60 shrink-0 bg-white/30">
-                            <Button variant="ghost" size="sm" onClick={handleNewChat} className={`h-8 w-8 p-0 shadow-sm ${PASTEL_SURFACES.indigo}`} title="Nuova chat">
-                              <Plus className={`h-4 w-4 ${PASTEL_ICON_TEXT.indigo}`} />
+                            <Button variant="ghost" size="sm" onClick={handleNewChat} className="h-8 w-8 rounded-lg border p-0 shadow-sm" style={accentButtonStyle} title="Nuova chat">
+                              <Plus className="h-4 w-4" />
                             </Button>
-                            <Button variant="ghost" size="sm" onClick={handleClearAllConversations} className={`h-8 w-8 p-0 shadow-sm ${PASTEL_SURFACES.rose}`} title="Pulisci cronologia">
+                            <Button variant="ghost" size="sm" onClick={handleClearAllConversations} className="h-8 w-8 p-0 rounded-lg shadow-sm bg-rose-50 text-rose-700 hover:bg-rose-100" title="Pulisci cronologia">
                               <Trash2 className={`h-4 w-4 ${PASTEL_ICON_TEXT.rose}`} />
                             </Button>
                           </div>
-                          <div className="flex-1 overflow-y-auto px-3 py-3 space-y-1">
+                          <div className="flex-1 overflow-y-auto px-3 py-3 space-y-2">
                             {conversations.map(conv => (
                               <button
                                 key={conv.id}
                                 onClick={() => { openConversation(conv) }}
-                                className={`w-full text-left p-3 rounded-[18px] text-sm transition-all group ${currentConversationId === conv.id
+                                className={`w-full text-left p-3 rounded-xl text-sm transition-all group ${currentConversationId === conv.id
                                   ? 'font-medium border shadow-sm'
-                                  : `${PASTEL_SURFACES.slate} text-slate-600 shadow-sm`
+                                  : 'bg-white text-slate-600 border border-slate-200/70 hover:border-slate-300 hover:bg-slate-50'
                                   }`}
                                 style={currentConversationId === conv.id ? selectedSoftStyle : undefined}
                               >
@@ -2340,11 +2557,11 @@ REGOLE IMPORTANTI:
                   {/* Support Chat Prompt Editor Modal */}
                   {showPromptEditor && (
                     <div className="fixed inset-0 z-[90] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
-                      <div className="bg-white rounded-2xl w-full max-w-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+                      <div className="bg-white rounded-2xl w-full max-w-2xl border border-slate-200 shadow-[var(--shadow-xl)] overflow-hidden flex flex-col max-h-[90vh]">
                         <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between">
                           <div className="flex items-center gap-3">
-                            <div className="w-8 h-8 rounded-full flex items-center justify-center" style={{ backgroundColor: accentTheme.accent }}>
-                              <Settings className="h-4 w-4 text-white" />
+                            <div className="w-9 h-9 rounded-xl flex items-center justify-center border" style={accentButtonStyle}>
+                              <Settings className="h-4 w-4" />
                             </div>
                             <div>
                               <h2 className="text-sm font-bold text-slate-800">Personalizza il tuo Assistente</h2>
@@ -2356,7 +2573,7 @@ REGOLE IMPORTANTI:
                           </button>
                         </div>
                         <div className="flex-1 overflow-y-auto p-6 space-y-4">
-                          <p className="text-xs text-slate-500 bg-slate-50 rounded-lg p-3 border border-slate-200">
+                          <p className="text-xs text-slate-600 bg-slate-50 rounded-xl p-3 border border-slate-200">
                             Questo è il <strong>system prompt</strong> del tuo assistente AI. Determina il suo comportamento, tono e capacità. Puoi personalizzarlo liberamente — le modifiche si applicano alle nuove conversazioni.
                           </p>
                           <textarea
@@ -2382,9 +2599,10 @@ REGOLE IMPORTANTI:
                             </Button>
                             <Button
                               size="sm"
+                              tone="accent"
+                              surface="solid"
                               disabled={promptEditorSaving}
                               onClick={handleSavePrompt}
-                              style={{ backgroundColor: accentTheme.accent, color: '#fff' }}
                             >
                               {promptEditorSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Salva'}
                             </Button>
@@ -2420,8 +2638,8 @@ REGOLE IMPORTANTI:
                         </button>
 
                         <div className="flex items-center gap-2">
-                          <div className="w-7 h-7 rounded-full flex items-center justify-center shadow-sm" style={{ backgroundColor: accentTheme.accent }}>
-                            <Bot className="h-3.5 w-3.5 text-white" />
+                          <div className="w-8 h-8 rounded-xl flex items-center justify-center border shadow-sm" style={accentButtonStyle}>
+                            <Bot className="h-3.5 w-3.5" />
                           </div>
                           <span className="text-sm font-bold text-slate-800">AI Docente</span>
                         </div>
@@ -2438,13 +2656,13 @@ REGOLE IMPORTANTI:
                       /* Desktop header — full controls */
                       <>
                     <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-full flex items-center justify-center shadow-md" style={{ backgroundColor: accentTheme.accent }}>
-                        <Bot className="h-4 w-4 text-white translate-y-[1px]" />
+                      <div className="w-9 h-9 rounded-xl flex items-center justify-center border shadow-sm" style={accentButtonStrongStyle}>
+                        <Bot className="h-4 w-4 translate-y-[1px]" />
                       </div>
                       <div>
                         <h1 className="text-sm font-bold text-slate-800">Supporto Docente AI</h1>
                         <p className="text-xs text-slate-500">
-                          {(agentMode === 'brochure' || agentMode === 'dispensa')
+                          {(agentMode === 'brochure' || agentMode === 'dispensa' || agentMode === 'html_page')
                             ? 'Claude Sonnet 4.6'
                             : (agentMode === 'quiz' || agentMode === 'dataset' || agentMode === 'web_search' || agentMode === 'report' || agentMode === 'analysis')
                             ? 'Claude Haiku'
@@ -2458,7 +2676,7 @@ REGOLE IMPORTANTI:
                             const doc = docCacheRef.current[currentConversationId]
                             if (doc) { setActiveDoc(doc); setShowCanvas(true) }
                           }}
-                          className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold border border-fuchsia-200 bg-fuchsia-50 text-fuchsia-700 hover:bg-fuchsia-100 transition-colors"
+                          className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold border border-violet-200 bg-violet-50 text-violet-700 hover:bg-violet-100 transition-colors"
                         >
                           <Layout className="h-3 w-3" />
                           Riapri documento
@@ -2474,8 +2692,8 @@ REGOLE IMPORTANTI:
                             <div className="flex items-center bg-slate-100/80 rounded-full p-1 border border-slate-200">
                               {([
                                 { id: 'dall-e', label: '🎨 DALL-E 3' },
-                                { id: 'gpt-image-1', label: '✨ GPT Image 1' },
-                              ] as { id: 'dall-e' | 'gpt-image-1'; label: string }[]).map((m) => (
+                                { id: 'gpt-image-1.5', label: '✨ GPT Image 1.5' },
+                              ] as { id: 'dall-e' | 'gpt-image-1.5'; label: string }[]).map((m) => (
                                 <button
                                   key={m.id}
                                   onClick={() => setImageProvider(m.id)}
@@ -2510,13 +2728,13 @@ REGOLE IMPORTANTI:
                         )}
 
 
-                        {(agentMode === 'brochure' || agentMode === 'dispensa') ? (
-                          <span className="text-[10px] bg-violet-100 text-violet-700 px-2 py-0.5 rounded-full font-medium flex items-center gap-1">
+                        {(agentMode === 'brochure' || agentMode === 'dispensa' || agentMode === 'html_page') ? (
+                          <span className="text-[10px] bg-violet-50 text-violet-700 px-2.5 py-1 rounded-lg font-medium flex items-center gap-1 border border-violet-100">
                             <img src="/icone_ai/anthropic.svg" className="h-3 w-3 object-contain" alt="Anthropic" />
                             Claude Sonnet 4.6
                           </span>
                         ) : (agentMode === 'quiz' || agentMode === 'dataset' || agentMode === 'web_search' || agentMode === 'report') ? (
-                          <div className="text-xs rounded-full px-3 py-1.5 font-medium border bg-slate-100 text-slate-700 border-slate-200">
+                          <div className="text-xs rounded-lg px-3 py-1.5 font-medium border bg-slate-100 text-slate-700 border-slate-200">
                             Claude Haiku (fisso)
                           </div>
                         ) : (
@@ -2524,7 +2742,7 @@ REGOLE IMPORTANTI:
                             <div className="relative" ref={modelMenuRef}>
                               <button
                                 onClick={() => setShowModelMenu(!showModelMenu)}
-                                className="flex items-center gap-2 px-4 py-2 rounded-full text-xs font-bold transition-all shadow-sm group hover:opacity-90 border"
+                                className="flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all shadow-sm group hover:opacity-90 border"
                                 style={selectedSoftStyle}
                               >
                                 <div className="p-0.5 bg-white/20 rounded-md">
@@ -2570,7 +2788,7 @@ REGOLE IMPORTANTI:
 
                                       {/* Default Checkbox */}
                                       <div
-                                        className="flex items-center justify-center w-8 h-8 rounded-full hover:bg-slate-100 transition-colors"
+                                        className="flex items-center justify-center w-8 h-8 rounded-lg hover:bg-slate-100 transition-colors"
                                         onClick={(e) => handleSetDefaultModel(m.id, e)}
                                         title="Imposta come default"
                                       >
@@ -2614,7 +2832,7 @@ REGOLE IMPORTANTI:
                             <Palette className="h-4 w-4" />
                           </Button>
                           {showBgPalette && (
-                            <div className="absolute right-0 top-10 z-30 w-64 rounded-xl border border-slate-200 bg-white p-3 shadow-xl">
+                            <div className="absolute right-0 top-10 z-30 w-64 rounded-xl border border-slate-200 bg-white p-3 shadow-[var(--shadow-lg)]">
                               <div className="space-y-3">
                                 {paletteGroups.map((group) => (
                                   <div key={group.label}>
@@ -2803,7 +3021,7 @@ REGOLE IMPORTANTI:
                                 </ReactMarkdown>
                               )}
                               {/* Inline "Riapri documento" button for brochure/dispensa result messages */}
-                              {msg.role === 'assistant' && /✅.*\*\*(Brochure|Dispensa)/.test(msg.content) && currentConversationId && convsWithDocs.has(currentConversationId) && (
+                              {msg.role === 'assistant' && /\*\*(Brochure|Dispensa|Pagina Interattiva|Dashboard)/.test(msg.content) && currentConversationId && convsWithDocs.has(currentConversationId) && (
                                 <button
                                   onClick={() => {
                                     const doc = docCacheRef.current[currentConversationId!]
@@ -2982,6 +3200,43 @@ REGOLE IMPORTANTI:
                         </div>
                       )}
 
+                      {attachedYoutube && (
+                        <div className="flex flex-wrap gap-2 mb-2">
+                          <div className="relative group flex items-stretch gap-0 bg-red-50 border border-red-200 rounded-xl overflow-hidden shadow-sm">
+                            <img
+                              src={attachedYoutube.thumbnail}
+                              alt="thumbnail"
+                              className="w-16 h-11 object-cover flex-shrink-0"
+                            />
+                            <div className="flex items-center gap-2 px-2.5 py-1">
+                              <Video className="h-3 w-3 text-red-500 flex-shrink-0" />
+                              <div className="flex flex-col min-w-0">
+                                <span className="text-[11px] font-semibold text-red-700 leading-tight truncate max-w-[140px]">
+                                  {attachedYoutube.title || 'Video YouTube'}
+                                </span>
+                                <span className="text-[10px] text-red-400 leading-tight flex items-center gap-1">
+                                  {attachedYoutube.status === 'loading' && (
+                                    <><Loader2 className="h-2.5 w-2.5 animate-spin" />Caricamento trascritto...</>
+                                  )}
+                                  {attachedYoutube.status === 'ready' && (
+                                    <><Check className="h-2.5 w-2.5 text-green-500" />Trascritto acquisito</>
+                                  )}
+                                  {attachedYoutube.status === 'error' && (
+                                    <span className="text-red-500">{attachedYoutube.errorMsg || 'Errore'}</span>
+                                  )}
+                                </span>
+                              </div>
+                              <button
+                                onClick={() => setAttachedYoutube(null)}
+                                className="ml-1 text-red-300 hover:text-red-600 flex-shrink-0"
+                              >
+                                <X className="h-3 w-3" />
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
                       {attachedFiles.length > 0 && (
                         <div className="flex flex-wrap gap-2 mb-2">
                           {attachedFiles.map((f, i) => (
@@ -3036,7 +3291,7 @@ REGOLE IMPORTANTI:
 
                       {/* Analysis mode: task picker */}
                       {agentMode === 'analysis' && (
-                        <div className="mb-2 p-3 bg-violet-50 border border-violet-200 rounded-2xl animate-in fade-in slide-in-from-bottom-2 duration-200">
+                        <div className="mb-2 p-3 bg-violet-50 border border-violet-200 rounded-xl animate-in fade-in slide-in-from-bottom-2 duration-200">
                           <div className="flex items-center gap-2 mb-2">
                             <BarChart2 className="h-3.5 w-3.5 text-violet-600" />
                             <span className="text-xs font-semibold text-violet-700">Analisi risposte studenti</span>
@@ -3075,7 +3330,7 @@ REGOLE IMPORTANTI:
                       )}
 
                       {/* Input Pill */}
-                      <div className="relative flex items-center gap-1.5 bg-white border border-slate-200 shadow-sm rounded-[24px] p-1.5 focus-within:ring-2 focus-within:ring-slate-200 transition-all">
+                      <div className="relative flex items-center gap-1.5 bg-white border border-slate-200 shadow-sm rounded-xl p-1.5 focus-within:ring-2 focus-within:ring-slate-200 transition-all">
                         <input type="file" ref={fileInputRef} className="hidden" multiple
                           accept="image/*,.pdf,.doc,.docx,.ppt,.pptx,.txt,.csv,.xlsx,.xls,.json"
                           onChange={handleFileSelect} />
@@ -3086,27 +3341,27 @@ REGOLE IMPORTANTI:
                             <Button
                               variant="ghost"
                               size="sm"
-                              className="ai-mode-pill h-8 rounded-full px-3.5 text-slate-900 gap-1.5 ring-1 ring-white/70 hover:opacity-95"
+                              className="h-8 rounded-lg px-3 text-slate-900 gap-1.5 border border-slate-200 bg-slate-50 hover:bg-slate-100 shadow-sm"
                               onClick={() => setShowModeMenu(v => !v)}
                               title="Cambia modalità"
                             >
                               <span className="text-[11px] font-semibold">Modalita</span>
-                              <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                              <span className={`rounded-md px-2 py-0.5 text-[10px] font-bold ${
                                 selectedModeMeta.id === 'default'
                                   ? 'bg-slate-900 text-white'
                                   : selectedModeMeta.id === 'report'
-                                    ? 'bg-blue-600 text-white'
+                                    ? 'bg-blue-100 text-blue-700'
                                     : selectedModeMeta.id === 'quiz'
-                                      ? 'bg-amber-500 text-white'
+                                      ? 'bg-amber-100 text-amber-700'
                                       : selectedModeMeta.id === 'image'
-                                        ? 'bg-fuchsia-600 text-white'
+                                        ? 'bg-fuchsia-100 text-fuchsia-700'
                                         : selectedModeMeta.id === 'dataset'
-                                          ? 'bg-emerald-600 text-white'
+                                          ? 'bg-emerald-100 text-emerald-700'
                                           : selectedModeMeta.id === 'analysis'
-                                            ? 'bg-violet-600 text-white'
+                                            ? 'bg-violet-100 text-violet-700'
                                             : selectedModeMeta.id === 'brochure'
-                                              ? 'bg-rose-600 text-white'
-                                              : 'bg-orange-600 text-white'
+                                              ? 'bg-rose-100 text-rose-700'
+                                              : 'bg-orange-100 text-orange-700'
                               }`}>
                                 {selectedModeMeta.label}
                               </span>
@@ -3152,10 +3407,76 @@ REGOLE IMPORTANTI:
                           onInsertText={(text) => setInputText((prev) => prev ? prev + ' ' + text : text)}
                         />
 
+                        {/* Link button + popover */}
+                        <div className="relative flex-shrink-0" ref={linkModalRef}>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg flex-shrink-0"
+                            onClick={() => { setShowLinkModal(v => !v); setLinkInputValue('') }}
+                            title="Aggiungi link"
+                          >
+                            <Link2 className="h-4 w-4" />
+                          </Button>
+
+                          {showLinkModal && (
+                            <div className="absolute bottom-full left-0 mb-2 w-80 rounded-xl border border-slate-200 bg-white shadow-xl p-3 z-50 animate-in slide-in-from-bottom-2 fade-in duration-150">
+                              <p className="text-xs font-semibold text-slate-600 mb-2">Aggiungi link</p>
+                              <input
+                                type="url"
+                                value={linkInputValue}
+                                onChange={e => setLinkInputValue(e.target.value)}
+                                onKeyDown={e => { if (e.key === 'Enter' && linkInputValue.trim()) handleConfirmLink(linkInputValue.trim()) }}
+                                placeholder="Incolla un link..."
+                                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:ring-2 focus:ring-slate-300 focus:outline-none"
+                                autoFocus
+                              />
+
+                              {extractYouTubeId(linkInputValue) && (
+                                <div className="mt-2 flex items-start gap-2 bg-red-50 border border-red-100 rounded-lg overflow-hidden">
+                                  <img
+                                    src={`https://img.youtube.com/vi/${extractYouTubeId(linkInputValue)}/hqdefault.jpg`}
+                                    alt="thumbnail"
+                                    className="w-20 h-14 object-cover flex-shrink-0"
+                                  />
+                                  <div className="py-2 pr-2 flex flex-col justify-center min-w-0">
+                                    <p className="text-xs font-semibold text-red-700 flex items-center gap-1">
+                                      <Video className="h-3 w-3" />
+                                      Video YouTube rilevato
+                                    </p>
+                                    <p className="text-[11px] text-slate-500 mt-0.5 leading-tight">
+                                      Acquisirò il trascritto del video automaticamente
+                                    </p>
+                                  </div>
+                                </div>
+                              )}
+
+                              <div className="mt-2.5 flex justify-end gap-2">
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-7 text-xs"
+                                  onClick={() => { setShowLinkModal(false); setLinkInputValue('') }}
+                                >
+                                  Annulla
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  className="h-7 text-xs bg-slate-900 hover:bg-slate-800 text-white"
+                                  disabled={!linkInputValue.trim()}
+                                  onClick={() => linkInputValue.trim() && handleConfirmLink(linkInputValue.trim())}
+                                >
+                                  Aggiungi
+                                </Button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+
                         <Button
                           variant="ghost"
                           size="icon"
-                          className="h-8 w-8 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-full flex-shrink-0"
+                          className="h-8 w-8 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg flex-shrink-0"
                           onClick={() => fileInputRef.current?.click()}
                           title="Allega"
                         >
@@ -3186,7 +3507,7 @@ REGOLE IMPORTANTI:
                         <Button
                           onClick={() => { void handleSend() }}
                           disabled={((!inputText.trim() && attachedFiles.length === 0) && !(agentMode === 'analysis' && analysisTaskId)) || isLoading}
-                          className={`h-9 w-9 rounded-full transition-all flex-shrink-0 ${((!inputText.trim() && attachedFiles.length === 0) && !(agentMode === 'analysis' && analysisTaskId))
+                          className={`h-9 w-9 rounded-lg transition-all flex-shrink-0 ${((!inputText.trim() && attachedFiles.length === 0) && !(agentMode === 'analysis' && analysisTaskId))
                             ? 'bg-slate-100 text-slate-300'
                             : 'bg-slate-900 hover:bg-slate-800 text-white shadow-md'
                             }`}
@@ -3227,7 +3548,7 @@ REGOLE IMPORTANTI:
               </div>
 
               <p className="text-sm text-slate-600 mb-6">
-                Scegli la sessione e la modalita di pubblicazione per questo {publishModal.type === 'quiz' ? 'quiz' : 'dataset'}.
+                Scegli la sessione e la modalita di pubblicazione per {publishModal.type === 'quiz' ? 'questo quiz' : publishModal.type === 'lesson' ? 'questa lezione' : 'questo dataset'}.
               </p>
 
               <div className="mb-5 rounded-lg border border-slate-200 p-3">
@@ -3235,14 +3556,14 @@ REGOLE IMPORTANTI:
                 <div className="flex gap-2">
                   <button
                     onClick={() => setPublishMode('published')}
-                    className={`text-xs px-3 py-1.5 rounded-full border ${publishMode === 'published' ? 'font-semibold' : 'text-slate-600 border-slate-200 hover:bg-slate-50'}`}
+                    className={`text-xs px-3 py-1.5 rounded-lg border ${publishMode === 'published' ? 'font-semibold' : 'text-slate-600 border-slate-200 hover:bg-slate-50'}`}
                     style={publishMode === 'published' ? selectedSoftStyle : undefined}
                   >
                     Pubblica subito
                   </button>
                   <button
                     onClick={() => setPublishMode('draft')}
-                    className={`text-xs px-3 py-1.5 rounded-full border ${publishMode === 'draft' ? 'font-semibold' : 'text-slate-600 border-slate-200 hover:bg-slate-50'}`}
+                    className={`text-xs px-3 py-1.5 rounded-lg border ${publishMode === 'draft' ? 'font-semibold' : 'text-slate-600 border-slate-200 hover:bg-slate-50'}`}
                     style={publishMode === 'draft' ? selectedSoftStyle : undefined}
                   >
                     Tieni in bozza
@@ -3371,11 +3692,12 @@ function extractBase64Images(content: string): { cleanContent: string; images: s
   return { cleanContent: cleanContent.trim(), images }
 }
 
-function parseContentBlocks(content: string): { 
-  quiz: QuizData | null; 
-  csv: string | null; 
-  textContent: string; 
-  isGenerating: boolean; 
+function parseContentBlocks(content: string): {
+  quiz: QuizData | null;
+  lessonData: LessonData | null;
+  csv: string | null;
+  textContent: string;
+  isGenerating: boolean;
   generationType: string | null;
   sessionSelector: any[] | null;
   studentSelector: any[] | null;
@@ -3384,6 +3706,7 @@ function parseContentBlocks(content: string): {
 } {
   let textContent = content
   let quiz: QuizData | null = null
+  let lessonData: LessonData | null = null
   let csv: string | null = null
   let sessionSelector: any[] | null = null
   let studentSelector: any[] | null = null
@@ -3412,13 +3735,14 @@ function parseContentBlocks(content: string): {
 
   const hasBase64Image = content.includes('data:image') && content.includes('base64')
   if (hasBase64Image) {
-    return { quiz, csv, textContent, isGenerating: false, generationType: null, sessionSelector, studentSelector, reportTypeSelector, actionMenu }
+    return { quiz, lessonData, csv, textContent, isGenerating: false, generationType: null, sessionSelector, studentSelector, reportTypeSelector, actionMenu }
   }
 
   const hasIncompleteQuiz = content.includes('```quiz') && !content.includes('```quiz')
     ? false
     : (content.match(/```quiz/g)?.length || 0) > (content.match(/```quiz[\s\S]*?```/g)?.length || 0)
   const hasIncompleteCsv = (content.match(/```csv/g)?.length || 0) > (content.match(/```csv[\s\S]*?```/g)?.length || 0)
+  const hasIncompleteLessonData = (content.match(/```lesson_data/g)?.length || 0) > (content.match(/```lesson_data[\s\S]*?```/g)?.length || 0)
 
   if (hasIncompleteQuiz || (generatingQuizPattern.test(content) && content.length < 200)) {
     isGenerating = true
@@ -3428,6 +3752,10 @@ function parseContentBlocks(content: string): {
     isGenerating = true
     generationType = 'csv'
     textContent = textContent.replace(/```csv[\s\S]*$/, '').replace(/\{[\s\S]*$/, '').trim()
+  } else if (hasIncompleteLessonData) {
+    isGenerating = true
+    generationType = 'lesson'
+    textContent = textContent.replace(/```lesson_data[\s\S]*$/, '').trim()
   } else if (generatingImagePattern.test(content) && content.length < 200) {
     isGenerating = true
     generationType = 'image'
@@ -3479,6 +3807,19 @@ function parseContentBlocks(content: string): {
     isGenerating = false
   }
 
+  // Extract lesson_data
+  const lessonMatch = content.match(/```lesson_data\s*([\s\S]*?)```/)
+  if (lessonMatch) {
+    try {
+      const parsed = JSON.parse(lessonMatch[1].trim())
+      if (parsed && parsed.title && parsed.content) {
+        lessonData = parsed as LessonData
+        textContent = textContent.replace(/```lesson_data[\s\S]*?```/, '').trim()
+        isGenerating = false
+      }
+    } catch (e) { console.error("Error parsing lesson_data", e) }
+  }
+
   // Extract Session Selector
   const sessionMatch = content.match(/```session_selector\s*([\s\S]*?)```/)
   if (sessionMatch) {
@@ -3514,7 +3855,7 @@ function parseContentBlocks(content: string): {
     } catch (e) { console.error("Error parsing action menu", e) }
   }
 
-  return { quiz, csv, textContent, isGenerating, generationType, sessionSelector, studentSelector, reportTypeSelector, actionMenu }
+  return { quiz, lessonData, csv, textContent, isGenerating, generationType, sessionSelector, studentSelector, reportTypeSelector, actionMenu }
 }
 
 function SessionSelector({ sessions, onSelect }: { sessions: any[], onSelect: (id: string) => void }) {
@@ -3667,15 +4008,15 @@ function ReportConfigurator({
   )
 }
 
-function MessageContent({ content, onPublish, onEdit, onInput, toast, darkMode = false }: { 
-  content: string; 
-  onPublish: (type: 'quiz' | 'dataset', data: any) => void; 
-  onEdit: (type: 'quiz' | 'dataset', data: any) => void; 
+function MessageContent({ content, onPublish, onEdit, onInput, toast, darkMode = false }: {
+  content: string;
+  onPublish: (type: 'quiz' | 'dataset' | 'lesson', data: any) => void;
+  onEdit: (type: 'quiz' | 'dataset' | 'lesson', data: any) => void;
   onInput: (text: string) => void;
-  toast: any; 
-  darkMode?: boolean 
+  toast: any;
+  darkMode?: boolean
 }) {
-  const { quiz, csv, textContent, isGenerating, generationType, sessionSelector, studentSelector, reportTypeSelector, actionMenu } = parseContentBlocks(content)
+  const { quiz, lessonData, csv, textContent, isGenerating, generationType, sessionSelector, studentSelector, reportTypeSelector, actionMenu } = parseContentBlocks(content)
   const { cleanContent, images } = extractBase64Images(textContent)
 
   if (isGenerating) {
@@ -3687,6 +4028,7 @@ function MessageContent({ content, onPublish, onEdit, onInput, toast, darkMode =
             {generationType === 'image' && 'Generazione immagine in corso...'}
             {generationType === 'csv' && 'Generazione dataset in corso...'}
             {generationType === 'quiz' && 'Generazione quiz in corso...'}
+            {generationType === 'lesson' && 'Generazione lezione in corso...'}
             {!generationType && 'Elaborazione in corso...'}
           </span>
         </div>
@@ -3878,6 +4220,40 @@ function MessageContent({ content, onPublish, onEdit, onInput, toast, darkMode =
         </div>
       )}
 
+      {lessonData && (
+        <div className="mt-3 border border-emerald-200 rounded-lg overflow-hidden">
+          <div className="bg-emerald-50 px-3 py-2 flex items-center justify-between">
+            <span className="text-sm font-medium text-emerald-700 flex items-center gap-2">
+              <FileText className="h-4 w-4" />
+              Lezione: {lessonData.title}
+            </span>
+            <Button
+              size="sm"
+              className="h-7 text-xs bg-emerald-600 hover:bg-emerald-700 text-white"
+              onClick={() => onPublish('lesson', lessonData)}
+            >
+              <Plus className="h-3 w-3 mr-1" />
+              Pubblica
+            </Button>
+          </div>
+          {lessonData.description && (
+            <div className="px-3 py-1.5 bg-emerald-50/50 border-b border-emerald-100 text-xs text-emerald-700 italic">
+              {lessonData.description}
+            </div>
+          )}
+          <div className="p-3 max-h-48 overflow-y-auto bg-white">
+            <ReactMarkdown
+              remarkPlugins={[remarkGfm]}
+              className="prose prose-sm max-w-none text-slate-700"
+            >
+              {lessonData.content.length > 600
+                ? lessonData.content.slice(0, 600) + '\n\n*...(anteprima troncata)*'
+                : lessonData.content}
+            </ReactMarkdown>
+          </div>
+        </div>
+      )}
+
       {sessionSelector && reportTypeSelector && (
         <ReportConfigurator
           sessions={sessionSelector}
@@ -4005,7 +4381,7 @@ function InteractiveQuiz({ quiz, onSubmitAnswers }: { quiz: QuizData; onSubmitAn
                     >
                       <span className="font-bold mr-3 text-xs opacity-60">{String.fromCharCode(65 + optIndex)})
                       </span>                      {option}
-                      {submitted && isCorrectOption && <span className="ml-auto">✅</span>}
+                      {submitted && isCorrectOption && <span className="ml-auto text-green-600 font-bold">✓</span>}
                       {submitted && isSelected && !isCorrectOption && <span className="ml-auto">❌</span>}
                     </button>
                   )

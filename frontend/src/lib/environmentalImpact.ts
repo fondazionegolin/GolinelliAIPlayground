@@ -67,6 +67,8 @@ const PROVIDER_INTENSITY_FALLBACK: Record<string, number> = {
 const IMAGE_REQUEST_EQUIVALENT: Record<string, number> = {
   'dall-e-3': 4.5,
   'gpt-image-1': 4.8,
+  'gpt-image-1.5': 4.8,
+  'gpt-image-2': 4.8,
   'flux-schnell': 2.6,
   'flux-dev': 3.0,
   sdxl: 2.9,

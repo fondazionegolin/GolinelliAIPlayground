@@ -454,7 +454,7 @@ export function useSocket(sessionId?: string): UseSocketReturn {
         sender_type: 'STUDENT',
         sender_id: data.student_id,
         sender_name: data.student_name,
-        text: `✅ ${data.student_name} ha completato: ${data.task_title}`,
+        text: `${data.student_name} ha completato: ${data.task_title}`,
         created_at: new Date().toISOString(),
         is_notification: true,
         notification_type: 'task',

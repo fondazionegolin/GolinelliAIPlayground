@@ -5,6 +5,9 @@ import { teacherApi } from '@/lib/api'
 import { useToast } from '@/components/ui/use-toast'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { useTeacherProfile } from '@/hooks/useTeacherProfile'
+import { getTeacherAccentTheme } from '@/lib/teacherAccent'
+import { hexToRgba } from '@/design/themes/colorUtils'
 
 interface TeacherInfo {
   id: string
@@ -53,6 +56,8 @@ export function TeachersManagementModal({
   const [email, setEmail] = useState('')
   const queryClient = useQueryClient()
   const { toast } = useToast()
+  const { data: teacherProfile } = useTeacherProfile()
+  const accentTheme = getTeacherAccentTheme(teacherProfile?.uiAccent)
 
   const queryKey = type === 'class'
     ? ['classTeachers', targetId]
@@ -133,7 +138,13 @@ export function TeachersManagementModal({
     <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl border border-slate-100 overflow-hidden animate-in zoom-in-95 duration-200">
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-gradient-to-r from-violet-50 to-purple-50">
+        <div
+          className="flex items-center justify-between border-b px-6 py-4"
+          style={{
+            borderBottomColor: hexToRgba(accentTheme.accent, 0.14),
+            backgroundColor: hexToRgba(accentTheme.accent, 0.06),
+          }}
+        >
           <div>
             <h2 className="text-lg font-bold text-slate-900">
               {type === 'class' ? 'Docenti della Classe' : 'Docenti della Sessione'}
@@ -172,7 +183,8 @@ export function TeachersManagementModal({
               <Button
                 type="submit"
                 disabled={!email.trim() || inviteMutation.isPending}
-                className="bg-violet-600 hover:bg-violet-700"
+                className="text-white"
+                style={{ backgroundColor: accentTheme.accent }}
               >
                 {inviteMutation.isPending ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
@@ -192,7 +204,7 @@ export function TeachersManagementModal({
           {/* Loading State */}
           {isLoading && (
             <div className="flex items-center justify-center py-8">
-              <Loader2 className="h-6 w-6 animate-spin text-violet-500" />
+              <Loader2 className="h-6 w-6 animate-spin" style={{ color: accentTheme.accent }} />
             </div>
           )}
 
@@ -218,7 +230,13 @@ export function TeachersManagementModal({
                           className="w-10 h-10 rounded-full object-cover"
                         />
                       ) : (
-                        <div className="w-10 h-10 rounded-full bg-violet-100 flex items-center justify-center text-violet-600 font-semibold text-sm">
+                        <div
+                          className="flex h-10 w-10 items-center justify-center rounded-full text-sm font-semibold"
+                          style={{
+                            backgroundColor: hexToRgba(accentTheme.accent, 0.12),
+                            color: accentTheme.text,
+                          }}
+                        >
                           {getInitials(entry.teacher)}
                         </div>
                       )}
@@ -236,7 +254,13 @@ export function TeachersManagementModal({
                             </span>
                           )}
                           {entry.via_class && !entry.is_owner && (
-                            <span className="px-2 py-0.5 bg-blue-100 text-blue-700 text-xs font-medium rounded-full">
+                            <span
+                              className="rounded-full px-2 py-0.5 text-xs font-medium"
+                              style={{
+                                backgroundColor: hexToRgba(accentTheme.accent, 0.1),
+                                color: accentTheme.text,
+                              }}
+                            >
                               Via classe
                             </span>
                           )}

@@ -14,6 +14,7 @@ import { UnifiedToolbar } from '@/components/UnifiedToolbar'
 import { SheetChartConfig, SpreadsheetEditor } from '@/components/SpreadsheetEditor'
 import { CollaborativeCanvas } from '@/components/CollaborativeCanvas'
 import { Editor } from '@tiptap/react'
+import { useTranslation } from 'react-i18next'
 import {
   PASTEL_ICON_BACKGROUNDS,
   PASTEL_ICON_TEXT,
@@ -120,7 +121,13 @@ const docTone = (type: 'presentation' | 'document' | 'sheet' | 'canvas') => DOC_
 
 export default function TeacherDocumentsPage() {
   const { toast } = useToast()
+  const { i18n } = useTranslation()
+  const isEnglish = i18n.resolvedLanguage?.startsWith('en') ?? false
   const { isMobile } = useMobile()
+  const defaultDocumentTitle = isEnglish ? 'New Document' : 'Nuovo Documento'
+  const defaultPresentationTitle = isEnglish ? 'New Presentation' : 'Nuova Presentazione'
+  const defaultCanvasTitle = isEnglish ? 'New Board' : 'Nuova Lavagna'
+  const dateLocale = isEnglish ? 'en-GB' : 'it-IT'
   const [draftId, setDraftId] = useState<string | null>(null)
   const draftIdRef = useRef<string | null>(null)
   const pendingDraftPayloadRef = useRef<{ title: string; doc_type: string; content_json: string } | null>(null)
@@ -130,7 +137,7 @@ export default function TeacherDocumentsPage() {
   const [mode, setMode] = useState<EditorMode>('document') 
   const [document, setDocument] = useState<Document>({
     id: crypto.randomUUID(),
-    title: 'Nuovo Documento',
+    title: defaultDocumentTitle,
     format: 'a4',
     slides: [
       { id: crypto.randomUUID(), title: 'Slide 1', blocks: [] }
@@ -183,7 +190,7 @@ export default function TeacherDocumentsPage() {
     const newDocId = crypto.randomUUID()
     setDocument({
       id: newDocId,
-      title: 'Nuovo Documento',
+      title: defaultDocumentTitle,
       format: 'a4',
       slides: [],
       textContent: EMPTY_DOC_HTML,
@@ -205,7 +212,7 @@ export default function TeacherDocumentsPage() {
     const newDocId = crypto.randomUUID()
     setDocument({
       id: newDocId,
-      title: 'Nuova Presentazione',
+      title: defaultPresentationTitle,
       format: '16:9',
       slides: [{ id: crypto.randomUUID(), title: 'Slide 1', blocks: [] }],
       textContent: '',
@@ -226,7 +233,7 @@ export default function TeacherDocumentsPage() {
     const newDocId = crypto.randomUUID()
     setDocument({
       id: newDocId,
-      title: 'Nuova Lavagna',
+      title: defaultCanvasTitle,
       format: 'a4',
       slides: [],
       textContent: '',
@@ -703,7 +710,9 @@ export default function TeacherDocumentsPage() {
     const newBlock: Block = {
       id: crypto.randomUUID(),
       type,
-      content: type === 'text' ? 'Nuovo Testo' : 'https://placehold.co/400x300?text=Immagine',
+      content: type === 'text'
+        ? (isEnglish ? 'New Text' : 'Nuovo Testo')
+        : `https://placehold.co/400x300?text=${encodeURIComponent(isEnglish ? 'Image' : 'Immagine')}`,
       x: dims.width / 2 - 100,
       y: dims.height / 2 - (type === 'text' ? 50 : 150),
       width: 200,
@@ -889,11 +898,11 @@ export default function TeacherDocumentsPage() {
           <div className="h-14 bg-white/90 border-b border-slate-200/80 flex items-center justify-between px-6 z-20 shadow-sm shrink-0 backdrop-blur-sm">
             <div className="flex items-center gap-2">
               <FileText className="h-4 w-4 text-slate-500" />
-              <h1 className="text-base font-bold text-slate-800">Documenti</h1>
+              <h1 className="text-base font-bold text-slate-800">{isEnglish ? 'Documents' : 'Documenti'}</h1>
             </div>
             <Button onClick={() => setShowNewModal(true)} className="bg-[#E91E63] text-white hover:bg-[#d61b5b]">
               <Plus className="h-4 w-4 mr-2" />
-              Nuovo
+              {isEnglish ? 'New' : 'Nuovo'}
             </Button>
           </div>
 
@@ -906,7 +915,7 @@ export default function TeacherDocumentsPage() {
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
                   <input
                     type="text"
-                    placeholder="Cerca documenti..."
+                    placeholder={isEnglish ? 'Search documents...' : 'Cerca documenti...'}
                     value={docSearch}
                     onChange={e => setDocSearch(e.target.value)}
                     className="w-full pl-9 pr-8 py-2 text-sm bg-transparent border-0 rounded-lg focus:outline-none focus:ring-0 text-slate-700"
@@ -924,18 +933,18 @@ export default function TeacherDocumentsPage() {
                   <div className="w-20 h-20 rounded-[24px] bg-slate-100 flex items-center justify-center mb-5">
                     <FileText className="h-10 w-10 text-slate-500" />
                   </div>
-                  <h3 className="text-lg font-bold text-slate-700 mb-1">Nessun documento</h3>
-                  <p className="text-sm text-slate-400 mb-6">Crea il tuo primo documento per iniziare</p>
+                  <h3 className="text-lg font-bold text-slate-700 mb-1">{isEnglish ? 'No documents yet' : 'Nessun documento'}</h3>
+                  <p className="text-sm text-slate-400 mb-6">{isEnglish ? 'Create your first document to get started' : 'Crea il tuo primo documento per iniziare'}</p>
                   <Button onClick={() => setShowNewModal(true)} className="bg-[#E91E63] text-white hover:bg-[#d61b5b]">
                     <Plus className="h-4 w-4 mr-2" />
-                    Crea documento
+                    {isEnglish ? 'Create document' : 'Crea documento'}
                   </Button>
                 </div>
               )}
 
               {filteredDrafts.length > 0 && (
                 <section>
-                  <h2 className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-3">Le mie Bozze {docSearch && <span className="normal-case font-normal">({filteredDrafts.length})</span>}</h2>
+                  <h2 className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-3">{isEnglish ? 'My Drafts' : 'Le mie Bozze'} {docSearch && <span className="normal-case font-normal">({filteredDrafts.length})</span>}</h2>
                   <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
                     {filteredDrafts.map(doc => (
                       <div
@@ -947,7 +956,7 @@ export default function TeacherDocumentsPage() {
                           {docIcon(doc.type)}
                         </div>
                         <p className="text-sm font-bold text-slate-800 truncate mb-1">{doc.title}</p>
-                        <p className="text-[10px] text-slate-400">{new Date(doc.updatedAt).toLocaleDateString('it-IT', { day: 'numeric', month: 'short', year: 'numeric' })}</p>
+                        <p className="text-[10px] text-slate-400">{new Date(doc.updatedAt).toLocaleDateString(dateLocale, { day: 'numeric', month: 'short', year: 'numeric' })}</p>
                         <button
                           onClick={(e) => handleDeleteDraft(e, doc.id)}
                           className="mt-2 opacity-0 group-hover:opacity-100 text-slate-300 hover:text-red-500 transition-all"
@@ -963,13 +972,13 @@ export default function TeacherDocumentsPage() {
               {docSearch && filteredDrafts.length === 0 && filteredStored.length === 0 && (
                 <div className="flex flex-col items-center justify-center py-16 text-center">
                   <Search className="h-8 w-8 text-slate-200 mb-3" />
-                  <p className="text-sm text-slate-400">Nessun documento corrisponde a <strong>"{docSearch}"</strong></p>
+                  <p className="text-sm text-slate-400">{isEnglish ? 'No document matches ' : 'Nessun documento corrisponde a '}<strong>"{docSearch}"</strong></p>
                 </div>
               )}
 
               {filteredStored.length > 0 && (
                 <section>
-                  <h2 className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-3">Pubblicati nelle Sessioni {docSearch && <span className="normal-case font-normal">({filteredStored.length})</span>}</h2>
+                  <h2 className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-3">{isEnglish ? 'Published in Sessions' : 'Pubblicati nelle Sessioni'} {docSearch && <span className="normal-case font-normal">({filteredStored.length})</span>}</h2>
                   <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
                     {filteredStored.map(doc => (
                       <div
@@ -981,7 +990,7 @@ export default function TeacherDocumentsPage() {
                           {docIcon(doc.type)}
                         </div>
                         <p className="text-sm font-bold text-slate-800 truncate mb-1">{doc.title}</p>
-                        <p className="text-[10px] text-slate-400">{doc.className} · {new Date(doc.updatedAt).toLocaleDateString('it-IT', { day: 'numeric', month: 'short', year: 'numeric' })}</p>
+                        <p className="text-[10px] text-slate-400">{doc.className} · {new Date(doc.updatedAt).toLocaleDateString(dateLocale, { day: 'numeric', month: 'short', year: 'numeric' })}</p>
                         <button
                           onClick={(e) => handleDeletePublished(e, doc)}
                           className="mt-2 opacity-0 group-hover:opacity-100 text-slate-300 hover:text-red-500 transition-all"
@@ -1000,21 +1009,21 @@ export default function TeacherDocumentsPage() {
         {showNewModal && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
             <div className={`w-full max-w-md mx-4 rounded-[28px] p-6 shadow-xl ${PASTEL_SURFACES.slate}`}>
-              <h3 className="text-lg font-semibold mb-2">Crea nuovo</h3>
-              <p className="text-sm text-gray-600 mb-4">Scegli il tipo di contenuto da creare.</p>
+              <h3 className="text-lg font-semibold mb-2">{isEnglish ? 'Create new' : 'Crea nuovo'}</h3>
+              <p className="text-sm text-gray-600 mb-4">{isEnglish ? 'Choose the type of content to create.' : 'Scegli il tipo di contenuto da creare.'}</p>
               <div className="flex flex-col gap-3">
                 <Button className="w-full justify-center bg-[#E91E63] hover:bg-[#d61b5b] text-white" onClick={() => { createNewDocument(); setShowNewModal(false) }}>
-                  <FileText className="h-4 w-4 mr-2" />Nuovo documento
+                  <FileText className="h-4 w-4 mr-2" />{isEnglish ? 'New document' : 'Nuovo documento'}
                 </Button>
                 <Button className="w-full justify-center bg-[#E91E63] hover:bg-[#d61b5b] text-white" onClick={() => { createNewPresentation(); setShowNewModal(false) }}>
-                  <Monitor className="h-4 w-4 mr-2" />Nuova presentazione
+                  <Monitor className="h-4 w-4 mr-2" />{isEnglish ? 'New presentation' : 'Nuova presentazione'}
                 </Button>
                 <Button className="w-full justify-center bg-[#E91E63] hover:bg-[#d61b5b] text-white" onClick={() => { createNewCanvas(); setShowNewModal(false) }}>
-                  <PenTool className="h-4 w-4 mr-2" />Nuova lavagna
+                  <PenTool className="h-4 w-4 mr-2" />{isEnglish ? 'New board' : 'Nuova lavagna'}
                 </Button>
               </div>
               <div className="flex justify-end mt-4">
-                <Button variant="outline" onClick={() => setShowNewModal(false)}>Annulla</Button>
+                <Button variant="outline" onClick={() => setShowNewModal(false)}>{isEnglish ? 'Cancel' : 'Annulla'}</Button>
               </div>
             </div>
           </div>
@@ -1026,9 +1035,9 @@ export default function TeacherDocumentsPage() {
   // ── Mobile simplified view ────────────────────────────────────────────────
   if (isMobile) {
     const docTypeLabel: Record<string, string> = {
-      presentation: '📊 Presentazione',
-      document: '📄 Documento',
-      sheet: '📋 Foglio',
+      presentation: isEnglish ? '📊 Presentation' : '📊 Presentazione',
+      document: isEnglish ? '📄 Document' : '📄 Documento',
+      sheet: isEnglish ? '📋 Sheet' : '📋 Foglio',
       canvas: '🎨 Canvas',
     }
     return (
@@ -1036,28 +1045,28 @@ export default function TeacherDocumentsPage() {
         <div className="flex items-center justify-between">
           <h1 className="text-base font-bold text-slate-800 flex items-center gap-2">
             <FileText className="h-5 w-5 text-slate-500" />
-            Documenti
+            {isEnglish ? 'Documents' : 'Documenti'}
           </h1>
           <p className="text-[10px] text-slate-400 text-right">
-            Editor disponibile<br />solo su desktop
+            {isEnglish ? <>Editor available<br />on desktop only</> : <>Editor disponibile<br />solo su desktop</>}
           </p>
         </div>
 
         {storedDocuments.length === 0 && draftDocuments.length === 0 && (
           <div className="text-center py-12 text-slate-400 text-sm">
-            Nessun documento trovato
+            {isEnglish ? 'No documents found' : 'Nessun documento trovato'}
           </div>
         )}
 
         {draftDocuments.length > 0 && (
           <div>
-            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Bozze</p>
+            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">{isEnglish ? 'Drafts' : 'Bozze'}</p>
             <div className="space-y-2">
               {draftDocuments.map(doc => (
                 <div key={doc.id} className="bg-white rounded-xl border border-slate-200 px-4 py-3 flex items-center justify-between shadow-sm">
                   <div>
                     <p className="text-sm font-semibold text-slate-800 truncate max-w-[200px]">{doc.title}</p>
-                    <p className="text-xs text-slate-400">{docTypeLabel[doc.type] || doc.type} · {new Date(doc.updatedAt).toLocaleDateString()}</p>
+                    <p className="text-xs text-slate-400">{docTypeLabel[doc.type] || doc.type} · {new Date(doc.updatedAt).toLocaleDateString(dateLocale)}</p>
                   </div>
                 </div>
               ))}
@@ -1067,12 +1076,12 @@ export default function TeacherDocumentsPage() {
 
         {storedDocuments.length > 0 && (
           <div>
-            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Pubblicati</p>
+            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">{isEnglish ? 'Published' : 'Pubblicati'}</p>
             <div className="space-y-2">
               {storedDocuments.map(doc => (
                 <div key={doc.id} className="bg-white rounded-xl border border-slate-200 px-4 py-3 shadow-sm">
                   <p className="text-sm font-semibold text-slate-800 truncate">{doc.title}</p>
-                  <p className="text-xs text-slate-400">{docTypeLabel[doc.type] || doc.type} · {doc.sessionName} · {new Date(doc.updatedAt).toLocaleDateString()}</p>
+                  <p className="text-xs text-slate-400">{docTypeLabel[doc.type] || doc.type} · {doc.sessionName} · {new Date(doc.updatedAt).toLocaleDateString(dateLocale)}</p>
                 </div>
               ))}
             </div>
@@ -1096,7 +1105,7 @@ export default function TeacherDocumentsPage() {
                className="text-slate-500 gap-1"
              >
                <ChevronLeft className="h-4 w-4" />
-               Documenti
+               {isEnglish ? 'Documents' : 'Documenti'}
              </Button>
 
              <Button
@@ -1113,7 +1122,7 @@ export default function TeacherDocumentsPage() {
                className="bg-[#E91E63] text-white hover:bg-[#d61b5b] px-4"
              >
                <Plus className="h-4 w-4 mr-2" />
-               Nuovo
+               {isEnglish ? 'New' : 'Nuovo'}
              </Button>
              <span className={`text-xs font-medium ${
                draftSaveState === 'saving'
@@ -1124,10 +1133,10 @@ export default function TeacherDocumentsPage() {
                      ? 'text-red-600'
                      : 'text-slate-400'
              }`}>
-               {draftSaveState === 'saving' && 'Salvataggio...'}
-               {draftSaveState === 'saved' && 'Bozza salvata'}
-               {draftSaveState === 'error' && 'Errore salvataggio'}
-               {draftSaveState === 'idle' && 'Bozza automatica'}
+               {draftSaveState === 'saving' && (isEnglish ? 'Saving...' : 'Salvataggio...')}
+               {draftSaveState === 'saved' && (isEnglish ? 'Draft saved' : 'Bozza salvata')}
+               {draftSaveState === 'error' && (isEnglish ? 'Save error' : 'Errore salvataggio')}
+               {draftSaveState === 'idle' && (isEnglish ? 'Auto draft' : 'Bozza automatica')}
              </span>
 
              <div className="h-6 w-px bg-slate-200" />
@@ -1136,14 +1145,14 @@ export default function TeacherDocumentsPage() {
                value={document.title}
                onChange={(e) => handleTitleChange(e.target.value)}
                className="font-bold border-transparent hover:border-slate-200 focus:border-violet-500 w-64 text-lg"
-               placeholder="Nome file..."
+               placeholder={isEnglish ? 'File name...' : 'Nome file...'}
              />
           </div>
           
           <div className="flex gap-2">
              <Button variant="outline" onClick={() => setShowPublishModal(true)}>
                <Upload className="h-4 w-4 mr-2" />
-               Pubblica
+               {isEnglish ? 'Publish' : 'Pubblica'}
              </Button>
           </div>
         </div>
@@ -1194,7 +1203,7 @@ export default function TeacherDocumentsPage() {
             {mode === 'slides' && (
               <div className="flex-shrink-0 flex flex-col overflow-hidden max-h-64 border-b border-slate-200/80 bg-white/70 backdrop-blur-sm">
                  <div className="p-3 border-b border-slate-200/70 flex justify-between items-center">
-                   <span className="font-bold text-[10px] uppercase tracking-widest text-slate-400">Pagine / Slide</span>
+                   <span className="font-bold text-[10px] uppercase tracking-widest text-slate-400">{isEnglish ? 'Pages / Slides' : 'Pagine / Slide'}</span>
                    <Button size="icon" variant="ghost" className="h-6 w-6" onClick={addSlide}>
                      <Plus className="h-4 w-4" />
                    </Button>
@@ -1227,14 +1236,14 @@ export default function TeacherDocumentsPage() {
               {/* Drafts Section */}
               <section>
                 <div className="flex items-center justify-between mb-3 px-1">
-                  <h3 className="font-bold text-[10px] uppercase tracking-widest text-slate-400">Le mie Bozze</h3>
+                  <h3 className="font-bold text-[10px] uppercase tracking-widest text-slate-400">{isEnglish ? 'My Drafts' : 'Le mie Bozze'}</h3>
                   <span className="text-[10px] font-bold bg-slate-200 text-slate-500 px-1.5 py-0.5 rounded-full">{draftDocuments.length}</span>
                 </div>
                 
                 <div className="space-y-2">
                   {draftDocuments.length === 0 && (
                     <div className={`text-center py-6 px-4 rounded-2xl border border-dashed shadow-sm ${PASTEL_SURFACES.slate}`}>
-                      <p className="text-[10px] font-medium text-slate-400">Nessuna bozza salvata</p>
+                      <p className="text-[10px] font-medium text-slate-400">{isEnglish ? 'No saved drafts' : 'Nessuna bozza salvata'}</p>
                     </div>
                   )}
                   {draftDocuments.map((doc) => (
@@ -1258,7 +1267,7 @@ export default function TeacherDocumentsPage() {
                         <button
                           onClick={(e) => handleDeleteDraft(e, doc.id)}
                           className="opacity-0 group-hover:opacity-100 p-1 text-slate-400 hover:text-red-500 transition-all"
-                          title="Elimina bozza"
+                          title={isEnglish ? 'Delete draft' : 'Elimina bozza'}
                         >
                           <Trash2 className="h-3.5 w-3.5" />
                         </button>
@@ -1267,9 +1276,9 @@ export default function TeacherDocumentsPage() {
                       <div className="flex items-center justify-between mt-auto">
                         <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-400">
                           <Clock className="h-3 w-3" />
-                          {new Date(doc.updatedAt).toLocaleDateString('it-IT', { day: 'numeric', month: 'short' })}
+                          {new Date(doc.updatedAt).toLocaleDateString(dateLocale, { day: 'numeric', month: 'short' })}
                         </div>
-                        <span className="text-[9px] font-black uppercase tracking-tighter text-slate-300">Bozza Personale</span>
+                        <span className="text-[9px] font-black uppercase tracking-tighter text-slate-300">{isEnglish ? 'Personal Draft' : 'Bozza Personale'}</span>
                       </div>
                     </div>
                   ))}
@@ -1279,14 +1288,14 @@ export default function TeacherDocumentsPage() {
               {/* Stored/Published Section */}
               <section>
                 <div className="flex items-center justify-between mb-3 px-1">
-                  <h3 className="font-bold text-[10px] uppercase tracking-widest text-slate-400">Salvati nelle Sessioni</h3>
+                  <h3 className="font-bold text-[10px] uppercase tracking-widest text-slate-400">{isEnglish ? 'Saved in Sessions' : 'Salvati nelle Sessioni'}</h3>
                   <span className="text-[10px] font-bold bg-indigo-100 text-indigo-600 px-1.5 py-0.5 rounded-full">{storedDocuments.length}</span>
                 </div>
 
                 <div className="space-y-2">
                   {storedDocuments.length === 0 && (
                     <div className={`text-center py-6 px-4 rounded-2xl border border-dashed shadow-sm ${PASTEL_SURFACES.slate}`}>
-                      <p className="text-[10px] font-medium text-slate-400">Nessun contenuto pubblicato nelle sessioni</p>
+                      <p className="text-[10px] font-medium text-slate-400">{isEnglish ? 'No content published in sessions' : 'Nessun contenuto pubblicato nelle sessioni'}</p>
                     </div>
                   )}
                   {storedDocuments.map((doc) => (
@@ -1313,7 +1322,7 @@ export default function TeacherDocumentsPage() {
                         <button
                           onClick={(e) => handleDeletePublished(e, doc)}
                           className="opacity-0 group-hover:opacity-100 p-1 text-slate-400 hover:text-red-500 transition-all"
-                          title="Rimuovi dalla sessione"
+                          title={isEnglish ? 'Remove from session' : 'Rimuovi dalla sessione'}
                         >
                           <Trash2 className="h-3.5 w-3.5" />
                         </button>
@@ -1322,11 +1331,11 @@ export default function TeacherDocumentsPage() {
                       <div className="flex items-center justify-between mt-auto">
                         <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-400">
                           <Calendar className="h-3 w-3" />
-                          {new Date(doc.updatedAt).toLocaleDateString('it-IT', { day: 'numeric', month: 'short' })}
+                          {new Date(doc.updatedAt).toLocaleDateString(dateLocale, { day: 'numeric', month: 'short' })}
                         </div>
                         <div className="flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-indigo-50 border border-indigo-200/70 text-[9px] font-black uppercase tracking-tighter text-indigo-600">
                           <Share2 className="h-2 w-2" />
-                          Published
+                          {isEnglish ? 'Published' : 'Pubblicato'}
                         </div>
                       </div>
                     </div>
@@ -1395,16 +1404,16 @@ export default function TeacherDocumentsPage() {
                         className="pointer-events-auto absolute -top-0.5 h-3.5 w-3.5 -translate-x-1/2 cursor-ew-resize rounded-full border border-slate-500 bg-white shadow-sm"
                         style={{ left: docMargins.horizontal }}
                         onMouseDown={() => setDraggingMargin('left')}
-                        aria-label="Regola margine sinistro"
-                        title="Trascina per regolare margine sinistro"
+                        aria-label={isEnglish ? 'Adjust left margin' : 'Regola margine sinistro'}
+                        title={isEnglish ? 'Drag to adjust left margin' : 'Trascina per regolare margine sinistro'}
                       />
                       <button
                         type="button"
                         className="pointer-events-auto absolute -top-0.5 h-3.5 w-3.5 -translate-x-1/2 cursor-ew-resize rounded-full border border-slate-500 bg-white shadow-sm"
                         style={{ left: FORMAT_DIMENSIONS.a4.width - docMargins.horizontal }}
                         onMouseDown={() => setDraggingMargin('right')}
-                        aria-label="Regola margine destro"
-                        title="Trascina per regolare margine destro"
+                        aria-label={isEnglish ? 'Adjust right margin' : 'Regola margine destro'}
+                        title={isEnglish ? 'Drag to adjust right margin' : 'Trascina per regolare margine destro'}
                       />
                     </div>
                   </div>
@@ -1449,8 +1458,8 @@ export default function TeacherDocumentsPage() {
                       aiOpenRequestId={aiOpenRequestId}
                       onMissingSelectionForAI={() => {
                         toast({
-                          title: 'Seleziona prima un testo',
-                          description: 'L’assistente AI lavora sul testo selezionato nel documento.',
+                          title: isEnglish ? 'Select text first' : 'Seleziona prima un testo',
+                          description: isEnglish ? 'The AI assistant works on the selected text in the document.' : 'L’assistente AI lavora sul testo selezionato nel documento.',
                         })
                       }}
                     />
@@ -1480,7 +1489,7 @@ export default function TeacherDocumentsPage() {
                          setDocument(d => ({ ...d, slides: newSlides }))
                        }}
                        className="text-4xl font-bold bg-transparent border-none focus:outline-none w-full placeholder-slate-300 pointer-events-auto"
-                       placeholder="Titolo Slide"
+                       placeholder={isEnglish ? 'Slide Title' : 'Titolo Slide'}
                      />
                   </div>
 
@@ -1526,9 +1535,9 @@ export default function TeacherDocumentsPage() {
         {showNewModal && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
             <div className="bg-white rounded-lg p-6 w-full max-w-md mx-4 shadow-xl">
-              <h3 className="text-lg font-semibold mb-2">Crea nuovo</h3>
+              <h3 className="text-lg font-semibold mb-2">{isEnglish ? 'Create new' : 'Crea nuovo'}</h3>
               <p className="text-sm text-gray-600 mb-4">
-                Scegli il tipo di contenuto da creare.
+                {isEnglish ? 'Choose the type of content to create.' : 'Scegli il tipo di contenuto da creare.'}
               </p>
               <div className="flex flex-col gap-3">
                 <Button
@@ -1539,7 +1548,7 @@ export default function TeacherDocumentsPage() {
                   }}
                 >
                   <FileText className="h-4 w-4 mr-2" />
-                  Nuovo documento
+                  {isEnglish ? 'New document' : 'Nuovo documento'}
                 </Button>
                 <Button
                   className="w-full justify-center bg-red-500 hover:bg-red-600 text-white"
@@ -1549,7 +1558,7 @@ export default function TeacherDocumentsPage() {
                   }}
                 >
                   <Monitor className="h-4 w-4 mr-2" />
-                  Nuova presentazione
+                  {isEnglish ? 'New presentation' : 'Nuova presentazione'}
                 </Button>
                 <Button
                   className="w-full justify-center bg-red-500 hover:bg-red-600 text-white"
@@ -1559,11 +1568,11 @@ export default function TeacherDocumentsPage() {
                   }}
                 >
                   <PenTool className="h-4 w-4 mr-2" />
-                  Nuova lavagna
+                  {isEnglish ? 'New board' : 'Nuova lavagna'}
                 </Button>
               </div>
               <div className="flex justify-end mt-4">
-                <Button variant="outline" onClick={() => setShowNewModal(false)}>Annulla</Button>
+                <Button variant="outline" onClick={() => setShowNewModal(false)}>{isEnglish ? 'Cancel' : 'Annulla'}</Button>
               </div>
             </div>
           </div>
@@ -1573,18 +1582,18 @@ export default function TeacherDocumentsPage() {
         {showPublishModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg p-6 w-full max-w-md mx-4 shadow-xl">
-            <h3 className="text-lg font-semibold mb-4">Pubblica {mode === 'slides' ? 'Presentazione' : mode === 'sheet' ? 'Foglio' : mode === 'canvas' ? 'Lavagna' : 'Documento'}</h3>
+            <h3 className="text-lg font-semibold mb-4">{isEnglish ? 'Publish ' : 'Pubblica '}{mode === 'slides' ? (isEnglish ? 'Presentation' : 'Presentazione') : mode === 'sheet' ? (isEnglish ? 'Sheet' : 'Foglio') : mode === 'canvas' ? (isEnglish ? 'Board' : 'Lavagna') : (isEnglish ? 'Document' : 'Documento')}</h3>
             <p className="text-sm text-gray-600 mb-4">
-              Salva questo contenuto come compito/materiale per una classe.
+              {isEnglish ? 'Save this content as an assignment or material for a class.' : 'Salva questo contenuto come compito/materiale per una classe.'}
             </p>
             <div className="mb-4">
-              <label className="block text-sm font-medium mb-2">Seleziona Sessione:</label>
+              <label className="block text-sm font-medium mb-2">{isEnglish ? 'Select Session:' : 'Seleziona Sessione:'}</label>
               <select
                 value={selectedSessionId}
                 onChange={(e) => setSelectedSessionId(e.target.value)}
                 className="w-full p-2 border rounded-md text-sm"
               >
-                <option value="">-- Seleziona --</option>
+                <option value="">{isEnglish ? '-- Select --' : '-- Seleziona --'}</option>
                 {classesData?.map((session: any) => (
                   <option key={session.id} value={session.id}>
                     {session.name} - {session.class_name}
@@ -1593,26 +1602,28 @@ export default function TeacherDocumentsPage() {
               </select>
             </div>
             <div className="mb-4">
-              <label className="block text-sm font-medium mb-2">Modalità:</label>
+              <label className="block text-sm font-medium mb-2">{isEnglish ? 'Mode:' : 'Modalità:'}</label>
               <div className="flex gap-2">
                 <button
                   onClick={() => setPublishMode('published')}
                   className={`text-xs px-3 py-1.5 rounded-full border ${publishMode === 'published' ? 'bg-violet-100 text-violet-700 border-violet-200 font-semibold' : 'text-slate-600 border-slate-200 hover:bg-slate-50'}`}
                 >
-                  Pubblica ora
+                  {isEnglish ? 'Publish now' : 'Pubblica ora'}
                 </button>
                 <button
                   onClick={() => setPublishMode('draft')}
                   className={`text-xs px-3 py-1.5 rounded-full border ${publishMode === 'draft' ? 'bg-violet-100 text-violet-700 border-violet-200 font-semibold' : 'text-slate-600 border-slate-200 hover:bg-slate-50'}`}
                 >
-                  Salva bozza
+                  {isEnglish ? 'Save draft' : 'Salva bozza'}
                 </button>
               </div>
             </div>
             <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setShowPublishModal(false)}>Annulla</Button>
+              <Button variant="outline" onClick={() => setShowPublishModal(false)}>{isEnglish ? 'Cancel' : 'Annulla'}</Button>
               <Button onClick={handlePublish} disabled={!selectedSessionId} className="bg-violet-600 text-white">
-                {publishMode === 'published' ? 'Pubblica ora' : 'Salva bozza'}
+                {publishMode === 'published'
+                  ? (isEnglish ? 'Publish now' : 'Pubblica ora')
+                  : (isEnglish ? 'Save draft' : 'Salva bozza')}
               </Button>
             </div>
           </div>

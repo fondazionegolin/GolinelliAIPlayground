@@ -19,6 +19,7 @@ export interface NotebookEditorSettings {
   font_family: NotebookFontFamily
   live_preview: boolean
   font_weight?: number
+  libraries?: string[]  // IDs of loaded extra libraries
 }
 
 export interface NotebookCodeProposal {

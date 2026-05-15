@@ -301,8 +301,10 @@ Il tuo obiettivo:
 3. Suggerisci approcci e funzioni utili, ma lascia che l'utente scriva il codice
 4. Se l'utente chiede esplicitamente del codice di esempio, puoi mostrarne uno breve
 5. Se il progetto è p5js, considera setup(), draw(), preload(), canvas, coordinate, frame rate e ciclo di rendering
-6. Usa emoji per rendere le spiegazioni più chiare (es. 🐍 per Python, ⚠️ per errori)
-7. Rispondi sempre in italiano a meno che l'utente scriva in un'altra lingua"""
+6. Non usare emoji, emoticon o toni giocosi
+7. Rispondi in modo compatto, chiaro e operativo: paragrafi brevi, pochi punti, niente preamboli inutili
+8. Mantieni uno stile socratico: fai al massimo una domanda guida per volta quando serve
+9. Rispondi sempre in italiano a meno che l'utente scriva in un'altra lingua"""
 
     messages = [{"role": m["role"], "content": m["content"]} for m in history[-10:]]
     messages.append({"role": "user", "content": str(message).strip()})
@@ -317,7 +319,7 @@ Il tuo obiettivo:
             provider=provider,
             model=model,
             temperature=0.5,
-            max_tokens=1200,
+            max_tokens=850,
         )
         updated_history = _sanitize_tutor_history([
             *history,

@@ -1,5 +1,6 @@
 import axios from 'axios'
 import type { EnvironmentalFootprintResponse } from '@/lib/environmentalImpact'
+import { LANG_STORAGE_KEY, normalizeLanguageCode } from '@/i18n/i18n'
 
 const api = axios.create({
   baseURL: '/api/v1',
@@ -8,6 +9,7 @@ const api = axios.create({
 
 api.interceptors.request.use((config) => {
   const studentToken = localStorage.getItem('student_token')
+  const appLanguage = normalizeLanguageCode(localStorage.getItem(LANG_STORAGE_KEY))
   let hasTeacherAuth = false
   try {
     const raw = localStorage.getItem('eduai-auth')
@@ -25,6 +27,8 @@ api.interceptors.request.use((config) => {
   if (studentToken && !hasTeacherAuth) {
     config.headers['student-token'] = studentToken
   }
+  config.headers['Accept-Language'] = appLanguage
+  config.headers['X-App-Language'] = appLanguage
   return config
 })
 
@@ -324,10 +328,12 @@ export const udaApi = {
     fd.append('title', title)
     return api.post(`/teacher/classes/${classId}/udas`, fd)
   },
-  generateKb: (classId: string, udaId: string, prompt: string, files: File[] = []) => {
+  generateKb: (classId: string, udaId: string, prompt: string, files: File[] = [], language?: string, schoolLevel?: string) => {
     const fd = new FormData()
     fd.append('prompt', prompt)
     files.forEach(f => fd.append('files', f))
+    if (language) fd.append('language', language)
+    if (schoolLevel) fd.append('school_level', schoolLevel)
     return api.post(`/teacher/classes/${classId}/udas/${udaId}/generate-kb`, fd)
   },
   generatePlan: (classId: string, udaId: string) =>
@@ -438,6 +444,12 @@ export const llmApi = {
     api.get<EnvironmentalFootprintResponse>('/llm/environmental-footprint'),
   compileLatex: (content: string, filename: string) =>
     api.post('/llm/compile-latex', { content, filename }, { responseType: 'arraybuffer' }),
+  getYoutubeTranscript: (url: string) =>
+    api.post<{ video_id: string; title: string | null; transcript: string; duration_seconds: number }>('/llm/youtube/transcript', { url }),
+  editHtmlPage: (html: string, modification: string) =>
+    api.post<{ html: string }>('/llm/html-page/edit', { html, modification }),
+  editBrochure: (payload: object, modification: string) =>
+    api.post<{ payload: object }>('/llm/brochure/edit', { payload, modification }),
 }
 
 export const ragApi = {
@@ -651,6 +663,8 @@ export const feedbackApi = {
     api.get('/feedback/admin', { params }),
   updateStatus: (id: string, status: string) =>
     api.patch(`/feedback/admin/${id}/status`, { status }),
+  reply: (id: string, reply_type: 'in_progress' | 'resolved') =>
+    api.post(`/feedback/admin/${id}/reply`, { reply_type }),
 }
 
 

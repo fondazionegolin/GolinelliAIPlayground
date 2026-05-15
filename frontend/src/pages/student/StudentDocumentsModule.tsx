@@ -12,6 +12,7 @@ import { UnifiedToolbar } from '@/components/UnifiedToolbar'
 import { SheetChartConfig, SpreadsheetEditor } from '@/components/SpreadsheetEditor'
 import { CollaborativeCanvas } from '@/components/CollaborativeCanvas'
 import { Editor } from '@tiptap/react'
+import { useTranslation } from 'react-i18next'
 
 // Types
 type Format = 'a4' | '16:9' | '4:3'
@@ -106,12 +107,18 @@ interface StudentDocumentsModuleProps {
 
 export default function StudentDocumentsModule({ sessionId, openLessonTaskId }: StudentDocumentsModuleProps) {
   const { toast } = useToast()
+  const { t, i18n } = useTranslation()
+  const isEnglishUi = i18n.resolvedLanguage?.startsWith('en') ?? false
+  const dateLocale = isEnglishUi ? 'en-GB' : 'it-IT'
+  const defaultDocumentTitle = t('documents.default_document_title')
+  const defaultPresentationTitle = t('documents.default_presentation_title')
+  const filenamePlaceholder = t('documents.filename_placeholder')
 
   // State
   const [mode, setMode] = useState<EditorMode>('document')
   const [document, setDocument] = useState<Document>({
     id: crypto.randomUUID(),
-    title: 'Il mio documento',
+    title: defaultDocumentTitle,
     format: 'a4',
     slides: [
       { id: crypto.randomUUID(), title: 'Slide 1', blocks: [] }
@@ -166,7 +173,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId }: 
     const newDocId = crypto.randomUUID()
     setDocument({
       id: newDocId,
-      title: 'Il mio documento',
+      title: defaultDocumentTitle,
       format: 'a4',
       slides: [],
       textContent: EMPTY_DOC_HTML,
@@ -190,7 +197,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId }: 
     const newDocId = crypto.randomUUID()
     setDocument({
       id: newDocId,
-      title: 'La mia presentazione',
+      title: defaultPresentationTitle,
       format: '16:9',
       slides: [{ id: crypto.randomUUID(), title: 'Slide 1', blocks: [] }],
       textContent: '',
@@ -312,7 +319,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId }: 
                 type,
                 updatedAt: task.created_at,
                 contentJson: task.content_json,
-                authorName: task.author_name || 'Docente',
+                authorName: task.author_name || t('documents.author_teacher'),
               }
               if (task.uda_folder) doc.udaFolder = task.uda_folder
               acc.push(doc)
@@ -348,7 +355,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId }: 
                   ? { type: 'pdf_v1', url: file.url, mimeType: file.mime_type, filename: file.filename }
                   : { type: 'html_v1', url: file.url, mimeType: file.mime_type, filename: file.filename }
               ),
-              authorName: file.owner_type === 'teacher' ? 'Docente' : 'Classe',
+              authorName: file.owner_type === 'teacher' ? t('documents.author_teacher') : t('documents.author_class'),
               fileUrl: file.url,
               mimeType: file.mime_type,
             }
@@ -572,7 +579,9 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId }: 
     const newBlock: Block = {
       id: crypto.randomUUID(),
       type,
-      content: type === 'text' ? 'Nuovo Testo' : 'https://placehold.co/400x300?text=Immagine',
+      content: type === 'text'
+        ? (isEnglishUi ? 'New Text' : 'Nuovo Testo')
+        : `https://placehold.co/400x300?text=${encodeURIComponent(isEnglishUi ? 'Image' : 'Immagine')}`,
       x: dims.width / 2 - 100,
       y: dims.height / 2 - (type === 'text' ? 50 : 150),
       width: 200,
@@ -667,7 +676,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId }: 
       setSubmitted(true)
       toast({
         title: "Documento inviato!",
-        description: "Il docente riceverà il tuo lavoro nella sezione compiti.",
+        description: t('documents.sent_body'),
         className: "bg-green-500 text-white"
       })
     } catch (e) {
@@ -755,7 +764,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId }: 
           <div className="h-14 bg-white border-b flex items-center justify-between px-6 z-20 shadow-sm shrink-0 gap-3">
             <div className="flex items-center gap-2 shrink-0">
               <FileText className="h-4 w-4 text-slate-500" />
-              <h1 className="text-base font-bold text-slate-800">I miei Documenti</h1>
+              <h1 className="text-base font-bold text-slate-800">{t('documents.title_my_documents')}</h1>
             </div>
             <div className="relative flex-1 max-w-xs">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400 pointer-events-none" />
@@ -763,7 +772,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId }: 
                 type="text"
                 value={docSearch}
                 onChange={e => setDocSearch(e.target.value)}
-                placeholder="Cerca documenti..."
+                placeholder={isEnglishUi ? 'Search documents...' : 'Cerca documenti...'}
                 className="w-full pl-9 pr-8 py-1.5 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-300 placeholder:text-slate-400"
               />
               {docSearch && (
@@ -772,17 +781,19 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId }: 
                 </button>
               )}
             </div>
-            <Button onClick={() => setShowNewModal(true)} className="bg-slate-900 text-white hover:bg-slate-800 shrink-0">
+            <Button tone="neutral" surface="solid" onClick={() => setShowNewModal(true)} className="shrink-0">
               <Plus className="h-4 w-4 mr-2" />
-              Nuovo
+              {t('documents.new')}
             </Button>
           </div>
 
-          <div className="flex-1 overflow-y-auto p-6">
-            <div className="max-w-5xl mx-auto space-y-8">
+          <div className="flex-1 overflow-y-auto px-4 pb-8 pt-0 md:px-6">
+            <div className="w-full space-y-8">
 
               {docSearch && filteredDrafts.length === 0 && filteredLessons.length === 0 && (
-                <p className="text-center text-sm text-slate-400 py-12">Nessun documento corrisponde a "{docSearch}"</p>
+                <p className="text-center text-sm text-slate-400 py-12">
+                  {isEnglishUi ? `No document matches "${docSearch}"` : `Nessun documento corrisponde a "${docSearch}"`}
+                </p>
               )}
 
               {!docSearch && draftDocuments.length === 0 && lessonDocuments.length === 0 && (
@@ -790,18 +801,18 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId }: 
                   <div className="w-20 h-20 rounded-full bg-slate-100 flex items-center justify-center mb-5">
                     <FileText className="h-10 w-10 text-slate-300" />
                   </div>
-                  <h3 className="text-lg font-bold text-slate-700 mb-1">Nessun documento</h3>
-                  <p className="text-sm text-slate-400 mb-6">Crea il tuo primo documento per iniziare</p>
-                  <Button onClick={() => setShowNewModal(true)} className="bg-slate-900 text-white hover:bg-slate-800">
+                  <h3 className="text-lg font-bold text-slate-700 mb-1">{isEnglishUi ? 'No documents yet' : 'Nessun documento'}</h3>
+                  <p className="text-sm text-slate-400 mb-6">{isEnglishUi ? 'Create your first document to get started' : 'Crea il tuo primo documento per iniziare'}</p>
+                  <Button tone="neutral" surface="solid" onClick={() => setShowNewModal(true)}>
                     <Plus className="h-4 w-4 mr-2" />
-                    Crea documento
+                    {isEnglishUi ? 'Create document' : 'Crea documento'}
                   </Button>
                 </div>
               )}
 
               {filteredDrafts.length > 0 && (
                 <section>
-                  <h2 className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-3">Le mie Bozze</h2>
+                  <h2 className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-3">{t('documents.my_drafts')}</h2>
                   <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
                     {filteredDrafts.map(doc => (
                       <div
@@ -813,7 +824,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId }: 
                           {docIcon(doc.type)}
                         </div>
                         <p className="text-sm font-bold text-slate-800 truncate mb-1">{doc.title}</p>
-                        <p className="text-[10px] text-slate-400">{new Date(doc.updatedAt).toLocaleDateString('it-IT', { day: 'numeric', month: 'short', year: 'numeric' })}</p>
+                        <p className="text-[10px] text-slate-400">{new Date(doc.updatedAt).toLocaleDateString(dateLocale, { day: 'numeric', month: 'short', year: 'numeric' })}</p>
                         <button
                           onClick={(e) => handleDeleteDraft(e, doc.id)}
                           className="mt-2 opacity-0 group-hover:opacity-100 text-slate-300 hover:text-red-500 transition-all"
@@ -848,10 +859,10 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId }: 
                       {docIcon(doc.type)}
                     </div>
                     <p className="text-sm font-bold text-slate-800 truncate mb-1">{doc.title}</p>
-                    <p className="text-[10px] text-slate-400">{doc.authorName} · {new Date(doc.updatedAt).toLocaleDateString('it-IT', { day: 'numeric', month: 'short', year: 'numeric' })}</p>
+                    <p className="text-[10px] text-slate-400">{doc.authorName} · {new Date(doc.updatedAt).toLocaleDateString(dateLocale, { day: 'numeric', month: 'short', year: 'numeric' })}</p>
                     <div className="mt-2 flex items-center gap-1 text-[10px] text-emerald-600 font-semibold">
                       <BookOpen className="h-3 w-3" />
-                      Sola lettura
+                      {t('documents.read_only')}
                     </div>
                   </div>
                 )
@@ -859,7 +870,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId }: 
                   <>
                     {regularLessons.length > 0 && (
                       <section>
-                        <h2 className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-3">Materiali del Docente</h2>
+                        <h2 className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-3">{t('documents.teacher_materials')}</h2>
                         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
                           {regularLessons.map(doc => <LessonCard key={doc.id} doc={doc} />)}
                         </div>
@@ -882,21 +893,21 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId }: 
 
         {showNewModal && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-            <div className="bg-white rounded-lg p-6 w-full max-w-md mx-4 shadow-xl">
-              <h3 className="text-lg font-semibold mb-2">Crea nuovo</h3>
-              <p className="text-sm text-gray-600 mb-4">Scegli se creare un nuovo documento o una nuova presentazione.</p>
+            <div className="bg-white rounded-xl p-6 w-full max-w-md mx-4 shadow-[var(--shadow-xl)]">
+              <h3 className="text-lg font-semibold mb-2">{t('documents.create_new_title')}</h3>
+              <p className="text-sm text-gray-600 mb-4">{isEnglishUi ? 'Choose whether to create a new document or a new presentation.' : 'Scegli se creare un nuovo documento o una nuova presentazione.'}</p>
               <div className="flex flex-col gap-2">
                 <button className="w-full flex items-center gap-3 p-3 rounded-xl border border-emerald-200/70 bg-emerald-50/80 hover:bg-emerald-50 hover:border-emerald-300/80 transition-all text-left" onClick={() => { createNewDocument(); setShowNewModal(false) }}>
                   <div className="w-9 h-9 rounded-lg bg-emerald-100 flex items-center justify-center text-emerald-700 flex-shrink-0"><FileText className="h-4 w-4" /></div>
-                  <span className="text-sm font-semibold text-slate-800">Nuovo documento</span>
+                  <span className="text-sm font-semibold text-slate-800">{t('documents.new_document')}</span>
                 </button>
                 <button className="w-full flex items-center gap-3 p-3 rounded-xl border border-indigo-200/70 bg-indigo-50/80 hover:bg-indigo-50 hover:border-indigo-300/80 transition-all text-left" onClick={() => { createNewPresentation(); setShowNewModal(false) }}>
                   <div className="w-9 h-9 rounded-lg bg-indigo-100 flex items-center justify-center text-indigo-700 flex-shrink-0"><Monitor className="h-4 w-4" /></div>
-                  <span className="text-sm font-semibold text-slate-800">Nuova presentazione</span>
+                  <span className="text-sm font-semibold text-slate-800">{t('documents.new_presentation')}</span>
                 </button>
               </div>
               <div className="flex justify-end mt-4">
-                <Button variant="outline" onClick={() => setShowNewModal(false)}>Annulla</Button>
+                <Button variant="outline" onClick={() => setShowNewModal(false)}>{isEnglishUi ? 'Cancel' : 'Annulla'}</Button>
               </div>
             </div>
           </div>
@@ -919,7 +930,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId }: 
                className="text-slate-500 gap-1"
              >
                <ChevronLeft className="h-4 w-4" />
-               Documenti
+               {t('documents.title_my_documents')}
              </Button>
 
              <Button
@@ -932,11 +943,13 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId }: 
              </Button>
 
              <Button
+               tone="neutral"
+               surface="solid"
                onClick={() => setShowNewModal(true)}
-               className="bg-slate-900 text-white hover:bg-slate-800 px-4"
+               className="px-4"
              >
                <Plus className="h-4 w-4 mr-2" />
-               Nuovo
+               {t('documents.new')}
              </Button>
 
              <div className="h-6 w-px bg-slate-200" />
@@ -946,11 +959,11 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId }: 
                onChange={(e) => handleTitleChange(e.target.value)}
                disabled={isReadOnlyLesson}
                className="font-bold border-transparent hover:border-slate-200 focus:border-indigo-500 w-64 text-lg"
-               placeholder="Nome file..."
+               placeholder={filenamePlaceholder}
              />
              {isReadOnlyLesson && (
                <span className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">
-                 Lesson
+                 {isEnglishUi ? 'Lesson' : 'Lezione'}
                </span>
              )}
           </div>
@@ -959,20 +972,21 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId }: 
              {isReadOnlyLesson ? (
                <Button variant="outline" disabled>
                  <BookOpen className="h-4 w-4 mr-2" />
-                 Contenuto del docente (sola lettura)
+                 {isEnglishUi ? 'Teacher content (read only)' : 'Contenuto del docente (sola lettura)'}
                </Button>
              ) : submitted ? (
                <Button variant="outline" onClick={resetDocument}>
                  <Plus className="h-4 w-4 mr-2" />
-                 Nuovo documento
+                 {t('documents.new_document')}
                </Button>
              ) : (
                <Button
+                 tone="accent"
+                 surface="solid"
                  onClick={() => setShowSubmitModal(true)}
-                 className="bg-indigo-600 hover:bg-indigo-700 text-white"
                >
                  <Send className="h-4 w-4 mr-2" />
-                 Invia al docente
+                 {t('documents.send_to_teacher')}
                </Button>
              )}
           </div>
@@ -1024,7 +1038,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId }: 
             {mode === 'slides' && !isReadOnlyLesson && (
               <div className="flex-shrink-0 flex flex-col overflow-hidden max-h-64 border-b">
                  <div className="p-3 border-b flex justify-between items-center bg-white">
-                   <span className="font-bold text-[10px] uppercase tracking-widest text-slate-400">Pagine / Slide</span>
+                   <span className="font-bold text-[10px] uppercase tracking-widest text-slate-400">{isEnglishUi ? 'Pages / Slides' : 'Pagine / Slide'}</span>
                    <Button size="icon" variant="ghost" className="h-6 w-6" onClick={addSlide}>
                      <Plus className="h-4 w-4" />
                    </Button>
@@ -1056,14 +1070,14 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId }: 
               {/* Drafts Section */}
               <section>
                 <div className="flex items-center justify-between mb-3 px-1">
-                  <h3 className="font-bold text-[10px] uppercase tracking-widest text-slate-400">Le mie Bozze</h3>
+                  <h3 className="font-bold text-[10px] uppercase tracking-widest text-slate-400">{t('documents.my_drafts')}</h3>
                   <span className="text-[10px] font-bold bg-slate-200 text-slate-500 px-1.5 py-0.5 rounded-full">{draftDocuments.length}</span>
                 </div>
                 
                 <div className="space-y-2">
                   {draftDocuments.length === 0 && (
                     <div className="text-center py-6 px-4 bg-white/40 rounded-2xl border border-dashed border-slate-200">
-                      <p className="text-[10px] font-medium text-slate-400">Nessun documento salvato</p>
+                      <p className="text-[10px] font-medium text-slate-400">{isEnglishUi ? 'No saved documents' : 'Nessun documento salvato'}</p>
                     </div>
                   )}
                   {draftDocuments.map((doc) => (
@@ -1097,7 +1111,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId }: 
                         <button
                           onClick={(e) => handleDeleteDraft(e, doc.id)}
                           className="opacity-0 group-hover:opacity-100 p-1 text-slate-400 hover:text-red-500 transition-all"
-                          title="Elimina bozza"
+                          title={t('documents.delete_draft')}
                         >
                           <Trash2 className="h-3.5 w-3.5" />
                         </button>
@@ -1106,10 +1120,10 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId }: 
                       <div className="flex items-center justify-between mt-auto">
                         <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-400">
                           <Clock className="h-3 w-3" />
-                          {new Date(doc.updatedAt).toLocaleDateString('it-IT', { day: 'numeric', month: 'short' })}
+                          {new Date(doc.updatedAt).toLocaleDateString(dateLocale, { day: 'numeric', month: 'short' })}
                         </div>
                         <div className="flex items-center gap-1.5">
-                           <span className="text-[9px] font-black uppercase tracking-tighter text-slate-300">Personale</span>
+                           <span className="text-[9px] font-black uppercase tracking-tighter text-slate-300">{t('documents.personal')}</span>
                         </div>
                       </div>
                     </div>
@@ -1120,14 +1134,14 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId }: 
               {/* Lessons Section */}
               <section>
                 <div className="flex items-center justify-between mb-3 px-1">
-                  <h3 className="font-bold text-[10px] uppercase tracking-widest text-slate-400">Materiali Condivisi</h3>
+                  <h3 className="font-bold text-[10px] uppercase tracking-widest text-slate-400">{t('documents.shared_materials')}</h3>
                   <span className="text-[10px] font-bold bg-emerald-100 text-emerald-600 px-1.5 py-0.5 rounded-full">{lessonDocuments.length}</span>
                 </div>
 
                 <div className="space-y-2">
                   {lessonDocuments.length === 0 && (
                     <div className="text-center py-6 px-4 bg-white/40 rounded-2xl border border-dashed border-slate-200">
-                      <p className="text-[10px] font-medium text-slate-400">Nessun materiale condiviso dal docente</p>
+                      <p className="text-[10px] font-medium text-slate-400">{isEnglishUi ? 'No materials shared by the teacher' : 'Nessun materiale condiviso dal docente'}</p>
                     </div>
                   )}
                   {/* UDA folder headers inline in the list */}
@@ -1176,12 +1190,12 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId }: 
                       <div className="flex items-center justify-between mt-auto">
                         <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-400">
                           <Calendar className="h-3 w-3" />
-                          {new Date(doc.updatedAt).toLocaleDateString('it-IT', { day: 'numeric', month: 'short' })}
+                          {new Date(doc.updatedAt).toLocaleDateString(dateLocale, { day: 'numeric', month: 'short' })}
                         </div>
                         <div className="flex items-center gap-1.5">
                            <div className="flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-emerald-50 border border-emerald-100 text-[9px] font-black uppercase tracking-tighter text-emerald-600">
                              <Share2 className="h-2 w-2" />
-                             Shared
+                             {isEnglishUi ? 'Shared' : 'Condiviso'}
                            </div>
                         </div>
                       </div>
@@ -1197,7 +1211,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId }: 
             {submitted && (
               <div className="p-4 bg-emerald-50 border-t flex items-center justify-center gap-2">
                 <CheckCircle className="h-4 w-4 text-emerald-600" />
-                <span className="text-xs font-bold text-emerald-700 uppercase tracking-tight">Documento Inviato</span>
+                <span className="text-xs font-bold text-emerald-700 uppercase tracking-tight">{t('documents.sent_status')}</span>
               </div>
             )}
           </div>
@@ -1209,7 +1223,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId }: 
 
              {/* MODE: PDF */}
              {mode === 'pdf' && (
-               <div className="w-full max-w-5xl h-[calc(100vh-10rem)] bg-white rounded-2xl shadow-[0_10px_30px_rgba(15,23,42,0.12)] overflow-hidden">
+               <div className="h-[calc(100vh-10rem)] w-full bg-white rounded-2xl shadow-[0_10px_30px_rgba(15,23,42,0.12)] overflow-hidden">
                  <iframe
                    src={document.textContent || ''}
                    className="w-full h-full border-0"
@@ -1219,7 +1233,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId }: 
              )}
 
              {mode === 'web' && (
-               <div className="w-full max-w-6xl h-[calc(100vh-10rem)] bg-white rounded-2xl shadow-[0_10px_30px_rgba(15,23,42,0.12)] overflow-hidden">
+               <div className="h-[calc(100vh-10rem)] w-full bg-white rounded-2xl shadow-[0_10px_30px_rgba(15,23,42,0.12)] overflow-hidden">
                  {document.webUrl ? (
                    <iframe
                      src={document.webUrl}
@@ -1272,16 +1286,16 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId }: 
                         className="pointer-events-auto absolute -top-0.5 h-3.5 w-3.5 -translate-x-1/2 cursor-ew-resize rounded-full border border-slate-500 bg-white shadow-sm"
                         style={{ left: docMargins.horizontal }}
                         onMouseDown={() => setDraggingMargin('left')}
-                        aria-label="Regola margine sinistro"
-                        title="Trascina per regolare margine sinistro"
+                        aria-label={t('documents.margin_left')}
+                        title={t('documents.margin_left_drag')}
                       />
                       <button
                         type="button"
                         className="pointer-events-auto absolute -top-0.5 h-3.5 w-3.5 -translate-x-1/2 cursor-ew-resize rounded-full border border-slate-500 bg-white shadow-sm"
                         style={{ left: FORMAT_DIMENSIONS.a4.width - docMargins.horizontal }}
                         onMouseDown={() => setDraggingMargin('right')}
-                        aria-label="Regola margine destro"
-                        title="Trascina per regolare margine destro"
+                        aria-label={t('documents.margin_right')}
+                        title={t('documents.margin_right_drag')}
                       />
                     </div>
                   </div>
@@ -1319,8 +1333,8 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId }: 
                       aiOpenRequestId={aiOpenRequestId}
                       onMissingSelectionForAI={() => {
                         toast({
-                          title: 'Seleziona prima un testo',
-                          description: 'L’assistente AI lavora sul testo selezionato nel documento.',
+                          title: t('documents.select_text_first'),
+                          description: t('documents.ai_needs_selection'),
                         })
                       }}
                     />
@@ -1351,7 +1365,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId }: 
                        }}
                        disabled={isReadOnlyLesson}
                        className="text-4xl font-bold bg-transparent border-none focus:outline-none w-full placeholder-slate-300 pointer-events-auto"
-                       placeholder="Titolo Slide"
+                       placeholder={t('documents.slide_title_placeholder')}
                      />
                   </div>
 
@@ -1400,35 +1414,39 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId }: 
         {/* New Document Modal */}
         {showNewModal && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-            <div className="bg-white rounded-lg p-6 w-full max-w-md mx-4 shadow-xl">
-              <h3 className="text-lg font-semibold mb-2">Crea nuovo</h3>
+            <div className="bg-white rounded-xl p-6 w-full max-w-md mx-4 shadow-[var(--shadow-xl)]">
+              <h3 className="text-lg font-semibold mb-2">{t('documents.create_new_title')}</h3>
               <p className="text-sm text-gray-600 mb-4">
-                Scegli se creare un nuovo documento o una nuova presentazione.
+                {isEnglishUi ? 'Choose whether to create a new document or a new presentation.' : 'Scegli se creare un nuovo documento o una nuova presentazione.'}
               </p>
               <div className="flex flex-col gap-3">
                 <Button
-                  className="w-full justify-center bg-emerald-600 hover:bg-emerald-700 text-white"
+                  tone="success"
+                  surface="solid"
+                  className="w-full justify-center"
                   onClick={() => {
                     createNewDocument()
                     setShowNewModal(false)
                   }}
                 >
                   <FileText className="h-4 w-4 mr-2" />
-                  Nuovo documento
+                  {t('documents.new_document')}
                 </Button>
                 <Button
-                  className="w-full justify-center bg-indigo-600 hover:bg-indigo-700 text-white"
+                  tone="accent"
+                  surface="solid"
+                  className="w-full justify-center"
                   onClick={() => {
                     createNewPresentation()
                     setShowNewModal(false)
                   }}
                 >
                   <Monitor className="h-4 w-4 mr-2" />
-                  Nuova presentazione
+                  {t('documents.new_presentation')}
                 </Button>
               </div>
               <div className="flex justify-end mt-4">
-                <Button variant="outline" onClick={() => setShowNewModal(false)}>Annulla</Button>
+                <Button variant="outline" onClick={() => setShowNewModal(false)}>{isEnglishUi ? 'Cancel' : 'Annulla'}</Button>
               </div>
             </div>
           </div>
@@ -1438,25 +1456,35 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId }: 
         {showSubmitModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-white rounded-xl p-6 w-full max-w-md mx-4 shadow-xl">
-            <h3 className="text-lg font-bold mb-2">Invia al Docente</h3>
+            <h3 className="text-lg font-bold mb-2">{t('documents.send_to_teacher_title')}</h3>
             <p className="text-sm text-gray-600 mb-4">
-              Il tuo {mode === 'slides' ? 'presentazione' : mode === 'sheet' ? 'foglio' : mode === 'canvas' ? 'lavagna' : 'documento'} "<strong>{document.title}</strong>" verrà inviato al docente per la revisione.
+              {t('documents.send_to_teacher_body', {
+                type: mode === 'slides'
+                  ? (isEnglishUi ? 'presentation' : 'presentazione')
+                  : mode === 'sheet'
+                    ? (isEnglishUi ? 'sheet' : 'foglio')
+                    : mode === 'canvas'
+                      ? (isEnglishUi ? 'board' : 'lavagna')
+                      : (isEnglishUi ? 'document' : 'documento'),
+                title: document.title,
+              })}
             </p>
-            <div className="bg-indigo-50 border border-indigo-100 rounded-lg p-4 mb-4">
-              <p className="text-sm text-indigo-700">
-                Il docente potrà visualizzare il tuo lavoro nella sezione Compiti della sessione.
+              <div className="bg-blue-50 border border-blue-100 rounded-lg p-4 mb-4">
+              <p className="text-sm text-blue-700">
+                {t('documents.sent_teacher_info')}
               </p>
             </div>
             <div className="flex justify-end gap-2">
               <Button variant="outline" onClick={() => setShowSubmitModal(false)} disabled={isSubmitting}>
-                Annulla
+                {isEnglishUi ? 'Cancel' : 'Annulla'}
               </Button>
               <Button
+                tone="accent"
+                surface="solid"
                 onClick={handleSubmit}
                 disabled={isSubmitting}
-                className="bg-indigo-600 hover:bg-indigo-700 text-white"
               >
-                {isSubmitting ? 'Invio...' : 'Conferma Invio'}
+                {isSubmitting ? t('documents.sending') : t('documents.confirm_send')}
               </Button>
             </div>
           </div>

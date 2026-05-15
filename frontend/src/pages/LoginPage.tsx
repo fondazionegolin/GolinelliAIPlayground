@@ -113,7 +113,7 @@ export default function LoginPage() {
         </section>
 
         <aside className="flex items-start justify-center lg:items-center">
-          <Card className="w-full max-w-md overflow-hidden rounded-[32px] border border-slate-200/90 bg-white/96">
+          <Card className="w-full max-w-md overflow-hidden rounded-xl border border-slate-200/90 bg-white/96 shadow-[var(--shadow-md)]">
             <CardHeader className="border-b border-slate-100/90 pb-4">
               <CardTitle className="text-slate-900">Accesso Docente / Admin</CardTitle>
               <CardDescription>Entra in piattaforma o richiedi l&apos;accesso beta.</CardDescription>
@@ -143,19 +143,19 @@ export default function LoginPage() {
                     required
                   />
                 </div>
-                <Button type="submit" className="w-full bg-slate-900 hover:bg-slate-800 rounded-xl h-11" disabled={loading}>
+                <Button type="submit" tone="neutral" surface="solid" className="w-full h-11" disabled={loading}>
                   {loading ? 'Accesso in corso...' : 'Accedi'}
                 </Button>
               </form>
 
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                 <Link to="/teacher-request">
-                  <Button variant="outline" className="w-full rounded-xl">
+                  <Button tone="accent" surface="outline" className="w-full">
                     REGISTRATI QUI
                   </Button>
                 </Link>
                 <Link to="/join">
-                  <Button variant="secondary" className="w-full rounded-xl">
+                  <Button tone="neutral" surface="soft" className="w-full">
                     Entra Studente
                   </Button>
                 </Link>

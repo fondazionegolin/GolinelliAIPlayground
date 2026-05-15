@@ -803,7 +803,7 @@ async def get_teachers_status(
         await db.execute(
             select(User).where(
                 User.tenant_id == admin.tenant_id,
-                User.role == UserRole.TEACHER,
+                User.role.in_([UserRole.TEACHER, UserRole.ADMIN]),
                 User.is_active == True,
             ).order_by(User.created_at.desc())
         )
@@ -875,6 +875,7 @@ async def get_teachers_status(
                 "last_name": t.last_name,
                 "email": t.email,
                 "institution": t.institution,
+                "role": t.role.value,
                 "is_verified": bool(t.is_verified),
                 "created_at": t.created_at.isoformat() if t.created_at else None,
                 "last_login_at": t.last_login_at.isoformat() if t.last_login_at else None,

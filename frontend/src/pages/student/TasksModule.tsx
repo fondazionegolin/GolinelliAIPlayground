@@ -51,6 +51,22 @@ interface TaskData {
   } | null
 }
 
+function getTaskCardPreview(task: TaskData) {
+  if (task.description?.trim()) return task.description.trim()
+  if (!task.content_json) return ''
+
+  try {
+    const content = JSON.parse(task.content_json) as TaskContent
+    if (content.description?.trim()) return content.description.trim()
+    if (content.text?.trim()) return content.text.trim()
+    if (content.title?.trim()) return content.title.trim()
+    if (content.questions?.length) return content.questions[0]?.question?.trim() || ''
+    return ''
+  } catch {
+    return ''
+  }
+}
+
 interface TasksModuleProps {
   openTaskId?: string | null
   onOpenDocument?: (taskId: string) => void
@@ -139,14 +155,14 @@ export default function TasksModule({ openTaskId, onOpenDocument }: TasksModuleP
   return (
     <div className="h-full flex flex-col relative overflow-hidden">
       {/* Grid View */}
-      <div className="flex-1 overflow-y-auto p-4 md:p-6 pb-24">
-        <div className="max-w-3xl mx-auto">
-          <div className="flex items-center justify-between mb-4">
+      <div className="flex-1 overflow-y-auto px-4 pb-24 pt-0 md:px-6 md:pb-8 md:pt-0">
+        <div className="w-full">
+          <div className="mb-4 flex items-center justify-between">
             <div>
               <h2 className="text-sm font-bold text-slate-700">{t('tasks.title')}</h2>
               <p className="text-xs text-slate-400">{t('tasks.subtitle')}</p>
             </div>
-            <div className="bg-white/60 backdrop-blur-md px-3 py-1.5 rounded-full border border-slate-200 shadow-sm flex items-center gap-1.5">
+            <div className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5">
               <Award className="h-3.5 w-3.5 text-amber-500" />
               <span className="text-xs font-bold text-slate-700">
                 {regularTasks.filter(t => t.submission).length}/{regularTasks.length}
@@ -162,7 +178,7 @@ export default function TasksModule({ openTaskId, onOpenDocument }: TasksModuleP
               value={taskSearch}
               onChange={e => setTaskSearch(e.target.value)}
               placeholder="Cerca compiti..."
-              className="w-full pl-9 pr-8 py-2 text-sm bg-white/80 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-300 placeholder:text-slate-400"
+              className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-9 pr-8 text-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-300"
             />
             {taskSearch && (
               <button onClick={() => setTaskSearch('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
@@ -239,12 +255,12 @@ export default function TasksModule({ openTaskId, onOpenDocument }: TasksModuleP
 }
 
 const TASK_TILE_STYLES: Record<string, { card: string; iconBg: string; icon: string; badge: string; time: string }> = {
-  completed:    { card: 'bg-emerald-50/80 border border-emerald-200/70 hover:border-emerald-300/80 hover:bg-emerald-50', iconBg: 'bg-emerald-100', icon: 'text-emerald-700', badge: 'bg-emerald-200 text-emerald-700', time: 'text-emerald-600' },
-  quiz:         { card: 'bg-rose-50/80 border border-rose-200/70 hover:border-rose-300/80 hover:bg-rose-50',             iconBg: 'bg-rose-100',    icon: 'text-rose-700',    badge: 'bg-rose-200 text-rose-700',    time: 'text-rose-500' },
-  lesson:       { card: 'bg-blue-50/80 border border-blue-200/70 hover:border-blue-300/80 hover:bg-blue-50',             iconBg: 'bg-blue-100',    icon: 'text-blue-800',    badge: 'bg-blue-200 text-blue-700',    time: 'text-blue-500' },
-  presentation: { card: 'bg-indigo-50/80 border border-indigo-200/70 hover:border-indigo-300/80 hover:bg-indigo-50',     iconBg: 'bg-indigo-100',  icon: 'text-indigo-700',  badge: 'bg-indigo-200 text-indigo-700', time: 'text-indigo-500' },
-  exercise:     { card: 'bg-amber-50/80 border border-amber-200/70 hover:border-amber-300/80 hover:bg-amber-50',         iconBg: 'bg-amber-100',   icon: 'text-amber-700',   badge: 'bg-amber-200 text-amber-700',  time: 'text-amber-600' },
-  default:      { card: 'bg-slate-50/80 border border-slate-200/70 hover:border-slate-300/80 hover:bg-slate-50',         iconBg: 'bg-slate-100',   icon: 'text-slate-600',   badge: 'bg-slate-200 text-slate-600',  time: 'text-slate-500' },
+  completed:    { card: 'border border-emerald-200 bg-white hover:border-emerald-300', iconBg: 'bg-emerald-50', icon: 'text-emerald-700', badge: 'border border-emerald-200 bg-emerald-50 text-emerald-700', time: 'text-emerald-600' },
+  quiz:         { card: 'border border-rose-200 bg-white hover:border-rose-300',       iconBg: 'bg-rose-50',    icon: 'text-rose-700',    badge: 'border border-rose-200 bg-rose-50 text-rose-700',    time: 'text-rose-500' },
+  lesson:       { card: 'border border-blue-200 bg-white hover:border-blue-300',       iconBg: 'bg-blue-50',    icon: 'text-blue-800',    badge: 'border border-blue-200 bg-blue-50 text-blue-700',    time: 'text-blue-500' },
+  presentation: { card: 'border border-indigo-200 bg-white hover:border-indigo-300',   iconBg: 'bg-indigo-50',  icon: 'text-indigo-700',  badge: 'border border-indigo-200 bg-indigo-50 text-indigo-700', time: 'text-indigo-500' },
+  exercise:     { card: 'border border-amber-200 bg-white hover:border-amber-300',     iconBg: 'bg-amber-50',   icon: 'text-amber-700',   badge: 'border border-amber-200 bg-amber-50 text-amber-700',  time: 'text-amber-600' },
+  default:      { card: 'border border-slate-200 bg-white hover:border-slate-300',     iconBg: 'bg-slate-50',   icon: 'text-slate-600',   badge: 'border border-slate-200 bg-slate-50 text-slate-600',  time: 'text-slate-500' },
 }
 
 const UDA_TYPE_CHIP: Record<string, string> = {
@@ -273,13 +289,13 @@ function UdaFolder({
   const [open, setOpen] = useState(false)
 
   return (
-    <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+    <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
       <button
         className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-slate-50 transition-colors"
         onClick={() => setOpen(o => !o)}
       >
-        <div className="w-8 h-8 rounded-xl bg-indigo-100 flex items-center justify-center flex-shrink-0">
-          <FolderOpen className="h-4 w-4 text-indigo-600" />
+        <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-slate-100">
+          <FolderOpen className="h-4 w-4 text-slate-600" />
         </div>
         <div className="flex-1 min-w-0">
           <p className="text-sm font-semibold text-slate-800 truncate">{folderName}</p>
@@ -300,7 +316,7 @@ function UdaFolder({
               {folderTasks.map(task => (
                 <button
                   key={task.id}
-                  className="w-full flex items-center gap-3 bg-slate-50 hover:bg-indigo-50 hover:border-indigo-100 border border-transparent rounded-xl px-3 py-2.5 text-left transition-colors"
+                  className="w-full flex items-center gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-left transition-colors hover:bg-slate-50 hover:border-slate-300"
                   onClick={() => onOpenTask(task)}
                 >
                   <span className={`text-xs px-2 py-0.5 rounded-full font-medium flex-shrink-0 ${UDA_TYPE_CHIP[task.task_type] ?? 'bg-slate-100 text-slate-600'}`}>
@@ -321,6 +337,7 @@ function UdaFolder({
 
 function TaskCard({ task, onClick }: { task: TaskData; onClick: () => void; accentColor: string }) {
   const isCompleted = !!task.submission
+  const preview = useMemo(() => getTaskCardPreview(task), [task])
 
   const s = useMemo(() => {
     if (isCompleted) return TASK_TILE_STYLES.completed
@@ -339,24 +356,46 @@ function TaskCard({ task, onClick }: { task: TaskData; onClick: () => void; acce
 
   return (
     <motion.div
-      whileHover={{ scale: 1.02 }}
+      whileHover={{ y: -2 }}
       whileTap={{ scale: 0.97 }}
       onClick={onClick}
-      className={`aspect-square relative cursor-pointer rounded-2xl shadow-sm transition-all flex flex-col items-center justify-center p-4 backdrop-blur-sm ${s.card}`}
+      className={`relative flex min-h-[154px] cursor-pointer flex-col rounded-lg p-3.5 text-left transition-all ${s.card}`}
     >
       {isCompleted && (
         <div className={`absolute top-2.5 right-2.5 ${s.badge} rounded-full p-0.5`}>
           <Check className="h-3 w-3" />
         </div>
       )}
-      <div className={`w-11 h-11 rounded-xl ${s.iconBg} ${s.icon} flex items-center justify-center mb-2.5`}>
-        {typeIcon}
+      <div className="flex items-start gap-3">
+        <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${s.iconBg} ${s.icon}`}>
+          {typeIcon}
+        </div>
+        <div className="min-w-0 flex-1 pr-6">
+          <div className="line-clamp-2 text-sm font-semibold leading-5 text-slate-900">{task.title}</div>
+          {preview && (
+            <p className="mt-1 line-clamp-3 text-[12px] leading-5 text-slate-500">
+              {preview}
+            </p>
+          )}
+        </div>
       </div>
-      <span className="text-xs font-semibold leading-tight text-center text-slate-800 line-clamp-2 px-1">{task.title}</span>
-      {task.due_at && !isCompleted && (
-        <div className={`flex items-center gap-1 mt-1.5 ${s.time}`}>
-          <Clock className="h-3 w-3" />
-          <span className="text-[10px]">{new Date(task.due_at).toLocaleDateString('it-IT')}</span>
+      <div className="mt-3 flex items-center justify-between gap-2">
+        <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${s.badge}`}>
+          {TASK_TYPE_BADGE[task.task_type]?.label ?? task.task_type}
+        </span>
+        {task.due_at && !isCompleted && (
+          <div className={`flex items-center gap-1 ${s.time}`}>
+            <Clock className="h-3 w-3" />
+            <span className="text-[10px]">{new Date(task.due_at).toLocaleDateString('it-IT')}</span>
+          </div>
+        )}
+        {isCompleted && (
+          <span className="text-[10px] font-semibold text-emerald-600">Completato</span>
+        )}
+      </div>
+      {!task.due_at && !isCompleted && (
+        <div className="mt-2 text-[10px] font-medium text-slate-400">
+          Apri per vedere i dettagli
         </div>
       )}
     </motion.div>
@@ -409,18 +448,17 @@ function TaskViewerOverlay({ task, onClose, accentTheme, onSuccess }: { task: Ta
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 z-[60] bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-0 md:p-4"
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/50 p-0 md:p-4"
     >
       <motion.div
         initial={{ y: 30, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
         exit={{ y: 30, opacity: 0 }}
         transition={{ type: 'spring', stiffness: 320, damping: 32 }}
-        className="w-full h-full md:h-[90vh] md:max-w-3xl md:rounded-2xl overflow-hidden flex flex-col shadow-2xl border border-white/40"
-        style={{ backgroundColor: 'rgba(248,250,252,0.97)', backdropFilter: 'blur(24px)' }}
+        className="flex h-full w-full flex-col overflow-hidden border border-slate-200 bg-white md:h-[90vh] md:max-w-3xl md:rounded-xl"
       >
         {/* Header */}
-        <div className="px-5 py-3.5 flex items-center gap-3 border-b border-slate-200/60 bg-white/50 backdrop-blur-sm flex-shrink-0">
+        <div className="flex shrink-0 items-center gap-3 border-b border-slate-200 bg-white px-5 py-3.5">
           <button
             onClick={onClose}
             className="w-8 h-8 rounded-xl hover:bg-slate-100 flex items-center justify-center text-slate-400 hover:text-slate-700 transition-colors flex-shrink-0"
@@ -441,7 +479,7 @@ function TaskViewerOverlay({ task, onClose, accentTheme, onSuccess }: { task: Ta
             <h2 className="font-bold text-base text-slate-900 leading-tight line-clamp-1">{task.title}</h2>
           </div>
           {isCompleted && (
-            <div className="bg-emerald-50 border border-emerald-200/60 px-2.5 py-1 rounded-xl flex items-center gap-1.5 flex-shrink-0">
+            <div className="flex flex-shrink-0 items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1">
               <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
               <span className="text-xs font-bold text-emerald-700">{t('tasks.completed_badge')}</span>
             </div>
@@ -789,4 +827,3 @@ function ListChecksIcon(props: any) {
     </svg>
   )
 }
-

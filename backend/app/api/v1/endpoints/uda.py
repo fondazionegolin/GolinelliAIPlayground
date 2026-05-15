@@ -160,6 +160,8 @@ async def api_generate_kb(
     teacher: Annotated[User, Depends(get_current_teacher)],
     db: Annotated[AsyncSession, Depends(get_db)],
     files: list[UploadFile] = File(default=[]),
+    language: Annotated[Optional[str], Form()] = None,
+    school_level: Annotated[Optional[str], Form()] = None,
 ):
     """Phase 1: Generate / update the knowledge base from prompt + optional documents."""
     cls = await _get_class_for_teacher(class_id, teacher, db)
@@ -187,10 +189,17 @@ async def api_generate_kb(
     except Exception:
         pass
 
-    kb = await generate_kb(prompt, doc_texts, existing_kb=existing or None)
+    kb = await generate_kb(
+        prompt,
+        doc_texts,
+        existing_kb=existing or None,
+        language=language or None,
+        school_level=school_level or None,
+    )
 
     content = json.loads(uda.content_json or "{}")
     content["kb"] = kb
+    content["briefing"] = prompt  # preserve original teacher instructions for plan generation
     uda.content_json = json.dumps(content, ensure_ascii=False)
     uda.uda_phase = "kb"
     uda.updated_at = datetime.utcnow()
@@ -217,8 +226,9 @@ async def api_generate_plan(
     kb = content.get("kb", {})
     if not kb:
         raise HTTPException(status_code=400, detail="KB not yet generated")
+    teacher_request = content.get("briefing", "")
 
-    plan = await generate_plan(kb)
+    plan = await generate_plan(kb, teacher_request=teacher_request)
     content["plan"] = plan
     uda.content_json = json.dumps(content, ensure_ascii=False)
     uda.uda_phase = "plan"
@@ -290,6 +300,7 @@ async def api_generate_content(
     content = json.loads(uda.content_json or "{}")
     kb = content.get("kb", {})
     plan = content.get("plan", {})
+    teacher_request = content.get("briefing", "")
     items = plan.get("items", [])
     if not items:
         raise HTTPException(status_code=400, detail="Plan not yet generated or empty")
@@ -303,7 +314,7 @@ async def api_generate_content(
         for i, item in enumerate(items):
             try:
                 yield f"data: {json.dumps({'event': 'item_start', 'index': i, 'title': item['title'], 'type': item['type']})}\n\n"
-                raw_content = await generate_item_content(item, kb)
+                raw_content = await generate_item_content(item, kb, teacher_request=teacher_request or None)
 
                 # Determine task_type
                 type_map = {

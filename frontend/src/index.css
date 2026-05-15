@@ -40,25 +40,26 @@
     --popover-foreground: 222 47% 11%;
 
     /* Core actions */
-    --primary: 243 75% 59%;
+    --primary: 217 91% 60%;
     --primary-foreground: 210 40% 98%;
     --secondary: 210 40% 96%;
     --secondary-foreground: 222 47% 11%;
     --muted: 210 40% 96%;
     --muted-foreground: 215 16% 47%;
-    --accent: 243 75% 96%;
-    --accent-foreground: 243 75% 59%;
+    --accent: 217 100% 97%;
+    --accent-foreground: 217 91% 60%;
     --destructive: 0 84% 60%;
     --destructive-foreground: 210 40% 98%;
 
     /* Borders and focus */
     --border: 214 32% 91%;
     --input: 214 32% 91%;
-    --ring: 243 75% 59%;
-    --radius: 0.75rem;
+    --ring: 217 91% 60%;
+    --radius: 0.5rem;
 
     /* Semantic mirrors for feature code migration */
-    --surface-page: #f8fafc;
+    --app-body-bg: #ffffff;
+    --surface-page: var(--app-body-bg);
     --surface-base: #ffffff;
     --surface-elevated: rgba(255, 255, 255, 0.92);
     --surface-muted: #f1f5f9;
@@ -72,9 +73,16 @@
     --overlay-soft: rgba(15, 23, 42, 0.12);
     --overlay-modal: rgba(15, 23, 42, 0.5);
     --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.06);
-    --shadow-md: 0 4px 20px rgba(15, 23, 42, 0.08);
-    --shadow-lg: 0 12px 32px rgba(15, 23, 42, 0.14);
-    --shadow-xl: 0 18px 48px rgba(15, 23, 42, 0.18);
+    --shadow-md: 0 8px 24px rgba(15, 23, 42, 0.08);
+    --shadow-lg: 0 14px 36px rgba(15, 23, 42, 0.12);
+    --shadow-xl: 0 20px 56px rgba(15, 23, 42, 0.16);
+
+    /* Public-page accent fallbacks */
+    --app-accent: #2563eb;
+    --app-accent-text: #1d4ed8;
+    --app-accent-soft: #eff6ff;
+    --app-accent-soft-strong: #dbeafe;
+    --app-accent-border: #93c5fd;
   }
 
   .dark {
@@ -84,7 +92,7 @@
     --card-foreground: 210 40% 98%;
     --popover: 217 33% 17%;
     --popover-foreground: 210 40% 98%;
-    --primary: 243 100% 70%;
+    --primary: 217 100% 70%;
     --primary-foreground: 222 47.4% 11.2%;
     --secondary: 217.2 32.6% 17.5%;
     --secondary-foreground: 210 40% 98%;
@@ -98,7 +106,8 @@
     --input: 217.2 32.6% 17.5%;
     --ring: 212.7 26.8% 83.9%;
 
-    --surface-page: #0f172a;
+    --app-body-bg: #111827;
+    --surface-page: var(--app-body-bg);
     --surface-base: #1e293b;
     --surface-elevated: rgba(30, 41, 59, 0.92);
     --surface-muted: #334155;
@@ -128,7 +137,7 @@
     font-family: var(--font-family);
     font-size: var(--font-size-md);
     line-height: var(--line-height-md);
-    background-color: var(--surface-page);
+    background-color: var(--app-body-bg);
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     text-rendering: optimizeLegibility;
@@ -140,12 +149,32 @@
   samp {
     font-family: var(--font-family-mono);
   }
+
+  h1 {
+    font-size: 2rem;
+    line-height: 1.1;
+    font-weight: 700;
+    letter-spacing: var(--letter-spacing-tight);
+  }
+
+  h2 {
+    font-size: 1.5rem;
+    line-height: 1.15;
+    font-weight: 700;
+    letter-spacing: var(--letter-spacing-tight);
+  }
+
+  h3 {
+    font-size: 1.125rem;
+    line-height: 1.25;
+    font-weight: 600;
+  }
 }
 
 /* Shared component affordances */
 @layer components {
   .card-modern {
-    @apply bg-white/95 backdrop-blur-sm rounded-2xl border border-white/40 shadow-[0_8px_30px_rgb(0,0,0,0.12)];
+    @apply rounded-xl border border-slate-200 bg-white/95 shadow-[var(--shadow-md)] backdrop-blur-sm;
   }
 }
 
