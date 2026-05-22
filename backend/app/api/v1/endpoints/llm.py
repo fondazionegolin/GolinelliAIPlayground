@@ -2223,6 +2223,7 @@ async def teacher_chat_stream(
             forced_mode_intents = {
                 "web_search": TeacherIntent.WEB_SEARCH,
                 "quiz": TeacherIntent.QUIZ_GENERATION,
+                "exercise": TeacherIntent.EXERCISE_GENERATION,
                 "dataset": TeacherIntent.DATASET_GENERATION,
                 "report": TeacherIntent.REPORT_GENERATION,
             }

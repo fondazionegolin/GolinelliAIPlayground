@@ -95,6 +95,17 @@ export function ContentEditorModal({ content, type, onSave, onCancel }: ContentE
         }))
       }
     }
+    if (contentType === 'exercise') {
+      return {
+        ...data,
+        title: data.title || '',
+        description: data.description || '',
+        instructions: data.instructions || data.text || '',
+        examples: Array.isArray(data.examples) ? data.examples : [],
+        difficulty: data.difficulty || 'medium',
+        hint: data.hint || ''
+      }
+    }
     return data
   }
 
@@ -107,6 +118,13 @@ export function ContentEditorModal({ content, type, onSave, onCancel }: ContentE
     if (type === 'quiz') {
       const quiz = editedContent as QuizData
       if (!quiz.title || !quiz.description || quiz.questions.length === 0) {
+        alert('Compila tutti i campi obbligatori')
+        return
+      }
+    }
+    if (type === 'exercise') {
+      const exercise = editedContent as ExerciseData
+      if (!exercise.title || !exercise.description || !exercise.instructions) {
         alert('Compila tutti i campi obbligatori')
         return
       }
@@ -513,6 +531,20 @@ function ExerciseFormEditor({ content, onChange }: { content: ExerciseData; onCh
     onChange({ ...content, [field]: value })
   }
 
+  const updateExample = (index: number, value: string) => {
+    const examples = [...(content.examples || [])]
+    examples[index] = value
+    updateField('examples', examples)
+  }
+
+  const addExample = () => {
+    updateField('examples', [...(content.examples || []), ''])
+  }
+
+  const removeExample = (index: number) => {
+    updateField('examples', (content.examples || []).filter((_, i) => i !== index))
+  }
+
   return (
     <div className="space-y-6">
       <div>
@@ -556,6 +588,36 @@ function ExerciseFormEditor({ content, onChange }: { content: ExerciseData; onCh
           <option value="medium">Media</option>
           <option value="hard">Difficile</option>
         </select>
+      </div>
+
+      <div>
+        <div className="flex items-center justify-between mb-2">
+          <label className="block text-sm font-medium text-gray-700">Esempi</label>
+          <Button size="sm" variant="outline" onClick={addExample}>
+            <Plus className="h-4 w-4 mr-1" />
+            Aggiungi esempio
+          </Button>
+        </div>
+        <div className="space-y-2">
+          {(content.examples || []).map((example, index) => (
+            <div key={index} className="flex gap-2">
+              <textarea
+                value={example}
+                onChange={(e) => updateExample(index, e.target.value)}
+                className="flex-1 px-3 py-2 border rounded-lg"
+                rows={2}
+                placeholder={`Esempio ${index + 1}`}
+              />
+              <button
+                onClick={() => removeExample(index)}
+                className="text-red-600 hover:text-red-700 self-start p-2"
+                aria-label="Rimuovi esempio"
+              >
+                <Trash2 className="h-4 w-4" />
+              </button>
+            </div>
+          ))}
+        </div>
       </div>
 
       <div>

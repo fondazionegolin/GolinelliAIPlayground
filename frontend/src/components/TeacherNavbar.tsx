@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, type CSSProperties } from 'react'
 import { Link, useNavigate, useLocation } from 'react-router-dom'
-import { User, Settings, LogOut, ChevronDown, Users, MessageSquare, FileText, Check, Brain, MonitorPlay, FileCode2, KeyRound, Loader2, LayoutDashboard, ShieldCheck, BookOpen } from 'lucide-react'
+import { User, Settings, LogOut, ChevronDown, Users, MessageSquare, FileText, Check, Brain, MonitorPlay, FileCode2, KeyRound, Loader2, LayoutDashboard, ShieldCheck, BookOpen, Zap } from 'lucide-react'
 import { Button } from './ui/button'
 import { useToast } from '@/components/ui/use-toast'
 import { LogoMark } from './LogoMark'
@@ -286,6 +286,7 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
     { path: '/teacher/wiki', label: t('navbar.nav_wiki'), icon: BookOpen },
     { path: '/teacher/ml-lab', label: t('navbar.nav_ml_lab'), icon: Brain },
     { path: '/teacher/notebooks', label: t('navbar.nav_notebook'), icon: FileCode2 },
+    { path: '/teacher/live-interaction', label: 'Live', icon: Zap },
     { path: '/teacher/desktop', label: t('navbar.nav_desktop'), icon: LayoutDashboard },
   ]
 
@@ -516,6 +517,16 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
                     >
                       <Settings className="h-4 w-4" />
                       {t('navbar.settings')}
+                    </button>
+                    <button
+                      onClick={() => {
+                        setShowDropdown(false)
+                        navigate('/terms')
+                      }}
+                      className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-600 hover:bg-slate-50 hover:text-[var(--teacher-accent-text)] transition-colors"
+                    >
+                      <FileText className="h-4 w-4" />
+                      Termini e condizioni
                     </button>
                     {isAdmin && (
                       <>

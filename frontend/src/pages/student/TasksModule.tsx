@@ -25,6 +25,9 @@ interface TaskContent {
   questions?: QuizQuestion[]
   text?: string
   hint?: string
+  instructions?: string
+  examples?: string[]
+  difficulty?: 'easy' | 'medium' | 'hard'
   title?: string
   description?: string
   slides?: any[]
@@ -679,18 +682,36 @@ function ExerciseViewer({ content, onSubmit, accentTheme, isSubmitting }: {
   isSubmitting: boolean;
 }) {
   const [response, setResponse] = useState('')
+  const exerciseText = content?.instructions || content?.text
+  const examples = Array.isArray(content?.examples) ? content.examples.filter(Boolean) : []
 
   return (
     <div className="space-y-4">
-      {content?.text && (
+      {exerciseText && (
         <div className="bg-amber-50/70 backdrop-blur-sm border border-amber-200/60 rounded-xl p-5">
           <div className="flex items-center gap-2 mb-3">
             <PenTool className="h-4 w-4 text-amber-600" />
             <span className="text-xs font-bold uppercase tracking-widest text-amber-500">Esercizio</span>
           </div>
-          <p className="text-slate-800 font-medium leading-relaxed">
-            {content.text}
+          {content?.title && (
+            <h3 className="text-lg font-bold text-slate-900 mb-2">{content.title}</h3>
+          )}
+          {content?.description && (
+            <p className="text-sm text-slate-600 mb-4">{content.description}</p>
+          )}
+          <p className="text-slate-800 font-medium leading-relaxed whitespace-pre-wrap">
+            {exerciseText}
           </p>
+          {examples.length > 0 && (
+            <div className="mt-4 rounded-xl bg-white/70 border border-amber-100 p-3">
+              <div className="text-xs font-bold uppercase tracking-widest text-amber-600 mb-2">Esempi</div>
+              <ul className="space-y-1.5 pl-4 text-sm text-slate-700">
+                {examples.map((example, index) => (
+                  <li key={index}>{example}</li>
+                ))}
+              </ul>
+            </div>
+          )}
           {content.hint && (
             <div className="mt-4 flex items-start gap-2 text-xs text-amber-700 bg-amber-100/80 p-3 rounded-xl border border-amber-200/60">
               <Lightbulb className="h-3.5 w-3.5 shrink-0 mt-0.5" />

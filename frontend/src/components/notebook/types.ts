@@ -1,6 +1,6 @@
 import type { CellOutput } from '@/hooks/usePyodide'
 
-export type NotebookProjectType = 'python' | 'p5js'
+export type NotebookProjectType = 'python' | 'p5js' | 'strudel'
 export type NotebookTheme = 'dark' | 'light' | 'fancy' | 'dracula' | 'p5js'
 export type NotebookFontFamily = 'jetbrains' | 'space' | 'courier' | 'victor' | 'plex'
 

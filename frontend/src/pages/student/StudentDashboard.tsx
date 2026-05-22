@@ -23,6 +23,7 @@ const DesktopPage           = lazy(() => import('../shared/DesktopPage'))
 import ChatSidebar from '@/components/ChatSidebar'
 import { LogoMark } from '@/components/LogoMark'
 import { StudentNavbar } from '@/components/StudentNavbar'
+import LiveInteractionStudentOverlay from '@/components/LiveInteractionStudentOverlay'
 import { FloatingHelper } from '@/components/FloatingHelper'
 import { useMobile } from '@/hooks/useMobile'
 import { useSwipeBack } from '@/hooks/useSwipeBack'
@@ -501,6 +502,9 @@ export default function StudentDashboard() {
         ) : null}
       </div>
       <FloatingHelper module={activeModule} />
+      {sessionInfo && (
+        <LiveInteractionStudentOverlay sessionId={sessionInfo.session.id} />
+      )}
     </AppBackground>
   )
 }
@@ -758,6 +762,7 @@ function StudentMobileShell({
         </button>
       )}
       <FloatingHelper module={activeModule} />
+      <LiveInteractionStudentOverlay sessionId={sessionInfo.session.id} />
     </AppBackground>
   )
 }

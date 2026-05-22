@@ -78,6 +78,7 @@ class CanvasUpsertRequest(BaseModel):
     title: str | None = None
     content_json: str
     base_version: int | None = None
+    students_can_write: bool | None = None
 
 
 # Profile endpoints
@@ -1081,6 +1082,7 @@ async def get_session_canvas(
             "content_json": '{"type":"canvas_v1","items":[]}',
             "version": 0,
             "updated_at": None,
+            "students_can_write": False,
         }
 
     return {
@@ -1089,6 +1091,7 @@ async def get_session_canvas(
         "content_json": canvas.content_json,
         "version": canvas.version,
         "updated_at": canvas.updated_at.isoformat() if canvas.updated_at else None,
+        "students_can_write": canvas.students_can_write,
     }
 
 
@@ -1125,6 +1128,7 @@ async def upsert_session_canvas(
             title=request.title or "Lavagna collaborativa",
             content_json=request.content_json,
             version=1,
+            students_can_write=request.students_can_write or False,
             updated_by_teacher_id=teacher.id,
         )
         db.add(canvas)
@@ -1134,6 +1138,8 @@ async def upsert_session_canvas(
         canvas.version = (canvas.version or 0) + 1
         canvas.updated_by_teacher_id = teacher.id
         canvas.updated_by_student_id = None
+        if request.students_can_write is not None:
+            canvas.students_can_write = request.students_can_write
 
     await db.commit()
     await db.refresh(canvas)
@@ -1145,6 +1151,7 @@ async def upsert_session_canvas(
         "version": canvas.version,
         "updated_at": canvas.updated_at.isoformat() if canvas.updated_at else None,
         "updated_by": {"type": "teacher", "id": str(teacher.id)},
+        "students_can_write": canvas.students_can_write,
     }
     await sio.emit("canvas_updated", payload, room=f"session:{session_id}")
     return payload

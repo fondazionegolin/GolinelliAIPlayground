@@ -17,7 +17,7 @@ import logging
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
-SUPPORTED_PROJECT_TYPES = {"python", "p5js"}
+SUPPORTED_PROJECT_TYPES = {"python", "p5js", "strudel"}
 NOTEBOOK_CONTEXT_CELL_LIMIT = 6
 NOTEBOOK_SNIPPET_CHAR_LIMIT = 1200
 
@@ -262,8 +262,15 @@ async def notebook_tutor_chat(
     )
     relevant_context = _build_notebook_context(nb, message, current_cell, last_output)
 
-    language_label = "Python" if project_type == "python" else "p5.js / JavaScript creativo"
-    code_fence = "python" if project_type == "python" else "javascript"
+    if project_type == "python":
+        language_label = "Python"
+        code_fence = "python"
+    elif project_type == "strudel":
+        language_label = "Strudel (live coding musicale con mini notation)"
+        code_fence = "javascript"
+    else:
+        language_label = "p5.js / JavaScript creativo"
+        code_fence = "javascript"
     proposals_context = ""
     if pending_proposals:
         proposals_context = f"""
@@ -272,10 +279,24 @@ Proposte di modifica attualmente in attesa di approvazione:
 {json.dumps(pending_proposals[:5], ensure_ascii=False)}
 """
 
+    strudel_extra = ""
+    if project_type == "strudel":
+        strudel_extra = """
+Strudel è un sistema di live coding musicale basato su JavaScript. Concetti chiave:
+- Mini notation: pattern ritmici tra virgolette, es. "bd sd" o "c3 e3 g3"
+- Funzioni principali: note(), s(), sound(), n(), freq()
+- Parametri audio: gain(), pan(), room(), delay(), cutoff(), speed()
+- Inviluppo: attack(), decay(), sustain(), release()
+- Trasformazioni pattern: .slow(n), .fast(n), .rev(), .palindrome(), .every(n, fn)
+- Combinatori: stack(...), seq(...), cat(...)
+- Il codice viene eseguito in tempo reale e produce audio nel browser via WebAudio
+- Shift+Enter o il pulsante Play eseguono il codice; l'audio parte solo dopo il primo clic "Attiva audio"
+"""
+
     system_prompt = f"""Sei un tutor esperto di {language_label} per studenti e docenti.
 Stai aiutando con il notebook intitolato: "{nb.title}".
 Tipo progetto: {project_type}
-
+{strudel_extra}
 Codice completo del notebook (tutte le celle):
 ```{code_fence}
 {all_code[:3000]}
@@ -301,10 +322,11 @@ Il tuo obiettivo:
 3. Suggerisci approcci e funzioni utili, ma lascia che l'utente scriva il codice
 4. Se l'utente chiede esplicitamente del codice di esempio, puoi mostrarne uno breve
 5. Se il progetto è p5js, considera setup(), draw(), preload(), canvas, coordinate, frame rate e ciclo di rendering
-6. Non usare emoji, emoticon o toni giocosi
-7. Rispondi in modo compatto, chiaro e operativo: paragrafi brevi, pochi punti, niente preamboli inutili
-8. Mantieni uno stile socratico: fai al massimo una domanda guida per volta quando serve
-9. Rispondi sempre in italiano a meno che l'utente scriva in un'altra lingua"""
+6. Se il progetto è strudel, guida con domande sulla mini notation, i ritmi, i parametri sonori e la struttura del pattern
+7. Non usare emoji, emoticon o toni giocosi
+8. Rispondi in modo compatto, chiaro e operativo: paragrafi brevi, pochi punti, niente preamboli inutili
+9. Mantieni uno stile socratico: fai al massimo una domanda guida per volta quando serve
+10. Rispondi sempre in italiano a meno che l'utente scriva in un'altra lingua"""
 
     messages = [{"role": m["role"], "content": m["content"]} for m in history[-10:]]
     messages.append({"role": "user", "content": str(message).strip()})
@@ -320,6 +342,7 @@ Il tuo obiettivo:
             model=model,
             temperature=0.5,
             max_tokens=850,
+            allow_web_search=False,
         )
         updated_history = _sanitize_tutor_history([
             *history,
@@ -478,7 +501,7 @@ def _normalize_project_type(value: Optional[str]) -> str:
 
 def _default_editor_settings(project_type: str) -> dict:
     return {
-        "theme": "dracula" if project_type == "p5js" else "dark",
+        "theme": "dracula" if project_type in ("p5js", "strudel") else "dark",
         "font_size": 14,
         "font_family": "jetbrains",
         "live_preview": project_type == "p5js",
@@ -500,6 +523,21 @@ def _starter_cells(project_type: str) -> list[dict]:
                 "  fill(59, 130, 246)\n"
                 "  circle(mouseX, mouseY, 48)\n"
                 "}\n"
+            ),
+            "outputs": [],
+            "execution_count": None,
+        }]
+    if project_type == "strudel":
+        return [{
+            "id": str(uuid.uuid4()),
+            "type": "code",
+            "source": (
+                "// Benvenuto nel live coding musicale con Strudel!\n"
+                "// Scrivi un pattern e premi Play (o Shift+Enter)\n\n"
+                'note("c3 e3 g3 b3")\n'
+                '  .sound("triangle")\n'
+                "  .slow(2)\n"
+                "  .gain(0.6)\n"
             ),
             "outputs": [],
             "execution_count": None,

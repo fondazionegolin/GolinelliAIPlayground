@@ -15,6 +15,8 @@ const TeacherWikiPage    = lazy(() => import('./TeacherWikiPage'))
 const NotebookListPage   = lazy(() => import('../notebook/NotebookListPage'))
 const NotebookPage       = lazy(() => import('../notebook/NotebookPage'))
 const DesktopPage        = lazy(() => import('../shared/DesktopPage'))
+const LiveInteractionBuilderPage = lazy(() => import('./LiveInteractionBuilderPage'))
+const LiveInteractionControlPage = lazy(() => import('./LiveInteractionControlPage'))
 // TeacherSupportChat is the index route — load eagerly for fast first paint
 import TeacherSupportChat from './TeacherSupportChat'
 import { TeacherNavbar } from '@/components/TeacherNavbar'
@@ -248,6 +250,8 @@ export default function TeacherDashboard() {
               <Route path="demo" element={<TeacherDemoPage />} />
               <Route path="notebooks" element={<NotebookListPage />} />
               <Route path="notebooks/notebook/:notebookId" element={<NotebookPage />} />
+              <Route path="live-interaction" element={<LiveInteractionBuilderPage sessionId={activeSessionId ?? undefined} />} />
+              <Route path="live-interaction/:interactionId/control" element={<LiveInteractionControlPage />} />
               <Route path="desktop" element={
                 <DesktopPage
                   sessionId={activeSessionId ?? undefined}

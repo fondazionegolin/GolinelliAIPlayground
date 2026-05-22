@@ -2,8 +2,8 @@ import { lazy, Suspense, useCallback, useEffect, useRef, useState, type PointerE
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useParams } from 'react-router-dom'
 import {
-  AlertCircle, Bot, CheckCircle, ChevronDown, ChevronUp, Cpu, FilePlus, Loader2,
-  Monitor, PackagePlus, Pause, PanelRight, Play, Plus, RotateCcw, Save, Sparkles, Square, Terminal, Trash2, Wrench, Zap,
+  AlertCircle, BookOpen, Bot, CheckCircle, ChevronDown, ChevronUp, Cpu, FilePlus, Loader2,
+  Monitor, Music2, PackagePlus, Pause, PanelRight, Play, Plus, RotateCcw, Save, Sparkles, Square, Terminal, Trash2, Wrench, Zap,
 } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -31,7 +31,9 @@ import type {
 
 const NotebookTutorChat = lazy(() => import('@/components/notebook/NotebookTutorChat'))
 const NotebookP5Preview = lazy(() => import('@/components/notebook/NotebookP5Preview'))
+const NotebookStrudelPreview = lazy(() => import('@/components/notebook/NotebookStrudelPreview'))
 import NotebookLibraryManager from '@/components/notebook/NotebookLibraryManager'
+import type { StrudelPreviewHandle } from '@/components/notebook/NotebookStrudelPreview'
 
 interface ConsoleEntry {
   id: string
@@ -53,12 +55,81 @@ function normalizeCells(projectType: NotebookProjectType, nextCells: Cell[]) {
       name: cell.name ?? (i === 0 ? 'sketch.js' : `file${i}.js`),
     }))
   }
+  if (projectType === 'strudel') {
+    const cells = nextCells.length > 0 ? nextCells : [newCell()]
+    return cells.slice(0, 1).map((cell) => ({ ...cell, type: 'code' as const }))
+  }
   return nextCells.length > 0 ? nextCells : [newCell()]
 }
 
 interface Props {
   notebookIdOverride?: string
 }
+
+const STRUDEL_TEMPLATES = [
+  {
+    id: 'melodia',
+    label: 'Melodia semplice',
+    description: 'Melodia in do maggiore con onde triangolari',
+    code: `note("c4 e4 g4 b4 a4 g4 e4 d4")
+  .sound("triangle")
+  .slow(2)
+  .gain(0.7)`,
+  },
+  {
+    id: 'arpeggio',
+    label: 'Arpeggio ascendente',
+    description: 'Note arpeggiate che salgono e scendono',
+    code: `note("c4 e4 g4 c5 b4 g4 e4 c4")
+  .sound("sine")
+  .fast(1.5)
+  .gain(0.6)`,
+  },
+  {
+    id: 'accordi',
+    label: 'Accordi lenti',
+    description: 'Progressione armonica con accordi sovrapposti',
+    code: `note("<[c3,e3,g3] [f3,a3,c4] [g3,b3,d4] [c3,e3,g3]>")
+  .sound("triangle")
+  .slow(4)
+  .gain(0.5)`,
+  },
+  {
+    id: 'basso-melodia',
+    label: 'Basso + melodia',
+    description: 'Due strati sovrapposti: linea di basso e melodia',
+    code: `stack(
+  note("c2 ~ f2 ~ g2 ~ f2 ~")
+    .sound("sawtooth")
+    .gain(0.4),
+  note("c4 e4 g4 a4 g4 e4 d4 c4")
+    .sound("triangle")
+    .gain(0.6)
+).slow(2)`,
+  },
+  {
+    id: 'canone',
+    label: 'Canone a due voci',
+    description: 'Due voci che si inseguono a distanza di mezza battuta',
+    code: `stack(
+  note("c4 d4 e4 f4 g4 a4 b4 c5")
+    .sound("sine")
+    .slow(3),
+  note("c4 d4 e4 f4 g4 a4 b4 c5")
+    .sound("sine")
+    .slow(3)
+    .early(0.5)
+    .gain(0.6)
+)`,
+  },
+  {
+    id: 'ritmo',
+    label: 'Ritmo percussivo',
+    description: 'Pattern ritmico con cassa, rullante e hi-hat',
+    code: `s("bd ~ sd ~ bd bd sd ~, hh hh hh hh hh hh hh hh")
+  .gain(0.8)`,
+  },
+]
 
 const previewFallback = (
   <div className={`flex h-full min-h-[260px] items-center justify-center rounded-xl shadow-sm ${PASTEL_SURFACES.indigo}`}>
@@ -100,6 +171,11 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
   const [assistantProposals, setAssistantProposals] = useState<Record<string, NotebookCodeProposal[]>>({})
   const [p5SplitRatio, setP5SplitRatio] = useState(0.58)
   const [p5Playing, setP5Playing] = useState(true)
+  const [strudelSplitRatio, setStrudelSplitRatio] = useState(0.58)
+  const [strudelPlaying, setStrudelPlaying] = useState(false)
+  const [strudelError, setStrudelError] = useState<string | null>(null)
+  const [isStrudelResizing, setIsStrudelResizing] = useState(false)
+  const [strudelTemplatesOpen, setStrudelTemplatesOpen] = useState(false)
   const [chatSidebarOpen, setChatSidebarOpen] = useState(true)
   const [tutorSidebarWidth, setTutorSidebarWidth] = useState(340)
   const [isP5Resizing, setIsP5Resizing] = useState(false)
@@ -108,9 +184,12 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
   const [renameValue, setRenameValue] = useState('')
   const [libraryManagerOpen, setLibraryManagerOpen] = useState(false)
   const p5IframeWindowRef = useRef<Window | null>(null)
+  const strudelRef = useRef<StrudelPreviewHandle>(null)
 
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const previewTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const strudelAutoEvalTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const strudelPreviewTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const titleRef = useRef<HTMLInputElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const renameRef = useRef<HTMLInputElement>(null)
@@ -216,7 +295,7 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
   }, [])
 
   const insertCellBelow = useCallback((afterId?: string) => {
-    if (projectType === 'p5js') return
+    if (projectType === 'p5js' || projectType === 'strudel') return
     const cell = newCell()
     setCells((prev) => {
       if (!afterId) {
@@ -234,7 +313,7 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
   }, [projectType, scheduleSave])
 
   const deleteCell = useCallback((id: string) => {
-    if (projectType === 'p5js') return
+    if (projectType === 'p5js' || projectType === 'strudel') return
     setCells((prev) => {
       const next = prev.length <= 1 ? [newCell()] : prev.filter((cell) => cell.id !== id)
       scheduleSave(next)
@@ -243,7 +322,7 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
   }, [projectType, scheduleSave])
 
   const moveCell = useCallback((id: string, dir: 'up' | 'down') => {
-    if (projectType === 'p5js') return
+    if (projectType === 'p5js' || projectType === 'strudel') return
     setCells((prev) => {
       const idx = prev.findIndex((c) => c.id === id)
       if (idx < 0) return prev
@@ -337,9 +416,24 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
     setP5Playing(false)
   }, [])
 
+  const handleStrudelPlay = useCallback(() => {
+    if (!activeCell?.source.trim()) return
+    setStrudelError(null)
+    strudelRef.current?.evaluate(activeCell.source)
+  }, [activeCell])
+
+  const handleStrudelStop = useCallback(() => {
+    strudelRef.current?.stop()
+    setStrudelPlaying(false)
+  }, [])
+
   const runAll = useCallback(async () => {
     if (projectType === 'p5js') {
       handleP5Play()
+      return
+    }
+    if (projectType === 'strudel') {
+      handleStrudelPlay()
       return
     }
     if (pyStatus !== 'ready') return
@@ -368,8 +462,13 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
       handleP5Play()
       return
     }
+    if (projectType === 'strudel') {
+      setActiveCellId(id)
+      handleStrudelPlay()
+      return
+    }
     await runPythonCell(id)
-  }, [handleP5Play, projectType, runPythonCell])
+  }, [handleP5Play, handleStrudelPlay, projectType, runPythonCell])
 
   useEffect(() => {
     if (projectType !== 'p5js' || !editorSettings.live_preview || !p5Playing) return
@@ -386,18 +485,53 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
 
   useEffect(() => {
     const onMessage = (event: MessageEvent) => {
-      if (!event.data || event.data.source !== 'p5-preview') return
-      if (event.data.type === 'runtime-error') setPreviewRuntimeError(String(event.data.payload || (isEnglish ? 'Runtime error' : 'Errore di runtime')))
-      if (event.data.type === 'ready') setPreviewRuntimeError(null)
-      if (event.data.type === 'console') {
-        const { level, args } = event.data.payload as { level: 'log' | 'warn' | 'error'; args: string[] }
-        setConsoleEntries((prev) => [...prev, { id: uuidv4(), level, args, ts: Date.now() }])
-        setConsoleOpen(true)
+      if (!event.data) return
+      if (event.data.source === 'p5-preview') {
+        if (event.data.type === 'runtime-error') setPreviewRuntimeError(String(event.data.payload || (isEnglish ? 'Runtime error' : 'Errore di runtime')))
+        if (event.data.type === 'ready') setPreviewRuntimeError(null)
+        if (event.data.type === 'console') {
+          const { level, args } = event.data.payload as { level: 'log' | 'warn' | 'error'; args: string[] }
+          setConsoleEntries((prev) => [...prev, { id: uuidv4(), level, args, ts: Date.now() }])
+          setConsoleOpen(true)
+        }
+      }
+      if (event.data.source === 'strudel-preview') {
+        if (event.data.type === 'error') setStrudelError(event.data.payload?.message || 'Errore')
+        if (event.data.type === 'status') {
+          setStrudelPlaying(event.data.payload?.playing || false)
+          if (event.data.payload?.playing) setStrudelError(null)
+        }
       }
     }
     window.addEventListener('message', onMessage)
     return () => window.removeEventListener('message', onMessage)
   }, [])
+
+  // Auto-eval strudel: when source changes while playing, queue eval at next bar boundary
+  useEffect(() => {
+    if (!strudelPlaying || !activeCell?.source.trim()) return
+    if (strudelAutoEvalTimer.current) clearTimeout(strudelAutoEvalTimer.current)
+    strudelAutoEvalTimer.current = setTimeout(() => {
+      strudelRef.current?.evaluate(activeCell.source)
+    }, 600)
+    return () => {
+      if (strudelAutoEvalTimer.current) clearTimeout(strudelAutoEvalTimer.current)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeCell?.source])
+
+  // Fast visual preview: update PROSSIMA bar within 150ms of typing while playing
+  useEffect(() => {
+    if (!strudelPlaying || !activeCell?.source.trim()) return
+    if (strudelPreviewTimer.current) clearTimeout(strudelPreviewTimer.current)
+    strudelPreviewTimer.current = setTimeout(() => {
+      strudelRef.current?.preview(activeCell.source)
+    }, 150)
+    return () => {
+      if (strudelPreviewTimer.current) clearTimeout(strudelPreviewTimer.current)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeCell?.source])
 
   useEffect(() => {
     if (inputState) {
@@ -549,6 +683,21 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
     window.addEventListener('blur', finish)
   }, [])
 
+  const startStrudelResize = useCallback((startEvent: ReactPointerEvent<HTMLDivElement>) => {
+    const startX = startEvent.clientX
+    const startRatio = strudelSplitRatio
+
+    beginHorizontalResize(
+      startEvent,
+      (clientX) => {
+        const delta = (clientX - startX) / window.innerWidth
+        setStrudelSplitRatio(Math.min(0.72, Math.max(0.34, startRatio + delta)))
+      },
+      () => setIsStrudelResizing(true),
+      () => setIsStrudelResizing(false),
+    )
+  }, [beginHorizontalResize, strudelSplitRatio])
+
   const startP5Resize = useCallback((startEvent: ReactPointerEvent<HTMLDivElement>) => {
     const startX = startEvent.clientX
     const startRatio = p5SplitRatio
@@ -602,7 +751,7 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
   }
 
   const fontWeight = editorSettings.font_weight ?? 400
-  const projectTone: PastelTone = projectType === 'python' ? 'indigo' : 'emerald'
+  const projectTone: PastelTone = projectType === 'python' ? 'indigo' : projectType === 'strudel' ? 'violet' : 'emerald'
 
   return (
     <>
@@ -643,6 +792,11 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
             <div className="flex items-center gap-1.5 text-[11px] text-slate-500">
               {pyStatusIcon}
               <span>{pyStatusText}</span>
+            </div>
+          ) : projectType === 'strudel' ? (
+            <div className={`flex items-center gap-1.5 text-[11px] ${strudelPlaying ? 'text-violet-600' : 'text-slate-500'}`}>
+              <Music2 className="h-3.5 w-3.5" />
+              <span>{strudelPlaying ? '♪ Suonando' : 'Live Music'}</span>
             </div>
           ) : (
             <div className="flex items-center gap-1.5 text-[11px] text-emerald-700">
@@ -765,7 +919,61 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
                 {isEnglish ? 'Cell' : 'Cella'}
               </button>
             )}
-            {projectType === 'p5js' ? (
+            {projectType === 'strudel' ? (
+              <>
+                <div className="relative">
+                  <button
+                    onClick={() => setStrudelTemplatesOpen((v) => !v)}
+                    title={isEnglish ? 'Ready-made patterns' : 'Modelli pronti'}
+                    className="flex items-center gap-1 rounded-xl bg-violet-100 px-3 py-1.5 text-xs text-violet-700 shadow-sm transition-colors hover:bg-violet-200"
+                  >
+                    <BookOpen className="h-3 w-3" />
+                    {isEnglish ? 'Templates' : 'Modelli'}
+                    <ChevronDown className={`h-3 w-3 transition-transform ${strudelTemplatesOpen ? 'rotate-180' : ''}`} />
+                  </button>
+                  {strudelTemplatesOpen && (
+                    <>
+                      <div
+                        className="fixed inset-0 z-40"
+                        onClick={() => setStrudelTemplatesOpen(false)}
+                      />
+                      <div className="absolute left-0 top-full z-50 mt-1 w-60 overflow-hidden rounded-xl border border-violet-200 bg-white shadow-lg">
+                        {STRUDEL_TEMPLATES.map((tpl) => (
+                          <button
+                            key={tpl.id}
+                            onClick={() => {
+                              if (activeCell) updateCell(activeCell.id, { source: tpl.code })
+                              setStrudelTemplatesOpen(false)
+                            }}
+                            className="flex w-full flex-col gap-0.5 px-3 py-2.5 text-left transition-colors hover:bg-violet-50"
+                          >
+                            <span className="text-xs font-semibold text-slate-800">{tpl.label}</span>
+                            <span className="text-[10px] text-slate-500">{tpl.description}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                </div>
+                <button
+                  onClick={handleStrudelPlay}
+                  title={isEnglish ? 'Play (Shift+Enter)' : 'Suona (Shift+Enter)'}
+                  className="flex items-center gap-1 rounded-xl bg-violet-600 px-3 py-1.5 text-xs text-white transition-colors hover:bg-violet-500"
+                >
+                  <Play className="h-3 w-3" />
+                  Play
+                </button>
+                <button
+                  onClick={handleStrudelStop}
+                  disabled={!strudelPlaying}
+                  title={isEnglish ? 'Stop' : 'Ferma'}
+                  className={`flex items-center gap-1 rounded-xl px-3 py-1.5 text-xs shadow-sm transition-colors disabled:opacity-40 ${PASTEL_SURFACES.rose} ${PASTEL_ICON_TEXT.rose}`}
+                >
+                  <Pause className="h-3 w-3" />
+                  Stop
+                </button>
+              </>
+            ) : projectType === 'p5js' ? (
               <>
                 <button
                   onClick={() => setLibraryManagerOpen((v) => !v)}
@@ -861,7 +1069,60 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
             </div>
           )}
 
-          {projectType === 'p5js' ? (
+          {projectType === 'strudel' ? (
+            <div className="flex min-h-0 flex-1 p-4 gap-0 overflow-hidden">
+              <div className={`flex min-h-0 flex-1 overflow-hidden rounded-xl shadow-sm ${PASTEL_SURFACES.slate}`}>
+                {/* Left: editor */}
+                <div
+                  className="flex min-h-0 min-w-0 flex-col overflow-hidden bg-slate-950"
+                  style={{ flexBasis: `${strudelSplitRatio * 100}%` }}
+                >
+                  {/* Strudel header bar */}
+                  <div className="flex flex-shrink-0 items-center gap-2 border-b border-slate-800 bg-slate-900 px-3 py-1.5">
+                    <Music2 className="h-3 w-3 text-violet-400" />
+                    <span className="font-mono text-[10px] text-violet-300/60">strudel pattern</span>
+                  </div>
+                  {activeCell && (
+                    <NotebookCell
+                      cell={activeCell}
+                      projectType="strudel"
+                      theme={editorSettings.theme}
+                      fontSize={editorSettings.font_size}
+                      fontFamily={editorSettings.font_family}
+                      fontWeight={fontWeight}
+                      isRunning={false}
+                      isActive
+                      isCompact
+                      showOutputs={false}
+                      proposals={[]}
+                      onActivate={() => setActiveCellId(activeCell.id)}
+                      onChange={(source) => updateCell(activeCell.id, { source })}
+                      onRun={handleStrudelPlay}
+                    />
+                  )}
+                </div>
+
+                {/* Resize handle */}
+                <div
+                  onPointerDown={startStrudelResize}
+                  className={`group relative w-2 flex-shrink-0 cursor-col-resize touch-none ${isStrudelResizing ? 'bg-violet-200' : 'bg-slate-200 hover:bg-violet-200'}`}
+                  title={isEnglish ? 'Resize editor and preview' : 'Ridimensiona editor e preview'}
+                >
+                  <div className={`absolute inset-0 m-auto h-14 w-1 rounded-full transition ${isStrudelResizing ? 'bg-violet-500' : 'bg-slate-400 group-hover:bg-violet-500'}`} />
+                </div>
+
+                {/* Right: Strudel preview */}
+                <div className={`relative min-h-0 min-w-0 flex-1 ${isStrudelResizing ? 'pointer-events-none' : ''}`}>
+                  <Suspense fallback={previewFallback}>
+                    <NotebookStrudelPreview
+                      ref={strudelRef}
+                      runtimeError={strudelError}
+                    />
+                  </Suspense>
+                </div>
+              </div>
+            </div>
+          ) : projectType === 'p5js' ? (
             <div className="flex min-h-0 flex-1 flex-col p-4 gap-2">
               <div className={`flex min-h-0 flex-1 overflow-hidden rounded-xl shadow-sm ${PASTEL_SURFACES.slate}`}>
                 {/* Left panel: file tabs + editor */}

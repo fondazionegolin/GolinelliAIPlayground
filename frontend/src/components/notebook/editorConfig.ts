@@ -270,6 +270,41 @@ export function proposalDecorationExtension(source: string, proposals: NotebookC
   return EditorView.decorations.of(builder.finish())
 }
 
+const strudelApiCompletions = completeFromList([
+  // Core pattern constructors
+  'note', 's', 'sound', 'n', 'freq',
+  // Audio params
+  'gain', 'pan', 'room', 'size', 'delay', 'delaytime', 'delayfeedback',
+  'speed', 'begin', 'end', 'loop', 'loopBegin', 'loopEnd', 'cut',
+  'cutoff', 'resonance', 'vowel', 'shape', 'coarse',
+  'attack', 'decay', 'sustain', 'release',
+  // Pattern methods
+  'slow', 'fast', 'rev', 'palindrome', 'iter', 'rotl', 'rotr',
+  'every', 'sometimes', 'often', 'rarely', 'almostNever', 'almostAlways',
+  'sometimesBy', 'everyBy',
+  'jux', 'off', 'echo', 'echos', 'striate', 'segment',
+  'add', 'sub', 'mul', 'div', 'mod',
+  'range', 'rangex', 'rand', 'irand',
+  'choose', 'chooseCycles', 'randcat',
+  'struct', 'mask', 'euclid', 'euclidRot',
+  'when', 'within', 'compress', 'zoom',
+  'first', 'lastOf', 'firstOf',
+  // Combiners
+  'stack', 'seq', 'cat', 'slowcat', 'fastcat', 'layer', 'superimpose',
+  // Scales / notes
+  'scale', 'scaleTranspose', 'transpose',
+  // Mini notation helpers
+  'mini', 'm',
+  // Synthesis types
+  'sine', 'sawtooth', 'square', 'triangle', 'noise',
+  // Effects
+  'lpf', 'hpf', 'bpf', 'lp', 'hp', 'bp',
+  'distort', 'crush', 'coarse',
+  'phaser', 'phaserdepth', 'phaserrate',
+  // Control
+  'hush', 'setcpm', 'cpm', 'bpm',
+].map((label) => ({ label, type: 'function' })))
+
 // ── Main extension factory ────────────────────────────────────────────────────
 
 export function getEditorExtensions(
@@ -283,10 +318,12 @@ export function getEditorExtensions(
     ? python()
     : javascript({ jsx: false, typescript: false })
 
-  // For p5js: register completions as language data so they merge with JS built-ins
-  const p5LanguageData = projectType === 'p5js'
+  // For p5js: register p5 completions; for strudel: register strudel completions
+  const jsLanguageData = projectType === 'p5js'
     ? javascriptLanguage.data.of({ autocomplete: p5ApiCompletions })
-    : []
+    : projectType === 'strudel'
+      ? javascriptLanguage.data.of({ autocomplete: strudelApiCompletions })
+      : []
 
   const extraAutocomplete = autocompletion({ activateOnTypingDelay: 50, maxRenderedOptions: 16 })
 
@@ -294,7 +331,7 @@ export function getEditorExtensions(
     themePalette[theme] ?? themePalette.dark,
     syntaxHighlighting(highlightStyles[theme] ?? highlightStyles.dark),
     language,
-    p5LanguageData,
+    jsLanguageData,
     indentUnit.of('  '),
     extraAutocomplete,
     runKeys,
@@ -346,41 +383,66 @@ export const sharedEditorBaseTheme = (fontFamily: NotebookFontFamily, fontWeight
 export function getNotebookThemeSurface(theme: NotebookTheme) {
   if (theme === 'light') {
     return {
-      shell: 'border-slate-200 bg-white',
-      toolbar: 'border-slate-200 bg-slate-50',
-      label: 'text-slate-500',
-      subtle: 'text-slate-400',
+      shell: 'border border-slate-300 bg-white ring-1 ring-slate-900/5',
+      toolbar: 'border-slate-200 bg-gradient-to-r from-indigo-50 via-white to-slate-50',
+      label: 'text-slate-600',
+      subtle: 'text-indigo-700/70',
+      accent: 'bg-indigo-500',
+      accentSoft: 'border-indigo-200 bg-indigo-50 text-indigo-700',
+      gutter: 'bg-indigo-50/70 text-indigo-700',
+      runButton: 'bg-indigo-600 hover:bg-indigo-500',
+      activeRing: 'ring-2 ring-indigo-500/70 ring-offset-2 ring-offset-slate-100 shadow-lg shadow-indigo-500/10',
     }
   }
   if (theme === 'fancy') {
     return {
-      shell: 'border-fuchsia-900/50 bg-[#1b1730]',
-      toolbar: 'border-fuchsia-900/50 bg-[#151126]',
+      shell: 'border border-fuchsia-500/35 bg-[#1b1730] ring-1 ring-fuchsia-300/10',
+      toolbar: 'border-fuchsia-500/25 bg-gradient-to-r from-[#2a1740] via-[#1b1730] to-[#311827]',
       label: 'text-fuchsia-200/80',
-      subtle: 'text-fuchsia-200/55',
+      subtle: 'text-fuchsia-100/65',
+      accent: 'bg-fuchsia-400',
+      accentSoft: 'border-fuchsia-400/30 bg-fuchsia-400/10 text-fuchsia-100',
+      gutter: 'bg-fuchsia-400/10 text-fuchsia-200',
+      runButton: 'bg-fuchsia-600 hover:bg-fuchsia-500',
+      activeRing: 'ring-2 ring-fuchsia-400/60 ring-offset-2 ring-offset-slate-100 shadow-lg shadow-fuchsia-500/10',
     }
   }
   if (theme === 'p5js') {
     return {
-      shell: 'border-teal-900/50 bg-[#0b1723]',
-      toolbar: 'border-teal-900/50 bg-[#08131d]',
+      shell: 'border border-teal-400/30 bg-[#0b1723] ring-1 ring-teal-200/10',
+      toolbar: 'border-teal-400/25 bg-gradient-to-r from-[#0d2a2f] via-[#08131d] to-[#102033]',
       label: 'text-teal-100/80',
-      subtle: 'text-teal-100/55',
+      subtle: 'text-teal-100/65',
+      accent: 'bg-teal-400',
+      accentSoft: 'border-teal-400/30 bg-teal-400/10 text-teal-100',
+      gutter: 'bg-teal-400/10 text-teal-200',
+      runButton: 'bg-teal-600 hover:bg-teal-500',
+      activeRing: 'ring-2 ring-teal-400/60 ring-offset-2 ring-offset-slate-100 shadow-lg shadow-teal-500/10',
     }
   }
   if (theme === 'dracula') {
     return {
-      shell: 'border-slate-700 bg-[#1f2230]',
-      toolbar: 'border-slate-700 bg-[#171a26]',
+      shell: 'border border-violet-400/30 bg-[#1f2230] ring-1 ring-violet-200/10',
+      toolbar: 'border-violet-400/20 bg-gradient-to-r from-[#2a2144] via-[#171a26] to-[#262033]',
       label: 'text-slate-200/80',
-      subtle: 'text-slate-300/50',
+      subtle: 'text-violet-100/65',
+      accent: 'bg-violet-400',
+      accentSoft: 'border-violet-400/30 bg-violet-400/10 text-violet-100',
+      gutter: 'bg-violet-400/10 text-violet-200',
+      runButton: 'bg-violet-600 hover:bg-violet-500',
+      activeRing: 'ring-2 ring-violet-400/60 ring-offset-2 ring-offset-slate-100 shadow-lg shadow-violet-500/10',
     }
   }
   return {
-    shell: 'border-slate-700 bg-[#111827]',
-    toolbar: 'border-slate-700 bg-[#0f172a]',
+    shell: 'border border-sky-400/25 bg-[#111827] ring-1 ring-sky-200/10',
+    toolbar: 'border-sky-400/20 bg-gradient-to-r from-[#0b2542] via-[#0f172a] to-[#172033]',
     label: 'text-slate-100/80',
-    subtle: 'text-slate-300/50',
+    subtle: 'text-sky-100/65',
+    accent: 'bg-sky-400',
+    accentSoft: 'border-sky-400/30 bg-sky-400/10 text-sky-100',
+    gutter: 'bg-sky-400/10 text-sky-200',
+    runButton: 'bg-sky-600 hover:bg-sky-500',
+    activeRing: 'ring-2 ring-sky-400/60 ring-offset-2 ring-offset-slate-100 shadow-lg shadow-sky-500/10',
   }
 }
 

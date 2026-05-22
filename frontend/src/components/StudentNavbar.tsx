@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, type CSSProperties } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { User, Settings, LogOut, ChevronDown, Bot, Brain, Award, FileEdit, Menu, X, MessageSquare, Check, FileCode2, MonitorPlay, LayoutDashboard, BookOpen } from 'lucide-react'
+import { User, Settings, LogOut, ChevronDown, Bot, Brain, Award, FileEdit, FileText, Menu, X, MessageSquare, Check, FileCode2, MonitorPlay, LayoutDashboard, BookOpen } from 'lucide-react'
 import { Button } from './ui/button'
 import { LogoMark } from './LogoMark'
 import { studentApi } from '@/lib/api'
@@ -337,6 +337,16 @@ export function StudentNavbar({
                     >
                       <Settings className="h-4 w-4" />
                       {t('navbar.settings')}
+                    </button>
+                    <button
+                      onClick={() => {
+                        setShowDropdown(false)
+                        navigate('/terms')
+                      }}
+                      className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-600 hover:bg-slate-50 hover:text-[var(--student-accent-text)] transition-colors"
+                    >
+                      <FileText className="h-4 w-4" />
+                      Termini e condizioni
                     </button>
                     <div className="h-px bg-slate-50 my-1"></div>
                     <button

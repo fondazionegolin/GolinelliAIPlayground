@@ -3,7 +3,13 @@ import * as XLSX from 'xlsx'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { chatApi, teacherApi, studentApi } from '@/lib/api'
-import { Eraser, Square, StickyNote, Type, ImagePlus, Table, Pencil, Frame, MoveRight, RectangleHorizontal, Triangle } from 'lucide-react'
+import {
+  Eraser, StickyNote, Type, ImagePlus, Table, Pencil, Frame, MoveRight,
+  RectangleHorizontal, Triangle, Undo2, Redo2, Maximize, Minimize,
+  LayoutTemplate, Maximize2, MousePointer, Trash2, Users, Check,
+} from 'lucide-react'
+
+// ─── Types ────────────────────────────────────────────────────────────────────
 
 type CanvasRole = 'teacher' | 'student'
 type Tool = 'select' | 'postit' | 'frame' | 'text' | 'pen' | 'roundedRect' | 'triangle' | 'parallelogram' | 'connector'
@@ -11,16 +17,9 @@ type Tool = 'select' | 'postit' | 'frame' | 'text' | 'pen' | 'roundedRect' | 'tr
 type Point = { x: number; y: number }
 type Anchor = 'top' | 'right' | 'bottom' | 'left'
 const ANCHORS: Anchor[] = ['top', 'right', 'bottom', 'left']
+type LockInfo = { userId: string; userType: string }
 
-type LockInfo = {
-  userId: string
-  userType: string
-}
-
-type CanvasItemBase = {
-  id: string
-  parentFrameId?: string
-}
+type CanvasItemBase = { id: string; parentFrameId?: string }
 
 type CanvasTextStyle = {
   fontFamily: string
@@ -29,12 +28,7 @@ type CanvasTextStyle = {
   fontStyle: 'normal' | 'italic'
 }
 
-type CanvasPositionedItemBase = CanvasItemBase & {
-  x: number
-  y: number
-  w: number
-  h: number
-}
+type CanvasPositionedItemBase = CanvasItemBase & { x: number; y: number; w: number; h: number }
 
 type CanvasItem =
   | (CanvasPositionedItemBase & { type: 'postit'; text: string; color: string; textStyle?: CanvasTextStyle })
@@ -46,10 +40,7 @@ type CanvasItem =
   | (CanvasPositionedItemBase & { type: 'table'; data: string[][] })
   | (CanvasItemBase & { type: 'path'; points: Point[]; color: string; width: number; parentFrameId?: string })
 
-type CanvasDoc = {
-  type: 'canvas_v1'
-  items: CanvasItem[]
-}
+type CanvasDoc = { type: 'canvas_v1'; items: CanvasItem[] }
 
 interface CollaborativeCanvasProps {
   sessionId?: string
@@ -61,10 +52,13 @@ interface CollaborativeCanvasProps {
   readOnly?: boolean
 }
 
-const EMPTY_CANVAS: CanvasDoc = {
-  type: 'canvas_v1',
-  items: [],
-}
+// ─── Constants ────────────────────────────────────────────────────────────────
+
+const WORLD_W = 5000
+const WORLD_H = 4000
+const MIN_ZOOM = 0.15
+const MAX_ZOOM = 3
+const EMPTY_CANVAS: CanvasDoc = { type: 'canvas_v1', items: [] }
 
 const DEFAULT_TEXT_STYLE: CanvasTextStyle = {
   fontFamily: 'Inter, system-ui, sans-serif',
@@ -73,26 +67,182 @@ const DEFAULT_TEXT_STYLE: CanvasTextStyle = {
   fontStyle: 'normal',
 }
 
-const ensureTextStyle = (item: CanvasItem) => {
-  if (item.type !== 'postit' && item.type !== 'frame' && item.type !== 'text') return item
-  return {
-    ...item,
-    textStyle: {
-      ...DEFAULT_TEXT_STYLE,
-      ...(item.textStyle || {}),
+const POSTIT_PALETTE = ['#fef9c3', '#fce7f3', '#dbeafe', '#dcfce7', '#ffedd5', '#ede9fe', '#fecaca', '#e0f2fe']
+
+// ─── Template definitions ─────────────────────────────────────────────────────
+
+function mkId() { return crypto.randomUUID() }
+
+const TEMPLATES = [
+  {
+    id: 'brainstorming',
+    name: 'Brainstorming',
+    description: 'Idea centrale con rami per esplorare un tema liberamente',
+    emoji: '🧠',
+    create(): CanvasDoc {
+      const centerId = mkId()
+      const center: CanvasItem = {
+        id: centerId, type: 'frame', x: 540, y: 380, w: 300, h: 130,
+        text: '💡 Tema centrale', color: '#7c3aed',
+        textStyle: { ...DEFAULT_TEXT_STYLE, fontSize: 16, fontWeight: '600' },
+      }
+      const satellites = [
+        { x: 100, y: 160, text: 'Idea 1', color: '#fef9c3' },
+        { x: 540, y: 80, text: 'Idea 2', color: '#fce7f3' },
+        { x: 980, y: 160, text: 'Idea 3', color: '#dbeafe' },
+        { x: 100, y: 600, text: 'Idea 4', color: '#dcfce7' },
+        { x: 540, y: 680, text: 'Idea 5', color: '#ffedd5' },
+        { x: 980, y: 600, text: 'Idea 6', color: '#ede9fe' },
+      ]
+      const postits: CanvasItem[] = satellites.map(({ x, y, text, color }) => ({
+        id: mkId(), type: 'postit', x, y, w: 200, h: 140,
+        text, color, textStyle: DEFAULT_TEXT_STYLE,
+      }))
+      const connectors: CanvasItem[] = postits.map((p) => ({
+        id: mkId(), type: 'connector',
+        fromId: centerId, fromAnchor: 'bottom',
+        toId: p.id, toAnchor: 'top',
+        color: '#94a3b8', width: 2,
+      }))
+      return { type: 'canvas_v1', items: [center, ...postits, ...connectors] }
     },
-  } as CanvasItem
+  },
+  {
+    id: 'feedback',
+    name: 'Feedback WWW / EBI',
+    description: 'Cosa ha funzionato bene · Come migliorare',
+    emoji: '💬',
+    create(): CanvasDoc {
+      const title: CanvasItem = {
+        id: mkId(), type: 'text', x: 260, y: 40, w: 860, h: 60,
+        text: 'Sessione di feedback', color: '#1e293b',
+        textStyle: { ...DEFAULT_TEXT_STYLE, fontSize: 22, fontWeight: '600' },
+      }
+      const wwwId = mkId(), ebiId = mkId()
+      const www: CanvasItem = {
+        id: wwwId, type: 'frame', x: 40, y: 130, w: 560, h: 560,
+        text: '✅ Cosa ha funzionato bene', color: '#16a34a',
+        textStyle: { ...DEFAULT_TEXT_STYLE, fontSize: 14, fontWeight: '600' },
+      }
+      const ebi: CanvasItem = {
+        id: ebiId, type: 'frame', x: 640, y: 130, w: 560, h: 560,
+        text: '⚡ Come migliorare (EBI)', color: '#ea580c',
+        textStyle: { ...DEFAULT_TEXT_STYLE, fontSize: 14, fontWeight: '600' },
+      }
+      const wwwPostits: CanvasItem[] = [90, 260, 430].map((y) => ({
+        id: mkId(), type: 'postit', x: 80, y, w: 480, h: 110,
+        text: 'Scrivi qui...', color: '#dcfce7', textStyle: DEFAULT_TEXT_STYLE, parentFrameId: wwwId,
+      }))
+      const ebiPostits: CanvasItem[] = [90, 260, 430].map((y) => ({
+        id: mkId(), type: 'postit', x: 680, y, w: 480, h: 110,
+        text: 'Scrivi qui...', color: '#ffedd5', textStyle: DEFAULT_TEXT_STYLE, parentFrameId: ebiId,
+      }))
+      return { type: 'canvas_v1', items: [title, www, ebi, ...wwwPostits, ...ebiPostits] }
+    },
+  },
+  {
+    id: 'kwl',
+    name: 'Tabella KWL',
+    description: 'Conosco · Voglio sapere · Ho imparato',
+    emoji: '📚',
+    create(): CanvasDoc {
+      const cols = [
+        { x: 40, text: '🔵 Conosco già', color: '#2563eb', postColor: '#dbeafe' },
+        { x: 460, text: '🟡 Voglio sapere', color: '#ca8a04', postColor: '#fef9c3' },
+        { x: 880, text: '🟢 Ho imparato', color: '#16a34a', postColor: '#dcfce7' },
+      ]
+      const items: CanvasItem[] = cols.flatMap(({ x, text, color, postColor }) => {
+        const fId = mkId()
+        const frame: CanvasItem = {
+          id: fId, type: 'frame', x, y: 40, w: 380, h: 680,
+          text, color, textStyle: { ...DEFAULT_TEXT_STYLE, fontSize: 14, fontWeight: '600' },
+        }
+        const postits: CanvasItem[] = [100, 270, 440, 610].map((y) => ({
+          id: mkId(), type: 'postit', x: x + 20, y, w: 340, h: 120,
+          text: '', color: postColor, textStyle: DEFAULT_TEXT_STYLE, parentFrameId: fId,
+        }))
+        return [frame, ...postits]
+      })
+      return { type: 'canvas_v1', items }
+    },
+  },
+  {
+    id: 'swot',
+    name: 'Analisi SWOT',
+    description: 'Forze · Debolezze · Opportunità · Minacce',
+    emoji: '📊',
+    create(): CanvasDoc {
+      const quads = [
+        { x: 40, y: 40, text: '💪 Punti di forza', color: '#16a34a', postColor: '#dcfce7' },
+        { x: 520, y: 40, text: '⚠️ Debolezze', color: '#dc2626', postColor: '#fee2e2' },
+        { x: 40, y: 440, text: '🌟 Opportunità', color: '#2563eb', postColor: '#dbeafe' },
+        { x: 520, y: 440, text: '⚡ Minacce', color: '#ea580c', postColor: '#ffedd5' },
+      ]
+      const items: CanvasItem[] = quads.flatMap(({ x, y, text, color, postColor }) => {
+        const fId = mkId()
+        return [
+          { id: fId, type: 'frame', x, y, w: 440, h: 360, text, color, textStyle: { ...DEFAULT_TEXT_STYLE, fontWeight: '600' } } as CanvasItem,
+          { id: mkId(), type: 'postit', x: x + 20, y: y + 80, w: 400, h: 250, text: '', color: postColor, textStyle: DEFAULT_TEXT_STYLE, parentFrameId: fId } as CanvasItem,
+        ]
+      })
+      return { type: 'canvas_v1', items }
+    },
+  },
+  {
+    id: 'timeline',
+    name: 'Timeline',
+    description: 'Sequenza di fasi o eventi in ordine cronologico',
+    emoji: '📅',
+    create(): CanvasDoc {
+      const labels = ['Fase 1', 'Fase 2', 'Fase 3', 'Fase 4', 'Fase 5']
+      const frameIds: string[] = []
+      const items: CanvasItem[] = []
+      labels.forEach((label, i) => {
+        const fId = mkId()
+        frameIds.push(fId)
+        items.push({ id: fId, type: 'frame', x: 40 + i * 300, y: 160, w: 260, h: 340, text: label, color: '#3b82f6', textStyle: { ...DEFAULT_TEXT_STYLE, fontWeight: '600' } } as CanvasItem)
+        items.push({ id: mkId(), type: 'postit', x: 60 + i * 300, y: 260, w: 220, h: 220, text: '', color: '#dbeafe', textStyle: DEFAULT_TEXT_STYLE, parentFrameId: fId } as CanvasItem)
+      })
+      for (let i = 0; i < frameIds.length - 1; i++) {
+        items.push({ id: mkId(), type: 'connector', fromId: frameIds[i], fromAnchor: 'right', toId: frameIds[i + 1], toAnchor: 'left', color: '#64748b', width: 2.5 } as CanvasItem)
+      }
+      return { type: 'canvas_v1', items }
+    },
+  },
+  {
+    id: 'rose-bud-thorn',
+    name: 'Rosa · Bocciolo · Spina',
+    description: 'Riflessione positiva, potenzialità e difficoltà',
+    emoji: '🌹',
+    create(): CanvasDoc {
+      const cols = [
+        { x: 40, text: '🌹 Rosa (positivo)', color: '#e11d48', postColor: '#fce7f3' },
+        { x: 460, text: '🌱 Bocciolo (potenziale)', color: '#16a34a', postColor: '#dcfce7' },
+        { x: 880, text: '🌵 Spina (difficoltà)', color: '#78350f', postColor: '#fef3c7' },
+      ]
+      const items: CanvasItem[] = cols.flatMap(({ x, text, color, postColor }) => {
+        const fId = mkId()
+        const frame: CanvasItem = { id: fId, type: 'frame', x, y: 40, w: 380, h: 560, text, color, textStyle: { ...DEFAULT_TEXT_STYLE, fontWeight: '600' } }
+        const postits: CanvasItem[] = [100, 290, 450].map((y) => ({
+          id: mkId(), type: 'postit', x: x + 20, y, w: 340, h: 140, text: '', color: postColor, textStyle: DEFAULT_TEXT_STYLE, parentFrameId: fId,
+        }))
+        return [frame, ...postits]
+      })
+      return { type: 'canvas_v1', items }
+    },
+  },
+]
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+const ensureTextStyle = (item: CanvasItem): CanvasItem => {
+  if (item.type !== 'postit' && item.type !== 'frame' && item.type !== 'text') return item
+  return { ...item, textStyle: { ...DEFAULT_TEXT_STYLE, ...(item.textStyle || {}) } } as CanvasItem
 }
 
 const apiByRole = {
-  teacher: {
-    getCanvas: teacherApi.getCanvas,
-    updateCanvas: teacherApi.updateCanvas,
-  },
-  student: {
-    getCanvas: studentApi.getCanvas,
-    updateCanvas: studentApi.updateCanvas,
-  },
+  teacher: { getCanvas: teacherApi.getCanvas, updateCanvas: teacherApi.updateCanvas },
+  student: { getCanvas: studentApi.getCanvas, updateCanvas: studentApi.updateCanvas },
 }
 
 const parseCanvasDoc = (raw: string | null | undefined): CanvasDoc => {
@@ -102,9 +252,7 @@ const parseCanvasDoc = (raw: string | null | undefined): CanvasDoc => {
     if (parsed?.type === 'canvas_v1' && Array.isArray(parsed.items)) {
       return { type: 'canvas_v1', items: parsed.items.map((item: CanvasItem) => ensureTextStyle(item)) }
     }
-  } catch {
-    // no-op
-  }
+  } catch { /* no-op */ }
   return EMPTY_CANVAS
 }
 
@@ -115,11 +263,10 @@ const isFrame = (item: CanvasItem): item is Extract<CanvasItem, { type: 'frame' 
 const isPath = (item: CanvasItem): item is Extract<CanvasItem, { type: 'path' }> => item.type === 'path'
 const isConnector = (item: CanvasItem): item is Extract<CanvasItem, { type: 'connector' }> => item.type === 'connector'
 const isShape = (item: CanvasItem): item is Extract<CanvasItem, { type: 'shape' }> => item.type === 'shape'
-const isTextEditable = (
-  item: CanvasItem
-): item is Extract<CanvasItem, { type: 'postit' | 'frame' | 'text' }> => item.type === 'postit' || item.type === 'frame' || item.type === 'text'
-
-const isPositioned = (item: CanvasItem): item is Exclude<CanvasItem, { type: 'path' | 'connector' }> => !isPath(item) && !isConnector(item)
+const isTextEditable = (item: CanvasItem): item is Extract<CanvasItem, { type: 'postit' | 'frame' | 'text' }> =>
+  item.type === 'postit' || item.type === 'frame' || item.type === 'text'
+const isPositioned = (item: CanvasItem): item is Exclude<CanvasItem, { type: 'path' | 'connector' }> =>
+  !isPath(item) && !isConnector(item)
 
 const getAnchorPoint = (item: Exclude<CanvasItem, { type: 'path' | 'connector' }>, anchor: Anchor): Point => {
   if (anchor === 'top') return { x: item.x + item.w / 2, y: item.y }
@@ -135,85 +282,84 @@ const anchorDirection = (anchor: Anchor): Point => {
   return { x: -1, y: 0 }
 }
 
-const extractImageUrlsFromHtml = (html: string): string[] => {
-  const matches = [...html.matchAll(/<img[^>]+src=["']([^"']+)["']/gi)]
-  return matches.map((m) => String(m[1] || '').trim()).filter(Boolean)
-}
+const extractImageUrlsFromHtml = (html: string): string[] =>
+  [...html.matchAll(/<img[^>]+src=["']([^"']+)["']/gi)].map((m) => String(m[1] || '').trim()).filter(Boolean)
 
-const looksLikeImageUrl = (value: string) => {
-  if (!value) return false
-  if (value.startsWith('data:image/')) return true
-  if (value.startsWith('blob:')) return true
-  return /\.(png|jpe?g|gif|webp|bmp|svg)(\?|#|$)/i.test(value)
-}
+const looksLikeImageUrl = (v: string) =>
+  Boolean(v) && (v.startsWith('data:image/') || v.startsWith('blob:') || /\.(png|jpe?g|gif|webp|bmp|svg)(\?|#|$)/i.test(v))
 
-const isContainedInFrame = (
-  candidate: { x: number; y: number; w: number; h: number },
-  frame: Extract<CanvasItem, { type: 'frame' }>
-) =>
-  candidate.x >= frame.x &&
-  candidate.y >= frame.y &&
-  candidate.x + candidate.w <= frame.x + frame.w &&
-  candidate.y + candidate.h <= frame.y + frame.h
+const isContainedInFrame = (c: { x: number; y: number; w: number; h: number }, f: Extract<CanvasItem, { type: 'frame' }>) =>
+  c.x >= f.x && c.y >= f.y && c.x + c.w <= f.x + f.w && c.y + c.h <= f.y + f.h
 
-const getParentFrameId = (
-  item: CanvasItem,
-  items: CanvasItem[],
-  skipFrameId?: string
-): string | undefined => {
+const getParentFrameId = (item: CanvasItem, items: CanvasItem[], skipFrameId?: string): string | undefined => {
   if (!isPositioned(item)) return item.parentFrameId
-  const frames = items.filter(isFrame).filter((f) => f.id !== item.id && f.id !== skipFrameId)
-  const containers = frames.filter((f) => isContainedInFrame(item, f))
+  const containers = items.filter(isFrame).filter((f) => f.id !== item.id && f.id !== skipFrameId && isContainedInFrame(item, f))
   if (containers.length === 0) return undefined
   containers.sort((a, b) => a.w * a.h - b.w * b.h)
   return containers[0].id
 }
 
 const collectFrameDescendants = (items: CanvasItem[], frameId: string): string[] => {
-  const descendants = new Set<string>()
+  const result = new Set<string>()
   const queue = [frameId]
   while (queue.length > 0) {
-    const current = queue.shift() as string
+    const cur = queue.shift() as string
     items.forEach((item) => {
-      if (item.parentFrameId === current && !descendants.has(item.id)) {
-        descendants.add(item.id)
+      if (item.parentFrameId === cur && !result.has(item.id)) {
+        result.add(item.id)
         if (isFrame(item)) queue.push(item.id)
       }
     })
   }
-  return Array.from(descendants)
+  return Array.from(result)
 }
 
-const moveFrameWithChildren = (
-  items: CanvasItem[],
-  frameId: string,
-  newX: number,
-  newY: number
-): CanvasItem[] => {
-  const frame = items.find((item) => item.id === frameId)
+const moveFrameWithChildren = (items: CanvasItem[], frameId: string, nx: number, ny: number): CanvasItem[] => {
+  const frame = items.find((i) => i.id === frameId)
   if (!frame || !isFrame(frame)) return items
-
-  const dx = newX - frame.x
-  const dy = newY - frame.y
+  const dx = nx - frame.x, dy = ny - frame.y
   const descendants = new Set(collectFrameDescendants(items, frameId))
-
   return items.map((item) => {
-    if (item.id === frameId) {
-      return { ...item, x: newX, y: newY }
-    }
+    if (item.id === frameId) return { ...item, x: nx, y: ny }
     if (descendants.has(item.id)) {
-      if (isPath(item)) {
-        return {
-          ...item,
-          points: item.points.map((p) => ({ x: p.x + dx, y: p.y + dy })),
-        }
-      }
+      if (isPath(item)) return { ...item, points: item.points.map((p) => ({ x: p.x + dx, y: p.y + dy })) }
       if (!isPositioned(item)) return item
-      return { ...item, x: item.x + dx, y: item.y + dy }
+      return { ...item, x: item.x + dx, y: item.y + dy } as CanvasItem
     }
     return item
   })
 }
+
+// ─── Tool button (module-level to avoid remount on parent re-render) ──────────
+
+function ToolButton({
+  activeTool,
+  t,
+  icon: Icon,
+  label,
+  onSetTool,
+}: {
+  activeTool: Tool
+  t: Tool
+  icon: React.ElementType
+  label: string
+  onSetTool: (t: Tool) => void
+}) {
+  return (
+    <button
+      type="button"
+      title={label}
+      onClick={() => onSetTool(t)}
+      className={`flex h-9 w-9 items-center justify-center rounded-lg text-sm transition-colors ${
+        activeTool === t ? 'bg-slate-800 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-100 hover:text-slate-700'
+      }`}
+    >
+      <Icon className="h-4 w-4" />
+    </button>
+  )
+}
+
+// ─── Component ────────────────────────────────────────────────────────────────
 
 export function CollaborativeCanvas({
   sessionId,
@@ -224,33 +370,38 @@ export function CollaborativeCanvas({
   onContentChange,
   readOnly = false,
 }: CollaborativeCanvasProps) {
-  const canvasRef = useRef<HTMLDivElement>(null)
+  // Refs
+  const containerRef = useRef<HTMLDivElement>(null)
   const draggingRef = useRef<{ id: string; offsetX: number; offsetY: number } | null>(null)
   const pendingDragRef = useRef<{ id: string; offsetX: number; offsetY: number; startX: number; startY: number } | null>(null)
   const resizingRef = useRef<{ id: string; startX: number; startY: number; startW: number; startH: number } | null>(null)
   const drawingRef = useRef<{ points: Point[] } | null>(null)
+  const panningRef = useRef<{ startMouseX: number; startMouseY: number; startPanX: number; startPanY: number } | null>(null)
+  const spaceHeldRef = useRef(false)
   const saveTimerRef = useRef<number | null>(null)
   const pollTimerRef = useRef<number | null>(null)
-  const lastSerializedRef = useRef<string>('')
+  const lastSerializedRef = useRef('')
   const isInteractingRef = useRef(false)
   const latestSerializedRef = useRef('')
   const remoteWhileInteractingRef = useRef<string | null>(null)
   const rafDrawRef = useRef<number | null>(null)
+  const historyRef = useRef<string[]>([])
+  const historyIndexRef = useRef(-1)
+  const undoRedoRef = useRef(false)
+  const deleteSelectedRef = useRef<() => void>(() => { /* noop */ })
 
+  // Canvas state
   const [tool, setTool] = useState<Tool>('select')
   const [strokeColor, setStrokeColor] = useState('#2563eb')
   const [strokeWidth, setStrokeWidth] = useState(3)
-  const [newPostitColor, setNewPostitColor] = useState('#fef08a')
+  const [newPostitColor, setNewPostitColor] = useState('#fef9c3')
   const [newShapeFill, setNewShapeFill] = useState('#bae6fd')
   const [newShapeStroke, setNewShapeStroke] = useState('#0369a1')
   const [canvasDoc, setCanvasDoc] = useState<CanvasDoc>(() => parseCanvasDoc(initialContent))
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [connectorDrag, setConnectorDrag] = useState<{
-    fromId: string
-    fromAnchor: Anchor
-    toPoint: Point
-    hoverTarget?: { id: string; anchor: Anchor }
+    fromId: string; fromAnchor: Anchor; toPoint: Point; hoverTarget?: { id: string; anchor: Anchor }
   } | null>(null)
   const [isDropActive, setIsDropActive] = useState(false)
   const [version, setVersion] = useState(0)
@@ -258,35 +409,187 @@ export function CollaborativeCanvas({
   const [locks, setLocks] = useState<Record<string, LockInfo>>({})
   const [socketConnected, setSocketConnected] = useState(false)
 
-  const canEdit = !readOnly
+  // New: viewport & UI state
+  const [zoom, setZoom] = useState(1)
+  const [pan, setPan] = useState({ x: 220, y: 140 })
+  const [isPanning, setIsPanning] = useState(false)
+  const [studentsCanWrite, setStudentsCanWrite] = useState(false)
+  const [isFullscreen, setIsFullscreen] = useState(false)
+  const [showTemplates, setShowTemplates] = useState(false)
+  const [showShare, setShowShare] = useState(false)
+  const [historyIndex, setHistoryIndex] = useState(-1)
+
+  // Derived
+  const canEdit = !readOnly && (role === 'teacher' || studentsCanWrite)
+  const serializedDoc = useMemo(() => JSON.stringify(canvasDoc), [canvasDoc])
   const selectedItem = useMemo(
-    () => (selectedId ? canvasDoc.items.find((item) => item.id === selectedId) || null : null),
-    [canvasDoc.items, selectedId]
+    () => (selectedId ? canvasDoc.items.find((i) => i.id === selectedId) || null : null),
+    [canvasDoc.items, selectedId],
   )
   const selectedTextStyle = useMemo(() => {
-    if (!selectedItem || (selectedItem.type !== 'postit' && selectedItem.type !== 'frame' && selectedItem.type !== 'text')) return null
-    return {
-      ...DEFAULT_TEXT_STYLE,
-      ...(selectedItem.textStyle || {}),
-    }
+    if (!selectedItem || !isTextEditable(selectedItem)) return null
+    return { ...DEFAULT_TEXT_STYLE, ...(selectedItem.textStyle || {}) }
   }, [selectedItem])
-
-  const serializedDoc = useMemo(() => JSON.stringify(canvasDoc), [canvasDoc])
-
-  useEffect(() => {
-    latestSerializedRef.current = serializedDoc
-  }, [serializedDoc])
 
   const currentUserId = useMemo(() => {
     const raw = role === 'student' ? localStorage.getItem('student_token') : localStorage.getItem('access_token')
     if (!raw) return ''
-    try {
-      const payload = JSON.parse(atob(raw.split('.')[1]))
-      return String(payload?.sub || '')
-    } catch {
-      return ''
-    }
+    try { return String(JSON.parse(atob(raw.split('.')[1]))?.sub || '') } catch { return '' }
   }, [role])
+
+  useEffect(() => { latestSerializedRef.current = serializedDoc }, [serializedDoc])
+
+  // ─── Coordinate conversion ─────────────────────────────────────────────────
+
+  const toWorld = useCallback((clientX: number, clientY: number): Point => {
+    if (!containerRef.current) return { x: 0, y: 0 }
+    const rect = containerRef.current.getBoundingClientRect()
+    return { x: (clientX - rect.left - pan.x) / zoom, y: (clientY - rect.top - pan.y) / zoom }
+  }, [pan, zoom])
+
+  // ─── History ───────────────────────────────────────────────────────────────
+
+  const pushHistory = useCallback(() => {
+    if (undoRedoRef.current) return
+    const state = latestSerializedRef.current
+    const h = historyRef.current.slice(0, historyIndexRef.current + 1)
+    h.push(state)
+    if (h.length > 60) h.shift()
+    historyRef.current = h
+    historyIndexRef.current = h.length - 1
+    setHistoryIndex(historyIndexRef.current)
+  }, [])
+
+  const undo = useCallback(() => {
+    if (historyIndexRef.current <= 0) return
+    undoRedoRef.current = true
+    historyIndexRef.current -= 1
+    setHistoryIndex(historyIndexRef.current)
+    const state = historyRef.current[historyIndexRef.current]
+    const doc = parseCanvasDoc(state)
+    setCanvasDoc(doc)
+    lastSerializedRef.current = state
+    latestSerializedRef.current = state
+    undoRedoRef.current = false
+    // push remote asynchronously
+    if (sessionId && !readOnly && (role === 'teacher' || studentsCanWrite)) {
+      void apiByRole[role].updateCanvas(sessionId, { title, content_json: state }).then((res) => {
+        setVersion(Number(res.data?.version || 0))
+        lastSerializedRef.current = state
+      })
+    }
+  }, [role, sessionId, readOnly, studentsCanWrite, title])
+
+  const redo = useCallback(() => {
+    if (historyIndexRef.current >= historyRef.current.length - 1) return
+    undoRedoRef.current = true
+    historyIndexRef.current += 1
+    setHistoryIndex(historyIndexRef.current)
+    const state = historyRef.current[historyIndexRef.current]
+    const doc = parseCanvasDoc(state)
+    setCanvasDoc(doc)
+    lastSerializedRef.current = state
+    latestSerializedRef.current = state
+    undoRedoRef.current = false
+    if (sessionId && !readOnly && (role === 'teacher' || studentsCanWrite)) {
+      void apiByRole[role].updateCanvas(sessionId, { title, content_json: state }).then((res) => {
+        setVersion(Number(res.data?.version || 0))
+        lastSerializedRef.current = state
+      })
+    }
+  }, [role, sessionId, readOnly, studentsCanWrite, title])
+
+  // ─── Viewport ─────────────────────────────────────────────────────────────
+
+  const applyZoom = useCallback((factor: number, originX?: number, originY?: number) => {
+    const container = containerRef.current
+    if (!container) return
+    const rect = container.getBoundingClientRect()
+    const ox = originX ?? rect.width / 2
+    const oy = originY ?? rect.height / 2
+    setZoom((prev) => {
+      const next = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, prev * factor))
+      setPan((p) => {
+        const wx = (ox - p.x) / prev
+        const wy = (oy - p.y) / prev
+        return { x: ox - wx * next, y: oy - wy * next }
+      })
+      return next
+    })
+  }, [])
+
+  const zoomIn = useCallback(() => applyZoom(1.2), [applyZoom])
+  const zoomOut = useCallback(() => applyZoom(1 / 1.2), [applyZoom])
+
+  const fitToScreen = useCallback(() => {
+    if (!containerRef.current) return
+    const positioned = canvasDoc.items.filter(isPositioned)
+    if (positioned.length === 0) {
+      setPan({ x: 220, y: 140 }); setZoom(1); return
+    }
+    const minX = Math.min(...positioned.map((i) => i.x)) - 80
+    const minY = Math.min(...positioned.map((i) => i.y)) - 80
+    const maxX = Math.max(...positioned.map((i) => i.x + i.w)) + 80
+    const maxY = Math.max(...positioned.map((i) => i.y + i.h)) + 80
+    const rect = containerRef.current.getBoundingClientRect()
+    const newZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, Math.min(rect.width / (maxX - minX), rect.height / (maxY - minY)) * 0.9))
+    setZoom(newZoom)
+    setPan({ x: (rect.width - (maxX - minX) * newZoom) / 2 - minX * newZoom, y: (rect.height - (maxY - minY) * newZoom) / 2 - minY * newZoom })
+  }, [canvasDoc.items])
+
+  // ─── Remote canvas ────────────────────────────────────────────────────────
+
+  const fetchRemoteCanvas = useCallback(async () => {
+    if (!sessionId || isInteractingRef.current) return
+    try {
+      const res = await apiByRole[role].getCanvas(sessionId)
+      const remote = parseCanvasDoc(res.data?.content_json)
+      const nextSerialized = JSON.stringify(remote)
+      setVersion(Number(res.data?.version || 0))
+      if (res.data?.students_can_write !== undefined) setStudentsCanWrite(Boolean(res.data.students_can_write))
+      if (nextSerialized !== lastSerializedRef.current) {
+        setCanvasDoc(remote)
+        lastSerializedRef.current = nextSerialized
+        if (historyRef.current.length === 0) {
+          historyRef.current = [nextSerialized]
+          historyIndexRef.current = 0
+          setHistoryIndex(0)
+        }
+      }
+    } catch { /* silent */ }
+  }, [role, sessionId])
+
+  const pushRemoteCanvas = useCallback(async (nextSerialized: string) => {
+    if (!sessionId || !canEdit) return
+    try {
+      const res = await apiByRole[role].updateCanvas(sessionId, { title, content_json: nextSerialized, base_version: version })
+      setVersion(Number(res.data?.version || version + 1))
+      lastSerializedRef.current = nextSerialized
+    } catch (error: any) {
+      if (error?.response?.status === 409) { await fetchRemoteCanvas(); return }
+      console.error('Canvas update failed', error)
+    }
+  }, [canEdit, fetchRemoteCanvas, role, sessionId, title, version])
+
+  // Teacher only: toggle student write permission
+  const toggleStudentsCanWrite = useCallback(async () => {
+    if (role !== 'teacher' || !sessionId) return
+    const next = !studentsCanWrite
+    setStudentsCanWrite(next)
+    try {
+      const res = await teacherApi.updateCanvas(sessionId, {
+        title,
+        content_json: latestSerializedRef.current || JSON.stringify(EMPTY_CANVAS),
+        students_can_write: next,
+      })
+      if (res.data?.version !== undefined) setVersion(Number(res.data.version))
+      lastSerializedRef.current = latestSerializedRef.current
+    } catch {
+      setStudentsCanWrite(!next) // revert on error
+    }
+  }, [role, sessionId, studentsCanWrite, title])
+
+  // ─── Effects ──────────────────────────────────────────────────────────────
 
   useEffect(() => {
     const parsed = parseCanvasDoc(initialContent)
@@ -294,50 +597,12 @@ export function CollaborativeCanvas({
     if (serialized !== serializedDoc) {
       setCanvasDoc(parsed)
       lastSerializedRef.current = serialized
+      historyRef.current = [serialized]
+      historyIndexRef.current = 0
+      setHistoryIndex(0)
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialContent])
-
-  const fetchRemoteCanvas = useCallback(async () => {
-    if (!sessionId) return
-    if (isInteractingRef.current) return
-
-    try {
-      const res = await apiByRole[role].getCanvas(sessionId)
-      const remote = parseCanvasDoc(res.data?.content_json)
-      const nextSerialized = JSON.stringify(remote)
-      setVersion(Number(res.data?.version || 0))
-      if (nextSerialized !== lastSerializedRef.current) {
-        setCanvasDoc(remote)
-        lastSerializedRef.current = nextSerialized
-      }
-    } catch (error) {
-      console.error('Canvas fetch failed', error)
-    }
-  }, [role, sessionId])
-
-  const pushRemoteCanvas = useCallback(
-    async (nextSerialized: string) => {
-      if (!sessionId || !canEdit) return
-      try {
-        const res = await apiByRole[role].updateCanvas(sessionId, {
-          title,
-          content_json: nextSerialized,
-          base_version: version,
-        })
-        const nextVersion = Number(res.data?.version || version + 1)
-        setVersion(nextVersion)
-        lastSerializedRef.current = nextSerialized
-      } catch (error: any) {
-        if (error?.response?.status === 409) {
-          await fetchRemoteCanvas()
-          return
-        }
-        console.error('Canvas update failed', error)
-      }
-    },
-    [canEdit, fetchRemoteCanvas, role, sessionId, title, version]
-  )
 
   useEffect(() => {
     if (!sessionId) return
@@ -346,157 +611,138 @@ export function CollaborativeCanvas({
 
   useEffect(() => {
     if (!sessionId) return
-    if (pollTimerRef.current) {
-      window.clearInterval(pollTimerRef.current)
-      pollTimerRef.current = null
-    }
-
+    if (pollTimerRef.current) window.clearInterval(pollTimerRef.current)
     if (!socketConnected) {
       pollTimerRef.current = window.setInterval(() => {
         if (!isInteractingRef.current) void fetchRemoteCanvas()
       }, 5000)
     }
-
-    return () => {
-      if (pollTimerRef.current) window.clearInterval(pollTimerRef.current)
-    }
+    return () => { if (pollTimerRef.current) window.clearInterval(pollTimerRef.current) }
   }, [fetchRemoteCanvas, sessionId, socketConnected])
 
   useEffect(() => {
     const socket = (window as any).socket
     if (!socket) return
-
     const onConnect = () => setSocketConnected(true)
     const onDisconnect = () => setSocketConnected(false)
     setSocketConnected(Boolean(socket.connected))
-
     socket.on('connect', onConnect)
     socket.on('disconnect', onDisconnect)
-    return () => {
-      socket.off('connect', onConnect)
-      socket.off('disconnect', onDisconnect)
-    }
+    return () => { socket.off('connect', onConnect); socket.off('disconnect', onDisconnect) }
   }, [])
 
   useEffect(() => {
     const socket = (window as any).socket
     if (!socket || !sessionId) return
-
     const onCanvasUpdated = (payload: any) => {
       if (payload?.session_id !== sessionId) return
       const incomingVersion = Number(payload?.version || 0)
       if (incomingVersion <= version) return
-
-      if (isInteractingRef.current) {
-        remoteWhileInteractingRef.current = String(payload?.content_json || '')
-        return
-      }
-
+      if (payload?.students_can_write !== undefined) setStudentsCanWrite(Boolean(payload.students_can_write))
+      if (isInteractingRef.current) { remoteWhileInteractingRef.current = String(payload?.content_json || ''); return }
       const remote = parseCanvasDoc(payload?.content_json)
       const remoteSerialized = JSON.stringify(remote)
       setVersion(incomingVersion)
-      if (remoteSerialized !== lastSerializedRef.current) {
-        setCanvasDoc(remote)
-        lastSerializedRef.current = remoteSerialized
-      }
+      if (remoteSerialized !== lastSerializedRef.current) { setCanvasDoc(remote); lastSerializedRef.current = remoteSerialized }
     }
-
     const onItemLock = (payload: any) => {
       if (payload?.session_id !== sessionId) return
-      const itemId = String(payload?.item_id || '')
-      const userId = String(payload?.user_id || '')
-      const userType = String(payload?.user_type || '')
+      const itemId = String(payload?.item_id || ''), userId = String(payload?.user_id || ''), userType = String(payload?.user_type || '')
       if (!itemId || !userId) return
       setLocks((prev) => ({ ...prev, [itemId]: { userId, userType } }))
     }
-
     const onItemUnlock = (payload: any) => {
       if (payload?.session_id !== sessionId) return
       const itemId = String(payload?.item_id || '')
       if (!itemId) return
-      setLocks((prev) => {
-        const next = { ...prev }
-        delete next[itemId]
-        return next
-      })
+      setLocks((prev) => { const next = { ...prev }; delete next[itemId]; return next })
     }
-
     socket.on('canvas_updated', onCanvasUpdated)
     socket.on('canvas_item_lock', onItemLock)
     socket.on('canvas_item_unlock', onItemUnlock)
-    return () => {
-      socket.off('canvas_updated', onCanvasUpdated)
-      socket.off('canvas_item_lock', onItemLock)
-      socket.off('canvas_item_unlock', onItemUnlock)
-    }
+    return () => { socket.off('canvas_updated', onCanvasUpdated); socket.off('canvas_item_lock', onItemLock); socket.off('canvas_item_unlock', onItemUnlock) }
   }, [sessionId, version])
 
+  // Auto-save with debounce
   useEffect(() => {
     onContentChange?.(serializedDoc)
     if (!canEdit) return
     if (serializedDoc === lastSerializedRef.current) return
-    if (isInteractingRef.current) return
-
+    if (isInteractingRef.current || undoRedoRef.current) return
     if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current)
-    saveTimerRef.current = window.setTimeout(() => {
-      void pushRemoteCanvas(serializedDoc)
-    }, 300)
-
-    return () => {
-      if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current)
-    }
+    saveTimerRef.current = window.setTimeout(() => { void pushRemoteCanvas(serializedDoc) }, 300)
+    return () => { if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current) }
   }, [serializedDoc, canEdit, onContentChange, pushRemoteCanvas])
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement
+      const isTyping = target.tagName === 'TEXTAREA' || target.tagName === 'INPUT' || target.isContentEditable
+      if (e.key === ' ' && !isTyping) { e.preventDefault(); spaceHeldRef.current = true }
+      if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) { e.preventDefault(); undo(); return }
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) { e.preventDefault(); redo(); return }
+      if (isTyping) return
+      if (e.key === 'Escape') { setSelectedId(null); setEditingId(null); setTool('select') }
+      if ((e.key === 'Delete' || e.key === 'Backspace') && canEdit) deleteSelectedRef.current()
+      if (!e.ctrlKey && !e.metaKey && canEdit) {
+        if (e.key === 'v' || e.key === 'V') setTool('select')
+        if (e.key === 'p' || e.key === 'P') setTool('postit')
+        if (e.key === 'f' || e.key === 'F') setTool('frame')
+        if (e.key === 't' || e.key === 'T') setTool('text')
+        if (e.key === 'r' || e.key === 'R') setTool('roundedRect')
+        if (e.key === 'c' || e.key === 'C') setTool('connector')
+        if (e.key === 'd' || e.key === 'D') setTool('pen')
+      }
+    }
+    const onKeyUp = (e: KeyboardEvent) => { if (e.key === ' ') spaceHeldRef.current = false }
+    window.addEventListener('keydown', onKeyDown)
+    window.addEventListener('keyup', onKeyUp)
+    return () => { window.removeEventListener('keydown', onKeyDown); window.removeEventListener('keyup', onKeyUp) }
+  }, [undo, redo, canEdit])
+
+  // ─── Item lock helpers ────────────────────────────────────────────────────
 
   const emitLock = (itemId: string) => {
     const socket = (window as any).socket
     if (!socket || !sessionId) return
     socket.emit('canvas_item_lock', { session_id: sessionId, item_id: itemId })
   }
-
   const emitUnlock = (itemId: string) => {
     const socket = (window as any).socket
     if (!socket || !sessionId) return
     socket.emit('canvas_item_unlock', { session_id: sessionId, item_id: itemId })
   }
-
-  const beginInteraction = () => {
-    isInteractingRef.current = true
-  }
-
-  const endInteraction = () => {
-    isInteractingRef.current = false
-    void pushRemoteCanvas(latestSerializedRef.current)
-    if (remoteWhileInteractingRef.current) {
-      remoteWhileInteractingRef.current = null
-      void fetchRemoteCanvas()
-    }
-  }
-
   const isLockedByOther = (itemId: string) => {
     const lock = locks[itemId]
     return Boolean(lock && lock.userId && lock.userId !== currentUserId)
   }
 
+  // ─── Interaction lifecycle ─────────────────────────────────────────────────
+
+  const beginInteraction = () => { isInteractingRef.current = true }
+  const endInteraction = () => {
+    isInteractingRef.current = false
+    const hadRemote = Boolean(remoteWhileInteractingRef.current)
+    if (hadRemote) remoteWhileInteractingRef.current = null
+    // Defer to after React flushes the latest state update into latestSerializedRef
+    window.requestAnimationFrame(() => {
+      void pushRemoteCanvas(latestSerializedRef.current)
+      pushHistory()
+      if (hadRemote) void fetchRemoteCanvas()
+    })
+  }
+
+  // ─── Item creation ────────────────────────────────────────────────────────
+
   const createItem = (type: Tool, x: number, y: number): CanvasItem | null => {
-    const id = crypto.randomUUID()
-    if (type === 'postit') {
-      return { id, type: 'postit', x, y, w: 220, h: 180, text: 'Nuovo post-it', color: newPostitColor, textStyle: DEFAULT_TEXT_STYLE }
-    }
-    if (type === 'frame') {
-      return { id, type: 'frame', x, y, w: 340, h: 250, text: 'Frame', color: '#3b82f6', textStyle: DEFAULT_TEXT_STYLE }
-    }
-    if (type === 'text') {
-      return { id, type: 'text', x, y, w: 280, h: 130, text: 'Testo', color: '#0f172a', textStyle: DEFAULT_TEXT_STYLE }
-    }
-    if (type === 'roundedRect') {
-      return { id, type: 'shape', shape: 'rounded-rect', x, y, w: 220, h: 140, fill: newShapeFill, stroke: newShapeStroke }
-    }
-    if (type === 'triangle') {
-      return { id, type: 'shape', shape: 'triangle', x, y, w: 220, h: 160, fill: newShapeFill, stroke: newShapeStroke }
-    }
-    if (type === 'parallelogram') {
-      return { id, type: 'shape', shape: 'parallelogram', x, y, w: 230, h: 140, fill: newShapeFill, stroke: newShapeStroke }
-    }
+    const id = mkId()
+    if (type === 'postit') return { id, type: 'postit', x, y, w: 220, h: 180, text: '', color: newPostitColor, textStyle: DEFAULT_TEXT_STYLE }
+    if (type === 'frame') return { id, type: 'frame', x, y, w: 360, h: 260, text: 'Frame', color: '#3b82f6', textStyle: DEFAULT_TEXT_STYLE }
+    if (type === 'text') return { id, type: 'text', x, y, w: 280, h: 120, text: 'Testo', color: '#0f172a', textStyle: DEFAULT_TEXT_STYLE }
+    if (type === 'roundedRect') return { id, type: 'shape', shape: 'rounded-rect', x, y, w: 220, h: 140, fill: newShapeFill, stroke: newShapeStroke }
+    if (type === 'triangle') return { id, type: 'shape', shape: 'triangle', x, y, w: 220, h: 160, fill: newShapeFill, stroke: newShapeStroke }
+    if (type === 'parallelogram') return { id, type: 'shape', shape: 'parallelogram', x, y, w: 230, h: 140, fill: newShapeFill, stroke: newShapeStroke }
     return null
   }
 
@@ -506,31 +752,61 @@ export function CollaborativeCanvas({
       const items = prev.items.map((item) => (item.id === id ? ({ ...item, ...patch } as CanvasItem) : item))
       const nextItems = items.map((item) => {
         if (item.id !== id || !isPositioned(item)) return item
-        return {
-          ...item,
-          parentFrameId: getParentFrameId(item, items),
-        } as CanvasItem
+        return { ...item, parentFrameId: getParentFrameId(item, items) } as CanvasItem
       })
       return { ...prev, items: nextItems }
     })
   }
 
+  const deleteSelected = useCallback(() => {
+    if (!selectedId || !canEdit) return
+    if (isLockedByOther(selectedId)) return
+    beginInteraction()
+    setCanvasDoc((prev) => {
+      const selected = prev.items.find((i) => i.id === selectedId)
+      const removedIds = new Set<string>()
+      if (selected && isFrame(selected)) {
+        collectFrameDescendants(prev.items, selected.id).forEach((id) => removedIds.add(id))
+        removedIds.add(selected.id)
+      } else if (selected) {
+        removedIds.add(selected.id)
+      }
+      const remaining = prev.items.filter((i) => !removedIds.has(i.id))
+      return { ...prev, items: remaining.filter((i) => !isConnector(i) || (!removedIds.has((i as any).fromId) && !removedIds.has((i as any).toId))) }
+    })
+    emitUnlock(selectedId)
+    setSelectedId(null)
+    setEditingId(null)
+    endInteraction()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedId, canEdit])
+
+  // Keep ref in sync
+  deleteSelectedRef.current = deleteSelected
+
+  // ─── Templates ───────────────────────────────────────────────────────────
+
+  const applyTemplate = (doc: CanvasDoc) => {
+    beginInteraction()
+    setCanvasDoc(doc)
+    setSelectedId(null)
+    setEditingId(null)
+    setShowTemplates(false)
+    endInteraction()
+  }
+
+  // ─── Mouse / touch handlers ───────────────────────────────────────────────
+
   const onCanvasClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (panningRef.current) return
     if (!canEdit) return
-    if (tool === 'select') {
-      setSelectedId(null)
-      setEditingId(null)
-      return
+    if (tool === 'select' || tool === 'pen' || tool === 'connector') {
+      setSelectedId(null); setEditingId(null); return
     }
-    if (tool === 'pen') return
-    if (tool === 'connector') return
-
-    const rect = e.currentTarget.getBoundingClientRect()
-    const x = e.clientX - rect.left - 80
-    const y = e.clientY - rect.top - 50
-    const item = createItem(tool, Math.max(20, x), Math.max(20, y))
+    const wp = toWorld(e.clientX, e.clientY)
+    const item = createItem(tool, Math.max(10, wp.x), Math.max(10, wp.y))
     if (!item) return
-
+    beginInteraction()
     setCanvasDoc((prev) => {
       const parentFrameId = getParentFrameId(item, prev.items)
       return { ...prev, items: [...prev.items, { ...item, parentFrameId }] }
@@ -538,58 +814,60 @@ export function CollaborativeCanvas({
     setSelectedId(item.id)
     setEditingId(null)
     setTool('select')
+    endInteraction()
   }
 
   const onMouseDownItem = (e: React.MouseEvent, item: CanvasItem) => {
     e.stopPropagation()
     setSelectedId(item.id)
-    if (isTextEditable(item) && e.detail >= 2) {
-      setEditingId(item.id)
-      return
-    }
+    if (isTextEditable(item) && e.detail >= 2) { setEditingId(item.id); return }
     const tag = (e.target as HTMLElement).tagName
     const isInteractiveTarget = tag === 'TEXTAREA' || tag === 'INPUT' || tag === 'SELECT' || tag === 'BUTTON'
     if (isTextEditable(item) && editingId === item.id && isInteractiveTarget) return
-    if (isTextEditable(item) && editingId !== item.id) {
-      e.preventDefault()
-      setEditingId(null)
-    }
-    if (!canEdit) return
-    if (isPath(item)) return
-    if (isConnector(item)) return
-    if (isLockedByOther(item.id)) return
+    if (isTextEditable(item) && editingId !== item.id) { e.preventDefault(); setEditingId(null) }
+    if (!canEdit || isPath(item) || isConnector(item) || isLockedByOther(item.id)) return
 
-    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+    const wp = toWorld(e.clientX, e.clientY)
+    const posItem = isPositioned(item) ? item : null
     pendingDragRef.current = {
       id: item.id,
-      offsetX: e.clientX - rect.left,
-      offsetY: e.clientY - rect.top,
+      offsetX: posItem ? wp.x - posItem.x : 0,
+      offsetY: posItem ? wp.y - posItem.y : 0,
       startX: e.clientX,
       startY: e.clientY,
     }
   }
 
-  const onMouseDownDraw = (e: React.MouseEvent<HTMLDivElement>) => {
+  const onContainerMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (spaceHeldRef.current || e.button === 1) {
+      e.preventDefault()
+      panningRef.current = { startMouseX: e.clientX, startMouseY: e.clientY, startPanX: pan.x, startPanY: pan.y }
+      setIsPanning(true)
+      return
+    }
     if (!canEdit || tool !== 'pen') return
     beginInteraction()
-    const rect = e.currentTarget.getBoundingClientRect()
-    drawingRef.current = {
-      points: [{ x: e.clientX - rect.left, y: e.clientY - rect.top }],
-    }
-    setPreviewPoints(drawingRef.current.points)
+    const wp = toWorld(e.clientX, e.clientY)
+    drawingRef.current = { points: [wp] }
+    setPreviewPoints([wp])
   }
 
   const onMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
-    const rect = e.currentTarget.getBoundingClientRect()
-    const point = { x: e.clientX - rect.left, y: e.clientY - rect.top }
+    if (panningRef.current) {
+      const { startMouseX, startMouseY, startPanX, startPanY } = panningRef.current
+      setPan({ x: startPanX + (e.clientX - startMouseX), y: startPanY + (e.clientY - startMouseY) })
+      return
+    }
+
+    const wp = toWorld(e.clientX, e.clientY)
 
     if (connectorDrag) {
-      setConnectorDrag((prev) => (prev ? { ...prev, toPoint: point } : prev))
+      setConnectorDrag((prev) => (prev ? { ...prev, toPoint: wp } : prev))
       return
     }
 
     if (drawingRef.current && tool === 'pen' && canEdit) {
-      drawingRef.current.points.push(point)
+      drawingRef.current.points.push(wp)
       if (!rafDrawRef.current) {
         rafDrawRef.current = window.requestAnimationFrame(() => {
           rafDrawRef.current = null
@@ -605,86 +883,53 @@ export function CollaborativeCanvas({
       if (moved > 4) {
         beginInteraction()
         emitLock(candidate.id)
-        draggingRef.current = {
-          id: candidate.id,
-          offsetX: candidate.offsetX,
-          offsetY: candidate.offsetY,
-        }
+        draggingRef.current = { id: candidate.id, offsetX: candidate.offsetX, offsetY: candidate.offsetY }
         pendingDragRef.current = null
       }
     }
 
     if (resizingRef.current && canEdit) {
       const resize = resizingRef.current
-      const minW = 140
-      const minH = 90
-      const nextW = Math.max(minW, resize.startW + (e.clientX - resize.startX))
-      const nextH = Math.max(minH, resize.startH + (e.clientY - resize.startY))
-
-      setCanvasDoc((prev) => {
-        const resized = prev.items.map((item) => {
-          if (item.id !== resize.id || !isPositioned(item)) return item
-          return {
-            ...item,
-            w: nextW,
-            h: nextH,
-          } as CanvasItem
-        })
-        return { ...prev, items: resized }
-      })
+      const nextW = Math.max(140, resize.startW + (e.clientX - resize.startX) / zoom)
+      const nextH = Math.max(90, resize.startH + (e.clientY - resize.startY) / zoom)
+      setCanvasDoc((prev) => ({
+        ...prev,
+        items: prev.items.map((item) =>
+          item.id !== resize.id || !isPositioned(item) ? item : { ...item, w: nextW, h: nextH } as CanvasItem,
+        ),
+      }))
       return
     }
 
     if (!draggingRef.current || !canEdit) return
     const drag = draggingRef.current
-
     setCanvasDoc((prev) => {
-      const target = prev.items.find((item) => item.id === drag.id)
+      const target = prev.items.find((i) => i.id === drag.id)
       if (!target || !isPositioned(target)) return prev
-      const nextX = Math.max(0, e.clientX - rect.left - drag.offsetX)
-      const nextY = Math.max(0, e.clientY - rect.top - drag.offsetY)
-
-      let moved = prev.items
-      if (isFrame(target)) {
-        moved = moveFrameWithChildren(prev.items, target.id, nextX, nextY)
-      } else {
-        moved = prev.items.map((item) => {
-          if (item.id !== drag.id || !isPositioned(item)) return item
-          return {
-            ...item,
-            x: nextX,
-            y: nextY,
-          } as CanvasItem
-        })
-      }
-
+      const nx = Math.max(0, wp.x - drag.offsetX)
+      const ny = Math.max(0, wp.y - drag.offsetY)
+      let moved = isFrame(target) ? moveFrameWithChildren(prev.items, target.id, nx, ny) : prev.items.map((item) =>
+        item.id !== drag.id || !isPositioned(item) ? item : { ...item, x: nx, y: ny } as CanvasItem,
+      )
       const normalized = moved.map((item) => {
-        if (!isPositioned(item)) return item
-        if (item.id === drag.id) {
-          return {
-            ...item,
-            parentFrameId: getParentFrameId(item, moved, isFrame(item) ? item.id : undefined),
-          } as CanvasItem
-        }
-        return item
+        if (!isPositioned(item) || item.id !== drag.id) return item
+        return { ...item, parentFrameId: getParentFrameId(item, moved, isFrame(item) ? item.id : undefined) } as CanvasItem
       })
       return { ...prev, items: normalized }
     })
   }
 
   const onMouseUp = () => {
+    if (panningRef.current) { panningRef.current = null; setIsPanning(false); return }
+
     if (connectorDrag) {
       if (connectorDrag.hoverTarget && connectorDrag.hoverTarget.id !== connectorDrag.fromId) {
         beginInteraction()
         const connector: CanvasItem = {
-          id: crypto.randomUUID(),
-          type: 'connector',
-          fromId: connectorDrag.fromId,
-          fromAnchor: connectorDrag.fromAnchor,
-          toId: connectorDrag.hoverTarget.id,
-          toAnchor: connectorDrag.hoverTarget.anchor,
-          color: '#334155',
-          width: 2,
+          id: mkId(), type: 'connector',
+          fromId: connectorDrag.fromId, fromAnchor: connectorDrag.fromAnchor,
+          toId: connectorDrag.hoverTarget.id, toAnchor: connectorDrag.hoverTarget.anchor,
+          color: '#334155', width: 2,
         }
         setCanvasDoc((prev) => ({ ...prev, items: [...prev.items, connector] }))
         setSelectedId(connector.id)
@@ -705,82 +950,44 @@ export function CollaborativeCanvas({
     let didMutate = false
     if (drawingRef.current && canEdit && drawingRef.current.points.length > 1) {
       didMutate = true
-      const path: CanvasItem = {
-        id: crypto.randomUUID(),
-        type: 'path',
-        points: drawingRef.current.points,
-        color: strokeColor,
-        width: strokeWidth,
-      }
+      const path: CanvasItem = { id: mkId(), type: 'path', points: drawingRef.current.points, color: strokeColor, width: strokeWidth }
       setCanvasDoc((prev) => {
         const parentFrame = prev.items.filter(isFrame).find((frame) => {
-          const points = path.points
-          if (points.length === 0) return false
-          return points.every((p) => p.x >= frame.x && p.x <= frame.x + frame.w && p.y >= frame.y && p.y <= frame.y + frame.h)
+          const pts = (path as any).points as Point[]
+          return pts.length > 0 && pts.every((p) => p.x >= frame.x && p.x <= frame.x + frame.w && p.y >= frame.y && p.y <= frame.y + frame.h)
         })
-        const withParent = parentFrame ? { ...path, parentFrameId: parentFrame.id } : path
-        return { ...prev, items: [...prev.items, withParent] }
+        return { ...prev, items: [...prev.items, parentFrame ? { ...path, parentFrameId: parentFrame.id } : path] }
       })
     }
-
     drawingRef.current = null
     setPreviewPoints([])
-    if (rafDrawRef.current) {
-      window.cancelAnimationFrame(rafDrawRef.current)
-      rafDrawRef.current = null
-    }
+    if (rafDrawRef.current) { window.cancelAnimationFrame(rafDrawRef.current); rafDrawRef.current = null }
 
-    if (dragId) {
-      emitUnlock(dragId)
-      didMutate = true
-    }
-    if (resizedId && resizedId !== dragId) {
-      emitUnlock(resizedId)
-      didMutate = true
-    }
-
+    if (dragId) { emitUnlock(dragId); didMutate = true }
+    if (resizedId && resizedId !== dragId) { emitUnlock(resizedId); didMutate = true }
     if (didMutate) endInteraction()
     if (hadPendingDrag) setEditingId(null)
   }
 
-  const deleteSelected = () => {
-    if (!selectedId || !canEdit) return
-    if (isLockedByOther(selectedId)) return
-    beginInteraction()
-
-    setCanvasDoc((prev) => {
-      const selected = prev.items.find((item) => item.id === selectedId)
-      const removedIds = new Set<string>()
-      if (selected && isFrame(selected)) {
-        const descendants = new Set(collectFrameDescendants(prev.items, selected.id))
-        descendants.add(selected.id)
-        descendants.forEach((id) => removedIds.add(id))
-      } else if (selected) {
-        removedIds.add(selected.id)
-      }
-
-      const remaining = prev.items.filter((item) => !removedIds.has(item.id))
-      const withoutOrphanConnectors = remaining.filter((item) => {
-        if (!isConnector(item)) return true
-        return !removedIds.has(item.fromId) && !removedIds.has(item.toId)
-      })
-      return { ...prev, items: withoutOrphanConnectors }
-    })
-
-    emitUnlock(selectedId)
-    setSelectedId(null)
-    setEditingId(null)
-    endInteraction()
+  const onWheel = (e: React.WheelEvent<HTMLDivElement>) => {
+    e.preventDefault()
+    if (e.ctrlKey || e.metaKey) {
+      const rect = containerRef.current?.getBoundingClientRect()
+      if (!rect) return
+      applyZoom(e.deltaY < 0 ? 1.1 : 0.9, e.clientX - rect.left, e.clientY - rect.top)
+    } else {
+      setPan((prev) => ({ x: prev.x - e.deltaX, y: prev.y - e.deltaY }))
+    }
   }
 
-  const uploadImage = async (file: File) => {
-    if (!sessionId) {
-      throw new Error('Per caricare immagini su lavagna serve una sessione selezionata.')
-    }
+  // ─── Drop handler ─────────────────────────────────────────────────────────
+
+  const uploadImage = async (file: File): Promise<string> => {
+    if (!sessionId) throw new Error('Sessione richiesta per caricare immagini')
     const res = await chatApi.uploadFiles(sessionId, [file])
     const url = res.data?.urls?.[0]
     if (!url) throw new Error('Upload immagine non riuscito')
-    return url as string
+    return String(url)
   }
 
   const handleDropFiles = async (e: React.DragEvent<HTMLDivElement>) => {
@@ -788,47 +995,27 @@ export function CollaborativeCanvas({
     e.preventDefault()
     setIsDropActive(false)
     const files = Array.from(e.dataTransfer.files || [])
-
     const uriListRaw = e.dataTransfer.getData('text/uri-list') || e.dataTransfer.getData('text/plain')
-    const uriCandidates = uriListRaw
-      .split(/\s+/)
-      .map((p) => p.trim())
-      .filter((p) => p && !p.startsWith('#') && (p.startsWith('http://') || p.startsWith('https://') || p.startsWith('data:image/') || p.startsWith('blob:')))
+    const uriCandidates = uriListRaw.split(/\s+/).map((p) => p.trim()).filter((p) => p && !p.startsWith('#') && looksLikeImageUrl(p))
     const htmlRaw = e.dataTransfer.getData('text/html')
     const htmlCandidates = htmlRaw ? extractImageUrlsFromHtml(htmlRaw) : []
     const droppedImageUrls = Array.from(new Set([...uriCandidates, ...htmlCandidates])).filter(looksLikeImageUrl)
     if (files.length === 0 && droppedImageUrls.length === 0) return
 
     beginInteraction()
-
-    const rect = e.currentTarget.getBoundingClientRect()
-    let x = Math.max(20, e.clientX - rect.left)
-    let y = Math.max(20, e.clientY - rect.top)
+    const wp = toWorld(e.clientX, e.clientY)
+    let ox = Math.max(20, wp.x), oy = Math.max(20, wp.y)
 
     for (const file of files) {
       if (file.type.startsWith('image/')) {
         try {
           const imageUrl = await uploadImage(file)
-          const imageItem: CanvasItem = {
-            id: crypto.randomUUID(),
-            type: 'image',
-            x,
-            y,
-            w: 320,
-            h: 220,
-            src: imageUrl,
-          }
-          setCanvasDoc((prev) => {
-            const parentFrameId = getParentFrameId(imageItem, prev.items)
-            return { ...prev, items: [...prev.items, { ...imageItem, parentFrameId }] }
-          })
-          y += 30
-        } catch (error) {
-          console.error(error)
-        }
+          const img: CanvasItem = { id: mkId(), type: 'image', x: ox, y: oy, w: 320, h: 220, src: imageUrl }
+          setCanvasDoc((prev) => ({ ...prev, items: [...prev.items, { ...img, parentFrameId: getParentFrameId(img, prev.items) }] }))
+          oy += 30
+        } catch (err) { console.error(err) }
         continue
       }
-
       const lower = file.name.toLowerCase()
       if (lower.endsWith('.csv') || lower.endsWith('.xlsx') || lower.endsWith('.xls')) {
         const dataBuffer = await file.arrayBuffer()
@@ -836,42 +1023,22 @@ export function CollaborativeCanvas({
         const sheet = workbook.Sheets[workbook.SheetNames[0]]
         const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false }) as Array<Array<string | number | boolean | null>>
         const normalized = toCsvTable(rows).slice(0, 20).map((row) => row.slice(0, 8))
-        const tableItem: CanvasItem = {
-          id: crypto.randomUUID(),
-          type: 'table',
-          x,
-          y,
-          w: 440,
-          h: 280,
-          data: normalized.length ? normalized : [['']],
-        }
-        setCanvasDoc((prev) => {
-          const parentFrameId = getParentFrameId(tableItem, prev.items)
-          return { ...prev, items: [...prev.items, { ...tableItem, parentFrameId }] }
-        })
-        y += 34
+        const tableItem: CanvasItem = { id: mkId(), type: 'table', x: ox, y: oy, w: 440, h: 280, data: normalized.length ? normalized : [['']] }
+        setCanvasDoc((prev) => ({ ...prev, items: [...prev.items, { ...tableItem, parentFrameId: getParentFrameId(tableItem, prev.items) }] }))
+        oy += 34
       }
     }
 
     for (const src of droppedImageUrls) {
-      const imageItem: CanvasItem = {
-        id: crypto.randomUUID(),
-        type: 'image',
-        x,
-        y,
-        w: 320,
-        h: 220,
-        src,
-      }
-      setCanvasDoc((prev) => {
-        const parentFrameId = getParentFrameId(imageItem, prev.items)
-        return { ...prev, items: [...prev.items, { ...imageItem, parentFrameId }] }
-      })
-      y += 30
+      const img: CanvasItem = { id: mkId(), type: 'image', x: ox, y: oy, w: 320, h: 220, src }
+      setCanvasDoc((prev) => ({ ...prev, items: [...prev.items, { ...img, parentFrameId: getParentFrameId(img, prev.items) }] }))
+      oy += 30
     }
 
     endInteraction()
   }
+
+  // ─── SVG renderers ────────────────────────────────────────────────────────
 
   const renderPath = (item: Extract<CanvasItem, { type: 'path' }>) => {
     const d = item.points.map((p, idx) => `${idx === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ')
@@ -879,27 +1046,21 @@ export function CollaborativeCanvas({
   }
 
   const renderConnector = (item: Extract<CanvasItem, { type: 'connector' }>) => {
-    const from = canvasDoc.items.find((candidate) => candidate.id === item.fromId)
-    const to = canvasDoc.items.find((candidate) => candidate.id === item.toId)
+    const from = canvasDoc.items.find((i) => i.id === item.fromId)
+    const to = canvasDoc.items.find((i) => i.id === item.toId)
     if (!from || !to || !isPositioned(from) || !isPositioned(to)) return null
     const p1 = getAnchorPoint(from, item.fromAnchor)
     const p2 = getAnchorPoint(to, item.toAnchor)
     const d1 = anchorDirection(item.fromAnchor)
     const d2 = anchorDirection(item.toAnchor)
-    const distance = Math.hypot(p2.x - p1.x, p2.y - p1.y)
-    const curve = Math.max(36, Math.min(180, distance * 0.35))
+    const curve = Math.max(36, Math.min(180, Math.hypot(p2.x - p1.x, p2.y - p1.y) * 0.35))
     const c1 = { x: p1.x + d1.x * curve, y: p1.y + d1.y * curve }
     const c2 = { x: p2.x + d2.x * curve, y: p2.y + d2.y * curve }
-    const pathD = `M ${p1.x} ${p1.y} C ${c1.x} ${c1.y}, ${c2.x} ${c2.y}, ${p2.x} ${p2.y}`
     return (
       <path
         key={item.id}
-        d={pathD}
-        stroke={item.color}
-        strokeWidth={item.width}
-        fill="none"
-        strokeLinecap="round"
-        strokeLinejoin="round"
+        d={`M ${p1.x} ${p1.y} C ${c1.x} ${c1.y}, ${c2.x} ${c2.y}, ${p2.x} ${p2.y}`}
+        stroke={item.color} strokeWidth={item.width} fill="none" strokeLinecap="round" strokeLinejoin="round"
         markerEnd="url(#canvas-arrow)"
       />
     )
@@ -907,463 +1068,513 @@ export function CollaborativeCanvas({
 
   const renderConnectorPreview = () => {
     if (!connectorDrag) return null
-    const from = canvasDoc.items.find((candidate) => candidate.id === connectorDrag.fromId)
+    const from = canvasDoc.items.find((i) => i.id === connectorDrag.fromId)
     if (!from || !isPositioned(from)) return null
     const p1 = getAnchorPoint(from, connectorDrag.fromAnchor)
     const p2 = connectorDrag.hoverTarget
-      ? (() => {
-          const toItem = canvasDoc.items.find((candidate) => candidate.id === connectorDrag.hoverTarget?.id)
-          if (!toItem || !isPositioned(toItem)) return connectorDrag.toPoint
-          return getAnchorPoint(toItem, connectorDrag.hoverTarget.anchor)
-        })()
+      ? (() => { const t = canvasDoc.items.find((i) => i.id === connectorDrag.hoverTarget?.id); return t && isPositioned(t) ? getAnchorPoint(t, connectorDrag.hoverTarget!.anchor) : connectorDrag.toPoint })()
       : connectorDrag.toPoint
     const d1 = anchorDirection(connectorDrag.fromAnchor)
-    const targetAnchor: Anchor =
-      connectorDrag.hoverTarget?.anchor ||
-      (Math.abs(p2.x - p1.x) > Math.abs(p2.y - p1.y) ? (p2.x >= p1.x ? 'left' : 'right') : p2.y >= p1.y ? 'top' : 'bottom')
-    const d2 = anchorDirection(targetAnchor)
-    const distance = Math.hypot(p2.x - p1.x, p2.y - p1.y)
-    const curve = Math.max(36, Math.min(180, distance * 0.35))
+    const tAnchor: Anchor = connectorDrag.hoverTarget?.anchor || (Math.abs(p2.x - p1.x) > Math.abs(p2.y - p1.y) ? (p2.x >= p1.x ? 'left' : 'right') : p2.y >= p1.y ? 'top' : 'bottom')
+    const d2 = anchorDirection(tAnchor)
+    const curve = Math.max(36, Math.min(180, Math.hypot(p2.x - p1.x, p2.y - p1.y) * 0.35))
     const c1 = { x: p1.x + d1.x * curve, y: p1.y + d1.y * curve }
     const c2 = { x: p2.x + d2.x * curve, y: p2.y + d2.y * curve }
-    const d = `M ${p1.x} ${p1.y} C ${c1.x} ${c1.y}, ${c2.x} ${c2.y}, ${p2.x} ${p2.y}`
-    return <path d={d} stroke="#3b82f6" strokeWidth={2.5} strokeDasharray="6 4" fill="none" markerEnd="url(#canvas-arrow)" />
+    return <path d={`M ${p1.x} ${p1.y} C ${c1.x} ${c1.y}, ${c2.x} ${c2.y}, ${p2.x} ${p2.y}`} stroke="#3b82f6" strokeWidth={2.5} strokeDasharray="6 4" fill="none" markerEnd="url(#canvas-arrow)" />
   }
 
+  // ─── Cursor ──────────────────────────────────────────────────────────────
+
+  const cursor = isPanning ? 'grabbing' : spaceHeldRef.current ? 'grab' : tool === 'pen' ? 'crosshair' : tool !== 'select' ? 'cell' : 'default'
+
+  // ─── Render ───────────────────────────────────────────────────────────────
+
   return (
-    <div className="flex h-[calc(100vh-170px)] flex-col rounded-xl border border-slate-200 bg-white">
-      <div className="flex items-center justify-between gap-3 border-b px-3 py-2">
-        <div className="flex items-center gap-2">
-          <Input
-            value={title}
-            onChange={(e) => onTitleChange?.(e.target.value)}
-            className="h-8 w-64 text-sm"
-            placeholder="Titolo lavagna"
-            disabled={!canEdit}
-          />
-          <span className="text-xs text-slate-500">Realtime</span>
+    <div
+      className={`flex flex-col overflow-hidden border border-slate-200 bg-white shadow-sm ${
+        isFullscreen ? 'fixed inset-0 z-[9999] rounded-none' : 'h-[calc(100vh-170px)] rounded-xl'
+      }`}
+    >
+      {/* ── Top bar ─────────────────────────────────────────────────────── */}
+      <div className="flex shrink-0 items-center gap-1.5 border-b border-slate-200 bg-white px-2 py-1.5">
+        {/* Title */}
+        <Input
+          value={title}
+          onChange={(e) => onTitleChange?.(e.target.value)}
+          className="h-7 w-52 border-transparent text-sm shadow-none focus:border-slate-300"
+          placeholder="Titolo lavagna"
+          disabled={!canEdit}
+        />
+
+        <div className="mx-1 h-5 w-px bg-slate-200" />
+
+        {/* Undo / Redo */}
+        <button
+          type="button"
+          title="Annulla (Ctrl+Z)"
+          onClick={undo}
+          disabled={historyIndex <= 0}
+          className="flex h-7 w-7 items-center justify-center rounded text-slate-500 hover:bg-slate-100 disabled:opacity-30"
+        >
+          <Undo2 className="h-3.5 w-3.5" />
+        </button>
+        <button
+          type="button"
+          title="Ripristina (Ctrl+Y)"
+          onClick={redo}
+          disabled={historyIndex >= historyRef.current.length - 1}
+          className="flex h-7 w-7 items-center justify-center rounded text-slate-500 hover:bg-slate-100 disabled:opacity-30"
+        >
+          <Redo2 className="h-3.5 w-3.5" />
+        </button>
+
+        <div className="flex-1" />
+
+        {/* Zoom controls */}
+        <div className="flex items-center gap-0.5 rounded-lg border border-slate-200 bg-slate-50 px-1">
+          <button type="button" onClick={zoomOut} className="flex h-6 w-6 items-center justify-center rounded text-xs text-slate-500 hover:bg-white">−</button>
+          <span className="w-12 text-center text-xs text-slate-600 tabular-nums">{Math.round(zoom * 100)}%</span>
+          <button type="button" onClick={zoomIn} className="flex h-6 w-6 items-center justify-center rounded text-xs text-slate-500 hover:bg-white">+</button>
+          <button type="button" onClick={fitToScreen} title="Adatta alla schermata" className="flex h-6 w-6 items-center justify-center rounded text-slate-500 hover:bg-white">
+            <Maximize2 className="h-3.5 w-3.5" />
+          </button>
         </div>
-        <div className="flex items-center gap-1">
-          <Button size="sm" variant={tool === 'select' ? 'default' : 'outline'} onClick={() => setTool('select')}><Square className="h-4 w-4" /></Button>
-          <Button size="sm" variant={tool === 'postit' ? 'default' : 'outline'} onClick={() => setTool('postit')}><StickyNote className="h-4 w-4" /></Button>
-          <Button size="sm" variant={tool === 'frame' ? 'default' : 'outline'} onClick={() => setTool('frame')}><Frame className="h-4 w-4" /></Button>
-          <Button size="sm" variant={tool === 'text' ? 'default' : 'outline'} onClick={() => setTool('text')}><Type className="h-4 w-4" /></Button>
-          <Button size="sm" variant={tool === 'roundedRect' ? 'default' : 'outline'} onClick={() => setTool('roundedRect')}><RectangleHorizontal className="h-4 w-4" /></Button>
-          <Button size="sm" variant={tool === 'triangle' ? 'default' : 'outline'} onClick={() => setTool('triangle')}><Triangle className="h-4 w-4" /></Button>
-          <Button size="sm" variant={tool === 'parallelogram' ? 'default' : 'outline'} onClick={() => setTool('parallelogram')}>▱</Button>
-          <Button size="sm" variant={tool === 'connector' ? 'default' : 'outline'} onClick={() => setTool('connector')}><MoveRight className="h-4 w-4" /></Button>
-          <Button size="sm" variant={tool === 'pen' ? 'default' : 'outline'} onClick={() => setTool('pen')}><Pencil className="h-4 w-4" /></Button>
-          <Button size="sm" variant="outline" onClick={deleteSelected} disabled={!selectedId || !canEdit}><Eraser className="h-4 w-4" /></Button>
-        </div>
-        <div className="flex items-center gap-2">
-          <div className="flex items-center gap-1 rounded-md border border-slate-200 px-2 py-1 text-xs">
-            <span className="text-slate-500">Post-it</span>
-            <Input
-              type="color"
-              value={newPostitColor}
-              onChange={(e) => setNewPostitColor(e.target.value)}
-              className="h-7 w-9 cursor-pointer p-1"
-              title="Colore nuovo post-it"
-            />
-          </div>
-          <div className="flex items-center gap-1 rounded-md border border-slate-200 px-2 py-1 text-xs">
-            <span className="text-slate-500">Forma</span>
-            <Input type="color" value={newShapeFill} onChange={(e) => setNewShapeFill(e.target.value)} className="h-7 w-9 cursor-pointer p-1" title="Riempimento forma" />
-            <Input type="color" value={newShapeStroke} onChange={(e) => setNewShapeStroke(e.target.value)} className="h-7 w-9 cursor-pointer p-1" title="Bordo forma" />
-          </div>
-          <Input
-            type="color"
-            value={strokeColor}
-            onChange={(e) => setStrokeColor(e.target.value)}
-            className="h-8 w-10 p-1"
-          />
-          <Input
-            type="number"
-            min={1}
-            max={14}
-            value={strokeWidth}
-            onChange={(e) => setStrokeWidth(Number(e.target.value || 3))}
-            className="h-8 w-14 px-2"
-          />
-          <div className="flex items-center gap-1 text-xs text-slate-500">
-            <ImagePlus className="h-4 w-4" />
-            <Table className="h-4 w-4" />
-            <span>Drop</span>
-          </div>
-          {tool === 'connector' && (
-            <span className="text-xs text-slate-600">
-              {connectorDrag ? 'Trascina verso un punto di connessione' : 'Trascina da un punto della forma'}
-            </span>
-          )}
-        </div>
+
+        <div className="mx-1 h-5 w-px bg-slate-200" />
+
+        {/* Teacher-only actions */}
+        {role === 'teacher' && (
+          <>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 gap-1.5 text-xs"
+              onClick={() => setShowTemplates(true)}
+            >
+              <LayoutTemplate className="h-3.5 w-3.5" />
+              Template
+            </Button>
+            <Button
+              size="sm"
+              variant={studentsCanWrite ? 'default' : 'outline'}
+              className={`h-7 gap-1.5 text-xs ${studentsCanWrite ? 'bg-green-600 hover:bg-green-700 text-white border-green-600' : ''}`}
+              onClick={() => setShowShare(true)}
+            >
+              <Users className="h-3.5 w-3.5" />
+              {studentsCanWrite ? 'Studenti attivi' : 'Condividi'}
+            </Button>
+          </>
+        )}
+
+        {/* Fullscreen */}
+        <button
+          type="button"
+          title={isFullscreen ? 'Esci da schermo intero' : 'Schermo intero'}
+          onClick={() => setIsFullscreen((v) => !v)}
+          className="flex h-7 w-7 items-center justify-center rounded text-slate-500 hover:bg-slate-100"
+        >
+          {isFullscreen ? <Minimize className="h-3.5 w-3.5" /> : <Maximize className="h-3.5 w-3.5" />}
+        </button>
       </div>
-      {selectedItem && isShape(selectedItem) && (
-        <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 bg-slate-50 px-3 py-2 text-xs">
-          <span className="text-slate-600">Forma</span>
-          <div className="flex items-center gap-1 rounded border border-slate-200 bg-white px-2 py-1">
-            <span className="text-slate-500">Fill</span>
-            <Input
-              type="color"
-              value={selectedItem.fill}
-              onChange={(e) => updateItem(selectedItem.id, { fill: e.target.value })}
-              className="h-7 w-9 cursor-pointer p-1"
-              disabled={!canEdit || isLockedByOther(selectedItem.id)}
-            />
-          </div>
-          <div className="flex items-center gap-1 rounded border border-slate-200 bg-white px-2 py-1">
-            <span className="text-slate-500">Stroke</span>
-            <Input
-              type="color"
-              value={selectedItem.stroke}
-              onChange={(e) => updateItem(selectedItem.id, { stroke: e.target.value })}
-              className="h-7 w-9 cursor-pointer p-1"
-              disabled={!canEdit || isLockedByOther(selectedItem.id)}
-            />
-          </div>
-        </div>
-      )}
-      {selectedItem && isConnector(selectedItem) && (
-        <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 bg-slate-50 px-3 py-2 text-xs">
-          <span className="text-slate-600">Connettore</span>
-          <Input
-            type="color"
-            value={selectedItem.color}
-            onChange={(e) => updateItem(selectedItem.id, { color: e.target.value })}
-            className="h-8 w-10 p-1"
-            disabled={!canEdit}
-          />
-          <Input
-            type="number"
-            min={1}
-            max={8}
-            value={selectedItem.width}
-            onChange={(e) => updateItem(selectedItem.id, { width: Math.max(1, Math.min(8, Number(e.target.value || 2))) })}
-            className="h-8 w-14 px-2"
-            disabled={!canEdit}
-          />
-        </div>
-      )}
-      {selectedItem && selectedTextStyle && (
-        <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 bg-slate-50 px-3 py-2 text-xs">
-          <span className="text-slate-600">Testo</span>
-          <select
-            className="h-8 rounded border border-slate-300 px-2 text-xs"
-            value={selectedTextStyle.fontFamily}
-            onChange={(e) => updateItem(selectedItem.id, { textStyle: { ...selectedTextStyle, fontFamily: e.target.value } })}
-            disabled={!canEdit || isLockedByOther(selectedItem.id)}
-          >
-            <option value="Inter, system-ui, sans-serif">Inter</option>
-            <option value="Arial, sans-serif">Arial</option>
-            <option value="Georgia, serif">Georgia</option>
-            <option value="'Courier New', monospace">Courier</option>
-          </select>
-          <Input
-            type="number"
-            min={10}
-            max={48}
-            className="h-8 w-16 px-2 text-xs"
-            value={selectedTextStyle.fontSize}
-            onChange={(e) =>
-              updateItem(selectedItem.id, {
-                textStyle: { ...selectedTextStyle, fontSize: Math.max(10, Math.min(48, Number(e.target.value || 14))) },
-              })
-            }
-            disabled={!canEdit || isLockedByOther(selectedItem.id)}
-          />
-          <Button
-            size="sm"
-            variant={selectedTextStyle.fontWeight === '600' ? 'default' : 'outline'}
-            onClick={() =>
-              updateItem(selectedItem.id, {
-                textStyle: { ...selectedTextStyle, fontWeight: selectedTextStyle.fontWeight === '600' ? 'normal' : '600' },
-              })
-            }
-            disabled={!canEdit || isLockedByOther(selectedItem.id)}
-            className="h-8 px-2 text-xs"
-          >
-            B
-          </Button>
-          <Button
-            size="sm"
-            variant={selectedTextStyle.fontStyle === 'italic' ? 'default' : 'outline'}
-            onClick={() =>
-              updateItem(selectedItem.id, {
-                textStyle: { ...selectedTextStyle, fontStyle: selectedTextStyle.fontStyle === 'italic' ? 'normal' : 'italic' },
-              })
-            }
-            disabled={!canEdit || isLockedByOther(selectedItem.id)}
-            className="h-8 px-2 text-xs italic"
-          >
-            I
-          </Button>
-          {selectedItem.type === 'postit' && (
-            <div className="flex items-center gap-1 rounded border border-slate-200 bg-white px-2 py-1">
-              <span className="text-slate-500">Sfondo</span>
-              <Input
-                type="color"
-                value={selectedItem.color}
-                onChange={(e) => updateItem(selectedItem.id, { color: e.target.value })}
-                className="h-7 w-9 cursor-pointer p-1"
-                disabled={!canEdit || isLockedByOther(selectedItem.id)}
-              />
-            </div>
+
+      {/* ── Context property bar ─────────────────────────────────────────── */}
+      {selectedItem && (
+        <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-slate-100 bg-slate-50 px-3 py-1 text-xs">
+          {isShape(selectedItem) && (
+            <>
+              <span className="text-slate-500">Forma</span>
+              <div className="flex items-center gap-1">
+                <span className="text-slate-400">Fill</span>
+                <Input type="color" value={selectedItem.fill} onChange={(e) => updateItem(selectedItem.id, { fill: e.target.value })} className="h-6 w-8 cursor-pointer border-slate-200 p-0.5" disabled={!canEdit || isLockedByOther(selectedItem.id)} />
+              </div>
+              <div className="flex items-center gap-1">
+                <span className="text-slate-400">Bordo</span>
+                <Input type="color" value={selectedItem.stroke} onChange={(e) => updateItem(selectedItem.id, { stroke: e.target.value })} className="h-6 w-8 cursor-pointer border-slate-200 p-0.5" disabled={!canEdit || isLockedByOther(selectedItem.id)} />
+              </div>
+            </>
+          )}
+          {isConnector(selectedItem) && (
+            <>
+              <span className="text-slate-500">Connettore</span>
+              <Input type="color" value={selectedItem.color} onChange={(e) => updateItem(selectedItem.id, { color: e.target.value })} className="h-6 w-8 cursor-pointer border-slate-200 p-0.5" disabled={!canEdit} />
+              <Input type="number" min={1} max={8} value={selectedItem.width} onChange={(e) => updateItem(selectedItem.id, { width: Math.max(1, Math.min(8, Number(e.target.value || 2))) })} className="h-6 w-12 border-slate-200 px-1" disabled={!canEdit} />
+            </>
+          )}
+          {selectedTextStyle && isTextEditable(selectedItem) && (
+            <>
+              <span className="text-slate-500">Testo</span>
+              <select className="h-6 rounded border border-slate-200 bg-white px-1 text-xs" value={selectedTextStyle.fontFamily} onChange={(e) => updateItem(selectedItem.id, { textStyle: { ...selectedTextStyle, fontFamily: e.target.value } })} disabled={!canEdit || isLockedByOther(selectedItem.id)}>
+                <option value="Inter, system-ui, sans-serif">Inter</option>
+                <option value="Arial, sans-serif">Arial</option>
+                <option value="Georgia, serif">Georgia</option>
+                <option value="'Courier New', monospace">Courier</option>
+              </select>
+              <Input type="number" min={10} max={48} value={selectedTextStyle.fontSize} onChange={(e) => updateItem(selectedItem.id, { textStyle: { ...selectedTextStyle, fontSize: Math.max(10, Math.min(48, Number(e.target.value || 14))) } })} className="h-6 w-14 border-slate-200 px-1 text-xs" disabled={!canEdit || isLockedByOther(selectedItem.id)} />
+              <button type="button" onClick={() => updateItem(selectedItem.id, { textStyle: { ...selectedTextStyle, fontWeight: selectedTextStyle.fontWeight === '600' ? 'normal' : '600' } })} className={`h-6 w-6 rounded border text-xs font-bold ${selectedTextStyle.fontWeight === '600' ? 'border-slate-800 bg-slate-800 text-white' : 'border-slate-200 bg-white'}`} disabled={!canEdit || isLockedByOther(selectedItem.id)}>B</button>
+              <button type="button" onClick={() => updateItem(selectedItem.id, { textStyle: { ...selectedTextStyle, fontStyle: selectedTextStyle.fontStyle === 'italic' ? 'normal' : 'italic' } })} className={`h-6 w-6 rounded border text-xs italic ${selectedTextStyle.fontStyle === 'italic' ? 'border-slate-800 bg-slate-800 text-white' : 'border-slate-200 bg-white'}`} disabled={!canEdit || isLockedByOther(selectedItem.id)}>I</button>
+              {selectedItem.type === 'postit' && (
+                <div className="flex gap-1">
+                  {POSTIT_PALETTE.map((c) => (
+                    <button key={c} type="button" onClick={() => updateItem(selectedItem.id, { color: c })} className={`h-5 w-5 rounded border-2 ${selectedItem.color === c ? 'border-slate-800 scale-110' : 'border-transparent'}`} style={{ background: c }} />
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+          {canEdit && (
+            <button type="button" onClick={deleteSelected} className="ml-auto flex h-6 items-center gap-1 rounded px-2 text-red-500 hover:bg-red-50">
+              <Trash2 className="h-3.5 w-3.5" /> Elimina
+            </button>
           )}
         </div>
       )}
 
-      <div
-        ref={canvasRef}
-        className="relative flex-1 overflow-auto bg-white"
-        style={{
-          backgroundImage:
-            'radial-gradient(circle at 1px 1px, rgba(148,163,184,0.35) 1px, transparent 0)',
-          backgroundSize: '20px 20px',
-        }}
-        onClick={onCanvasClick}
-        onMouseMove={onMouseMove}
-        onMouseUp={onMouseUp}
-        onMouseLeave={onMouseUp}
-        onMouseDown={onMouseDownDraw}
-        onDragEnter={(e) => {
-          e.preventDefault()
-          if (canEdit) setIsDropActive(true)
-        }}
-        onDragLeave={(e) => {
-          if (!e.currentTarget.contains(e.relatedTarget as Node)) setIsDropActive(false)
-        }}
-        onDragOver={(e) => {
-          e.preventDefault()
-          if (canEdit) {
-            e.dataTransfer.dropEffect = 'copy'
-            setIsDropActive(true)
-          }
-        }}
-        onDrop={handleDropFiles}
-      >
-        <svg className="pointer-events-none absolute inset-0 h-full w-full">
-          <defs>
-            <marker id="canvas-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
-              <path d="M 0 0 L 10 5 L 0 10 z" fill="context-stroke" />
-            </marker>
-          </defs>
-          {canvasDoc.items.filter((item) => item.type === 'connector').map((item) => renderConnector(item as Extract<CanvasItem, { type: 'connector' }>))}
-          {canvasDoc.items.filter((item) => item.type === 'path').map((item) => renderPath(item as Extract<CanvasItem, { type: 'path' }>))}
-          {renderConnectorPreview()}
-          {previewPoints.length > 1 && (
-            <path
-              d={previewPoints.map((p, idx) => `${idx === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ')}
-              stroke={strokeColor}
-              strokeWidth={strokeWidth}
-              fill="none"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          )}
-        </svg>
-        {isDropActive && canEdit && (
-          <div className="pointer-events-none absolute inset-4 z-20 rounded-xl border-2 border-dashed border-blue-400 bg-blue-50/70">
-            <div className="flex h-full items-center justify-center text-sm font-medium text-blue-700">Rilascia qui immagini o file</div>
+      {/* ── Main area ────────────────────────────────────────────────────── */}
+      <div className="flex min-h-0 flex-1">
+        {/* Left tool panel */}
+        {canEdit && (
+          <div className="flex w-11 shrink-0 flex-col items-center gap-0.5 border-r border-slate-200 bg-white py-2">
+            <ToolButton activeTool={tool} t="select" icon={MousePointer} label="Seleziona (V)" onSetTool={setTool} />
+            <div className="my-0.5 h-px w-7 bg-slate-200" />
+            <ToolButton activeTool={tool} t="postit" icon={StickyNote} label="Post-it (P)" onSetTool={setTool} />
+            <ToolButton activeTool={tool} t="frame" icon={Frame} label="Frame (F)" onSetTool={setTool} />
+            <ToolButton activeTool={tool} t="text" icon={Type} label="Testo (T)" onSetTool={setTool} />
+            <div className="my-0.5 h-px w-7 bg-slate-200" />
+            <ToolButton activeTool={tool} t="roundedRect" icon={RectangleHorizontal} label="Rettangolo (R)" onSetTool={setTool} />
+            <ToolButton activeTool={tool} t="triangle" icon={Triangle} label="Triangolo" onSetTool={setTool} />
+            <ToolButton activeTool={tool} t="parallelogram" icon={() => <span className="text-xs leading-none">▱</span>} label="Parallelogramma" onSetTool={setTool} />
+            <div className="my-0.5 h-px w-7 bg-slate-200" />
+            <ToolButton activeTool={tool} t="connector" icon={MoveRight} label="Connettore (C)" onSetTool={setTool} />
+            <ToolButton activeTool={tool} t="pen" icon={Pencil} label="Penna (D)" onSetTool={setTool} />
+            <div className="my-0.5 h-px w-7 bg-slate-200" />
+            <button type="button" title="Elimina selezionato (Del)" onClick={deleteSelected} disabled={!selectedId} className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-red-50 hover:text-red-500 disabled:opacity-30">
+              <Eraser className="h-4 w-4" />
+            </button>
+
+            {/* Pen color/width (only when pen tool active) */}
+            {tool === 'pen' && (
+              <>
+                <div className="my-0.5 h-px w-7 bg-slate-200" />
+                <Input type="color" value={strokeColor} onChange={(e) => setStrokeColor(e.target.value)} className="h-7 w-7 cursor-pointer rounded border-slate-200 p-0.5" title="Colore penna" />
+                <Input type="number" min={1} max={14} value={strokeWidth} onChange={(e) => setStrokeWidth(Number(e.target.value || 3))} className="h-7 w-9 border-slate-200 px-1 text-center text-xs" title="Spessore" />
+              </>
+            )}
+
+            {/* Post-it color (when postit tool active) */}
+            {tool === 'postit' && (
+              <>
+                <div className="my-0.5 h-px w-7 bg-slate-200" />
+                {POSTIT_PALETTE.slice(0, 4).map((c) => (
+                  <button key={c} type="button" onClick={() => setNewPostitColor(c)} className={`mb-0.5 h-6 w-6 rounded border-2 ${newPostitColor === c ? 'border-slate-700' : 'border-transparent'}`} style={{ background: c }} />
+                ))}
+              </>
+            )}
+
+            {/* Shape color (when shape tool active) */}
+            {(tool === 'roundedRect' || tool === 'triangle' || tool === 'parallelogram') && (
+              <>
+                <div className="my-0.5 h-px w-7 bg-slate-200" />
+                <Input type="color" value={newShapeFill} onChange={(e) => setNewShapeFill(e.target.value)} className="h-7 w-7 cursor-pointer rounded border-slate-200 p-0.5" title="Riempimento" />
+                <Input type="color" value={newShapeStroke} onChange={(e) => setNewShapeStroke(e.target.value)} className="h-7 w-7 cursor-pointer rounded border-slate-200 p-0.5" title="Bordo" />
+              </>
+            )}
           </div>
         )}
 
-        {canvasDoc.items
-          .filter((item) => item.type !== 'path' && item.type !== 'connector')
-          .map((item) => {
-            const lockedByOther = isLockedByOther(item.id)
-            const isEditing = editingId === item.id
-            return (
-              <div
-                key={item.id}
-                className={`absolute ${selectedId === item.id ? 'ring-2 ring-blue-500' : ''} ${lockedByOther ? 'opacity-70' : ''}`}
-                style={{
-                  left: isPositioned(item) ? item.x : 0,
-                  top: isPositioned(item) ? item.y : 0,
-                  width: isPositioned(item) ? item.w : 0,
-                  height: isPositioned(item) ? item.h : 0,
-                }}
-                onMouseDown={(e) => onMouseDownItem(e, item)}
-                onDoubleClick={() => {
-                  if (!canEdit || lockedByOther) return
-                  if (item.type === 'postit' || item.type === 'frame' || item.type === 'text') {
-                    setEditingId(item.id)
-                    setSelectedId(item.id)
-                  }
-                }}
-              >
-                {item.type === 'postit' && (
-                  <textarea
-                    value={item.text}
-                    onFocus={() => emitLock(item.id)}
-                    onBlur={() => emitUnlock(item.id)}
-                    onChange={(e) => updateItem(item.id, { text: e.target.value })}
-                    className="h-full w-full resize-none rounded-md border-0 p-2 text-sm shadow"
-                    style={{
-                      background: item.color,
-                      fontFamily: item.textStyle?.fontFamily || DEFAULT_TEXT_STYLE.fontFamily,
-                      fontSize: `${item.textStyle?.fontSize || DEFAULT_TEXT_STYLE.fontSize}px`,
-                      fontWeight: item.textStyle?.fontWeight || DEFAULT_TEXT_STYLE.fontWeight,
-                      fontStyle: item.textStyle?.fontStyle || DEFAULT_TEXT_STYLE.fontStyle,
-                    }}
-                    disabled={!canEdit || lockedByOther}
-                    readOnly={!isEditing}
-                    autoFocus={isEditing}
-                    onBlurCapture={() => setEditingId((prev) => (prev === item.id ? null : prev))}
-                  />
-                )}
+        {/* Canvas container */}
+        <div
+          ref={containerRef}
+          className="relative flex-1 overflow-hidden bg-slate-50"
+          style={{ cursor }}
+          onMouseDown={onContainerMouseDown}
+          onMouseMove={onMouseMove}
+          onMouseUp={onMouseUp}
+          onMouseLeave={onMouseUp}
+          onClick={onCanvasClick}
+          onWheel={onWheel}
+          onDragEnter={(e) => { e.preventDefault(); if (canEdit) setIsDropActive(true) }}
+          onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setIsDropActive(false) }}
+          onDragOver={(e) => { e.preventDefault(); if (canEdit) { e.dataTransfer.dropEffect = 'copy'; setIsDropActive(true) } }}
+          onDrop={handleDropFiles}
+        >
+          {/* World layer */}
+          <div
+            style={{
+              transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
+              transformOrigin: '0 0',
+              position: 'absolute',
+              width: WORLD_W,
+              height: WORLD_H,
+              backgroundImage: 'radial-gradient(circle at 1px 1px, rgba(148,163,184,0.3) 1px, transparent 0)',
+              backgroundSize: '24px 24px',
+            }}
+          >
+            {/* SVG: connectors & paths */}
+            <svg className="pointer-events-none absolute inset-0 h-full w-full">
+              <defs>
+                <marker id="canvas-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                  <path d="M 0 0 L 10 5 L 0 10 z" fill="context-stroke" />
+                </marker>
+              </defs>
+              {canvasDoc.items.filter(isConnector).map((item) => renderConnector(item as Extract<CanvasItem, { type: 'connector' }>))}
+              {canvasDoc.items.filter(isPath).map((item) => renderPath(item as Extract<CanvasItem, { type: 'path' }>))}
+              {renderConnectorPreview()}
+              {previewPoints.length > 1 && (
+                <path d={previewPoints.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ')} stroke={strokeColor} strokeWidth={strokeWidth} fill="none" strokeLinecap="round" strokeLinejoin="round" />
+              )}
+            </svg>
 
-                {item.type === 'frame' && (
-                  <div className="flex h-full w-full flex-col rounded-md border-2 border-dashed bg-white/75" style={{ borderColor: item.color }}>
-                    <input
+            {/* Items */}
+            {canvasDoc.items.filter((item) => !isPath(item) && !isConnector(item)).map((item) => {
+              const lockedByOther = isLockedByOther(item.id)
+              const isEditing = editingId === item.id
+              if (!isPositioned(item)) return null
+              return (
+                <div
+                  key={item.id}
+                  className={`absolute ${selectedId === item.id ? 'ring-2 ring-blue-500 ring-offset-1' : ''} ${lockedByOther ? 'opacity-60' : ''}`}
+                  style={{ left: item.x, top: item.y, width: item.w, height: item.h }}
+                  onMouseDown={(e) => onMouseDownItem(e, item)}
+                  onDoubleClick={() => {
+                    if (!canEdit || lockedByOther) return
+                    if (isTextEditable(item)) { setEditingId(item.id); setSelectedId(item.id) }
+                  }}
+                >
+                  {item.type === 'postit' && (
+                    <textarea
                       value={item.text}
                       onFocus={() => emitLock(item.id)}
-                    onBlur={() => emitUnlock(item.id)}
-                    onChange={(e) => updateItem(item.id, { text: e.target.value })}
-                    className="w-full border-b border-dashed bg-transparent px-2 py-1 text-xs"
-                    style={{
-                      fontFamily: item.textStyle?.fontFamily || DEFAULT_TEXT_STYLE.fontFamily,
-                      fontSize: `${item.textStyle?.fontSize || 12}px`,
-                      fontWeight: item.textStyle?.fontWeight || DEFAULT_TEXT_STYLE.fontWeight,
-                      fontStyle: item.textStyle?.fontStyle || DEFAULT_TEXT_STYLE.fontStyle,
-                    }}
-                    disabled={!canEdit || lockedByOther}
-                    readOnly={!isEditing}
-                    autoFocus={isEditing}
-                    onBlurCapture={() => setEditingId((prev) => (prev === item.id ? null : prev))}
-                  />
+                      onBlur={() => emitUnlock(item.id)}
+                      onChange={(e) => updateItem(item.id, { text: e.target.value })}
+                      className="h-full w-full resize-none rounded-md p-2 text-sm shadow-sm"
+                      style={{ background: item.color, fontFamily: item.textStyle?.fontFamily || DEFAULT_TEXT_STYLE.fontFamily, fontSize: `${item.textStyle?.fontSize || 14}px`, fontWeight: item.textStyle?.fontWeight || 'normal', fontStyle: item.textStyle?.fontStyle || 'normal', border: 'none', outline: 'none' }}
+                      disabled={!canEdit || lockedByOther}
+                      readOnly={!isEditing}
+                      autoFocus={isEditing}
+                      onBlurCapture={() => setEditingId((prev) => (prev === item.id ? null : prev))}
+                    />
+                  )}
+
+                  {item.type === 'frame' && (
+                    <div className="flex h-full w-full flex-col rounded-md border-2 border-dashed bg-white/60 backdrop-blur-sm" style={{ borderColor: item.color }}>
+                      <input
+                        value={item.text}
+                        onFocus={() => emitLock(item.id)}
+                        onBlur={() => emitUnlock(item.id)}
+                        onChange={(e) => updateItem(item.id, { text: e.target.value })}
+                        className="w-full border-b border-dashed bg-transparent px-2 py-1 text-xs font-semibold"
+                        style={{ borderColor: item.color, color: item.color, fontFamily: item.textStyle?.fontFamily || DEFAULT_TEXT_STYLE.fontFamily, fontSize: `${item.textStyle?.fontSize || 12}px`, fontWeight: item.textStyle?.fontWeight || '600', fontStyle: item.textStyle?.fontStyle || 'normal', outline: 'none' }}
+                        disabled={!canEdit || lockedByOther}
+                        readOnly={!isEditing}
+                        autoFocus={isEditing}
+                        onBlurCapture={() => setEditingId((prev) => (prev === item.id ? null : prev))}
+                      />
+                    </div>
+                  )}
+
+                  {item.type === 'text' && (
+                    <textarea
+                      value={item.text}
+                      onFocus={() => emitLock(item.id)}
+                      onBlur={() => emitUnlock(item.id)}
+                      onChange={(e) => updateItem(item.id, { text: e.target.value })}
+                      className="h-full w-full resize-none rounded bg-transparent p-2 text-sm"
+                      style={{ color: item.color, fontFamily: item.textStyle?.fontFamily || DEFAULT_TEXT_STYLE.fontFamily, fontSize: `${item.textStyle?.fontSize || 14}px`, fontWeight: item.textStyle?.fontWeight || 'normal', fontStyle: item.textStyle?.fontStyle || 'normal', border: 'none', outline: 'none' }}
+                      disabled={!canEdit || lockedByOther}
+                      readOnly={!isEditing}
+                      autoFocus={isEditing}
+                      onBlurCapture={() => setEditingId((prev) => (prev === item.id ? null : prev))}
+                    />
+                  )}
+
+                  {item.type === 'shape' && (
+                    <>
+                      <svg className="h-full w-full overflow-visible" viewBox={`0 0 ${item.w} ${item.h}`}>
+                        {item.shape === 'rounded-rect' && <rect x="3" y="3" width={Math.max(item.w - 6, 1)} height={Math.max(item.h - 6, 1)} rx="16" ry="16" fill={item.fill} stroke={item.stroke} strokeWidth="2.5" />}
+                        {item.shape === 'triangle' && <polygon points={`${item.w / 2},4 ${item.w - 4},${item.h - 4} 4,${item.h - 4}`} fill={item.fill} stroke={item.stroke} strokeWidth="2.5" />}
+                        {item.shape === 'parallelogram' && <polygon points={`24,4 ${item.w - 4},4 ${item.w - 24},${item.h - 4} 4,${item.h - 4}`} fill={item.fill} stroke={item.stroke} strokeWidth="2.5" />}
+                      </svg>
+                      {canEdit && ANCHORS.map((anchor) => {
+                        const isSource = connectorDrag?.fromId === item.id && connectorDrag.fromAnchor === anchor
+                        const isHoverTarget = connectorDrag?.hoverTarget?.id === item.id && connectorDrag.hoverTarget.anchor === anchor
+                        const pointStyle: React.CSSProperties =
+                          anchor === 'top' ? { left: '50%', top: 0, transform: 'translate(-50%,-50%)' } :
+                          anchor === 'right' ? { right: 0, top: '50%', transform: 'translate(50%,-50%)' } :
+                          anchor === 'bottom' ? { left: '50%', bottom: 0, transform: 'translate(-50%,50%)' } :
+                          { left: 0, top: '50%', transform: 'translate(-50%,-50%)' }
+                        return (
+                          <button
+                            key={`${item.id}-${anchor}`}
+                            type="button"
+                            className={`absolute h-3.5 w-3.5 rounded-full border shadow-sm ${isSource ? 'border-blue-600 bg-blue-500' : isHoverTarget ? 'border-blue-500 bg-blue-100' : 'border-slate-400 bg-white'}`}
+                            style={pointStyle}
+                            onMouseDown={(e) => {
+                              e.stopPropagation()
+                              if (!canEdit) return
+                              if (tool !== 'connector') setTool('connector')
+                              setConnectorDrag({ fromId: item.id, fromAnchor: anchor, toPoint: getAnchorPoint(item, anchor) })
+                            }}
+                            onMouseEnter={() => setConnectorDrag((prev) => prev ? (prev.fromId === item.id && prev.fromAnchor === anchor ? prev : { ...prev, hoverTarget: { id: item.id, anchor } }) : prev)}
+                            onMouseLeave={() => setConnectorDrag((prev) => prev?.hoverTarget?.id === item.id && prev.hoverTarget.anchor === anchor ? { ...prev, hoverTarget: undefined } : prev)}
+                          />
+                        )
+                      })}
+                    </>
+                  )}
+
+                  {item.type === 'image' && <img src={item.src} alt="" className="h-full w-full rounded-md object-cover shadow-sm" draggable={false} />}
+
+                  {item.type === 'table' && (
+                    <div className="h-full w-full overflow-auto rounded-md border border-slate-200 bg-white shadow-sm">
+                      <table className="min-w-full border-collapse text-xs">
+                        <tbody>
+                          {item.data.map((row, ri) => (
+                            <tr key={`${item.id}-r${ri}`}>
+                              {row.map((cell, ci) => <td key={`${item.id}-c${ri}-${ci}`} className="border border-slate-100 px-1 py-0.5">{cell}</td>)}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+
+                  {/* Resize handle */}
+                  {canEdit && !lockedByOther && (item.type === 'postit' || item.type === 'frame' || item.type === 'text' || item.type === 'shape' || item.type === 'image') && (
+                    <button
+                      type="button"
+                      className="absolute bottom-0.5 right-0.5 h-3 w-3 cursor-se-resize rounded-sm border border-slate-400 bg-white/80 shadow"
+                      onMouseDown={(e) => {
+                        e.stopPropagation()
+                        if (!isPositioned(item) || isLockedByOther(item.id)) return
+                        beginInteraction(); emitLock(item.id)
+                        draggingRef.current = null
+                        resizingRef.current = { id: item.id, startX: e.clientX, startY: e.clientY, startW: item.w, startH: item.h }
+                      }}
+                      title="Ridimensiona"
+                    />
+                  )}
+
+                  {/* Lock badge */}
+                  {lockedByOther && (
+                    <div className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-md bg-slate-100/40">
+                      <span className="rounded bg-slate-700/70 px-1.5 py-0.5 text-xs text-white">In uso</span>
+                    </div>
+                  )}
                 </div>
-                )}
+              )
+            })}
+          </div>
 
-                {item.type === 'text' && (
-                  <textarea
-                    value={item.text}
-                    onFocus={() => emitLock(item.id)}
-                    onBlur={() => emitUnlock(item.id)}
-                    onChange={(e) => updateItem(item.id, { text: e.target.value })}
-                    className="h-full w-full resize-none rounded-md border border-slate-300 bg-white p-2 text-sm"
-                    style={{
-                      color: item.color,
-                      fontFamily: item.textStyle?.fontFamily || DEFAULT_TEXT_STYLE.fontFamily,
-                      fontSize: `${item.textStyle?.fontSize || DEFAULT_TEXT_STYLE.fontSize}px`,
-                      fontWeight: item.textStyle?.fontWeight || DEFAULT_TEXT_STYLE.fontWeight,
-                      fontStyle: item.textStyle?.fontStyle || DEFAULT_TEXT_STYLE.fontStyle,
-                    }}
-                    disabled={!canEdit || lockedByOther}
-                    readOnly={!isEditing}
-                    autoFocus={isEditing}
-                    onBlurCapture={() => setEditingId((prev) => (prev === item.id ? null : prev))}
-                  />
-                )}
-
-                {item.type === 'shape' && (
-                  <>
-                    <svg className="h-full w-full overflow-visible rounded-md" viewBox={`0 0 ${item.w} ${item.h}`}>
-                      {item.shape === 'rounded-rect' && (
-                        <rect x="3" y="3" width={Math.max(item.w - 6, 1)} height={Math.max(item.h - 6, 1)} rx="18" ry="18" fill={item.fill} stroke={item.stroke} strokeWidth="2.5" />
-                      )}
-                      {item.shape === 'triangle' && (
-                        <polygon points={`${item.w / 2},4 ${item.w - 4},${item.h - 4} 4,${item.h - 4}`} fill={item.fill} stroke={item.stroke} strokeWidth="2.5" />
-                      )}
-                      {item.shape === 'parallelogram' && (
-                        <polygon points={`24,4 ${item.w - 4},4 ${item.w - 24},${item.h - 4} 4,${item.h - 4}`} fill={item.fill} stroke={item.stroke} strokeWidth="2.5" />
-                      )}
-                    </svg>
-                    {canEdit && ANCHORS.map((anchor) => {
-                      const isSource = connectorDrag?.fromId === item.id && connectorDrag.fromAnchor === anchor
-                      const isHoverTarget = connectorDrag?.hoverTarget?.id === item.id && connectorDrag.hoverTarget.anchor === anchor
-                      const pointStyle: React.CSSProperties =
-                        anchor === 'top'
-                          ? { left: '50%', top: '0', transform: 'translate(-50%, -50%)' }
-                          : anchor === 'right'
-                            ? { right: '0', top: '50%', transform: 'translate(50%, -50%)' }
-                            : anchor === 'bottom'
-                              ? { left: '50%', bottom: '0', transform: 'translate(-50%, 50%)' }
-                              : { left: '0', top: '50%', transform: 'translate(-50%, -50%)' }
-
-                      return (
-                        <button
-                          key={`${item.id}-${anchor}`}
-                          type="button"
-                          className={`absolute h-3.5 w-3.5 rounded-full border shadow-sm ${isSource ? 'border-blue-600 bg-blue-500' : isHoverTarget ? 'border-blue-500 bg-blue-100' : 'border-slate-500 bg-white'}`}
-                          style={pointStyle}
-                          onMouseDown={(e) => {
-                            e.stopPropagation()
-                            if (!canEdit) return
-                            if (tool !== 'connector') setTool('connector')
-                            const point = getAnchorPoint(item, anchor)
-                            setConnectorDrag({
-                              fromId: item.id,
-                              fromAnchor: anchor,
-                              toPoint: point,
-                            })
-                          }}
-                          onMouseEnter={() => {
-                            setConnectorDrag((prev) => {
-                              if (!prev) return prev
-                              if (prev.fromId === item.id && prev.fromAnchor === anchor) return prev
-                              return { ...prev, hoverTarget: { id: item.id, anchor } }
-                            })
-                          }}
-                          onMouseLeave={() => {
-                            setConnectorDrag((prev) => {
-                              if (!prev?.hoverTarget) return prev
-                              if (prev.hoverTarget.id !== item.id || prev.hoverTarget.anchor !== anchor) return prev
-                              return { ...prev, hoverTarget: undefined }
-                            })
-                          }}
-                          title={`Collega: ${anchor}`}
-                        />
-                      )
-                    })}
-                  </>
-                )}
-
-                {item.type === 'image' && (
-                  <img src={item.src} alt="canvas" className="h-full w-full rounded-md object-cover shadow" draggable={false} />
-                )}
-
-                {item.type === 'table' && (
-                  <div className="h-full w-full overflow-auto rounded-md border bg-white">
-                    <table className="min-w-full border-collapse text-xs">
-                      <tbody>
-                        {item.data.map((row, rowIdx) => (
-                          <tr key={`${item.id}-r-${rowIdx}`}>
-                            {row.map((cell, colIdx) => (
-                              <td key={`${item.id}-c-${rowIdx}-${colIdx}`} className="border px-1 py-0.5">
-                                {cell}
-                              </td>
-                            ))}
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-                {canEdit && (item.type === 'postit' || item.type === 'frame' || item.type === 'text' || item.type === 'shape' || item.type === 'image') && !lockedByOther && (
-                  <button
-                    type="button"
-                    className="absolute bottom-1 right-1 h-3 w-3 cursor-se-resize rounded-sm border border-slate-500 bg-white/90 shadow-sm"
-                    onMouseDown={(e) => {
-                      e.stopPropagation()
-                      if (!isPositioned(item)) return
-                      if (isLockedByOther(item.id)) return
-                      beginInteraction()
-                      emitLock(item.id)
-                      draggingRef.current = null
-                      resizingRef.current = {
-                        id: item.id,
-                        startX: e.clientX,
-                        startY: e.clientY,
-                        startW: item.w,
-                        startH: item.h,
-                      }
-                    }}
-                    title="Ridimensiona"
-                  />
-                )}
+          {/* Drop overlay */}
+          {isDropActive && canEdit && (
+            <div className="pointer-events-none absolute inset-4 z-20 flex items-center justify-center rounded-xl border-2 border-dashed border-blue-400 bg-blue-50/80">
+              <div className="flex items-center gap-2 text-sm font-medium text-blue-700">
+                <ImagePlus className="h-4 w-4" />
+                Rilascia immagini o file CSV/XLSX
+                <Table className="h-4 w-4" />
               </div>
-            )
-          })}
+            </div>
+          )}
+
+          {/* Connector hint */}
+          {tool === 'connector' && connectorDrag && (
+            <div className="pointer-events-none absolute left-1/2 top-3 -translate-x-1/2 rounded-full bg-slate-800/80 px-3 py-1 text-xs text-white">
+              Trascina verso un punto di connessione
+            </div>
+          )}
+
+          {/* Read-only badge for students */}
+          {!canEdit && role === 'student' && !studentsCanWrite && (
+            <div className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs text-slate-500 shadow-sm">
+              Solo visualizzazione
+            </div>
+          )}
+
+          {/* Connection status + zoom HUD */}
+          <div className="absolute bottom-3 right-3 flex items-center gap-1.5">
+            <span className={`h-2 w-2 rounded-full ${socketConnected ? 'bg-green-400' : 'bg-amber-400'}`} title={socketConnected ? 'Connesso in tempo reale' : 'Modalità polling'} />
+            <span className="text-xs text-slate-400">{Math.round(zoom * 100)}%</span>
+          </div>
+        </div>
       </div>
+
+      {/* ── Templates modal ─────────────────────────────────────────────── */}
+      {showTemplates && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 p-4" onClick={() => setShowTemplates(false)}>
+          <div className="w-full max-w-2xl rounded-2xl bg-white shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="border-b px-5 py-4">
+              <h2 className="text-base font-semibold text-slate-800">Scegli un template</h2>
+              <p className="text-sm text-slate-500">Il contenuto attuale della lavagna sarà sostituito.</p>
+            </div>
+            <div className="grid grid-cols-2 gap-3 p-5 sm:grid-cols-3">
+              {/* Blank */}
+              <button
+                type="button"
+                onClick={() => applyTemplate(EMPTY_CANVAS)}
+                className="flex flex-col items-center gap-2 rounded-xl border-2 border-dashed border-slate-200 p-4 text-center transition-colors hover:border-slate-400 hover:bg-slate-50"
+              >
+                <span className="text-2xl">📄</span>
+                <span className="text-sm font-medium text-slate-700">Lavagna vuota</span>
+                <span className="text-xs text-slate-400">Inizia da zero</span>
+              </button>
+              {TEMPLATES.map((tpl) => (
+                <button
+                  key={tpl.id}
+                  type="button"
+                  onClick={() => applyTemplate(tpl.create())}
+                  className="flex flex-col items-center gap-2 rounded-xl border-2 border-slate-100 p-4 text-center transition-colors hover:border-blue-300 hover:bg-blue-50"
+                >
+                  <span className="text-2xl">{tpl.emoji}</span>
+                  <span className="text-sm font-medium text-slate-700">{tpl.name}</span>
+                  <span className="text-xs text-slate-400">{tpl.description}</span>
+                </button>
+              ))}
+            </div>
+            <div className="border-t px-5 py-3 text-right">
+              <Button variant="ghost" size="sm" onClick={() => setShowTemplates(false)}>Annulla</Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Share / permissions modal ────────────────────────────────────── */}
+      {showShare && role === 'teacher' && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 p-4" onClick={() => setShowShare(false)}>
+          <div className="w-full max-w-sm rounded-2xl bg-white shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="border-b px-5 py-4">
+              <h2 className="text-base font-semibold text-slate-800">Condivisione lavagna</h2>
+            </div>
+            <div className="space-y-4 p-5">
+              <div className="rounded-lg bg-slate-50 p-3 text-sm text-slate-600">
+                <span className="font-medium text-slate-800">📺 Visibile agli studenti</span><br />
+                La lavagna è sempre visibile agli studenti della sessione attiva.
+              </div>
+              <div className="flex items-center justify-between gap-4 rounded-lg border border-slate-200 p-3">
+                <div>
+                  <p className="text-sm font-medium text-slate-800">Studenti possono modificare</p>
+                  <p className="text-xs text-slate-500">Permetti agli studenti di aggiungere e modificare elementi</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={toggleStudentsCanWrite}
+                  className={`flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${studentsCanWrite ? 'bg-green-500' : 'bg-slate-300'}`}
+                >
+                  <span className={`mx-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${studentsCanWrite ? 'translate-x-5' : 'translate-x-0'}`} />
+                </button>
+              </div>
+              {studentsCanWrite && (
+                <div className="flex items-center gap-2 rounded-lg bg-green-50 p-3 text-sm text-green-700">
+                  <Check className="h-4 w-4 shrink-0" />
+                  Gli studenti possono ora modificare la lavagna in tempo reale.
+                </div>
+              )}
+            </div>
+            <div className="border-t px-5 py-3 text-right">
+              <Button variant="ghost" size="sm" onClick={() => setShowShare(false)}>Chiudi</Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

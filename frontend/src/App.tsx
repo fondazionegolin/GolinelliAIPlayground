@@ -11,6 +11,7 @@ import TeacherRequestPage from '@/pages/TeacherRequestPage'
 import ActivatePage from '@/pages/ActivatePage'
 import ResetPasswordPage from '@/pages/ResetPasswordPage'
 import PrivacyPage from '@/pages/PrivacyPage'
+import TermsPage from '@/pages/TermsPage'
 
 const AdminDashboard = lazy(() => import('@/pages/admin/AdminDashboard'))
 const TeacherDashboard = lazy(() => import('@/pages/teacher/TeacherDashboard'))
@@ -48,6 +49,7 @@ function App() {
           <Route path="/login" element={<LandingPage />} />
           <Route path="/join" element={<StudentJoinPage />} />
           <Route path="/privacy" element={<PrivacyPage />} />
+          <Route path="/terms" element={<TermsPage />} />
           <Route path="/teacher-request" element={<TeacherRequestPage />} />
           <Route path="/activate/:token" element={<ActivatePage />} />
           <Route path="/reset-password/:token" element={<ResetPasswordPage />} />

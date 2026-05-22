@@ -289,6 +289,13 @@ export default function LandingPage() {
             >
               AI Act
             </button>
+            <span className="text-slate-300">•</span>
+            <Link
+              to="/terms"
+              className="text-slate-400 hover:text-[#e85c8d] transition-colors underline underline-offset-2"
+            >
+              Termini
+            </Link>
           </span>
         </p>
       </footer>

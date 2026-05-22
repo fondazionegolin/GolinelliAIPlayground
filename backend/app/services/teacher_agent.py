@@ -830,13 +830,22 @@ async def generate_exercise_with_tools(
 
     for iteration in range(max_iterations):
         try:
-            response = await client.chat.completions.create(
-                model=model,
-                messages=full_messages,
-                tools=EXERCISE_TOOLS,
-                tool_choice="auto",
-                temperature=0.7,
-            )
+            # GPT-5 and o-series models don't support custom temperature
+            if model.startswith("gpt-5") or model.startswith("o1") or model.startswith("o3"):
+                response = await client.chat.completions.create(
+                    model=model,
+                    messages=full_messages,
+                    tools=EXERCISE_TOOLS,
+                    tool_choice="auto",
+                )
+            else:
+                response = await client.chat.completions.create(
+                    model=model,
+                    messages=full_messages,
+                    tools=EXERCISE_TOOLS,
+                    tool_choice="auto",
+                    temperature=0.7,
+                )
 
             message = response.choices[0].message
 

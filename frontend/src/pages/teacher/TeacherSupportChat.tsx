@@ -54,6 +54,7 @@ const AGENT_MODES = [
   // { id: 'web_search', label: 'Web Search' },  // Hidden - not mature yet
   { id: 'report', label: 'Report' },
   { id: 'quiz', label: 'Quiz' },
+  { id: 'exercise', label: 'Esercizio' },
   { id: 'image', label: 'Immagine' },
   { id: 'dataset', label: 'Dataset' },
   { id: 'analysis', label: 'Analisi' },
@@ -64,6 +65,8 @@ const AGENT_MODES = [
 
 // Explicitly include hidden modes in type even though they're hidden from UI
 type AgentMode = typeof AGENT_MODES[number]['id'] | 'web_search' | 'brochure' | 'dispensa'
+type PublishContentType = 'quiz' | 'dataset' | 'lesson' | 'exercise'
+type EditableContentType = 'quiz' | 'lesson' | 'exercise'
 // Width below which the chat history sidebar auto-collapses.
 // Increase this value if you want earlier collapse.
 const CHAT_HISTORY_COLLAPSE_BREAKPOINT = 1360
@@ -94,6 +97,15 @@ interface LessonData {
   title: string
   description?: string
   content: string
+}
+
+interface ExerciseData {
+  title: string
+  description?: string
+  instructions: string
+  examples?: string[]
+  difficulty?: 'easy' | 'medium' | 'hard'
+  hint?: string
 }
 
 interface Message {
@@ -627,15 +639,15 @@ export default function TeacherSupportChat() {
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   // Publish Modal State
-  const [publishModal, setPublishModal] = useState<{ isOpen: boolean, type: 'quiz' | 'dataset' | 'lesson', data: any }>({
+  const [publishModal, setPublishModal] = useState<{ isOpen: boolean, type: PublishContentType, data: any }>({
     isOpen: false,
     type: 'quiz',
     data: null
   })
   const [publishMode, setPublishMode] = useState<'published' | 'draft'>('published')
 
-  // Editor Modal State (for editing quiz before publishing)
-  const [editorModal, setEditorModal] = useState<{ isOpen: boolean, type: 'quiz' | 'dataset' | 'lesson', data: any }>({
+  // Editor Modal State (for editing generated content before publishing)
+  const [editorModal, setEditorModal] = useState<{ isOpen: boolean, type: EditableContentType, data: any }>({
     isOpen: false,
     type: 'quiz',
     data: null
@@ -1696,6 +1708,7 @@ export default function TeacherSupportChat() {
         report: 'GENERA REPORT:',
         dataset: 'GENERA DATASET:',
         quiz: 'GENERA QUIZ:',
+        exercise: 'GENERA ESERCIZIO:',
       }
       const prefix = prefixes[agentMode]
       if (prefix && !messageContent.startsWith(prefix)) {
@@ -2009,7 +2022,7 @@ REGOLE IMPORTANTI:
         } finally {
           setIsGeneratingDoc(false)
         }
-      } else if (agentMode === 'web_search' || agentMode === 'quiz' || agentMode === 'dataset' || agentMode === 'report') {
+      } else if (agentMode === 'web_search' || agentMode === 'quiz' || agentMode === 'exercise' || agentMode === 'dataset' || agentMode === 'report') {
         const streamResult = await runStreamingRequest(llmContent, [...messages, userMessage])
         let assistantContent = streamResult.content
         const shouldBuildReportArtifact = agentMode === 'report'
@@ -2247,6 +2260,9 @@ REGOLE IMPORTANTI:
     if (mode === 'quiz') {
       return 'Sei in modalità **Quiz**. Descrivi il quiz che vuoi generare: argomento, numero di domande, opzioni per domanda, livello di difficoltà.'
     }
+    if (mode === 'exercise') {
+      return 'Sei in modalità **Esercizio**. Descrivi l\'esercizio che vuoi generare: argomento, consegna, livello di difficoltà, eventuali esempi o vincoli.'
+    }
     if (mode === 'report') {
       const sessions = classesData || []
       return [
@@ -2290,7 +2306,7 @@ REGOLE IMPORTANTI:
     if (currentConversationId) {
       void syncConversationMode(currentConversationId, mode)
     }
-    if (mode === 'dataset' || mode === 'image' || mode === 'report' || mode === 'quiz') {
+    if (mode === 'dataset' || mode === 'image' || mode === 'report' || mode === 'quiz' || mode === 'exercise') {
       setAttachedFiles([])
       setInputText('')
     }
@@ -2313,6 +2329,7 @@ REGOLE IMPORTANTI:
       let contentJson = ""
       let taskType = ""
       let title = ""
+      let description = `Compito creato da AI Support (${publishModal.type})`
 
       if (publishModal.type === 'quiz') {
         if (!publishModal.data?.questions) {
@@ -2330,6 +2347,7 @@ REGOLE IMPORTANTI:
         })
         taskType = 'quiz'
         title = publishModal.data.title || "Nuovo Quiz"
+        description = publishModal.data.description || description
       } else if (publishModal.type === 'lesson') {
         contentJson = JSON.stringify({
           type: 'lesson',
@@ -2337,6 +2355,28 @@ REGOLE IMPORTANTI:
         })
         taskType = 'lesson'
         title = publishModal.data?.title || "Nuova Lezione"
+        description = publishModal.data?.description || description
+      } else if (publishModal.type === 'exercise') {
+        if (!publishModal.data?.instructions) {
+          toast({ title: "Errore", description: "Esercizio non valido", variant: "destructive" })
+          return
+        }
+        const examples = Array.isArray(publishModal.data.examples)
+          ? publishModal.data.examples.filter((example: unknown) => String(example || '').trim()).map(String)
+          : []
+        contentJson = JSON.stringify({
+          type: 'exercise',
+          title: publishModal.data.title || "Nuovo Esercizio",
+          description: publishModal.data.description || '',
+          text: publishModal.data.instructions,
+          instructions: publishModal.data.instructions,
+          examples,
+          difficulty: publishModal.data.difficulty || 'medium',
+          hint: publishModal.data.hint || undefined
+        })
+        taskType = 'exercise'
+        title = publishModal.data.title || "Nuovo Esercizio"
+        description = publishModal.data.description || description
       } else {
         contentJson = JSON.stringify({
           type: 'exercise',
@@ -2348,7 +2388,7 @@ REGOLE IMPORTANTI:
 
       const taskRes = await teacherApi.createTask(sessionId, {
         title,
-        description: `Compito creato da AI Support (${publishModal.type})`,
+        description,
         task_type: taskType,
         content_json: contentJson
       })
@@ -2664,7 +2704,7 @@ REGOLE IMPORTANTI:
                         <p className="text-xs text-slate-500">
                           {(agentMode === 'brochure' || agentMode === 'dispensa' || agentMode === 'html_page')
                             ? 'Claude Sonnet 4.6'
-                            : (agentMode === 'quiz' || agentMode === 'dataset' || agentMode === 'web_search' || agentMode === 'report' || agentMode === 'analysis')
+                            : (agentMode === 'quiz' || agentMode === 'exercise' || agentMode === 'dataset' || agentMode === 'web_search' || agentMode === 'report' || agentMode === 'analysis')
                             ? 'Claude Haiku'
                             : availableModels.find(m => m.id === selectedModel)?.name}
                         </p>
@@ -2733,7 +2773,7 @@ REGOLE IMPORTANTI:
                             <img src="/icone_ai/anthropic.svg" className="h-3 w-3 object-contain" alt="Anthropic" />
                             Claude Sonnet 4.6
                           </span>
-                        ) : (agentMode === 'quiz' || agentMode === 'dataset' || agentMode === 'web_search' || agentMode === 'report') ? (
+                        ) : (agentMode === 'quiz' || agentMode === 'exercise' || agentMode === 'dataset' || agentMode === 'web_search' || agentMode === 'report') ? (
                           <div className="text-xs rounded-lg px-3 py-1.5 font-medium border bg-slate-100 text-slate-700 border-slate-200">
                             Claude Haiku (fisso)
                           </div>
@@ -3353,15 +3393,17 @@ REGOLE IMPORTANTI:
                                     ? 'bg-blue-100 text-blue-700'
                                     : selectedModeMeta.id === 'quiz'
                                       ? 'bg-amber-100 text-amber-700'
-                                      : selectedModeMeta.id === 'image'
-                                        ? 'bg-fuchsia-100 text-fuchsia-700'
-                                        : selectedModeMeta.id === 'dataset'
-                                          ? 'bg-emerald-100 text-emerald-700'
-                                          : selectedModeMeta.id === 'analysis'
-                                            ? 'bg-violet-100 text-violet-700'
-                                            : selectedModeMeta.id === 'brochure'
-                                              ? 'bg-rose-100 text-rose-700'
-                                              : 'bg-orange-100 text-orange-700'
+                                      : selectedModeMeta.id === 'exercise'
+                                        ? 'bg-teal-100 text-teal-700'
+                                        : selectedModeMeta.id === 'image'
+                                          ? 'bg-fuchsia-100 text-fuchsia-700'
+                                          : selectedModeMeta.id === 'dataset'
+                                            ? 'bg-emerald-100 text-emerald-700'
+                                            : selectedModeMeta.id === 'analysis'
+                                              ? 'bg-violet-100 text-violet-700'
+                                              : selectedModeMeta.id === 'brochure'
+                                                ? 'bg-rose-100 text-rose-700'
+                                                : 'bg-orange-100 text-orange-700'
                               }`}>
                                 {selectedModeMeta.label}
                               </span>
@@ -3376,8 +3418,10 @@ REGOLE IMPORTANTI:
                                       ? <FileText className="h-3.5 w-3.5" />
                                       : m.id === 'quiz'
                                         ? <CheckSquare className="h-3.5 w-3.5" />
-                                        : m.id === 'image'
-                                          ? <ImageIcon className="h-3.5 w-3.5" />
+                                        : m.id === 'exercise'
+                                          ? <Edit3 className="h-3.5 w-3.5" />
+                                          : m.id === 'image'
+                                            ? <ImageIcon className="h-3.5 w-3.5" />
                                   : m.id === 'analysis'
                                             ? <BarChart2 className="h-3.5 w-3.5" />
                                             : m.id === 'brochure'
@@ -3548,7 +3592,7 @@ REGOLE IMPORTANTI:
               </div>
 
               <p className="text-sm text-slate-600 mb-6">
-                Scegli la sessione e la modalita di pubblicazione per {publishModal.type === 'quiz' ? 'questo quiz' : publishModal.type === 'lesson' ? 'questa lezione' : 'questo dataset'}.
+                Scegli la sessione e la modalita di pubblicazione per {publishModal.type === 'quiz' ? 'questo quiz' : publishModal.type === 'exercise' ? 'questo esercizio' : publishModal.type === 'lesson' ? 'questa lezione' : 'questo dataset'}.
               </p>
 
               <div className="mb-5 rounded-lg border border-slate-200 p-3">
@@ -3608,7 +3652,7 @@ REGOLE IMPORTANTI:
         editorModal.isOpen && editorModal.data && (
           <ContentEditorModal
             content={editorModal.data}
-            type={editorModal.type === 'quiz' ? 'quiz' : 'exercise'}
+            type={editorModal.type}
             onSave={(editedData) => {
               // After editing, open publish modal with edited data
               setEditorModal({ isOpen: false, type: 'quiz', data: null })
@@ -3694,6 +3738,7 @@ function extractBase64Images(content: string): { cleanContent: string; images: s
 
 function parseContentBlocks(content: string): {
   quiz: QuizData | null;
+  exerciseData: ExerciseData | null;
   lessonData: LessonData | null;
   csv: string | null;
   textContent: string;
@@ -3706,6 +3751,7 @@ function parseContentBlocks(content: string): {
 } {
   let textContent = content
   let quiz: QuizData | null = null
+  let exerciseData: ExerciseData | null = null
   let lessonData: LessonData | null = null
   let csv: string | null = null
   let sessionSelector: any[] | null = null
@@ -3728,19 +3774,38 @@ function parseContentBlocks(content: string): {
     return null
   }
 
+  const tryParseExerciseCandidate = (rawCandidate: string | undefined | null): ExerciseData | null => {
+    if (!rawCandidate) return null
+    try {
+      const parsed = JSON.parse(rawCandidate.trim())
+      if (parsed && parsed.title && parsed.instructions) {
+        return {
+          ...parsed,
+          examples: Array.isArray(parsed.examples) ? parsed.examples.map(String) : [],
+          difficulty: ['easy', 'medium', 'hard'].includes(parsed.difficulty) ? parsed.difficulty : 'medium'
+        } as ExerciseData
+      }
+    } catch {
+      return null
+    }
+    return null
+  }
+
   // Check for generation indicators
-  const generatingImagePattern = /genero|creo.*immagine|sto.*generando.*immagine|genera.*immagine/i
-  const generatingCsvPattern = /genero|creo.*dataset|sto.*generando.*csv|genera.*csv/i
-  const generatingQuizPattern = /genero|creo|preparo.*quiz|sto.*generando.*quiz/i
+  const generatingImagePattern = /(genero|creo|preparo|sto.*generando).*(immagine|image)|genera.*immagine/i
+  const generatingCsvPattern = /(genero|creo|preparo|sto.*generando).*(dataset|csv)|genera.*(dataset|csv)/i
+  const generatingQuizPattern = /(genero|creo|preparo|sto.*generando).*quiz|genera.*quiz/i
+  const generatingExercisePattern = /(genero|creo|preparo|sto.*generando).*(esercizio|esercizi|attivita pratica|attività pratica)|genera.*(esercizio|esercizi)/i
 
   const hasBase64Image = content.includes('data:image') && content.includes('base64')
   if (hasBase64Image) {
-    return { quiz, lessonData, csv, textContent, isGenerating: false, generationType: null, sessionSelector, studentSelector, reportTypeSelector, actionMenu }
+    return { quiz, exerciseData, lessonData, csv, textContent, isGenerating: false, generationType: null, sessionSelector, studentSelector, reportTypeSelector, actionMenu }
   }
 
   const hasIncompleteQuiz = content.includes('```quiz') && !content.includes('```quiz')
     ? false
     : (content.match(/```quiz/g)?.length || 0) > (content.match(/```quiz[\s\S]*?```/g)?.length || 0)
+  const hasIncompleteExerciseData = (content.match(/```exercise_data/g)?.length || 0) > (content.match(/```exercise_data[\s\S]*?```/g)?.length || 0)
   const hasIncompleteCsv = (content.match(/```csv/g)?.length || 0) > (content.match(/```csv[\s\S]*?```/g)?.length || 0)
   const hasIncompleteLessonData = (content.match(/```lesson_data/g)?.length || 0) > (content.match(/```lesson_data[\s\S]*?```/g)?.length || 0)
 
@@ -3748,6 +3813,10 @@ function parseContentBlocks(content: string): {
     isGenerating = true
     generationType = 'quiz'
     textContent = textContent.replace(/```quiz[\s\S]*$/, '').replace(/\{[\s\S]*$/, '').trim()
+  } else if (hasIncompleteExerciseData || (generatingExercisePattern.test(content) && content.length < 200)) {
+    isGenerating = true
+    generationType = 'exercise'
+    textContent = textContent.replace(/```exercise_data[\s\S]*$/, '').replace(/\{[\s\S]*$/, '').trim()
   } else if (hasIncompleteCsv || (generatingCsvPattern.test(content) && content.length < 200)) {
     isGenerating = true
     generationType = 'csv'
@@ -3794,6 +3863,32 @@ function parseContentBlocks(content: string): {
       quiz = parsed
       textContent = rawJsonMatch?.[0]
         ? textContent.replace(rawJsonMatch[0], '').trim()
+        : textContent
+      isGenerating = false
+    }
+  }
+
+  // Extract exercise_data
+  const exerciseMatch = content.match(/```exercise_data\s*([\s\S]*?)```/)
+  if (exerciseMatch) {
+    const parsed = tryParseExerciseCandidate(exerciseMatch[1])
+    if (parsed) {
+      exerciseData = parsed
+      textContent = textContent.replace(/```exercise_data[\s\S]*?```/, '').trim()
+      isGenerating = false
+    } else if (exerciseMatch[1].includes('{')) {
+      isGenerating = true
+      generationType = 'exercise'
+    }
+  }
+
+  if (!exerciseData) {
+    const rawExerciseMatch = content.match(/\{[\s\S]*"instructions"[\s\S]*\}/)
+    const parsed = tryParseExerciseCandidate(rawExerciseMatch?.[0])
+    if (parsed) {
+      exerciseData = parsed
+      textContent = rawExerciseMatch?.[0]
+        ? textContent.replace(rawExerciseMatch[0], '').trim()
         : textContent
       isGenerating = false
     }
@@ -3855,7 +3950,7 @@ function parseContentBlocks(content: string): {
     } catch (e) { console.error("Error parsing action menu", e) }
   }
 
-  return { quiz, lessonData, csv, textContent, isGenerating, generationType, sessionSelector, studentSelector, reportTypeSelector, actionMenu }
+  return { quiz, exerciseData, lessonData, csv, textContent, isGenerating, generationType, sessionSelector, studentSelector, reportTypeSelector, actionMenu }
 }
 
 function SessionSelector({ sessions, onSelect }: { sessions: any[], onSelect: (id: string) => void }) {
@@ -4010,13 +4105,13 @@ function ReportConfigurator({
 
 function MessageContent({ content, onPublish, onEdit, onInput, toast, darkMode = false }: {
   content: string;
-  onPublish: (type: 'quiz' | 'dataset' | 'lesson', data: any) => void;
-  onEdit: (type: 'quiz' | 'dataset' | 'lesson', data: any) => void;
+  onPublish: (type: PublishContentType, data: any) => void;
+  onEdit: (type: EditableContentType, data: any) => void;
   onInput: (text: string) => void;
   toast: any;
   darkMode?: boolean
 }) {
-  const { quiz, lessonData, csv, textContent, isGenerating, generationType, sessionSelector, studentSelector, reportTypeSelector, actionMenu } = parseContentBlocks(content)
+  const { quiz, exerciseData, lessonData, csv, textContent, isGenerating, generationType, sessionSelector, studentSelector, reportTypeSelector, actionMenu } = parseContentBlocks(content)
   const { cleanContent, images } = extractBase64Images(textContent)
 
   if (isGenerating) {
@@ -4028,6 +4123,7 @@ function MessageContent({ content, onPublish, onEdit, onInput, toast, darkMode =
             {generationType === 'image' && 'Generazione immagine in corso...'}
             {generationType === 'csv' && 'Generazione dataset in corso...'}
             {generationType === 'quiz' && 'Generazione quiz in corso...'}
+            {generationType === 'exercise' && 'Generazione esercizio in corso...'}
             {generationType === 'lesson' && 'Generazione lezione in corso...'}
             {!generationType && 'Elaborazione in corso...'}
           </span>
@@ -4217,6 +4313,65 @@ function MessageContent({ content, onPublish, onEdit, onInput, toast, darkMode =
           <InteractiveQuiz quiz={quiz} onSubmitAnswers={(_ans) => {
             toast({ title: "Risposte verificate", description: "Hai completato il quiz in anteprima." })
           }} />
+        </div>
+      )}
+
+      {exerciseData && (
+        <div className="mt-3 border border-teal-200 rounded-lg overflow-hidden">
+          <div className="bg-teal-50 px-3 py-2 flex items-center justify-between gap-3">
+            <span className="text-sm font-medium text-teal-700 flex items-center gap-2 min-w-0">
+              <Edit3 className="h-4 w-4 flex-shrink-0" />
+              <span className="truncate">Esercizio: {exerciseData.title}</span>
+            </span>
+            <div className="flex gap-2 flex-shrink-0">
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 text-xs border-teal-300 text-teal-700 hover:bg-teal-100"
+                onClick={() => onEdit('exercise', exerciseData)}
+              >
+                <Edit3 className="h-3 w-3 mr-1" />
+                Modifica
+              </Button>
+              <Button
+                size="sm"
+                className="h-7 text-xs bg-teal-600 hover:bg-teal-700 text-white"
+                onClick={() => onPublish('exercise', exerciseData)}
+              >
+                <Plus className="h-3 w-3 mr-1" />
+                Pubblica
+              </Button>
+            </div>
+          </div>
+          {exerciseData.description && (
+            <div className="px-3 py-1.5 bg-teal-50/50 border-b border-teal-100 text-xs text-teal-700 italic">
+              {exerciseData.description}
+            </div>
+          )}
+          <div className="p-3 bg-white space-y-3 text-sm text-slate-700">
+            <ReactMarkdown
+              remarkPlugins={[remarkGfm, remarkMath]}
+              rehypePlugins={[rehypeKatex]}
+              components={markdownCodeComponents(false)}
+            >
+              {exerciseData.instructions}
+            </ReactMarkdown>
+            {exerciseData.examples && exerciseData.examples.length > 0 && (
+              <div className="rounded-lg bg-slate-50 border border-slate-100 p-3">
+                <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-2">Esempi</div>
+                <ul className="space-y-1.5 m-0 pl-4">
+                  {exerciseData.examples.map((example, index) => (
+                    <li key={index} className="text-xs text-slate-600">{example}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {exerciseData.hint && (
+              <div className="rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-700">
+                Suggerimento: {exerciseData.hint}
+              </div>
+            )}
+          </div>
         </div>
       )}
 

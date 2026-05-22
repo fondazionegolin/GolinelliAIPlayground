@@ -25,6 +25,12 @@ import ChatConversationList from '@/components/student/ChatConversationList'
 import ChatConversationView from '@/components/student/ChatConversationView'
 import { VoiceRecorder } from '@/components/VoiceRecorder'
 import { DEFAULT_STUDENT_ACCENT, getStudentAccentTheme, loadStudentAccent, type StudentAccentId } from '@/lib/studentAccent'
+import {
+  PASTEL_ICON_BACKGROUNDS,
+  PASTEL_ICON_TEXT,
+  PASTEL_SURFACES,
+  type PastelTone,
+} from '@/design/themes/pastelSurfaces'
 import EnvironmentalImpactPill from '@/components/chat/EnvironmentalImpactPill'
 import type { TokenUsageJson } from '@/lib/environmentalImpact'
 
@@ -98,6 +104,56 @@ const PROFILE_ICONS: Record<string, React.ReactNode> = {
   'oral_exam': <User className="h-6 w-6" />,
   'dataset_generator': <Database className="h-6 w-6" />,
   'math_coach': <Lightbulb className="h-6 w-6" />,
+}
+
+const CHAT_TONE_STRIPES: Record<PastelTone, string> = {
+  slate: 'bg-[#6a5872]',
+  indigo: 'bg-[#b51f5f]',
+  violet: 'bg-[#9452a3]',
+  emerald: 'bg-[#9452a3]',
+  amber: 'bg-[#9452a3]',
+  rose: 'bg-[#b51f5f]',
+  cyan: 'bg-[#1d7dd8]',
+  blue: 'bg-[#1d7dd8]',
+  sky: 'bg-[#1d7dd8]',
+  teal: 'bg-[#1d7dd8]',
+  orange: 'bg-[#9452a3]',
+}
+
+const PROFILE_TONES: Record<string, PastelTone> = {
+  tutor: 'sky',
+  quiz: 'rose',
+  interview: 'violet',
+  oral_exam: 'orange',
+  dataset_generator: 'cyan',
+  math_coach: 'indigo',
+}
+
+function getProfileTone(profileKey?: string | null): PastelTone {
+  return profileKey ? PROFILE_TONES[profileKey] || 'slate' : 'slate'
+}
+
+function getMainTabTone(key: 'assistants' | 'teacherbots' | 'learning' | 'rag'): PastelTone {
+  if (key === 'assistants') return 'sky'
+  if (key === 'teacherbots') return 'violet'
+  if (key === 'learning') return 'orange'
+  return 'cyan'
+}
+
+function getTeacherbotTone(color: string): PastelTone {
+  const toneMap: Record<string, PastelTone> = {
+    indigo: 'indigo',
+    blue: 'blue',
+    green: 'teal',
+    red: 'rose',
+    purple: 'violet',
+    pink: 'rose',
+    orange: 'orange',
+    teal: 'teal',
+    cyan: 'cyan',
+  }
+
+  return toneMap[color] || 'indigo'
 }
 
 
@@ -370,19 +426,15 @@ function getTeacherbotVisual(bot: Teacherbot, uiLanguage: 'it' | 'en'): Teacherb
 }
 
 function getTeacherbotSurface(color: string) {
-  const themeMap: Record<string, { soft: string; border: string; icon: string; badge: string }> = {
-    indigo: { soft: 'bg-indigo-50', border: 'border-indigo-200/70', icon: 'bg-indigo-100 text-indigo-700', badge: 'bg-indigo-100 text-indigo-700' },
-    blue: { soft: 'bg-blue-50', border: 'border-blue-200/70', icon: 'bg-blue-100 text-blue-700', badge: 'bg-blue-100 text-blue-700' },
-    green: { soft: 'bg-emerald-50', border: 'border-emerald-200/70', icon: 'bg-emerald-100 text-emerald-700', badge: 'bg-emerald-100 text-emerald-700' },
-    red: { soft: 'bg-rose-50', border: 'border-rose-200/70', icon: 'bg-rose-100 text-rose-700', badge: 'bg-rose-100 text-rose-700' },
-    purple: { soft: 'bg-violet-50', border: 'border-violet-200/70', icon: 'bg-violet-100 text-violet-700', badge: 'bg-violet-100 text-violet-700' },
-    pink: { soft: 'bg-pink-50', border: 'border-pink-200/70', icon: 'bg-pink-100 text-pink-700', badge: 'bg-pink-100 text-pink-700' },
-    orange: { soft: 'bg-amber-50', border: 'border-amber-200/70', icon: 'bg-amber-100 text-amber-700', badge: 'bg-amber-100 text-amber-700' },
-    teal: { soft: 'bg-teal-50', border: 'border-teal-200/70', icon: 'bg-teal-100 text-teal-700', badge: 'bg-teal-100 text-teal-700' },
-    cyan: { soft: 'bg-cyan-50', border: 'border-cyan-200/70', icon: 'bg-cyan-100 text-cyan-700', badge: 'bg-cyan-100 text-cyan-700' },
-  }
+  const tone = getTeacherbotTone(color)
 
-  return themeMap[color] || themeMap.indigo
+  return {
+    tone,
+    surface: PASTEL_SURFACES[tone],
+    stripe: CHAT_TONE_STRIPES[tone],
+    icon: `${PASTEL_ICON_BACKGROUNDS[tone]} ${PASTEL_ICON_TEXT[tone]}`,
+    badge: `${PASTEL_ICON_BACKGROUNDS[tone]} ${PASTEL_ICON_TEXT[tone]}`,
+  }
 }
 
 // Mobile navigation state
@@ -2111,8 +2163,7 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
 
       <div className="bg-white p-2 md:bg-transparent md:p-3">
         <div
-          className="relative flex items-end gap-2 rounded-lg border bg-white p-1.5 pl-3 transition-all"
-          style={{ borderColor: '#cbd5e1' }}
+          className="relative flex items-end gap-2 rounded-xl border border-slate-200/80 bg-white/90 p-2 pl-3 shadow-sm transition-all focus-within:border-slate-400"
         >
           <input type="file" ref={fileInputRef} className="hidden" multiple
             accept="image/*,.pdf,.doc,.docx,.ppt,.pptx,.txt,.csv,.xlsx,.xls,.json"
@@ -2131,7 +2182,7 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
           />
 
           <Button
-            variant="ghost" size="icon" className="h-9 w-9 text-slate-400 hover:bg-slate-100 rounded-full flex-shrink-0"
+            variant="ghost" size="icon" className="h-9 w-9 flex-shrink-0 rounded-xl text-slate-400 hover:bg-slate-100"
             style={{ color: 'inherit' }}
             onClick={() => fileInputRef.current?.click()}
           >
@@ -2142,7 +2193,7 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
             <button
               type="button"
               onClick={() => setShowChatModeMenu((prev) => !prev)}
-              className="ai-mode-pill inline-flex items-center gap-2 rounded-full px-2.5 py-1.5 text-[11px] font-semibold text-slate-900 ring-1 ring-white/70"
+              className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white/85 px-3 py-1.5 text-[11px] font-semibold text-slate-900 shadow-sm transition-all hover:bg-white"
               title="Cambia modalità"
             >
               <span className="px-1.5">Modalita</span>
@@ -2224,7 +2275,7 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
             onClick={() => handleSend()}
             disabled={(!input.trim() && attachedFiles.length === 0) || sendMessageMutation.isPending || isStreaming}
             size="icon"
-            className={`h-9 w-9 rounded-full transition-all flex-shrink-0 ${(!input.trim() && attachedFiles.length === 0) ? 'bg-slate-200 text-slate-400' : 'hover:scale-105 shadow-md text-white'}`}
+            className={`h-9 w-9 flex-shrink-0 rounded-xl transition-all ${(!input.trim() && attachedFiles.length === 0) ? 'bg-slate-200 text-slate-400' : 'text-white shadow-md hover:-translate-y-0.5'}`}
             style={(!input.trim() && attachedFiles.length === 0) ? undefined : selectedSolidStyle}
           >
             <Send className="h-4 w-4 ml-0.5" />
@@ -2236,7 +2287,7 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
         <div className="flex items-center justify-center gap-4 mt-2 pb-3 flex-wrap animate-in fade-in slide-in-from-bottom-1 duration-150">
           <div className="flex items-center gap-2">
             <span className="text-xs text-slate-400">Modello:</span>
-            <div className="flex items-center bg-slate-100 rounded-lg p-0.5">
+            <div className={`flex items-center rounded-xl p-0.5 shadow-sm ${PASTEL_SURFACES.slate}`}>
               {([
                 { id: 'dall-e' as const, label: 'DALL-E 3' },
                 { id: 'gpt-image-1.5' as const, label: 'GPT Image 1.5' },
@@ -2244,7 +2295,7 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
                 <button
                   key={m.id}
                   onClick={() => setImageProvider(m.id)}
-                  className={`px-2 py-1 text-[10px] rounded-md transition-all ${imageProvider === m.id ? 'bg-white shadow text-fuchsia-600 font-bold' : 'text-slate-500 hover:text-slate-700'}`}
+                  className={`rounded-lg px-2 py-1 text-[10px] transition-all ${imageProvider === m.id ? 'bg-slate-900 font-bold text-white shadow' : 'text-slate-500 hover:text-slate-700'}`}
                 >
                   {m.label}
                 </button>
@@ -2256,7 +2307,7 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
             <select
               value={imageSize}
               onChange={(e) => setImageSize(e.target.value)}
-              className="text-xs bg-slate-100 border-0 rounded-lg px-2 py-1 text-slate-600 focus:ring-1 focus:ring-fuchsia-300"
+              className="rounded-xl border border-slate-200/80 bg-white/90 px-2 py-1 text-xs text-slate-600 shadow-sm focus:ring-1 focus:ring-slate-300"
             >
               <option value="1024x1024">1:1 Quadrato</option>
               <option value="1024x768">4:3 Orizzontale</option>
@@ -2273,16 +2324,13 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
   // Desktop Chat interface
   return (
     <div
-      className="relative flex h-full min-h-0 w-full overflow-hidden bg-white md:rounded-none md:border-0 md:shadow-none"
+      className="relative flex h-full min-h-0 w-full gap-3 overflow-hidden bg-slate-100 p-4 text-slate-900"
       style={{
         ...accentVars,
-        backgroundColor: '#ffffff',
-        borderColor: '#e2e8f0',
       }}
     >
       <aside
-        className={`hidden shrink-0 border-r bg-white md:flex md:flex-col transition-all duration-300 ${navCollapsed && mainTab === 'rag' ? 'w-12' : 'w-[24.5rem]'}`}
-        style={{ borderRightColor: '#e2e8f0' }}
+        className={`hidden shrink-0 overflow-hidden rounded-xl text-slate-900 shadow-[0_18px_60px_rgba(15,23,42,0.10)] transition-all duration-300 md:flex md:flex-col ${PASTEL_SURFACES.slate} ${navCollapsed && mainTab === 'rag' ? 'w-12' : 'w-[24.5rem]'}`}
       >
         {navCollapsed && mainTab === 'rag' ? (
           /* Collapsed strip */
@@ -2307,13 +2355,7 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
           </div>
         ) : (
           <>
-        <div
-          className="border-b px-5 py-4"
-          style={{
-            borderBottomColor: '#e2e8f0',
-            backgroundColor: 'rgba(255,255,255,0.96)',
-          }}
-        >
+        <div className="border-b border-slate-200/70 bg-white/60 px-5 py-4 backdrop-blur-sm">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-[10px] font-semibold uppercase tracking-[0.18em]" style={{ color: accentTheme.text }}>Chatbot</p>
@@ -2338,17 +2380,15 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
             const active = mainTab === key
             const isExpanded = expandedSection === key
             const menuTheme = getSidebarMenuTheme(key)
+            const tone = getMainTabTone(key)
             return (
               <div key={key}>
                 <button
-	                  className="w-full rounded-lg border px-3 py-2.5 text-left transition-all"
-	                  style={active || isExpanded ? {
-	                    borderColor: '#dbe3ed',
-	                    backgroundColor: 'rgba(248,250,252,0.96)',
-	                  } : {
-                    borderColor: 'rgba(203,213,225,0.3)',
-                    backgroundColor: 'rgba(255,255,255,0.74)',
-                  }}
+	                  className={`w-full rounded-lg px-3 py-2.5 text-left shadow-sm transition-all ${
+                      active || isExpanded
+                        ? PASTEL_SURFACES[tone]
+                        : 'border border-slate-200/60 bg-white/70 hover:border-slate-300 hover:bg-white'
+                    }`}
                   onClick={() => {
                     if (key === 'rag') {
                       const already = expandedSection === 'rag'
@@ -2370,8 +2410,7 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
                 >
                   <div className="flex items-center gap-2.5">
                     <div
-	                      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl"
-	                      style={{ backgroundColor: active || isExpanded ? '#f1f5f9' : menuTheme.iconBg, color: menuTheme.iconColor }}
+	                      className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${PASTEL_ICON_BACKGROUNDS[tone]} ${PASTEL_ICON_TEXT[tone]}`}
                     >
                       <Icon className="h-3.5 w-3.5" />
                     </div>
@@ -2379,10 +2418,11 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
                       <div className="flex items-center justify-between gap-1">
                         <span className="text-sm font-semibold text-slate-800">{label}</span>
                         <div className="flex items-center gap-1">
-                          <span className="rounded-full px-1.5 py-0.5 text-[10px] font-bold"
-                            style={{ backgroundColor: 'rgba(255,255,255,0.9)', color: menuTheme.iconColor }}>
-                            {badge}
-                          </span>
+                          {badge !== undefined && (
+                            <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold ${PASTEL_ICON_BACKGROUNDS[tone]} ${PASTEL_ICON_TEXT[tone]}`}>
+                              {badge}
+                            </span>
+                          )}
                           <ChevronDown className={`h-3 w-3 transition-transform text-slate-400 ${isExpanded ? 'rotate-180' : ''}`} />
                         </div>
                       </div>
@@ -2535,13 +2575,13 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
           })}
         </nav>
 
-	        <div className="border-t px-3 py-3" style={{ borderTopColor: '#e2e8f0' }}>
+	        <div className="border-t border-slate-200/70 bg-white/45 px-3 py-3 backdrop-blur-sm">
           <div className="grid grid-cols-2 gap-1.5">
-	            <div className="rounded-xl border bg-white/90 px-3 py-2" style={{ borderColor: '#e2e8f0' }}>
+	            <div className={`rounded-lg px-3 py-2 shadow-sm ${PASTEL_SURFACES.slate}`}>
               <div className="text-[10px] uppercase tracking-wide text-slate-400">Chat</div>
               <div className="mt-0.5 text-base font-semibold text-slate-900">{conversations.length}</div>
             </div>
-	            <div className="rounded-xl border bg-white/90 px-3 py-2" style={{ borderColor: '#e2e8f0' }}>
+	            <div className={`rounded-lg px-3 py-2 shadow-sm ${PASTEL_SURFACES.slate}`}>
               <div className="text-[10px] uppercase tracking-wide text-slate-400">Lezioni</div>
               <div className="mt-0.5 text-base font-semibold text-slate-900">{learningSessions.length}</div>
             </div>
@@ -2551,12 +2591,12 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
         )}
       </aside>
 
-      <div className="flex-1 min-w-0 min-h-0 flex overflow-hidden">
+      <div className={`flex min-h-0 min-w-0 flex-1 overflow-hidden rounded-xl text-slate-900 shadow-[0_18px_60px_rgba(15,23,42,0.10)] ${PASTEL_SURFACES.sky}`}>
         {(selectedProfile || selectedTeacherbot) && (
-	          <div className={`${showHistory ? 'w-64' : 'w-10'} hidden md:flex min-h-0 border-r bg-white flex-col transition-all duration-200 shrink-0`} style={{ borderRightColor: '#e2e8f0' }}>
+	          <div className={`${showHistory ? 'w-64' : 'w-10'} hidden md:flex min-h-0 shrink-0 flex-col border-r border-slate-200/70 bg-white/60 transition-all duration-200 backdrop-blur-sm`}>
             {showHistory ? (
               <>
-	                <div className="p-3 border-b bg-white" style={{ borderBottomColor: '#e2e8f0' }}>
+	                <div className="border-b border-slate-200/70 bg-white/60 p-3 backdrop-blur-sm">
                   <div className="flex items-center justify-between">
                     <div>
                       <h4 className="font-semibold text-sm text-slate-700">Cronologia</h4>
@@ -2575,7 +2615,7 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
                 <div className="flex-1 overflow-y-auto p-2 space-y-1">
                   <button
                     onClick={handleStartNewConversation}
-                    className="w-full text-left px-3 py-2 rounded-lg text-sm transition-colors flex items-center gap-2 border"
+                    className="flex w-full items-center gap-2 rounded-xl border px-3 py-2 text-left text-sm shadow-sm transition-colors"
                     style={selectedSoftStyle}
                   >
                     <Sparkles className="h-4 w-4" />
@@ -2588,7 +2628,7 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
                     .map((conv) => (
                       <div
                         key={conv.id}
-                        className={`group relative w-full text-left px-3 py-2 rounded-lg text-sm transition-colors cursor-pointer border ${conversationId === conv.id ? '' : 'hover:bg-slate-100 text-slate-600'}`}
+                        className={`group relative w-full cursor-pointer rounded-lg border px-3 py-2 text-left text-sm transition-colors ${conversationId === conv.id ? '' : 'border-transparent text-slate-600 hover:bg-white/80'}`}
                         style={conversationId === conv.id ? selectedSoftStyle : undefined}
                         onClick={() => loadConversation(conv.id)}
                       >
@@ -2642,7 +2682,7 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
                 {conversations.filter(c => selectedTeacherbot
                   ? c.profile_key === `teacherbot-${selectedTeacherbot.id}`
                   : c.profile_key === selectedProfile).length > 0 && (
-                    <div className="p-2 border-t border-slate-200 bg-white">
+                    <div className="border-t border-slate-200 bg-white/60 p-2">
                       <button
                         onClick={async () => {
                           if (confirm('Eliminare tutta la cronologia?')) {
@@ -2675,7 +2715,7 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
         )}
 
         <div
-          className="flex-1 flex flex-col min-w-0 min-h-0"
+          className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
         style={chatBg ? { backgroundColor: chatBg } : undefined}
         onDragOver={(e) => {
           e.preventDefault()
@@ -2779,11 +2819,7 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
           ) : isDesktopSelection ? (
             <>
 	              <div
-	                className="flex shrink-0 items-center justify-between border-b px-5 py-3"
-	                style={{
-	                  borderBottomColor: '#e2e8f0',
-	                  backgroundColor: 'rgba(255,255,255,0.96)',
-	                }}
+	                className="flex shrink-0 items-center justify-between border-b border-slate-200/70 bg-white/60 px-5 py-3 backdrop-blur-sm"
 	              >
                 <div className="flex items-center gap-2">
                   <p className="text-[10px] font-semibold uppercase tracking-[0.18em]" style={{ color: accentTheme.text }}>
@@ -2805,7 +2841,7 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
                   )}
                 </div>
                 {mainTab === 'learning' && (
-	                  <Button size="sm" onClick={() => setShowNewLessonDialog(true)} className="rounded-lg text-white shadow-sm" style={selectedSolidStyle}>
+	                  <Button size="sm" onClick={() => setShowNewLessonDialog(true)} className="rounded-xl text-white shadow-sm transition-transform hover:-translate-y-0.5" style={selectedSolidStyle}>
                     <Plus className="mr-1.5 h-3.5 w-3.5" />
                     Nuova lezione
                   </Button>
@@ -2817,33 +2853,22 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
                   <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                     {profiles.map((profile) => {
                       const usage = profileUsageCounts[profile.key] || 0
-                      const accent = profile.key === 'tutor'
-                        ? { surface: 'rgba(220,252,231,0.72)', icon: 'rgba(16,185,129,0.18)', color: '#0f766e', border: 'rgba(16,185,129,0.22)' }
-                        : profile.key === 'quiz'
-                          ? { surface: 'rgba(255,228,230,0.72)', icon: 'rgba(244,63,94,0.16)', color: '#be123c', border: 'rgba(244,63,94,0.18)' }
-                          : profile.key === 'interview'
-                            ? { surface: 'rgba(243,232,255,0.74)', icon: 'rgba(139,92,246,0.16)', color: '#7c3aed', border: 'rgba(139,92,246,0.2)' }
-                            : profile.key === 'oral_exam'
-                              ? { surface: 'rgba(255,237,213,0.78)', icon: 'rgba(245,158,11,0.16)', color: '#c2410c', border: 'rgba(245,158,11,0.2)' }
-                              : profile.key === 'dataset_generator'
-                                ? { surface: 'rgba(207,250,254,0.78)', icon: 'rgba(14,165,233,0.16)', color: '#0369a1', border: 'rgba(14,165,233,0.2)' }
-                                : { surface: 'rgba(224,231,255,0.76)', icon: 'rgba(99,102,241,0.16)', color: '#4338ca', border: 'rgba(99,102,241,0.2)' }
+                      const tone = getProfileTone(profile.key)
 
                       return (
                         <motion.button
                           key={profile.key}
                           whileTap={{ scale: 0.99 }}
                           onClick={() => handleSelectProfile(profile.key)}
-	                          className="group relative flex flex-col overflow-hidden rounded-xl border bg-white p-4 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md"
-                          style={{ borderColor: accent.border }}
+	                          className={`group relative flex min-h-[156px] flex-col overflow-hidden rounded-lg p-4 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-lg ${PASTEL_SURFACES[tone]}`}
                         >
-	                          <div className="absolute inset-x-0 top-0 h-16 bg-slate-50" />
+	                          <div className={`absolute inset-x-0 top-0 h-1 ${CHAT_TONE_STRIPES[tone]}`} />
                           <div className="relative flex flex-col">
                             <div className="flex items-center justify-between gap-2">
-	                              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-slate-100 shadow-sm" style={{ color: accent.color }}>
+	                              <div className={`flex h-10 w-10 items-center justify-center rounded-lg shadow-sm ${PASTEL_ICON_BACKGROUNDS[tone]} ${PASTEL_ICON_TEXT[tone]}`}>
                                 <div className="scale-75">{PROFILE_ICONS[profile.key] || <Bot className="h-5 w-5" />}</div>
                               </div>
-                              <span className="rounded-full px-2 py-0.5 text-[10px] font-semibold" style={{ backgroundColor: 'rgba(255,255,255,0.9)', color: accent.color }}>
+                              <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${PASTEL_ICON_BACKGROUNDS[tone]} ${PASTEL_ICON_TEXT[tone]}`}>
                                 {usage > 0 ? `${usage} chat` : 'Nuovo'}
                               </span>
                             </div>
@@ -2853,7 +2878,7 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
                             </div>
                             <div className="mt-3 flex flex-wrap gap-1">
                               {(profile.suggested_prompts || []).slice(0, 1).map((prompt) => (
-	                                <span key={prompt} className="rounded-full border bg-white px-2 py-0.5 text-[10px] line-clamp-1" style={{ borderColor: accent.border, color: accent.color }}>
+	                                <span key={prompt} className={`line-clamp-1 rounded-full px-2 py-0.5 text-[10px] ${PASTEL_ICON_BACKGROUNDS[tone]} ${PASTEL_ICON_TEXT[tone]}`}>
                                   {prompt}
                                 </span>
                               ))}
@@ -2867,7 +2892,7 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
 
                 {mainTab === 'teacherbots' && (
                   availableTeacherbots.length === 0 ? (
-	                    <div className="flex h-full min-h-[360px] items-center justify-center rounded-xl border border-dashed border-slate-300 bg-white">
+	                    <div className={`flex h-full min-h-[360px] items-center justify-center rounded-xl border border-dashed text-center shadow-sm ${PASTEL_SURFACES.slate}`}>
                       <div className="text-center">
                         <Wand2 className="mx-auto h-10 w-10 text-slate-300" />
                         <p className="mt-4 text-sm font-medium text-slate-500">Nessun teacherbot disponibile</p>
@@ -2884,14 +2909,15 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
                             key={bot.id}
                             whileTap={{ scale: 0.99 }}
                             onClick={() => handleSelectTeacherbot(bot)}
-	                            className={`group flex flex-col overflow-hidden rounded-xl border bg-white text-left shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md ${surface.border}`}
+	                            className={`group relative flex min-h-[156px] flex-col overflow-hidden rounded-lg text-left shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-lg ${surface.surface}`}
                           >
-                            <div className={`relative overflow-hidden border-b px-4 py-3 ${surface.soft} ${surface.border}`}>
+	                            <div className={`absolute inset-x-0 top-0 h-1 ${surface.stripe}`} />
+                            <div className="relative overflow-hidden border-b border-slate-200/60 bg-white/45 px-4 py-3">
                               <div className="absolute right-3 bottom-2 opacity-[0.08]">
                                 <visual.Icon className="h-12 w-12 text-slate-900" />
                               </div>
                               <div className="flex items-center gap-2.5">
-                                <div className={`relative flex h-9 w-9 items-center justify-center rounded-xl ${surface.icon}`}>
+                                <div className={`relative flex h-10 w-10 items-center justify-center rounded-lg ${surface.icon}`}>
                                   <visual.Icon className="h-4 w-4" />
                                 </div>
                                 <div>
@@ -2922,10 +2948,10 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
                         { label: 'Chat attiva', value: learningSessions.filter((session) => session.conversationId).length, icon: ClipboardCheck },
                         { label: 'Argomenti', value: learningTopics.length, icon: Sparkles },
                       ].map(({ label, value, icon: Icon }) => (
-	                        <div key={label} className="rounded-xl border bg-white px-3 py-2.5 shadow-sm" style={{ borderColor: '#e2e8f0' }}>
+	                        <div key={label} className={`rounded-lg px-3 py-2.5 shadow-sm ${PASTEL_SURFACES.slate}`}>
                           <div className="flex items-center justify-between gap-1">
                             <p className="text-[10px] uppercase tracking-wide text-slate-400">{label}</p>
-	                            <div className="flex h-6 w-6 items-center justify-center rounded-lg bg-slate-100" style={{ color: accentTheme.text }}>
+	                            <div className={`flex h-6 w-6 items-center justify-center rounded-lg ${PASTEL_ICON_BACKGROUNDS.violet} ${PASTEL_ICON_TEXT.violet}`}>
                               <Icon className="h-3 w-3" />
                             </div>
                           </div>
@@ -2934,10 +2960,10 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
                       ))}
                     </div>
 
-	                    <div className="overflow-hidden rounded-xl border bg-white shadow-sm" style={{ borderColor: '#e2e8f0' }}>
+	                    <div className={`overflow-hidden rounded-xl shadow-sm ${PASTEL_SURFACES.slate}`}>
                       <div
                         className="grid grid-cols-[minmax(0,1.2fr)_minmax(0,2fr)_110px_100px] gap-3 border-b px-4 py-2 text-[10px] font-semibold uppercase tracking-[0.16em]"
-	                        style={{ borderBottomColor: '#e2e8f0', backgroundColor: '#f8fafc', color: accentTheme.text }}
+	                        style={{ borderBottomColor: '#e2e8f0', color: accentTheme.text }}
                       >
                         <div>Argomento</div>
                         <div>Sintesi</div>
@@ -2981,7 +3007,7 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
             </>
           ) : (
             <>
-	              <div className="hidden md:flex shrink-0 items-center gap-3 px-4 py-3 bg-white border-b" style={{ borderBottomColor: '#e2e8f0' }}>
+	              <div className="hidden shrink-0 items-center gap-3 border-b border-slate-200/70 bg-white/60 px-4 py-3 backdrop-blur-sm md:flex">
                 <div className="w-10 h-10 rounded-xl flex items-center justify-center shadow-md" style={selectedSolidStyle}>
                   {selectedTeacherbot ? (
                     <div className="text-white scale-90 w-full h-full flex items-center justify-center">
@@ -3010,7 +3036,7 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
                       variant="ghost"
                       size="sm"
                       onClick={() => setShowBgPalette((v) => !v)}
-                      className="text-slate-500 hover:text-slate-700"
+                      className={`rounded-xl text-slate-500 shadow-sm hover:text-slate-700 ${PASTEL_SURFACES.slate}`}
                       title={t('chatbot.choose_color')}
                     >
                       <Palette className="h-4 w-4" />
@@ -3079,7 +3105,7 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
                   <div className="hidden lg:block relative" ref={modelMenuRef}>
                     <button
                       onClick={() => setShowModelMenu(!showModelMenu)}
-                      className="flex items-center gap-2 px-4 py-2 rounded-full text-xs font-bold transition-all shadow-sm hover:opacity-90 border"
+                      className="flex items-center gap-2 rounded-xl border px-4 py-2 text-xs font-bold shadow-sm transition-all hover:-translate-y-0.5 hover:opacity-90"
                       style={selectedSoftStyle}
                     >
                       {effectiveSelectedModel?.provider === 'openai' ? (
@@ -3152,12 +3178,12 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
               {/* Mode toolbar */}
               <div
                 ref={messagesContainerRef}
-                className={`flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-6 py-4 md:px-10 md:py-6 space-y-3 md:space-y-6 ${chatBgIsDark ? 'text-white' : ''}`}
+                className={`min-h-0 flex-1 space-y-3 overflow-y-auto overflow-x-hidden px-6 py-4 md:space-y-6 md:px-10 md:py-6 ${chatBg ? '' : 'bg-white/30'} ${chatBgIsDark ? 'text-white' : ''}`}
                 style={{ WebkitOverflowScrolling: 'touch', scrollBehavior: 'smooth' }}
               >
           {messages.length === 0 ? (
             <div className="text-center py-12">
-	              <div className={`inline-flex items-center justify-center w-20 h-20 rounded-xl mb-6 shadow-lg ${selectedTeacherbot ? getTeacherbotColorClass(selectedTeacherbot.color) : ''}`} style={selectedTeacherbot ? undefined : selectedSolidStyle}>
+	              <div className={`mb-6 inline-flex h-20 w-20 items-center justify-center rounded-lg shadow-lg ${selectedTeacherbot ? getTeacherbotColorClass(selectedTeacherbot.color) : ''}`} style={selectedTeacherbot ? undefined : selectedSolidStyle}>
                 {selectedTeacherbot ? (
                   <Wand2 className="h-10 w-10 text-white" />
                 ) : selectedProfile && PROFILE_ICONS[selectedProfile] ? (
@@ -3173,7 +3199,7 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
                   <button
                     key={suggestion}
                     onClick={() => setInput(suggestion)}
-                    className={`px-4 py-2 rounded-full text-sm transition-all shadow-sm ${chatBgIsDark ? 'bg-white/10 border border-white/15 text-white hover:bg-white/15' : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 hover:border-slate-300'}`}
+                    className={`rounded-xl px-4 py-2 text-sm shadow-sm transition-all hover:-translate-y-0.5 ${chatBgIsDark ? 'border border-white/15 bg-white/10 text-white hover:bg-white/15' : PASTEL_SURFACES.slate}`}
                   >
                     {suggestion}
                   </button>
@@ -3291,7 +3317,7 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
                   {composerContent}
                 </div>
               ) : (
-                <div className="hidden md:block shrink-0 border-t border-slate-200 bg-white/92">
+                <div className="hidden shrink-0 border-t border-slate-200/70 bg-white/60 backdrop-blur-sm md:block">
                   {composerContent}
                 </div>
               )}

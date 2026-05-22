@@ -444,6 +444,7 @@ async def get_session_canvas(
             "content_json": '{"type":"canvas_v1","items":[]}',
             "version": 0,
             "updated_at": None,
+            "students_can_write": False,
         }
 
     return {
@@ -452,6 +453,7 @@ async def get_session_canvas(
         "content_json": canvas.content_json,
         "version": canvas.version,
         "updated_at": canvas.updated_at.isoformat() if canvas.updated_at else None,
+        "students_can_write": canvas.students_can_write,
     }
 
 
@@ -469,6 +471,9 @@ async def upsert_session_canvas(
         select(SessionCanvas).where(SessionCanvas.session_id == session_id)
     )
     canvas = result.scalar_one_or_none()
+
+    if canvas and not canvas.students_can_write:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Students cannot write to this canvas")
 
     if canvas and request.base_version is not None and request.base_version != canvas.version:
         raise HTTPException(

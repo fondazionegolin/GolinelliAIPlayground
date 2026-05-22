@@ -305,7 +305,7 @@ export const teacherApi = {
     api.delete(`/teacher/documents/drafts/${draftId}`),
   getCanvas: (sessionId: string) =>
     api.get(`/teacher/sessions/${sessionId}/canvas`),
-  updateCanvas: (sessionId: string, data: { title?: string; content_json: string; base_version?: number }) =>
+  updateCanvas: (sessionId: string, data: { title?: string; content_json: string; base_version?: number; students_can_write?: boolean }) =>
     api.put(`/teacher/sessions/${sessionId}/canvas`, data),
   // Prompt customization
   getSupportChatPrompt: () => api.get('/teacher/support-chat/prompt'),
@@ -670,9 +670,9 @@ export const feedbackApi = {
 
 export const notebooksApi = {
   list: () => api.get('/notebooks'),
-  create: (title: string, projectType: 'python' | 'p5js') => api.post('/notebooks', { title, project_type: projectType }),
+  create: (title: string, projectType: 'python' | 'p5js' | 'strudel') => api.post('/notebooks', { title, project_type: projectType }),
   get: (id: string) => api.get(`/notebooks/${id}`),
-  update: (id: string, data: { title?: string; cells?: unknown[]; project_type?: 'python' | 'p5js'; editor_settings?: Record<string, unknown> }) => api.put(`/notebooks/${id}`, data),
+  update: (id: string, data: { title?: string; cells?: unknown[]; project_type?: 'python' | 'p5js' | 'strudel'; editor_settings?: Record<string, unknown> }) => api.put(`/notebooks/${id}`, data),
   delete: (id: string) => api.delete(`/notebooks/${id}`),
   tutorChat: (id: string, data: {
     message: string
@@ -724,6 +724,33 @@ export const calendarApi = {
     api.patch(`/calendar/session/${sessionId}/events/${eventId}`, data),
   deleteEvent: (sessionId: string, eventId: string) =>
     api.delete(`/calendar/session/${sessionId}/events/${eventId}`),
+}
+
+export const liveInteractionApi = {
+  // Teacher
+  list: (sessionId: string) =>
+    api.get('/teacher/live-interactions', { params: { session_id: sessionId } }),
+  create: (data: { session_id: string; title: string; slides_json: object[] }) =>
+    api.post('/teacher/live-interactions', data),
+  get: (id: string) =>
+    api.get(`/teacher/live-interactions/${id}`),
+  update: (id: string, data: { title?: string; slides_json?: object[] }) =>
+    api.put(`/teacher/live-interactions/${id}`, data),
+  delete: (id: string) =>
+    api.delete(`/teacher/live-interactions/${id}`),
+  start: (id: string) =>
+    api.post(`/teacher/live-interactions/${id}/start`),
+  next: (id: string) =>
+    api.post(`/teacher/live-interactions/${id}/next`),
+  end: (id: string) =>
+    api.post(`/teacher/live-interactions/${id}/end`),
+  results: (id: string) =>
+    api.get(`/teacher/live-interactions/${id}/results`),
+  // Student
+  currentStudent: () =>
+    api.get('/student/live-interaction/current'),
+  submitAnswer: (data: { live_interaction_id: string; slide_index: number; response: object }) =>
+    api.post('/student/live-interaction/answer', data),
 }
 
 export const desktopAgentApi = {
