@@ -116,6 +116,17 @@ export const adminApi = {
   reactivateUser: (userId: string) =>
     api.post(`/admin/users/${userId}/reactivate`),
   getUsage: () => api.get('/admin/usage'),
+  getAnalyticsReport: (params?: {
+    start_date?: string
+    end_date?: string
+    granularity?: 'day' | 'week' | 'month'
+    teacher_id?: string
+    class_id?: string
+    session_id?: string
+    provider?: string
+    model?: string
+    include_empty?: boolean
+  }) => api.get('/admin/analytics/report', { params }),
   getDashboardOverview: (days = 30) =>
     api.get('/admin/dashboard/overview', { params: { days } }),
   getTopConsumers: (days = 30, limit = 25) =>
