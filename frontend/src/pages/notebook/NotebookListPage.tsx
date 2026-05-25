@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
-  ArrowRight, BookOpen, FileCode2, Layers3, Loader2, Music2, Plus, Search, Sparkles, Trash2, X,
+  ArrowRight, BookOpen, FileCode2, Gamepad2, Layers3, Loader2, Music2, Plus, Search, Sparkles, Trash2, X,
 } from 'lucide-react'
 import { notebooksApi } from '@/lib/api'
 import { formatDistanceToNow } from 'date-fns'
@@ -62,25 +62,37 @@ const NOTEBOOK_STYLES: Record<NotebookProjectType, {
     panel: 'border-violet-200 bg-violet-50/80 text-violet-950',
     section: 'border-violet-200 bg-violet-50 text-violet-700',
   },
+  game2d: {
+    card: 'border-cyan-200/80 bg-gradient-to-br from-white via-cyan-50/70 to-white hover:border-cyan-300 hover:shadow-cyan-100/80',
+    stripe: 'bg-cyan-500',
+    iconBg: 'bg-cyan-100 ring-1 ring-cyan-200',
+    icon: 'text-cyan-700',
+    badge: 'border border-cyan-200 bg-cyan-100 text-cyan-800',
+    panel: 'border-cyan-200 bg-cyan-50/80 text-cyan-950',
+    section: 'border-cyan-200 bg-cyan-50 text-cyan-700',
+  },
 }
 
-const PROJECT_ORDER: NotebookProjectType[] = ['python', 'p5js', 'strudel']
+const PROJECT_ORDER: NotebookProjectType[] = ['python', 'p5js', 'game2d', 'strudel']
 
 function ProjectIcon({ type, className }: { type: NotebookProjectType; className: string }) {
   if (type === 'python') return <FileCode2 className={className} />
   if (type === 'strudel') return <Music2 className={className} />
+  if (type === 'game2d') return <Gamepad2 className={className} />
   return <Sparkles className={className} />
 }
 
 function getProjectLabel(type: NotebookProjectType) {
   if (type === 'python') return 'Python'
   if (type === 'strudel') return 'Strudel'
+  if (type === 'game2d') return 'Game 2D'
   return 'p5.js'
 }
 
 function getProjectDescription(type: NotebookProjectType, isEnglish: boolean) {
   if (type === 'python') return isEnglish ? 'Analysis, logic, data, experiments.' : 'Analisi, logica, dati, esperimenti.'
   if (type === 'strudel') return isEnglish ? 'Music, rhythm, live coding.' : 'Musica, ritmo, live coding.'
+  if (type === 'game2d') return isEnglish ? 'Schema-driven 2D games with Phaser.' : 'Giochi 2D a schema JSON con Phaser.'
   return isEnglish ? 'Creative sketches and simulations.' : 'Sketch creativi e simulazioni.'
 }
 
@@ -192,7 +204,9 @@ export default function NotebookListPage({ onOpen }: Props = {}) {
       ? (isEnglish ? 'New Python Notebook' : 'Nuovo Notebook Python')
       : newProjectType === 'strudel'
         ? (isEnglish ? 'New Strudel Sketch' : 'Nuovo Sketch Strudel')
-        : (isEnglish ? 'New p5.js Sketch' : 'Nuovo Sketch p5.js')
+        : newProjectType === 'game2d'
+          ? (isEnglish ? 'New 2D Game' : 'Nuovo Gioco 2D')
+          : (isEnglish ? 'New p5.js Sketch' : 'Nuovo Sketch p5.js')
     createMutation.mutate({
       title: newTitle.trim() || defaultTitle,
       projectType: newProjectType,
@@ -203,21 +217,23 @@ export default function NotebookListPage({ onOpen }: Props = {}) {
   }
 
   const filtered = useMemo(() => {
-    if (!notebooks) return { python: [], p5js: [], strudel: [] }
+    if (!notebooks) return { python: [], p5js: [], game2d: [], strudel: [] }
     const q = search.toLowerCase()
     const all = q ? notebooks.filter(n => n.title.toLowerCase().includes(q)) : notebooks
     return {
       python:  all.filter(n => n.project_type === 'python'),
       p5js:    all.filter(n => n.project_type === 'p5js'),
+      game2d:  all.filter(n => n.project_type === 'game2d'),
       strudel: all.filter(n => n.project_type === 'strudel'),
     }
   }, [notebooks, search])
 
   const totalCount = (notebooks?.length ?? 0)
-  const visibleCount = filtered.python.length + filtered.p5js.length + filtered.strudel.length
+  const visibleCount = filtered.python.length + filtered.p5js.length + filtered.game2d.length + filtered.strudel.length
   const projectCounts: Record<NotebookProjectType, number> = {
     python: notebooks?.filter(n => n.project_type === 'python').length ?? 0,
     p5js: notebooks?.filter(n => n.project_type === 'p5js').length ?? 0,
+    game2d: notebooks?.filter(n => n.project_type === 'game2d').length ?? 0,
     strudel: notebooks?.filter(n => n.project_type === 'strudel').length ?? 0,
   }
 
@@ -245,8 +261,8 @@ export default function NotebookListPage({ onOpen }: Props = {}) {
             </h3>
             <p className="mx-auto mt-3 max-w-2xl text-sm leading-6 text-slate-600">
               {isEnglish
-                ? 'Choose Python for analysis, p5.js for visual sketches, or Strudel for code music. Each notebook keeps code, outputs, previews, and tutor help together.'
-                : 'Scegli Python per analisi, p5.js per sketch visuali o Strudel per musica da codice. Ogni notebook tiene insieme codice, output, preview e supporto del tutor.'}
+                ? 'Choose Python for analysis, p5.js for visual sketches, Game 2D for schema-driven prototypes, or Strudel for code music. Each notebook keeps code, outputs, previews, and tutor help together.'
+                : 'Scegli Python per analisi, p5.js per sketch visuali, Game 2D per prototipi a schema o Strudel per musica da codice. Ogni notebook tiene insieme codice, output, preview e supporto del tutor.'}
             </p>
 
             <PrimaryCreateButton
@@ -255,7 +271,7 @@ export default function NotebookListPage({ onOpen }: Props = {}) {
               className="mt-7"
             />
 
-            <div className="mt-8 grid gap-3 md:grid-cols-3">
+            <div className="mt-8 grid gap-3 md:grid-cols-4">
               {PROJECT_ORDER.map(type => (
                 <ProjectSummary
                   key={type}
@@ -309,7 +325,7 @@ export default function NotebookListPage({ onOpen }: Props = {}) {
               />
             </div>
 
-            <div className="mt-7 grid gap-3 md:grid-cols-3">
+            <div className="mt-7 grid gap-3 md:grid-cols-4">
               {PROJECT_ORDER.map(type => (
                 <ProjectSummary
                   key={type}
@@ -374,6 +390,17 @@ export default function NotebookListPage({ onOpen }: Props = {}) {
               notebooks={filtered.p5js}
               onOpen={openNotebook}
               onDelete={(id) => { if (confirm(isEnglish ? 'Delete this sketch?' : 'Eliminare questo sketch?')) deleteMutation.mutate(id) }}
+              isEnglish={isEnglish}
+              isDeleting={deleteMutation.isPending}
+            />
+          )}
+
+          {filtered.game2d.length > 0 && (
+            <Section
+              type="game2d"
+              notebooks={filtered.game2d}
+              onOpen={openNotebook}
+              onDelete={(id) => { if (confirm(isEnglish ? 'Delete this 2D game?' : 'Eliminare questo gioco 2D?')) deleteMutation.mutate(id) }}
               isEnglish={isEnglish}
               isDeleting={deleteMutation.isPending}
             />
@@ -558,7 +585,7 @@ function CreateDialog({
           </button>
         </div>
 
-        <div className="mb-4 grid grid-cols-1 gap-2 sm:grid-cols-3">
+        <div className="mb-4 grid grid-cols-1 gap-2 sm:grid-cols-4">
           {PROJECT_ORDER.map(type => {
             const s = NOTEBOOK_STYLES[type]
             const selected = newProjectType === type
@@ -591,7 +618,9 @@ function CreateDialog({
             ? (isEnglish ? 'e.g. Sales data analysis' : 'es. Analisi dati vendite')
             : newProjectType === 'strudel'
               ? (isEnglish ? 'e.g. My first beat' : 'es. Il mio primo beat')
-              : (isEnglish ? 'e.g. Physics simulation' : 'es. Simulazione fisica')}
+              : newProjectType === 'game2d'
+                ? (isEnglish ? 'e.g. Forest platformer' : 'es. Platform nella foresta')
+                : (isEnglish ? 'e.g. Physics simulation' : 'es. Simulazione fisica')}
           className="mb-4 w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-transparent focus:ring-2 focus:ring-indigo-500"
         />
 

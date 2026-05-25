@@ -17,7 +17,7 @@ import logging
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
-SUPPORTED_PROJECT_TYPES = {"python", "p5js", "strudel"}
+SUPPORTED_PROJECT_TYPES = {"python", "p5js", "strudel", "game2d"}
 NOTEBOOK_CONTEXT_CELL_LIMIT = 6
 NOTEBOOK_SNIPPET_CHAR_LIMIT = 1200
 
@@ -265,6 +265,9 @@ async def notebook_tutor_chat(
     if project_type == "python":
         language_label = "Python"
         code_fence = "python"
+    elif project_type == "game2d":
+        language_label = "Game 2D schema JSON con runner Phaser"
+        code_fence = "json"
     elif project_type == "strudel":
         language_label = "Strudel (live coding musicale con mini notation)"
         code_fence = "javascript"
@@ -292,11 +295,24 @@ Strudel è un sistema di live coding musicale basato su JavaScript. Concetti chi
 - Il codice viene eseguito in tempo reale e produce audio nel browser via WebAudio
 - Shift+Enter o il pulsante Play eseguono il codice; l'audio parte solo dopo il primo clic "Attiva audio"
 """
+    game2d_extra = ""
+    if project_type == "game2d":
+        game2d_extra = """
+Game 2D usa un runner Phaser fisso e una cella JSON come configurazione.
+Concetti chiave:
+- Lo schema descrive metadata, world, player, entities, collectibles, goal e ui
+- Non serve scrivere codice JavaScript per il prototipo: cambia i dati JSON
+- player.speed controlla la velocità, world.gravity controlla il movimento verticale
+- entities include platform, hazard, enemy; collectibles include oggetti raccoglibili
+- behaviors come patrol definiscono movimenti pre-scritti dal runner
+- Il JSON deve restare valido e serializzabile
+"""
 
     system_prompt = f"""Sei un tutor esperto di {language_label} per studenti e docenti.
 Stai aiutando con il notebook intitolato: "{nb.title}".
 Tipo progetto: {project_type}
 {strudel_extra}
+{game2d_extra}
 Codice completo del notebook (tutte le celle):
 ```{code_fence}
 {all_code[:3000]}
@@ -323,10 +339,11 @@ Il tuo obiettivo:
 4. Se l'utente chiede esplicitamente del codice di esempio, puoi mostrarne uno breve
 5. Se il progetto è p5js, considera setup(), draw(), preload(), canvas, coordinate, frame rate e ciclo di rendering
 6. Se il progetto è strudel, guida con domande sulla mini notation, i ritmi, i parametri sonori e la struttura del pattern
-7. Non usare emoji, emoticon o toni giocosi
-8. Rispondi in modo compatto, chiaro e operativo: paragrafi brevi, pochi punti, niente preamboli inutili
-9. Mantieni uno stile socratico: fai al massimo una domanda guida per volta quando serve
-10. Rispondi sempre in italiano a meno che l'utente scriva in un'altra lingua"""
+7. Se il progetto è game2d, ragiona sullo schema JSON e non proporre codice libero se non richiesto esplicitamente
+8. Non usare emoji, emoticon o toni giocosi
+9. Rispondi in modo compatto, chiaro e operativo: paragrafi brevi, pochi punti, niente preamboli inutili
+10. Mantieni uno stile socratico: fai al massimo una domanda guida per volta quando serve
+11. Rispondi sempre in italiano a meno che l'utente scriva in un'altra lingua"""
 
     messages = [{"role": m["role"], "content": m["content"]} for m in history[-10:]]
     messages.append({"role": "user", "content": str(message).strip()})
@@ -371,7 +388,7 @@ async def notebook_assist(
     last_output = request.get("last_output", "") or ""
     user_prompt = request.get("message", "") or "Analizza il codice e suggerisci correzioni mirate."
     project_type = nb.project_type or "python"
-    code_fence = "python" if project_type == "python" else "javascript"
+    code_fence = "python" if project_type == "python" else "json" if project_type == "game2d" else "javascript"
 
     all_code = "\n\n# --- next cell ---\n".join(
         cell.get("source", "") for cell in (nb.cells or []) if cell.get("type") == "code"
@@ -405,6 +422,7 @@ Regole:
 - Non inventare errori se il codice sembra corretto
 - Se non serve cambiare il codice, restituisci proposals: []
 - Se il progetto è p5js, considera anche errori tipici di setup/draw, canvas, preload, scope e API p5
+- Se il progetto è game2d, correggi solo JSON/schema: niente codice JavaScript libero
 - Rispondi in italiano"""
 
     messages = [
@@ -501,10 +519,10 @@ def _normalize_project_type(value: Optional[str]) -> str:
 
 def _default_editor_settings(project_type: str) -> dict:
     return {
-        "theme": "dracula" if project_type in ("p5js", "strudel") else "dark",
+        "theme": "dracula" if project_type in ("p5js", "strudel", "game2d") else "dark",
         "font_size": 14,
         "font_family": "jetbrains",
-        "live_preview": project_type == "p5js",
+        "live_preview": project_type in ("p5js", "game2d"),
     }
 
 
@@ -539,6 +557,60 @@ def _starter_cells(project_type: str) -> list[dict]:
                 "  .slow(2)\n"
                 "  .gain(0.6)\n"
             ),
+            "outputs": [],
+            "execution_count": None,
+        }]
+    if project_type == "game2d":
+        starter_spec = {
+            "version": 1,
+            "metadata": {
+                "title": "Primo prototipo 2D",
+                "description": "Un runner Phaser legge questo JSON e costruisce il livello.",
+            },
+            "world": {
+                "width": 960,
+                "height": 540,
+                "background": "#0f172a",
+                "gravity": 900,
+            },
+            "player": {
+                "x": 80,
+                "y": 420,
+                "width": 32,
+                "height": 42,
+                "color": "#38bdf8",
+                "speed": 260,
+                "jump": 470,
+            },
+            "goal": {
+                "x": 880,
+                "y": 382,
+                "width": 36,
+                "height": 72,
+                "color": "#facc15",
+                "label": "Portale",
+            },
+            "entities": [
+                {"id": "ground", "type": "platform", "x": 480, "y": 520, "width": 960, "height": 40, "color": "#334155"},
+                {"id": "step-1", "type": "platform", "x": 250, "y": 420, "width": 180, "height": 24, "color": "#475569"},
+                {"id": "step-2", "type": "platform", "x": 515, "y": 335, "width": 190, "height": 24, "color": "#475569"},
+                {"id": "enemy-1", "type": "enemy", "x": 570, "y": 480, "width": 34, "height": 34, "color": "#fb7185", "behavior": {"kind": "patrol", "axis": "x", "distance": 120, "speed": 90}},
+                {"id": "spikes", "type": "hazard", "x": 735, "y": 502, "width": 120, "height": 24, "color": "#ef4444"},
+            ],
+            "collectibles": [
+                {"id": "star-1", "x": 250, "y": 370, "radius": 11, "color": "#fde047"},
+                {"id": "star-2", "x": 515, "y": 285, "radius": 11, "color": "#fde047"},
+                {"id": "star-3", "x": 820, "y": 455, "radius": 11, "color": "#fde047"},
+            ],
+            "ui": {
+                "objective": "Raccogli le stelle e raggiungi il portale.",
+            },
+        }
+        return [{
+            "id": str(uuid.uuid4()),
+            "type": "code",
+            "name": "game.json",
+            "source": json.dumps(starter_spec, ensure_ascii=False, indent=2),
             "outputs": [],
             "execution_count": None,
         }]

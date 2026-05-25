@@ -681,9 +681,9 @@ export const feedbackApi = {
 
 export const notebooksApi = {
   list: () => api.get('/notebooks'),
-  create: (title: string, projectType: 'python' | 'p5js' | 'strudel') => api.post('/notebooks', { title, project_type: projectType }),
+  create: (title: string, projectType: 'python' | 'p5js' | 'strudel' | 'game2d') => api.post('/notebooks', { title, project_type: projectType }),
   get: (id: string) => api.get(`/notebooks/${id}`),
-  update: (id: string, data: { title?: string; cells?: unknown[]; project_type?: 'python' | 'p5js' | 'strudel'; editor_settings?: Record<string, unknown> }) => api.put(`/notebooks/${id}`, data),
+  update: (id: string, data: { title?: string; cells?: unknown[]; project_type?: 'python' | 'p5js' | 'strudel' | 'game2d'; editor_settings?: Record<string, unknown> }) => api.put(`/notebooks/${id}`, data),
   delete: (id: string) => api.delete(`/notebooks/${id}`),
   tutorChat: (id: string, data: {
     message: string

@@ -208,7 +208,7 @@ export default function NotebookCell({
         <div className={`absolute inset-y-0 left-0 z-10 w-1.5 ${surface.accent}`} />
         <div className={`flex flex-shrink-0 items-center justify-between border-b px-3 py-2 ${surface.toolbar}`}>
           <span className={`rounded-full border px-2 py-0.5 font-mono text-[10px] ${surface.accentSoft}`}>
-            {projectType === 'python' ? 'python' : projectType === 'strudel' ? 'strudel' : 'p5js'} · {lineCount} ln
+            {projectType === 'python' ? 'python' : projectType === 'strudel' ? 'strudel' : projectType === 'game2d' ? 'game2d' : 'p5js'} · {lineCount} ln
           </span>
           <div className="flex items-center gap-1">
             {hasSelection && (

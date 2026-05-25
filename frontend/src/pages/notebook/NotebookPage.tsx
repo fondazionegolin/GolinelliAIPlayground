@@ -2,7 +2,7 @@ import { lazy, Suspense, useCallback, useEffect, useRef, useState, type PointerE
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useParams } from 'react-router-dom'
 import {
-  AlertCircle, BookOpen, Bot, CheckCircle, ChevronDown, ChevronUp, Cpu, FilePlus, Loader2,
+  AlertCircle, BookOpen, Bot, CheckCircle, ChevronDown, ChevronUp, Cpu, FilePlus, Gamepad2, Loader2,
   Monitor, Music2, PackagePlus, Pause, PanelRight, Play, Plus, RotateCcw, Save, Sparkles, Square, Terminal, Trash2, Wrench, Zap,
 } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
@@ -32,6 +32,7 @@ import type {
 const NotebookTutorChat = lazy(() => import('@/components/notebook/NotebookTutorChat'))
 const NotebookP5Preview = lazy(() => import('@/components/notebook/NotebookP5Preview'))
 const NotebookStrudelPreview = lazy(() => import('@/components/notebook/NotebookStrudelPreview'))
+const NotebookGame2DPreview = lazy(() => import('@/components/notebook/NotebookGame2DPreview'))
 import NotebookLibraryManager from '@/components/notebook/NotebookLibraryManager'
 import type { StrudelPreviewHandle } from '@/components/notebook/NotebookStrudelPreview'
 
@@ -47,6 +48,14 @@ function newCell(name?: string): Cell {
 }
 
 function normalizeCells(projectType: NotebookProjectType, nextCells: Cell[]) {
+  if (projectType === 'game2d') {
+    const cells = nextCells.length > 0 ? nextCells : [newCell('game.json')]
+    return cells.slice(0, 1).map((cell) => ({
+      ...cell,
+      type: 'code' as const,
+      name: cell.name ?? 'game.json',
+    }))
+  }
   if (projectType === 'p5js') {
     const cells = nextCells.length > 0 ? nextCells : [newCell('sketch.js')]
     return cells.map((cell, i) => ({
@@ -171,6 +180,8 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
   const [assistantProposals, setAssistantProposals] = useState<Record<string, NotebookCodeProposal[]>>({})
   const [p5SplitRatio, setP5SplitRatio] = useState(0.58)
   const [p5Playing, setP5Playing] = useState(true)
+  const [gameSplitRatio, setGameSplitRatio] = useState(0.48)
+  const [gamePlaying, setGamePlaying] = useState(true)
   const [strudelSplitRatio, setStrudelSplitRatio] = useState(0.58)
   const [strudelPlaying, setStrudelPlaying] = useState(false)
   const [strudelError, setStrudelError] = useState<string | null>(null)
@@ -179,11 +190,13 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
   const [chatSidebarOpen, setChatSidebarOpen] = useState(true)
   const [tutorSidebarWidth, setTutorSidebarWidth] = useState(340)
   const [isP5Resizing, setIsP5Resizing] = useState(false)
+  const [isGameResizing, setIsGameResizing] = useState(false)
   const [isTutorResizing, setIsTutorResizing] = useState(false)
   const [renamingCellId, setRenamingCellId] = useState<string | null>(null)
   const [renameValue, setRenameValue] = useState('')
   const [libraryManagerOpen, setLibraryManagerOpen] = useState(false)
   const p5IframeWindowRef = useRef<Window | null>(null)
+  const gameIframeWindowRef = useRef<Window | null>(null)
   const strudelRef = useRef<StrudelPreviewHandle>(null)
 
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -378,6 +391,7 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
   const activeCell = cells.find((cell) => cell.id === activeCellId) ?? cells[0]
   const p5Files = cells.map((c) => ({ name: c.name ?? 'sketch.js', source: c.source }))
   const p5SourceKey = p5Files.map((f) => f.source).join('\n')
+  const gameSource = activeCell?.source ?? ''
 
   const lastOutput = projectType === 'python'
     ? (activeCell?.outputs
@@ -416,6 +430,17 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
     setP5Playing(false)
   }, [])
 
+  const handleGamePlay = useCallback(() => {
+    setGamePlaying(true)
+    setPreviewRuntimeError(null)
+    setPreviewNonce((value) => value + 1)
+  }, [])
+
+  const handleGameStop = useCallback(() => {
+    gameIframeWindowRef.current?.postMessage({ source: 'game2d-control', action: 'stop' }, '*')
+    setGamePlaying(false)
+  }, [])
+
   const handleStrudelPlay = useCallback(() => {
     if (!activeCell?.source.trim()) return
     setStrudelError(null)
@@ -436,6 +461,10 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
       handleStrudelPlay()
       return
     }
+    if (projectType === 'game2d') {
+      handleGamePlay()
+      return
+    }
     if (pyStatus !== 'ready') return
     let counter = execCounter
     for (const cell of cells) {
@@ -454,12 +483,17 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
       scheduleSave(prev)
       return prev
     })
-  }, [cells, execCounter, handleP5Play, projectType, pyRunCell, pyStatus, scheduleSave])
+  }, [cells, execCounter, handleGamePlay, handleP5Play, projectType, pyRunCell, pyStatus, scheduleSave])
 
   const runCell = useCallback(async (id: string) => {
     if (projectType === 'p5js') {
       setActiveCellId(id)
       handleP5Play()
+      return
+    }
+    if (projectType === 'game2d') {
+      setActiveCellId(id)
+      handleGamePlay()
       return
     }
     if (projectType === 'strudel') {
@@ -468,7 +502,7 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
       return
     }
     await runPythonCell(id)
-  }, [handleP5Play, handleStrudelPlay, projectType, runPythonCell])
+  }, [handleGamePlay, handleP5Play, handleStrudelPlay, projectType, runPythonCell])
 
   useEffect(() => {
     if (projectType !== 'p5js' || !editorSettings.live_preview || !p5Playing) return
@@ -482,6 +516,18 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
       if (previewTimer.current) clearTimeout(previewTimer.current)
     }
   }, [editorSettings.live_preview, p5Playing, p5SourceKey, projectType])  // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (projectType !== 'game2d' || !editorSettings.live_preview || !gamePlaying) return
+    if (previewTimer.current) clearTimeout(previewTimer.current)
+    previewTimer.current = setTimeout(() => {
+      setPreviewRuntimeError(null)
+      setPreviewNonce((value) => value + 1)
+    }, 320)
+    return () => {
+      if (previewTimer.current) clearTimeout(previewTimer.current)
+    }
+  }, [editorSettings.live_preview, gamePlaying, gameSource, projectType])
 
   useEffect(() => {
     const onMessage = (event: MessageEvent) => {
@@ -500,6 +546,13 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
         if (event.data.type === 'status') {
           setStrudelPlaying(event.data.payload?.playing || false)
           if (event.data.payload?.playing) setStrudelError(null)
+        }
+      }
+      if (event.data.source === 'game2d-preview') {
+        if (event.data.type === 'runtime-error') setPreviewRuntimeError(String(event.data.payload || (isEnglish ? 'Runtime error' : 'Errore di runtime')))
+        if (event.data.type === 'ready') setPreviewRuntimeError(null)
+        if (event.data.type === 'status' && typeof event.data.payload?.playing === 'boolean') {
+          setGamePlaying(event.data.payload.playing)
         }
       }
     }
@@ -601,9 +654,13 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
     setConsoleOpen(true)
     try {
       const res = await notebooksApi.tutorChat(notebookId, {
-        message: isEnglish
-          ? `Analyze this error in the p5.js code and explain the cause in a didactic way.\n\nError:\n${errorLines}\n\nCode:\n${activeCell.source}`
-          : `Analizza questo errore nel codice p5.js e spiega la causa in modo didattico.\n\nErrore:\n${errorLines}\n\nCodice:\n${activeCell.source}`,
+        message: projectType === 'game2d'
+          ? (isEnglish
+              ? `Analyze this error in the Game 2D JSON schema or Phaser runner and explain the cause in a didactic way.\n\nError:\n${errorLines}\n\nJSON:\n${activeCell.source}`
+              : `Analizza questo errore nello schema JSON Game 2D o nel runner Phaser e spiega la causa in modo didattico.\n\nErrore:\n${errorLines}\n\nJSON:\n${activeCell.source}`)
+          : (isEnglish
+              ? `Analyze this error in the p5.js code and explain the cause in a didactic way.\n\nError:\n${errorLines}\n\nCode:\n${activeCell.source}`
+              : `Analizza questo errore nel codice p5.js e spiega la causa in modo didattico.\n\nErrore:\n${errorLines}\n\nCodice:\n${activeCell.source}`),
         current_cell_source: activeCell.source,
         last_output: errorLines,
         pending_proposals: [],
@@ -614,7 +671,7 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
     } finally {
       setConsoleAiLoading(false)
     }
-  }, [activeCell, consoleEntries, notebookId, previewRuntimeError])
+  }, [activeCell, consoleEntries, isEnglish, notebookId, previewRuntimeError, projectType])
 
   const proposeConsoleFix = useCallback(async () => {
     if (!notebookId || !activeCell) return
@@ -713,6 +770,21 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
     )
   }, [beginHorizontalResize, p5SplitRatio])
 
+  const startGameResize = useCallback((startEvent: ReactPointerEvent<HTMLDivElement>) => {
+    const startX = startEvent.clientX
+    const startRatio = gameSplitRatio
+
+    beginHorizontalResize(
+      startEvent,
+      (clientX) => {
+        const delta = (clientX - startX) / window.innerWidth
+        setGameSplitRatio(Math.min(0.68, Math.max(0.32, startRatio + delta)))
+      },
+      () => setIsGameResizing(true),
+      () => setIsGameResizing(false),
+    )
+  }, [beginHorizontalResize, gameSplitRatio])
+
   const startTutorResize = useCallback((startEvent: ReactPointerEvent<HTMLDivElement>) => {
     const startX = startEvent.clientX
     const startWidth = tutorSidebarWidth
@@ -751,7 +823,13 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
   }
 
   const fontWeight = editorSettings.font_weight ?? 400
-  const projectTone: PastelTone = projectType === 'python' ? 'indigo' : projectType === 'strudel' ? 'violet' : 'emerald'
+  const projectTone: PastelTone = projectType === 'python'
+    ? 'indigo'
+    : projectType === 'strudel'
+      ? 'violet'
+      : projectType === 'game2d'
+        ? 'cyan'
+        : 'emerald'
 
   return (
     <>
@@ -797,6 +875,11 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
             <div className={`flex items-center gap-1.5 text-[11px] ${strudelPlaying ? 'text-violet-600' : 'text-slate-500'}`}>
               <Music2 className="h-3.5 w-3.5" />
               <span>{strudelPlaying ? '♪ Suonando' : 'Live Music'}</span>
+            </div>
+          ) : projectType === 'game2d' ? (
+            <div className={`flex items-center gap-1.5 text-[11px] ${gamePlaying ? 'text-cyan-700' : 'text-slate-500'}`}>
+              <Gamepad2 className="h-3.5 w-3.5" />
+              <span>{isEnglish ? 'Phaser runner' : 'Runner Phaser'}</span>
             </div>
           ) : (
             <div className="flex items-center gap-1.5 text-[11px] text-emerald-700">
@@ -894,7 +977,7 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
             <span className="w-7 text-right text-slate-400">{fontWeight}</span>
           </label>
 
-          {projectType === 'p5js' && (
+          {(projectType === 'p5js' || projectType === 'game2d') && (
             <label className="flex items-center gap-1.5 text-xs text-slate-500">
               <input
                 type="checkbox"
@@ -971,6 +1054,26 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
                 >
                   <Pause className="h-3 w-3" />
                   Stop
+                </button>
+              </>
+            ) : projectType === 'game2d' ? (
+              <>
+                <button
+                  onClick={handleGamePlay}
+                  title={isEnglish ? 'Run game' : 'Esegui gioco'}
+                  className="flex items-center gap-1 rounded-xl bg-cyan-600 px-3 py-1.5 text-xs text-white transition-colors hover:bg-cyan-500"
+                >
+                  <Play className="h-3 w-3" />
+                  Play
+                </button>
+                <button
+                  onClick={handleGameStop}
+                  disabled={!gamePlaying}
+                  title={isEnglish ? 'Pause game' : 'Pausa gioco'}
+                  className={`flex items-center gap-1 rounded-xl px-3 py-1.5 text-xs shadow-sm transition-colors disabled:opacity-40 ${PASTEL_SURFACES.rose} ${PASTEL_ICON_TEXT.rose}`}
+                >
+                  <Pause className="h-3 w-3" />
+                  Pausa
                 </button>
               </>
             ) : projectType === 'p5js' ? (
@@ -1121,6 +1224,93 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
                   </Suspense>
                 </div>
               </div>
+            </div>
+          ) : projectType === 'game2d' ? (
+            <div className="flex min-h-0 flex-1 flex-col gap-2 p-4">
+              <div className={`flex min-h-0 flex-1 overflow-hidden rounded-xl shadow-sm ${PASTEL_SURFACES.slate}`}>
+                <div
+                  className="flex min-h-0 min-w-0 flex-col overflow-hidden bg-slate-950"
+                  style={{ flexBasis: `${gameSplitRatio * 100}%` }}
+                >
+                  <div className="flex flex-shrink-0 items-center gap-2 border-b border-slate-800 bg-slate-900 px-3 py-1.5">
+                    <Gamepad2 className="h-3 w-3 text-cyan-300" />
+                    <span className="font-mono text-[10px] text-cyan-200/70">game.json · schema driven</span>
+                  </div>
+                  {activeCell && (
+                    <NotebookCell
+                      cell={activeCell}
+                      projectType="game2d"
+                      theme={editorSettings.theme}
+                      fontSize={editorSettings.font_size}
+                      fontFamily={editorSettings.font_family}
+                      fontWeight={fontWeight}
+                      isRunning={false}
+                      isActive
+                      isCompact
+                      showOutputs={false}
+                      proposals={assistantProposals[activeCell.id] || []}
+                      onActivate={() => setActiveCellId(activeCell.id)}
+                      onChange={(source) => updateCell(activeCell.id, { source })}
+                      onRun={() => runCell(activeCell.id)}
+                      onApplyProposal={(proposalId) => applyProposal(activeCell.id, proposalId)}
+                      onRejectProposal={(proposalId) => rejectProposal(activeCell.id, proposalId)}
+                    />
+                  )}
+                </div>
+
+                <div
+                  onPointerDown={startGameResize}
+                  className={`group relative w-2 flex-shrink-0 cursor-col-resize touch-none ${isGameResizing ? 'bg-cyan-200' : 'bg-slate-200 hover:bg-cyan-200'}`}
+                  title={isEnglish ? 'Resize schema and game preview' : 'Ridimensiona schema e anteprima gioco'}
+                >
+                  <div className={`absolute inset-0 m-auto h-14 w-1 rounded-full transition ${isGameResizing ? 'bg-cyan-500' : 'bg-slate-400 group-hover:bg-cyan-500'}`} />
+                </div>
+
+                <div className={`relative min-h-0 min-w-0 flex-1 p-4 ${isGameResizing ? 'pointer-events-none' : ''}`}>
+                  <Suspense fallback={previewFallback}>
+                    <NotebookGame2DPreview
+                      source={gameSource}
+                      livePreview={editorSettings.live_preview}
+                      previewNonce={previewNonce}
+                      runtimeError={previewRuntimeError}
+                      onRuntimeMessage={setPreviewRuntimeError}
+                      onIframeLoad={(win) => { gameIframeWindowRef.current = win }}
+                    />
+                  </Suspense>
+                </div>
+              </div>
+
+              {previewRuntimeError && (
+                <div className="flex-shrink-0 overflow-hidden rounded-xl border border-slate-200 bg-slate-950">
+                  <div className="flex items-center gap-2 px-4 py-2">
+                    <Terminal className="h-3.5 w-3.5 text-slate-400" />
+                    <span className="text-xs font-semibold text-slate-400">{isEnglish ? 'Runner diagnostics' : 'Diagnostica runner'}</span>
+                    <span className="rounded-full bg-red-600 px-1.5 py-0.5 text-[10px] font-bold text-white">
+                      runtime error
+                    </span>
+                    <div className="flex-1" />
+                    <button
+                      onClick={(e) => { e.stopPropagation(); analyzeConsoleError() }}
+                      disabled={consoleAiLoading}
+                      className="flex items-center gap-1 rounded-lg bg-cyan-600 px-2.5 py-1 text-[11px] font-semibold text-white transition hover:bg-cyan-500 disabled:opacity-50"
+                    >
+                      {consoleAiLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Bot className="h-3 w-3" />}
+                      {isEnglish ? 'Analyze' : 'Analizza'}
+                    </button>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); proposeConsoleFix() }}
+                      disabled={assistantLoading}
+                      className="flex items-center gap-1 rounded-lg border border-emerald-700 bg-emerald-900/40 px-2.5 py-1 text-[11px] font-semibold text-emerald-300 transition hover:bg-emerald-800/50 disabled:opacity-50"
+                    >
+                      {assistantLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Wrench className="h-3 w-3" />}
+                      {isEnglish ? 'Fix JSON' : 'Correggi JSON'}
+                    </button>
+                  </div>
+                  <div className="border-t border-slate-800 px-4 py-2 font-mono text-xs text-red-400">
+                    {previewRuntimeError}
+                  </div>
+                </div>
+              )}
             </div>
           ) : projectType === 'p5js' ? (
             <div className="flex min-h-0 flex-1 flex-col p-4 gap-2">

@@ -18,6 +18,13 @@ interface Props {
   className?: string
 }
 
+function projectLabel(projectType: NotebookProjectType) {
+  if (projectType === 'python') return 'Python'
+  if (projectType === 'strudel') return 'Strudel'
+  if (projectType === 'game2d') return 'Game 2D'
+  return 'p5.js'
+}
+
 export default function NotebookTutorChat({
   notebookId,
   notebookTitle,
@@ -154,7 +161,7 @@ export default function NotebookTutorChat({
           <GraduationCap className="h-4 w-4" />
         </div>
         <div className="min-w-0 flex-1">
-          <p className="text-sm font-semibold text-slate-900">Tutor socratico {projectType === 'python' ? 'Python' : projectType === 'strudel' ? 'Strudel' : 'p5.js'}</p>
+          <p className="text-sm font-semibold text-slate-900">Tutor socratico {projectLabel(projectType)}</p>
           <p className="truncate text-[10px] text-slate-500">
             {isFloating ? 'Supporto AI' : notebookTitle}
           </p>
@@ -189,7 +196,7 @@ export default function NotebookTutorChat({
               <div className="flex h-full flex-col items-center justify-center gap-3 text-center text-slate-500">
                 <Bot className="h-10 w-10 text-slate-300" />
                 <div>
-                  <p className="text-sm font-medium text-slate-700">Tutor {projectType === 'python' ? 'Python' : projectType === 'strudel' ? 'Strudel' : 'p5.js'}</p>
+                  <p className="text-sm font-medium text-slate-700">Tutor {projectLabel(projectType)}</p>
                   <p className="mt-1 text-xs">Ti aiuto a leggere errori, capire le proposte e ragionare passo per passo senza sostituire il tuo codice.</p>
                 </div>
                 <div className="mt-2 grid w-full grid-cols-1 gap-1.5">
@@ -199,11 +206,17 @@ export default function NotebookTutorChat({
                       'Che cosa ho sbagliato in questa funzione?',
                       'Mostrami il ragionamento dietro la correzione',
                     ]
-                    : [
-                      'Perché questa modifica migliora lo sketch?',
-                      'Che ruolo ha setup() in questo caso?',
-                      'Come posso evitare questo errore di canvas?',
-                    ]).map((suggestion) => (
+                    : projectType === 'game2d'
+                      ? [
+                        'Come devo strutturare il JSON del livello?',
+                        'Perché il runner non carica questa entità?',
+                        'Come posso aggiungere un nemico senza scrivere JavaScript?',
+                      ]
+                      : [
+                        'Perché questa modifica migliora lo sketch?',
+                        'Che ruolo ha setup() in questo caso?',
+                        'Come posso evitare questo errore di canvas?',
+                      ]).map((suggestion) => (
                     <button
                       key={suggestion}
                       onClick={() => setInput(suggestion)}
