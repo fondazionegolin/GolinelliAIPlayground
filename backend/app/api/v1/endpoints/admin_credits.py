@@ -18,7 +18,9 @@ from app.models.user import User, ActivationToken
 from app.models.tenant import Tenant
 from app.models.invitation import PlatformInvitation
 from app.models.credits import CreditLimit, CreditTransaction, CreditRequest
-from app.models.enums import LimitLevel, CreditRequestStatus, InvitationStatus, CreditTransactionType, UserRole
+from app.models.enums import LimitLevel, CreditRequestStatus, InvitationStatus, CreditTransactionType, UserRole, TenantType
+from app.services.credit_service import credit_service
+import re
 from app.schemas.credits import (
     CreditLimitResponse, CreditLimitUpdate, CreditLimitBase,
     CreditTransactionResponse, ConsumptionStats,
@@ -291,15 +293,15 @@ async def invite_teacher(
     db: Annotated[AsyncSession, Depends(get_db)],
     admin: Annotated[User, Depends(get_current_admin)],
 ):
-    """Invite a new teacher via email"""
+    """
+    Invite a new teacher via email.
+    Ogni docente invitato direttamente dall'admin riceve un tenant INDIVIDUAL proprio:
+    - CreditLimit TEACHER €3/mese (uso personale del docente)
+    - CreditLimit STUDENT_POOL €10/mese (pool condiviso studenti)
+    """
     email = invitation.email.strip().lower()
 
-    # Check if user already exists — use .limit(1) to avoid MultipleResultsFound
-    stmt = select(User).where(User.email == email).order_by(desc(User.created_at)).limit(1)
-    existing_user = (await db.execute(stmt)).scalar_one_or_none()
-    # Any active user can be reinvited; their role will be set/confirmed to TEACHER
-    can_reinvite_existing_user = bool(existing_user and existing_user.is_active)
-
+    # Scade inviti pending precedenti
     existing_pending_invitations = (await db.execute(
         select(PlatformInvitation).where(
             PlatformInvitation.email == email,
@@ -310,45 +312,73 @@ async def invite_teacher(
         existing_inv.status = InvitationStatus.EXPIRED.value
         existing_inv.responded_at = datetime.utcnow()
 
-    if existing_user and not existing_user.is_active:
+    # Controlla se esiste già un utente attivo con questa email
+    existing_user = (await db.execute(
+        select(User).where(User.email == email).order_by(desc(User.created_at)).limit(1)
+    )).scalar_one_or_none()
+
+    if existing_user and existing_user.is_active:
+        # Reuse existing user — aggiorna dati ma mantieni il tenant esistente
         user = existing_user
-        user.tenant_id = admin.tenant_id
         user.role = UserRole.TEACHER
         user.first_name = invitation.first_name
         user.last_name = invitation.last_name
         user.institution = invitation.school
         user.is_verified = True
-        user.is_active = True
-        user.deactivated_at = None
-        user.deactivated_by_admin_id = None
-        await db.flush()
-    elif can_reinvite_existing_user and existing_user:
-        user = existing_user
-        user.tenant_id = admin.tenant_id
-        user.role = UserRole.TEACHER
-        user.first_name = invitation.first_name
-        user.last_name = invitation.last_name
-        user.institution = invitation.school
-        user.is_verified = True
+        tenant_id_for_inv = user.tenant_id
         await db.flush()
     else:
-        user = User(
-            tenant_id=admin.tenant_id,
-            email=email,
-            password_hash="",
-            role=UserRole.TEACHER,
-            first_name=invitation.first_name,
-            last_name=invitation.last_name,
-            institution=invitation.school,
-            is_verified=True,
+        # Crea tenant INDIVIDUAL per questo docente
+        slug_base = re.sub(r'[^a-z0-9]', '-', email.split('@')[0].lower())[:30]
+        slug = slug_base
+        # Assicura unicità dello slug
+        counter = 1
+        while (await db.execute(select(Tenant).where(Tenant.slug == slug))).scalar_one_or_none():
+            slug = f"{slug_base}-{counter}"
+            counter += 1
+
+        teacher_tenant = Tenant(
+            name=f"{invitation.first_name or ''} {invitation.last_name or ''}".strip() or email,
+            slug=slug,
+            tenant_type=TenantType.INDIVIDUAL.value,
         )
-        db.add(user)
+        db.add(teacher_tenant)
         await db.flush()
+        tenant_id_for_inv = teacher_tenant.id
+
+        if existing_user and not existing_user.is_active:
+            user = existing_user
+            user.tenant_id = teacher_tenant.id
+            user.role = UserRole.TEACHER
+            user.first_name = invitation.first_name
+            user.last_name = invitation.last_name
+            user.institution = invitation.school
+            user.is_verified = True
+            user.is_active = True
+            user.deactivated_at = None
+            user.deactivated_by_admin_id = None
+        else:
+            user = User(
+                tenant_id=teacher_tenant.id,
+                email=email,
+                password_hash="",
+                role=UserRole.TEACHER,
+                first_name=invitation.first_name,
+                last_name=invitation.last_name,
+                institution=invitation.school,
+                is_verified=True,
+            )
+            db.add(user)
+        await db.flush()
+
+        # Crea limiti crediti per il tenant individuale
+        await credit_service.ensure_teacher_limit(db, teacher_tenant.id, user.id, 3.0)
+        await credit_service.ensure_student_pool_limit(db, teacher_tenant.id, 10.0)
 
     _activation, activation_token = await _create_activation_token_for_user(db, user)
 
     inv = PlatformInvitation(
-        tenant_id=admin.tenant_id,
+        tenant_id=tenant_id_for_inv,
         email=email,
         first_name=invitation.first_name,
         last_name=invitation.last_name,

@@ -38,6 +38,7 @@ class Settings(BaseSettings):
     GOLINELLI_IMAGE_API_KEY: Optional[str] = None
     GOLINELLI_IMAGE_API_URL: str = "https://image.golinelli.ai/api/v1"
     BFL_API_KEY: Optional[str] = None
+    MESHY_API_KEY: Optional[str] = None
     
     # Default LLM settings
     DEFAULT_LLM_PROVIDER: str = "openai"

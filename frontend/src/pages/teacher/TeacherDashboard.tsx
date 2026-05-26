@@ -8,6 +8,7 @@ const SessionsPage       = lazy(() => import('./SessionsPage'))
 const SessionLivePage    = lazy(() => import('./SessionLivePage'))
 const TeacherDocumentsPage = lazy(() => import('./TeacherDocumentsPage'))
 const TeacherMLLabPage   = lazy(() => import('./TeacherMLLabPage'))
+const Teacher3DLabPage   = lazy(() => import('./Teacher3DLabPage'))
 const UDAListPage        = lazy(() => import('./UDAListPage'))
 const UDACreatorPage     = lazy(() => import('./UDACreatorPage'))
 const TeacherDemoPage    = lazy(() => import('./TeacherDemoPage'))
@@ -242,6 +243,7 @@ export default function TeacherDashboard() {
               <Route path="documents" element={<TeacherDocumentsPage />} />
               <Route path="wiki" element={<TeacherWikiPage accentId={teacherProfile?.uiAccent} />} />
               <Route path="ml-lab" element={<TeacherMLLabPage />} />
+              <Route path="3d-lab" element={<Teacher3DLabPage sessionId={activeSessionId ?? undefined} />} />
               <Route path="classes" element={<ClassesPage />} />
               <Route path="sessions" element={<SessionsPage />} />
               <Route path="sessions/:sessionId" element={<SessionLivePage />} />

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Query, BackgroundTasks, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, status, Query, BackgroundTasks, UploadFile, File, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, or_
 from sqlalchemy.orm import selectinload
@@ -2928,3 +2928,160 @@ async def change_password(
     teacher.password_hash = get_password_hash(request.new_password)
     await db.commit()
     return {"message": "Password aggiornata con successo"}
+
+
+# ── School owner: invito colleghi ─────────────────────────────────────────────
+
+class ColleagueInviteRequest(BaseModel):
+    email: str
+    first_name: str
+    last_name: str
+
+
+@router.post("/colleagues/invite")
+async def invite_colleague(
+    payload: ColleagueInviteRequest,
+    http_request: "Request",
+    db: Annotated[AsyncSession, Depends(get_db)],
+    teacher: Annotated[User, Depends(get_current_teacher)],
+):
+    """
+    Solo per school owner: invita un collega nel proprio tenant SCHOOL.
+    Verifica che il tenant sia SCHOOL, che il docente sia owner, e che
+    non si superi il limite max_teachers.
+    """
+    from app.models.tenant import Tenant
+    from app.models.enums import TenantType
+    from app.models.invitation import PlatformInvitation
+    from app.models.enums import InvitationStatus as IS
+    from app.services.email_service import email_service
+    from app.core.url_utils import resolve_frontend_url
+    from app.core.config import settings
+    from app.models.user import ActivationToken
+    import secrets
+    from datetime import timezone, timedelta
+
+    if not getattr(teacher, 'is_school_owner', False):
+        raise HTTPException(status_code=403, detail="Solo lo school owner può invitare colleghi")
+
+    tenant = (await db.execute(select(Tenant).where(Tenant.id == teacher.tenant_id))).scalar_one_or_none()
+    if not tenant or getattr(tenant, 'tenant_type', '') != TenantType.SCHOOL.value:
+        raise HTTPException(status_code=403, detail="Questa funzione è disponibile solo per tenants scolastici")
+
+    # Conta docenti attivi nel tenant
+    active_teachers = (await db.execute(
+        select(func.count(User.id)).where(
+            User.tenant_id == teacher.tenant_id,
+            User.is_active == True,
+            User.role == UserRole.TEACHER,
+        )
+    )).scalar_one() or 0
+    if active_teachers >= tenant.max_teachers:
+        raise HTTPException(
+            status_code=403,
+            detail=f"Limite docenti raggiunto per questa scuola (max {tenant.max_teachers})",
+        )
+
+    email = payload.email.strip().lower()
+    if (await db.execute(select(User).where(User.email == email, User.is_active == True))).scalar_one_or_none():
+        raise HTTPException(status_code=400, detail="Email già registrata sulla piattaforma")
+
+    # Scade eventuali inviti pending precedenti
+    for inv in (await db.execute(
+        select(PlatformInvitation).where(
+            PlatformInvitation.email == email,
+            PlatformInvitation.status == IS.PENDING.value,
+        )
+    )).scalars().all():
+        inv.status = IS.EXPIRED.value
+
+    # Crea utente
+    temp_password = secrets.token_urlsafe(12)
+    new_teacher = User(
+        tenant_id=teacher.tenant_id,
+        email=email,
+        password_hash=get_password_hash(temp_password),
+        role=UserRole.TEACHER,
+        first_name=payload.first_name,
+        last_name=payload.last_name,
+        institution=tenant.name,
+        is_verified=True,
+    )
+    db.add(new_teacher)
+    await db.flush()
+
+    # Token attivazione
+    activation_token = secrets.token_urlsafe(48)
+    db.add(ActivationToken(
+        user_id=new_teacher.id,
+        token=activation_token,
+        temporary_password=temp_password,
+        expires_at=datetime.now(timezone.utc) + timedelta(hours=settings.ACTIVATION_TOKEN_EXPIRE_HOURS),
+    ))
+
+    # Invito
+    inv = PlatformInvitation(
+        tenant_id=teacher.tenant_id,
+        email=email,
+        first_name=payload.first_name,
+        last_name=payload.last_name,
+        school=tenant.name,
+        role="TEACHER",
+        token=secrets.token_urlsafe(32),
+        status=IS.PENDING.value,
+        invited_by_id=teacher.id,
+        expires_at=datetime.now(timezone.utc) + timedelta(days=7),
+    )
+    db.add(inv)
+    await db.commit()
+
+    activation_link = f"{resolve_frontend_url(http_request.headers.get('origin'))}/activate/{activation_token}"
+    await email_service.send_teacher_activation_email(
+        to_email=email,
+        first_name=payload.first_name,
+        last_name=payload.last_name,
+        activation_link=activation_link,
+    )
+
+    return {"message": f"Invito inviato a {email}", "teacher_id": str(new_teacher.id)}
+
+
+@router.get("/colleagues")
+async def list_colleagues(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    teacher: Annotated[User, Depends(get_current_teacher)],
+):
+    """Lista tutti i colleghi nel tenant SCHOOL (solo school owner)."""
+    from app.models.tenant import Tenant
+    from app.models.enums import TenantType
+
+    if not getattr(teacher, 'is_school_owner', False):
+        raise HTTPException(status_code=403, detail="Solo lo school owner può vedere i colleghi")
+
+    tenant = (await db.execute(select(Tenant).where(Tenant.id == teacher.tenant_id))).scalar_one_or_none()
+    if not tenant or getattr(tenant, 'tenant_type', '') != TenantType.SCHOOL.value:
+        raise HTTPException(status_code=403, detail="Solo per tenant scolastici")
+
+    colleagues = (await db.execute(
+        select(User).where(
+            User.tenant_id == teacher.tenant_id,
+            User.is_active == True,
+            User.id != teacher.id,
+        )
+    )).scalars().all()
+
+    return {
+        "colleagues": [
+            {
+                "id": str(c.id),
+                "first_name": c.first_name,
+                "last_name": c.last_name,
+                "email": c.email,
+                "is_verified": c.is_verified,
+                "last_login_at": c.last_login_at.isoformat() if c.last_login_at else None,
+            }
+            for c in colleagues
+        ],
+        "max_teachers": tenant.max_teachers,
+        "current_count": len(colleagues) + 1,  # +1 per l'owner stesso
+    }

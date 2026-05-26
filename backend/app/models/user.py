@@ -30,9 +30,11 @@ class User(Base):
     # preferences_json stores: { default_model, last_session_id, last_chat_session_id, ui_settings }
     support_chat_system_prompt = Column(Text, nullable=True)
     # Custom system prompt for teacher's own AI assistant (overrides default if set)
+    is_school_owner = Column(Boolean, default=False, nullable=False, server_default="false")
+    # True for the primary contact of a SCHOOL tenant — can invite colleagues
 
     # Relationships
-    tenant = relationship("Tenant", back_populates="users")
+    tenant = relationship("Tenant", back_populates="users", foreign_keys=[tenant_id])
     classes = relationship("Class", back_populates="teacher", lazy="dynamic")
     reviewed_requests = relationship("TeacherRequest", back_populates="reviewed_by_admin", lazy="dynamic")
 

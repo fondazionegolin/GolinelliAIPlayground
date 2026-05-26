@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from app.api.v1.endpoints import auth, admin, admin_backend, teacher, student, chat, llm, rag, ml, assessment, files, teacherbots, admin_credits, alerts, stt, uda, media, feedback, notebooks, desktop, calendar
+from app.api.v1.endpoints import auth, admin, admin_backend, teacher, student, chat, llm, rag, ml, assessment, files, teacherbots, admin_credits, alerts, stt, uda, media, feedback, notebooks, desktop, calendar, meshy
 from app.api.v1.endpoints.live_interaction import teacher_router as live_teacher_router, student_router as live_student_router
 
 api_router = APIRouter()
@@ -26,5 +26,6 @@ api_router.include_router(feedback.router, prefix="/feedback", tags=["feedback"]
 api_router.include_router(notebooks.router, tags=["notebooks"])
 api_router.include_router(desktop.router, tags=["desktop"])
 api_router.include_router(calendar.router, tags=["calendar"])
+api_router.include_router(meshy.router, prefix="/meshy", tags=["meshy"])
 api_router.include_router(live_teacher_router, prefix="/teacher", tags=["live-interaction"])
 api_router.include_router(live_student_router, prefix="/student", tags=["live-interaction"])

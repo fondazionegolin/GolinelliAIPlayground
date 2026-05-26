@@ -200,6 +200,18 @@ export const adminApi = {
   }) => api.patch(`/admin/backend/changelog/${releaseId}`, data),
   deleteBackendChangelog: (releaseId: string) =>
     api.delete(`/admin/backend/changelog/${releaseId}`),
+
+  // ── School tenants ──────────────────────────────────────────────────────
+  createSchoolTenant: (data: {
+    school_name: string; slug: string
+    owner_first_name: string; owner_last_name: string; owner_email: string
+    max_teachers?: number; max_students_per_teacher?: number; max_students_per_class?: number
+    monthly_credit_pool?: number
+  }) => api.post('/admin/tenants/school', data),
+  updateTenantLimits: (tenantId: string, data: {
+    max_teachers?: number; max_students_per_teacher?: number; max_students_per_class?: number
+    monthly_credit_pool?: number; teacher_monthly_cap?: number
+  }) => api.patch(`/admin/tenants/${tenantId}/limits`, data),
 }
 
 export const platformApi = {
@@ -783,4 +795,34 @@ export const desktopAgentApi = {
       user_role: 'teacher' | 'student'
     }
   }) => api.post('/desktop/agent', body),
+}
+
+type MeshyTaskResult = {
+  id: string
+  status: 'PENDING' | 'IN_PROGRESS' | 'SUCCEEDED' | 'FAILED' | 'EXPIRED'
+  progress: number
+  model_urls?: { glb?: string; fbx?: string; obj?: string; usdz?: string }
+  thumbnail_url?: string
+  error?: { message?: string }
+}
+
+export const meshyApi = {
+  startTextTo3D: (prompt: string, negative_prompt?: string) =>
+    api.post<{ task_id: string }>('/meshy/text-to-3d', { prompt, negative_prompt }),
+  getTextTo3DStatus: (taskId: string) =>
+    api.get<MeshyTaskResult>(`/meshy/text-to-3d/${taskId}`),
+  startImageTo3D: (
+    image_data: string,
+    image_mime: string = 'image/jpeg',
+    enable_pbr: boolean = true,
+    topology: string = 'quad',
+    target_polycount: number = 30000,
+  ) =>
+    api.post<{ task_id: string }>('/meshy/image-to-3d', { image_data, image_mime, enable_pbr, topology, target_polycount }),
+  getImageTo3DStatus: (taskId: string) =>
+    api.get<MeshyTaskResult>(`/meshy/image-to-3d/${taskId}`),
+  generateImage: (prompt: string, size?: string, quality?: string, style?: string) =>
+    api.post<{ image_data: string; image_mime: string; revised_prompt: string }>('/meshy/text-to-image', { prompt, size, quality, style }),
+  proxyAssetUrl: (url: string) =>
+    `/api/v1/meshy/proxy-asset?url=${encodeURIComponent(url)}`,
 }

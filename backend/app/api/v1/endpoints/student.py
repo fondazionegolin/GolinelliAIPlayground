@@ -18,6 +18,7 @@ from app.models.document_draft import DocumentDraft
 from app.models.session_canvas import SessionCanvas
 from app.models.user import User
 from app.models.session import Class
+from app.models.tenant import Tenant
 from app.schemas.document_draft import DocumentDraftCreate, DocumentDraftUpdate
 from app.models.enums import SessionStatus
 from app.schemas.auth import (
@@ -153,6 +154,11 @@ async def join_session(
     nickname = _normalize_nickname(request.nickname)
     existing = await _get_student_by_nickname(db, session.id, nickname)
 
+    # ── Recupera tenant per limiti strutturali ──────────────────────────────
+    tenant = (await db.execute(select(Tenant).where(Tenant.id == session.tenant_id))).scalar_one_or_none()
+    max_per_class = getattr(tenant, 'max_students_per_class', 30) if tenant else 30
+    max_per_teacher = getattr(tenant, 'max_students_per_teacher', 100) if tenant else 100
+
     if existing:
         if existing.is_frozen:
             raise HTTPException(
@@ -175,6 +181,33 @@ async def join_session(
         await db.commit()
         return response
 
+    # ── Verifica limite studenti per classe ─────────────────────────────────
+    students_in_class = (await db.execute(
+        select(func.count(SessionStudent.id))
+        .join(Session, Session.id == SessionStudent.session_id)
+        .where(Session.class_id == session.class_id, Session.tenant_id == session.tenant_id)
+    )).scalar_one() or 0
+    if students_in_class >= max_per_class:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Classe piena (max {max_per_class} studenti per classe)",
+        )
+
+    # ── Verifica limite studenti per docente ────────────────────────────────
+    cls = (await db.execute(select(Class).where(Class.id == session.class_id))).scalar_one_or_none()
+    if cls:
+        students_of_teacher = (await db.execute(
+            select(func.count(SessionStudent.id))
+            .join(Session, Session.id == SessionStudent.session_id)
+            .join(Class, Class.id == Session.class_id)
+            .where(Class.teacher_id == cls.teacher_id, Class.tenant_id == session.tenant_id)
+        )).scalar_one() or 0
+        if students_of_teacher >= max_per_teacher:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Limite studenti del docente raggiunto (max {max_per_teacher})",
+            )
+
     password = _validate_student_password(request.password)
     join_token_placeholder = "pending"
     student = SessionStudent(
@@ -189,23 +222,9 @@ async def join_session(
     await db.flush()
     response = _build_student_join_response(student, session)
 
-    # Create default monthly credit limit for student (2€/month)
-    from datetime import timezone as _tz
-    _now = datetime.now(_tz.utc)
-    try:
-        _limit_end = _now.replace(month=_now.month + 1, day=1)
-    except ValueError:
-        _limit_end = _now.replace(year=_now.year + 1, month=1, day=1)
-    db.add(CreditLimit(
-        tenant_id=session.tenant_id,
-        level=LimitLevel.STUDENT,
-        student_id=student.id,
-        amount_cap=2.0,
-        current_usage=0.0,
-        period_start=_now,
-        period_end=_limit_end,
-        reset_frequency="MONTHLY",
-    ))
+    # Nota: i limiti di credito non sono più per-studente.
+    # INDIVIDUAL tenant: STUDENT_POOL sul tenant (€10/mese condivisi, creato all'invito)
+    # SCHOOL tenant: GLOBAL sul tenant (€10/mese condivisi scuola intera)
 
     await db.commit()
     await db.refresh(student)

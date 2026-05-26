@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, type CSSProperties } from 'react'
 import { Link, useNavigate, useLocation } from 'react-router-dom'
-import { User, Settings, LogOut, ChevronDown, Users, MessageSquare, FileText, Check, Brain, MonitorPlay, FileCode2, KeyRound, Loader2, LayoutDashboard, ShieldCheck, BookOpen, Zap } from 'lucide-react'
+import { User, Settings, LogOut, ChevronDown, Users, MessageSquare, FileText, Check, Brain, MonitorPlay, FileCode2, KeyRound, Loader2, LayoutDashboard, ShieldCheck, BookOpen, Zap, Box } from 'lucide-react'
 import { Button } from './ui/button'
 import { useToast } from '@/components/ui/use-toast'
 import { LogoMark } from './LogoMark'
@@ -287,6 +287,7 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
     { path: '/teacher/ml-lab', label: t('navbar.nav_ml_lab'), icon: Brain },
     { path: '/teacher/notebooks', label: t('navbar.nav_notebook'), icon: FileCode2 },
     { path: '/teacher/live-interaction', label: 'Live', icon: Zap },
+    { path: '/teacher/3d-lab', label: '3D Lab', icon: Box },
     { path: '/teacher/desktop', label: t('navbar.nav_desktop'), icon: LayoutDashboard },
   ]
 

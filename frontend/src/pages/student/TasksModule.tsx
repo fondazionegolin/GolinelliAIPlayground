@@ -143,12 +143,12 @@ export default function TasksModule({ openTaskId, onOpenDocument }: TasksModuleP
 
   if (!tasks || (tasks.length === 0 && Object.keys(udaFolderMap).length === 0)) {
     return (
-      <div className="h-full flex flex-col items-center justify-center p-12 text-center">
-        <div className="w-20 h-20 rounded-full bg-slate-100 flex items-center justify-center mb-6">
-          <ClipboardList className="h-10 w-10 text-slate-300" />
+      <div className="h-full flex flex-col items-center justify-center bg-slate-100 p-12 text-center">
+        <div className="w-20 h-20 rounded-xl border border-emerald-200 bg-emerald-100 flex items-center justify-center mb-6 shadow-sm">
+          <ClipboardList className="h-10 w-10 text-emerald-800" />
         </div>
-        <h3 className="text-xl font-bold text-slate-800 mb-2">{t('tasks.empty_title')}</h3>
-        <p className="text-slate-500 max-w-sm">
+        <h3 className="text-xl font-black text-slate-950 mb-2">{t('tasks.empty_title')}</h3>
+        <p className="text-slate-600 max-w-sm">
           {t('tasks.empty_body')}
         </p>
       </div>
@@ -156,18 +156,23 @@ export default function TasksModule({ openTaskId, onOpenDocument }: TasksModuleP
   }
 
   return (
-    <div className="h-full flex flex-col relative overflow-hidden">
+    <div className="h-full flex flex-col relative overflow-hidden bg-slate-100">
       {/* Grid View */}
-      <div className="flex-1 overflow-y-auto px-4 pb-24 pt-0 md:px-6 md:pb-8 md:pt-0">
-        <div className="w-full">
-          <div className="mb-4 flex items-center justify-between">
-            <div>
-              <h2 className="text-sm font-bold text-slate-700">{t('tasks.title')}</h2>
-              <p className="text-xs text-slate-400">{t('tasks.subtitle')}</p>
+      <div className="flex-1 overflow-y-auto px-4 pb-24 pt-5 md:px-6 md:pb-8">
+        <div className="mx-auto w-full max-w-6xl">
+          <div className="mb-4 flex items-center justify-between rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+            <div className="flex items-center gap-3">
+              <div className="flex h-9 w-9 items-center justify-center rounded-lg border border-emerald-200 bg-emerald-100 text-emerald-800 shadow-sm">
+                <ClipboardList className="h-4 w-4" />
+              </div>
+              <div>
+                <h2 className="text-base font-black text-slate-950">{t('tasks.title')}</h2>
+                <p className="text-xs font-medium text-slate-500">{t('tasks.subtitle')}</p>
+              </div>
             </div>
-            <div className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5">
-              <Award className="h-3.5 w-3.5 text-amber-500" />
-              <span className="text-xs font-bold text-slate-700">
+            <div className="flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-100 px-3 py-1.5 text-emerald-800 shadow-sm">
+              <Award className="h-3.5 w-3.5 text-emerald-700" />
+              <span className="text-xs font-bold">
                 {regularTasks.filter(t => t.submission).length}/{regularTasks.length}
               </span>
             </div>
@@ -181,7 +186,7 @@ export default function TasksModule({ openTaskId, onOpenDocument }: TasksModuleP
               value={taskSearch}
               onChange={e => setTaskSearch(e.target.value)}
               placeholder="Cerca compiti..."
-              className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-9 pr-8 text-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-300"
+              className="w-full rounded-xl border border-slate-300 bg-white py-2.5 pl-9 pr-8 text-sm shadow-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-400"
             />
             {taskSearch && (
               <button onClick={() => setTaskSearch('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
@@ -193,7 +198,7 @@ export default function TasksModule({ openTaskId, onOpenDocument }: TasksModuleP
           {/* UDA Folders */}
           {Object.keys(udaFolderMap).length > 0 && (
             <div className="mb-6 space-y-3">
-              <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wide">Unità Didattiche</h3>
+              <h3 className="text-[11px] font-black text-slate-600 uppercase tracking-[0.18em]">Unità Didattiche</h3>
               {Object.entries(udaFolderMap).map(([folderName, folderTasks]) => (
                 <UdaFolder
                   key={folderName}
@@ -217,7 +222,7 @@ export default function TasksModule({ openTaskId, onOpenDocument }: TasksModuleP
               return <p className="text-center text-sm text-slate-400 py-8">Nessun compito corrisponde a "{taskSearch}"</p>
             }
             return (
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                 {filtered.map((task) => (
                   <TaskCard
                     key={task.id}
@@ -257,13 +262,13 @@ export default function TasksModule({ openTaskId, onOpenDocument }: TasksModuleP
   )
 }
 
-const TASK_TILE_STYLES: Record<string, { card: string; iconBg: string; icon: string; badge: string; time: string }> = {
-  completed:    { card: 'border border-emerald-200 bg-white hover:border-emerald-300', iconBg: 'bg-emerald-50', icon: 'text-emerald-700', badge: 'border border-emerald-200 bg-emerald-50 text-emerald-700', time: 'text-emerald-600' },
-  quiz:         { card: 'border border-rose-200 bg-white hover:border-rose-300',       iconBg: 'bg-rose-50',    icon: 'text-rose-700',    badge: 'border border-rose-200 bg-rose-50 text-rose-700',    time: 'text-rose-500' },
-  lesson:       { card: 'border border-blue-200 bg-white hover:border-blue-300',       iconBg: 'bg-blue-50',    icon: 'text-blue-800',    badge: 'border border-blue-200 bg-blue-50 text-blue-700',    time: 'text-blue-500' },
-  presentation: { card: 'border border-indigo-200 bg-white hover:border-indigo-300',   iconBg: 'bg-indigo-50',  icon: 'text-indigo-700',  badge: 'border border-indigo-200 bg-indigo-50 text-indigo-700', time: 'text-indigo-500' },
-  exercise:     { card: 'border border-amber-200 bg-white hover:border-amber-300',     iconBg: 'bg-amber-50',   icon: 'text-amber-700',   badge: 'border border-amber-200 bg-amber-50 text-amber-700',  time: 'text-amber-600' },
-  default:      { card: 'border border-slate-200 bg-white hover:border-slate-300',     iconBg: 'bg-slate-50',   icon: 'text-slate-600',   badge: 'border border-slate-200 bg-slate-50 text-slate-600',  time: 'text-slate-500' },
+const TASK_TILE_STYLES: Record<string, { card: string; stripe: string; iconBg: string; icon: string; badge: string; time: string }> = {
+  completed:    { card: 'border border-emerald-200 bg-gradient-to-br from-white via-emerald-50/45 to-white shadow-sm hover:border-emerald-400 hover:shadow-lg', stripe: 'bg-emerald-500', iconBg: 'border border-emerald-200 bg-emerald-100', icon: 'text-emerald-800', badge: 'border border-emerald-200 bg-emerald-100 text-emerald-800', time: 'text-emerald-800' },
+  quiz:         { card: 'border border-rose-200 bg-gradient-to-br from-white via-rose-50/45 to-white shadow-sm hover:border-rose-400 hover:shadow-lg',       stripe: 'bg-rose-500',    iconBg: 'border border-rose-200 bg-rose-100',    icon: 'text-rose-800',    badge: 'border border-rose-200 bg-rose-100 text-rose-800',       time: 'text-rose-800' },
+  lesson:       { card: 'border border-sky-200 bg-gradient-to-br from-white via-sky-50/45 to-white shadow-sm hover:border-sky-400 hover:shadow-lg',         stripe: 'bg-sky-500',     iconBg: 'border border-sky-200 bg-sky-100',      icon: 'text-sky-800',     badge: 'border border-sky-200 bg-sky-100 text-sky-800',          time: 'text-sky-800' },
+  presentation: { card: 'border border-indigo-200 bg-gradient-to-br from-white via-indigo-50/45 to-white shadow-sm hover:border-indigo-400 hover:shadow-lg', stripe: 'bg-indigo-500',  iconBg: 'border border-indigo-200 bg-indigo-100', icon: 'text-indigo-800', badge: 'border border-indigo-200 bg-indigo-100 text-indigo-800', time: 'text-indigo-800' },
+  exercise:     { card: 'border border-amber-200 bg-gradient-to-br from-white via-amber-50/45 to-white shadow-sm hover:border-amber-400 hover:shadow-lg',     stripe: 'bg-amber-500',   iconBg: 'border border-amber-200 bg-amber-100',   icon: 'text-amber-800',   badge: 'border border-amber-200 bg-amber-100 text-amber-800',    time: 'text-amber-800' },
+  default:      { card: 'border border-slate-200 bg-gradient-to-br from-white via-slate-50 to-white shadow-sm hover:border-slate-400 hover:shadow-lg',       stripe: 'bg-slate-500',   iconBg: 'border border-slate-200 bg-slate-100',   icon: 'text-slate-800',   badge: 'border border-slate-200 bg-slate-100 text-slate-800',    time: 'text-slate-700' },
 }
 
 const UDA_TYPE_CHIP: Record<string, string> = {
@@ -292,13 +297,13 @@ function UdaFolder({
   const [open, setOpen] = useState(false)
 
   return (
-    <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
+    <div className="overflow-hidden rounded-lg border border-emerald-200 bg-gradient-to-br from-white via-emerald-50/40 to-white shadow-sm">
       <button
-        className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-slate-50 transition-colors"
+        className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-emerald-50 transition-colors"
         onClick={() => setOpen(o => !o)}
       >
-        <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-slate-100">
-          <FolderOpen className="h-4 w-4 text-slate-600" />
+        <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg border border-emerald-200 bg-emerald-100 text-emerald-800">
+          <FolderOpen className="h-4 w-4" />
         </div>
         <div className="flex-1 min-w-0">
           <p className="text-sm font-semibold text-slate-800 truncate">{folderName}</p>
@@ -319,7 +324,7 @@ function UdaFolder({
               {folderTasks.map(task => (
                 <button
                   key={task.id}
-                  className="w-full flex items-center gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-left transition-colors hover:bg-slate-50 hover:border-slate-300"
+                  className="w-full flex items-center gap-3 rounded-lg border border-emerald-200 bg-white px-3 py-2.5 text-left transition-colors hover:bg-emerald-50 hover:border-emerald-300"
                   onClick={() => onOpenTask(task)}
                 >
                   <span className={`text-xs px-2 py-0.5 rounded-full font-medium flex-shrink-0 ${UDA_TYPE_CHIP[task.task_type] ?? 'bg-slate-100 text-slate-600'}`}>
@@ -362,19 +367,18 @@ function TaskCard({ task, onClick }: { task: TaskData; onClick: () => void; acce
       whileHover={{ y: -2 }}
       whileTap={{ scale: 0.97 }}
       onClick={onClick}
-      className={`relative flex min-h-[154px] cursor-pointer flex-col rounded-lg p-3.5 text-left transition-all ${s.card}`}
+      className={`relative flex min-h-[154px] cursor-pointer flex-col overflow-hidden rounded-lg p-3.5 text-left transition-all hover:-translate-y-0.5 ${s.card}`}
     >
-      {isCompleted && (
-        <div className={`absolute top-2.5 right-2.5 ${s.badge} rounded-full p-0.5`}>
-          <Check className="h-3 w-3" />
-        </div>
-      )}
+      <div className={`absolute inset-x-0 top-0 h-1 ${s.stripe}`} />
+      <span className={`absolute right-3 top-4 rounded-full px-2.5 py-1 text-[10px] font-black uppercase ${s.badge}`}>
+        {isCompleted ? 'Fatto' : (UDA_TYPE_LABELS[task.task_type] ?? task.task_type)}
+      </span>
       <div className="flex items-start gap-3">
-        <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${s.iconBg} ${s.icon}`}>
+        <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-lg shadow-sm ${s.iconBg} ${s.icon}`}>
           {typeIcon}
         </div>
         <div className="min-w-0 flex-1 pr-6">
-          <div className="line-clamp-2 text-sm font-semibold leading-5 text-slate-900">{task.title}</div>
+          <div className="line-clamp-2 text-sm font-black leading-5 text-slate-950">{task.title}</div>
           {preview && (
             <p className="mt-1 line-clamp-3 text-[12px] leading-5 text-slate-500">
               {preview}
@@ -383,7 +387,7 @@ function TaskCard({ task, onClick }: { task: TaskData; onClick: () => void; acce
         </div>
       </div>
       <div className="mt-3 flex items-center justify-between gap-2">
-        <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${s.badge}`}>
+        <span className="text-[10px] font-black uppercase tracking-wide text-slate-500">
           {TASK_TYPE_BADGE[task.task_type]?.label ?? task.task_type}
         </span>
         {task.due_at && !isCompleted && (
@@ -393,7 +397,7 @@ function TaskCard({ task, onClick }: { task: TaskData; onClick: () => void; acce
           </div>
         )}
         {isCompleted && (
-          <span className="text-[10px] font-semibold text-emerald-600">Completato</span>
+          <span className="inline-flex items-center gap-1 text-[10px] font-black text-emerald-800"><Check className="h-3 w-3" /> Completato</span>
         )}
       </div>
       {!task.due_at && !isCompleted && (
@@ -451,14 +455,14 @@ function TaskViewerOverlay({ task, onClose, accentTheme, onSuccess }: { task: Ta
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/50 p-0 md:p-4"
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/65 p-0 md:p-4"
     >
       <motion.div
         initial={{ y: 30, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
         exit={{ y: 30, opacity: 0 }}
         transition={{ type: 'spring', stiffness: 320, damping: 32 }}
-        className="flex h-full w-full flex-col overflow-hidden border border-slate-200 bg-white md:h-[90vh] md:max-w-3xl md:rounded-xl"
+        className="flex h-full w-full flex-col overflow-hidden border border-slate-300 bg-white shadow-2xl md:h-[90vh] md:max-w-4xl md:rounded-xl"
       >
         {/* Header */}
         <div className="flex shrink-0 items-center gap-3 border-b border-slate-200 bg-white px-5 py-3.5">
@@ -479,7 +483,7 @@ function TaskViewerOverlay({ task, onClose, accentTheme, onSuccess }: { task: Ta
                 </span>
               )}
             </div>
-            <h2 className="font-bold text-base text-slate-900 leading-tight line-clamp-1">{task.title}</h2>
+            <h2 className="font-black text-base text-slate-950 leading-tight line-clamp-1">{task.title}</h2>
           </div>
           {isCompleted && (
             <div className="flex flex-shrink-0 items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1">
@@ -495,7 +499,7 @@ function TaskViewerOverlay({ task, onClose, accentTheme, onSuccess }: { task: Ta
             {isCompleted ? (
               <SubmissionSummary task={task} accentTheme={accentTheme} />
             ) : (
-              <div className="max-w-2xl mx-auto space-y-6">
+              <div className="max-w-3xl mx-auto space-y-6">
                 {task.description && (
                   <p className="text-slate-600 leading-relaxed text-base">{task.description}</p>
                 )}
@@ -530,14 +534,13 @@ function TaskViewerOverlay({ task, onClose, accentTheme, onSuccess }: { task: Ta
                       value={response}
                       onChange={(e) => setResponse(e.target.value)}
                       placeholder={t('tasks.answer_placeholder')}
-                      className="w-full p-4 rounded-xl border border-slate-200/70 bg-white/70 backdrop-blur-sm min-h-[200px] focus:ring-2 outline-none text-slate-700 resize-none"
+                      className="w-full p-4 rounded-xl border border-slate-300 bg-white min-h-[200px] focus:ring-2 outline-none text-slate-800 resize-none shadow-sm"
                       style={{ '--tw-ring-color': accentTheme.accent } as React.CSSProperties}
                     />
                     <button
                       onClick={() => handleFinalSubmit(response)}
                       disabled={!response.trim() || isSubmitting}
-                      className="w-full h-12 text-sm font-semibold rounded-xl text-white transition-all disabled:opacity-40 disabled:cursor-not-allowed"
-                      style={{ backgroundColor: accentTheme.accent }}
+                      className="w-full h-12 text-sm font-black rounded-lg border border-indigo-200 bg-indigo-100 text-indigo-900 transition-all hover:bg-indigo-200 disabled:opacity-40 disabled:cursor-not-allowed"
                     >
                       {isSubmitting ? t('tasks.submitting') : t('tasks.submit_answer')}
                     </button>
@@ -602,8 +605,8 @@ function QuizCarousel({ questions, onSubmit, accentTheme, isSubmitting }: {
             transition={{ duration: 0.18 }}
             className="space-y-4"
           >
-            <div className="bg-white/60 backdrop-blur-sm border border-slate-200/60 rounded-xl p-5">
-              <h3 className="text-base font-bold text-slate-800 leading-snug">
+            <div className="bg-white border border-slate-300 rounded-xl p-5 shadow-sm">
+              <h3 className="text-base font-black text-slate-950 leading-snug">
                 {questions[currentIndex].question}
               </h3>
             </div>
@@ -615,23 +618,23 @@ function QuizCarousel({ questions, onSubmit, accentTheme, isSubmitting }: {
                   <button
                     key={optIndex}
                     onClick={() => setAnswers(prev => ({ ...prev, [currentIndex]: optIndex }))}
-                    className="w-full text-left p-3.5 rounded-xl border transition-all flex items-center justify-between gap-3 backdrop-blur-sm"
+                    className="w-full text-left p-3.5 rounded-lg border transition-all flex items-center justify-between gap-3 backdrop-blur-sm"
                     style={{
-                      backgroundColor: isSelected ? `${accentTheme.accent}12` : 'rgba(255,255,255,0.65)',
-                      borderColor: isSelected ? `${accentTheme.accent}55` : 'rgba(203,213,225,0.5)',
+                      backgroundColor: isSelected ? '#ffe4e6' : '#ffffff',
+                      borderColor: isSelected ? '#fda4af' : '#cbd5e1',
                     }}
                   >
-                    <span className={`text-sm font-medium ${isSelected ? 'text-slate-900' : 'text-slate-600'}`}>
+                    <span className={`text-sm font-semibold ${isSelected ? 'text-rose-950' : 'text-slate-700'}`}>
                       {opt}
                     </span>
                     <div
                       className="w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-all"
                       style={{
-                        backgroundColor: isSelected ? accentTheme.accent : 'transparent',
-                        borderColor: isSelected ? accentTheme.accent : '#cbd5e1',
+                        backgroundColor: isSelected ? '#ffffff' : 'transparent',
+                        borderColor: isSelected ? '#e11d48' : '#cbd5e1',
                       }}
                     >
-                      {isSelected && <Check className="h-3 w-3 text-white" />}
+                      {isSelected && <Check className="h-3 w-3 text-rose-800" />}
                     </div>
                   </button>
                 )
@@ -646,7 +649,7 @@ function QuizCarousel({ questions, onSubmit, accentTheme, isSubmitting }: {
         <button
           onClick={handlePrev}
           disabled={currentIndex === 0}
-          className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium text-slate-600 hover:bg-slate-100 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+          className="flex items-center gap-1.5 px-4 py-2 rounded-lg border border-transparent text-sm font-bold text-slate-600 hover:border-rose-200 hover:bg-rose-50 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
         >
           <ChevronLeft className="h-4 w-4" /> Precedente
         </button>
@@ -655,8 +658,7 @@ function QuizCarousel({ questions, onSubmit, accentTheme, isSubmitting }: {
           <button
             disabled={!allAnswered || isSubmitting}
             onClick={() => onSubmit(answers)}
-            className="flex items-center gap-2 px-6 py-2 rounded-xl text-sm font-semibold text-white transition-all disabled:opacity-40 disabled:cursor-not-allowed"
-            style={{ backgroundColor: accentTheme.accent }}
+            className="flex items-center gap-2 px-6 py-2 rounded-lg border border-rose-200 bg-rose-100 text-sm font-black text-rose-900 transition-all hover:bg-rose-200 disabled:opacity-40 disabled:cursor-not-allowed"
           >
             {isSubmitting ? 'Invio...' : 'Invia Quiz'} <Send className="h-3.5 w-3.5" />
           </button>
@@ -664,8 +666,7 @@ function QuizCarousel({ questions, onSubmit, accentTheme, isSubmitting }: {
           <button
             onClick={handleNext}
             disabled={answers[currentIndex] === undefined}
-            className="flex items-center gap-2 px-6 py-2 rounded-xl text-sm font-semibold text-white transition-all disabled:opacity-40 disabled:cursor-not-allowed"
-            style={{ backgroundColor: accentTheme.accent }}
+            className="flex items-center gap-2 px-6 py-2 rounded-lg border border-rose-200 bg-rose-100 text-sm font-black text-rose-900 transition-all hover:bg-rose-200 disabled:opacity-40 disabled:cursor-not-allowed"
           >
             Avanti <ChevronRight className="h-3.5 w-3.5" />
           </button>
@@ -688,7 +689,7 @@ function ExerciseViewer({ content, onSubmit, accentTheme, isSubmitting }: {
   return (
     <div className="space-y-4">
       {exerciseText && (
-        <div className="bg-amber-50/70 backdrop-blur-sm border border-amber-200/60 rounded-xl p-5">
+        <div className="bg-white border border-amber-300 rounded-xl p-5 shadow-sm">
           <div className="flex items-center gap-2 mb-3">
             <PenTool className="h-4 w-4 text-amber-600" />
             <span className="text-xs font-bold uppercase tracking-widest text-amber-500">Esercizio</span>
@@ -725,15 +726,14 @@ function ExerciseViewer({ content, onSubmit, accentTheme, isSubmitting }: {
         value={response}
         onChange={(e) => setResponse(e.target.value)}
         placeholder="Scrivi qui la tua risposta..."
-        className="w-full p-4 rounded-xl border border-slate-200/70 bg-white/70 backdrop-blur-sm min-h-[220px] focus:ring-2 outline-none text-slate-700 resize-none"
+        className="w-full p-4 rounded-xl border border-slate-300 bg-white min-h-[220px] focus:ring-2 outline-none text-slate-800 resize-none shadow-sm"
         style={{ '--tw-ring-color': accentTheme.accent } as React.CSSProperties}
       />
 
       <button
         onClick={() => onSubmit(response)}
         disabled={!response.trim() || isSubmitting}
-        className="w-full h-12 text-sm font-semibold rounded-xl text-white transition-all disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-        style={{ backgroundColor: accentTheme.accent }}
+        className="w-full h-12 text-sm font-black rounded-lg border border-amber-200 bg-amber-100 text-amber-900 transition-all hover:bg-amber-200 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
       >
         <Send className="h-4 w-4" />
         {isSubmitting ? 'Invio in corso...' : 'Consegna Risposta'}

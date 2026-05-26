@@ -3,7 +3,7 @@ import { Routes, Route, useLocation, useNavigate, Navigate } from 'react-router-
 import { motion } from 'framer-motion'
 import { useAuthStore } from '@/stores/auth'
 import { AppBackground } from '@/components/ui/AppBackground'
-import { LogOut, LayoutDashboard, GraduationCap, BarChart3, Mail, School, Bug, KeyRound, X, Loader2, BookOpen, Database } from 'lucide-react'
+import { LogOut, LayoutDashboard, GraduationCap, BarChart3, Mail, School, Bug, KeyRound, X, Loader2, BookOpen, Database, Building2 } from 'lucide-react'
 import { useMutation } from '@tanstack/react-query'
 import { adminApi } from '@/lib/api'
 import { useToast } from '@/components/ui/use-toast'
@@ -14,9 +14,11 @@ import UsersPage from './UsersPage'
 import TeacherRequestsPage from './TeacherRequestsPage'
 import FeedbackPage from './FeedbackPage'
 import AdminBackendPage from './AdminBackendPage'
+import SchoolsPage from './SchoolsPage'
 
 const navItems = [
   { path: '/admin', label: 'Panoramica', icon: LayoutDashboard, exact: true },
+  { path: '/admin/schools', label: 'Scuole', icon: Building2, exact: false },
   { path: '/admin/teachers', label: 'Docenti', icon: GraduationCap, exact: false },
   { path: '/admin/classes', label: 'Classi', icon: School, exact: false },
   { path: '/admin/costs', label: 'Costi', icon: BarChart3, exact: false },
@@ -185,6 +187,7 @@ export default function AdminDashboard() {
       <main className="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 py-6">
         <Routes>
           <Route index element={<AdminOverviewPage />} />
+          <Route path="schools" element={<SchoolsPage />} />
           <Route path="teachers" element={<TeachersPage />} />
           <Route path="classes" element={<ClassesPage />} />
           <Route path="costs" element={<UsersPage />} />
@@ -194,7 +197,7 @@ export default function AdminDashboard() {
           {/* Legacy redirects */}
           <Route path="teacher-requests" element={<Navigate to="/admin/teachers" replace />} />
           <Route path="users" element={<Navigate to="/admin/teachers" replace />} />
-          <Route path="tenants" element={<Navigate to="/admin" replace />} />
+          <Route path="tenants" element={<Navigate to="/admin/schools" replace />} />
           <Route path="overview" element={<Navigate to="/admin" replace />} />
           <Route path="usage" element={<Navigate to="/admin/costs" replace />} />
           <Route path="credits" element={<Navigate to="/admin/costs" replace />} />

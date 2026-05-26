@@ -19,7 +19,9 @@ from app.models.llm import Conversation, ConversationMessage, TeacherConversatio
 from app.models.credits import CreditLimit, CreditTransaction, CreditRequest
 from app.models.invitation import PlatformInvitation
 from app.models.enums import UserRole, TeacherRequestStatus, TenantStatus, LimitLevel, CreditTransactionType
-from app.schemas.tenant import TenantCreate, TenantUpdate, TenantResponse
+from app.schemas.tenant import TenantCreate, TenantUpdate, TenantResponse, TenantLimitsUpdate, SchoolTenantCreate
+from app.models.enums import TenantType
+from app.services.credit_service import credit_service
 from app.schemas.auth import TeacherRequestResponse
 from app.services.email_service import email_service
 
@@ -203,15 +205,137 @@ async def update_tenant(
     tenant = result.scalar_one_or_none()
     if not tenant:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tenant not found")
-    
+
     if request.name is not None:
         tenant.name = request.name
     if request.status is not None:
         tenant.status = TenantStatus(request.status)
-    
+
     await db.commit()
     await db.refresh(tenant)
     return tenant
+
+
+@router.patch("/tenants/{tenant_id}/limits", response_model=TenantResponse)
+async def update_tenant_limits(
+    tenant_id: UUID,
+    request: TenantLimitsUpdate,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    admin: Annotated[User, Depends(get_current_admin)],
+):
+    """Aggiorna i limiti strutturali e di credito di un tenant."""
+    tenant = (await db.execute(select(Tenant).where(Tenant.id == tenant_id))).scalar_one_or_none()
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+
+    if request.max_teachers is not None:
+        tenant.max_teachers = request.max_teachers
+    if request.max_students_per_teacher is not None:
+        tenant.max_students_per_teacher = request.max_students_per_teacher
+    if request.max_students_per_class is not None:
+        tenant.max_students_per_class = request.max_students_per_class
+    if request.monthly_credit_pool is not None:
+        tenant.monthly_credit_pool = request.monthly_credit_pool
+        # Aggiorna anche il CreditLimit corrispondente
+        from app.models.enums import LimitLevel
+        if tenant.tenant_type == TenantType.SCHOOL.value:
+            await credit_service.set_limit_cap(db, tenant_id, LimitLevel.GLOBAL, request.monthly_credit_pool)
+        else:
+            await credit_service.set_limit_cap(db, tenant_id, LimitLevel.STUDENT_POOL, request.monthly_credit_pool)
+    if request.teacher_monthly_cap is not None:
+        tenant.teacher_monthly_cap = request.teacher_monthly_cap
+        # Per INDIVIDUAL: aggiorna il limite del docente (unico docente nel tenant)
+        if tenant.tenant_type == TenantType.INDIVIDUAL.value:
+            from app.models.enums import LimitLevel
+            await credit_service.set_limit_cap(db, tenant_id, LimitLevel.TEACHER, request.teacher_monthly_cap)
+
+    await db.commit()
+    await db.refresh(tenant)
+    return tenant
+
+
+@router.post("/tenants/school")
+async def create_school_tenant(
+    payload: SchoolTenantCreate,
+    http_request: Request,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    admin: Annotated[User, Depends(get_current_admin)],
+):
+    """
+    Crea un tenant SCHOOL con un owner (persona fisica che potrà invitare colleghi).
+    Crea: Tenant + User owner + ActivationToken + CreditLimit GLOBAL + invia email di attivazione.
+    """
+    # Verifica slug univoco
+    if (await db.execute(select(Tenant).where(Tenant.slug == payload.slug))).scalar_one_or_none():
+        raise HTTPException(status_code=400, detail="Slug già in uso")
+
+    # Verifica email owner non duplicata
+    owner_email = payload.owner_email.strip().lower()
+    if (await db.execute(select(User).where(User.email == owner_email))).scalar_one_or_none():
+        raise HTTPException(status_code=400, detail="Email già registrata")
+
+    # Crea tenant SCHOOL
+    tenant = Tenant(
+        name=payload.school_name,
+        slug=payload.slug,
+        tenant_type=TenantType.SCHOOL.value,
+        max_teachers=payload.max_teachers or 5,
+        max_students_per_teacher=payload.max_students_per_teacher or 100,
+        max_students_per_class=payload.max_students_per_class or 30,
+        monthly_credit_pool=payload.monthly_credit_pool or 10.0,
+    )
+    db.add(tenant)
+    await db.flush()
+
+    # Crea owner
+    temp_password = secrets.token_urlsafe(12)
+    owner = User(
+        tenant_id=tenant.id,
+        email=owner_email,
+        password_hash=get_password_hash(temp_password),
+        role=UserRole.TEACHER,
+        first_name=payload.owner_first_name,
+        last_name=payload.owner_last_name,
+        institution=payload.school_name,
+        is_verified=True,
+        is_school_owner=True,
+    )
+    db.add(owner)
+    await db.flush()
+
+    # Collega owner al tenant
+    tenant.owner_user_id = owner.id
+
+    # Token di attivazione
+    activation_token = secrets.token_urlsafe(48)
+    db.add(ActivationToken(
+        user_id=owner.id,
+        token=activation_token,
+        temporary_password=temp_password,
+        expires_at=datetime.now(timezone.utc) + timedelta(hours=settings.ACTIVATION_TOKEN_EXPIRE_HOURS),
+    ))
+
+    # Limite globale crediti per la scuola
+    await credit_service.ensure_school_global_limit(db, tenant.id, payload.monthly_credit_pool or 10.0)
+
+    await db.commit()
+    await db.refresh(tenant)
+
+    # Invia email di attivazione
+    activation_link = f"{resolve_frontend_url(http_request.headers.get('origin'))}/activate/{activation_token}"
+    await email_service.send_teacher_activation_email(
+        to_email=owner_email,
+        first_name=payload.owner_first_name,
+        last_name=payload.owner_last_name,
+        activation_link=activation_link,
+    )
+
+    return {
+        "tenant_id": str(tenant.id),
+        "owner_id": str(owner.id),
+        "slug": tenant.slug,
+        "message": f"Tenant '{payload.school_name}' creato. Email di attivazione inviata a {owner_email}.",
+    }
 
 
 @router.get("/teacher-requests", response_model=list[TeacherRequestResponse])
@@ -284,23 +408,13 @@ async def approve_teacher_request(
     )
     db.add(token_record)
     
-    # Create default monthly credit limit for teacher (3€/month)
-    now_utc = datetime.now(timezone.utc)
-    try:
-        limit_end = now_utc.replace(month=now_utc.month + 1, day=1)
-    except ValueError:
-        limit_end = now_utc.replace(year=now_utc.year + 1, month=1, day=1)
-    teacher_limit = CreditLimit(
-        tenant_id=user.tenant_id,
-        level=LimitLevel.TEACHER,
-        teacher_id=user.id,
-        amount_cap=3.0,
-        current_usage=0.0,
-        period_start=now_utc,
-        period_end=limit_end,
-        reset_frequency="MONTHLY",
-    )
-    db.add(teacher_limit)
+    # Crea limite crediti in base al tipo di tenant
+    tenant_obj = (await db.execute(select(Tenant).where(Tenant.id == user.tenant_id))).scalar_one_or_none()
+    if tenant_obj and getattr(tenant_obj, 'tenant_type', TenantType.INDIVIDUAL.value) == TenantType.INDIVIDUAL.value:
+        # Tenant individuale: limite personale del docente
+        await credit_service.ensure_teacher_limit(db, user.tenant_id, user.id, tenant_obj.teacher_monthly_cap)
+        await credit_service.ensure_student_pool_limit(db, user.tenant_id, tenant_obj.monthly_credit_pool)
+    # Per SCHOOL: il GLOBAL limit è già sul tenant, non serve limite per-teacher
 
     # Update request
     teacher_request.status = TeacherRequestStatus.APPROVED
