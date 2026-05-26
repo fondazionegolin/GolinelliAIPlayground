@@ -13,6 +13,7 @@ import {
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { DEFAULT_STUDENT_ACCENT, getStudentAccentTheme, type StudentAccentId } from '@/lib/studentAccent'
 import { VoiceRecorder } from '@/components/VoiceRecorder'
+import { VoiceRoomPanel } from '@/components/VoiceRoomPanel'
 
 export type { ChatMessage }
 
@@ -127,6 +128,7 @@ export default function ChatSidebar({
   const [replyingTo, setReplyingTo] = useState<ChatMessage | null>(null)
 
   const {
+    socket,
     connected,
     messages: socketMessages,
     sendPublicMessage,
@@ -1123,9 +1125,15 @@ export default function ChatSidebar({
 
   const renderSessionChat = () => {
     return (
-      <div className="flex-1 overflow-hidden relative">
+      <div className="flex-1 overflow-hidden relative flex flex-col">
+        <VoiceRoomPanel
+          sessionId={sessionId}
+          userType={userType}
+          currentUserId={currentUserId}
+          socket={socket}
+        />
         <div
-          className="h-full overflow-y-auto p-4 space-y-6 bg-slate-50/30 scroll-smooth overscroll-contain"
+          className="flex-1 overflow-y-auto p-4 space-y-6 bg-slate-50/30 scroll-smooth overscroll-contain"
           ref={scrollRef}
         >
           {loadingOlderPublicMessages && (

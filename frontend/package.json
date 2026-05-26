@@ -54,6 +54,7 @@
     "hyperformula": "^3.1.1",
     "i18next": "^23.7.16",
     "katex": "^0.16.27",
+    "livekit-client": "^2.19.0",
     "lucide-react": "^0.309.0",
     "pagedjs": "^0.4.3",
     "plotly.js-dist-min": "^3.3.1",

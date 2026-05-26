@@ -218,6 +218,11 @@ export const platformApi = {
   listChangelog: (limit = 20) => api.get('/changelog', { params: { limit } }),
 }
 
+export const voiceApi = {
+  createLiveKitToken: (sessionId: string) =>
+    api.post('/voice/livekit-token', { session_id: sessionId }),
+}
+
 export const teacherApi = {
   changePassword: (data: { current_password: string; new_password: string; confirm_password: string }) =>
     api.post('/teacher/profile/change-password', data),

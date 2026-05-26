@@ -39,6 +39,12 @@ class Settings(BaseSettings):
     GOLINELLI_IMAGE_API_URL: str = "https://image.golinelli.ai/api/v1"
     BFL_API_KEY: Optional[str] = None
     MESHY_API_KEY: Optional[str] = None
+
+    # Realtime voice (LiveKit)
+    LIVEKIT_URL: Optional[str] = None
+    LIVEKIT_API_KEY: Optional[str] = None
+    LIVEKIT_API_SECRET: Optional[str] = None
+    LIVEKIT_TOKEN_TTL_MINUTES: int = 90
     
     # Default LLM settings
     DEFAULT_LLM_PROVIDER: str = "openai"
