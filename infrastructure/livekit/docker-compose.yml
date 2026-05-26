@@ -1,0 +1,24 @@
+name: ${LIVEKIT_COMPOSE_PROJECT_NAME:-eduai-livekit}
+
+services:
+  livekit:
+    image: livekit/livekit-server:latest
+    command: --config /etc/livekit.yaml
+    env_file:
+      - .env
+    volumes:
+      - ./config.generated.yaml:/etc/livekit.yaml:ro
+    ports:
+      - "${LIVEKIT_HTTP_PORT:-7880}:7880"
+      - "${LIVEKIT_RTC_TCP_PORT:-7881}:7881"
+      - "${LIVEKIT_RTC_UDP_PORT:-7882}:7882/udp"
+      - "${LIVEKIT_TURN_UDP_PORT:-3478}:3478/udp"
+      - "${LIVEKIT_RTC_PORT_RANGE:-50000-50100}:50000-50100/udp"
+    networks:
+      - eduai-network
+    restart: unless-stopped
+
+networks:
+  eduai-network:
+    external: true
+    name: ${LIVEKIT_DOCKER_NETWORK:-dev_golinelli_ai_eduai-network}
