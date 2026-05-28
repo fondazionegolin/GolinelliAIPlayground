@@ -8,6 +8,7 @@ const SessionsPage       = lazy(() => import('./SessionsPage'))
 const SessionLivePage    = lazy(() => import('./SessionLivePage'))
 const TeacherDocumentsPage = lazy(() => import('./TeacherDocumentsPage'))
 const TeacherMLLabPage   = lazy(() => import('./TeacherMLLabPage'))
+const Teacher3DLabPage   = lazy(() => import('./Teacher3DLabPage'))
 const UDAListPage        = lazy(() => import('./UDAListPage'))
 const UDACreatorPage     = lazy(() => import('./UDACreatorPage'))
 const TeacherDemoPage    = lazy(() => import('./TeacherDemoPage'))
@@ -15,6 +16,8 @@ const TeacherWikiPage    = lazy(() => import('./TeacherWikiPage'))
 const NotebookListPage   = lazy(() => import('../notebook/NotebookListPage'))
 const NotebookPage       = lazy(() => import('../notebook/NotebookPage'))
 const DesktopPage        = lazy(() => import('../shared/DesktopPage'))
+const LiveInteractionBuilderPage = lazy(() => import('./LiveInteractionBuilderPage'))
+const LiveInteractionControlPage = lazy(() => import('./LiveInteractionControlPage'))
 // TeacherSupportChat is the index route — load eagerly for fast first paint
 import TeacherSupportChat from './TeacherSupportChat'
 import { TeacherNavbar } from '@/components/TeacherNavbar'
@@ -29,13 +32,6 @@ import { useTeacherProfile } from '@/hooks/useTeacherProfile'
 import { FloatingHelper } from '@/components/FloatingHelper'
 
 const CHATBAR_AUTO_HIDE_BREAKPOINT = 1280
-
-const MOBILE_NAV = [
-  { path: '/teacher',          label: 'Chat',     icon: MessageSquare, exact: true },
-  { path: '/teacher/classes',  label: 'Classi',   icon: Users },
-  { path: '/teacher/sessions', label: 'Sessioni', icon: PlayCircle },
-  { path: '/teacher/wiki',     label: 'Wiki',     icon: BookOpen },
-]
 
 export default function TeacherDashboard() {
   const { t } = useTranslation()
@@ -119,6 +115,12 @@ export default function TeacherDashboard() {
 
   const teacherTheme = getTeacherAccentTheme(teacherProfile?.uiAccent)
   const bgGradient = getAppBackgroundGradient(teacherTheme)
+  const mobileNav = [
+    { path: '/teacher', label: t('navbar.nav_support'), icon: MessageSquare, exact: true },
+    { path: '/teacher/classes', label: t('navbar.nav_classes'), icon: Users },
+    { path: '/teacher/sessions', label: t('navbar.sessions_title'), icon: PlayCircle },
+    { path: '/teacher/wiki', label: t('navbar.nav_wiki'), icon: BookOpen },
+  ]
 
   return (
     <AppBackground className="h-[100dvh] flex flex-col overflow-hidden" gradient={bgGradient}>
@@ -147,13 +149,13 @@ export default function TeacherDashboard() {
             <Bot className="h-4 w-4 text-white" />
           </div>
           <span className="text-sm font-bold flex-1" style={{ color: teacherTheme.text }}>
-            {teacherProfile?.name || 'Docente AI'}
+            {teacherProfile?.name || t('teacher_dashboard.mobile_teacher_default')}
           </span>
         </div>
       )}
 
       {/* ── Main Content ── */}
-      <div className={`flex-1 flex overflow-hidden ${isMobile ? 'pt-12 pb-16' : 'pt-16'}`}>
+      <div className={`flex-1 flex overflow-hidden ${isMobile ? 'pt-12 pb-16' : 'pt-16 md:pl-16 xl:pl-0'}`}>
 
         {/* ── Session Context Strip (left, desktop only) ── */}
         {!isMobile && currentSession && (
@@ -184,7 +186,7 @@ export default function TeacherDashboard() {
 
             {/* Tasks */}
             <button
-              title="Compiti"
+              title={t('teacher_dashboard.session_tasks')}
               onClick={() => navigate(`/teacher/sessions/${currentSession.id}?tab=tasks`)}
               className="w-9 h-9 rounded-lg flex items-center justify-center transition-colors hover:opacity-80"
               style={{
@@ -201,7 +203,7 @@ export default function TeacherDashboard() {
 
             {/* History */}
             <button
-              title="Storico chat"
+              title={t('teacher_dashboard.chat_history')}
               onClick={() => navigate(`/teacher/sessions/${currentSession.id}?tab=history`)}
               className="w-9 h-9 rounded-lg flex items-center justify-center transition-colors hover:opacity-80"
               style={{
@@ -220,7 +222,7 @@ export default function TeacherDashboard() {
 
             {/* Toggle chat sidebar */}
             <button
-              title="Chat di classe"
+              title={t('teacher_dashboard.class_chat')}
               onClick={() => setShowSidebar(v => !v)}
               className="w-9 h-9 rounded-lg flex items-center justify-center transition-colors hover:opacity-80"
               style={{
@@ -235,12 +237,13 @@ export default function TeacherDashboard() {
         )}
 
         <main className={`flex-1 relative ${location.pathname.includes('/notebooks/notebook/') ? 'overflow-hidden flex flex-col' : 'overflow-y-auto'}`}>
-          <Suspense fallback={<div className="flex items-center justify-center h-full min-h-[40vh] text-sm text-slate-400">Caricamento...</div>}>
+          <Suspense fallback={<div className="flex items-center justify-center h-full min-h-[40vh] text-sm text-slate-400">{t('common.loading')}</div>}>
             <Routes>
               <Route index element={<TeacherSupportChat />} />
               <Route path="documents" element={<TeacherDocumentsPage />} />
               <Route path="wiki" element={<TeacherWikiPage accentId={teacherProfile?.uiAccent} />} />
               <Route path="ml-lab" element={<TeacherMLLabPage />} />
+              <Route path="3d-lab" element={<Teacher3DLabPage sessionId={activeSessionId ?? undefined} />} />
               <Route path="classes" element={<ClassesPage />} />
               <Route path="sessions" element={<SessionsPage />} />
               <Route path="sessions/:sessionId" element={<SessionLivePage />} />
@@ -249,6 +252,8 @@ export default function TeacherDashboard() {
               <Route path="demo" element={<TeacherDemoPage />} />
               <Route path="notebooks" element={<NotebookListPage />} />
               <Route path="notebooks/notebook/:notebookId" element={<NotebookPage />} />
+              <Route path="live-interaction" element={<LiveInteractionBuilderPage sessionId={activeSessionId ?? undefined} />} />
+              <Route path="live-interaction/:interactionId/control" element={<LiveInteractionControlPage />} />
               <Route path="desktop" element={
                 <DesktopPage
                   sessionId={activeSessionId ?? undefined}
@@ -302,7 +307,7 @@ export default function TeacherDashboard() {
           className="fixed bottom-0 inset-x-0 z-50 h-16 bg-white/90 backdrop-blur-md border-t border-slate-200 flex items-center justify-around"
           style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
         >
-          {MOBILE_NAV.map(({ path, label, icon: Icon, exact }) => {
+          {mobileNav.map(({ path, label, icon: Icon, exact }) => {
             const isActive = exact
               ? location.pathname === path
               : location.pathname.startsWith(path) && location.pathname !== '/teacher'

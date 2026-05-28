@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, type CSSProperties } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { User, Settings, LogOut, ChevronDown, Bot, Brain, Award, FileEdit, Menu, X, MessageSquare, Check, FileCode2, MonitorPlay, LayoutDashboard, BookOpen } from 'lucide-react'
+import { User, Settings, LogOut, ChevronDown, Bot, Brain, Award, FileEdit, FileText, Menu, X, MessageSquare, Check, FileCode2, MonitorPlay, LayoutDashboard, BookOpen } from 'lucide-react'
 import { Button } from './ui/button'
 import { LogoMark } from './LogoMark'
 import { studentApi } from '@/lib/api'
@@ -11,6 +11,8 @@ import { LanguageSwitcher } from '@/components/LanguageSwitcher'
 import { useAuthStore } from '@/stores/auth'
 import { NavbarCalendarClock } from './NavbarCalendarClock'
 import WhatsNewModal from './WhatsNewModal'
+import { buildAccentNavbarStyle, buildAccentNavClusterStyle } from '@/lib/navbarGlass'
+import { Badge } from '@/components/ui/badge'
 
 interface StudentProfile {
   id?: string
@@ -74,23 +76,29 @@ export function StudentNavbar({
   const dropdownRef = useRef<HTMLDivElement>(null)
   const mobileMenuRef = useRef<HTMLDivElement>(null)
 
-  const [profile, setProfile] = useState<StudentProfile>({
-    nickname: 'Studente'
-  })
   const { t } = useTranslation()
+  const [profile, setProfile] = useState<StudentProfile>({
+    nickname: t('navbar.role_student')
+  })
   const accentTheme = getStudentAccentTheme(accent)
-  const accentVars = {
+  const accentVars = buildAccentNavbarStyle(accentTheme, {
     '--student-accent': accentTheme.accent,
     '--student-accent-soft': accentTheme.soft,
     '--student-accent-soft-strong': accentTheme.softStrong,
     '--student-accent-border': accentTheme.border,
     '--student-accent-text': accentTheme.text,
-    backgroundColor: 'rgba(255, 255, 255, 0.94)',
-    backdropFilter: 'blur(12px)',
-    WebkitBackdropFilter: 'blur(12px)',
-    borderBottomColor: accentTheme.border,
-    borderBottomWidth: '1px',
-  } as CSSProperties
+  }) as CSSProperties
+
+  useEffect(() => {
+    const root = document.documentElement
+    root.style.setProperty('--app-accent', accentTheme.accent)
+    root.style.setProperty('--app-accent-text', accentTheme.text)
+    root.style.setProperty('--app-accent-soft', accentTheme.soft)
+    root.style.setProperty('--app-accent-soft-strong', accentTheme.softStrong)
+    root.style.setProperty('--app-accent-border', accentTheme.border)
+    root.style.setProperty('--app-body-bg', '#ffffff')
+    root.style.setProperty('--surface-page', '#ffffff')
+  }, [accentTheme])
 
   // Load profile from API
   useEffect(() => {
@@ -100,7 +108,7 @@ export function StudentNavbar({
         const data = response.data
         setProfile({
           id: data.id,
-          nickname: data.nickname || 'Studente',
+          nickname: data.nickname || t('navbar.role_student'),
           avatarUrl: data.avatar_url || undefined,
           uiAccent: data.ui_accent || undefined,
         })
@@ -160,13 +168,13 @@ export function StudentNavbar({
   }
 
   const ALL_NAV_ITEMS = [
-    { key: 'desktop', label: 'Desktop', icon: LayoutDashboard },
-    { key: 'chatbot', label: 'Chatbot', icon: Bot },
-    { key: 'wiki', label: 'Wiki', icon: BookOpen },
-    { key: 'classification', label: 'ML Lab', icon: Brain },
-    { key: 'documents', label: 'Documenti', icon: FileEdit },
-    { key: 'self_assessment', label: 'Compiti', icon: Award },
-    { key: 'notebook', label: 'Notebook', icon: FileCode2 },
+    { key: 'desktop', label: t('navbar.nav_desktop'), icon: LayoutDashboard },
+    { key: 'chatbot', label: t('navbar.nav_chatbot'), icon: Bot },
+    { key: 'wiki', label: t('navbar.nav_wiki'), icon: BookOpen },
+    { key: 'classification', label: t('navbar.nav_ml_lab'), icon: Brain },
+    { key: 'documents', label: t('navbar.nav_documents'), icon: FileEdit },
+    { key: 'self_assessment', label: t('navbar.nav_tasks'), icon: Award },
+    { key: 'notebook', label: t('navbar.nav_notebook'), icon: FileCode2 },
   ]
   // Always show desktop and documents; filter optional modules by session settings
   const ALWAYS_SHOWN = new Set(['desktop', 'documents', 'notebook', 'wiki'])
@@ -180,12 +188,12 @@ export function StudentNavbar({
       {isPreviewMode && (
         <div className="fixed top-0 left-0 right-0 z-[60] bg-amber-500 text-white text-xs font-semibold flex items-center justify-center gap-3 py-1.5 px-4">
           <MonitorPlay className="h-3.5 w-3.5 flex-shrink-0" />
-          <span>Stai visualizzando l'interfaccia studente in modalità anteprima</span>
+          <span>{t('navbar.preview_banner')}</span>
           <button
             onClick={handleExitPreview}
             className="ml-2 underline hover:no-underline font-bold"
           >
-            Esci dall'anteprima
+            {t('navbar.preview_exit')}
           </button>
         </div>
       )}
@@ -199,7 +207,7 @@ export function StudentNavbar({
             <div className="flex items-center gap-3 cursor-pointer" onClick={() => onNavigate?.(null)}>
               <LogoMark className="h-9 w-9" />
               <div className="flex items-center gap-2">
-                <span className="pb-[1px] text-[18px] leading-[1.15] tracking-tight" style={{ fontFamily: '"SofiaPro"' }}>
+                <span className="flex items-center text-[18px] leading-none tracking-tight" style={{ fontFamily: '"SofiaPro"' }}>
                   <span className="font-bold text-[#2d2d2d]/85">
                     Golinelli
                   </span>
@@ -211,9 +219,11 @@ export function StudentNavbar({
                     e.stopPropagation()
                     setShowWhatsNew(true)
                   }}
-                  className="text-[9px] font-extrabold uppercase tracking-widest px-1.5 py-0.5 rounded-md bg-amber-50 text-amber-500 border border-amber-200 leading-none transition-colors hover:bg-amber-100"
+                  className="inline-flex items-center self-center transition-transform hover:-translate-y-px"
                 >
-                  BETA
+                  <Badge tone="warning" surface="soft" density="compact" className="inline-flex min-h-[22px] items-center border border-orange-200 px-2 py-0.5 text-[10px] font-bold leading-none tracking-[0.14em] text-orange-700">
+                    BETA
+                  </Badge>
                 </button>
               </div>
             </div>
@@ -232,7 +242,7 @@ export function StudentNavbar({
 
             {/* Desktop Navigation */}
             {onNavigate && (
-              <div className="hidden md:flex items-center gap-0.5 h-11 rounded-[18px] border p-1" style={{ backgroundColor: 'rgba(255,255,255,0.78)', borderColor: accentTheme.border }}>
+              <div className="hidden xl:flex items-center gap-1 h-11 rounded-xl border p-1" style={buildAccentNavClusterStyle(accentTheme)}>
                 {(() => {
                   const activeIdx = navItems.findIndex(item => activeModule === item.key)
                   return navItems.map((item, idx) => (
@@ -243,13 +253,15 @@ export function StudentNavbar({
                       isActive={activeModule === item.key}
                       isAdjacent={Math.abs(idx - activeIdx) === 1}
                       onClick={() => onNavigate(item.key)}
-                      accentClass="bg-[var(--student-accent)]"
-                      accentTextClass="text-white"
+                      accentClass="bg-[color:var(--student-accent-soft-strong)]"
+                      accentTextClass="text-[var(--student-accent-text)]"
                     />
                   ))
                 })()}
               </div>
             )}
+
+            <div className="hidden xl:block h-8 w-px bg-slate-200/80 mx-1" />
 
             <div className="flex items-center gap-2">
               {/* Date/time + mini calendar */}
@@ -260,7 +272,7 @@ export function StudentNavbar({
 
               {/* Session Info - Always visible */}
               {sessionTitle && (
-                <div className="hidden lg:flex items-center gap-2 h-9 px-3 rounded-xl border bg-white border-slate-200 shadow-sm">
+                <div className="hidden lg:flex items-center gap-2 h-9 px-3 rounded-xl border bg-white/92 border-slate-200 shadow-[var(--shadow-sm)]">
                   <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse shadow-sm shadow-green-300" />
                   <div className="text-left min-w-0">
                     <span className="text-sm font-bold text-[var(--student-accent-text)] truncate max-w-[120px]">{sessionTitle}</span>
@@ -273,10 +285,10 @@ export function StudentNavbar({
 
               {chatAvailable && onToggleChatSidebar && (
                 <button
-                  className={`hidden lg:flex items-center justify-center w-10 h-10 rounded-full border transition-colors duration-150 shadow-sm`}
+                  className="hidden lg:flex items-center justify-center w-10 h-10 rounded-xl border transition-colors duration-150 shadow-[var(--shadow-sm)] hover:-translate-y-px"
                   style={chatSidebarOpen
                     ? { backgroundColor: accentTheme.accent, borderColor: accentTheme.accent, color: '#fff' }
-                    : { backgroundColor: `${accentTheme.accent}18`, borderColor: `${accentTheme.accent}50`, color: accentTheme.text }}
+                    : { backgroundColor: 'rgba(255,255,255,0.92)', borderColor: `${accentTheme.accent}35`, color: accentTheme.text }}
                   onClick={onToggleChatSidebar}
                   title={chatSidebarOpen ? t('navbar.hide_class_chat') : t('navbar.show_class_chat')}
                 >
@@ -314,7 +326,7 @@ export function StudentNavbar({
                   <div className="absolute right-0 mt-2 w-64 bg-white rounded-2xl shadow-xl border border-slate-100 py-2 animate-in fade-in zoom-in-95 duration-100 origin-top-right z-50">
                     <div className="px-4 py-3 border-b border-slate-50 mb-1">
                       <p className="text-sm font-semibold text-slate-900">{profile.nickname}</p>
-                      <p className="text-xs text-slate-500 mt-0.5">Studente</p>
+                      <p className="text-xs text-slate-500 mt-0.5">{t('navbar.role_student')}</p>
                     </div>
                     <button
                       onClick={() => {
@@ -324,7 +336,17 @@ export function StudentNavbar({
                       className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-600 hover:bg-slate-50 hover:text-[var(--student-accent-text)] transition-colors"
                     >
                       <Settings className="h-4 w-4" />
-                      Impostazioni
+                      {t('navbar.settings')}
+                    </button>
+                    <button
+                      onClick={() => {
+                        setShowDropdown(false)
+                        navigate('/terms')
+                      }}
+                      className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-600 hover:bg-slate-50 hover:text-[var(--student-accent-text)] transition-colors"
+                    >
+                      <FileText className="h-4 w-4" />
+                      Termini e condizioni
                     </button>
                     <div className="h-px bg-slate-50 my-1"></div>
                     <button
@@ -332,7 +354,7 @@ export function StudentNavbar({
                       className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 transition-colors"
                     >
                       <LogOut className="h-4 w-4" />
-                      Esci
+                      {t('navbar.logout')}
                     </button>
                   </div>
                 )}
@@ -365,6 +387,42 @@ export function StudentNavbar({
           )}
         </div>
       </nav>
+
+      {onNavigate && (
+        <aside
+          className={`fixed left-0 bottom-0 z-40 hidden w-16 border-r px-2 py-3 md:flex xl:hidden ${isPreviewMode ? 'top-24' : 'top-16'}`}
+          style={accentVars}
+          aria-label={t('navbar.nav_desktop')}
+        >
+          <div className="flex w-full flex-col items-center gap-1.5">
+            {navItems.map((item) => {
+              const Icon = item.icon
+              const isActiveItem = activeModule === item.key
+              return (
+                <button
+                  key={item.key}
+                  onClick={() => onNavigate(item.key)}
+                  title={item.label}
+                  aria-label={item.label}
+                  className="flex h-11 w-11 items-center justify-center rounded-xl border text-slate-600 transition-colors hover:bg-white/70 hover:text-[var(--student-accent-text)]"
+                  style={isActiveItem
+                    ? {
+                        backgroundColor: accentTheme.softStrong,
+                        borderColor: `${accentTheme.accent}45`,
+                        color: accentTheme.text,
+                      }
+                    : {
+                        backgroundColor: 'rgba(255,255,255,0.56)',
+                        borderColor: 'rgba(255,255,255,0.34)',
+                      }}
+                >
+                  <Icon className="h-5 w-5" />
+                </button>
+              )
+            })}
+          </div>
+        </aside>
+      )}
       {showWhatsNew && <WhatsNewModal onClose={() => setShowWhatsNew(false)} />}
 
       {/* Settings Modal */}
@@ -417,11 +475,11 @@ function SettingsModal({ profile, accent, onSave, onClose }: SettingsModalProps)
     const file = e.target.files?.[0]
     if (file) {
       if (!file.type.startsWith('image/')) {
-        alert('Per favore seleziona un file immagine')
+        alert(t('navbar.image_only_error'))
         return
       }
       if (file.size > 5 * 1024 * 1024) {
-        alert('Il file deve essere inferiore a 5MB')
+        alert(t('navbar.image_max_5mb'))
         return
       }
 
@@ -453,7 +511,7 @@ function SettingsModal({ profile, accent, onSave, onClose }: SettingsModalProps)
     <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl border border-slate-100 overflow-hidden animate-in zoom-in-95 duration-200">
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-50 bg-slate-50/50">
-          <h2 className="text-lg font-bold text-slate-900">Impostazioni Profilo</h2>
+          <h2 className="text-lg font-bold text-slate-900">{t('navbar.settings_title')}</h2>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600 transition-colors">
             ✕
           </button>
@@ -488,7 +546,7 @@ function SettingsModal({ profile, accent, onSave, onClose }: SettingsModalProps)
               onClick={() => fileInputRef.current?.click()}
               className="text-xs rounded-xl"
             >
-              Cambia Avatar
+              {t('navbar.change_photo')}
             </Button>
           </div>
 
@@ -501,7 +559,7 @@ function SettingsModal({ profile, accent, onSave, onClose }: SettingsModalProps)
               disabled
               className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-500 cursor-not-allowed"
             />
-            <p className="text-xs text-slate-400 mt-1">Il nickname non può essere modificato</p>
+            <p className="text-xs text-slate-400 mt-1">{t('navbar.nickname_locked')}</p>
           </div>
 
           <div>
@@ -510,7 +568,7 @@ function SettingsModal({ profile, accent, onSave, onClose }: SettingsModalProps)
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-slate-500 uppercase mb-2">Colore Accento</label>
+            <label className="block text-xs font-semibold text-slate-500 uppercase mb-2">{t('navbar.accent_color')}</label>
             <div className="grid grid-cols-4 gap-2">
               {(Object.values(STUDENT_ACCENTS)).map((accentOption) => {
                 const isSelected = selectedAccent === accentOption.id

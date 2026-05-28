@@ -10,6 +10,7 @@ from typing import Optional, Dict, Any, AsyncGenerator
 import logging
 
 from app.services.llm_service import llm_service
+from app.services.ui_language import apply_output_language_instruction
 from app.schemas.content import (
     IntentResult,
     TeacherIntent,
@@ -105,6 +106,19 @@ La piattaforma è organizzata in **Classi** → **Sessioni** → **Contenuti**.
 2. L'assistente suggerirà struttura, attività, materiali
 3. Genera quiz, esercizi e documenti per ciascuna fase
 4. Crea teacherbot specifici per accompagnare ogni modulo
+
+### FUNZIONALITÀ NON DISPONIBILI — NON OFFRIRE MAI QUESTE COSE
+La piattaforma NON supporta le seguenti funzionalità. Non proporle mai, nemmeno come suggerimento opzionale:
+- **Generazione di PDF** o qualsiasi file scaricabile (solo lezioni HTML e presentazioni sono generabili)
+- **Invio di email** o notifiche fuori dalla piattaforma
+- **Ricerca web** (disabilitata — non accedere a siti esterni né offrire di farlo)
+- **Fogli di calcolo** Excel, file Word o altri formati Office
+- **Integrazioni esterne**: Google Drive, Google Classroom, Teams, Moodle, ecc.
+- **Registrazione audio o video**
+- **Stampa diretta** di materiali
+- **Download di file** generati dal bot (eccetto CSV dal profilo Dataset Generator)
+
+REGOLA ASSOLUTA: Se una funzionalità non è nella lista di quelle disponibili sopra, non offrirla. Proponi sempre alternative realizzabili con gli strumenti effettivi della piattaforma (quiz, esercizi, lezione HTML, presentazione, teacherbot, chat di classe).
 """
 
 
@@ -816,13 +830,22 @@ async def generate_exercise_with_tools(
 
     for iteration in range(max_iterations):
         try:
-            response = await client.chat.completions.create(
-                model=model,
-                messages=full_messages,
-                tools=EXERCISE_TOOLS,
-                tool_choice="auto",
-                temperature=0.7,
-            )
+            # GPT-5 and o-series models don't support custom temperature
+            if model.startswith("gpt-5") or model.startswith("o1") or model.startswith("o3"):
+                response = await client.chat.completions.create(
+                    model=model,
+                    messages=full_messages,
+                    tools=EXERCISE_TOOLS,
+                    tool_choice="auto",
+                )
+            else:
+                response = await client.chat.completions.create(
+                    model=model,
+                    messages=full_messages,
+                    tools=EXERCISE_TOOLS,
+                    tool_choice="auto",
+                    temperature=0.7,
+                )
 
             message = response.choices[0].message
 
@@ -1253,7 +1276,9 @@ async def run_teacher_agent(
     provider: str = "openai",
     model: str = "gpt-5-mini",
     actor_type: str = "TEACHER",
-    profile_key: str = "teacher_support"
+    profile_key: str = "teacher_support",
+    ui_language: str = "it",
+    school_grade: Optional[str] = None,
 ) -> str:
     """
     Main teacher agent orchestrator.
@@ -1313,7 +1338,7 @@ async def run_teacher_agent(
         elif intent_result.intent == TeacherIntent.REPORT_GENERATION:
             if actor_type == "STUDENT":
                 # Students don't get report widgets, fallback to generic
-                return await generate_generic_response(messages, provider, model, profile_key)
+                return await generate_generic_response(messages, provider, model, profile_key, ui_language=ui_language, school_grade=school_grade)
             logger.info("Routing to report generator (widgets)")
             return await generate_report_widgets(
                 last_message, structured_context,
@@ -1329,8 +1354,8 @@ async def run_teacher_agent(
             # Web search removed — fall through to generic/analytics response
             logger.info("WEB_SEARCH intent: web search disabled, routing to fallback")
             if actor_type == "STUDENT":
-                return await generate_generic_response(messages, provider, model, profile_key)
-            return await generate_with_analytics(messages, context, provider, model)
+                return await generate_generic_response(messages, provider, model, profile_key, ui_language=ui_language, school_grade=school_grade)
+            return await generate_with_analytics(messages, context, provider, model, ui_language=ui_language)
 
         elif intent_result.intent == TeacherIntent.TEXT_EDITOR:
             logger.info("Routing to text editor generator")
@@ -1340,38 +1365,42 @@ async def run_teacher_agent(
             # For now, use analytics mode with document-focused prompt
             logger.info("Routing to document help (analytics mode)")
             if actor_type == "STUDENT":
-                return await generate_generic_response(messages, provider, model, profile_key)
-            return await generate_with_analytics(messages, context, provider, model)
+                return await generate_generic_response(messages, provider, model, profile_key, ui_language=ui_language, school_grade=school_grade)
+            return await generate_with_analytics(messages, context, provider, model, ui_language=ui_language)
 
         else:  # ANALYTICS or default
             if actor_type == "STUDENT":
-                return await generate_generic_response(messages, provider, model, profile_key)
+                return await generate_generic_response(messages, provider, model, profile_key, ui_language=ui_language, school_grade=school_grade)
             logger.info("Routing to analytics mode")
-            return await generate_with_analytics(messages, context, provider, model)
+            return await generate_with_analytics(messages, context, provider, model, ui_language=ui_language)
 
     except Exception as e:
         logger.error(f"Agent error: {e}")
         # Fallback
         if actor_type == "STUDENT":
-            return await generate_generic_response(messages, provider, model, profile_key)
-        return await generate_with_analytics(messages, context, provider, model)
+            return await generate_generic_response(messages, provider, model, profile_key, ui_language=ui_language, school_grade=school_grade)
+        return await generate_with_analytics(messages, context, provider, model, ui_language=ui_language)
 
 
 async def generate_generic_response(
     messages: list[dict],
     provider: str,
     model: str,
-    profile_key: str
+    profile_key: str,
+    ui_language: str = "it",
+    school_grade: Optional[str] = None,
 ) -> str:
     """
     Generate a generic response based on the student's profile.
     """
     from app.services.chatbot_profiles import get_profile
+    from app.services.education_level import get_school_grade_instruction
     profile = get_profile(profile_key)
-    
+
+    system_prompt = profile["system_prompt"] + get_school_grade_instruction(school_grade)
     response = await llm_service.generate(
         messages=messages,
-        system_prompt=profile["system_prompt"],
+        system_prompt=apply_output_language_instruction(system_prompt, ui_language),
         provider=provider,
         model=model,
         temperature=profile.get("temperature", 0.7),
@@ -1386,12 +1415,14 @@ async def generate_generic_response_stream(
     model: str,
     profile_key: str,
     custom_system_prompt: Optional[str] = None,
+    ui_language: str = "it",
 ) -> AsyncGenerator[str, None]:
     """Streaming version of generate_generic_response. Yields text chunks."""
     from app.services.chatbot_profiles import get_profile
     profile = get_profile(profile_key)
 
     system_prompt = custom_system_prompt if custom_system_prompt else profile["system_prompt"]
+    system_prompt = apply_output_language_instruction(system_prompt, ui_language)
 
     async for chunk in llm_service.generate_stream(
         messages=messages,
@@ -1655,7 +1686,8 @@ async def generate_with_analytics(
     messages: list[dict],
     context: str,
     provider: str,
-    model: str
+    model: str,
+    ui_language: str = "it",
 ) -> str:
     """
     Generate response using analytics mode with full database context.
@@ -1699,6 +1731,7 @@ LINEE GUIDA PER RISPOSTE CHIARE E TRASPARENTI:
 - Se non hai abbastanza dati per rispondere, dillo chiaramente
 - Evita affermazioni generiche: sii specifico e basato sui dati
 """
+    enhanced_prompt = apply_output_language_instruction(enhanced_prompt, ui_language)
 
     response = await llm_service.generate(
         messages=messages,
@@ -1718,6 +1751,8 @@ async def generate_with_analytics_stream(
     provider: str,
     model: str,
     custom_system_prompt: Optional[str] = None,
+    ui_language: str = "it",
+    max_tokens: int = 4096,
 ) -> AsyncGenerator[str, None]:
     """
     Streaming version of generate_with_analytics.
@@ -1760,6 +1795,7 @@ LINEE GUIDA PER RISPOSTE CHIARE E TRASPARENTI:
 - Se non hai abbastanza dati per rispondere, dillo chiaramente
 - Evita affermazioni generiche: sii specifico e basato sui dati
 """
+    enhanced_prompt = apply_output_language_instruction(enhanced_prompt, ui_language)
 
     async for chunk in llm_service.generate_stream(
         messages=messages,
@@ -1767,6 +1803,6 @@ LINEE GUIDA PER RISPOSTE CHIARE E TRASPARENTI:
         provider=provider,
         model=model,
         temperature=0.7,
-        max_tokens=4096,
+        max_tokens=max_tokens,
     ):
         yield chunk

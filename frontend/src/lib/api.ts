@@ -1,5 +1,6 @@
 import axios from 'axios'
 import type { EnvironmentalFootprintResponse } from '@/lib/environmentalImpact'
+import { LANG_STORAGE_KEY, normalizeLanguageCode } from '@/i18n/i18n'
 
 const api = axios.create({
   baseURL: '/api/v1',
@@ -8,6 +9,7 @@ const api = axios.create({
 
 api.interceptors.request.use((config) => {
   const studentToken = localStorage.getItem('student_token')
+  const appLanguage = normalizeLanguageCode(localStorage.getItem(LANG_STORAGE_KEY))
   let hasTeacherAuth = false
   try {
     const raw = localStorage.getItem('eduai-auth')
@@ -25,6 +27,8 @@ api.interceptors.request.use((config) => {
   if (studentToken && !hasTeacherAuth) {
     config.headers['student-token'] = studentToken
   }
+  config.headers['Accept-Language'] = appLanguage
+  config.headers['X-App-Language'] = appLanguage
   return config
 })
 
@@ -112,6 +116,17 @@ export const adminApi = {
   reactivateUser: (userId: string) =>
     api.post(`/admin/users/${userId}/reactivate`),
   getUsage: () => api.get('/admin/usage'),
+  getAnalyticsReport: (params?: {
+    start_date?: string
+    end_date?: string
+    granularity?: 'day' | 'week' | 'month'
+    teacher_id?: string
+    class_id?: string
+    session_id?: string
+    provider?: string
+    model?: string
+    include_empty?: boolean
+  }) => api.get('/admin/analytics/report', { params }),
   getDashboardOverview: (days = 30) =>
     api.get('/admin/dashboard/overview', { params: { days } }),
   getTopConsumers: (days = 30, limit = 25) =>
@@ -185,10 +200,27 @@ export const adminApi = {
   }) => api.patch(`/admin/backend/changelog/${releaseId}`, data),
   deleteBackendChangelog: (releaseId: string) =>
     api.delete(`/admin/backend/changelog/${releaseId}`),
+
+  // ── School tenants ──────────────────────────────────────────────────────
+  createSchoolTenant: (data: {
+    school_name: string; slug: string
+    owner_first_name: string; owner_last_name: string; owner_email: string
+    max_teachers?: number; max_students_per_teacher?: number; max_students_per_class?: number
+    monthly_credit_pool?: number
+  }) => api.post('/admin/tenants/school', data),
+  updateTenantLimits: (tenantId: string, data: {
+    max_teachers?: number; max_students_per_teacher?: number; max_students_per_class?: number
+    monthly_credit_pool?: number; teacher_monthly_cap?: number
+  }) => api.patch(`/admin/tenants/${tenantId}/limits`, data),
 }
 
 export const platformApi = {
   listChangelog: (limit = 20) => api.get('/changelog', { params: { limit } }),
+}
+
+export const voiceApi = {
+  createLiveKitToken: (sessionId: string) =>
+    api.post('/voice/livekit-token', { session_id: sessionId }),
 }
 
 export const teacherApi = {
@@ -301,7 +333,7 @@ export const teacherApi = {
     api.delete(`/teacher/documents/drafts/${draftId}`),
   getCanvas: (sessionId: string) =>
     api.get(`/teacher/sessions/${sessionId}/canvas`),
-  updateCanvas: (sessionId: string, data: { title?: string; content_json: string; base_version?: number }) =>
+  updateCanvas: (sessionId: string, data: { title?: string; content_json: string; base_version?: number; students_can_write?: boolean }) =>
     api.put(`/teacher/sessions/${sessionId}/canvas`, data),
   // Prompt customization
   getSupportChatPrompt: () => api.get('/teacher/support-chat/prompt'),
@@ -324,10 +356,12 @@ export const udaApi = {
     fd.append('title', title)
     return api.post(`/teacher/classes/${classId}/udas`, fd)
   },
-  generateKb: (classId: string, udaId: string, prompt: string, files: File[] = []) => {
+  generateKb: (classId: string, udaId: string, prompt: string, files: File[] = [], language?: string, schoolLevel?: string) => {
     const fd = new FormData()
     fd.append('prompt', prompt)
     files.forEach(f => fd.append('files', f))
+    if (language) fd.append('language', language)
+    if (schoolLevel) fd.append('school_level', schoolLevel)
     return api.post(`/teacher/classes/${classId}/udas/${udaId}/generate-kb`, fd)
   },
   generatePlan: (classId: string, udaId: string) =>
@@ -438,6 +472,12 @@ export const llmApi = {
     api.get<EnvironmentalFootprintResponse>('/llm/environmental-footprint'),
   compileLatex: (content: string, filename: string) =>
     api.post('/llm/compile-latex', { content, filename }, { responseType: 'arraybuffer' }),
+  getYoutubeTranscript: (url: string) =>
+    api.post<{ video_id: string; title: string | null; transcript: string; duration_seconds: number }>('/llm/youtube/transcript', { url }),
+  editHtmlPage: (html: string, modification: string) =>
+    api.post<{ html: string }>('/llm/html-page/edit', { html, modification }),
+  editBrochure: (payload: object, modification: string) =>
+    api.post<{ payload: object }>('/llm/brochure/edit', { payload, modification }),
 }
 
 export const ragApi = {
@@ -651,14 +691,16 @@ export const feedbackApi = {
     api.get('/feedback/admin', { params }),
   updateStatus: (id: string, status: string) =>
     api.patch(`/feedback/admin/${id}/status`, { status }),
+  reply: (id: string, reply_type: 'in_progress' | 'resolved') =>
+    api.post(`/feedback/admin/${id}/reply`, { reply_type }),
 }
 
 
 export const notebooksApi = {
   list: () => api.get('/notebooks'),
-  create: (title: string, projectType: 'python' | 'p5js') => api.post('/notebooks', { title, project_type: projectType }),
+  create: (title: string, projectType: 'python' | 'p5js' | 'strudel' | 'game2d') => api.post('/notebooks', { title, project_type: projectType }),
   get: (id: string) => api.get(`/notebooks/${id}`),
-  update: (id: string, data: { title?: string; cells?: unknown[]; project_type?: 'python' | 'p5js'; editor_settings?: Record<string, unknown> }) => api.put(`/notebooks/${id}`, data),
+  update: (id: string, data: { title?: string; cells?: unknown[]; project_type?: 'python' | 'p5js' | 'strudel' | 'game2d'; editor_settings?: Record<string, unknown> }) => api.put(`/notebooks/${id}`, data),
   delete: (id: string) => api.delete(`/notebooks/${id}`),
   tutorChat: (id: string, data: {
     message: string
@@ -712,6 +754,33 @@ export const calendarApi = {
     api.delete(`/calendar/session/${sessionId}/events/${eventId}`),
 }
 
+export const liveInteractionApi = {
+  // Teacher
+  list: (sessionId: string) =>
+    api.get('/teacher/live-interactions', { params: { session_id: sessionId } }),
+  create: (data: { session_id: string; title: string; slides_json: object[] }) =>
+    api.post('/teacher/live-interactions', data),
+  get: (id: string) =>
+    api.get(`/teacher/live-interactions/${id}`),
+  update: (id: string, data: { title?: string; slides_json?: object[] }) =>
+    api.put(`/teacher/live-interactions/${id}`, data),
+  delete: (id: string) =>
+    api.delete(`/teacher/live-interactions/${id}`),
+  start: (id: string) =>
+    api.post(`/teacher/live-interactions/${id}/start`),
+  next: (id: string) =>
+    api.post(`/teacher/live-interactions/${id}/next`),
+  end: (id: string) =>
+    api.post(`/teacher/live-interactions/${id}/end`),
+  results: (id: string) =>
+    api.get(`/teacher/live-interactions/${id}/results`),
+  // Student
+  currentStudent: () =>
+    api.get('/student/live-interaction/current'),
+  submitAnswer: (data: { live_interaction_id: string; slide_index: number; response: object }) =>
+    api.post('/student/live-interaction/answer', data),
+}
+
 export const desktopAgentApi = {
   chat: (body: {
     message: string
@@ -731,4 +800,34 @@ export const desktopAgentApi = {
       user_role: 'teacher' | 'student'
     }
   }) => api.post('/desktop/agent', body),
+}
+
+type MeshyTaskResult = {
+  id: string
+  status: 'PENDING' | 'IN_PROGRESS' | 'SUCCEEDED' | 'FAILED' | 'EXPIRED'
+  progress: number
+  model_urls?: { glb?: string; fbx?: string; obj?: string; usdz?: string }
+  thumbnail_url?: string
+  error?: { message?: string }
+}
+
+export const meshyApi = {
+  startTextTo3D: (prompt: string, negative_prompt?: string) =>
+    api.post<{ task_id: string }>('/meshy/text-to-3d', { prompt, negative_prompt }),
+  getTextTo3DStatus: (taskId: string) =>
+    api.get<MeshyTaskResult>(`/meshy/text-to-3d/${taskId}`),
+  startImageTo3D: (
+    image_data: string,
+    image_mime: string = 'image/jpeg',
+    enable_pbr: boolean = true,
+    topology: string = 'quad',
+    target_polycount: number = 30000,
+  ) =>
+    api.post<{ task_id: string }>('/meshy/image-to-3d', { image_data, image_mime, enable_pbr, topology, target_polycount }),
+  getImageTo3DStatus: (taskId: string) =>
+    api.get<MeshyTaskResult>(`/meshy/image-to-3d/${taskId}`),
+  generateImage: (prompt: string, size?: string, quality?: string, style?: string) =>
+    api.post<{ image_data: string; image_mime: string; revised_prompt: string }>('/meshy/text-to-image', { prompt, size, quality, style }),
+  proxyAssetUrl: (url: string) =>
+    `/api/v1/meshy/proxy-asset?url=${encodeURIComponent(url)}`,
 }

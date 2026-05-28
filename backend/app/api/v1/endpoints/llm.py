@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File, Form
+from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File, Form, Request
 from pydantic import BaseModel
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -35,12 +35,21 @@ from app.services.environmental_impact import (
     build_estimated_token_usage,
     enrich_usage_with_environmental_impact,
 )
+from app.services.ui_language import apply_output_language_instruction, resolve_ui_language
 from app.models.alert import ContentAlert
 from app.realtime.gateway import notify_teacher_content_alert, sio
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+def get_ui_language(request: Optional[Request]) -> str:
+    if request is None:
+        return "it"
+    return resolve_ui_language(
+        request.headers.get("x-app-language") or request.headers.get("accept-language")
+    )
 
 
 async def safe_track_usage(
@@ -827,12 +836,12 @@ async def send_message(
                 provider=image_provider,
                 image_base64=image_base64
             )
-            openai_providers = {"dall-e", "gpt-image-1"}
-            provider_labels = {"dall-e": "DALL-E 3", "gpt-image-1": "GPT Image 1"}
+            openai_providers = {"dall-e", "gpt-image-1", "gpt-image-1.5", "gpt-image-2"}
+            provider_labels = {"dall-e": "DALL-E 3", "gpt-image-1": "GPT Image 1", "gpt-image-1.5": "GPT Image 1.5", "gpt-image-2": "GPT Image 2"}
             provider_label = provider_labels.get(image_provider, image_provider)
             assistant_content = f"🎨 Ecco l'immagine che hai richiesto:\n\n![Immagine generata]({image_url})\n\n*Generata con {provider_label} - Prompt: {image_prompt}*"
             provider = "openai" if image_provider in openai_providers else "flux"
-            model_map = {"dall-e": "dall-e-3", "gpt-image-1": "gpt-image-1"}
+            model_map = {"dall-e": "dall-e-3", "gpt-image-1": "gpt-image-1", "gpt-image-1.5": "gpt-image-1.5", "gpt-image-2": "gpt-image-2"}
             model = model_map.get(image_provider, image_provider)
             token_usage = enrich_usage_with_environmental_impact(
                 {"prompt_tokens": 0, "completion_tokens": 0, "image_count": 1},
@@ -874,7 +883,8 @@ async def send_message(
                 provider=conversation.llm_provider,
                 model=conversation.llm_model,
                 actor_type="STUDENT",
-                profile_key=conversation.profile_key
+                profile_key=conversation.profile_key,
+                school_grade=class_obj.school_grade,
             )
             provider = conversation.llm_provider or "openai"
             model = conversation.llm_model or "gpt-5-mini"
@@ -951,6 +961,7 @@ async def send_message(
 async def send_message_stream(
     conversation_id: UUID,
     request: MessageCreate,
+    http_request: Request,
     db: Annotated[AsyncSession, Depends(get_db)],
     student: Annotated[SessionStudent, Depends(get_current_student)],
 ):
@@ -1088,7 +1099,9 @@ async def send_message_stream(
             "content_preview": request.content[:200] if request.content else "",
         },
     ))
-    await db.flush()
+    # Commit user message immediately so it's visible to teacher even before
+    # the assistant response is generated (the generator commits separately).
+    await db.commit()
 
     # Build message history for LLM
     hist_result = await db.execute(
@@ -1122,6 +1135,7 @@ async def send_message_stream(
     )
     profile_override = override_result.scalar_one_or_none()
     custom_profile_prompt = profile_override.custom_system_prompt if profile_override else None
+    ui_language = get_ui_language(http_request)
 
     async def generate_stream():
         from app.services.teacher_agent import generate_generic_response_stream
@@ -1137,6 +1151,7 @@ async def send_message_stream(
             async for chunk in generate_generic_response_stream(
                 messages, provider, model, profile_key,
                 custom_system_prompt=custom_profile_prompt,
+                ui_language=ui_language,
             ):
                 full_content += chunk
                 yield f"data: {json.dumps({'type': 'chunk', 'content': chunk})}\n\n"
@@ -1212,6 +1227,7 @@ async def send_message_stream(
 @router.post("/student/chat")
 async def student_chat(
     request: dict,
+    http_request: Request,
     db: Annotated[AsyncSession, Depends(get_db)],
     student: Annotated[SessionStudent, Depends(get_current_student)],
 ):
@@ -1268,7 +1284,10 @@ async def student_chat(
             structured_context={},
             provider=provider,
             model=model,
-            actor_type="STUDENT"
+            actor_type="STUDENT",
+            profile_key=profile_key,
+            ui_language=get_ui_language(http_request),
+            school_grade=class_obj.school_grade,
         )
 
         return {
@@ -1335,9 +1354,9 @@ async def generate_image(
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
     # Track Usage (non-blocking)
-    openai_providers = {"dall-e", "gpt-image-1"}
+    openai_providers = {"dall-e", "gpt-image-1", "gpt-image-1.5", "gpt-image-2"}
     real_provider = "openai" if provider in openai_providers else "flux"
-    model_map = {"dall-e": "dall-e-3", "gpt-image-1": "gpt-image-1"}
+    model_map = {"dall-e": "dall-e-3", "gpt-image-1": "gpt-image-1", "gpt-image-1.5": "gpt-image-1.5", "gpt-image-2": "gpt-image-2"}
     real_model = model_map.get(provider, "flux-schnell")
     cost = credit_service.calculate_cost_for_model(real_provider, real_model, 0, 0, image_count=1)
     await safe_track_usage(
@@ -1357,6 +1376,7 @@ async def generate_image(
 @router.post("/conversations/{conversation_id}/message-with-files")
 async def send_message_with_files(
     conversation_id: UUID,
+    http_request: Request,
     db: Annotated[AsyncSession, Depends(get_db)],
     student: Annotated[SessionStudent, Depends(get_current_student)],
     content: str = Form(""),
@@ -1591,6 +1611,7 @@ async def send_message_with_files(
             + grade_instruction
             + "\n\nQuando l'utente allega documenti, analizzali attentamente e rispondi in base al loro contenuto."
         )
+        system_prompt = apply_output_language_instruction(system_prompt, get_ui_language(http_request))
         temperature = profile.get("temperature", 0.7)
         
         provider = "none"
@@ -1915,6 +1936,7 @@ async def load_teacher_context(db: AsyncSession, teacher: User) -> tuple[str, di
 @router.post("/teacher/chat")
 async def teacher_chat(
     request: dict,
+    http_request: Request,
     db: Annotated[AsyncSession, Depends(get_db)],
     teacher: Annotated[User, Depends(get_current_teacher)],
 ):
@@ -1944,6 +1966,7 @@ async def teacher_chat(
     try:
         # Load database context (used by analytics mode)
         context, structured_context = await load_teacher_context(db, teacher)
+        ui_language = get_ui_language(http_request)
 
         if uses_agent:
             # NEW: Route to teacher agent for intelligent content generation
@@ -1955,6 +1978,7 @@ async def teacher_chat(
                 structured_context=structured_context,
                 provider=provider or "openai",
                 model=model or "gpt-5-mini",
+                ui_language=ui_language,
             )
 
             return {
@@ -1966,7 +1990,7 @@ async def teacher_chat(
             }
         else:
             # EXISTING: Use context-rich analytics approach for backward compatibility
-            base_system_prompt = profile["system_prompt"]
+            base_system_prompt = apply_output_language_instruction(profile["system_prompt"], ui_language)
 
             # Enhance system prompt with real data
             system_prompt = f"""{base_system_prompt}
@@ -2036,6 +2060,7 @@ IMPORTANTE: Usa questi dati reali per rispondere alle domande del docente. Quand
 @router.post("/teacher/chat-stream")
 async def teacher_chat_stream(
     request: dict,
+    http_request: Request,
     db: Annotated[AsyncSession, Depends(get_db)],
     teacher: Annotated[User, Depends(get_current_teacher)],
 ):
@@ -2048,6 +2073,8 @@ async def teacher_chat_stream(
     provider = request.get("provider", "openai")
     model = request.get("model", "gpt-5-mini")
     agent_mode = request.get("agent_mode", "default")
+    max_tokens = min(int(request.get("max_tokens", 4096)), 16000)
+    ui_language = get_ui_language(http_request)
 
     if not content:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Content required")
@@ -2149,6 +2176,8 @@ async def teacher_chat_stream(
                 async for chunk in generate_with_analytics_stream(
                     messages, context + cal_addendum, provider, model,
                     custom_system_prompt=teacher.support_chat_system_prompt or None,
+                    ui_language=ui_language,
+                    max_tokens=max_tokens,
                 ):
                     full_content += chunk
                     yield f"data: {json.dumps({'type': 'chunk', 'content': chunk})}\n\n"
@@ -2194,6 +2223,7 @@ async def teacher_chat_stream(
             forced_mode_intents = {
                 "web_search": TeacherIntent.WEB_SEARCH,
                 "quiz": TeacherIntent.QUIZ_GENERATION,
+                "exercise": TeacherIntent.EXERCISE_GENERATION,
                 "dataset": TeacherIntent.DATASET_GENERATION,
                 "report": TeacherIntent.REPORT_GENERATION,
             }
@@ -2213,7 +2243,7 @@ async def teacher_chat_stream(
                 # Web search removed — fall through to analytics/generic response
                 context, _ = await load_teacher_context(db, teacher)
                 from app.services.teacher_agent import generate_with_analytics
-                result = await generate_with_analytics(messages, context, provider, model)
+                result = await generate_with_analytics(messages, context, provider, model, ui_language=ui_language)
                 yield f"data: {await build_done_event(result, 'teacher_chat_stream_web_fallback')}\n\n"
 
             elif intent_result.intent == TeacherIntent.QUIZ_GENERATION:
@@ -2268,7 +2298,7 @@ async def teacher_chat_stream(
                 yield f"data: {json.dumps({'type': 'status', 'message': '⏳ Elaborazione risposta...'})}\n\n"
 
                 context, _ = await load_teacher_context(db, teacher)
-                result = await generate_with_analytics(messages, context, provider, model)
+                result = await generate_with_analytics(messages, context, provider, model, ui_language=ui_language)
                 yield f"data: {await build_done_event(result, 'teacher_chat_stream_analytics')}\n\n"
 
         except Exception as e:
@@ -2294,6 +2324,7 @@ async def teacher_chat_with_files(
     provider: Optional[str] = Form(None),
     model: Optional[str] = Form(None),
     files: list[UploadFile] = File([]),
+    http_request: Request = None,
     db: AsyncSession = Depends(get_db),
     teacher: User = Depends(get_current_teacher),
 ):
@@ -2356,7 +2387,10 @@ async def teacher_chat_with_files(
 
     # Get chatbot profile
     profile = get_profile(profile_key)
-    base_system_prompt = profile["system_prompt"]
+    base_system_prompt = apply_output_language_instruction(
+        profile["system_prompt"],
+        get_ui_language(http_request),
+    )
 
     # Build messages
     messages = []
@@ -2535,6 +2569,79 @@ async def explain_message(
     )
 
 
+class YoutubeTranscriptRequest(BaseModel):
+    url: str
+
+
+@router.post("/youtube/transcript")
+async def get_youtube_transcript(
+    request: YoutubeTranscriptRequest,
+    current_user: User = Depends(get_current_teacher),
+):
+    """Fetch transcript and metadata for a YouTube video."""
+    import re
+    import httpx
+
+    url = request.url.strip()
+    match = re.search(
+        r'(?:youtube\.com/(?:watch\?v=|embed/|shorts/)|youtu\.be/)([a-zA-Z0-9_-]{11})',
+        url
+    )
+    if not match:
+        raise HTTPException(status_code=400, detail="URL YouTube non valido")
+
+    video_id = match.group(1)
+
+    # Fetch title via oembed (no API key required)
+    title: Optional[str] = None
+    try:
+        async with httpx.AsyncClient(timeout=5) as client:
+            resp = await client.get(
+                f"https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v={video_id}&format=json"
+            )
+            if resp.status_code == 200:
+                title = resp.json().get("title")
+    except Exception:
+        pass
+
+    try:
+        from youtube_transcript_api import YouTubeTranscriptApi
+        from youtube_transcript_api._errors import (
+            NoTranscriptFound, TranscriptsDisabled, VideoUnavailable
+        )
+
+        def _fetch():
+            api = YouTubeTranscriptApi()
+            try:
+                fetched = api.fetch(video_id, languages=['it', 'en', 'en-US', 'en-GB'])
+            except NoTranscriptFound:
+                # Fallback: find any available transcript
+                transcript_list = api.list(video_id)
+                fetched = transcript_list.find_a_transcript(['it', 'en']).fetch()
+            return fetched
+
+        fetched = await asyncio.get_event_loop().run_in_executor(None, _fetch)
+        snippets = list(fetched)
+        full_text = ' '.join(s.text for s in snippets)
+        last = snippets[-1] if snippets else None
+        duration = int(last.start + last.duration) if last else 0
+
+        return {
+            "video_id": video_id,
+            "title": title,
+            "transcript": full_text,
+            "duration_seconds": duration,
+        }
+    except TranscriptsDisabled:
+        raise HTTPException(status_code=422, detail="I trascritti sono disabilitati per questo video")
+    except VideoUnavailable:
+        raise HTTPException(status_code=422, detail="Video non disponibile o privato")
+    except NoTranscriptFound:
+        raise HTTPException(status_code=422, detail="Nessun trascritto disponibile per questo video")
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=f"Impossibile ottenere il trascritto: {str(exc)}")
+
+
 class CompileLatexRequest(BaseModel):
     content: str
     filename: str = "dispensa"
@@ -2594,3 +2701,225 @@ async def compile_latex(
         media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="{safe_name}.pdf"'},
     )
+
+
+class HtmlPageEditRequest(BaseModel):
+    html: str
+    modification: str
+
+
+@router.post("/html-page/edit")
+async def edit_html_page(
+    request: HtmlPageEditRequest,
+    teacher: Annotated[User, Depends(get_current_teacher)],
+):
+    """
+    Edit an interactive HTML page using tool-calling (no free-text parsing).
+    Claude is forced to call the edit_page tool with typed CSS/HTML/JS parameters,
+    which are then applied deterministically with regex — no LLM output parsing.
+    """
+    import re
+
+    client = llm_service.anthropic_client
+    if not client:
+        raise HTTPException(status_code=500, detail="Anthropic client non configurato")
+
+    tools = [{
+        "name": "edit_page",
+        "description": (
+            "Modifica la pagina HTML interattiva. Specifica solo le sezioni che devono cambiare. "
+            "Ogni campo deve contenere il contenuto COMPLETO della sezione aggiornata."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "css": {
+                    "type": "string",
+                    "description": "Contenuto completo aggiornato del blocco <style> (senza il tag <style>/</ style>)"
+                },
+                "html_body": {
+                    "type": "string",
+                    "description": "Contenuto completo aggiornato del <body> esclusi gli script (senza il tag <body>/</ body>)"
+                },
+                "js": {
+                    "type": "string",
+                    "description": "Contenuto completo aggiornato del blocco <script> principale (senza il tag <script>/</ script>)"
+                }
+            }
+        }
+    }]
+
+    response = await client.messages.create(
+        model="claude-sonnet-4-6",
+        max_tokens=8096,
+        tools=tools,
+        tool_choice={"type": "tool", "name": "edit_page"},
+        system=(
+            "Sei un editor HTML esperto. Modifica la pagina applicando solo i cambiamenti necessari. "
+            "Usa il tool edit_page specificando solo le sezioni che cambiano. "
+            "Ogni sezione deve essere il contenuto COMPLETO aggiornato di quel blocco."
+        ),
+        messages=[{
+            "role": "user",
+            "content": (
+                f"Pagina HTML corrente:\n\n{request.html}\n\n"
+                f"Modifica richiesta: {request.modification}"
+            )
+        }]
+    )
+
+    tool_block = next(
+        (b for b in response.content if getattr(b, "type", None) == "tool_use" and b.name == "edit_page"),
+        None
+    )
+    if not tool_block:
+        raise HTTPException(status_code=422, detail="Nessuna modifica generata dal modello")
+
+    params = tool_block.input
+    result_html = request.html
+
+    css = params.get("css")
+    if css:
+        if re.search(r"<style[^>]*>", result_html, re.IGNORECASE):
+            result_html = re.sub(
+                r"<style[^>]*>[\s\S]*?</style>",
+                f"<style>\n{css}\n</style>",
+                result_html,
+                flags=re.IGNORECASE,
+            )
+        else:
+            result_html = result_html.replace("</head>", f"<style>\n{css}\n</style>\n</head>")
+
+    js = params.get("js")
+    if js:
+        script_matches = list(re.finditer(r"<script(?:\s[^>]*)?>[\s\S]*?</script>", result_html, re.IGNORECASE))
+        if script_matches:
+            last = script_matches[-1]
+            result_html = result_html[:last.start()] + f"<script>\n{js}\n</script>" + result_html[last.end():]
+        else:
+            result_html = result_html.replace("</body>", f"<script>\n{js}\n</script>\n</body>")
+
+    html_body = params.get("html_body")
+    if html_body:
+        def _replace_body(m: re.Match) -> str:
+            return f"{m.group(1)}\n{html_body}\n{m.group(3)}"
+        result_html = re.sub(
+            r"(<body[^>]*>)([\s\S]*?)(<script|\s*</body>)",
+            _replace_body,
+            result_html,
+            flags=re.IGNORECASE,
+        )
+
+    return {"html": result_html}
+
+
+class BrochureEditRequest(BaseModel):
+    payload: dict  # BrochurePayload as dict
+    modification: str
+
+
+@router.post("/brochure/edit")
+async def edit_brochure(
+    request: BrochureEditRequest,
+    teacher: Annotated[User, Depends(get_current_teacher)],
+):
+    """
+    Edit a brochure payload using tool-calling.
+    Claude returns only the fields that need to change; they are merged with the original.
+    """
+    client = llm_service.anthropic_client
+    if not client:
+        raise HTTPException(status_code=500, detail="Anthropic client non configurato")
+
+    tools = [{
+        "name": "edit_brochure",
+        "description": (
+            "Modifica la brochure. Specifica SOLO i campi che devono cambiare rispetto all'originale. "
+            "I campi non specificati restano invariati. "
+            "Per array (keyPoints, features, benefits, steps, stats, faq) fornisci l'intero array aggiornato."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "title": {"type": "string"},
+                "subtitle": {"type": "string"},
+                "palette": {"type": "array", "items": {"type": "string"}, "description": "Fino a 5 colori hex"},
+                "heroBadge": {"type": "string"},
+                "heroAccent": {"type": "string"},
+                "heroDescription": {"type": "string"},
+                "ctaPrimary": {"type": "string"},
+                "ctaSecondary": {"type": "string"},
+                "overviewTitle": {"type": "string"},
+                "overviewLead": {"type": "string"},
+                "keyPoints": {"type": "array", "items": {"type": "string"}},
+                "features": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "icon": {"type": "string"},
+                            "title": {"type": "string"},
+                            "description": {"type": "string"}
+                        }
+                    }
+                },
+                "benefits": {"type": "array", "items": {"type": "string"}},
+                "steps": {"type": "array", "items": {"type": "string"}},
+                "stats": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "value": {"type": "string"},
+                            "label": {"type": "string"},
+                            "description": {"type": "string"}
+                        }
+                    }
+                },
+                "faq": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "question": {"type": "string"},
+                            "answer": {"type": "string"}
+                        }
+                    }
+                },
+                "closingTitle": {"type": "string"},
+                "closingText": {"type": "string"},
+                "closingQuote": {"type": "string"},
+                "closingAuthor": {"type": "string"},
+            }
+        }
+    }]
+
+    response = await client.messages.create(
+        model="claude-sonnet-4-6",
+        max_tokens=4096,
+        tools=tools,
+        tool_choice={"type": "tool", "name": "edit_brochure"},
+        system=(
+            "Sei un editor di contenuti per brochure. "
+            "Applica la modifica richiesta specificando SOLO i campi che cambiano. "
+            "Non toccare i campi che non richiedono modifiche."
+        ),
+        messages=[{
+            "role": "user",
+            "content": (
+                f"Brochure attuale (JSON):\n\n{request.payload}\n\n"
+                f"Modifica richiesta: {request.modification}"
+            )
+        }]
+    )
+
+    tool_block = next(
+        (b for b in response.content if getattr(b, "type", None) == "tool_use" and b.name == "edit_brochure"),
+        None
+    )
+    if not tool_block:
+        raise HTTPException(status_code=422, detail="Nessuna modifica generata dal modello")
+
+    # Merge: original payload + only the changed fields from the tool call
+    merged = {**request.payload, **tool_block.input}
+    return {"payload": merged}

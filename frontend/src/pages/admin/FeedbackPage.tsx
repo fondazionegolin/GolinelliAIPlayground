@@ -1,12 +1,13 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { feedbackApi } from '@/lib/api'
-import { Bug, ChevronDown, ChevronUp, CheckCircle, Clock, Monitor, Globe, AlertTriangle } from 'lucide-react'
+import { Bug, ChevronDown, ChevronUp, CheckCircle, Clock, Monitor, Globe, AlertTriangle, Mail, Wrench, Send } from 'lucide-react'
 
 interface FeedbackReport {
   id: string
   user_type: string
   user_display_name: string | null
+  user_email: string | null
   message: string
   page_url: string | null
   browser_info: {
@@ -34,8 +35,17 @@ function timeAgo(isoString: string): string {
   return `${days}g fa`
 }
 
-function FeedbackCard({ report, onMarkReviewed }: { report: FeedbackReport; onMarkReviewed: (id: string) => void }) {
+function FeedbackCard({
+  report,
+  onMarkReviewed,
+  onReply,
+}: {
+  report: FeedbackReport
+  onMarkReviewed: (id: string) => void
+  onReply: (id: string, type: 'in_progress' | 'resolved') => void
+}) {
   const [expanded, setExpanded] = useState(false)
+  const [replySent, setReplySent] = useState<string | null>(null)
   const isNew = report.status === 'new'
 
   return (
@@ -67,6 +77,19 @@ function FeedbackCard({ report, onMarkReviewed }: { report: FeedbackReport; onMa
               <span className="text-xs text-slate-400 ml-auto">{timeAgo(report.created_at)}</span>
             </div>
 
+            {/* Email */}
+            {report.user_email && (
+              <div className="flex items-center gap-1 mt-1">
+                <Mail className="h-3 w-3 text-slate-400 flex-shrink-0" />
+                <a
+                  href={`mailto:${report.user_email}`}
+                  className="text-[11px] text-indigo-500 hover:text-indigo-700 hover:underline truncate"
+                >
+                  {report.user_email}
+                </a>
+              </div>
+            )}
+
             <p className="text-sm text-slate-700 mt-1.5 leading-relaxed">{report.message}</p>
 
             {report.page_url && (
@@ -79,7 +102,7 @@ function FeedbackCard({ report, onMarkReviewed }: { report: FeedbackReport; onMa
         </div>
 
         {/* Expand/actions row */}
-        <div className="flex items-center gap-2 mt-3 pt-3 border-t border-slate-100">
+        <div className="flex items-center gap-2 mt-3 pt-3 border-t border-slate-100 flex-wrap">
           {report.console_errors.length > 0 && (
             <div className="flex items-center gap-1 text-amber-600">
               <AlertTriangle className="h-3.5 w-3.5" />
@@ -96,6 +119,38 @@ function FeedbackCard({ report, onMarkReviewed }: { report: FeedbackReport; onMa
             </button>
           )}
           <div className="flex-1" />
+
+          {/* Reply buttons — only if user has email */}
+          {report.user_email && (
+            <div className="flex items-center gap-1.5">
+              {replySent ? (
+                <span className="text-[11px] text-green-600 flex items-center gap-1">
+                  <Send className="h-3 w-3" />
+                  Email inviata ({replySent === 'in_progress' ? 'in lavorazione' : 'risolto'})
+                </span>
+              ) : (
+                <>
+                  <button
+                    onClick={() => { onReply(report.id, 'in_progress'); setReplySent('in_progress') }}
+                    className="flex items-center gap-1 text-[11px] text-amber-600 hover:text-amber-700 px-2 py-1 rounded-lg hover:bg-amber-50 transition-colors font-medium"
+                    title="Invia email: stiamo lavorando al problema"
+                  >
+                    <Wrench className="h-3 w-3" />
+                    In lavorazione
+                  </button>
+                  <button
+                    onClick={() => { onReply(report.id, 'resolved'); setReplySent('resolved') }}
+                    className="flex items-center gap-1 text-[11px] text-green-600 hover:text-green-700 px-2 py-1 rounded-lg hover:bg-green-50 transition-colors font-medium"
+                    title="Invia email: problema risolto"
+                  >
+                    <CheckCircle className="h-3 w-3" />
+                    Risolto
+                  </button>
+                </>
+              )}
+            </div>
+          )}
+
           {isNew && (
             <button
               onClick={() => onMarkReviewed(report.id)}
@@ -162,6 +217,14 @@ export default function FeedbackPage() {
     },
   })
 
+  const replyMutation = useMutation({
+    mutationFn: ({ id, reply_type }: { id: string; reply_type: 'in_progress' | 'resolved' }) =>
+      feedbackApi.reply(id, reply_type),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin-feedback'] })
+    },
+  })
+
   const newCount = reports.filter(r => r.status === 'new').length
 
   return (
@@ -220,6 +283,7 @@ export default function FeedbackPage() {
               key={report.id}
               report={report}
               onMarkReviewed={(id) => markReviewedMutation.mutate(id)}
+              onReply={(id, reply_type) => replyMutation.mutate({ id, reply_type })}
             />
           ))}
         </div>

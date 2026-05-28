@@ -6,6 +6,11 @@ class TenantStatus(str, enum.Enum):
     SUSPENDED = "suspended"
 
 
+class TenantType(str, enum.Enum):
+    SCHOOL = "SCHOOL"      # scuola: pool condiviso, owner può invitare colleghi
+    INDIVIDUAL = "INDIVIDUAL"  # docente admin-invitato: tenant personale
+
+
 class UserRole(str, enum.Enum):
     ADMIN = "ADMIN"
     TEACHER = "TEACHER"
@@ -121,6 +126,7 @@ class LimitLevel(str, enum.Enum):
     CLASS = "CLASS"
     STUDENT = "STUDENT"
     SESSION = "SESSION"
+    STUDENT_POOL = "STUDENT_POOL"  # pool condiviso studenti per tenant INDIVIDUAL
 
 
 class CreditRequestStatus(str, enum.Enum):

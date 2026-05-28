@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import {
   BookOpen,
   Check,
@@ -8,16 +9,12 @@ import {
   Clock,
   Copy,
   Edit2,
-  Eye,
   MonitorPlay,
   Pause,
-  Play,
-  PlayCircle,
   Plus,
   School,
   Share2,
   Square,
-  Trash2,
   UserPlus,
   Users,
   X,
@@ -66,27 +63,13 @@ interface SessionData {
   active_students_count?: number
 }
 
-const SCHOOL_GRADE_OPTIONS = [
-  'II ciclo primaria',
-  'Secondaria I grado',
-  'Biennio Secondaria II grado',
-  'Triennio Secondaria II grado',
-  'Università',
-] as const
-
-const STATUS_META: Record<string, { label: string; tone: string; dot: string }> = {
-  draft: { label: 'Bozza', tone: 'bg-slate-100 text-slate-600', dot: 'bg-slate-400' },
-  active: { label: 'Attiva', tone: 'bg-emerald-100 text-emerald-700', dot: 'bg-emerald-500' },
-  paused: { label: 'In pausa', tone: 'bg-amber-100 text-amber-700', dot: 'bg-amber-500' },
-  finished: { label: 'Terminata', tone: 'bg-rose-100 text-rose-700', dot: 'bg-rose-500' },
-  ended: { label: 'Terminata', tone: 'bg-rose-100 text-rose-700', dot: 'bg-rose-500' },
-}
-
 export default function TeacherClassesSessionsManager({
   entryMode,
 }: {
   entryMode: 'classes' | 'sessions'
 }) {
+  const { t, i18n } = useTranslation()
+  const isEnglish = i18n.resolvedLanguage?.startsWith('en') ?? false
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const { toast } = useToast()
@@ -98,10 +81,24 @@ export default function TeacherClassesSessionsManager({
   const [showNewClassForm, setShowNewClassForm] = useState(false)
   const [showTeachersModal, setShowTeachersModal] = useState(false)
   const [newClassName, setNewClassName] = useState('')
-  const [newClassGrade, setNewClassGrade] = useState<string>(SCHOOL_GRADE_OPTIONS[1])
+  const schoolGradeOptions = [
+    t('classes.grade_primary2'),
+    t('classes.grade_middle'),
+    t('classes.grade_high1'),
+    t('classes.grade_high2'),
+    t('classes.grade_university'),
+  ] as const
+  const statusMeta: Record<string, { label: string; tone: string; dot: string }> = {
+    draft: { label: t('sessions.status_draft'), tone: 'bg-slate-100 text-slate-600', dot: 'bg-slate-400' },
+    active: { label: t('sessions.status_active'), tone: 'bg-emerald-100 text-emerald-700', dot: 'bg-emerald-500' },
+    paused: { label: t('sessions.status_paused'), tone: 'bg-amber-100 text-amber-700', dot: 'bg-amber-500' },
+    finished: { label: t('sessions.status_ended'), tone: 'bg-rose-100 text-rose-700', dot: 'bg-rose-500' },
+    ended: { label: t('sessions.status_ended'), tone: 'bg-rose-100 text-rose-700', dot: 'bg-rose-500' },
+  }
+  const [newClassGrade, setNewClassGrade] = useState<string>(schoolGradeOptions[1])
   const [isEditingClass, setIsEditingClass] = useState(false)
   const [editClassName, setEditClassName] = useState('')
-  const [editClassGrade, setEditClassGrade] = useState<string>(SCHOOL_GRADE_OPTIONS[1])
+  const [editClassGrade, setEditClassGrade] = useState<string>(schoolGradeOptions[1])
   const [showNewSessionDialog, setShowNewSessionDialog] = useState(false)
   const [newSessionTitle, setNewSessionTitle] = useState('')
   const [editingTitleId, setEditingTitleId] = useState<string | null>(null)
@@ -131,8 +128,8 @@ export default function TeacherClassesSessionsManager({
   useEffect(() => {
     if (!selectedClass) return
     setEditClassName(selectedClass.name)
-    setEditClassGrade(selectedClass.school_grade || SCHOOL_GRADE_OPTIONS[1])
-  }, [selectedClass])
+    setEditClassGrade(selectedClass.school_grade || schoolGradeOptions[1])
+  }, [selectedClass, schoolGradeOptions])
 
   const { data: sessions = [], isLoading: isSessionsLoading } = useQuery<SessionData[]>({
     queryKey: ['sessions', selectedClassId],
@@ -150,15 +147,15 @@ export default function TeacherClassesSessionsManager({
     onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ['classes'] })
       setNewClassName('')
-      setNewClassGrade(SCHOOL_GRADE_OPTIONS[1])
+      setNewClassGrade(schoolGradeOptions[1])
       setShowNewClassForm(false)
       const nextId = res.data.id
       setSelectedClassId(nextId)
       setSearchParams({ class: nextId }, { replace: true })
-      toast({ title: 'Classe creata con successo' })
+      toast({ title: t('classes.created_success') })
     },
     onError: () => {
-      toast({ title: 'Errore nella creazione', variant: 'destructive' })
+      toast({ title: t('classes.create_error'), variant: 'destructive' })
     },
   })
 
@@ -168,7 +165,7 @@ export default function TeacherClassesSessionsManager({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['classes'] })
       setIsEditingClass(false)
-      toast({ title: 'Classe aggiornata' })
+      toast({ title: t('classes.class_updated') })
     },
   })
 
@@ -179,7 +176,7 @@ export default function TeacherClassesSessionsManager({
       queryClient.invalidateQueries({ queryKey: ['classes'] })
       setShowNewSessionDialog(false)
       setNewSessionTitle('')
-      toast({ title: 'Sessione creata' })
+      toast({ title: t('sessions.created') })
       navigate(`/teacher/sessions/${res.data.id}`)
     },
   })
@@ -189,7 +186,7 @@ export default function TeacherClassesSessionsManager({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['sessions', selectedClassId] })
       queryClient.invalidateQueries({ queryKey: ['classes'] })
-      toast({ title: 'Stato sessione aggiornato' })
+      toast({ title: t('sessions.status_updated') })
     },
   })
 
@@ -199,16 +196,7 @@ export default function TeacherClassesSessionsManager({
       queryClient.invalidateQueries({ queryKey: ['sessions', selectedClassId] })
       setEditingTitleId(null)
       setEditingTitleValue('')
-      toast({ title: 'Nome sessione aggiornato' })
-    },
-  })
-
-  const deleteSessionMutation = useMutation({
-    mutationFn: (id: string) => teacherApi.deleteSession(id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['sessions', selectedClassId] })
-      queryClient.invalidateQueries({ queryKey: ['classes'] })
-      toast({ title: 'Sessione eliminata' })
+      toast({ title: isEnglish ? 'Session name updated' : 'Nome sessione aggiornato' })
     },
   })
 
@@ -218,6 +206,14 @@ export default function TeacherClassesSessionsManager({
       open: sorted.filter((session) => session.status !== 'finished' && session.status !== 'ended'),
       archive: sorted.filter((session) => session.status === 'finished' || session.status === 'ended'),
     }
+  }, [sessions])
+
+  const orderedSessions = useMemo(() => {
+    const sorted = [...sessions].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+    return [
+      ...sorted.filter((session) => session.status === 'active'),
+      ...sorted.filter((session) => session.status !== 'active'),
+    ]
   }, [sessions])
 
   const summary = useMemo(() => ({
@@ -247,7 +243,7 @@ export default function TeacherClassesSessionsManager({
     }
     const noChanges =
       editClassName.trim() === selectedClass.name &&
-      editClassGrade === (selectedClass.school_grade || SCHOOL_GRADE_OPTIONS[1])
+      editClassGrade === (selectedClass.school_grade || schoolGradeOptions[1])
     if (noChanges) {
       setIsEditingClass(false)
       return
@@ -261,7 +257,7 @@ export default function TeacherClassesSessionsManager({
 
   const handleCreateSession = () => {
     if (!selectedClassId) return
-    const title = newSessionTitle.trim() || `Lezione del ${new Date().toLocaleDateString('it-IT')}`
+    const title = newSessionTitle.trim() || `${isEnglish ? 'Lesson of' : 'Lezione del'} ${new Date().toLocaleDateString(isEnglish ? 'en-GB' : 'it-IT')}`
     createSessionMutation.mutate({ classId: selectedClassId, title })
   }
 
@@ -274,24 +270,24 @@ export default function TeacherClassesSessionsManager({
   const copyCode = (code?: string) => {
     if (!code) return
     navigator.clipboard.writeText(code)
-    toast({ title: 'Codice copiato' })
+    toast({ title: t('sessions.code_copied') })
   }
 
-  const emptyTitle = entryMode === 'classes' ? 'Nessuna classe' : 'Nessuna classe selezionata'
+  const emptyTitle = entryMode === 'classes' ? t('classes.empty_title') : (isEnglish ? 'No class selected' : 'Nessuna classe selezionata')
   const emptyBody = entryMode === 'classes'
-    ? 'Crea la tua prima classe per iniziare a organizzare sessioni, docenti e attività.'
-    : 'Seleziona una classe dal menu laterale per gestire le sessioni in modo ordinato.'
+    ? t('classes.empty_body')
+    : (isEnglish ? 'Select a class from the side menu to manage its sessions.' : 'Seleziona una classe dal menu laterale per gestire le sessioni in modo ordinato.')
 
   return (
-    <div className="p-6 md:p-8">
+    <div className="h-full w-full">
       <div
-        className="mx-auto flex max-w-[1440px] flex-col overflow-hidden rounded-[24px] border bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(248,250,252,0.96))] shadow-[0_16px_48px_rgba(15,23,42,0.06)] lg:h-[calc(100vh-9.5rem)] lg:min-h-[720px] lg:flex-row"
+        className="flex h-full min-h-0 w-full flex-col overflow-hidden bg-white lg:min-h-[680px] lg:flex-row"
         style={{
           borderColor: accentTheme.id === 'black' ? hexToRgba('#94a3b8', 0.28) : hexToRgba(accentTheme.accent, 0.2),
         }}
       >
         <aside
-          className="w-full shrink-0 border-b bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(248,250,252,0.98))] lg:w-[22rem] lg:border-b-0 lg:border-r"
+          className="w-full shrink-0 border-b bg-white lg:w-[22rem] lg:border-b-0 lg:border-r"
           style={{
             borderColor: accentTheme.id === 'black' ? hexToRgba('#94a3b8', 0.28) : hexToRgba(accentTheme.accent, 0.2),
           }}
@@ -300,27 +296,30 @@ export default function TeacherClassesSessionsManager({
             className="border-b px-5 py-4"
             style={{
               borderBottomColor: accentTheme.id === 'black' ? hexToRgba('#0f172a', 0.08) : hexToRgba(accentTheme.accent, 0.14),
-              backgroundColor: accentTheme.id === 'black' ? 'rgba(255,255,255,0.92)' : hexToRgba(accentTheme.accent, 0.07),
+              backgroundColor: accentTheme.id === 'black' ? 'rgba(255,255,255,0.92)' : hexToRgba(accentTheme.accent, 0.05),
             }}
           >
             <div className="flex items-start justify-between gap-3">
               <div className="max-w-[14rem]">
                 <p className="text-[11px] font-semibold tracking-[0.08em]" style={{ color: accentTheme.text }}>
-                  Pannello docente
+                  {isEnglish ? 'Teacher panel' : 'Pannello docente'}
                 </p>
-                <h1 className="mt-1 text-[18px] font-semibold tracking-[var(--letter-spacing-tight)] text-slate-950">Classi e sessioni</h1>
-                <p className="mt-1 text-xs leading-5 text-slate-500">
-                  Organizza classi, docenti invitati e sessioni live senza uscire da questa vista.
+                <h1 className="mt-1 text-[17px] font-semibold tracking-[var(--letter-spacing-tight)] text-slate-950">{t('classes.title')}</h1>
+                <p className="mt-1 text-[12px] leading-5 text-slate-600">
+                  {isEnglish
+                    ? 'Organise classes, invited teachers, and live sessions without leaving this view.'
+                    : 'Organizza classi, docenti invitati e sessioni live senza uscire da questa vista.'}
                 </p>
               </div>
               <Button
                 onClick={() => setShowNewClassForm((value) => !value)}
                 density="compact"
-                className="shrink-0 rounded-xl shadow-sm"
-                style={{ backgroundColor: accentTheme.accent }}
+                tone="accent"
+                surface="solid"
+                className="shrink-0 rounded-lg"
               >
                 <Plus className="mr-1.5 h-3.5 w-3.5" />
-                Nuova
+                {t('classes.new_class')}
               </Button>
             </div>
           </div>
@@ -329,7 +328,7 @@ export default function TeacherClassesSessionsManager({
             <div className="border-b px-6 py-5" style={{ borderBottomColor: accentTheme.id === 'black' ? hexToRgba('#0f172a', 0.08) : hexToRgba(accentTheme.accent, 0.14) }}>
               <form onSubmit={handleCreateClass} className="space-y-3">
                 <Input
-                  placeholder="es. 3A Informatica - A.S. 2025/26"
+                  placeholder={t('classes.class_name_placeholder')}
                   value={newClassName}
                   onChange={(e) => setNewClassName(e.target.value)}
                   surface="base"
@@ -340,17 +339,17 @@ export default function TeacherClassesSessionsManager({
                   onChange={(e) => setNewClassGrade(e.target.value)}
                   surface="base"
                 >
-                  {SCHOOL_GRADE_OPTIONS.map((grade) => (
+                  {schoolGradeOptions.map((grade) => (
                     <option key={grade} value={grade}>{grade}</option>
                   ))}
                 </Select>
                 <div className="flex items-center gap-2">
-                  <Button type="submit" disabled={createClassMutation.isPending || !newClassName.trim()} className="rounded-2xl" style={{ backgroundColor: accentTheme.accent }}>
+                  <Button type="submit" disabled={createClassMutation.isPending || !newClassName.trim()} tone="accent" surface="solid" className="rounded-lg">
                     {createClassMutation.isPending ? <Spinner className="mr-2" size="sm" tone="inverse" /> : null}
-                    Crea
+                    {t('classes.create_class')}
                   </Button>
                   <Button type="button" surface="ghost" tone="neutral" onClick={() => setShowNewClassForm(false)}>
-                    Annulla
+                    {t('classes.cancel')}
                   </Button>
                 </div>
               </form>
@@ -359,13 +358,13 @@ export default function TeacherClassesSessionsManager({
 
           <div className="px-5 py-3">
             <div className="mb-2 flex items-center justify-between">
-              <p className="text-xs font-medium text-slate-500">Panoramica rapida</p>
-              <span className="text-[11px] text-slate-400">Aggiornamento live</span>
+              <p className="text-xs font-medium text-slate-500">{isEnglish ? 'Quick overview' : 'Panoramica rapida'}</p>
+              <span className="text-[11px] text-slate-400">{isEnglish ? 'Live update' : 'Aggiornamento live'}</span>
             </div>
-            <div className="grid grid-cols-3 gap-1.5 rounded-[18px]">
-              <SummaryCell label="Classi" value={summary.totalClasses} tone="indigo" />
-              <SummaryCell label="Sessioni" value={summary.totalSessions} tone="cyan" />
-              <SummaryCell label="Attive" value={summary.activeSessions} tone="emerald" />
+            <div className="grid grid-cols-3 gap-1.5">
+              <SummaryCell label={isEnglish ? 'Classes' : 'Classi'} value={summary.totalClasses} tone="slate" />
+              <SummaryCell label={isEnglish ? 'Sessions' : 'Sessioni'} value={summary.totalSessions} tone="slate" />
+              <SummaryCell label={isEnglish ? 'Active' : 'Attive'} value={summary.activeSessions} tone="emerald" />
             </div>
           </div>
 
@@ -373,7 +372,7 @@ export default function TeacherClassesSessionsManager({
             {isClassesLoading ? (
               <div className="space-y-3 px-2">
                 {[1, 2, 3].map((item) => (
-                  <div key={item} className="h-20 animate-pulse rounded-[18px] border border-slate-200 bg-white/80" />
+                  <div key={item} className="h-20 animate-pulse rounded-xl border border-slate-200 bg-white/80" />
                 ))}
               </div>
             ) : classes.length === 0 ? (
@@ -384,27 +383,44 @@ export default function TeacherClassesSessionsManager({
                 compact
               />
             ) : (
-              <div className="space-y-2.5">
+              <div className="space-y-2">
                 {classes.map((cls) => {
                   const isSelected = cls.id === selectedClassId
                   const isShared = cls.role === 'invited'
+                  const selectedCardStyle = {
+                    backgroundColor: hexToRgba(accentTheme.accent, 0.08),
+                    borderColor: hexToRgba(accentTheme.accent, 0.36),
+                  }
+                  const selectedIconStyle = {
+                    backgroundColor: hexToRgba(accentTheme.accent, 0.14),
+                    color: accentTheme.text,
+                  }
+                  const selectedPillStyle = {
+                    backgroundColor: hexToRgba(accentTheme.accent, 0.12),
+                    color: accentTheme.text,
+                  }
                   return (
                     <button
                       key={cls.id}
                       onClick={() => handleSelectClass(cls.id)}
-                      className={`group relative w-full overflow-hidden rounded-[18px] px-3 py-3 text-left transition-all hover:shadow-[0_8px_18px_rgba(15,23,42,0.06)] ${
-                        isShared
-                          ? PASTEL_SURFACES.cyan
-                          : isSelected
-                            ? PASTEL_SURFACES.indigo
-                            : PASTEL_SURFACES.slate
+                      className={`group relative w-full overflow-hidden rounded-lg border px-3 py-3 text-left transition-all ${
+                        isSelected
+                          ? ''
+                          : isShared
+                            ? ''
+                            : 'bg-white border-slate-300 hover:border-slate-400'
                       }`}
+                      style={isSelected ? selectedCardStyle : isShared ? {
+                        backgroundColor: hexToRgba(accentTheme.accent, 0.06),
+                        borderColor: hexToRgba(accentTheme.accent, 0.22),
+                      } : undefined}
                     >
                       <div className="flex items-start gap-2.5">
                         <div
                           className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${
-                            isShared ? 'bg-cyan-100 text-cyan-700' : isSelected ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-100 text-slate-600'
+                            isShared ? '' : isSelected ? '' : 'bg-slate-100 text-slate-600'
                           }`}
+                          style={isSelected ? selectedIconStyle : isShared ? selectedIconStyle : undefined}
                         >
                           <School className="h-4 w-4" />
                         </div>
@@ -412,21 +428,36 @@ export default function TeacherClassesSessionsManager({
                           <div className="flex items-start justify-between gap-2">
                             <div className="min-w-0">
                               <span className="block truncate text-sm font-semibold tracking-[-0.01em] text-slate-900">{cls.name}</span>
-                              <span className="mt-1 block text-xs text-slate-500">{cls.school_grade || 'Grado non impostato'}</span>
+                              <span className="mt-1 block text-xs text-slate-500">{cls.school_grade || t('classes.not_set')}</span>
                             </div>
                             <ChevronRight className={`mt-1 h-4 w-4 shrink-0 text-slate-300 transition-transform ${isSelected ? 'translate-x-0.5' : 'group-hover:translate-x-0.5'}`} />
                           </div>
-                          <div className="mt-2.5 flex flex-wrap items-center gap-1.5 text-[11px]">
+                          <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px]">
                             <span className={`rounded-full px-2 py-0.5 font-medium ${
-                              isShared ? 'bg-cyan-100 text-cyan-700' : isSelected ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-100 text-slate-600'
-                            }`}>
-                              {cls.session_count || 0} sessioni
+                              isShared ? '' : isSelected ? '' : 'bg-slate-100 text-slate-600'
+                            }`} style={isSelected || isShared ? selectedPillStyle : undefined}>
+                              {cls.session_count || 0} {isEnglish ? 'sessions' : 'sessioni'}
                             </span>
                             {isShared && (
-                              <span className="rounded-full bg-cyan-50 px-2 py-0.5 font-medium text-cyan-700 ring-1 ring-cyan-100">
-                                {cls.owner_name ? `di ${cls.owner_name}` : 'Condivisa'}
+                              <span
+                                className="rounded-full px-2 py-0.5 font-medium ring-1"
+                                style={{
+                                  backgroundColor: hexToRgba(accentTheme.accent, 0.08),
+                                  color: accentTheme.text,
+                                  borderColor: hexToRgba(accentTheme.accent, 0.18),
+                                }}
+                              >
+                                {cls.owner_name ? (isEnglish ? `by ${cls.owner_name}` : `di ${cls.owner_name}`) : (isEnglish ? 'Shared' : 'Condivisa')}
                               </span>
                             )}
+                            <button
+                              onClick={(e) => { e.stopPropagation(); navigate(`/teacher/classes/${cls.id}/uda`) }}
+                              title={isEnglish ? 'Teaching Units (UDA)' : 'Unità Didattiche (UDA)'}
+                              className="ml-auto flex items-center gap-1 rounded-full px-2 py-0.5 font-medium text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors opacity-0 group-hover:opacity-100"
+                            >
+                              <BookOpen className="h-3 w-3" />
+                              <span>UDA</span>
+                            </button>
                           </div>
                         </div>
                       </div>
@@ -438,7 +469,7 @@ export default function TeacherClassesSessionsManager({
           </div>
         </aside>
 
-        <section className="min-w-0 flex-1 bg-[linear-gradient(180deg,rgba(255,255,255,0.62),rgba(248,250,252,0.82))]">
+        <section className="min-w-0 flex-1 bg-white">
           {!selectedClass ? (
             <div className="flex h-full min-h-[420px] items-center justify-center px-6">
               <div className="w-full max-w-lg">
@@ -455,13 +486,13 @@ export default function TeacherClassesSessionsManager({
                 className="border-b px-5 py-4"
                 style={{
                   borderBottomColor: accentTheme.id === 'black' ? hexToRgba('#0f172a', 0.08) : hexToRgba(accentTheme.accent, 0.14),
-                  backgroundColor: accentTheme.id === 'black' ? 'rgba(255,255,255,0.96)' : hexToRgba(accentTheme.accent, 0.065),
+                  backgroundColor: accentTheme.id === 'black' ? 'rgba(255,255,255,0.96)' : hexToRgba(accentTheme.accent, 0.04),
                 }}
               >
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                   <div className="min-w-0">
                     <p className="text-[11px] font-semibold tracking-[0.08em]" style={{ color: accentTheme.text }}>
-                      Classe selezionata
+                      {isEnglish ? 'Selected class' : 'Classe selezionata'}
                     </p>
                     {isEditingClass ? (
                       <div className="flex flex-wrap items-center gap-2">
@@ -481,20 +512,20 @@ export default function TeacherClassesSessionsManager({
                           density="compact"
                           className="text-xs"
                         >
-                          {SCHOOL_GRADE_OPTIONS.map((grade) => (
+                          {schoolGradeOptions.map((grade) => (
                             <option key={grade} value={grade}>{grade}</option>
                           ))}
                         </Select>
-                        <IconButton onClick={handleSaveClass} disabled={updateClassMutation.isPending} title="Salva" tone="success" surface="ghost" size="default">
+                        <IconButton onClick={handleSaveClass} disabled={updateClassMutation.isPending} title={isEnglish ? 'Save' : 'Salva'} tone="success" surface="ghost" size="default">
                           {updateClassMutation.isPending ? <Spinner size="sm" tone="success" /> : <Check className="h-4 w-4" />}
                         </IconButton>
-                        <IconButton onClick={() => setIsEditingClass(false)} title="Annulla" tone="neutral" surface="ghost" size="default">
+                        <IconButton onClick={() => setIsEditingClass(false)} title={t('classes.cancel')} tone="neutral" surface="ghost" size="default">
                           <X className="h-4 w-4" />
                         </IconButton>
                       </div>
                     ) : (
                       <div className="mt-1">
-                        <h2 className="truncate text-[22px] font-semibold leading-[1.1] tracking-[var(--letter-spacing-tight)] text-slate-950">
+                        <h2 className="truncate text-[20px] font-semibold leading-[1.1] tracking-[var(--letter-spacing-tight)] text-slate-950">
                           {selectedClass.name}
                         </h2>
                         <div className="mt-2.5 flex flex-wrap items-center gap-1.5 text-[11px]">
@@ -502,14 +533,21 @@ export default function TeacherClassesSessionsManager({
                             {selectedClass.school_grade || '—'}
                           </span>
                           {selectedClass.role === 'invited' && (
-                            <span className="inline-flex items-center gap-1 rounded-full bg-cyan-50 px-2 py-0.5 font-medium text-cyan-700 ring-1 ring-cyan-100">
+                            <span
+                              className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-medium ring-1"
+                              style={{
+                                backgroundColor: hexToRgba(accentTheme.accent, 0.08),
+                                color: accentTheme.text,
+                                borderColor: hexToRgba(accentTheme.accent, 0.18),
+                              }}
+                            >
                               <Share2 className="h-2.5 w-2.5" />
-                              {selectedClass.owner_name ? `di ${selectedClass.owner_name}` : 'Condivisa'}
+                              {selectedClass.owner_name ? (isEnglish ? `by ${selectedClass.owner_name}` : `di ${selectedClass.owner_name}`) : (isEnglish ? 'Shared' : 'Condivisa')}
                             </span>
                           )}
                           <span className="text-slate-500">
                             <Clock className="mr-0.5 inline h-2.5 w-2.5" />
-                            {new Date(selectedClass.created_at).toLocaleDateString('it-IT')}
+                            {new Date(selectedClass.created_at).toLocaleDateString(isEnglish ? 'en-GB' : 'it-IT')}
                           </span>
                         </div>
                       </div>
@@ -517,11 +555,11 @@ export default function TeacherClassesSessionsManager({
                   </div>
 
                   {!isEditingClass && (
-                    <div className="flex shrink-0 items-center gap-1 self-start sm:pt-0.5">
-                      <IconButton onClick={() => setIsEditingClass(true)} title="Rinomina classe" tone="neutral" surface="outline" size="default">
+                    <div className="flex shrink-0 items-center gap-2 self-start sm:pt-0.5">
+                      <IconButton onClick={() => setIsEditingClass(true)} title={isEnglish ? 'Rename class' : 'Rinomina classe'} tone="neutral" surface="outline" size="default">
                         <Edit2 className="h-3.5 w-3.5" />
                       </IconButton>
-                      <IconButton onClick={() => setShowTeachersModal(true)} title="Gestisci docenti" tone="neutral" surface="outline" size="default">
+                      <IconButton onClick={() => setShowTeachersModal(true)} title={isEnglish ? 'Manage teachers' : 'Gestisci docenti'} tone="neutral" surface="outline" size="default">
                         <UserPlus className="h-3.5 w-3.5" />
                       </IconButton>
                       <IconButton onClick={() => navigate(`/teacher/classes/${selectedClass.id}/uda`)} title="UDA" tone="neutral" surface="outline" size="default">
@@ -529,77 +567,58 @@ export default function TeacherClassesSessionsManager({
                       </IconButton>
                       <Button
                         density="compact"
+                        tone="accent"
+                        surface="solid"
                         onClick={() => {
-                          setNewSessionTitle(`Lezione del ${new Date().toLocaleDateString('it-IT')}`)
+                          setNewSessionTitle(`${isEnglish ? 'Lesson of' : 'Lezione del'} ${new Date().toLocaleDateString(isEnglish ? 'en-GB' : 'it-IT')}`)
                           setShowNewSessionDialog(true)
                         }}
-                        className="rounded-xl shadow-sm"
-                        style={{ backgroundColor: accentTheme.accent }}
+                        className="rounded-lg"
                       >
                         <Plus className="mr-1.5 h-3.5 w-3.5" />
-                        Nuova sessione
+                        {t('sessions.new_session')}
                       </Button>
                     </div>
                   )}
                 </div>
 
-                <div className="mt-4 grid grid-cols-2 gap-2.5 xl:grid-cols-4">
-                  <MetricCard label="Aperte" value={groupedSessions.open.length} tone="indigo" />
-                  <MetricCard label="Attive" value={summary.activeSessions} tone="emerald" />
-                  <MetricCard label="In pausa" value={summary.pausedSessions} tone="amber" />
-                  <MetricCard label="Archivio" value={groupedSessions.archive.length} tone="rose" />
+                <div className="mt-4 grid grid-cols-2 gap-2 xl:grid-cols-4">
+                  <MetricCard label={isEnglish ? 'Open' : 'Aperte'} value={groupedSessions.open.length} tone="slate" />
+                  <MetricCard label={isEnglish ? 'Active' : 'Attive'} value={summary.activeSessions} tone="emerald" />
+                  <MetricCard label={t('sessions.status_paused')} value={summary.pausedSessions} tone="amber" />
+                  <MetricCard label={isEnglish ? 'Archive' : 'Archivio'} value={groupedSessions.archive.length} tone="rose" />
                 </div>
               </div>
 
               <div className="flex-1 overflow-y-auto px-5 py-4">
                 {isSessionsLoading ? (
-                  <div className="space-y-3">
+                  <div className="space-y-4">
                     {[1, 2, 3].map((item) => (
-                      <div key={item} className="h-24 animate-pulse rounded-[24px] border border-slate-200 bg-white/80" />
+                      <div key={item} className="h-32 animate-pulse rounded-xl border border-slate-200 bg-white/80" />
                     ))}
                   </div>
                 ) : sessions.length === 0 ? (
                   <EmptyStateCard
                     icon={<MonitorPlay className="h-10 w-10 text-slate-300" />}
-                    title="Nessuna sessione"
-                    body="Questa classe non ha ancora sessioni. Aprine una nuova dal pannello in alto."
-                    tone="indigo"
+                    title={t('sessions.empty_title')}
+                    body={isEnglish ? 'This class does not have any sessions yet. Create a new one from the top panel.' : 'Questa classe non ha ancora sessioni. Aprine una nuova dal pannello in alto.'}
+                    tone="slate"
                   />
                 ) : (
-                  <div className="space-y-6">
-                    <SessionSection
-                      title="Sessioni aperte"
-                      sessions={groupedSessions.open}
-                      accentTheme={accentTheme}
-                      editingTitleId={editingTitleId}
-                      editingTitleValue={editingTitleValue}
-                      setEditingTitleId={setEditingTitleId}
-                      setEditingTitleValue={setEditingTitleValue}
-                      onRename={handleRenameSession}
-                      onCopyCode={copyCode}
-                      renamePending={renameSessionMutation.isPending}
-                      updatePending={updateSessionMutation.isPending}
-                      deletePending={deleteSessionMutation.isPending}
-                      onStatusChange={(id, status) => updateSessionMutation.mutate({ id, status })}
-                      onDelete={(id) => deleteSessionMutation.mutate(id)}
-                    />
-                    <SessionSection
-                      title="Archivio"
-                      sessions={groupedSessions.archive}
-                      accentTheme={accentTheme}
-                      editingTitleId={editingTitleId}
-                      editingTitleValue={editingTitleValue}
-                      setEditingTitleId={setEditingTitleId}
-                      setEditingTitleValue={setEditingTitleValue}
-                      onRename={handleRenameSession}
-                      onCopyCode={copyCode}
-                      renamePending={renameSessionMutation.isPending}
-                      updatePending={updateSessionMutation.isPending}
-                      deletePending={deleteSessionMutation.isPending}
-                      onStatusChange={(id, status) => updateSessionMutation.mutate({ id, status })}
-                      onDelete={(id) => deleteSessionMutation.mutate(id)}
-                    />
-                  </div>
+                  <SessionList
+                    isEnglish={isEnglish}
+                    statusMeta={statusMeta}
+                    sessions={orderedSessions}
+                    editingTitleId={editingTitleId}
+                    editingTitleValue={editingTitleValue}
+                    setEditingTitleId={setEditingTitleId}
+                    setEditingTitleValue={setEditingTitleValue}
+                    onRename={handleRenameSession}
+                    onCopyCode={copyCode}
+                    renamePending={renameSessionMutation.isPending}
+                    updatePending={updateSessionMutation.isPending}
+                    onStatusChange={(id, status) => updateSessionMutation.mutate({ id, status })}
+                  />
                 )}
               </div>
             </div>
@@ -621,13 +640,15 @@ export default function TeacherClassesSessionsManager({
           <DialogContent
             size="sm"
             surface="elevated"
-            className="rounded-[24px]"
+            className="rounded-xl"
             style={{ borderColor: accentTheme.id === 'black' ? hexToRgba('#0f172a', 0.08) : hexToRgba(accentTheme.accent, 0.14) }}
           >
             <DialogHeader>
-              <DialogTitle>Nuova sessione</DialogTitle>
+              <DialogTitle>{t('sessions.new_session')}</DialogTitle>
               <DialogDescription>
-                Stai lavorando su <strong>{selectedClass.name}</strong>. Dai un nome chiaro alla sessione.
+                {isEnglish
+                  ? <>You are working on <strong>{selectedClass.name}</strong>. Give the session a clear name.</>
+                  : <>Stai lavorando su <strong>{selectedClass.name}</strong>. Dai un nome chiaro alla sessione.</>}
               </DialogDescription>
             </DialogHeader>
             <DialogBody>
@@ -640,16 +661,16 @@ export default function TeacherClassesSessionsManager({
                   if (e.key === 'Escape') setShowNewSessionDialog(false)
                 }}
                 className="bg-white"
-                placeholder="Es. Ripasso sistemi operativi"
+                placeholder={t('sessions.title_placeholder')}
               />
             </DialogBody>
             <DialogFooter>
               <Button surface="ghost" tone="neutral" onClick={() => setShowNewSessionDialog(false)}>
-                Annulla
+                {t('classes.cancel')}
               </Button>
-              <Button onClick={handleCreateSession} disabled={createSessionMutation.isPending} style={{ backgroundColor: accentTheme.accent }}>
+              <Button onClick={handleCreateSession} disabled={createSessionMutation.isPending} tone="accent" surface="solid">
                 {createSessionMutation.isPending ? <Spinner className="mr-2" size="sm" tone="inverse" /> : null}
-                Crea sessione
+                {t('sessions.create_btn')}
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -661,8 +682,8 @@ export default function TeacherClassesSessionsManager({
 
 function SummaryCell({ label, value, tone }: { label: string; value: number; tone: PastelTone }) {
   return (
-    <div className={`rounded-[16px] px-2.5 py-2.5 text-center shadow-[inset_0_1px_0_rgba(255,255,255,0.5)] ${PASTEL_SURFACES[tone]}`}>
-      <div className="text-lg font-semibold tracking-[var(--letter-spacing-tight)] text-slate-950">{value}</div>
+    <div className={`rounded-lg border px-2.5 py-2 text-center shadow-[inset_0_1px_0_rgba(255,255,255,0.4)] ${PASTEL_SURFACES[tone]}`}>
+      <div className="text-base font-semibold tracking-[var(--letter-spacing-tight)] text-slate-950">{value}</div>
       <div className="mt-1 text-[11px] font-medium text-slate-500">{label}</div>
     </div>
   )
@@ -680,10 +701,10 @@ function MetricCard({
   return (
     <Card
       surface="base"
-      className={`rounded-[18px] px-3.5 py-3 ${PASTEL_SURFACES[tone]}`}
+      className={`rounded-lg border px-3 py-3 ${PASTEL_SURFACES[tone]}`}
     >
       <div className="text-[11px] font-medium text-slate-500">{label}</div>
-      <div className="mt-1.5 text-[24px] font-semibold leading-none tracking-[var(--letter-spacing-tight)] text-slate-950">{value}</div>
+      <div className="mt-1 text-[22px] font-semibold leading-none tracking-[var(--letter-spacing-tight)] text-slate-950">{value}</div>
     </Card>
   )
 }
@@ -701,21 +722,20 @@ function EmptyStateCard({
   compact?: boolean
   tone?: PastelTone
 }) {
+  const iconToneClass =
+    tone === 'emerald' ? 'bg-emerald-100 text-emerald-700' :
+    tone === 'amber' ? 'bg-amber-100 text-amber-700' :
+    tone === 'rose' ? 'bg-rose-100 text-rose-700' :
+    'bg-slate-100 text-slate-600'
+
   return (
     <Card
       surface="base"
       className={`${compact
-        ? 'rounded-[20px] px-5 py-8 text-center'
-        : 'rounded-[24px] px-8 py-14 text-center'} ${PASTEL_SURFACES[tone]}`}
+        ? 'rounded-xl px-5 py-8 text-center'
+        : 'rounded-2xl px-8 py-14 text-center'} ${PASTEL_SURFACES[tone]}`}
     >
-      <div className={`mx-auto flex h-12 w-12 items-center justify-center rounded-xl ${
-        tone === 'indigo' ? 'bg-indigo-100 text-indigo-700' :
-        tone === 'emerald' ? 'bg-emerald-100 text-emerald-700' :
-        tone === 'amber' ? 'bg-amber-100 text-amber-700' :
-        tone === 'rose' ? 'bg-rose-100 text-rose-700' :
-        tone === 'cyan' ? 'bg-cyan-100 text-cyan-700' :
-        'bg-slate-100 text-slate-600'
-      }`}>
+      <div className={`mx-auto flex h-12 w-12 items-center justify-center rounded-xl ${iconToneClass}`}>
         {icon}
       </div>
       <h3 className="mt-4 text-lg font-semibold tracking-[var(--letter-spacing-tight)] text-slate-950">{title}</h3>
@@ -724,10 +744,10 @@ function EmptyStateCard({
   )
 }
 
-function SessionSection({
-  title,
+function SessionList({
+  isEnglish,
+  statusMeta,
   sessions,
-  accentTheme,
   editingTitleId,
   editingTitleValue,
   setEditingTitleId,
@@ -736,13 +756,11 @@ function SessionSection({
   onCopyCode,
   renamePending,
   updatePending,
-  deletePending,
   onStatusChange,
-  onDelete,
 }: {
-  title: string
+  isEnglish: boolean
+  statusMeta: Record<string, { label: string; tone: string; dot: string }>
   sessions: SessionData[]
-  accentTheme: { accent: string; text: string; soft: string; id: string }
   editingTitleId: string | null
   editingTitleValue: string
   setEditingTitleId: (value: string | null) => void
@@ -751,67 +769,59 @@ function SessionSection({
   onCopyCode: (code?: string) => void
   renamePending: boolean
   updatePending: boolean
-  deletePending: boolean
   onStatusChange: (id: string, status: string) => void
-  onDelete: (id: string) => void
 }) {
   if (sessions.length === 0) return null
+  const activeCount = sessions.filter((session) => session.status === 'active').length
+  const compactCount = sessions.length - activeCount
 
   return (
-    <div className="space-y-2.5">
-      <div>
-        <h3 className="text-base font-semibold tracking-[var(--letter-spacing-tight)] text-slate-950">{title}</h3>
-        <p className="text-xs text-slate-500">
-          {sessions.length} {sessions.length === 1 ? 'sessione disponibile' : 'sessioni disponibili'}
+    <div className="space-y-3">
+      <div className="flex flex-col gap-1 px-0.5 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <h3 className="text-base font-semibold tracking-[var(--letter-spacing-tight)] text-slate-950">
+            {isEnglish ? 'Sessions' : 'Sessioni'}
+          </h3>
+          <p className="text-xs text-slate-500">
+            {activeCount > 0
+              ? (isEnglish
+                  ? `${activeCount} active expanded, ${compactCount} in compact list`
+                  : `${activeCount} attiva in evidenza, ${compactCount} in elenco compatto`)
+              : (isEnglish
+                  ? `${sessions.length} sessions in compact list`
+                  : `${sessions.length} sessioni in elenco compatto`)}
+          </p>
+        </div>
+        <p className="text-[11px] font-medium text-slate-400">
+          {isEnglish ? 'Click a row to open configuration' : 'Clicca una riga per aprire la configurazione'}
         </p>
       </div>
 
-      <Card
-        surface="base"
-        className={`overflow-hidden rounded-[20px] shadow-[0_10px_24px_rgba(15,23,42,0.04)] ${
-          title.toLowerCase().includes('archivio') ? 'bg-rose-50/55 border border-rose-200/70' : 'bg-indigo-50/45 border border-indigo-200/70'
-        }`}
-      >
-        <div className={`hidden grid-cols-[minmax(0,2fr)_100px_96px_84px_60px_132px] gap-3 border-b px-5 py-3 text-[11px] font-medium lg:grid ${
-          title.toLowerCase().includes('archivio')
-            ? 'border-rose-200/70 bg-rose-100/70 text-rose-700'
-            : 'border-indigo-200/70 bg-indigo-100/70 text-indigo-700'
-        }`}>
-          <span>Sessione</span>
-          <span>Stato</span>
-          <span>Codice</span>
-          <span>Creata</span>
-          <span>Stud.</span>
-          <span>Azioni</span>
-        </div>
-        <div className="divide-y divide-slate-100">
-          {sessions.map((session) => (
-            <SessionRow
-              key={session.id}
-              session={session}
-              accentTheme={accentTheme}
-              editingTitleId={editingTitleId}
-              editingTitleValue={editingTitleValue}
-              setEditingTitleId={setEditingTitleId}
-              setEditingTitleValue={setEditingTitleValue}
-              onRename={onRename}
-              onCopyCode={onCopyCode}
-              renamePending={renamePending}
-              updatePending={updatePending}
-              deletePending={deletePending}
-              onStatusChange={onStatusChange}
-              onDelete={onDelete}
-            />
-          ))}
-        </div>
-      </Card>
+      <div className="space-y-2">
+        {sessions.map((session) => (
+          <SessionRow
+            key={session.id}
+            session={session}
+            editingTitleId={editingTitleId}
+            editingTitleValue={editingTitleValue}
+            setEditingTitleId={setEditingTitleId}
+            setEditingTitleValue={setEditingTitleValue}
+            onRename={onRename}
+            onCopyCode={onCopyCode}
+            renamePending={renamePending}
+            updatePending={updatePending}
+            onStatusChange={onStatusChange}
+            statusMeta={statusMeta}
+            isEnglish={isEnglish}
+          />
+        ))}
+      </div>
     </div>
   )
 }
 
 function SessionRow({
   session,
-  accentTheme,
   editingTitleId,
   editingTitleValue,
   setEditingTitleId,
@@ -820,12 +830,11 @@ function SessionRow({
   onCopyCode,
   renamePending,
   updatePending,
-  deletePending,
   onStatusChange,
-  onDelete,
+  statusMeta,
+  isEnglish,
 }: {
   session: SessionData
-  accentTheme: { accent: string; text: string; soft: string; id: string }
   editingTitleId: string | null
   editingTitleValue: string
   setEditingTitleId: (value: string | null) => void
@@ -834,149 +843,133 @@ function SessionRow({
   onCopyCode: (code?: string) => void
   renamePending: boolean
   updatePending: boolean
-  deletePending: boolean
   onStatusChange: (id: string, status: string) => void
-  onDelete: (id: string) => void
+  statusMeta: Record<string, { label: string; tone: string; dot: string }>
+  isEnglish: boolean
 }) {
-  const meta = STATUS_META[session.status] || STATUS_META.draft
-  const isEnded = session.status === 'ended' || session.status === 'finished'
-  const isPaused = session.status === 'paused'
-  const isDraft = session.status === 'draft'
+  const meta = statusMeta[session.status] || statusMeta.draft
   const isActive = session.status === 'active'
 
   const navigate = useNavigate()
+  const createdAt = new Date(session.created_at).toLocaleDateString(isEnglish ? 'en-GB' : 'it-IT', { day: '2-digit', month: '2-digit', year: '2-digit' })
+
+  if (!isActive) {
+    return (
+      <button
+        type="button"
+        className="group grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-left transition-all hover:border-slate-300 hover:bg-slate-50"
+        onClick={() => navigate(`/teacher/sessions/${session.id}`)}
+      >
+        <div className="flex min-w-0 items-center gap-3">
+          <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${meta.dot}`} />
+          <div className="min-w-0 flex-1">
+            <div className="flex min-w-0 items-center gap-2">
+              <span className="truncate text-sm font-semibold text-slate-900">{session.title}</span>
+              <StatusBadge meta={meta} />
+            </div>
+            <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-slate-500">
+              <span>{createdAt}</span>
+              <span>{session.active_students_count ?? 0} {isEnglish ? 'active students' : 'studenti attivi'}</span>
+              <span className="hidden text-slate-400 sm:inline">{isEnglish ? 'Configuration' : 'Configurazione'}</span>
+            </div>
+          </div>
+        </div>
+        <ChevronRight className="h-4 w-4 text-slate-300 transition-transform group-hover:translate-x-0.5 group-hover:text-slate-500" />
+      </button>
+    )
+  }
 
   return (
-    <div
-      className="cursor-pointer px-4 py-3 transition-colors hover:bg-slate-50/80 lg:grid lg:grid-cols-[minmax(0,2fr)_100px_96px_84px_60px_132px] lg:items-center lg:gap-3"
+    <Card
+      surface="base"
+      className="cursor-pointer overflow-hidden rounded-lg border border-emerald-300 bg-emerald-50/55 px-4 py-4 shadow-sm transition-all hover:border-emerald-400"
       onClick={() => navigate(`/teacher/sessions/${session.id}`)}
     >
-      {/* Title */}
-      <div className="min-w-0" onClick={e => e.stopPropagation()}>
-        <div className="flex items-center gap-2">
-          <span className={`block h-2 w-2 shrink-0 rounded-full ${meta.dot} ${isActive ? 'animate-pulse' : ''}`} />
-          {editingTitleId === session.id ? (
-            <form className="flex min-w-0 flex-1 items-center gap-1" onSubmit={(e) => { e.preventDefault(); onRename(session.id) }}>
-              <Input
-                autoFocus
-                value={editingTitleValue}
-                onChange={(e) => setEditingTitleValue(e.target.value)}
-                onKeyDown={(e) => { if (e.key === 'Escape') setEditingTitleId(null) }}
-                density="compact"
-                className="min-w-0 flex-1 bg-white text-sm text-slate-800"
-              />
-              <IconButton type="submit" disabled={renamePending} tone="success" surface="ghost" size="sm">
-                {renamePending ? <Spinner size="sm" tone="success" /> : <Check className="h-3.5 w-3.5" />}
-              </IconButton>
-              <IconButton type="button" onClick={() => setEditingTitleId(null)} tone="neutral" surface="ghost" size="sm">
-                <X className="h-3.5 w-3.5" />
-              </IconButton>
-            </form>
-          ) : (
-            <div className="flex min-w-0 items-center gap-1">
-              <span className="truncate text-[15px] font-medium tracking-[-0.01em] text-slate-900">{session.title}</span>
-              <IconButton
-                onClick={() => { setEditingTitleId(session.id); setEditingTitleValue(session.title) }}
-                className="shrink-0"
-                tone="neutral"
-                surface="ghost"
-                size="sm"
-                title="Rinomina"
-              >
-                <Edit2 className="h-3 w-3" />
-              </IconButton>
+      <div className="flex flex-col gap-3">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+          <div className="min-w-0 flex-1" onClick={e => e.stopPropagation()}>
+            <div className="flex items-start gap-2.5">
+              <div className={`mt-1.5 h-3 w-3 shrink-0 rounded-full ${meta.dot} animate-pulse shadow-sm shadow-emerald-300`} />
+              <div className="min-w-0 flex-1">
+                {editingTitleId === session.id ? (
+                  <form className="flex min-w-0 flex-1 items-center gap-1.5" onSubmit={(e) => { e.preventDefault(); onRename(session.id) }}>
+                    <Input
+                      autoFocus
+                      value={editingTitleValue}
+                      onChange={(e) => setEditingTitleValue(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === 'Escape') setEditingTitleId(null) }}
+                      density="compact"
+                      className="min-w-0 flex-1 bg-white text-sm text-slate-800"
+                    />
+                    <IconButton type="submit" disabled={renamePending} tone="success" surface="ghost" size="sm">
+                      {renamePending ? <Spinner size="sm" tone="success" /> : <Check className="h-3.5 w-3.5" />}
+                    </IconButton>
+                    <IconButton type="button" onClick={() => setEditingTitleId(null)} tone="neutral" surface="ghost" size="sm">
+                      <X className="h-3.5 w-3.5" />
+                    </IconButton>
+                  </form>
+                ) : (
+                  <>
+                    <div className="flex min-w-0 items-center gap-2">
+                      <h4 className="truncate text-[18px] font-semibold tracking-[-0.01em] text-slate-950">{session.title}</h4>
+                      <StatusBadge meta={meta} />
+                      <IconButton
+                        onClick={() => { setEditingTitleId(session.id); setEditingTitleValue(session.title) }}
+                        className="shrink-0"
+                        tone="neutral"
+                        surface="ghost"
+                        size="sm"
+                        title={isEnglish ? 'Rename' : 'Rinomina'}
+                      >
+                        <Edit2 className="h-3 w-3" />
+                      </IconButton>
+                    </div>
+                    <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-slate-600">
+                      <span>{createdAt}</span>
+                      <span>{session.active_students_count ?? 0} {isEnglish ? 'active students' : 'studenti attivi'}</span>
+                      {session.join_code ? (
+                        <Button
+                          onClick={() => onCopyCode(session.join_code)}
+                          tone="neutral"
+                          surface="soft"
+                          density="compact"
+                          className="inline-flex items-center gap-1 rounded-md font-mono text-[11px] font-semibold text-slate-700"
+                        >
+                          {session.join_code}
+                          <Copy className="h-2.5 w-2.5" />
+                        </Button>
+                      ) : (
+                        <span className="text-slate-400">{isEnglish ? 'Code unavailable' : 'Codice non disponibile'}</span>
+                      )}
+                    </div>
+                  </>
+                )}
+              </div>
             </div>
-          )}
-        </div>
-        {/* Mobile-only meta row */}
-        <div className="ml-4 mt-1.5 flex flex-wrap items-center gap-1.5 text-[11px] text-slate-400 lg:hidden">
-          <StatusBadge meta={meta} />
-          {isActive && session.join_code ? (
-            <Button onClick={() => onCopyCode(session.join_code)} tone="neutral" surface="soft" density="compact" className="font-mono text-[11px]">
-              {session.join_code}
+          </div>
+
+          <div className="flex shrink-0 items-center gap-2" onClick={e => e.stopPropagation()}>
+            <Button tone="accent" surface="solid" density="compact" className="rounded-md" onClick={() => navigate(`/teacher/sessions/${session.id}`)}>
+              <ChevronRight className="mr-1.5 h-3.5 w-3.5" />
+              {isEnglish ? 'Configure session' : 'Configura sessione'}
             </Button>
-          ) : (
-            <span className="text-[11px] font-medium text-slate-300">
-              {isPaused ? 'Codice non disponibile' : isEnded ? 'Codice dismesso' : 'Codice non attivo'}
-            </span>
-          )}
-          <span>{new Date(session.created_at).toLocaleDateString('it-IT')}</span>
+          </div>
+        </div>
+
+        <div className="border-t border-emerald-200/70 pt-3" onClick={e => e.stopPropagation()}>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button onClick={() => onStatusChange(session.id, 'paused')} disabled={updatePending} tone="neutral" surface="outline" density="compact" className="rounded-md bg-white/80">
+              <Pause className="mr-1.5 h-3.5 w-3.5" />
+              {isEnglish ? 'Pause' : 'Pausa'}
+            </Button>
+            <Button onClick={() => onStatusChange(session.id, 'ended')} disabled={updatePending} tone="danger" surface="soft" density="compact" className="rounded-md">
+              <Square className="mr-1.5 h-3.5 w-3.5" />
+              {isEnglish ? 'Close' : 'Chiudi'}
+            </Button>
+          </div>
         </div>
       </div>
-
-      {/* Status */}
-      <div className="hidden lg:block">
-        <StatusBadge meta={meta} />
-      </div>
-
-      {/* Code */}
-      <div className="hidden lg:block" onClick={e => e.stopPropagation()}>
-        {isActive && session.join_code ? (
-          <Button onClick={() => onCopyCode(session.join_code)} tone="neutral" surface="soft" density="compact" className="inline-flex items-center gap-1 font-mono text-[11px] font-semibold text-slate-600">
-            {session.join_code}
-            <Copy className="h-2.5 w-2.5" />
-          </Button>
-        ) : (
-          <span className="text-xs text-slate-300">
-            {isPaused ? 'Non disponibile' : isEnded ? 'Dismesso' : '—'}
-          </span>
-        )}
-      </div>
-
-      {/* Date */}
-      <div className="hidden text-xs text-slate-400 lg:block">
-        {new Date(session.created_at).toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit', year: '2-digit' })}
-      </div>
-
-      {/* Students */}
-      <div className="hidden text-sm font-medium text-slate-600 lg:block">
-        {session.active_students_count ?? 0}
-      </div>
-
-      {/* Actions — icon-only */}
-      <div className="mt-2 flex items-center justify-end gap-2 lg:mt-0 lg:justify-center" onClick={e => e.stopPropagation()}>
-        {isDraft && (
-          <IconButton onClick={() => onStatusChange(session.id, 'active')} disabled={updatePending} title="Avvia sessione" size="default"
-            style={{ backgroundColor: accentTheme.accent, borderColor: accentTheme.accent }} className="text-white">
-            <Play className="h-3.5 w-3.5" />
-          </IconButton>
-        )}
-        {isActive && (
-          <>
-            <IconButton onClick={() => onStatusChange(session.id, 'paused')} disabled={updatePending} title="Metti in pausa" tone="neutral" surface="outline" size="default">
-              <Pause className="h-3.5 w-3.5" />
-            </IconButton>
-            <IconButton onClick={() => onStatusChange(session.id, 'ended')} disabled={updatePending} title="Chiudi sessione" tone="danger" surface="soft" size="default">
-              <Square className="h-3.5 w-3.5" />
-            </IconButton>
-          </>
-        )}
-        {isPaused && (
-          <IconButton onClick={() => onStatusChange(session.id, 'active')} disabled={updatePending} title="Riprendi sessione" size="default"
-            style={{ backgroundColor: accentTheme.accent, borderColor: accentTheme.accent }} className="text-white">
-            <PlayCircle className="h-3.5 w-3.5" />
-          </IconButton>
-        )}
-        <Link to={`/teacher/sessions/${session.id}`} title="Apri sessione">
-          <span className="pointer-events-none">
-            <IconButton tone="neutral" surface="outline" size="default">
-              <Eye className="h-3.5 w-3.5" />
-            </IconButton>
-          </span>
-        </Link>
-        {isEnded && (
-          <IconButton
-            onClick={() => { if (confirm('Eliminare questa sessione?')) onDelete(session.id) }}
-            disabled={deletePending} title="Elimina sessione"
-            tone="danger"
-            surface="soft"
-            size="default"
-          >
-            <Trash2 className="h-3.5 w-3.5" />
-          </IconButton>
-        )}
-      </div>
-    </div>
+    </Card>
   )
 }
 

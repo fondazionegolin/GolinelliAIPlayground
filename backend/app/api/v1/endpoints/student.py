@@ -18,6 +18,7 @@ from app.models.document_draft import DocumentDraft
 from app.models.session_canvas import SessionCanvas
 from app.models.user import User
 from app.models.session import Class
+from app.models.tenant import Tenant
 from app.schemas.document_draft import DocumentDraftCreate, DocumentDraftUpdate
 from app.models.enums import SessionStatus
 from app.schemas.auth import (
@@ -153,6 +154,10 @@ async def join_session(
     nickname = _normalize_nickname(request.nickname)
     existing = await _get_student_by_nickname(db, session.id, nickname)
 
+    # ── Recupera tenant per limite sessione ─────────────────────────────────
+    tenant = (await db.execute(select(Tenant).where(Tenant.id == session.tenant_id))).scalar_one_or_none()
+    max_per_class = getattr(tenant, 'max_students_per_class', 30) if tenant else 30
+
     if existing:
         if existing.is_frozen:
             raise HTTPException(
@@ -175,6 +180,18 @@ async def join_session(
         await db.commit()
         return response
 
+    # ── Verifica limite studenti per sessione corrente ──────────────────────
+    students_in_session = (await db.execute(
+        select(func.count(SessionStudent.id))
+        .where(SessionStudent.session_id == session.id)
+    )).scalar_one() or 0
+    if students_in_session >= max_per_class:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Sessione piena (max {max_per_class} studenti)",
+        )
+
+
     password = _validate_student_password(request.password)
     join_token_placeholder = "pending"
     student = SessionStudent(
@@ -189,23 +206,9 @@ async def join_session(
     await db.flush()
     response = _build_student_join_response(student, session)
 
-    # Create default monthly credit limit for student (2€/month)
-    from datetime import timezone as _tz
-    _now = datetime.now(_tz.utc)
-    try:
-        _limit_end = _now.replace(month=_now.month + 1, day=1)
-    except ValueError:
-        _limit_end = _now.replace(year=_now.year + 1, month=1, day=1)
-    db.add(CreditLimit(
-        tenant_id=session.tenant_id,
-        level=LimitLevel.STUDENT,
-        student_id=student.id,
-        amount_cap=2.0,
-        current_usage=0.0,
-        period_start=_now,
-        period_end=_limit_end,
-        reset_frequency="MONTHLY",
-    ))
+    # Nota: i limiti di credito non sono più per-studente.
+    # INDIVIDUAL tenant: STUDENT_POOL sul tenant (€10/mese condivisi, creato all'invito)
+    # SCHOOL tenant: GLOBAL sul tenant (€10/mese condivisi scuola intera)
 
     await db.commit()
     await db.refresh(student)
@@ -444,6 +447,7 @@ async def get_session_canvas(
             "content_json": '{"type":"canvas_v1","items":[]}',
             "version": 0,
             "updated_at": None,
+            "students_can_write": False,
         }
 
     return {
@@ -452,6 +456,7 @@ async def get_session_canvas(
         "content_json": canvas.content_json,
         "version": canvas.version,
         "updated_at": canvas.updated_at.isoformat() if canvas.updated_at else None,
+        "students_can_write": canvas.students_can_write,
     }
 
 
@@ -469,6 +474,9 @@ async def upsert_session_canvas(
         select(SessionCanvas).where(SessionCanvas.session_id == session_id)
     )
     canvas = result.scalar_one_or_none()
+
+    if canvas and not canvas.students_can_write:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Students cannot write to this canvas")
 
     if canvas and request.base_version is not None and request.base_version != canvas.version:
         raise HTTPException(

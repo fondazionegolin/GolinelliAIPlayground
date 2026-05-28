@@ -29,7 +29,7 @@ export function AIImageGeneratorModal({
     setGeneratedImage(null)
 
     try {
-      const response = await llmApi.generateImage(prompt, 'dall-e')
+      const response = await llmApi.generateImage(prompt, 'gpt-image-1.5')
       const imageUrl = response.data?.image_url || response.data?.url
       if (imageUrl) {
         setGeneratedImage(imageUrl)

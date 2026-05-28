@@ -2,8 +2,8 @@ import { lazy, Suspense, useCallback, useEffect, useRef, useState, type PointerE
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useParams } from 'react-router-dom'
 import {
-  AlertCircle, Bot, CheckCircle, ChevronDown, ChevronUp, Cpu, FilePlus, Loader2,
-  Monitor, Pause, PanelRight, Play, Plus, RotateCcw, Save, Sparkles, Square, Terminal, Trash2, Wrench, Zap,
+  AlertCircle, BookOpen, Bot, CheckCircle, ChevronDown, ChevronUp, Cpu, FilePlus, Gamepad2, Loader2,
+  Monitor, Music2, PackagePlus, Pause, PanelRight, Play, Plus, RotateCcw, Save, Sparkles, Square, Terminal, Trash2, Wrench, Zap,
 } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -12,6 +12,7 @@ import { notebooksApi } from '@/lib/api'
 import { usePyodide } from '@/hooks/usePyodide'
 import { markdownCodeComponents } from '@/components/CodeBlock'
 import NotebookCell from '@/components/notebook/NotebookCell'
+import { useTranslation } from 'react-i18next'
 import {
   PASTEL_ICON_BACKGROUNDS,
   PASTEL_ICON_TEXT,
@@ -30,6 +31,10 @@ import type {
 
 const NotebookTutorChat = lazy(() => import('@/components/notebook/NotebookTutorChat'))
 const NotebookP5Preview = lazy(() => import('@/components/notebook/NotebookP5Preview'))
+const NotebookStrudelPreview = lazy(() => import('@/components/notebook/NotebookStrudelPreview'))
+const NotebookGame2DPreview = lazy(() => import('@/components/notebook/NotebookGame2DPreview'))
+import NotebookLibraryManager from '@/components/notebook/NotebookLibraryManager'
+import type { StrudelPreviewHandle } from '@/components/notebook/NotebookStrudelPreview'
 
 interface ConsoleEntry {
   id: string
@@ -43,6 +48,14 @@ function newCell(name?: string): Cell {
 }
 
 function normalizeCells(projectType: NotebookProjectType, nextCells: Cell[]) {
+  if (projectType === 'game2d') {
+    const cells = nextCells.length > 0 ? nextCells : [newCell('game.json')]
+    return cells.slice(0, 1).map((cell) => ({
+      ...cell,
+      type: 'code' as const,
+      name: cell.name ?? 'game.json',
+    }))
+  }
   if (projectType === 'p5js') {
     const cells = nextCells.length > 0 ? nextCells : [newCell('sketch.js')]
     return cells.map((cell, i) => ({
@@ -51,6 +64,10 @@ function normalizeCells(projectType: NotebookProjectType, nextCells: Cell[]) {
       name: cell.name ?? (i === 0 ? 'sketch.js' : `file${i}.js`),
     }))
   }
+  if (projectType === 'strudel') {
+    const cells = nextCells.length > 0 ? nextCells : [newCell()]
+    return cells.slice(0, 1).map((cell) => ({ ...cell, type: 'code' as const }))
+  }
   return nextCells.length > 0 ? nextCells : [newCell()]
 }
 
@@ -58,13 +75,80 @@ interface Props {
   notebookIdOverride?: string
 }
 
+const STRUDEL_TEMPLATES = [
+  {
+    id: 'melodia',
+    label: 'Melodia semplice',
+    description: 'Melodia in do maggiore con onde triangolari',
+    code: `note("c4 e4 g4 b4 a4 g4 e4 d4")
+  .sound("triangle")
+  .slow(2)
+  .gain(0.7)`,
+  },
+  {
+    id: 'arpeggio',
+    label: 'Arpeggio ascendente',
+    description: 'Note arpeggiate che salgono e scendono',
+    code: `note("c4 e4 g4 c5 b4 g4 e4 c4")
+  .sound("sine")
+  .fast(1.5)
+  .gain(0.6)`,
+  },
+  {
+    id: 'accordi',
+    label: 'Accordi lenti',
+    description: 'Progressione armonica con accordi sovrapposti',
+    code: `note("<[c3,e3,g3] [f3,a3,c4] [g3,b3,d4] [c3,e3,g3]>")
+  .sound("triangle")
+  .slow(4)
+  .gain(0.5)`,
+  },
+  {
+    id: 'basso-melodia',
+    label: 'Basso + melodia',
+    description: 'Due strati sovrapposti: linea di basso e melodia',
+    code: `stack(
+  note("c2 ~ f2 ~ g2 ~ f2 ~")
+    .sound("sawtooth")
+    .gain(0.4),
+  note("c4 e4 g4 a4 g4 e4 d4 c4")
+    .sound("triangle")
+    .gain(0.6)
+).slow(2)`,
+  },
+  {
+    id: 'canone',
+    label: 'Canone a due voci',
+    description: 'Due voci che si inseguono a distanza di mezza battuta',
+    code: `stack(
+  note("c4 d4 e4 f4 g4 a4 b4 c5")
+    .sound("sine")
+    .slow(3),
+  note("c4 d4 e4 f4 g4 a4 b4 c5")
+    .sound("sine")
+    .slow(3)
+    .early(0.5)
+    .gain(0.6)
+)`,
+  },
+  {
+    id: 'ritmo',
+    label: 'Ritmo percussivo',
+    description: 'Pattern ritmico con cassa, rullante e hi-hat',
+    code: `s("bd ~ sd ~ bd bd sd ~, hh hh hh hh hh hh hh hh")
+  .gain(0.8)`,
+  },
+]
+
 const previewFallback = (
-  <div className={`flex h-full min-h-[260px] items-center justify-center rounded-[24px] shadow-sm ${PASTEL_SURFACES.indigo}`}>
+  <div className={`flex h-full min-h-[260px] items-center justify-center rounded-xl shadow-sm ${PASTEL_SURFACES.indigo}`}>
     <Loader2 className="h-6 w-6 animate-spin text-indigo-400" />
   </div>
 )
 
 export default function NotebookPage({ notebookIdOverride }: Props = {}) {
+  const { i18n } = useTranslation()
+  const isEnglish = i18n.resolvedLanguage?.startsWith('en') ?? false
   const { notebookId: notebookIdParam } = useParams<{ notebookId: string }>()
   const notebookId = notebookIdOverride ?? notebookIdParam
   const queryClient = useQueryClient()
@@ -96,16 +180,29 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
   const [assistantProposals, setAssistantProposals] = useState<Record<string, NotebookCodeProposal[]>>({})
   const [p5SplitRatio, setP5SplitRatio] = useState(0.58)
   const [p5Playing, setP5Playing] = useState(true)
+  const [gameSplitRatio, setGameSplitRatio] = useState(0.48)
+  const [gamePlaying, setGamePlaying] = useState(true)
+  const [strudelSplitRatio, setStrudelSplitRatio] = useState(0.58)
+  const [strudelPlaying, setStrudelPlaying] = useState(false)
+  const [strudelError, setStrudelError] = useState<string | null>(null)
+  const [isStrudelResizing, setIsStrudelResizing] = useState(false)
+  const [strudelTemplatesOpen, setStrudelTemplatesOpen] = useState(false)
   const [chatSidebarOpen, setChatSidebarOpen] = useState(true)
   const [tutorSidebarWidth, setTutorSidebarWidth] = useState(340)
   const [isP5Resizing, setIsP5Resizing] = useState(false)
+  const [isGameResizing, setIsGameResizing] = useState(false)
   const [isTutorResizing, setIsTutorResizing] = useState(false)
   const [renamingCellId, setRenamingCellId] = useState<string | null>(null)
   const [renameValue, setRenameValue] = useState('')
+  const [libraryManagerOpen, setLibraryManagerOpen] = useState(false)
   const p5IframeWindowRef = useRef<Window | null>(null)
+  const gameIframeWindowRef = useRef<Window | null>(null)
+  const strudelRef = useRef<StrudelPreviewHandle>(null)
 
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const previewTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const strudelAutoEvalTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const strudelPreviewTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const titleRef = useRef<HTMLInputElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const renameRef = useRef<HTMLInputElement>(null)
@@ -142,6 +239,7 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
       font_family: notebookData.editor_settings?.font_family ?? 'jetbrains',
       live_preview: notebookData.editor_settings?.live_preview ?? (nextProjectType === 'p5js'),
       font_weight: notebookData.editor_settings?.font_weight ?? 400,
+      libraries: notebookData.editor_settings?.libraries ?? [],
     }
     setTitle(notebookData.title)
     setProjectType(nextProjectType)
@@ -210,7 +308,7 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
   }, [])
 
   const insertCellBelow = useCallback((afterId?: string) => {
-    if (projectType === 'p5js') return
+    if (projectType === 'p5js' || projectType === 'strudel') return
     const cell = newCell()
     setCells((prev) => {
       if (!afterId) {
@@ -228,7 +326,7 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
   }, [projectType, scheduleSave])
 
   const deleteCell = useCallback((id: string) => {
-    if (projectType === 'p5js') return
+    if (projectType === 'p5js' || projectType === 'strudel') return
     setCells((prev) => {
       const next = prev.length <= 1 ? [newCell()] : prev.filter((cell) => cell.id !== id)
       scheduleSave(next)
@@ -237,7 +335,7 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
   }, [projectType, scheduleSave])
 
   const moveCell = useCallback((id: string, dir: 'up' | 'down') => {
-    if (projectType === 'p5js') return
+    if (projectType === 'p5js' || projectType === 'strudel') return
     setCells((prev) => {
       const idx = prev.findIndex((c) => c.id === id)
       if (idx < 0) return prev
@@ -293,6 +391,7 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
   const activeCell = cells.find((cell) => cell.id === activeCellId) ?? cells[0]
   const p5Files = cells.map((c) => ({ name: c.name ?? 'sketch.js', source: c.source }))
   const p5SourceKey = p5Files.map((f) => f.source).join('\n')
+  const gameSource = activeCell?.source ?? ''
 
   const lastOutput = projectType === 'python'
     ? (activeCell?.outputs
@@ -331,9 +430,39 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
     setP5Playing(false)
   }, [])
 
+  const handleGamePlay = useCallback(() => {
+    setGamePlaying(true)
+    setPreviewRuntimeError(null)
+    setPreviewNonce((value) => value + 1)
+  }, [])
+
+  const handleGameStop = useCallback(() => {
+    gameIframeWindowRef.current?.postMessage({ source: 'game2d-control', action: 'stop' }, '*')
+    setGamePlaying(false)
+  }, [])
+
+  const handleStrudelPlay = useCallback(() => {
+    if (!activeCell?.source.trim()) return
+    setStrudelError(null)
+    strudelRef.current?.evaluate(activeCell.source)
+  }, [activeCell])
+
+  const handleStrudelStop = useCallback(() => {
+    strudelRef.current?.stop()
+    setStrudelPlaying(false)
+  }, [])
+
   const runAll = useCallback(async () => {
     if (projectType === 'p5js') {
       handleP5Play()
+      return
+    }
+    if (projectType === 'strudel') {
+      handleStrudelPlay()
+      return
+    }
+    if (projectType === 'game2d') {
+      handleGamePlay()
       return
     }
     if (pyStatus !== 'ready') return
@@ -354,7 +483,7 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
       scheduleSave(prev)
       return prev
     })
-  }, [cells, execCounter, handleP5Play, projectType, pyRunCell, pyStatus, scheduleSave])
+  }, [cells, execCounter, handleGamePlay, handleP5Play, projectType, pyRunCell, pyStatus, scheduleSave])
 
   const runCell = useCallback(async (id: string) => {
     if (projectType === 'p5js') {
@@ -362,8 +491,18 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
       handleP5Play()
       return
     }
+    if (projectType === 'game2d') {
+      setActiveCellId(id)
+      handleGamePlay()
+      return
+    }
+    if (projectType === 'strudel') {
+      setActiveCellId(id)
+      handleStrudelPlay()
+      return
+    }
     await runPythonCell(id)
-  }, [handleP5Play, projectType, runPythonCell])
+  }, [handleGamePlay, handleP5Play, handleStrudelPlay, projectType, runPythonCell])
 
   useEffect(() => {
     if (projectType !== 'p5js' || !editorSettings.live_preview || !p5Playing) return
@@ -379,19 +518,73 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
   }, [editorSettings.live_preview, p5Playing, p5SourceKey, projectType])  // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
+    if (projectType !== 'game2d' || !editorSettings.live_preview || !gamePlaying) return
+    if (previewTimer.current) clearTimeout(previewTimer.current)
+    previewTimer.current = setTimeout(() => {
+      setPreviewRuntimeError(null)
+      setPreviewNonce((value) => value + 1)
+    }, 320)
+    return () => {
+      if (previewTimer.current) clearTimeout(previewTimer.current)
+    }
+  }, [editorSettings.live_preview, gamePlaying, gameSource, projectType])
+
+  useEffect(() => {
     const onMessage = (event: MessageEvent) => {
-      if (!event.data || event.data.source !== 'p5-preview') return
-      if (event.data.type === 'runtime-error') setPreviewRuntimeError(String(event.data.payload || 'Errore di runtime'))
-      if (event.data.type === 'ready') setPreviewRuntimeError(null)
-      if (event.data.type === 'console') {
-        const { level, args } = event.data.payload as { level: 'log' | 'warn' | 'error'; args: string[] }
-        setConsoleEntries((prev) => [...prev, { id: uuidv4(), level, args, ts: Date.now() }])
-        setConsoleOpen(true)
+      if (!event.data) return
+      if (event.data.source === 'p5-preview') {
+        if (event.data.type === 'runtime-error') setPreviewRuntimeError(String(event.data.payload || (isEnglish ? 'Runtime error' : 'Errore di runtime')))
+        if (event.data.type === 'ready') setPreviewRuntimeError(null)
+        if (event.data.type === 'console') {
+          const { level, args } = event.data.payload as { level: 'log' | 'warn' | 'error'; args: string[] }
+          setConsoleEntries((prev) => [...prev, { id: uuidv4(), level, args, ts: Date.now() }])
+          setConsoleOpen(true)
+        }
+      }
+      if (event.data.source === 'strudel-preview') {
+        if (event.data.type === 'error') setStrudelError(event.data.payload?.message || 'Errore')
+        if (event.data.type === 'status') {
+          setStrudelPlaying(event.data.payload?.playing || false)
+          if (event.data.payload?.playing) setStrudelError(null)
+        }
+      }
+      if (event.data.source === 'game2d-preview') {
+        if (event.data.type === 'runtime-error') setPreviewRuntimeError(String(event.data.payload || (isEnglish ? 'Runtime error' : 'Errore di runtime')))
+        if (event.data.type === 'ready') setPreviewRuntimeError(null)
+        if (event.data.type === 'status' && typeof event.data.payload?.playing === 'boolean') {
+          setGamePlaying(event.data.payload.playing)
+        }
       }
     }
     window.addEventListener('message', onMessage)
     return () => window.removeEventListener('message', onMessage)
   }, [])
+
+  // Auto-eval strudel: when source changes while playing, queue eval at next bar boundary
+  useEffect(() => {
+    if (!strudelPlaying || !activeCell?.source.trim()) return
+    if (strudelAutoEvalTimer.current) clearTimeout(strudelAutoEvalTimer.current)
+    strudelAutoEvalTimer.current = setTimeout(() => {
+      strudelRef.current?.evaluate(activeCell.source)
+    }, 600)
+    return () => {
+      if (strudelAutoEvalTimer.current) clearTimeout(strudelAutoEvalTimer.current)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeCell?.source])
+
+  // Fast visual preview: update PROSSIMA bar within 150ms of typing while playing
+  useEffect(() => {
+    if (!strudelPlaying || !activeCell?.source.trim()) return
+    if (strudelPreviewTimer.current) clearTimeout(strudelPreviewTimer.current)
+    strudelPreviewTimer.current = setTimeout(() => {
+      strudelRef.current?.preview(activeCell.source)
+    }, 150)
+    return () => {
+      if (strudelPreviewTimer.current) clearTimeout(strudelPreviewTimer.current)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeCell?.source])
 
   useEffect(() => {
     if (inputState) {
@@ -461,18 +654,24 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
     setConsoleOpen(true)
     try {
       const res = await notebooksApi.tutorChat(notebookId, {
-        message: `Analizza questo errore nel codice p5.js e spiega la causa in modo didattico.\n\nErrore:\n${errorLines}\n\nCodice:\n${activeCell.source}`,
+        message: projectType === 'game2d'
+          ? (isEnglish
+              ? `Analyze this error in the Game 2D JSON schema or Phaser runner and explain the cause in a didactic way.\n\nError:\n${errorLines}\n\nJSON:\n${activeCell.source}`
+              : `Analizza questo errore nello schema JSON Game 2D o nel runner Phaser e spiega la causa in modo didattico.\n\nErrore:\n${errorLines}\n\nJSON:\n${activeCell.source}`)
+          : (isEnglish
+              ? `Analyze this error in the p5.js code and explain the cause in a didactic way.\n\nError:\n${errorLines}\n\nCode:\n${activeCell.source}`
+              : `Analizza questo errore nel codice p5.js e spiega la causa in modo didattico.\n\nErrore:\n${errorLines}\n\nCodice:\n${activeCell.source}`),
         current_cell_source: activeCell.source,
         last_output: errorLines,
         pending_proposals: [],
       })
       setConsoleAiResponse(res.data.response)
     } catch {
-      setConsoleAiResponse('Non riesco ad analizzare l\'errore in questo momento.')
+      setConsoleAiResponse(isEnglish ? 'I cannot analyze the error right now.' : 'Non riesco ad analizzare l\'errore in questo momento.')
     } finally {
       setConsoleAiLoading(false)
     }
-  }, [activeCell, consoleEntries, notebookId, previewRuntimeError])
+  }, [activeCell, consoleEntries, isEnglish, notebookId, previewRuntimeError, projectType])
 
   const proposeConsoleFix = useCallback(async () => {
     if (!notebookId || !activeCell) return
@@ -541,6 +740,21 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
     window.addEventListener('blur', finish)
   }, [])
 
+  const startStrudelResize = useCallback((startEvent: ReactPointerEvent<HTMLDivElement>) => {
+    const startX = startEvent.clientX
+    const startRatio = strudelSplitRatio
+
+    beginHorizontalResize(
+      startEvent,
+      (clientX) => {
+        const delta = (clientX - startX) / window.innerWidth
+        setStrudelSplitRatio(Math.min(0.72, Math.max(0.34, startRatio + delta)))
+      },
+      () => setIsStrudelResizing(true),
+      () => setIsStrudelResizing(false),
+    )
+  }, [beginHorizontalResize, strudelSplitRatio])
+
   const startP5Resize = useCallback((startEvent: ReactPointerEvent<HTMLDivElement>) => {
     const startX = startEvent.clientX
     const startRatio = p5SplitRatio
@@ -555,6 +769,21 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
       () => setIsP5Resizing(false),
     )
   }, [beginHorizontalResize, p5SplitRatio])
+
+  const startGameResize = useCallback((startEvent: ReactPointerEvent<HTMLDivElement>) => {
+    const startX = startEvent.clientX
+    const startRatio = gameSplitRatio
+
+    beginHorizontalResize(
+      startEvent,
+      (clientX) => {
+        const delta = (clientX - startX) / window.innerWidth
+        setGameSplitRatio(Math.min(0.68, Math.max(0.32, startRatio + delta)))
+      },
+      () => setIsGameResizing(true),
+      () => setIsGameResizing(false),
+    )
+  }, [beginHorizontalResize, gameSplitRatio])
 
   const startTutorResize = useCallback((startEvent: ReactPointerEvent<HTMLDivElement>) => {
     const startX = startEvent.clientX
@@ -594,12 +823,19 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
   }
 
   const fontWeight = editorSettings.font_weight ?? 400
-  const projectTone: PastelTone = projectType === 'python' ? 'indigo' : 'emerald'
+  const projectTone: PastelTone = projectType === 'python'
+    ? 'indigo'
+    : projectType === 'strudel'
+      ? 'violet'
+      : projectType === 'game2d'
+        ? 'cyan'
+        : 'emerald'
 
   return (
+    <>
     <div className="flex h-full min-h-0 gap-3 bg-slate-100 p-4">
       {/* ── Main notebook card ───────────────────────────────────────────── */}
-      <div className={`flex min-h-0 flex-1 flex-col overflow-hidden rounded-[28px] text-slate-900 shadow-[0_18px_60px_rgba(15,23,42,0.12)] ${PASTEL_SURFACES[projectTone]}`}>
+      <div className={`flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl text-slate-900 shadow-[0_18px_60px_rgba(15,23,42,0.10)] ${PASTEL_SURFACES[projectTone]}`}>
         {/* Row 1: Title bar */}
         <div className="flex items-center gap-3 border-b border-slate-200/70 bg-white/60 px-4 py-3 backdrop-blur-sm">
           {editingTitle ? (
@@ -616,9 +852,9 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
             <button
               onClick={() => setEditingTitle(true)}
               className="max-w-sm truncate text-sm font-semibold text-slate-900 transition-colors hover:text-slate-700"
-              title="Modifica titolo"
+              title={isEnglish ? 'Edit title' : 'Modifica titolo'}
             >
-              {title || 'Notebook senza titolo'}
+              {title || (isEnglish ? 'Untitled notebook' : 'Notebook senza titolo')}
             </button>
           )}
 
@@ -635,10 +871,20 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
               {pyStatusIcon}
               <span>{pyStatusText}</span>
             </div>
+          ) : projectType === 'strudel' ? (
+            <div className={`flex items-center gap-1.5 text-[11px] ${strudelPlaying ? 'text-violet-600' : 'text-slate-500'}`}>
+              <Music2 className="h-3.5 w-3.5" />
+              <span>{strudelPlaying ? '♪ Suonando' : 'Live Music'}</span>
+            </div>
+          ) : projectType === 'game2d' ? (
+            <div className={`flex items-center gap-1.5 text-[11px] ${gamePlaying ? 'text-cyan-700' : 'text-slate-500'}`}>
+              <Gamepad2 className="h-3.5 w-3.5" />
+              <span>{isEnglish ? 'Phaser runner' : 'Runner Phaser'}</span>
+            </div>
           ) : (
             <div className="flex items-center gap-1.5 text-[11px] text-emerald-700">
               <Monitor className="h-3.5 w-3.5" />
-              <span>Preview interattiva</span>
+              <span>{isEnglish ? 'Interactive preview' : 'Preview interattiva'}</span>
             </div>
           )}
 
@@ -647,14 +893,20 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
             {saveStatus === 'saved' && <CheckCircle className="h-3 w-3 text-emerald-500" />}
             {saveStatus === 'unsaved' && <Save className="h-3 w-3 text-amber-400" />}
             <span className={saveStatus === 'unsaved' ? 'text-amber-500' : 'text-slate-500'}>
-              {saveStatus === 'saving' ? 'Salvataggio…' : saveStatus === 'saved' ? 'Salvato' : 'Da salvare'}
+              {saveStatus === 'saving'
+                ? (isEnglish ? 'Saving…' : 'Salvataggio…')
+                : saveStatus === 'saved'
+                  ? (isEnglish ? 'Saved' : 'Salvato')
+                  : (isEnglish ? 'Unsaved' : 'Da salvare')}
             </span>
           </div>
 
           {notebookId && (
             <button
               onClick={() => setChatSidebarOpen((v) => !v)}
-              title={chatSidebarOpen ? 'Chiudi sidebar tutor' : 'Apri tutor come sidebar'}
+              title={chatSidebarOpen
+                ? (isEnglish ? 'Close tutor sidebar' : 'Chiudi sidebar tutor')
+                : (isEnglish ? 'Open tutor as sidebar' : 'Apri tutor come sidebar')}
               className={`rounded-xl p-1.5 transition-colors ${
                 chatSidebarOpen
                   ? `${PASTEL_ICON_BACKGROUNDS[projectTone]} ${PASTEL_ICON_TEXT[projectTone]}`
@@ -669,14 +921,14 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
         {/* Row 2: Toolbar */}
         <div className="flex flex-wrap items-center gap-2 border-b border-slate-200/80 bg-white/45 px-4 py-2 backdrop-blur-sm">
           <label className="flex items-center gap-1.5 text-xs text-slate-500">
-            Tema
+            {isEnglish ? 'Theme' : 'Tema'}
             <select
               value={editorSettings.theme}
               onChange={(e) => updateEditorSettings({ theme: e.target.value as NotebookTheme })}
               className="rounded-lg border border-slate-300/80 bg-white/80 px-2 py-1.5 text-slate-700 outline-none"
             >
-              <option value="dark">Scuro</option>
-              <option value="light">Chiaro</option>
+              <option value="dark">{isEnglish ? 'Dark' : 'Scuro'}</option>
+              <option value="light">{isEnglish ? 'Light' : 'Chiaro'}</option>
               <option value="fancy">Fancy</option>
               <option value="dracula">Dracula</option>
               <option value="p5js">P5.js</option>
@@ -684,7 +936,7 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
           </label>
 
           <label className="flex items-center gap-1.5 text-xs text-slate-500">
-            Dimensione
+            {isEnglish ? 'Size' : 'Dimensione'}
             <select
               value={editorSettings.font_size}
               onChange={(e) => updateEditorSettings({ font_size: Number(e.target.value) })}
@@ -697,7 +949,7 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
           </label>
 
           <label className="flex items-center gap-1.5 text-xs text-slate-500">
-            Font
+            {isEnglish ? 'Font' : 'Font'}
             <select
               value={editorSettings.font_family}
               onChange={(e) => updateEditorSettings({ font_family: e.target.value as NotebookFontFamily })}
@@ -711,8 +963,8 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
             </select>
           </label>
 
-          <label className="flex items-center gap-1.5 text-xs text-slate-500" title={`Peso font: ${fontWeight}`}>
-            Peso
+          <label className="flex items-center gap-1.5 text-xs text-slate-500" title={`${isEnglish ? 'Font weight' : 'Peso font'}: ${fontWeight}`}>
+            {isEnglish ? 'Weight' : 'Peso'}
             <input
               type="range"
               min={100}
@@ -725,7 +977,7 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
             <span className="w-7 text-right text-slate-400">{fontWeight}</span>
           </label>
 
-          {projectType === 'p5js' && (
+          {(projectType === 'p5js' || projectType === 'game2d') && (
             <label className="flex items-center gap-1.5 text-xs text-slate-500">
               <input
                 type="checkbox"
@@ -743,18 +995,109 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
             {projectType === 'python' && (
               <button
                 onClick={() => insertCellBelow(activeCellId ?? cells[cells.length - 1]?.id)}
-                title="Aggiungi cella"
+                title={isEnglish ? 'Add cell' : 'Aggiungi cella'}
                 className={`flex items-center gap-1 rounded-xl px-3 py-1.5 text-xs shadow-sm transition-colors ${PASTEL_SURFACES.slate}`}
               >
                 <Plus className="h-3 w-3" />
-                Cella
+                {isEnglish ? 'Cell' : 'Cella'}
               </button>
             )}
-            {projectType === 'p5js' ? (
+            {projectType === 'strudel' ? (
+              <>
+                <div className="relative">
+                  <button
+                    onClick={() => setStrudelTemplatesOpen((v) => !v)}
+                    title={isEnglish ? 'Ready-made patterns' : 'Modelli pronti'}
+                    className="flex items-center gap-1 rounded-xl bg-violet-100 px-3 py-1.5 text-xs text-violet-700 shadow-sm transition-colors hover:bg-violet-200"
+                  >
+                    <BookOpen className="h-3 w-3" />
+                    {isEnglish ? 'Templates' : 'Modelli'}
+                    <ChevronDown className={`h-3 w-3 transition-transform ${strudelTemplatesOpen ? 'rotate-180' : ''}`} />
+                  </button>
+                  {strudelTemplatesOpen && (
+                    <>
+                      <div
+                        className="fixed inset-0 z-40"
+                        onClick={() => setStrudelTemplatesOpen(false)}
+                      />
+                      <div className="absolute left-0 top-full z-50 mt-1 w-60 overflow-hidden rounded-xl border border-violet-200 bg-white shadow-lg">
+                        {STRUDEL_TEMPLATES.map((tpl) => (
+                          <button
+                            key={tpl.id}
+                            onClick={() => {
+                              if (activeCell) updateCell(activeCell.id, { source: tpl.code })
+                              setStrudelTemplatesOpen(false)
+                            }}
+                            className="flex w-full flex-col gap-0.5 px-3 py-2.5 text-left transition-colors hover:bg-violet-50"
+                          >
+                            <span className="text-xs font-semibold text-slate-800">{tpl.label}</span>
+                            <span className="text-[10px] text-slate-500">{tpl.description}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                </div>
+                <button
+                  onClick={handleStrudelPlay}
+                  title={isEnglish ? 'Play (Shift+Enter)' : 'Suona (Shift+Enter)'}
+                  className="flex items-center gap-1 rounded-xl bg-violet-600 px-3 py-1.5 text-xs text-white transition-colors hover:bg-violet-500"
+                >
+                  <Play className="h-3 w-3" />
+                  Play
+                </button>
+                <button
+                  onClick={handleStrudelStop}
+                  disabled={!strudelPlaying}
+                  title={isEnglish ? 'Stop' : 'Ferma'}
+                  className={`flex items-center gap-1 rounded-xl px-3 py-1.5 text-xs shadow-sm transition-colors disabled:opacity-40 ${PASTEL_SURFACES.rose} ${PASTEL_ICON_TEXT.rose}`}
+                >
+                  <Pause className="h-3 w-3" />
+                  Stop
+                </button>
+              </>
+            ) : projectType === 'game2d' ? (
               <>
                 <button
+                  onClick={handleGamePlay}
+                  title={isEnglish ? 'Run game' : 'Esegui gioco'}
+                  className="flex items-center gap-1 rounded-xl bg-cyan-600 px-3 py-1.5 text-xs text-white transition-colors hover:bg-cyan-500"
+                >
+                  <Play className="h-3 w-3" />
+                  Play
+                </button>
+                <button
+                  onClick={handleGameStop}
+                  disabled={!gamePlaying}
+                  title={isEnglish ? 'Pause game' : 'Pausa gioco'}
+                  className={`flex items-center gap-1 rounded-xl px-3 py-1.5 text-xs shadow-sm transition-colors disabled:opacity-40 ${PASTEL_SURFACES.rose} ${PASTEL_ICON_TEXT.rose}`}
+                >
+                  <Pause className="h-3 w-3" />
+                  Pausa
+                </button>
+              </>
+            ) : projectType === 'p5js' ? (
+              <>
+                <button
+                  onClick={() => setLibraryManagerOpen((v) => !v)}
+                  title="Gestisci librerie aggiuntive"
+                  className={`flex items-center gap-1 rounded-xl px-3 py-1.5 text-xs shadow-sm transition-colors ${
+                    (editorSettings.libraries ?? []).length > 0
+                      ? 'bg-indigo-100 text-indigo-700 hover:bg-indigo-200'
+                      : `${PASTEL_SURFACES.slate} ${PASTEL_ICON_TEXT.slate}`
+                  }`}
+                >
+                  <PackagePlus className="h-3 w-3" />
+                  Librerie
+                  {(editorSettings.libraries ?? []).length > 0 && (
+                    <span className="ml-0.5 rounded-full bg-indigo-600 px-1.5 py-0.5 text-[9px] font-bold text-white">
+                      {(editorSettings.libraries ?? []).length}
+                    </span>
+                  )}
+                </button>
+                <button
                   onClick={handleP5Play}
-                  title="Esegui sketch"
+                  title={isEnglish ? 'Run sketch' : 'Esegui sketch'}
                   className="flex items-center gap-1 rounded-xl bg-[#2196F3] px-3 py-1.5 text-xs text-white transition-colors hover:bg-[#1d84d8]"
                 >
                   <Play className="h-3 w-3" />
@@ -763,7 +1106,7 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
                 <button
                   onClick={handleP5Stop}
                   disabled={!p5Playing}
-                  title="Ferma sketch"
+                  title={isEnglish ? 'Stop sketch' : 'Ferma sketch'}
                   className={`flex items-center gap-1 rounded-xl px-3 py-1.5 text-xs shadow-sm transition-colors disabled:opacity-40 ${PASTEL_SURFACES.rose} ${PASTEL_ICON_TEXT.rose}`}
                 >
                   <Pause className="h-3 w-3" />
@@ -777,7 +1120,7 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
                 className="flex items-center gap-1 rounded-xl bg-[#E91E63] px-3 py-1.5 text-xs text-white transition-colors hover:bg-[#d61b5b] disabled:opacity-40"
               >
                 <Play className="h-3 w-3" />
-                Esegui tutto
+                {isEnglish ? 'Run all' : 'Esegui tutto'}
               </button>
             )}
             {projectType === 'python' && (
@@ -796,7 +1139,7 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
                   className={`flex items-center gap-1 rounded-xl px-3 py-1.5 text-xs shadow-sm transition-colors disabled:opacity-40 ${PASTEL_SURFACES.slate}`}
                 >
                   <RotateCcw className="h-3 w-3" />
-                  Restart
+                  {isEnglish ? 'Restart' : 'Restart'}
                 </button>
               )
             )}
@@ -805,7 +1148,9 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
 
         {projectType === 'python' && pyStatus === 'loading' && (
           <div className="border-b border-amber-200 bg-amber-50 px-4 py-2 text-xs text-amber-700">
-            Caricamento del motore Python (Pyodide) in corso: la prima volta può richiedere qualche secondo.
+            {isEnglish
+              ? 'Loading the Python runtime (Pyodide): the first start may take a few seconds.'
+              : 'Caricamento del motore Python (Pyodide) in corso: la prima volta può richiedere qualche secondo.'}
           </div>
         )}
         {projectType === 'python' && pyStatus === 'error' && (
@@ -817,19 +1162,159 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
         <div className="flex min-h-0 flex-1 flex-col">
           {assistantSummary && (
             <div className="px-4 pt-4">
-              <div className="rounded-[24px] border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm text-slate-700">
+                <div className="rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm text-slate-700">
                 <div className="mb-1 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-indigo-600">
                   <Sparkles className="h-3.5 w-3.5" />
-                  Supporto Didattico
+                  {isEnglish ? 'Learning Support' : 'Supporto Didattico'}
                 </div>
                 <p>{assistantSummary}</p>
               </div>
             </div>
           )}
 
-          {projectType === 'p5js' ? (
+          {projectType === 'strudel' ? (
+            <div className="flex min-h-0 flex-1 p-4 gap-0 overflow-hidden">
+              <div className={`flex min-h-0 flex-1 overflow-hidden rounded-xl shadow-sm ${PASTEL_SURFACES.slate}`}>
+                {/* Left: editor */}
+                <div
+                  className="flex min-h-0 min-w-0 flex-col overflow-hidden bg-slate-950"
+                  style={{ flexBasis: `${strudelSplitRatio * 100}%` }}
+                >
+                  {/* Strudel header bar */}
+                  <div className="flex flex-shrink-0 items-center gap-2 border-b border-slate-800 bg-slate-900 px-3 py-1.5">
+                    <Music2 className="h-3 w-3 text-violet-400" />
+                    <span className="font-mono text-[10px] text-violet-300/60">strudel pattern</span>
+                  </div>
+                  {activeCell && (
+                    <NotebookCell
+                      cell={activeCell}
+                      projectType="strudel"
+                      theme={editorSettings.theme}
+                      fontSize={editorSettings.font_size}
+                      fontFamily={editorSettings.font_family}
+                      fontWeight={fontWeight}
+                      isRunning={false}
+                      isActive
+                      isCompact
+                      showOutputs={false}
+                      proposals={[]}
+                      onActivate={() => setActiveCellId(activeCell.id)}
+                      onChange={(source) => updateCell(activeCell.id, { source })}
+                      onRun={handleStrudelPlay}
+                    />
+                  )}
+                </div>
+
+                {/* Resize handle */}
+                <div
+                  onPointerDown={startStrudelResize}
+                  className={`group relative w-2 flex-shrink-0 cursor-col-resize touch-none ${isStrudelResizing ? 'bg-violet-200' : 'bg-slate-200 hover:bg-violet-200'}`}
+                  title={isEnglish ? 'Resize editor and preview' : 'Ridimensiona editor e preview'}
+                >
+                  <div className={`absolute inset-0 m-auto h-14 w-1 rounded-full transition ${isStrudelResizing ? 'bg-violet-500' : 'bg-slate-400 group-hover:bg-violet-500'}`} />
+                </div>
+
+                {/* Right: Strudel preview */}
+                <div className={`relative min-h-0 min-w-0 flex-1 ${isStrudelResizing ? 'pointer-events-none' : ''}`}>
+                  <Suspense fallback={previewFallback}>
+                    <NotebookStrudelPreview
+                      ref={strudelRef}
+                      runtimeError={strudelError}
+                    />
+                  </Suspense>
+                </div>
+              </div>
+            </div>
+          ) : projectType === 'game2d' ? (
+            <div className="flex min-h-0 flex-1 flex-col gap-2 p-4">
+              <div className={`flex min-h-0 flex-1 overflow-hidden rounded-xl shadow-sm ${PASTEL_SURFACES.slate}`}>
+                <div
+                  className="flex min-h-0 min-w-0 flex-col overflow-hidden bg-slate-950"
+                  style={{ flexBasis: `${gameSplitRatio * 100}%` }}
+                >
+                  <div className="flex flex-shrink-0 items-center gap-2 border-b border-slate-800 bg-slate-900 px-3 py-1.5">
+                    <Gamepad2 className="h-3 w-3 text-cyan-300" />
+                    <span className="font-mono text-[10px] text-cyan-200/70">game.json · schema driven</span>
+                  </div>
+                  {activeCell && (
+                    <NotebookCell
+                      cell={activeCell}
+                      projectType="game2d"
+                      theme={editorSettings.theme}
+                      fontSize={editorSettings.font_size}
+                      fontFamily={editorSettings.font_family}
+                      fontWeight={fontWeight}
+                      isRunning={false}
+                      isActive
+                      isCompact
+                      showOutputs={false}
+                      proposals={assistantProposals[activeCell.id] || []}
+                      onActivate={() => setActiveCellId(activeCell.id)}
+                      onChange={(source) => updateCell(activeCell.id, { source })}
+                      onRun={() => runCell(activeCell.id)}
+                      onApplyProposal={(proposalId) => applyProposal(activeCell.id, proposalId)}
+                      onRejectProposal={(proposalId) => rejectProposal(activeCell.id, proposalId)}
+                    />
+                  )}
+                </div>
+
+                <div
+                  onPointerDown={startGameResize}
+                  className={`group relative w-2 flex-shrink-0 cursor-col-resize touch-none ${isGameResizing ? 'bg-cyan-200' : 'bg-slate-200 hover:bg-cyan-200'}`}
+                  title={isEnglish ? 'Resize schema and game preview' : 'Ridimensiona schema e anteprima gioco'}
+                >
+                  <div className={`absolute inset-0 m-auto h-14 w-1 rounded-full transition ${isGameResizing ? 'bg-cyan-500' : 'bg-slate-400 group-hover:bg-cyan-500'}`} />
+                </div>
+
+                <div className={`relative min-h-0 min-w-0 flex-1 p-4 ${isGameResizing ? 'pointer-events-none' : ''}`}>
+                  <Suspense fallback={previewFallback}>
+                    <NotebookGame2DPreview
+                      source={gameSource}
+                      livePreview={editorSettings.live_preview}
+                      previewNonce={previewNonce}
+                      runtimeError={previewRuntimeError}
+                      onRuntimeMessage={setPreviewRuntimeError}
+                      onIframeLoad={(win) => { gameIframeWindowRef.current = win }}
+                    />
+                  </Suspense>
+                </div>
+              </div>
+
+              {previewRuntimeError && (
+                <div className="flex-shrink-0 overflow-hidden rounded-xl border border-slate-200 bg-slate-950">
+                  <div className="flex items-center gap-2 px-4 py-2">
+                    <Terminal className="h-3.5 w-3.5 text-slate-400" />
+                    <span className="text-xs font-semibold text-slate-400">{isEnglish ? 'Runner diagnostics' : 'Diagnostica runner'}</span>
+                    <span className="rounded-full bg-red-600 px-1.5 py-0.5 text-[10px] font-bold text-white">
+                      runtime error
+                    </span>
+                    <div className="flex-1" />
+                    <button
+                      onClick={(e) => { e.stopPropagation(); analyzeConsoleError() }}
+                      disabled={consoleAiLoading}
+                      className="flex items-center gap-1 rounded-lg bg-cyan-600 px-2.5 py-1 text-[11px] font-semibold text-white transition hover:bg-cyan-500 disabled:opacity-50"
+                    >
+                      {consoleAiLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Bot className="h-3 w-3" />}
+                      {isEnglish ? 'Analyze' : 'Analizza'}
+                    </button>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); proposeConsoleFix() }}
+                      disabled={assistantLoading}
+                      className="flex items-center gap-1 rounded-lg border border-emerald-700 bg-emerald-900/40 px-2.5 py-1 text-[11px] font-semibold text-emerald-300 transition hover:bg-emerald-800/50 disabled:opacity-50"
+                    >
+                      {assistantLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Wrench className="h-3 w-3" />}
+                      {isEnglish ? 'Fix JSON' : 'Correggi JSON'}
+                    </button>
+                  </div>
+                  <div className="border-t border-slate-800 px-4 py-2 font-mono text-xs text-red-400">
+                    {previewRuntimeError}
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : projectType === 'p5js' ? (
             <div className="flex min-h-0 flex-1 flex-col p-4 gap-2">
-              <div className={`flex min-h-0 flex-1 overflow-hidden rounded-[28px] shadow-sm ${PASTEL_SURFACES.slate}`}>
+              <div className={`flex min-h-0 flex-1 overflow-hidden rounded-xl shadow-sm ${PASTEL_SURFACES.slate}`}>
                 {/* Left panel: file tabs + editor */}
                 <div
                   className="flex min-h-0 min-w-0 flex-col overflow-hidden bg-slate-950"
@@ -863,7 +1348,7 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
                                 ? 'bg-slate-950 text-teal-300'
                                 : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'
                             }`}
-                            title="Click per aprire · Doppio click per rinominare"
+                            title={isEnglish ? 'Click to open · Double click to rename' : 'Click per aprire · Doppio click per rinominare'}
                           >
                             {cell.name ?? 'sketch.js'}
                           </button>
@@ -872,7 +1357,7 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
                           <button
                             onClick={() => deleteP5File(cell.id)}
                             className="ml-0.5 rounded p-0.5 text-slate-500 transition-colors hover:text-red-400"
-                            title="Elimina file"
+                            title={isEnglish ? 'Delete file' : 'Elimina file'}
                           >
                             <Trash2 className="h-2.5 w-2.5" />
                           </button>
@@ -882,7 +1367,7 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
                     <button
                       onClick={addP5File}
                       className="ml-1 rounded p-1 text-slate-500 transition-colors hover:text-teal-300"
-                      title="Nuovo file"
+                      title={isEnglish ? 'New file' : 'Nuovo file'}
                     >
                       <FilePlus className="h-3 w-3" />
                     </button>
@@ -915,7 +1400,7 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
                 <div
                   onPointerDown={startP5Resize}
                   className={`group relative w-2 flex-shrink-0 cursor-col-resize touch-none ${isP5Resizing ? 'bg-indigo-200' : 'bg-slate-200 hover:bg-indigo-200'}`}
-                  title="Ridimensiona editor e preview"
+                  title={isEnglish ? 'Resize editor and preview' : 'Ridimensiona editor e preview'}
                 >
                   <div className={`absolute inset-0 m-auto h-14 w-1 rounded-full transition ${isP5Resizing ? 'bg-indigo-500' : 'bg-slate-400 group-hover:bg-indigo-500'}`} />
                 </div>
@@ -930,6 +1415,7 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
                       runtimeError={previewRuntimeError}
                       onRuntimeMessage={setPreviewRuntimeError}
                       onIframeLoad={(win) => { p5IframeWindowRef.current = win }}
+                      activeLibraries={editorSettings.libraries ?? []}
                     />
                   </Suspense>
                 </div>
@@ -939,7 +1425,7 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
               {(() => {
                 const hasErrors = !!previewRuntimeError || consoleEntries.some((e) => e.level === 'error')
                 return (
-                  <div className="flex-shrink-0 overflow-hidden rounded-[20px] border border-slate-200 bg-slate-950">
+	                  <div className="flex-shrink-0 overflow-hidden rounded-xl border border-slate-200 bg-slate-950">
                     {/* Header row */}
                     <div className="flex items-center gap-2 px-4 py-2">
                       <button
@@ -947,7 +1433,7 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
                         className="flex flex-1 items-center gap-2 text-left"
                       >
                         <Terminal className="h-3.5 w-3.5 text-slate-400" />
-                        <span className="text-xs font-semibold text-slate-400">Console</span>
+                        <span className="text-xs font-semibold text-slate-400">{isEnglish ? 'Console' : 'Console'}</span>
                         {consoleEntries.length > 0 && (
                           <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold text-white ${hasErrors ? 'bg-[#BA68C8]' : 'bg-[#E91E63]'}`}>
                             {consoleEntries.length}
@@ -968,22 +1454,22 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
                         <button
                           onClick={(e) => { e.stopPropagation(); analyzeConsoleError() }}
                           disabled={consoleAiLoading}
-                          title="Chiedi all'AI perché c'è l'errore"
+                          title={isEnglish ? 'Ask AI why this error happened' : 'Chiedi all\'AI perché c\'è l\'errore'}
                           className="flex items-center gap-1 rounded-lg bg-[#E91E63] px-2.5 py-1 text-[11px] font-semibold text-white transition hover:bg-[#d61b5b] disabled:opacity-50"
                         >
                           {consoleAiLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Bot className="h-3 w-3" />}
-                          Analizza
+                          {isEnglish ? 'Analyze' : 'Analizza'}
                         </button>
                       )}
                       {hasErrors && (
                         <button
                           onClick={(e) => { e.stopPropagation(); proposeConsoleFix() }}
                           disabled={assistantLoading}
-                          title="Genera proposta di correzione del codice"
+                          title={isEnglish ? 'Generate a code fix proposal' : 'Genera proposta di correzione del codice'}
                           className="flex items-center gap-1 rounded-lg border border-emerald-700 bg-emerald-900/40 px-2.5 py-1 text-[11px] font-semibold text-emerald-300 transition hover:bg-emerald-800/50 disabled:opacity-50"
                         >
                           {assistantLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Wrench className="h-3 w-3" />}
-                          Correggi
+                          {isEnglish ? 'Fix' : 'Correggi'}
                         </button>
                       )}
                       {consoleEntries.length > 0 && (
@@ -991,7 +1477,7 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
                           onClick={(e) => { e.stopPropagation(); setConsoleEntries([]); setConsoleAiResponse(null) }}
                           className="text-[10px] text-slate-500 hover:text-slate-300"
                         >
-                          Pulisci
+                          {isEnglish ? 'Clear' : 'Pulisci'}
                         </button>
                       )}
                     </div>
@@ -1007,7 +1493,7 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
                             </div>
                           )}
                           {consoleEntries.length === 0 && !previewRuntimeError ? (
-                            <p className="text-slate-600">Nessun output console.</p>
+                            <p className="text-slate-600">{isEnglish ? 'No console output.' : 'Nessun output console.'}</p>
                           ) : (
                             consoleEntries.map((entry) => (
                               <div
@@ -1030,12 +1516,12 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
                           <div className="border-t border-slate-800 px-4 py-3">
                             <div className="mb-2 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-widest text-indigo-400">
                               <Bot className="h-3 w-3" />
-                              Analisi AI
+                              {isEnglish ? 'AI Analysis' : 'Analisi AI'}
                             </div>
                             {consoleAiLoading ? (
                               <div className="flex items-center gap-2 text-xs text-slate-400">
                                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                                Analizzo l'errore…
+                                {isEnglish ? 'Analyzing the error…' : 'Analizzo l\'errore…'}
                               </div>
                             ) : (
                               <div className="prose prose-invert prose-sm max-w-none prose-p:my-1 prose-code:text-indigo-300 text-slate-300">
@@ -1051,7 +1537,7 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
                                 className="mt-3 flex items-center gap-1.5 rounded-lg border border-emerald-700 bg-emerald-900/40 px-3 py-1.5 text-xs font-semibold text-emerald-300 transition hover:bg-emerald-800/50 disabled:opacity-50"
                               >
                                 {assistantLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Wrench className="h-3 w-3" />}
-                                Genera proposta di correzione
+                                {isEnglish ? 'Generate fix proposal' : 'Genera proposta di correzione'}
                               </button>
                             )}
                           </div>
@@ -1090,10 +1576,10 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
                 ))}
 
                 {inputState && (
-                    <div className={`sticky bottom-4 mx-auto flex max-w-xl flex-col gap-3 rounded-[24px] bg-white/90 p-4 shadow-lg backdrop-blur-sm ${PASTEL_SURFACES[projectTone]}`}>
+	                    <div className={`sticky bottom-4 mx-auto flex max-w-xl flex-col gap-3 rounded-xl bg-white/90 p-4 shadow-lg backdrop-blur-sm ${PASTEL_SURFACES[projectTone]}`}>
                     <div className="flex items-center gap-2 text-xs font-medium text-indigo-500">
                       <Terminal className="h-3.5 w-3.5" />
-                      Il programma chiede un valore
+                      {isEnglish ? 'The program is asking for a value' : 'Il programma chiede un valore'}
                     </div>
                     {inputState.prompt && (
                       <p className="rounded bg-slate-900 px-3 py-1.5 font-mono text-sm text-emerald-300">
@@ -1112,7 +1598,7 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
                             setInputValue('')
                           }
                         }}
-                        placeholder="Scrivi qui la risposta…"
+                        placeholder={isEnglish ? 'Type your answer here…' : 'Scrivi qui la risposta…'}
                         className="flex-1 rounded-lg border border-slate-300/80 bg-white/85 px-3 py-1.5 font-mono text-sm text-slate-900 outline-none transition-colors focus:border-indigo-500"
                       />
                       <button
@@ -1122,7 +1608,7 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
                         }}
                         className="rounded-lg bg-[#E91E63] px-4 py-1.5 text-xs font-medium text-white transition-colors hover:bg-[#d61b5b]"
                       >
-                        Invia
+                        {isEnglish ? 'Send' : 'Invia'}
                       </button>
                     </div>
                   </div>
@@ -1130,10 +1616,10 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
 
                 <button
                   onClick={() => insertCellBelow(cells[cells.length - 1]?.id)}
-                  className="flex w-full items-center justify-center gap-1 rounded-[24px] border-2 border-dashed border-slate-300 py-4 text-xs text-slate-500 transition-colors hover:border-indigo-400 hover:text-indigo-500"
+	                  className="flex w-full items-center justify-center gap-1 rounded-xl border-2 border-dashed border-slate-300 py-4 text-xs text-slate-500 transition-colors hover:border-indigo-400 hover:text-indigo-500"
                 >
                   <Plus className="h-3.5 w-3.5" />
-                  Aggiungi cella
+                  {isEnglish ? 'Add cell' : 'Aggiungi cella'}
                 </button>
               </div>
             </div>
@@ -1153,7 +1639,7 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
                 ? (isTutorResizing ? 'bg-[#f4b6cf]' : 'bg-[#f8d6e5] hover:bg-[#f4b6cf]')
                 : (isTutorResizing ? 'bg-[#b5dbfb]' : 'bg-[#d9ecfd] hover:bg-[#b5dbfb]')
             }`}
-            title="Ridimensiona sidebar tutor"
+            title={isEnglish ? 'Resize tutor sidebar' : 'Ridimensiona sidebar tutor'}
           >
             <div className={`absolute inset-0 m-auto h-14 w-1 rounded-full transition ${
               projectType === 'python'
@@ -1161,7 +1647,7 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
                 : (isTutorResizing ? 'bg-[#1d84d8]' : 'bg-[#2196F3] group-hover:bg-[#1d84d8]')
             }`} />
           </div>
-          <div className={`flex flex-1 flex-col gap-3 min-h-0 min-w-0 overflow-hidden rounded-[28px] shadow-sm ${PASTEL_SURFACES[projectTone]}`}>
+	          <div className={`flex flex-1 flex-col gap-3 min-h-0 min-w-0 overflow-hidden rounded-xl shadow-sm ${PASTEL_SURFACES[projectTone]}`}>
             <Suspense fallback={null}>
               <NotebookTutorChat
                 notebookId={notebookId}
@@ -1179,5 +1665,24 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
       )}
 
     </div>
+    <NotebookLibraryManager
+      open={libraryManagerOpen}
+      onClose={() => setLibraryManagerOpen(false)}
+      selectedLibraries={editorSettings.libraries ?? []}
+      onToggleLibrary={(id) => {
+        const current = editorSettings.libraries ?? []
+        const next = current.includes(id) ? current.filter((l) => l !== id) : [...current, id]
+        updateEditorSettings({ libraries: next })
+        setPreviewNonce((n) => n + 1)
+      }}
+      onInsertTemplate={(code) => {
+        if (activeCellId) {
+          updateCell(activeCellId, { source: code })
+          setPreviewNonce((n) => n + 1)
+        }
+        setLibraryManagerOpen(false)
+      }}
+    />
+    </>
   )
 }

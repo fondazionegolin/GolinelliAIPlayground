@@ -1,0 +1,25 @@
+port: 7880
+bind_addresses:
+  - "0.0.0.0"
+
+rtc:
+  tcp_port: 7881
+  udp_port: 7882
+  port_range_start: 50000
+  port_range_end: 50100
+  use_external_ip: ${LIVEKIT_USE_EXTERNAL_IP}
+
+redis:
+  address: ${LIVEKIT_REDIS_ADDRESS}
+
+# Built-in TURN disabled — relay is handled by the external coturn on turn.golinelli.ai.
+# Time-limited ICE credentials are generated server-side (HMAC-SHA1) and injected into
+# each LiveKit token response by voice.py using TURN_HOST / TURN_SECRET env vars.
+turn:
+  enabled: false
+
+keys:
+  ${LIVEKIT_API_KEY}: ${LIVEKIT_API_SECRET}
+
+logging:
+  level: info

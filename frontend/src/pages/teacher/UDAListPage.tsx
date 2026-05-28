@@ -64,7 +64,7 @@ export default function UDAListPage() {
         {/* Header */}
         <div className="flex items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            <Button variant="ghost" size="sm" onClick={() => navigate(-1)} className="h-8 w-8 p-0">
+            <Button variant="ghost" size="sm" onClick={() => navigate(-1)} className="h-8 w-8 p-0 rounded-lg">
               <ArrowLeft className="h-4 w-4" />
             </Button>
             <div>
@@ -72,7 +72,7 @@ export default function UDAListPage() {
               <p className="text-sm text-slate-500 mt-0.5">Crea e gestisci le UDA della tua classe</p>
             </div>
           </div>
-          <Button size="sm" onClick={() => setShowCreate(true)}>
+          <Button tone="neutral" surface="solid" size="sm" onClick={() => setShowCreate(true)}>
             <Plus className="h-4 w-4 mr-1.5" />
             Nuova UDA
           </Button>
@@ -97,6 +97,8 @@ export default function UDAListPage() {
                 Annulla
               </Button>
               <Button
+                tone="accent"
+                surface="solid"
                 size="sm"
                 disabled={!newTitle.trim() || createMutation.isPending}
                 onClick={() => createMutation.mutate()}
@@ -120,7 +122,7 @@ export default function UDAListPage() {
             <p className="text-sm text-slate-400 max-w-sm mx-auto mb-5">
               Un'Unità Didattica raggruppa documenti, quiz, esercizi e presentazioni in una cartella tematica per i tuoi studenti.
             </p>
-            <Button size="sm" onClick={() => setShowCreate(true)}>
+            <Button tone="neutral" surface="solid" size="sm" onClick={() => setShowCreate(true)}>
               <Plus className="h-4 w-4 mr-1.5" />
               Crea la prima UDA
             </Button>
@@ -162,7 +164,7 @@ export default function UDAListPage() {
                   <Button
                     variant="ghost"
                     size="sm"
-                    className="h-8 w-8 p-0 text-slate-300 hover:text-red-400"
+                    className="h-8 w-8 p-0 rounded-lg text-slate-300 hover:text-red-500"
                     onClick={e => {
                       e.stopPropagation()
                       if (confirm('Eliminare questa UDA e tutti i suoi contenuti?')) {

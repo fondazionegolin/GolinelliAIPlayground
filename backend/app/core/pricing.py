@@ -49,6 +49,10 @@ PRICING_CATALOG: Dict[str, ModelPricing] = {
     # Image Generation (Cost per Image)
     # DALL-E 3
     "dall-e-3": ModelPricing(0.040, 0.0, per_image=True), # Standard 1024x1024
+    # GPT Image
+    "gpt-image-1": ModelPricing(0.040, 0.0, per_image=True),
+    "gpt-image-1.5": ModelPricing(0.034, 0.0, per_image=True),  # medium quality avg
+    "gpt-image-2": ModelPricing(0.020, 0.0, per_image=True),
     
     # Flux (via Golinelli API or similar - assuming cost or 0 if internal)
     "flux-schnell": ModelPricing(0.00, 0.0, per_image=True), # Check if there is a cost

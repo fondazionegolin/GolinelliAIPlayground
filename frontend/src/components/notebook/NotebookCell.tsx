@@ -186,28 +186,29 @@ export default function NotebookCell({
 
   return (
     <div
-      className={`group relative flex gap-2 rounded-2xl transition-all ${isCompact ? 'h-full' : ''} ${
-        isActive ? 'ring-2 ring-indigo-500/60 shadow-lg shadow-indigo-500/10' : ''
+      className={`group relative flex items-stretch gap-2 rounded-xl transition-all ${isCompact ? 'h-full' : ''} ${
+        isActive ? surface.activeRing : ''
       }`}
       onClick={onActivate}
     >
       {!isCompact && (
         <div className="flex w-8 flex-shrink-0 flex-col items-center gap-1 pt-2">
-          <span className="w-full text-right font-mono text-[10px] leading-5 text-slate-500">
+          <span className={`flex min-h-6 w-full items-center justify-center rounded-lg border font-mono text-[10px] leading-5 ${surface.gutter}`}>
             {isRunning ? (
-              <Loader2 className="ml-auto h-3 w-3 animate-spin text-indigo-400" />
+              <Loader2 className="h-3 w-3 animate-spin" />
             ) : (
               cell.execution_count !== null ? `[${cell.execution_count}]` : '[ ]'
             )}
           </span>
-          <GripVertical className="mt-1 h-3 w-3 cursor-grab text-slate-600 opacity-0 group-hover:opacity-100" />
+          <GripVertical className={`mt-1 h-3 w-3 cursor-grab opacity-0 transition-opacity group-hover:opacity-100 ${isLight ? 'text-slate-400' : 'text-slate-500'}`} />
         </div>
       )}
 
-      <div className={`min-w-0 flex-1 overflow-hidden rounded-2xl shadow-sm ${surface.shell} ${isCompact ? 'flex h-full flex-col' : ''}`}>
+      <div className={`relative min-w-0 flex-1 overflow-hidden rounded-xl shadow-sm ${surface.shell} ${isCompact ? 'flex h-full flex-col' : ''}`}>
+        <div className={`absolute inset-y-0 left-0 z-10 w-1.5 ${surface.accent}`} />
         <div className={`flex flex-shrink-0 items-center justify-between border-b px-3 py-2 ${surface.toolbar}`}>
-          <span className={`font-mono text-[10px] ${surface.subtle}`}>
-            {projectType === 'python' ? 'python' : 'p5js'} · ln {lineCount}
+          <span className={`rounded-full border px-2 py-0.5 font-mono text-[10px] ${surface.accentSoft}`}>
+            {projectType === 'python' ? 'python' : projectType === 'strudel' ? 'strudel' : projectType === 'game2d' ? 'game2d' : 'p5js'} · {lineCount} ln
           </span>
           <div className="flex items-center gap-1">
             {hasSelection && (
@@ -279,7 +280,7 @@ export default function NotebookCell({
                 onClick={(e) => { e.stopPropagation(); onRun() }}
                 disabled={isRunning}
                 title="Esegui (Shift+Enter)"
-                className="ml-1 flex items-center gap-1 rounded-lg bg-indigo-600 px-2 py-1 text-[10px] text-white transition-colors hover:bg-indigo-500 disabled:opacity-50"
+                className={`ml-1 flex items-center gap-1 rounded-lg px-2 py-1 text-[10px] text-white transition-colors disabled:opacity-50 ${surface.runButton}`}
               >
                 {isRunning ? (
                   <Loader2 className="h-2.5 w-2.5 animate-spin" />

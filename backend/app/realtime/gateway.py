@@ -29,6 +29,7 @@ student_nicknames: dict[str, str] = {}  # student_id -> nickname
 student_avatars: dict[str, str] = {}  # student_id -> avatar_url
 student_accents: dict[str, str] = {}  # student_id -> ui_accent
 teacher_accents: dict[str, str] = {}  # teacher_id -> ui_accent
+voice_rooms: dict[str, dict] = {}  # session_id -> active voice room state
 
 # Cache for session teacher IDs (session_id -> teacher_id)
 # In production with multiple workers, this should be in Redis
@@ -112,6 +113,46 @@ async def get_session_status(session_id: str) -> Optional[SessionStatus]:
     except Exception as e:
         print(f"[Gateway] Error fetching session status for {session_id}: {e}")
         return None
+
+
+def _voice_participant_name(user_id: str, user_type: str) -> str:
+    if user_type == "student":
+        return student_nicknames.get(user_id, "Studente")
+    return "Docente"
+
+
+def _voice_public_state(session_id: str) -> dict:
+    state = voice_rooms.get(session_id) or {}
+    queue_ids = state.get("queue", [])
+    return {
+        "session_id": session_id,
+        "active": bool(state.get("active")),
+        "teacher_id": state.get("teacher_id"),
+        "active_speaker_id": state.get("active_speaker_id"),
+        "queue": [
+            {
+                "student_id": student_id,
+                "nickname": student_nicknames.get(student_id, "Studente"),
+                "avatar_url": student_avatars.get(student_id),
+            }
+            for student_id in queue_ids
+        ],
+        "updated_at": datetime.utcnow().isoformat(),
+    }
+
+
+async def _broadcast_voice_state(session_id: str):
+    await sio.emit("voice_room_state", _voice_public_state(session_id), room=f"session:{session_id}")
+
+
+async def _require_teacher_session_access(user: dict, session_id: str) -> Optional[dict]:
+    if not user or user.get("type") != "teacher":
+        return {"error": "Teacher access required"}
+    if not session_id:
+        return {"error": "Session ID required"}
+    if not await can_user_access_session(user, session_id):
+        return {"error": "Forbidden"}
+    return None
 
 
 async def is_private_chat_enabled(session_id: str) -> bool:
@@ -335,6 +376,15 @@ async def disconnect(sid):
             }
         )
 
+        voice_state = voice_rooms.get(session_id)
+        if voice_state and voice_state.get("active"):
+            queue = voice_state.get("queue", [])
+            if user["id"] in queue:
+                voice_state["queue"] = [student_id for student_id in queue if student_id != user["id"]]
+            if voice_state.get("active_speaker_id") == user["id"]:
+                voice_state["active_speaker_id"] = None
+            await _broadcast_voice_state(session_id)
+
 
 @sio.event
 async def join_session(sid, data):
@@ -416,6 +466,7 @@ async def join_session(sid, data):
     return {
         "session_id": session_id,
         "online_students": online_users, # Keep key for frontend compat, but contains all users
+        "voice_room": _voice_public_state(session_id),
     }
 
 
@@ -747,6 +798,135 @@ async def chat_private_message(sid, data):
         )
     
     return {"success": True}
+
+
+@sio.event
+async def voice_get_state(sid, data):
+    user = connected_users.get(sid)
+    if not user:
+        return {"error": "Not authenticated"}
+
+    requested_session_id = data.get("session_id")
+    session_id = user.get("session_id") if user.get("type") == "student" else requested_session_id
+    if not session_id:
+        return {"error": "Session ID required"}
+    if not await can_user_access_session(user, session_id):
+        return {"error": "Forbidden"}
+    return _voice_public_state(session_id)
+
+
+@sio.event
+async def voice_room_start(sid, data):
+    user = connected_users.get(sid)
+    session_id = data.get("session_id")
+    error = await _require_teacher_session_access(user, session_id)
+    if error:
+        return error
+
+    voice_rooms[session_id] = {
+        "active": True,
+        "teacher_id": user["id"],
+        "active_speaker_id": None,
+        "queue": [],
+        "started_at": datetime.utcnow().isoformat(),
+    }
+    await _broadcast_voice_state(session_id)
+    return {"success": True, **_voice_public_state(session_id)}
+
+
+@sio.event
+async def voice_room_end(sid, data):
+    user = connected_users.get(sid)
+    session_id = data.get("session_id")
+    error = await _require_teacher_session_access(user, session_id)
+    if error:
+        return error
+
+    voice_rooms[session_id] = {
+        "active": False,
+        "teacher_id": user["id"],
+        "active_speaker_id": None,
+        "queue": [],
+        "ended_at": datetime.utcnow().isoformat(),
+    }
+    await _broadcast_voice_state(session_id)
+    return {"success": True, **_voice_public_state(session_id)}
+
+
+@sio.event
+async def voice_request_speak(sid, data):
+    user = connected_users.get(sid)
+    if not user or user.get("type") != "student":
+        return {"error": "Student access required"}
+
+    session_id = user.get("session_id")
+    state = voice_rooms.get(session_id)
+    if not state or not state.get("active"):
+        return {"error": "Voice room is not active"}
+
+    queue = state.setdefault("queue", [])
+    student_id = user["id"]
+    if state.get("active_speaker_id") != student_id and student_id not in queue:
+        queue.append(student_id)
+    await _broadcast_voice_state(session_id)
+    return {"success": True, **_voice_public_state(session_id)}
+
+
+@sio.event
+async def voice_cancel_request(sid, data):
+    user = connected_users.get(sid)
+    if not user or user.get("type") != "student":
+        return {"error": "Student access required"}
+
+    session_id = user.get("session_id")
+    state = voice_rooms.get(session_id)
+    if not state:
+        return {"success": True}
+
+    student_id = user["id"]
+    state["queue"] = [queued_id for queued_id in state.get("queue", []) if queued_id != student_id]
+    if state.get("active_speaker_id") == student_id:
+        state["active_speaker_id"] = None
+    await _broadcast_voice_state(session_id)
+    return {"success": True, **_voice_public_state(session_id)}
+
+
+@sio.event
+async def voice_grant_speaker(sid, data):
+    user = connected_users.get(sid)
+    session_id = data.get("session_id")
+    student_id = data.get("student_id")
+    error = await _require_teacher_session_access(user, session_id)
+    if error:
+        return error
+    if not student_id:
+        return {"error": "student_id required"}
+
+    state = voice_rooms.get(session_id)
+    if not state or not state.get("active"):
+        return {"error": "Voice room is not active"}
+
+    state["active_speaker_id"] = student_id
+    state["queue"] = [queued_id for queued_id in state.get("queue", []) if queued_id != student_id]
+    await _broadcast_voice_state(session_id)
+    return {"success": True, **_voice_public_state(session_id)}
+
+
+@sio.event
+async def voice_revoke_speaker(sid, data):
+    user = connected_users.get(sid)
+    session_id = data.get("session_id")
+    error = await _require_teacher_session_access(user, session_id)
+    if error:
+        return error
+
+    state = voice_rooms.get(session_id)
+    if not state:
+        return {"success": True}
+
+    state["active_speaker_id"] = None
+    await _broadcast_voice_state(session_id)
+    return {"success": True, **_voice_public_state(session_id)}
 
 
 @sio.event

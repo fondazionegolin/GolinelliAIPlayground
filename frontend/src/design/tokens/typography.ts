@@ -41,6 +41,12 @@ export const typographyTokens = {
       fontWeight: 500,
       letterSpacing: '0em',
     },
+    small: {
+      fontSize: '0.875rem',
+      lineHeight: 1.4,
+      fontWeight: 400,
+      letterSpacing: '0em',
+    },
     bodySm: {
       fontSize: '0.875rem',
       lineHeight: 1.4,
@@ -60,7 +66,7 @@ export const typographyTokens = {
       letterSpacing: '0em',
     },
     titleSm: {
-      fontSize: '1.25rem',
+      fontSize: '1.125rem',
       lineHeight: 1.2,
       fontWeight: 600,
       letterSpacing: '-0.025em',
@@ -76,6 +82,24 @@ export const typographyTokens = {
       lineHeight: 1.15,
       fontWeight: 700,
       letterSpacing: '-0.025em',
+    },
+    h1: {
+      fontSize: '2rem',
+      lineHeight: 1.1,
+      fontWeight: 700,
+      letterSpacing: '-0.025em',
+    },
+    h2: {
+      fontSize: '1.5rem',
+      lineHeight: 1.15,
+      fontWeight: 700,
+      letterSpacing: '-0.025em',
+    },
+    h3: {
+      fontSize: '1.125rem',
+      lineHeight: 1.25,
+      fontWeight: 600,
+      letterSpacing: '-0.01em',
     },
     display: {
       fontSize: '3rem',

@@ -165,6 +165,8 @@ function DatasetCreatorModal({
   onUse: (csvData: string) => void
   onClose: () => void
 }) {
+  const { i18n } = useTranslation()
+  const isEnglish = i18n.resolvedLanguage?.startsWith('en') ?? false
   const [columns, setColumns] = useState<ColumnDef[]>([
     { id: uid(), name: 'feature_1', type: 'numeric', categories: '', min: 0, max: 100 },
     { id: uid(), name: 'feature_2', type: 'numeric', categories: '', min: 0, max: 100 },
@@ -269,7 +271,7 @@ function DatasetCreatorModal({
             <div className="w-8 h-8 rounded-xl bg-emerald-100 flex items-center justify-center">
               <Sparkles className="h-4 w-4 text-emerald-600" />
             </div>
-            <span className="font-bold text-slate-800">Crea Dataset</span>
+            <span className="font-bold text-slate-800">{isEnglish ? 'Create Dataset' : 'Crea Dataset'}</span>
           </div>
           <button
             onClick={onClose}
@@ -284,7 +286,7 @@ function DatasetCreatorModal({
 
           {/* Column Configurator */}
           <div>
-            <h3 className="text-sm font-semibold text-slate-700 mb-3">Colonne</h3>
+            <h3 className="text-sm font-semibold text-slate-700 mb-3">{isEnglish ? 'Columns' : 'Colonne'}</h3>
             <div className="space-y-2">
               {columns.map((col, idx) => (
                 <div key={col.id} className="flex items-start gap-2 p-3 rounded-xl bg-slate-50 border border-slate-200">
@@ -293,7 +295,7 @@ function DatasetCreatorModal({
                     <Input
                       value={col.name}
                       onChange={(e) => updateColumn(col.id, { name: e.target.value })}
-                      placeholder="es. vendite"
+                      placeholder={isEnglish ? 'e.g. sales' : 'es. vendite'}
                       className="h-8 text-sm"
                     />
                     <select
@@ -301,15 +303,15 @@ function DatasetCreatorModal({
                       value={col.type}
                       onChange={(e) => updateColumn(col.id, { type: e.target.value as ColumnDef['type'] })}
                     >
-                      <option value="numeric">Numerico</option>
-                      <option value="categorical">Categorico</option>
-                      <option value="boolean">Booleano</option>
+                      <option value="numeric">{isEnglish ? 'Numeric' : 'Numerico'}</option>
+                      <option value="categorical">{isEnglish ? 'Categorical' : 'Categorico'}</option>
+                      <option value="boolean">{isEnglish ? 'Boolean' : 'Booleano'}</option>
                     </select>
                     {col.type === 'categorical' && (
                       <Input
                         value={col.categories}
                         onChange={(e) => updateColumn(col.id, { categories: e.target.value })}
-                        placeholder="es. nord,sud,est,ovest"
+                        placeholder={isEnglish ? 'e.g. north,south,east,west' : 'es. nord,sud,est,ovest'}
                         className="h-8 text-sm sm:col-span-2"
                       />
                     )}
@@ -347,13 +349,13 @@ function DatasetCreatorModal({
               className="mt-2 flex items-center gap-1.5 text-sm text-emerald-600 hover:text-emerald-700 font-medium"
             >
               <Plus className="h-4 w-4" />
-              Aggiungi colonna
+              {isEnglish ? 'Add column' : 'Aggiungi colonna'}
             </button>
           </div>
 
           {/* Row count */}
           <div>
-            <label className="block text-sm font-semibold text-slate-700 mb-2">Numero di righe</label>
+            <label className="block text-sm font-semibold text-slate-700 mb-2">{isEnglish ? 'Number of rows' : 'Numero di righe'}</label>
             <Input
               type="number"
               min={10}
@@ -367,9 +369,9 @@ function DatasetCreatorModal({
           {/* Correlations */}
           {numericCols.length >= 2 && (
             <div>
-              <h3 className="text-sm font-semibold text-slate-700 mb-3">Correlazioni statistiche</h3>
+              <h3 className="text-sm font-semibold text-slate-700 mb-3">{isEnglish ? 'Statistical correlations' : 'Correlazioni statistiche'}</h3>
               {correlations.length === 0 && (
-                <p className="text-xs text-slate-400 mb-2">Nessuna correlazione definita. I dati saranno casuali e indipendenti.</p>
+                <p className="text-xs text-slate-400 mb-2">{isEnglish ? 'No correlation defined. Data will be random and independent.' : 'Nessuna correlazione definita. I dati saranno casuali e indipendenti.'}</p>
               )}
               <div className="space-y-2">
                 {correlations.map(corr => (
@@ -398,11 +400,11 @@ function DatasetCreatorModal({
                       value={corr.type}
                       onChange={(e) => updateCorrelation(corr.id, { type: e.target.value as CorrelationDef['type'] })}
                     >
-                      <option value="linear">Lineare</option>
-                      <option value="polynomial">Polinomiale</option>
-                      <option value="inverse">Inversa</option>
-                      <option value="exponential">Esponenziale</option>
-                      <option value="none">Nessuna</option>
+                      <option value="linear">{isEnglish ? 'Linear' : 'Lineare'}</option>
+                      <option value="polynomial">{isEnglish ? 'Polynomial' : 'Polinomiale'}</option>
+                      <option value="inverse">{isEnglish ? 'Inverse' : 'Inversa'}</option>
+                      <option value="exponential">{isEnglish ? 'Exponential' : 'Esponenziale'}</option>
+                      <option value="none">{isEnglish ? 'None' : 'Nessuna'}</option>
                     </select>
                     <div className="flex items-center gap-2">
                       <input
@@ -426,26 +428,26 @@ function DatasetCreatorModal({
                 ))}
               </div>
               <button
-                onClick={addCorrelation}
-                className="mt-2 flex items-center gap-1.5 text-sm text-blue-600 hover:text-blue-700 font-medium"
-              >
-                <Plus className="h-4 w-4" />
-                Aggiungi correlazione
-              </button>
-            </div>
-          )}
+              onClick={addCorrelation}
+              className="mt-2 flex items-center gap-1.5 text-sm text-blue-600 hover:text-blue-700 font-medium"
+            >
+              <Plus className="h-4 w-4" />
+              {isEnglish ? 'Add correlation' : 'Aggiungi correlazione'}
+            </button>
+          </div>
+        )}
 
           {/* Generate button */}
           <Button onClick={handleGenerate} className="w-full bg-emerald-600 hover:bg-emerald-700 text-white h-10">
             <Sparkles className="h-4 w-4 mr-2" />
-            Genera Dataset
+            {isEnglish ? 'Generate Dataset' : 'Genera Dataset'}
           </Button>
 
           {/* Preview & output */}
           {generatedCsv && (
             <div className="space-y-4">
               <div>
-                <p className="text-sm font-semibold text-slate-700 mb-2">Anteprima (prime 5 righe)</p>
+                <p className="text-sm font-semibold text-slate-700 mb-2">{isEnglish ? 'Preview (first 5 rows)' : 'Anteprima (prime 5 righe)'}</p>
                 <div className="rounded-xl border border-slate-200 overflow-hidden">
                   <div className="max-h-40 overflow-y-auto">
                     <table className="w-full text-xs">
@@ -471,22 +473,22 @@ function DatasetCreatorModal({
                   </div>
                 </div>
                 <p className="text-xs text-slate-400 mt-1">
-                  {rowCount} righe totali · {columns.length} colonne
+                  {isEnglish ? `${rowCount} total rows · ${columns.length} columns` : `${rowCount} righe totali · ${columns.length} colonne`}
                 </p>
               </div>
 
               <div className="flex flex-wrap gap-2">
                 <Button variant="outline" size="sm" onClick={handleDownload} className="gap-1.5">
                   <Download className="h-4 w-4" />
-                  Scarica CSV
+                  {isEnglish ? 'Download CSV' : 'Scarica CSV'}
                 </Button>
                 <Button variant="outline" size="sm" onClick={handleCopy} className="gap-1.5">
                   <Clipboard className="h-4 w-4" />
-                  {copied ? 'Copiato!' : 'Copia CSV'}
+                  {copied ? (isEnglish ? 'Copied!' : 'Copiato!') : (isEnglish ? 'Copy CSV' : 'Copia CSV')}
                 </Button>
                 <Button size="sm" onClick={handleUse} className="gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white ml-auto">
                   <ChevronRight className="h-4 w-4" />
-                  Usa nel classificatore
+                  {isEnglish ? 'Use in classifier' : 'Usa nel classificatore'}
                 </Button>
               </div>
             </div>
@@ -506,7 +508,8 @@ function uid(): string {
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export default function ClassificationModule({ sessionId }: { sessionId?: string } = {}) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
+  const isEnglish = i18n.resolvedLanguage?.startsWith('en') ?? false
   const [mode, setMode] = useState<ClassificationMode | null>(null)
   const [showDatasetCreator, setShowDatasetCreator] = useState(false)
   const [pendingCsvData, setPendingCsvData] = useState<string | null>(null)
@@ -522,6 +525,7 @@ export default function ClassificationModule({ sessionId }: { sessionId?: string
         <MLLabHome
           onSelect={setMode}
           t={t}
+          isEnglish={isEnglish}
         />
       </>
     )
@@ -666,105 +670,93 @@ function DataIllustration() {
 function MLLabHome({
   onSelect,
   t,
+  isEnglish,
 }: {
   onSelect: (mode: ClassificationMode) => void
   t: (key: string) => string
+  isEnglish: boolean
 }) {
   const modes = [
     {
       key: 'images' as const,
       icon: Camera,
-      gradient: 'from-rose-500 to-pink-600',
-      gradientLight: 'from-rose-50 to-pink-50',
-      borderColor: 'border-rose-200',
-      hoverBorder: 'hover:border-rose-400',
-      accentColor: 'text-rose-600',
-      badgeBg: 'bg-rose-100 text-rose-700',
+      iconWrap: 'bg-rose-50 text-rose-700',
+      badgeBg: 'border border-rose-200 bg-rose-50 text-rose-700',
+      cardBorder: 'hover:border-rose-300',
+      panelBg: 'bg-rose-50/70',
       title: t('classification.mode_images'),
       description: t('classification.mode_images_desc'),
-      features: ['Webcam in tempo reale', 'Addestramento in-browser', 'Fino a 10 classi'],
+      features: isEnglish ? ['Real-time webcam', 'In-browser training', 'Up to 10 classes'] : ['Webcam in tempo reale', 'Addestramento in-browser', 'Fino a 10 classi'],
       illustration: ImagesIllustration,
     },
     {
       key: 'text' as const,
       icon: Type,
-      gradient: 'from-blue-500 to-indigo-600',
-      gradientLight: 'from-blue-50 to-indigo-50',
-      borderColor: 'border-blue-200',
-      hoverBorder: 'hover:border-blue-400',
-      accentColor: 'text-blue-600',
-      badgeBg: 'bg-blue-100 text-blue-700',
+      iconWrap: 'bg-blue-50 text-blue-700',
+      badgeBg: 'border border-blue-200 bg-blue-50 text-blue-700',
+      cardBorder: 'hover:border-blue-300',
+      panelBg: 'bg-blue-50/70',
       title: t('classification.mode_text'),
       description: t('classification.mode_text_desc'),
-      features: ['Analisi del sentiment', 'Dataset generabili via AI', 'Classificazione multiclasse'],
+      features: isEnglish ? ['Sentiment analysis', 'AI-generated datasets', 'Multiclass classification'] : ['Analisi del sentiment', 'Dataset generabili via AI', 'Classificazione multiclasse'],
       illustration: TextIllustration,
     },
     {
       key: 'data' as const,
       icon: Database,
-      gradient: 'from-emerald-500 to-teal-600',
-      gradientLight: 'from-emerald-50 to-teal-50',
-      borderColor: 'border-emerald-200',
-      hoverBorder: 'hover:border-emerald-400',
-      accentColor: 'text-emerald-600',
-      badgeBg: 'bg-emerald-100 text-emerald-700',
+      iconWrap: 'bg-emerald-50 text-emerald-700',
+      badgeBg: 'border border-emerald-200 bg-emerald-50 text-emerald-700',
+      cardBorder: 'hover:border-emerald-300',
+      panelBg: 'bg-emerald-50/70',
       title: t('classification.mode_data'),
       description: t('classification.mode_data_desc'),
-      features: ['Import CSV / Excel', 'Visualizzazione interattiva', 'Modello personalizzabile'],
+      features: isEnglish ? ['Import CSV / Excel', 'Interactive visualization', 'Customizable model'] : ['Import CSV / Excel', 'Visualizzazione interattiva', 'Modello personalizzabile'],
       illustration: DataIllustration,
     },
   ]
 
   return (
-    <div className="min-h-full bg-gradient-to-br from-slate-50 via-white to-slate-50 p-6 md:p-10">
-      <div className="max-w-6xl mx-auto">
-
-        {/* Hero header */}
+    <div className="min-h-full bg-white px-4 pb-24 pt-0 md:px-6 md:pb-8 md:pt-0">
+      <div className="w-full">
         <motion.div
           initial={{ opacity: 0, y: -16 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5 }}
-          className="text-center mb-10"
+          transition={{ duration: 0.45 }}
+          className="border-b border-slate-200 py-6 md:py-7"
         >
-          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-gradient-to-r from-violet-100 to-indigo-100 border border-violet-200/60 mb-4">
-            <Sparkles className="h-3.5 w-3.5 text-violet-600" />
-            <span className="text-xs font-semibold text-violet-700 uppercase tracking-wide">Machine Learning Lab</span>
-          </div>
-          <h1 className="text-3xl md:text-4xl font-extrabold text-slate-900 mb-3">
-            {t('classification.title')}
-          </h1>
-          <p className="text-base text-slate-500 max-w-xl mx-auto leading-relaxed">
-            {t('classification.subtitle')}
-          </p>
-        </motion.div>
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div className="max-w-3xl">
+              <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5">
+                <Sparkles className="h-3.5 w-3.5 text-violet-600" />
+                <span className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-600">Machine Learning Lab</span>
+              </div>
+              <h1 className="mt-4 text-3xl font-extrabold tracking-tight text-slate-950 md:text-4xl">
+                {t('classification.title')}
+              </h1>
+              <p className="mt-3 max-w-2xl text-base leading-7 text-slate-600">
+                {t('classification.subtitle')}
+              </p>
+            </div>
 
-        {/* Educational banner */}
-        <motion.div
-          initial={{ opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.45, delay: 0.1 }}
-          className="mb-8 rounded-2xl bg-gradient-to-r from-indigo-600 to-violet-600 p-5 flex gap-4 shadow-lg shadow-indigo-200/50"
-        >
-          <div className="flex-shrink-0 w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center">
-            <Lightbulb className="h-5 w-5 text-white" />
-          </div>
-          <div>
-            <p className="text-sm font-bold text-white mb-1.5">Come usare il ML Lab</p>
-            <ul className="text-xs text-indigo-100 space-y-1">
-              <li className="flex items-start gap-2">
-                <span className="mt-1 inline-block w-1.5 h-1.5 rounded-full bg-indigo-300 flex-shrink-0" />
-                Puoi <strong className="text-white mx-0.5">generare dataset</strong> nella sezione Chatbot (assistente Dataset Generator) e usarli qui per la classificazione testo e dati.
-              </li>
-              <li className="flex items-start gap-2">
-                <span className="mt-1 inline-block w-1.5 h-1.5 rounded-full bg-violet-300 flex-shrink-0" />
-                Puoi <strong className="text-white mx-0.5">classificare immagini</strong> addestrando un modello direttamente dalla tua fotocamera in tempo reale!
-              </li>
-            </ul>
+            <div className="max-w-md rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
+              <div className="flex items-start gap-3">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white text-slate-700">
+                  <Lightbulb className="h-4 w-4" />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-slate-900">{isEnglish ? 'Recommended flow' : 'Flusso consigliato'}</p>
+                  <p className="mt-1 text-xs leading-5 text-slate-600">
+                    {isEnglish
+                      ? 'Prepare data or examples, choose the right mode, and validate the results directly in the browser. You can also generate datasets in the chatbot and import them here.'
+                      : 'Prepara dati o esempi, scegli la modalita giusta e verifica i risultati direttamente nel browser. Puoi anche generare dataset dal chatbot e importarli qui.'}
+                  </p>
+                </div>
+              </div>
+            </div>
           </div>
         </motion.div>
 
-        {/* Mode cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 gap-4 py-5 md:grid-cols-3">
           {modes.map((m, i) => {
             const Illustration = m.illustration
             return (
@@ -773,34 +765,25 @@ function MLLabHome({
                 initial={{ opacity: 0, y: 30 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.5, delay: 0.15 + i * 0.1 }}
-                whileHover={{ y: -6, scale: 1.01 }}
+                whileHover={{ y: -3 }}
                 whileTap={{ scale: 0.97 }}
                 onClick={() => onSelect(m.key)}
-                className={`group relative rounded-2xl border-2 ${m.borderColor} ${m.hoverBorder} bg-white shadow-md hover:shadow-xl transition-all duration-300 cursor-pointer overflow-hidden`}
+                className={`group relative cursor-pointer overflow-hidden rounded-xl border border-slate-200 bg-white transition-all duration-250 ${m.cardBorder}`}
               >
-                {/* Illustration area */}
-                <div className={`relative h-44 bg-gradient-to-br ${m.gradientLight} p-4 overflow-hidden`}>
-                  <div className="absolute inset-0 opacity-10">
-                    <div className="absolute -top-4 -right-4 w-24 h-24 rounded-full bg-current" />
-                    <div className="absolute -bottom-6 -left-6 w-32 h-32 rounded-full bg-current" />
-                  </div>
+                <div className={`relative h-40 overflow-hidden border-b border-slate-200 p-4 ${m.panelBg}`}>
                   <Illustration />
                 </div>
 
-                {/* Content */}
                 <div className="p-5">
-                  {/* Icon + title */}
-                  <div className="flex items-center gap-3 mb-3">
-                    <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${m.gradient} flex items-center justify-center shadow-md`}>
-                      <m.icon className="h-5 w-5 text-white" />
+                  <div className="mb-3 flex items-center gap-3">
+                    <div className={`flex h-10 w-10 items-center justify-center rounded-lg ${m.iconWrap}`}>
+                      <m.icon className="h-5 w-5" />
                     </div>
                     <h3 className="text-base font-bold text-slate-800 leading-tight">{m.title}</h3>
                   </div>
 
-                  {/* Description */}
                   <p className="text-sm text-slate-500 leading-relaxed mb-4">{m.description}</p>
 
-                  {/* Feature pills */}
                   <div className="flex flex-wrap gap-1.5 mb-4">
                     {m.features.map(f => (
                       <span key={f} className={`text-[11px] font-medium px-2.5 py-0.5 rounded-full ${m.badgeBg}`}>
@@ -809,31 +792,26 @@ function MLLabHome({
                     ))}
                   </div>
 
-                  {/* CTA */}
-                  <div className={`flex items-center gap-1.5 text-sm font-semibold ${m.accentColor} group-hover:gap-2.5 transition-all duration-200`}>
-                    Inizia ora
+                  <div className="flex items-center gap-1.5 text-sm font-semibold text-slate-900 transition-all duration-200 group-hover:gap-2.5">
+                    {isEnglish ? 'Start now' : 'Inizia ora'}
                     <ChevronRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
                   </div>
-                </div>
-
-                {/* Top-right badge */}
-                <div className={`absolute top-3 right-3 w-8 h-8 rounded-full bg-gradient-to-br ${m.gradient} flex items-center justify-center shadow-lg opacity-80 group-hover:opacity-100 transition-opacity`}>
-                  <m.icon className="h-4 w-4 text-white" />
                 </div>
               </motion.div>
             )
           })}
         </div>
 
-        {/* Footer note */}
         <motion.p
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ delay: 0.6 }}
-          className="mt-8 text-xs text-slate-400 text-center flex items-center justify-center gap-1.5"
+          className="border-t border-slate-200 py-4 text-center text-xs text-slate-400"
         >
-          <Info className="h-3.5 w-3.5" />
-          Il processing avviene interamente nel browser — nessun dato viene inviato al server.
+          <span className="inline-flex items-center justify-center gap-1.5">
+            <Info className="h-3.5 w-3.5" />
+            {isEnglish ? 'Processing happens entirely in the browser. No data is sent to the server.' : 'Il processing avviene interamente nel browser. Nessun dato viene inviato al server.'}
+          </span>
         </motion.p>
       </div>
     </div>
@@ -857,6 +835,8 @@ function SubViewHeader({
   iconBg: string
   iconColor: string
 }) {
+  const { i18n } = useTranslation()
+  const isEnglish = i18n.resolvedLanguage?.startsWith('en') ?? false
   return (
     <div className="flex items-center gap-3 mb-6">
       <Button variant="ghost" size="sm" onClick={onBack} className="gap-1.5 text-slate-500 hover:text-slate-700 flex-shrink-0">
@@ -872,7 +852,7 @@ function SubViewHeader({
       {onOpenDatasetCreator && (
         <Button size="sm" variant="outline" onClick={onOpenDatasetCreator} className="gap-1.5 flex-shrink-0">
           <Sparkles className="h-4 w-4" />
-          Crea Dataset
+          {isEnglish ? 'Create Dataset' : 'Crea Dataset'}
         </Button>
       )}
     </div>
@@ -882,11 +862,12 @@ function SubViewHeader({
 // ─── ImageClassification ──────────────────────────────────────────────────────
 
 function ImageClassification({ onBack, sessionId }: { onBack: () => void; sessionId?: string }) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
+  const isEnglish = i18n.resolvedLanguage?.startsWith('en') ?? false
   const { toast } = useToast()
   const [classes, setClasses] = useState<ImageClass[]>([
-    { id: '1', name: 'Classe 1', samples: [], color: CLASS_COLORS[0] },
-    { id: '2', name: 'Classe 2', samples: [], color: CLASS_COLORS[1] },
+    { id: '1', name: isEnglish ? 'Class 1' : 'Classe 1', samples: [], color: CLASS_COLORS[0] },
+    { id: '2', name: isEnglish ? 'Class 2' : 'Classe 2', samples: [], color: CLASS_COLORS[1] },
   ])
   const [isCapturing, setIsCapturing] = useState<string | null>(null)
   const [isTraining, setIsTraining] = useState(false)
@@ -966,7 +947,7 @@ function ImageClassification({ onBack, sessionId }: { onBack: () => void; sessio
     const newId = String(classes.length + 1)
     setClasses([...classes, {
       id: newId,
-      name: `Classe ${newId}`,
+      name: `${isEnglish ? 'Class' : 'Classe'} ${newId}`,
       samples: [],
       color: CLASS_COLORS[classes.length]
     }])
@@ -1020,7 +1001,12 @@ function ImageClassification({ onBack, sessionId }: { onBack: () => void; sessio
       c.id === classId ? { ...c, samples: [...c.samples, ...newSamples].slice(0, 100) } : c
     ))
     setIsUploadingImages(null)
-    toast({ title: `${newSamples.length} immagini aggiunte`, description: `Classe aggiornata con ${newSamples.length} nuovi campioni.` })
+    toast({
+      title: isEnglish ? `${newSamples.length} images added` : `${newSamples.length} immagini aggiunte`,
+      description: isEnglish
+        ? `Class updated with ${newSamples.length} new samples.`
+        : `Classe aggiornata con ${newSamples.length} nuovi campioni.`
+    })
   }
 
   // ── Model save / share / load ────────────────────────────────────────────────
@@ -1056,7 +1042,7 @@ function ImageClassification({ onBack, sessionId }: { onBack: () => void; sessio
       const a = document.createElement('a')
       a.href = url; a.download = name; a.click()
       URL.revokeObjectURL(url)
-    } catch { toast({ title: 'Errore salvataggio', variant: 'destructive' }) }
+    } catch { toast({ title: isEnglish ? 'Save error' : 'Errore salvataggio', variant: 'destructive' }) }
   }
 
   const shareModelToChat = async () => {
@@ -1073,8 +1059,8 @@ function ImageClassification({ onBack, sessionId }: { onBack: () => void; sessio
         `🤖 Modello ML condiviso: *${classes.map(c => c.name).join(' / ')}*\nScarica il file e importalo nel Lab ML per usarlo direttamente.`,
         [{ url: fileUrl, name, type: 'application/json' }]
       )
-      toast({ title: 'Modello condiviso!', description: 'Il modello è stato inviato nella chat di classe.' })
-    } catch { toast({ title: 'Errore condivisione', variant: 'destructive' }) }
+      toast({ title: isEnglish ? 'Model shared!' : 'Modello condiviso!', description: isEnglish ? 'The model was sent to the class chat.' : 'Il modello è stato inviato nella chat di classe.' })
+    } catch { toast({ title: isEnglish ? 'Share error' : 'Errore condivisione', variant: 'destructive' }) }
     finally { setIsSharingModel(false) }
   }
 
@@ -1094,8 +1080,8 @@ function ImageClassification({ onBack, sessionId }: { onBack: () => void; sessio
       setClasses((data.classNames as string[]).map((name, i) => ({
         id: String(i + 1), name, samples: [], color: CLASS_COLORS[i % CLASS_COLORS.length],
       })))
-      toast({ title: 'Modello caricato!', description: `Classi: ${(data.classNames as string[]).join(', ')}` })
-    } catch { toast({ title: 'Errore caricamento modello', description: 'File non valido o corrotto.', variant: 'destructive' }) }
+      toast({ title: isEnglish ? 'Model loaded!' : 'Modello caricato!', description: `${isEnglish ? 'Classes' : 'Classi'}: ${(data.classNames as string[]).join(', ')}` })
+    } catch { toast({ title: isEnglish ? 'Model load error' : 'Errore caricamento modello', description: isEnglish ? 'Invalid or corrupted file.' : 'File non valido o corrotto.', variant: 'destructive' }) }
   }
 
   const trainModel = async () => {
@@ -1225,11 +1211,11 @@ function ImageClassification({ onBack, sessionId }: { onBack: () => void; sessio
     : null
 
   return (
-    <div className="p-6 md:p-8">
-      <div className="max-w-5xl mx-auto">
+    <div className="h-full overflow-y-auto px-4 pb-24 pt-0 md:px-6 md:pb-8 md:pt-0">
+      <div className="w-full">
         <SubViewHeader
           icon={Camera}
-          title="Classificazione Immagini"
+          title={isEnglish ? 'Image Classification' : 'Classificazione Immagini'}
           onBack={onBack}
           iconBg="bg-rose-100"
           iconColor="text-rose-600"
@@ -1292,13 +1278,13 @@ function ImageClassification({ onBack, sessionId }: { onBack: () => void; sessio
                     )}
                   </Button>
                   <div className="flex gap-2">
-                    <Button variant="outline" className="flex-1" onClick={downloadModel} title="Scarica modello">
-                      <Download className="h-4 w-4 mr-1" /> Scarica
+                    <Button variant="outline" className="flex-1" onClick={downloadModel} title={isEnglish ? 'Download model' : 'Scarica modello'}>
+                      <Download className="h-4 w-4 mr-1" /> {isEnglish ? 'Download' : 'Scarica'}
                     </Button>
                     {sessionId && (
-                      <Button variant="outline" className="flex-1" onClick={shareModelToChat} disabled={isSharingModel} title="Condividi in chat di classe">
+                      <Button variant="outline" className="flex-1" onClick={shareModelToChat} disabled={isSharingModel} title={isEnglish ? 'Share in class chat' : 'Condividi in chat di classe'}>
                         {isSharingModel ? <Loader2 className="h-4 w-4 animate-spin" /> : <Share2 className="h-4 w-4 mr-1" />}
-                        Condividi
+                        {isEnglish ? 'Share' : 'Condividi'}
                       </Button>
                     )}
                   </div>
@@ -1318,9 +1304,9 @@ function ImageClassification({ onBack, sessionId }: { onBack: () => void; sessio
                     disabled={isTraining || totalSamples < 10}
                   >
                     {isTraining ? (
-                      <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Training...</>
+                      <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> {t('classification.training')}</>
                     ) : (
-                      <><BarChart3 className="h-4 w-4 mr-2" /> Addestra Modello ({totalSamples} samples)</>
+                      <><BarChart3 className="h-4 w-4 mr-2" /> {t('classification.train_btn')} ({totalSamples} samples)</>
                     )}
                   </Button>
                   <div className="relative">
@@ -1332,7 +1318,7 @@ function ImageClassification({ onBack, sessionId }: { onBack: () => void; sessio
                       onChange={e => { if (e.target.files?.[0]) loadModelFromFile(e.target.files[0]) }}
                     />
                     <Button variant="outline" className="w-full" onClick={() => loadModelInputRef.current?.click()}>
-                      <FolderOpen className="h-4 w-4 mr-2" /> Carica modello
+                      <FolderOpen className="h-4 w-4 mr-2" /> {isEnglish ? 'Load model' : 'Carica modello'}
                     </Button>
                   </div>
                 </div>
@@ -1344,14 +1330,14 @@ function ImageClassification({ onBack, sessionId }: { onBack: () => void; sessio
           <Card className="lg:col-span-2 rounded-xl border-slate-200">
             <CardHeader className="pb-2">
               <div className="flex items-center justify-between">
-                <CardTitle className="text-base">Classi ({classes.length}/5)</CardTitle>
+                <CardTitle className="text-base">{t('classification.classes_count', { count: classes.length })}</CardTitle>
                 <Button
                   size="sm"
                   variant="outline"
                   onClick={addClass}
                   disabled={classes.length >= 5}
                 >
-                  <Plus className="h-4 w-4 mr-1" /> Aggiungi
+                  <Plus className="h-4 w-4 mr-1" /> {t('classification.add_class')}
                 </Button>
               </div>
             </CardHeader>
@@ -1400,7 +1386,7 @@ function ImageClassification({ onBack, sessionId }: { onBack: () => void; sessio
                       disabled={cls.samples.length >= 100 || (isCapturing !== null && isCapturing !== cls.id)}
                     >
                       <Camera className="h-5 w-5 mr-2" />
-                      {isCapturing === cls.id ? 'Rilascia...' : 'Tieni premuto'}
+                      {isCapturing === cls.id ? t('classification.release_btn') : t('classification.hold_btn')}
                     </Button>
                     <div className="relative">
                       <input
@@ -1415,7 +1401,7 @@ function ImageClassification({ onBack, sessionId }: { onBack: () => void; sessio
                         size="sm"
                         variant="outline"
                         className="h-12 w-12"
-                        title="Carica immagini da file"
+                        title={isEnglish ? 'Upload images from files' : 'Carica immagini da file'}
                         onClick={() => fileInputRefs.current.get(cls.id)?.click()}
                         disabled={cls.samples.length >= 100 || isUploadingImages === cls.id}
                       >
@@ -1437,7 +1423,7 @@ function ImageClassification({ onBack, sessionId }: { onBack: () => void; sessio
                     ))}
                     {cls.samples.length === 0 && (
                       <p className="text-xs text-muted-foreground">
-                        Nessun sample. Tieni premuto il pulsante per acquisire.
+                        {t('classification.no_samples')}
                       </p>
                     )}
                   </div>
@@ -1450,7 +1436,7 @@ function ImageClassification({ onBack, sessionId }: { onBack: () => void; sessio
           {isPredicting && predictions.length > 0 && (
             <Card className="lg:col-span-3 rounded-xl border-slate-200">
               <CardHeader className="pb-2">
-                <CardTitle className="text-base">Risultati Classificazione</CardTitle>
+                <CardTitle className="text-base">{t('classification.results_title')}</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="space-y-2">
@@ -1478,10 +1464,9 @@ function ImageClassification({ onBack, sessionId }: { onBack: () => void; sessio
                   <div className="flex items-start gap-2">
                     <Lightbulb className="h-4 w-4 text-amber-600 mt-0.5" />
                     <div className="text-xs text-amber-800">
-                      <strong>Spiegazione:</strong> Il modello analizza i pixel dell'immagine (64x64, {64*64*3} valori RGB normalizzati)
-                      attraverso una rete neurale con 2 layer densi. La classe "{topPrediction?.className}" ha la confidenza più alta
-                      ({topPrediction?.confidence.toFixed(1)}%) perché i pattern visivi catturati sono più simili ai {classes.find(c => c.name === topPrediction?.className)?.samples.length || 0} samples
-                      di training di quella classe.
+                      <strong>{isEnglish ? 'Explanation:' : 'Spiegazione:'}</strong> {isEnglish
+                        ? `The model analyzes image pixels (64x64, ${64*64*3} normalized RGB values) through a neural network with 2 dense layers. The class "${topPrediction?.className}" has the highest confidence (${topPrediction?.confidence.toFixed(1)}%) because the captured visual patterns are more similar to the ${classes.find(c => c.name === topPrediction?.className)?.samples.length || 0} training samples of that class.`
+                        : `Il modello analizza i pixel dell'immagine (64x64, ${64*64*3} valori RGB normalizzati) attraverso una rete neurale con 2 layer densi. La classe "${topPrediction?.className}" ha la confidenza più alta (${topPrediction?.confidence.toFixed(1)}%) perché i pattern visivi catturati sono più simili ai ${classes.find(c => c.name === topPrediction?.className)?.samples.length || 0} samples di training di quella classe.`}
                     </div>
                   </div>
                 </div>
@@ -1507,6 +1492,8 @@ function TextClassification({
   pendingCsvData?: string | null
   onCsvConsumed: () => void
 }) {
+  const { t, i18n } = useTranslation()
+  const isEnglish = i18n.resolvedLanguage?.startsWith('en') ?? false
   const [samples, setSamples] = useState<TextSample[]>([])
   const [isTraining, setIsTraining] = useState(false)
   const [model, setModel] = useState<tf.LayersModel | null>(null)
@@ -1578,7 +1565,7 @@ function TextClassification({
 
   const trainModel = async () => {
     if (samples.length < 10 || labels.length < 2) {
-      alert('Carica almeno 10 samples con almeno 2 etichette diverse')
+      alert(t('classification.min_samples_text'))
       return
     }
 
@@ -1606,7 +1593,7 @@ function TextClassification({
 
       const vocabSize = vocab.size
       if (vocabSize < 5) {
-        alert('Vocabolario troppo piccolo. Carica più testi con parole diverse.')
+        alert(t('classification.vocab_too_small'))
         setIsTraining(false)
         return
       }
@@ -1678,11 +1665,11 @@ function TextClassification({
   }
 
   return (
-    <div className="p-6 md:p-8">
-      <div className="max-w-5xl mx-auto">
+    <div className="h-full overflow-y-auto px-4 pb-24 pt-0 md:px-6 md:pb-8 md:pt-0">
+      <div className="w-full">
         <SubViewHeader
           icon={Type}
-          title="Classificazione Testo"
+          title={isEnglish ? 'Text Classification' : 'Classificazione Testo'}
           onBack={onBack}
           onOpenDatasetCreator={onOpenDatasetCreator}
           iconBg="bg-blue-100"
@@ -1695,7 +1682,7 @@ function TextClassification({
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">
                 <Upload className="h-5 w-5" />
-                Carica Dataset
+                {t('classification.upload_dataset')}
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -1779,20 +1766,20 @@ function TextClassification({
                 />
                 <Button onClick={() => fileInputRef.current?.click()}>
                   <Upload className="h-4 w-4 mr-2" />
-                  Seleziona CSV
+                  {t('classification.select_csv')}
                 </Button>
                 <p className="text-xs text-muted-foreground mt-2">
-                  Formato: testo,etichetta (una riga per sample)
+                  {t('classification.format_hint')}
                 </p>
                 <p className="text-xs text-blue-500 mt-1">
-                  Puoi anche trascinare un CSV qui
+                  {t('classification.drag_hint')}
                 </p>
               </div>
 
               {samples.length > 0 && (
                 <div className="space-y-2">
                   <p className="text-sm font-medium">
-                    {samples.length} samples caricati
+                    {t('classification.samples_loaded', { count: samples.length })}
                   </p>
                   <div className="flex flex-wrap gap-1">
                     {labels.map((label, idx) => (
@@ -1814,7 +1801,7 @@ function TextClassification({
                     ))}
                     {samples.length > 10 && (
                       <p className="text-muted-foreground mt-1">
-                        ...e altri {samples.length - 10} samples
+                        {t('classification.more_samples', { count: samples.length - 10 })}
                       </p>
                     )}
                   </div>
@@ -1825,9 +1812,9 @@ function TextClassification({
                     disabled={isTraining || samples.length < 10}
                   >
                     {isTraining ? (
-                      <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Training...</>
+                      <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> {t('classification.training')}</>
                     ) : (
-                      <><BarChart3 className="h-4 w-4 mr-2" /> Addestra Modello</>
+                      <><BarChart3 className="h-4 w-4 mr-2" /> {t('classification.train_model')}</>
                     )}
                   </Button>
                 </div>
@@ -1840,7 +1827,7 @@ function TextClassification({
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">
                 <Type className="h-5 w-5" />
-                Testa Classificazione
+                {t('classification.test_title')}
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -1849,11 +1836,11 @@ function TextClassification({
                   <textarea
                     value={testText}
                     onChange={(e) => setTestText(e.target.value)}
-                    placeholder="Inserisci un testo da classificare..."
+                    placeholder={t('classification.classify_placeholder')}
                     className="w-full h-32 p-3 border rounded-xl resize-none text-sm"
                   />
                   <Button onClick={predict} disabled={!testText.trim()}>
-                    Classifica
+                    {t('classification.classify_btn')}
                   </Button>
 
                   {prediction && (
@@ -1864,7 +1851,7 @@ function TextClassification({
                           <span className="font-bold">{prediction.label}</span>
                         </div>
                         <p className="text-sm text-muted-foreground mt-1">
-                          Confidenza: {prediction.confidence.toFixed(1)}%
+                          {isEnglish ? 'Confidence' : 'Confidenza'}: {prediction.confidence.toFixed(1)}%
                         </p>
                       </div>
 
@@ -1872,11 +1859,9 @@ function TextClassification({
                         <div className="flex items-start gap-2">
                           <Lightbulb className="h-4 w-4 text-amber-600 mt-0.5" />
                           <div className="text-xs text-amber-800">
-                            <strong>Spiegazione:</strong> Il modello usa un approccio Bag-of-Words con {vocabulary.size} parole nel vocabolario.
-                            Il testo inserito è stato convertito in un vettore di frequenze normalizzate, poi elaborato da una rete neurale
-                            con 2 layer densi. La classe "{prediction.label}" è stata scelta perché le parole nel testo sono statisticamente
-                            più associate a questa etichetta nei {samples.filter(s => s.label === prediction.label).length} esempi di training
-                            di quella categoria.
+                            <strong>{isEnglish ? 'Explanation:' : 'Spiegazione:'}</strong> {isEnglish
+                              ? `The model uses a Bag-of-Words approach with ${vocabulary.size} words in the vocabulary. The input text is converted into a normalized frequency vector and then processed by a neural network with 2 dense layers. The class "${prediction.label}" is selected because the words in the text are statistically more associated with that label in the ${samples.filter(s => s.label === prediction.label).length} training examples of that category.`
+                              : `Il modello usa un approccio Bag-of-Words con ${vocabulary.size} parole nel vocabolario. Il testo inserito è stato convertito in un vettore di frequenze normalizzate, poi elaborato da una rete neurale con 2 layer densi. La classe "${prediction.label}" è stata scelta perché le parole nel testo sono statisticamente più associate a questa etichetta nei ${samples.filter(s => s.label === prediction.label).length} esempi di training di quella categoria.`}
                           </div>
                         </div>
                       </div>
@@ -1885,7 +1870,7 @@ function TextClassification({
                 </>
               ) : (
                 <p className="text-center text-muted-foreground py-8">
-                  Carica un dataset e addestra il modello per testare la classificazione
+                  {t('classification.no_model_hint')}
                 </p>
               )}
             </CardContent>
@@ -1909,6 +1894,8 @@ function DataClassification({
   pendingCsvData?: string | null
   onCsvConsumed: () => void
 }) {
+  const { t, i18n } = useTranslation()
+  const isEnglish = i18n.resolvedLanguage?.startsWith('en') ?? false
   const [data, setData] = useState<DataRow[]>([])
   const [columns, setColumns] = useState<ColumnInfo[]>([])
   const [targetColumn, setTargetColumn] = useState<string | null>(null)
@@ -2003,16 +1990,19 @@ function DataClassification({
       setSuggestedTask('classification')
       setTaskExplanation(
         col.type === 'categorical'
-          ? `La colonna "${colName}" contiene valori categoriali (${col.uniqueValues} categorie diverse). ` +
-            `Questo indica un problema di **classificazione**: il modello imparerà a predire a quale categoria appartiene un nuovo dato.`
-          : `La colonna "${colName}" è numerica ma ha solo ${col.uniqueValues} valori unici. ` +
-            `Questo suggerisce un problema di **classificazione** (es. classi discrete come 0/1/2).`
+          ? (isEnglish
+            ? `The "${colName}" column contains categorical values (${col.uniqueValues} different categories). This indicates a **classification** problem: the model will learn to predict which category a new row belongs to.`
+            : `La colonna "${colName}" contiene valori categoriali (${col.uniqueValues} categorie diverse). Questo indica un problema di **classificazione**: il modello imparerà a predire a quale categoria appartiene un nuovo dato.`)
+          : (isEnglish
+            ? `The "${colName}" column is numeric but has only ${col.uniqueValues} unique values. This suggests a **classification** problem (for example discrete classes like 0/1/2).`
+            : `La colonna "${colName}" è numerica ma ha solo ${col.uniqueValues} valori unici. Questo suggerisce un problema di **classificazione** (es. classi discrete come 0/1/2).`)
       )
     } else {
       setSuggestedTask('regression')
       setTaskExplanation(
-        `La colonna "${colName}" contiene valori numerici continui (${col.uniqueValues} valori unici). ` +
-        `Questo indica un problema di **regressione**: il modello imparerà a predire un valore numerico.`
+        isEnglish
+          ? `The "${colName}" column contains continuous numeric values (${col.uniqueValues} unique values). This indicates a **regression** problem: the model will learn to predict a numeric value.`
+          : `La colonna "${colName}" contiene valori numerici continui (${col.uniqueValues} valori unici). Questo indica un problema di **regressione**: il modello imparerà a predire un valore numerico.`
       )
     }
   }
@@ -2126,7 +2116,7 @@ function DataClassification({
 
     } catch (err) {
       console.error('Training error:', err)
-      alert('Errore durante il training: ' + (err as Error).message)
+      alert((isEnglish ? 'Training error: ' : 'Errore durante il training: ') + (err as Error).message)
     } finally {
       setIsTraining(false)
     }
@@ -2170,12 +2160,9 @@ function DataClassification({
       const confidence = probs[maxIdx] * 100
 
       const topFeatures = featureExplanations.slice(0, 3).join(', ')
-      const explanation = `Spiegazione: Il modello ha analizzato ${featureCols.length} caratteristiche. ` +
-        `Con i valori inseriti (${topFeatures}${featureCols.length > 3 ? '...' : ''}), ` +
-        `la classe più probabile è "${predictedLabel}" con confidenza ${confidence.toFixed(1)}%. ` +
-        `Le altre classi hanno probabilità: ${lbls.filter((_, i) => i !== maxIdx).map((l, i) =>
-          `"${l}": ${(probsArray[i < maxIdx ? i : i + 1] * 100).toFixed(1)}%`
-        ).join(', ')}.`
+      const explanation = isEnglish
+        ? `Explanation: The model analyzed ${featureCols.length} features. With the entered values (${topFeatures}${featureCols.length > 3 ? '...' : ''}), the most likely class is "${predictedLabel}" with ${confidence.toFixed(1)}% confidence. The other classes have probabilities: ${lbls.filter((_, i) => i !== maxIdx).map((l, i) => `"${l}": ${(probsArray[i < maxIdx ? i : i + 1] * 100).toFixed(1)}%`).join(', ')}.`
+        : `Spiegazione: Il modello ha analizzato ${featureCols.length} caratteristiche. Con i valori inseriti (${topFeatures}${featureCols.length > 3 ? '...' : ''}), la classe più probabile è "${predictedLabel}" con confidenza ${confidence.toFixed(1)}%. Le altre classi hanno probabilità: ${lbls.filter((_, i) => i !== maxIdx).map((l, i) => `"${l}": ${(probsArray[i < maxIdx ? i : i + 1] * 100).toFixed(1)}%`).join(', ')}.`
 
       setPrediction({ value: predictedLabel, confidence, explanation })
     } else {
@@ -2184,9 +2171,9 @@ function DataClassification({
       const maxY = Math.max(...targetVals)
       const predictedValue = probs[0] * (maxY - minY) + minY
 
-      const explanation = `Spiegazione: Il modello di regressione ha stimato il valore basandosi su ${featureCols.length} caratteristiche. ` +
-        `Con i valori inseriti, la predizione è ${predictedValue.toFixed(2)}. ` +
-        `Il range dei dati di training va da ${minY.toFixed(2)} a ${maxY.toFixed(2)}.`
+      const explanation = isEnglish
+        ? `Explanation: The regression model estimated the value based on ${featureCols.length} features. With the entered values, the prediction is ${predictedValue.toFixed(2)}. The training data range goes from ${minY.toFixed(2)} to ${maxY.toFixed(2)}.`
+        : `Spiegazione: Il modello di regressione ha stimato il valore basandosi su ${featureCols.length} caratteristiche. Con i valori inseriti, la predizione è ${predictedValue.toFixed(2)}. Il range dei dati di training va da ${minY.toFixed(2)} a ${maxY.toFixed(2)}.`
 
       setPrediction({ value: predictedValue.toFixed(2), confidence: 100, explanation })
     }
@@ -2196,11 +2183,11 @@ function DataClassification({
   }
 
   return (
-    <div className="p-6 md:p-8">
-      <div className="max-w-5xl mx-auto">
+    <div className="h-full overflow-y-auto px-4 pb-24 pt-0 md:px-6 md:pb-8 md:pt-0">
+      <div className="w-full">
         <SubViewHeader
           icon={Database}
-          title="Classificazione Dati"
+          title={isEnglish ? 'Data Classification' : 'Classificazione Dati'}
           onBack={onBack}
           onOpenDatasetCreator={onOpenDatasetCreator}
           iconBg="bg-emerald-100"
@@ -2213,7 +2200,7 @@ function DataClassification({
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">
                 <Upload className="h-5 w-5" />
-                Carica Dataset CSV
+                {t('classification.upload_csv')}
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -2288,17 +2275,17 @@ function DataClassification({
                 />
                 <Button onClick={() => fileInputRef.current?.click()} className="w-full">
                   <Upload className="h-4 w-4 mr-2" />
-                  Seleziona file CSV
+                  {t('classification.select_csv')}
                 </Button>
                 <p className="text-xs text-emerald-500 mt-2">
-                  Puoi anche trascinare un CSV qui
+                  {isEnglish ? 'You can also drag a CSV here' : 'Puoi anche trascinare un CSV qui'}
                 </p>
               </div>
 
               {data.length > 0 && (
                 <div className="mt-4 p-3 bg-emerald-50 rounded-xl">
                   <p className="text-sm font-medium text-emerald-700">
-                    Caricati {data.length} righe, {columns.length} colonne
+                    {t('classification.csv_loaded', { rows: data.length, cols: columns.length })}
                   </p>
                   <div className="mt-2 flex flex-wrap gap-2">
                     {columns.map(col => (
@@ -2330,12 +2317,12 @@ function DataClassification({
               <CardHeader>
                 <CardTitle className="text-base flex items-center gap-2">
                   <Tags className="h-5 w-5" />
-                  Seleziona Colonna Target
+                  {t('classification.target_col_title')}
                 </CardTitle>
               </CardHeader>
               <CardContent>
                 <p className="text-sm text-muted-foreground mb-3">
-                  Scegli la colonna che vuoi predire. Il sistema suggerirà automaticamente il tipo di analisi.
+                  {t('classification.target_col_hint')}
                 </p>
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
                   {columns.map(col => (
@@ -2370,7 +2357,7 @@ function DataClassification({
                         <p className={`font-medium ${
                           suggestedTask === 'classification' ? 'text-purple-700' : 'text-blue-700'
                         }`}>
-                          Suggerimento: {suggestedTask === 'classification' ? 'Classificazione' : 'Regressione'}
+                          {isEnglish ? 'Suggestion' : 'Suggerimento'}: {suggestedTask === 'classification' ? t('classification.task_classification') : t('classification.task_regression')}
                         </p>
                         <p className="text-sm mt-1 text-gray-600">{taskExplanation}</p>
                       </div>
@@ -2387,7 +2374,7 @@ function DataClassification({
               <CardHeader>
                 <CardTitle className="text-base flex items-center gap-2">
                   <Play className="h-5 w-5" />
-                  Training Modello
+                  {t('classification.training_title')}
                 </CardTitle>
               </CardHeader>
               <CardContent>
@@ -2399,12 +2386,12 @@ function DataClassification({
                   {isTraining ? (
                     <>
                       <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      Training in corso...
+                      {t('classification.training_progress')}
                     </>
                   ) : (
                     <>
                       <Play className="h-4 w-4 mr-2" />
-                      Addestra Modello ({suggestedTask === 'classification' ? 'Classificazione' : 'Regressione'})
+                      {t('classification.train_btn')} ({suggestedTask === 'classification' ? t('classification.task_classification') : t('classification.task_regression')})
                     </>
                   )}
                 </Button>
@@ -2413,7 +2400,7 @@ function DataClassification({
                   <div className="mt-4 p-3 bg-emerald-50 rounded-xl">
                     <p className="text-sm font-medium text-emerald-700 flex items-center gap-2">
                       <CheckCircle className="h-4 w-4" />
-                      Modello addestrato con successo!
+                      {t('classification.model_success')}
                     </p>
                   </div>
                 )}
@@ -2427,7 +2414,7 @@ function DataClassification({
               <CardHeader>
                 <CardTitle className="text-base flex items-center gap-2">
                   <AlertCircle className="h-5 w-5" />
-                  Predizione
+                  {t('classification.prediction_title')}
                 </CardTitle>
               </CardHeader>
               <CardContent>
@@ -2459,7 +2446,7 @@ function DataClassification({
 
                 <Button onClick={predict} className="w-full">
                   <Play className="h-4 w-4 mr-2" />
-                  Predici
+                  {t('classification.predict_btn')}
                 </Button>
 
                 {prediction && (
@@ -2470,14 +2457,16 @@ function DataClassification({
                         : 'bg-blue-50 border border-blue-200'
                     }`}>
                       <p className="text-lg font-bold">
-                        {suggestedTask === 'classification' ? 'Classe predetta: ' : 'Valore predetto: '}
+                        {suggestedTask === 'classification'
+                          ? `${isEnglish ? 'Predicted class' : 'Classe predetta'}: `
+                          : `${isEnglish ? 'Predicted value' : 'Valore predetto'}: `}
                         <span className={suggestedTask === 'classification' ? 'text-purple-700' : 'text-blue-700'}>
                           {prediction.value}
                         </span>
                       </p>
                       {suggestedTask === 'classification' && (
                         <p className="text-sm text-gray-600">
-                          Confidenza: {prediction.confidence.toFixed(1)}%
+                          {isEnglish ? 'Confidence' : 'Confidenza'}: {prediction.confidence.toFixed(1)}%
                         </p>
                       )}
                     </div>

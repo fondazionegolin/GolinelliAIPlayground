@@ -1,6 +1,6 @@
 import type { CellOutput } from '@/hooks/usePyodide'
 
-export type NotebookProjectType = 'python' | 'p5js'
+export type NotebookProjectType = 'python' | 'p5js' | 'strudel' | 'game2d'
 export type NotebookTheme = 'dark' | 'light' | 'fancy' | 'dracula' | 'p5js'
 export type NotebookFontFamily = 'jetbrains' | 'space' | 'courier' | 'victor' | 'plex'
 
@@ -19,6 +19,7 @@ export interface NotebookEditorSettings {
   font_family: NotebookFontFamily
   live_preview: boolean
   font_weight?: number
+  libraries?: string[]  // IDs of loaded extra libraries
 }
 
 export interface NotebookCodeProposal {

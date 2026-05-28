@@ -19,6 +19,7 @@ from app.models.notebook import Notebook
 from app.models.desktop import UserDesktop, DesktopWidget, AdminDesktopWidgetTemplate
 from app.models.calendar import SessionCalendarEvent
 from app.models.changelog import PlatformChangelogRelease
+from app.models.live_interaction import LiveInteraction, LiveInteractionResponse
 
 __all__ = [
     "Tenant",
@@ -73,4 +74,6 @@ __all__ = [
     "AdminDesktopWidgetTemplate",
     "SessionCalendarEvent",
     "PlatformChangelogRelease",
+    "LiveInteraction",
+    "LiveInteractionResponse",
 ]

@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, type CSSProperties } from 'react'
 import { Link, useNavigate, useLocation } from 'react-router-dom'
-import { User, Settings, LogOut, ChevronDown, Users, MessageSquare, FileText, Check, Brain, MonitorPlay, FileCode2, KeyRound, Loader2, LayoutDashboard, ShieldCheck, BookOpen } from 'lucide-react'
+import { User, Settings, LogOut, ChevronDown, Users, MessageSquare, FileText, Check, Brain, MonitorPlay, FileCode2, KeyRound, Loader2, LayoutDashboard, ShieldCheck, BookOpen, Zap, Box } from 'lucide-react'
 import { Button } from './ui/button'
 import { useToast } from '@/components/ui/use-toast'
 import { LogoMark } from './LogoMark'
@@ -16,6 +16,8 @@ import { useTeacherProfile, useInvalidateTeacherProfile, TEACHER_PROFILE_KEY } f
 import { useQueryClient } from '@tanstack/react-query'
 import { NavbarCalendarClock } from './NavbarCalendarClock'
 import WhatsNewModal from './WhatsNewModal'
+import { buildAccentNavbarStyle, buildAccentNavClusterStyle } from '@/lib/navbarGlass'
+import { Badge } from '@/components/ui/badge'
 
 interface TeacherProfile {
   firstName: string
@@ -65,18 +67,24 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
   const dropdownRef = useRef<HTMLDivElement>(null)
   const sessionsMenuRef = useRef<HTMLDivElement>(null)
   const accentTheme = getTeacherAccentTheme(profile.uiAccent)
-  const accentVars = {
+  const accentVars = buildAccentNavbarStyle(accentTheme, {
     '--teacher-accent': accentTheme.accent,
     '--teacher-accent-text': accentTheme.text,
     '--teacher-accent-soft': accentTheme.soft,
     '--teacher-accent-soft-strong': accentTheme.softStrong,
     '--teacher-accent-border': accentTheme.border,
-    backgroundColor: 'rgba(255, 255, 255, 0.94)',
-    backdropFilter: 'blur(12px)',
-    WebkitBackdropFilter: 'blur(12px)',
-    borderBottomColor: accentTheme.border,
-    borderBottomWidth: '1px',
-  } as CSSProperties
+  }) as CSSProperties
+
+  useEffect(() => {
+    const root = document.documentElement
+    root.style.setProperty('--app-accent', accentTheme.accent)
+    root.style.setProperty('--app-accent-text', accentTheme.text)
+    root.style.setProperty('--app-accent-soft', accentTheme.soft)
+    root.style.setProperty('--app-accent-soft-strong', accentTheme.softStrong)
+    root.style.setProperty('--app-accent-border', accentTheme.border)
+    root.style.setProperty('--app-body-bg', '#ffffff')
+    root.style.setProperty('--surface-page', '#ffffff')
+  }, [accentTheme])
 
   // Global notifications state
   const [teacherNotifications, setTeacherNotifications] = useState<TeacherNotification[]>([])
@@ -122,7 +130,7 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
           session_name: nd.session_name,
           class_name: nd.class_name,
           student_id: nd.student_id || '',
-          nickname: nd.nickname || 'Studente',
+          nickname: nd.nickname || t('navbar.role_student'),
           message: nd.message || latestNotification.text,
           preview: nd.preview,
           task_title: nd.task_title,
@@ -273,12 +281,14 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
   const navItems = [
     { path: '/teacher', label: t('navbar.nav_support'), icon: MessageSquare },
     { path: '/teacher/classes', label: t('navbar.nav_classes'), icon: Users },
-    { path: '/teacher/demo', label: 'Studentbot', icon: MonitorPlay },
+    { path: '/teacher/demo', label: t('navbar.nav_studentbot'), icon: MonitorPlay },
     { path: '/teacher/documents', label: t('navbar.nav_documents'), icon: FileText },
-    { path: '/teacher/wiki', label: 'Wiki', icon: BookOpen },
-    { path: '/teacher/ml-lab', label: 'ML Lab', icon: Brain },
-    { path: '/teacher/notebooks', label: 'Notebook', icon: FileCode2 },
-    { path: '/teacher/desktop', label: 'Desktop', icon: LayoutDashboard },
+    { path: '/teacher/wiki', label: t('navbar.nav_wiki'), icon: BookOpen },
+    { path: '/teacher/ml-lab', label: t('navbar.nav_ml_lab'), icon: Brain },
+    { path: '/teacher/notebooks', label: t('navbar.nav_notebook'), icon: FileCode2 },
+    { path: '/teacher/live-interaction', label: 'Live', icon: Zap },
+    { path: '/teacher/3d-lab', label: '3D Lab', icon: Box },
+    { path: '/teacher/desktop', label: t('navbar.nav_desktop'), icon: LayoutDashboard },
   ]
 
   const handleNotificationClick = (notification: TeacherNotification) => {
@@ -313,7 +323,7 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
             <div className="flex items-center gap-3 cursor-pointer" onClick={() => navigate('/teacher')}>
               <LogoMark className="h-9 w-9" />
               <div className="flex items-center gap-2">
-                <span className="pb-[1px] text-[18px] leading-[1.15] tracking-tight" style={{ fontFamily: '"SofiaPro"' }}>
+                <span className="flex items-center text-[18px] leading-none tracking-tight" style={{ fontFamily: '"SofiaPro"' }}>
                   <span className="font-bold text-[#2d2d2d]/85">
                     Golinelli
                   </span>
@@ -325,14 +335,16 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
                     e.stopPropagation()
                     setShowWhatsNew(true)
                   }}
-                  className="text-[9px] font-extrabold uppercase tracking-widest px-1.5 py-0.5 rounded-md bg-amber-50 text-amber-500 border border-amber-200 leading-none transition-colors hover:bg-amber-100"
+                  className="inline-flex items-center self-center transition-transform hover:-translate-y-px"
                 >
-                  BETA
+                  <Badge tone="warning" surface="soft" density="compact" className="inline-flex min-h-[22px] items-center border border-orange-200 px-2 py-0.5 text-[10px] font-bold leading-none tracking-[0.14em] text-orange-700">
+                    BETA
+                  </Badge>
                 </button>
               </div>
             </div>
 
-            <div className="hidden md:flex items-center gap-0.5 h-10 bg-white p-0.5 rounded-2xl border border-slate-200 shadow-sm">
+            <div className="hidden xl:flex items-center gap-1 h-11 rounded-xl border p-1" style={buildAccentNavClusterStyle(accentTheme)}>
               {(() => {
                 const activeIdx = navItems.findIndex(item => isActive(item.path))
                 return navItems.map((item, idx) => (
@@ -342,13 +354,15 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
                       label={item.label}
                       isActive={isActive(item.path)}
                       isAdjacent={Math.abs(idx - activeIdx) === 1}
-                      accentClass="bg-[var(--teacher-accent)]"
-                      accentTextClass="text-white"
+                      accentClass="bg-[color:var(--teacher-accent-soft-strong)]"
+                      accentTextClass="text-[var(--teacher-accent-text)]"
                     />
                   </Link>
                 ))
               })()}
             </div>
+
+            <div className="hidden xl:block h-8 w-px bg-slate-200/80 mx-1" />
 
             <div className="flex items-center gap-3">
               {/* Date/time + mini calendar */}
@@ -370,7 +384,7 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
               <div className="relative flex items-center gap-2" ref={sessionsMenuRef}>
                 <button
                   onClick={() => setShowSessionsMenu(!showSessionsMenu)}
-                  className="hidden lg:flex items-center gap-1.5 h-auto py-1.5 px-2.5 rounded-xl border bg-white border-slate-200 hover:bg-slate-50 hover:border-slate-300 transition-colors duration-150 cursor-pointer shadow-sm"
+                  className="hidden lg:flex items-center gap-1.5 h-auto py-1.5 px-2.5 rounded-xl border bg-white/92 border-slate-200 hover:bg-white hover:border-slate-300 transition-colors duration-150 cursor-pointer shadow-[var(--shadow-sm)]"
                 >
                   <div className={`w-2 h-2 rounded-full flex-shrink-0 ${currentSession ? 'bg-green-500 animate-pulse shadow-sm shadow-green-300' : 'bg-slate-300'}`} />
                   <div className="text-left min-w-0">
@@ -382,10 +396,10 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
                   <ChevronDown className={`h-3 w-3 ml-0.5 text-slate-400 transition-transform flex-shrink-0 ${showSessionsMenu ? 'rotate-180' : ''}`} />
                 </button>
                 <button
-                  className={`hidden lg:flex items-center justify-center p-2.5 rounded-full border transition-colors duration-150 shadow-sm`}
+                  className="hidden lg:flex items-center justify-center p-2.5 rounded-xl border transition-colors duration-150 shadow-[var(--shadow-sm)] hover:-translate-y-px"
                   style={chatSidebarOpen
                     ? { backgroundColor: accentTheme.accent, borderColor: accentTheme.accent, color: '#fff' }
-                    : { backgroundColor: `${accentTheme.accent}18`, borderColor: `${accentTheme.accent}50`, color: accentTheme.text }}
+                    : { backgroundColor: 'rgba(255,255,255,0.92)', borderColor: `${accentTheme.accent}35`, color: accentTheme.text }}
                   onClick={onToggleChatSidebar}
                   title={chatSidebarOpen ? t('navbar.hide_class_chat') : t('navbar.show_class_chat')}
                 >
@@ -505,6 +519,16 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
                       <Settings className="h-4 w-4" />
                       {t('navbar.settings')}
                     </button>
+                    <button
+                      onClick={() => {
+                        setShowDropdown(false)
+                        navigate('/terms')
+                      }}
+                      className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-600 hover:bg-slate-50 hover:text-[var(--teacher-accent-text)] transition-colors"
+                    >
+                      <FileText className="h-4 w-4" />
+                      Termini e condizioni
+                    </button>
                     {isAdmin && (
                       <>
                         <button
@@ -512,7 +536,7 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
                           className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-indigo-700 hover:bg-indigo-50 transition-colors"
                         >
                           <ShieldCheck className="h-4 w-4" />
-                          Pannello amministratore
+                          {t('navbar.nav_admin')}
                         </button>
                       </>
                     )}
@@ -549,6 +573,40 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
           </div>
         </div>
       </nav>
+
+      <aside
+        className="fixed left-0 top-16 bottom-0 z-40 hidden w-16 border-r px-2 py-3 md:flex xl:hidden"
+        style={accentVars}
+        aria-label={t('navbar.nav_support')}
+      >
+        <div className="flex w-full flex-col items-center gap-1.5">
+          {navItems.map((item) => {
+            const Icon = item.icon
+            const isActiveItem = isActive(item.path)
+            return (
+              <Link
+                key={item.path}
+                to={item.path}
+                title={item.label}
+                aria-label={item.label}
+                className="flex h-11 w-11 items-center justify-center rounded-xl border text-slate-600 transition-colors hover:bg-white/70 hover:text-[var(--teacher-accent-text)]"
+                style={isActiveItem
+                  ? {
+                      backgroundColor: accentTheme.softStrong,
+                      borderColor: `${accentTheme.accent}45`,
+                      color: accentTheme.text,
+                    }
+                  : {
+                      backgroundColor: 'rgba(255,255,255,0.56)',
+                      borderColor: 'rgba(255,255,255,0.34)',
+                    }}
+              >
+                <Icon className="h-5 w-5" />
+              </Link>
+            )
+          })}
+        </div>
+      </aside>
       {showWhatsNew && <WhatsNewModal onClose={() => setShowWhatsNew(false)} />}
 
       {/* Settings Modal */}
@@ -608,11 +666,11 @@ function SettingsModal({ profile, onSave, onClose }: SettingsModalProps) {
   const handleChangePassword = async () => {
     console.log('[ChangePassword] invoked', { currentPassword: !!currentPassword, newPasswordLen: newPassword.length, match: newPassword === confirmPassword })
     if (newPassword !== confirmPassword) {
-      toast({ variant: 'destructive', title: 'Errore', description: 'Le password non coincidono' })
+      toast({ variant: 'destructive', title: t('common.error'), description: t('activate.password_mismatch') })
       return
     }
     if (newPassword.length < 8) {
-      toast({ variant: 'destructive', title: 'Errore', description: 'La password deve essere di almeno 8 caratteri' })
+      toast({ variant: 'destructive', title: t('common.error'), description: t('activate.password_too_short') })
       return
     }
     setChangingPassword(true)
@@ -620,12 +678,12 @@ function SettingsModal({ profile, onSave, onClose }: SettingsModalProps) {
       console.log('[ChangePassword] calling API...')
       const res = await teacherApi.changePassword({ current_password: currentPassword, new_password: newPassword, confirm_password: confirmPassword })
       console.log('[ChangePassword] success', res.data)
-      toast({ title: 'Password aggiornata', description: 'La tua password è stata cambiata con successo.' })
+      toast({ title: t('activate.password_updated_title'), description: t('activate.password_updated_body') })
       setCurrentPassword(''); setNewPassword(''); setConfirmPassword('')
       setShowPasswordSection(false)
     } catch (err: any) {
       console.error('[ChangePassword] error', err.response?.status, err.response?.data)
-      toast({ variant: 'destructive', title: 'Errore', description: err.response?.data?.detail || 'Errore durante il cambio password' })
+      toast({ variant: 'destructive', title: t('common.error'), description: err.response?.data?.detail || t('activate.password_change_error') })
     } finally {
       setChangingPassword(false)
     }
@@ -635,11 +693,11 @@ function SettingsModal({ profile, onSave, onClose }: SettingsModalProps) {
     const file = e.target.files?.[0]
     if (!file) return
     if (!file.type.startsWith('image/')) {
-      alert('Per favore seleziona un file immagine')
+      alert(t('navbar.image_only_error'))
       return
     }
     if (file.size > 2 * 1024 * 1024) {
-      alert('Il file deve essere inferiore a 2MB')
+      alert(t('navbar.image_max_2mb'))
       return
     }
     // Show instant local preview
@@ -650,7 +708,7 @@ function SettingsModal({ profile, onSave, onClose }: SettingsModalProps) {
       const res = await teacherApi.uploadAvatar(file)
       setFormData(fd => ({ ...fd, avatarUrl: res.data.avatar_url }))
     } catch {
-      alert('Errore durante il caricamento dell\'immagine')
+      alert(t('common.error'))
     } finally {
       setIsUploading(false)
     }
@@ -702,7 +760,7 @@ function SettingsModal({ profile, onSave, onClose }: SettingsModalProps) {
               className="text-xs"
               disabled={isUploading}
             >
-              {isUploading ? 'Caricamento...' : t('navbar.change_photo')}
+              {isUploading ? t('common.loading') : t('navbar.change_photo')}
             </Button>
           </div>
 

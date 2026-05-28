@@ -30,6 +30,7 @@ interface TeacherStatus {
   last_name?: string | null
   email: string
   institution?: string | null
+  role?: string
   is_verified: boolean
   last_login_at?: string | null
   created_at?: string | null
@@ -856,8 +857,11 @@ export default function TeachersPage() {
                         {/* Name / email / badge */}
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-2.5">
-                            <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center flex-shrink-0">
-                              <GraduationCap className="h-4 w-4 text-slate-500" />
+                            <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${teacher.role === 'admin' ? 'bg-amber-100' : 'bg-slate-100'}`}>
+                              {teacher.role === 'admin'
+                                ? <ShieldCheck className="h-4 w-4 text-amber-600" />
+                                : <GraduationCap className="h-4 w-4 text-slate-500" />
+                              }
                             </div>
                             <div>
                               <p className="font-semibold text-slate-800 leading-tight">
@@ -865,11 +869,17 @@ export default function TeachersPage() {
                               </p>
                               <p className="text-xs text-slate-400">{teacher.email}</p>
                             </div>
-                            {teacher.is_verified ? (
+                            {teacher.role === 'admin' && (
+                              <span className="ml-1 px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 text-[10px] font-medium hidden sm:inline">
+                                admin
+                              </span>
+                            )}
+                            {teacher.role !== 'admin' && teacher.is_verified && (
                               <span className="ml-1 px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700 text-[10px] font-medium hidden sm:inline">
                                 verificato
                               </span>
-                            ) : (
+                            )}
+                            {teacher.role !== 'admin' && !teacher.is_verified && (
                               <span className="ml-1 px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-500 text-[10px] font-medium hidden sm:inline">
                                 non verificato
                               </span>
@@ -1023,19 +1033,21 @@ export default function TeachersPage() {
                                 <Key className="h-3.5 w-3.5 mr-1" />
                                 <span className="hidden lg:inline">Reset password</span>
                               </Button>
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                className="h-7 px-2 text-xs text-amber-600 hover:text-amber-800 hover:bg-amber-50"
-                                onClick={() => {
-                                  if (confirm(`Promuovere ${teacher.email} ad amministratore? Non sarà più un docente.`))
-                                    promoteMutation.mutate(teacher.id)
-                                }}
-                                disabled={promoteMutation.isPending}
-                                title="Promuovi ad amministratore"
-                              >
-                                <ShieldCheck className="h-3.5 w-3.5" />
-                              </Button>
+                              {teacher.role !== 'admin' && (
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="h-7 px-2 text-xs text-amber-600 hover:text-amber-800 hover:bg-amber-50"
+                                  onClick={() => {
+                                    if (confirm(`Promuovere ${teacher.email} ad amministratore? Non sarà più un docente.`))
+                                      promoteMutation.mutate(teacher.id)
+                                  }}
+                                  disabled={promoteMutation.isPending}
+                                  title="Promuovi ad amministratore"
+                                >
+                                  <ShieldCheck className="h-3.5 w-3.5" />
+                                </Button>
+                              )}
                               <Button
                                 size="sm"
                                 variant="ghost"

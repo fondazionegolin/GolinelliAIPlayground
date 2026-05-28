@@ -169,7 +169,7 @@ export function ChatConversationView({
         {/* Empty state with suggestions */}
         {messages.length === 0 && (
           <div className="text-center py-5">
-            <div className={`inline-flex items-center justify-center w-12 h-12 rounded-2xl ${avatarColorClass} mb-3 shadow-md`}>
+            <div className={`inline-flex items-center justify-center w-12 h-12 rounded-xl ${avatarColorClass} mb-3 shadow-md`}>
               {profileIcon ? (
                 <div className="text-white scale-95">{profileIcon}</div>
               ) : (
@@ -222,7 +222,7 @@ export function ChatConversationView({
                 <Bot className="h-5 w-5 text-white" />
               )}
             </div>
-            <div className="bg-white border border-slate-100 shadow-sm rounded-2xl rounded-bl-md px-4 py-3">
+            <div className="bg-white border border-slate-100 shadow-sm rounded-xl rounded-bl-md px-4 py-3">
               <div className="flex items-center gap-2">
                 <div className="flex gap-1">
                   <span className="w-2 h-2 bg-slate-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
@@ -370,7 +370,7 @@ export const MessageBubble = memo(function MessageBubble({
       {/* Message content */}
       <div
         className={`
-          max-w-[92%] md:max-w-[80%] rounded-2xl px-3.5 py-3 relative group
+          max-w-[92%] md:max-w-[80%] rounded-xl px-3.5 py-3 relative group
           ${isUser
             ? 'bg-slate-950 text-white rounded-br-md shadow-sm'
             : 'bg-white border border-slate-200 shadow-sm rounded-bl-md'

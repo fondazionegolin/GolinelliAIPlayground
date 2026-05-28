@@ -18,6 +18,13 @@ interface Props {
   className?: string
 }
 
+function projectLabel(projectType: NotebookProjectType) {
+  if (projectType === 'python') return 'Python'
+  if (projectType === 'strudel') return 'Strudel'
+  if (projectType === 'game2d') return 'Game 2D'
+  return 'p5.js'
+}
+
 export default function NotebookTutorChat({
   notebookId,
   notebookTitle,
@@ -31,11 +38,6 @@ export default function NotebookTutorChat({
 }: Props) {
   const isFloating = variant === 'floating'
   const isSidebar = variant === 'sidebar'
-
-  // Accent palette — teal for p5js, indigo for python
-  const accent = projectType === 'p5js'
-    ? { iconBg: 'bg-teal-100', iconText: 'text-teal-700', bubble: 'bg-teal-600', avatar: 'bg-teal-600', spinner: 'text-teal-400', prose: 'prose-code:text-teal-700' }
-    : { iconBg: 'bg-indigo-100', iconText: 'text-indigo-700', bubble: 'bg-indigo-600', avatar: 'bg-indigo-600', spinner: 'text-indigo-400', prose: 'prose-code:text-indigo-700' }
 
   const [collapsed, setCollapsed] = useState(false)
   const [messages, setMessages] = useState<NotebookTutorMessage[]>(initialMessages)
@@ -121,9 +123,9 @@ export default function NotebookTutorChat({
   if (isFloating) {
     rootClass += `${isDragging ? '' : 'transition-[height,width] duration-200'} `
     rootClass += `${collapsed ? 'h-[56px] w-[320px]' : 'h-[640px] w-[400px]'} `
-    rootClass += `rounded-[24px] border border-slate-200 shadow-[0_18px_50px_rgba(15,23,42,0.24)] pointer-events-auto `
+    rootClass += `rounded-xl border border-slate-200 shadow-[0_18px_50px_rgba(15,23,42,0.18)] pointer-events-auto `
   } else if (isSidebar) {
-    rootClass += `h-full rounded-[24px] border border-slate-200 shadow-[0_4px_24px_rgba(15,23,42,0.12)] `
+    rootClass += `h-full rounded-xl border border-slate-200 shadow-[0_4px_24px_rgba(15,23,42,0.10)] `
   } else {
     // docked
     rootClass += `${collapsed ? 'h-[58px]' : 'h-[300px] md:h-[340px]'} border-t border-slate-200 `
@@ -155,11 +157,11 @@ export default function NotebookTutorChat({
 
       {/* Header */}
       <div className="flex shrink-0 items-center gap-3 border-b border-slate-200 bg-white px-4 py-3">
-        <div className={`flex h-8 w-8 items-center justify-center rounded-lg ${accent.iconBg}`}>
-          <GraduationCap className={`h-4 w-4 ${accent.iconText}`} />
+        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-100 text-slate-700">
+          <GraduationCap className="h-4 w-4" />
         </div>
         <div className="min-w-0 flex-1">
-          <p className="text-sm font-semibold text-slate-900">Tutor {projectType === 'python' ? 'Python' : 'p5.js'}</p>
+          <p className="text-sm font-semibold text-slate-900">Tutor socratico {projectLabel(projectType)}</p>
           <p className="truncate text-[10px] text-slate-500">
             {isFloating ? 'Supporto AI' : notebookTitle}
           </p>
@@ -192,10 +194,10 @@ export default function NotebookTutorChat({
           <div className="flex-1 overflow-y-auto space-y-3 px-3 py-3">
             {messages.length === 0 && (
               <div className="flex h-full flex-col items-center justify-center gap-3 text-center text-slate-500">
-                <Bot className={`h-10 w-10 ${accent.iconText} opacity-40`} />
+                <Bot className="h-10 w-10 text-slate-300" />
                 <div>
-                  <p className="text-sm font-medium text-slate-700">Sono il tutor {projectType === 'python' ? 'Python' : 'p5.js'}</p>
-                  <p className="mt-1 text-xs">Spiego errori e proposte di modifica lasciando allo studente il controllo del codice.</p>
+                  <p className="text-sm font-medium text-slate-700">Tutor {projectLabel(projectType)}</p>
+                  <p className="mt-1 text-xs">Ti aiuto a leggere errori, capire le proposte e ragionare passo per passo senza sostituire il tuo codice.</p>
                 </div>
                 <div className="mt-2 grid w-full grid-cols-1 gap-1.5">
                   {(projectType === 'python'
@@ -204,11 +206,17 @@ export default function NotebookTutorChat({
                       'Che cosa ho sbagliato in questa funzione?',
                       'Mostrami il ragionamento dietro la correzione',
                     ]
-                    : [
-                      'Perché questa modifica migliora lo sketch?',
-                      'Che ruolo ha setup() in questo caso?',
-                      'Come posso evitare questo errore di canvas?',
-                    ]).map((suggestion) => (
+                    : projectType === 'game2d'
+                      ? [
+                        'Come devo strutturare il JSON del livello?',
+                        'Perché il runner non carica questa entità?',
+                        'Come posso aggiungere un nemico senza scrivere JavaScript?',
+                      ]
+                      : [
+                        'Perché questa modifica migliora lo sketch?',
+                        'Che ruolo ha setup() in questo caso?',
+                        'Come posso evitare questo errore di canvas?',
+                      ]).map((suggestion) => (
                     <button
                       key={suggestion}
                       onClick={() => setInput(suggestion)}
@@ -223,19 +231,19 @@ export default function NotebookTutorChat({
             {messages.map((message, index) => (
               <div key={index} className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                 {message.role === 'assistant' && (
-                  <div className={`mr-2 mt-0.5 flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full ${accent.avatar}`}>
+                  <div className="mr-2 mt-0.5 flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-slate-800">
                     <Bot className="h-3 w-3 text-white" />
                   </div>
                 )}
                 <div
                   className={`max-w-[85%] rounded-xl px-3 py-2 text-sm ${
                     message.role === 'user'
-                      ? `rounded-tr-sm ${accent.bubble} text-white`
+                      ? 'rounded-tr-sm bg-slate-900 text-white'
                       : 'rounded-tl-sm border border-slate-200 bg-slate-50 text-slate-700'
                   }`}
                 >
                   {message.role === 'assistant' ? (
-                    <div className={`prose prose-sm max-w-none prose-p:my-1 ${accent.prose}`}>
+                    <div className="max-w-none text-sm leading-6 text-slate-700 [&_code]:rounded-[0.35rem] [&_code]:bg-slate-200 [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:font-mono [&_code]:text-[0.85em] [&_code]:text-slate-700 [&_ol]:my-2 [&_ol]:pl-5 [&_p]:my-1.5 [&_pre]:my-2 [&_pre]:overflow-x-auto [&_pre]:rounded-lg [&_pre]:border [&_pre]:border-slate-200 [&_pre]:bg-white [&_pre]:p-3 [&_pre]:text-[13px] [&_ul]:my-2 [&_ul]:pl-5">
                       <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownCodeComponents(false)}>
                         {message.content}
                       </ReactMarkdown>
@@ -248,11 +256,11 @@ export default function NotebookTutorChat({
             ))}
             {loading && (
               <div className="flex justify-start">
-                <div className={`mr-2 flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full ${accent.avatar}`}>
+                <div className="mr-2 flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-slate-800">
                   <Bot className="h-3 w-3 text-white" />
                 </div>
                 <div className="rounded-xl rounded-tl-sm border border-slate-200 bg-slate-50 px-4 py-3">
-                  <Loader2 className={`h-4 w-4 animate-spin ${accent.spinner}`} />
+                  <Loader2 className="h-4 w-4 animate-spin text-slate-400" />
                 </div>
               </div>
             )}
@@ -273,7 +281,7 @@ export default function NotebookTutorChat({
               <button
                 onClick={send}
                 disabled={!input.trim() || loading}
-                className={`self-end flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg ${accent.bubble} transition-colors hover:opacity-90 disabled:opacity-40`}
+                className="self-end flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-slate-900 transition-colors hover:bg-slate-800 disabled:opacity-40"
               >
                 <Send className="h-3.5 w-3.5 text-white" />
               </button>

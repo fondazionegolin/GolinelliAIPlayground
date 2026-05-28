@@ -251,7 +251,7 @@ export default function TeacherNotifications({
                               'bg-gray-100 text-gray-600'
                             }`}>
                               {notification.alertStatus === 'blocked' ? '🚫 Bloccato' :
-                               notification.alertStatus === 'accepted' ? '✅ Accettato' :
+                               notification.alertStatus === 'accepted' ? 'Accettato' :
                                '👁 Visto'}
                             </span>
                           ) : (

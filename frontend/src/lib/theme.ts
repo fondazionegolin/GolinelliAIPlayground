@@ -4,7 +4,8 @@ import { getAccentTheme, DEFAULT_ACCENT, type AccentTheme } from '@/design/theme
 type Theme = AccentTheme
 
 export function getAppBackgroundGradient(theme: Theme) {
-  return theme.soft
+  void theme
+  return 'var(--app-body-bg)'
 }
 
 export const DEFAULT_GRADIENT = getAppBackgroundGradient(getAccentTheme(DEFAULT_ACCENT))

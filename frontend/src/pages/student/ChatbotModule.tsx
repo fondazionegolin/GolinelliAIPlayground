@@ -25,6 +25,12 @@ import ChatConversationList from '@/components/student/ChatConversationList'
 import ChatConversationView from '@/components/student/ChatConversationView'
 import { VoiceRecorder } from '@/components/VoiceRecorder'
 import { DEFAULT_STUDENT_ACCENT, getStudentAccentTheme, loadStudentAccent, type StudentAccentId } from '@/lib/studentAccent'
+import {
+  PASTEL_ICON_BACKGROUNDS,
+  PASTEL_ICON_TEXT,
+  PASTEL_SURFACES,
+  type PastelTone,
+} from '@/design/themes/pastelSurfaces'
 import EnvironmentalImpactPill from '@/components/chat/EnvironmentalImpactPill'
 import type { TokenUsageJson } from '@/lib/environmentalImpact'
 
@@ -98,6 +104,56 @@ const PROFILE_ICONS: Record<string, React.ReactNode> = {
   'oral_exam': <User className="h-6 w-6" />,
   'dataset_generator': <Database className="h-6 w-6" />,
   'math_coach': <Lightbulb className="h-6 w-6" />,
+}
+
+const CHAT_TONE_STRIPES: Record<PastelTone, string> = {
+  slate: 'bg-[#6a5872]',
+  indigo: 'bg-[#b51f5f]',
+  violet: 'bg-[#9452a3]',
+  emerald: 'bg-[#9452a3]',
+  amber: 'bg-[#9452a3]',
+  rose: 'bg-[#b51f5f]',
+  cyan: 'bg-[#1d7dd8]',
+  blue: 'bg-[#1d7dd8]',
+  sky: 'bg-[#1d7dd8]',
+  teal: 'bg-[#1d7dd8]',
+  orange: 'bg-[#9452a3]',
+}
+
+const PROFILE_TONES: Record<string, PastelTone> = {
+  tutor: 'sky',
+  quiz: 'rose',
+  interview: 'violet',
+  oral_exam: 'orange',
+  dataset_generator: 'cyan',
+  math_coach: 'indigo',
+}
+
+function getProfileTone(profileKey?: string | null): PastelTone {
+  return profileKey ? PROFILE_TONES[profileKey] || 'slate' : 'slate'
+}
+
+function getMainTabTone(key: 'assistants' | 'teacherbots' | 'learning' | 'rag'): PastelTone {
+  if (key === 'assistants') return 'sky'
+  if (key === 'teacherbots') return 'violet'
+  if (key === 'learning') return 'orange'
+  return 'cyan'
+}
+
+function getTeacherbotTone(color: string): PastelTone {
+  const toneMap: Record<string, PastelTone> = {
+    indigo: 'indigo',
+    blue: 'blue',
+    green: 'teal',
+    red: 'rose',
+    purple: 'violet',
+    pink: 'rose',
+    orange: 'orange',
+    teal: 'teal',
+    cyan: 'cyan',
+  }
+
+  return toneMap[color] || 'indigo'
 }
 
 
@@ -197,18 +253,6 @@ interface AttachedFile {
 
 const LEARNING_IMAGE_PREFIX = '__GENERATE_LEARNING_IMAGE__::'
 
-function hexToRgba(hex: string, opacity: number) {
-  const normalized = hex.replace('#', '')
-  const full = normalized.length === 3
-    ? normalized.split('').map((char) => char + char).join('')
-    : normalized
-  const bigint = parseInt(full, 16)
-  const r = (bigint >> 16) & 255
-  const g = (bigint >> 8) & 255
-  const b = bigint & 255
-  return `rgba(${r}, ${g}, ${b}, ${opacity})`
-}
-
 function normalizeLearningUnits(units: LearningUnit[] | undefined, topic: string, lesson: string): LearningUnit[] {
   if (units && units.length > 0) return units
   return [{
@@ -220,13 +264,16 @@ function normalizeLearningUnits(units: LearningUnit[] | undefined, topic: string
   }]
 }
 
-function buildLearningUnitsMessage(topic: string, lesson: string, units: LearningUnit[]) {
+function buildLearningUnitsMessage(topic: string, lesson: string, units: LearningUnit[], uiLanguage: 'it' | 'en') {
+  const isEnglish = uiLanguage === 'en'
   return [
-    `📖 **Percorso: ${topic}**`,
+    isEnglish ? `📖 **Path: ${topic}**` : `📖 **Percorso: ${topic}**`,
     '',
     lesson,
     '',
-    'Apri le unità qui sotto: ogni blocco approfondisce solo ciò che è stato trattato e può generare un quiz mirato.',
+    isEnglish
+      ? 'Open the units below: each block expands only what has already been covered and can generate a focused quiz.'
+      : 'Apri le unità qui sotto: ogni blocco approfondisce solo ciò che è stato trattato e può generare un quiz mirato.',
     '',
     '```learning_units',
     JSON.stringify({ topic, units }, null, 2),
@@ -234,42 +281,62 @@ function buildLearningUnitsMessage(topic: string, lesson: string, units: Learnin
   ].join('\n')
 }
 
-function buildLearningQuizPrompt(topic: string, unit: LearningUnit) {
+function buildLearningQuizPrompt(topic: string, unit: LearningUnit, uiLanguage: 'it' | 'en') {
+  const isEnglish = uiLanguage === 'en'
   const source = [
-    `Titolo unità: ${unit.title}`,
-    `Sintesi: ${unit.summary}`,
-    `Spiegazione: ${unit.explanation}`,
-    unit.keyPoints.length > 0 ? `Punti chiave:\n- ${unit.keyPoints.join('\n- ')}` : '',
+    isEnglish ? `Unit title: ${unit.title}` : `Titolo unità: ${unit.title}`,
+    isEnglish ? `Summary: ${unit.summary}` : `Sintesi: ${unit.summary}`,
+    isEnglish ? `Explanation: ${unit.explanation}` : `Spiegazione: ${unit.explanation}`,
+    unit.keyPoints.length > 0 ? `${isEnglish ? 'Key points' : 'Punti chiave'}:\n- ${unit.keyPoints.join('\n- ')}` : '',
   ].filter(Boolean).join('\n')
 
   return [
-    `Genera un quiz SOLO sull'unità di apprendimento seguente del percorso "${topic}".`,
-    'Non introdurre argomenti, termini o esempi non presenti nel testo sorgente.',
-    'Crea esattamente 4 domande a scelta multipla in italiano, con 4 opzioni ciascuna, una sola corretta.',
-    'Per ogni domanda aggiungi una breve spiegazione della risposta corretta.',
-    'Rispondi esclusivamente con un blocco ```quiz contenente JSON valido compatibile con l’interfaccia.',
+    isEnglish
+      ? `Generate a quiz ONLY about the following learning unit from the path "${topic}".`
+      : `Genera un quiz SOLO sull'unità di apprendimento seguente del percorso "${topic}".`,
+    isEnglish
+      ? 'Do not introduce topics, terms, or examples that are not present in the source text.'
+      : 'Non introdurre argomenti, termini o esempi non presenti nel testo sorgente.',
+    isEnglish
+      ? 'Create exactly 4 multiple-choice questions in English, with 4 options each and only one correct answer.'
+      : 'Crea esattamente 4 domande a scelta multipla in italiano, con 4 opzioni ciascuna, una sola corretta.',
+    isEnglish
+      ? 'Add a short explanation of the correct answer for each question.'
+      : 'Per ogni domanda aggiungi una breve spiegazione della risposta corretta.',
+    isEnglish
+      ? 'Reply only with a ```quiz block containing valid JSON compatible with the interface.'
+      : 'Rispondi esclusivamente con un blocco ```quiz contenente JSON valido compatibile con l’interfaccia.',
     '',
-    'TESTO SORGENTE VINCOLANTE:',
+    isEnglish ? 'MANDATORY SOURCE TEXT:' : 'TESTO SORGENTE VINCOLANTE:',
     source,
   ].join('\n')
 }
 
-function buildLearningImagePrompt(topic: string, unit: LearningUnit) {
+function buildLearningImagePrompt(topic: string, unit: LearningUnit, uiLanguage: 'it' | 'en') {
+  const isEnglish = uiLanguage === 'en'
   const source = [
-    `Titolo unità: ${unit.title}`,
-    `Sintesi: ${unit.summary}`,
-    `Spiegazione: ${unit.explanation}`,
-    unit.keyPoints.length > 0 ? `Punti chiave:\n- ${unit.keyPoints.join('\n- ')}` : '',
+    isEnglish ? `Unit title: ${unit.title}` : `Titolo unità: ${unit.title}`,
+    isEnglish ? `Summary: ${unit.summary}` : `Sintesi: ${unit.summary}`,
+    isEnglish ? `Explanation: ${unit.explanation}` : `Spiegazione: ${unit.explanation}`,
+    unit.keyPoints.length > 0 ? `${isEnglish ? 'Key points' : 'Punti chiave'}:\n- ${unit.keyPoints.join('\n- ')}` : '',
   ].filter(Boolean).join('\n')
 
   return `${LEARNING_IMAGE_PREFIX}${[
-    `Crea un'illustrazione didattica ispirata SOLO a questa unità del percorso "${topic}".`,
-    'L’immagine deve aiutare a spiegare il concetto in modo chiaro, visivo, scolastico e concreto.',
-    'Privilegia diagrammi, relazioni spaziali, elementi etichettabili, scene esplicative e composizione pulita.',
-    'Non introdurre contenuti o dettagli non presenti nel testo sorgente.',
+    isEnglish
+      ? `Create an educational illustration inspired ONLY by this unit from the path "${topic}".`
+      : `Crea un'illustrazione didattica ispirata SOLO a questa unità del percorso "${topic}".`,
+    isEnglish
+      ? 'The image must help explain the concept clearly, visually, and concretely for a school setting.'
+      : 'L’immagine deve aiutare a spiegare il concetto in modo chiaro, visivo, scolastico e concreto.',
+    isEnglish
+      ? 'Prefer diagrams, spatial relationships, label-friendly elements, explanatory scenes, and a clean composition.'
+      : 'Privilegia diagrammi, relazioni spaziali, elementi etichettabili, scene esplicative e composizione pulita.',
+    isEnglish
+      ? 'Do not introduce content or details that are not present in the source text.'
+      : 'Non introdurre contenuti o dettagli non presenti nel testo sorgente.',
     'Stile: educational infographic, clean glossy pastel, high clarity, minimal visual noise.',
     '',
-    'TESTO SORGENTE VINCOLANTE:',
+    isEnglish ? 'MANDATORY SOURCE TEXT:' : 'TESTO SORGENTE VINCOLANTE:',
     source,
   ].join('\n')}`
 }
@@ -313,55 +380,69 @@ type TeacherbotVisual = {
   detail: string
 }
 
-function getTeacherbotVisual(bot: Teacherbot): TeacherbotVisual {
+function getTeacherbotVisual(bot: Teacherbot, uiLanguage: 'it' | 'en'): TeacherbotVisual {
   const source = `${bot.name} ${bot.synopsis} ${bot.description}`.toLowerCase()
+  const isEnglish = uiLanguage === 'en'
 
   if (/(mat|alge|geometr|calcol|equaz|statistic)/.test(source)) {
-    return { Icon: Sigma, label: 'Area matematica', detail: 'Esercizi, metodo e passaggi guidati' }
+    return isEnglish
+      ? { Icon: Sigma, label: 'Math area', detail: 'Exercises, method, and guided steps' }
+      : { Icon: Sigma, label: 'Area matematica', detail: 'Esercizi, metodo e passaggi guidati' }
   }
   if (/(scienz|chim|fisic|biolog|lab|esperiment)/.test(source)) {
-    return { Icon: FlaskConical, label: 'Area scientifica', detail: 'Concetti, esperimenti e fenomeni' }
+    return isEnglish
+      ? { Icon: FlaskConical, label: 'Science area', detail: 'Concepts, experiments, and phenomena' }
+      : { Icon: FlaskConical, label: 'Area scientifica', detail: 'Concetti, esperimenti e fenomeni' }
   }
   if (/(stori|filosof|diritt|societ|politic|civica)/.test(source)) {
-    return { Icon: Landmark, label: 'Area storico-sociale', detail: 'Contesto, interpretazione e collegamenti' }
+    return isEnglish
+      ? { Icon: Landmark, label: 'History and society', detail: 'Context, interpretation, and connections' }
+      : { Icon: Landmark, label: 'Area storico-sociale', detail: 'Contesto, interpretazione e collegamenti' }
   }
   if (/(ingles|frances|spagnol|tedesc|lingu|traduz)/.test(source)) {
-    return { Icon: Languages, label: 'Area linguistica', detail: 'Comprensione, lessico e produzione' }
+    return isEnglish
+      ? { Icon: Languages, label: 'Language area', detail: 'Comprehension, vocabulary, and production' }
+      : { Icon: Languages, label: 'Area linguistica', detail: 'Comprensione, lessico e produzione' }
   }
   if (/(tema|scritt|letter|analisi|testo|narrativ)/.test(source)) {
-    return { Icon: ScrollText, label: 'Area testuale', detail: 'Analisi, sintesi e scrittura' }
+    return isEnglish
+      ? { Icon: ScrollText, label: 'Text area', detail: 'Analysis, synthesis, and writing' }
+      : { Icon: ScrollText, label: 'Area testuale', detail: 'Analisi, sintesi e scrittura' }
   }
   if (/(ricerc|metod|studio|tesi|fonte|document)/.test(source)) {
-    return { Icon: BookText, label: 'Metodo di studio', detail: 'Fonti, organizzazione e approfondimento' }
+    return isEnglish
+      ? { Icon: BookText, label: 'Study method', detail: 'Sources, organisation, and deeper learning' }
+      : { Icon: BookText, label: 'Metodo di studio', detail: 'Fonti, organizzazione e approfondimento' }
   }
   if (/(tecnolog|coding|informat|programmaz|ai|dato)/.test(source)) {
-    return { Icon: Microscope, label: 'Area tecnico-digitale', detail: 'Procedure, strumenti e problem solving' }
+    return isEnglish
+      ? { Icon: Microscope, label: 'Technical and digital area', detail: 'Procedures, tools, and problem solving' }
+      : { Icon: Microscope, label: 'Area tecnico-digitale', detail: 'Procedure, strumenti e problem solving' }
   }
 
-  return { Icon: Wand2, label: 'Assistente personalizzato', detail: 'Supporto dedicato creato dal docente' }
+  return isEnglish
+    ? { Icon: Wand2, label: 'Custom assistant', detail: 'Dedicated support created by the teacher' }
+    : { Icon: Wand2, label: 'Assistente personalizzato', detail: 'Supporto dedicato creato dal docente' }
 }
 
 function getTeacherbotSurface(color: string) {
-  const themeMap: Record<string, { soft: string; border: string; icon: string; badge: string }> = {
-    indigo: { soft: 'bg-indigo-50', border: 'border-indigo-200/70', icon: 'bg-indigo-100 text-indigo-700', badge: 'bg-indigo-100 text-indigo-700' },
-    blue: { soft: 'bg-blue-50', border: 'border-blue-200/70', icon: 'bg-blue-100 text-blue-700', badge: 'bg-blue-100 text-blue-700' },
-    green: { soft: 'bg-emerald-50', border: 'border-emerald-200/70', icon: 'bg-emerald-100 text-emerald-700', badge: 'bg-emerald-100 text-emerald-700' },
-    red: { soft: 'bg-rose-50', border: 'border-rose-200/70', icon: 'bg-rose-100 text-rose-700', badge: 'bg-rose-100 text-rose-700' },
-    purple: { soft: 'bg-violet-50', border: 'border-violet-200/70', icon: 'bg-violet-100 text-violet-700', badge: 'bg-violet-100 text-violet-700' },
-    pink: { soft: 'bg-pink-50', border: 'border-pink-200/70', icon: 'bg-pink-100 text-pink-700', badge: 'bg-pink-100 text-pink-700' },
-    orange: { soft: 'bg-amber-50', border: 'border-amber-200/70', icon: 'bg-amber-100 text-amber-700', badge: 'bg-amber-100 text-amber-700' },
-    teal: { soft: 'bg-teal-50', border: 'border-teal-200/70', icon: 'bg-teal-100 text-teal-700', badge: 'bg-teal-100 text-teal-700' },
-    cyan: { soft: 'bg-cyan-50', border: 'border-cyan-200/70', icon: 'bg-cyan-100 text-cyan-700', badge: 'bg-cyan-100 text-cyan-700' },
-  }
+  const tone = getTeacherbotTone(color)
 
-  return themeMap[color] || themeMap.indigo
+  return {
+    tone,
+    surface: PASTEL_SURFACES[tone],
+    stripe: CHAT_TONE_STRIPES[tone],
+    icon: `${PASTEL_ICON_BACKGROUNDS[tone]} ${PASTEL_ICON_TEXT[tone]}`,
+    badge: `${PASTEL_ICON_BACKGROUNDS[tone]} ${PASTEL_ICON_TEXT[tone]}`,
+  }
 }
 
 // Mobile navigation state
 type MobileViewState = 'profiles' | 'conversations' | 'chat'
 
 export default function ChatbotModule({ sessionId, studentId, initialTeacherbotId, oggiImparoContext, onOggiImparoContextConsumed, onInputFocusChange, isTeacherPreview, studentAccent: accentProp }: ChatbotModuleProps) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
+  const uiLanguage: 'it' | 'en' = i18n.resolvedLanguage?.startsWith('en') ? 'en' : 'it'
   const queryClient = useQueryClient()
   const FALLBACK_PROFILES = getFallbackProfiles(t)
   const PROFILE_INTERVIEWS = getProfileInterviews(t)
@@ -374,7 +455,7 @@ export default function ChatbotModule({ sessionId, studentId, initialTeacherbotI
   const [selectedModel, setSelectedModel] = useState<LLMModel | null>(null)
   const [showModelMenu, setShowModelMenu] = useState(false)
   const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([])
-  const [imageProvider, setImageProvider] = useState<'dall-e' | 'gpt-image-1'>('dall-e')
+  const [imageProvider, setImageProvider] = useState<'dall-e' | 'gpt-image-1.5'>('gpt-image-1.5')
   const messagesContainerRef = useRef<HTMLDivElement>(null)
   const [imageSize, setImageSize] = useState<string>('1024x1024')
   const [chatMode, setChatMode] = useState<'normal' | 'image' | 'quiz' | 'dataset'>('normal')
@@ -443,15 +524,15 @@ export default function ChatbotModule({ sessionId, studentId, initialTeacherbotI
     '--student-accent-border': accentTheme.border,
   }) as CSSProperties, [accentTheme])
   const selectedSoftStyle = useMemo(() => ({
-    backgroundColor: `${accentTheme.accent}15`,
+    backgroundColor: '#f8fafc',
     color: accentTheme.text,
-    borderColor: `${accentTheme.accent}40`,
+    borderColor: '#e2e8f0',
     backdropFilter: 'blur(8px)',
   }) as CSSProperties, [accentTheme])
   const selectedSolidStyle = useMemo(() => ({
-    backgroundColor: accentTheme.accent,
+    backgroundColor: '#0f172a',
     color: '#ffffff',
-  }) as CSSProperties, [accentTheme])
+  }) as CSSProperties, [])
 
   const isDarkColor = (color: string) => {
     const hex = color.replace('#', '')
@@ -723,27 +804,29 @@ export default function ChatbotModule({ sessionId, studentId, initialTeacherbotI
     setExpandingLearningSessionId(session.id)
     try {
       const prompt = [
-        `Espandi questa microlezione in piccole unità di apprendimento chiare, progressive e non ridondanti.`,
-        `Argomento: "${session.topic}"`,
-        `Microlezione di partenza: "${session.lesson}"`,
+        uiLanguage === 'en'
+          ? 'Expand this micro-lesson into small learning units that are clear, progressive, and non-redundant.'
+          : 'Espandi questa microlezione in piccole unità di apprendimento chiare, progressive e non ridondanti.',
+        uiLanguage === 'en' ? `Topic: "${session.topic}"` : `Argomento: "${session.topic}"`,
+        uiLanguage === 'en' ? `Starting micro-lesson: "${session.lesson}"` : `Microlezione di partenza: "${session.lesson}"`,
         '',
-        'Rispondi SOLO con JSON valido nel formato:',
+        uiLanguage === 'en' ? 'Reply ONLY with valid JSON in this format:' : 'Rispondi SOLO con JSON valido nel formato:',
         '{',
         '  "units": [',
         '    {',
-        '      "title": "stringa breve",',
-        '      "summary": "1 frase breve",',
-        '      "explanation": "spiegazione completa ma compatta, 80-160 parole",',
-        '      "keyPoints": ["punto 1", "punto 2", "punto 3"]',
+        uiLanguage === 'en' ? '      "title": "short string",' : '      "title": "stringa breve",',
+        uiLanguage === 'en' ? '      "summary": "1 short sentence",' : '      "summary": "1 frase breve",',
+        uiLanguage === 'en' ? '      "explanation": "compact but complete explanation, 80-160 words",' : '      "explanation": "spiegazione completa ma compatta, 80-160 parole",',
+        uiLanguage === 'en' ? '      "keyPoints": ["point 1", "point 2", "point 3"]' : '      "keyPoints": ["punto 1", "punto 2", "punto 3"]',
         '    }',
         '  ]',
         '}',
         '',
-        'Regole:',
-        '- crea da 3 a 5 unità',
-        '- ogni unità deve trattare solo contenuti realmente coerenti con la microlezione iniziale',
-        '- non introdurre argomenti esterni o avanzati non necessari',
-        '- usa italiano chiaro e didattico',
+        uiLanguage === 'en' ? 'Rules:' : 'Regole:',
+        uiLanguage === 'en' ? '- create 3 to 5 units' : '- crea da 3 a 5 unità',
+        uiLanguage === 'en' ? '- each unit must stay strictly aligned with the starting micro-lesson' : '- ogni unità deve trattare solo contenuti realmente coerenti con la microlezione iniziale',
+        uiLanguage === 'en' ? '- do not introduce unnecessary external or advanced topics' : '- non introdurre argomenti esterni o avanzati non necessari',
+        uiLanguage === 'en' ? '- use clear educational English' : '- usa italiano chiaro e didattico',
       ].join('\n')
 
       const res = await llmApi.studentChat(prompt, [], 'tutor')
@@ -774,7 +857,7 @@ export default function ChatbotModule({ sessionId, studentId, initialTeacherbotI
     } finally {
       setExpandingLearningSessionId(null)
     }
-  }, [learningSessions])
+  }, [learningSessions, uiLanguage])
 
   async function openLearningSession(session: LearningSession) {
     setMainTab('learning')
@@ -785,7 +868,9 @@ export default function ChatbotModule({ sessionId, studentId, initialTeacherbotI
     setSelectedTeacherbot(null)
     setSelectedProfile('tutor')
     setActiveMasterPrompt(
-      `Sei un tutor educativo dedicato. Il tema di studio è: "${expandedSession.topic}". La micro-lezione di base è: "${expandedSession.lesson}". Le unità di apprendimento già spiegate sono: ${normalizeLearningUnits(expandedSession.units, expandedSession.topic, expandedSession.lesson).map((unit) => `"${unit.title}: ${unit.explanation}"`).join(' | ')}. Aiuta lo studente in italiano con esempi pratici e domande stimolanti. Quando generi quiz, usa soltanto i contenuti realmente spiegati nelle unità già mostrate. Se lo studente carica documenti, analizzali nel contesto del tema.`
+      uiLanguage === 'en'
+        ? `You are a dedicated educational tutor. The study topic is: "${expandedSession.topic}". The base micro-lesson is: "${expandedSession.lesson}". The learning units already explained are: ${normalizeLearningUnits(expandedSession.units, expandedSession.topic, expandedSession.lesson).map((unit) => `"${unit.title}: ${unit.explanation}"`).join(' | ')}. Help the student in English with practical examples and stimulating questions. When you generate quizzes, use only the content that has actually been explained in the units already shown. If the student uploads documents, analyse them within the context of the topic.`
+        : `Sei un tutor educativo dedicato. Il tema di studio è: "${expandedSession.topic}". La micro-lezione di base è: "${expandedSession.lesson}". Le unità di apprendimento già spiegate sono: ${normalizeLearningUnits(expandedSession.units, expandedSession.topic, expandedSession.lesson).map((unit) => `"${unit.title}: ${unit.explanation}"`).join(' | ')}. Aiuta lo studente in italiano con esempi pratici e domande stimolanti. Quando generi quiz, usa soltanto i contenuti realmente spiegati nelle unità già mostrate. Se lo studente carica documenti, analizzali nel contesto del tema.`
     )
     setIsMasterPromptApplied(false)
     if (expandedSession.conversationId) {
@@ -798,7 +883,8 @@ export default function ChatbotModule({ sessionId, studentId, initialTeacherbotI
         content: buildLearningUnitsMessage(
           expandedSession.topic,
           expandedSession.lesson,
-          normalizeLearningUnits(expandedSession.units, expandedSession.topic, expandedSession.lesson)
+          normalizeLearningUnits(expandedSession.units, expandedSession.topic, expandedSession.lesson),
+          uiLanguage
         ),
         timestamp: new Date(),
       }])
@@ -857,11 +943,12 @@ export default function ChatbotModule({ sessionId, studentId, initialTeacherbotI
       if (!fallback) return profile
       return {
         ...profile,
+        name: fallback.name,
         description: fallback.description,
         suggested_prompts: fallback.suggested_prompts,
       }
     })
-  }, [profilesData])
+  }, [FALLBACK_PROFILES, profilesData])
 
   const addFileWithPreview = async (file: globalThis.File) => {
     const isImage = file.type.startsWith('image/')
@@ -1201,7 +1288,7 @@ REGOLE IMPORTANTI:
           role: 'assistant',
           content: `**Immagine Generata**\n\n![Generata](${imageUrl})\n\n**Prompt:** \`${enhancedPrompt}\``,
           timestamp: new Date(),
-          provider: imageProvider === 'dall-e' || imageProvider === 'gpt-image-1' ? 'openai' : 'flux',
+          provider: imageProvider === 'dall-e' || imageProvider === 'gpt-image-1.5' ? 'openai' : 'flux',
           model: imageProvider === 'dall-e' ? 'dall-e-3' : imageProvider,
           token_usage_json: { image_count: 1 },
         }
@@ -1274,7 +1361,9 @@ REGOLE IMPORTANTI:
         const assistantMessage: Message = {
           id: `proactive-done-${Date.now()}`,
           role: 'assistant',
-          content: 'Perfetto, ho raccolto le informazioni principali. Da ora usero queste indicazioni per guidare il chatbot in modo personalizzato. Scrivi la tua prima richiesta quando vuoi.',
+          content: uiLanguage === 'en'
+            ? 'Perfect, I have collected the main information. From now on I will use these directions to guide the chatbot in a more personalised way. Write your first request whenever you are ready.'
+            : 'Perfetto, ho raccolto le informazioni principali. Da ora usero queste indicazioni per guidare il chatbot in modo personalizzato. Scrivi la tua prima richiesta quando vuoi.',
           timestamp: new Date(),
         }
         setMessages((prev) => [...prev, assistantMessage])
@@ -1302,19 +1391,27 @@ REGOLE IMPORTANTI:
     const rawUserContent = messageContent.trim()
     let contentForApi = rawUserContent
     if (!selectedTeacherbot && activeMasterPrompt && !isMasterPromptApplied && rawUserContent) {
-      contentForApi = `CONTESTO DIDATTICO DA APPLICARE:\n${activeMasterPrompt}\n\nRichiesta studente:\n${rawUserContent}`
+      contentForApi = uiLanguage === 'en'
+        ? `LEARNING CONTEXT TO APPLY:\n${activeMasterPrompt}\n\nStudent request:\n${rawUserContent}`
+        : `CONTESTO DIDATTICO DA APPLICARE:\n${activeMasterPrompt}\n\nRichiesta studente:\n${rawUserContent}`
       setIsMasterPromptApplied(true)
     }
 
     // QUIZ MODE — inject structured quiz generation instruction (works for both regular chatbot and teacherbot)
     if (chatMode === 'quiz' && !profileInterview.active) {
       const quizInstruction = [
-        'Genera un quiz a scelta multipla in italiano basato sulla richiesta seguente.',
-        'Rispondi ESCLUSIVAMENTE con un blocco ```quiz contenente JSON valido nel formato:',
+        uiLanguage === 'en'
+          ? 'Generate a multiple-choice quiz in English based on the following request.'
+          : 'Genera un quiz a scelta multipla in italiano basato sulla richiesta seguente.',
+        uiLanguage === 'en'
+          ? 'Reply ONLY with a ```quiz block containing valid JSON in this format:'
+          : 'Rispondi ESCLUSIVAMENTE con un blocco ```quiz contenente JSON valido nel formato:',
         '{"title":"titolo quiz","questions":[{"question":"...","options":["a","b","c","d"],"correctIndex":0,"explanation":"..."}]}',
-        'Crea esattamente 4 domande con 4 opzioni ciascuna. Una sola opzione corretta. Aggiungi una breve spiegazione per ogni risposta.',
+        uiLanguage === 'en'
+          ? 'Create exactly 4 questions with 4 options each. Only one correct option. Add a short explanation for each answer.'
+          : 'Crea esattamente 4 domande con 4 opzioni ciascuna. Una sola opzione corretta. Aggiungi una breve spiegazione per ogni risposta.',
         '',
-        'Richiesta: ' + rawUserContent,
+        `${uiLanguage === 'en' ? 'Request' : 'Richiesta'}: ${rawUserContent}`,
       ].join('\n')
       contentForApi = quizInstruction
     }
@@ -1322,11 +1419,17 @@ REGOLE IMPORTANTI:
     // DATASET MODE — inject dataset generation instruction (works for both regular chatbot and teacherbot)
     if (chatMode === 'dataset' && !profileInterview.active) {
       const datasetInstruction = [
-        'Genera un dataset strutturato, realistico e immediatamente utilizzabile basato sulla richiesta seguente.',
-        'Rispondi con il dataset in formato CSV (colonne ben definite, dati realistici, almeno 10 righe).',
-        'Se la richiesta specifica JSON o altro formato, usa quello. Non aggiungere testo aggiuntivo fuori dal dataset.',
+        uiLanguage === 'en'
+          ? 'Generate a structured, realistic, and immediately usable dataset based on the following request.'
+          : 'Genera un dataset strutturato, realistico e immediatamente utilizzabile basato sulla richiesta seguente.',
+        uiLanguage === 'en'
+          ? 'Reply with the dataset in CSV format (well-defined columns, realistic data, at least 10 rows).'
+          : 'Rispondi con il dataset in formato CSV (colonne ben definite, dati realistici, almeno 10 righe).',
+        uiLanguage === 'en'
+          ? 'If the request explicitly asks for JSON or another format, use that. Do not add any text outside the dataset.'
+          : 'Se la richiesta specifica JSON o altro formato, usa quello. Non aggiungere testo aggiuntivo fuori dal dataset.',
         '',
-        'Richiesta: ' + rawUserContent,
+        `${uiLanguage === 'en' ? 'Request' : 'Richiesta'}: ${rawUserContent}`,
       ].join('\n')
       contentForApi = datasetInstruction
     }
@@ -1334,7 +1437,7 @@ REGOLE IMPORTANTI:
     const userMessage: Message = {
       id: Date.now().toString(),
       role: 'user',
-      content: (rawUserContent || 'Analizza questi documenti') + filesInfo,
+      content: (rawUserContent || (uiLanguage === 'en' ? 'Analyse these documents' : 'Analizza questi documenti')) + filesInfo,
       timestamp: new Date(),
     }
     setMessages((prev) => [...prev, userMessage])
@@ -1470,7 +1573,8 @@ REGOLE IMPORTANTI:
             content: buildLearningUnitsMessage(
               learningSession.topic,
               learningSession.lesson,
-              normalizeLearningUnits(learningSession.units, learningSession.topic, learningSession.lesson)
+              normalizeLearningUnits(learningSession.units, learningSession.topic, learningSession.lesson),
+              uiLanguage
             ),
             timestamp: new Date(learningSession.createdAt),
           }
@@ -1551,7 +1655,9 @@ REGOLE IMPORTANTI:
   const handleGenerateLesson = async () => {
     if (!newLessonTopic.trim() || generatingLesson) return
     setGeneratingLesson(true)
-    const prompt = `Genera una microlezione educativa breve in italiano sull'argomento: "${newLessonTopic.trim()}". La microlezione deve essere un fatto interessante, un concetto chiave o una curiosità stimolante per studenti delle scuole superiori o universitari. MASSIMO 400 caratteri. Rispondi SOLO con il testo della microlezione, senza titoli né introduzioni.`
+    const prompt = uiLanguage === 'en'
+      ? `Generate a short educational micro-lesson in English about: "${newLessonTopic.trim()}". The micro-lesson should present an interesting fact, a key concept, or a stimulating curiosity for secondary school or university students. MAX 400 characters. Reply ONLY with the micro-lesson text, with no title or introduction.`
+      : `Genera una microlezione educativa breve in italiano sull'argomento: "${newLessonTopic.trim()}". La microlezione deve essere un fatto interessante, un concetto chiave o una curiosità stimolante per studenti delle scuole superiori o universitari. MASSIMO 400 caratteri. Rispondi SOLO con il testo della microlezione, senza titoli né introduzioni.`
     try {
       const res = await llmApi.studentChat(prompt, [], 'tutor')
       const text: string = res.data?.response ?? res.data?.content ?? ''
@@ -1782,7 +1888,7 @@ REGOLE IMPORTANTI:
             <div className="space-y-2">
               {/* Tutor hero */}
               <motion.button whileTap={{ scale: 0.98 }} onClick={() => handleSelectProfile('tutor')}
-                className="w-full relative overflow-hidden rounded-2xl border p-4 text-left shadow-sm"
+                className="w-full relative overflow-hidden rounded-xl border p-4 text-left shadow-sm"
                 style={{ backgroundColor: PROFILE_SURFACES_MOB.tutor.bg, borderColor: 'rgba(16,185,129,0.18)' }}
               >
                 <div className="absolute right-3 top-3 opacity-[0.08]"><GraduationCap className="h-16 w-16" style={{ color: PROFILE_SURFACES_MOB.tutor.text }} /></div>
@@ -1796,7 +1902,7 @@ REGOLE IMPORTANTI:
                   const surface = PROFILE_SURFACES_MOB[profile.key] || PROFILE_SURFACES_MOB.math_coach
                   return (
                   <motion.button key={profile.key} whileTap={{ scale: 0.95 }} onClick={() => handleSelectProfile(profile.key)}
-                    className="relative overflow-hidden rounded-2xl border p-3 text-left shadow-sm"
+                    className="relative overflow-hidden rounded-xl border p-3 text-left shadow-sm"
                     style={{ backgroundColor: surface.bg, borderColor: 'rgba(148,163,184,0.16)' }}
                   >
                     <div className="w-7 h-7 rounded-lg flex items-center justify-center mb-1.5" style={{ backgroundColor: surface.icon }}>
@@ -1823,7 +1929,7 @@ REGOLE IMPORTANTI:
                     const surface = BOT_SURFACES_MOB[bot.color] || BOT_SURFACES_MOB.indigo
                     return (
                   <motion.button key={bot.id} whileTap={{ scale: 0.97 }} onClick={() => handleSelectTeacherbot(bot)}
-                    className={`w-full relative overflow-hidden rounded-2xl border text-left shadow-sm ${idx === 0 ? 'p-4' : 'p-3'}`}
+                    className={`w-full relative overflow-hidden rounded-xl border text-left shadow-sm ${idx === 0 ? 'p-4' : 'p-3'}`}
                     style={{ backgroundColor: surface.bg, borderColor: 'rgba(148,163,184,0.16)' }}
                   >
                     <div className="absolute right-2 top-2 opacity-[0.08]"><Wand2 className={idx === 0 ? 'h-16 w-16' : 'h-10 w-10'} style={{ color: surface.text }} /></div>
@@ -1843,7 +1949,7 @@ REGOLE IMPORTANTI:
           {mainTab === 'learning' && (
             <div className="space-y-2">
               <motion.button whileTap={{ scale: 0.98 }} onClick={() => setShowNewLessonDialog(true)}
-                className="w-full relative overflow-hidden rounded-2xl border p-4 text-left shadow-sm"
+                className="w-full relative overflow-hidden rounded-xl border p-4 text-left shadow-sm"
                 style={{ backgroundColor: 'rgba(243,232,255,0.9)', borderColor: 'rgba(139,92,246,0.18)' }}
               >
                 <div className="flex items-center gap-3">
@@ -1858,7 +1964,7 @@ REGOLE IMPORTANTI:
                 <div className="text-center py-10"><BookOpen className="h-8 w-8 text-slate-200 mx-auto mb-2" /><p className="text-sm text-slate-400">Nessuna lezione ancora</p></div>
               ) : learningSessions.map(session => (
                 <motion.div key={session.id} whileTap={{ scale: 0.99 }} onClick={() => expandingLearningSessionId !== session.id && openLearningSession(session)}
-                  className="p-3 rounded-2xl bg-white border border-slate-100 cursor-pointer shadow-sm group"
+                  className="p-3 rounded-xl bg-white border border-slate-100 cursor-pointer shadow-sm group"
                 >
                   <div className="flex items-start gap-2.5">
                     <div className="w-8 h-8 rounded-xl bg-violet-100 flex items-center justify-center shrink-0"><BookOpen className="h-3.5 w-3.5 text-violet-600" /></div>
@@ -1906,7 +2012,7 @@ REGOLE IMPORTANTI:
         {/* New lesson dialog */}
         {showNewLessonDialog && (
           <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-end justify-center" onClick={() => setShowNewLessonDialog(false)}>
-            <div className="bg-white rounded-t-3xl p-6 w-full max-w-lg" onClick={e => e.stopPropagation()}>
+            <div className="bg-white rounded-t-2xl p-6 w-full max-w-lg" onClick={e => e.stopPropagation()}>
               <div className="flex items-center gap-3 mb-4">
                 <div className="w-10 h-10 rounded-xl bg-violet-100 flex items-center justify-center"><BookOpen className="h-5 w-5 text-violet-600" /></div>
                 <div><h3 className="text-base font-bold text-slate-800">Oggi Imparo</h3><p className="text-xs text-slate-400">Genera una microlezione</p></div>
@@ -1919,7 +2025,7 @@ REGOLE IMPORTANTI:
               <div className="flex gap-2 justify-end">
                 <button onClick={() => { setShowNewLessonDialog(false); setNewLessonTopic('') }} className="px-4 py-2 text-sm text-slate-500">Annulla</button>
                 <button onClick={handleGenerateLesson} disabled={!newLessonTopic.trim() || generatingLesson}
-                  className="px-4 py-2 text-sm font-semibold bg-violet-600 text-white rounded-xl disabled:opacity-50 flex items-center gap-1.5"
+                  className="px-4 py-2 text-sm font-semibold bg-slate-900 text-white rounded-lg disabled:opacity-50 flex items-center gap-1.5"
                 >
                   {generatingLesson ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
                   Genera
@@ -2007,7 +2113,7 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
   const composerContent = (
     <>
       {attachedFiles.length > 0 && (
-        <div className="flex gap-1 mb-1 flex-wrap bg-white/90 backdrop-blur-sm rounded-t-xl p-2 border border-b-0 border-slate-200 md:border-0 md:rounded-none md:bg-transparent md:p-0 md:mb-3">
+        <div className="mb-1 flex flex-wrap gap-1 rounded-t-lg border border-b-0 border-slate-200 bg-white p-2 md:mb-3 md:rounded-none md:border-0 md:bg-transparent md:p-0">
           {attachedFiles.map((af, idx) => (
             <div key={idx} className="relative group">
               {af.type === 'image' && af.preview ? (
@@ -2055,10 +2161,9 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
         </div>
       )}
 
-      <div className="p-2 md:p-3 bg-white/95 backdrop-blur-sm md:bg-transparent">
+      <div className="bg-white p-2 md:bg-transparent md:p-3">
         <div
-          className="relative flex items-end gap-2 bg-white border-2 rounded-[2rem] p-1.5 pl-3 transition-all shadow-sm"
-          style={{ borderColor: accentTheme.border, boxShadow: `0 0 0 0 ${accentTheme.accent}` }}
+          className="relative flex items-end gap-2 rounded-xl border border-slate-200/80 bg-white/90 p-2 pl-3 shadow-sm transition-all focus-within:border-slate-400"
         >
           <input type="file" ref={fileInputRef} className="hidden" multiple
             accept="image/*,.pdf,.doc,.docx,.ppt,.pptx,.txt,.csv,.xlsx,.xls,.json"
@@ -2077,7 +2182,7 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
           />
 
           <Button
-            variant="ghost" size="icon" className="h-9 w-9 text-slate-400 hover:bg-slate-100 rounded-full flex-shrink-0"
+            variant="ghost" size="icon" className="h-9 w-9 flex-shrink-0 rounded-xl text-slate-400 hover:bg-slate-100"
             style={{ color: 'inherit' }}
             onClick={() => fileInputRef.current?.click()}
           >
@@ -2088,7 +2193,7 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
             <button
               type="button"
               onClick={() => setShowChatModeMenu((prev) => !prev)}
-              className="ai-mode-pill inline-flex items-center gap-2 rounded-full px-2.5 py-1.5 text-[11px] font-semibold text-slate-900 ring-1 ring-white/70"
+              className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white/85 px-3 py-1.5 text-[11px] font-semibold text-slate-900 shadow-sm transition-all hover:bg-white"
               title="Cambia modalità"
             >
               <span className="px-1.5">Modalita</span>
@@ -2108,7 +2213,7 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
               <ChevronDown className={`h-3 w-3 text-slate-700 transition-transform ${showChatModeMenu ? 'rotate-180' : ''}`} />
             </button>
             {showChatModeMenu && (
-              <div className="absolute bottom-full left-0 mb-2 w-44 rounded-2xl border border-slate-200 bg-white/96 p-1.5 shadow-xl backdrop-blur-xl">
+	              <div className="absolute bottom-full left-0 mb-2 w-44 rounded-xl border border-slate-200 bg-white/96 p-1.5 shadow-xl backdrop-blur-xl">
                 {([
                   { mode: 'normal' as const, label: 'Chat', icon: null },
                   { mode: 'image' as const, label: 'Immagine', icon: <ImageIcon className="h-3.5 w-3.5" /> },
@@ -2170,7 +2275,7 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
             onClick={() => handleSend()}
             disabled={(!input.trim() && attachedFiles.length === 0) || sendMessageMutation.isPending || isStreaming}
             size="icon"
-            className={`h-9 w-9 rounded-full transition-all flex-shrink-0 ${(!input.trim() && attachedFiles.length === 0) ? 'bg-slate-200 text-slate-400' : 'hover:scale-105 shadow-md text-white'}`}
+            className={`h-9 w-9 flex-shrink-0 rounded-xl transition-all ${(!input.trim() && attachedFiles.length === 0) ? 'bg-slate-200 text-slate-400' : 'text-white shadow-md hover:-translate-y-0.5'}`}
             style={(!input.trim() && attachedFiles.length === 0) ? undefined : selectedSolidStyle}
           >
             <Send className="h-4 w-4 ml-0.5" />
@@ -2182,15 +2287,15 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
         <div className="flex items-center justify-center gap-4 mt-2 pb-3 flex-wrap animate-in fade-in slide-in-from-bottom-1 duration-150">
           <div className="flex items-center gap-2">
             <span className="text-xs text-slate-400">Modello:</span>
-            <div className="flex items-center bg-slate-100 rounded-lg p-0.5">
+            <div className={`flex items-center rounded-xl p-0.5 shadow-sm ${PASTEL_SURFACES.slate}`}>
               {([
                 { id: 'dall-e' as const, label: 'DALL-E 3' },
-                { id: 'gpt-image-1' as const, label: 'GPT Image 1' },
+                { id: 'gpt-image-1.5' as const, label: 'GPT Image 1.5' },
               ]).map((m) => (
                 <button
                   key={m.id}
                   onClick={() => setImageProvider(m.id)}
-                  className={`px-2 py-1 text-[10px] rounded-md transition-all ${imageProvider === m.id ? 'bg-white shadow text-fuchsia-600 font-bold' : 'text-slate-500 hover:text-slate-700'}`}
+                  className={`rounded-lg px-2 py-1 text-[10px] transition-all ${imageProvider === m.id ? 'bg-slate-900 font-bold text-white shadow' : 'text-slate-500 hover:text-slate-700'}`}
                 >
                   {m.label}
                 </button>
@@ -2202,7 +2307,7 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
             <select
               value={imageSize}
               onChange={(e) => setImageSize(e.target.value)}
-              className="text-xs bg-slate-100 border-0 rounded-lg px-2 py-1 text-slate-600 focus:ring-1 focus:ring-fuchsia-300"
+              className="rounded-xl border border-slate-200/80 bg-white/90 px-2 py-1 text-xs text-slate-600 shadow-sm focus:ring-1 focus:ring-slate-300"
             >
               <option value="1024x1024">1:1 Quadrato</option>
               <option value="1024x768">4:3 Orizzontale</option>
@@ -2219,16 +2324,13 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
   // Desktop Chat interface
   return (
     <div
-      className="relative flex h-full min-h-0 w-full md:rounded-[30px] overflow-hidden md:shadow-lg md:border"
+      className="relative flex h-full min-h-0 w-full gap-3 overflow-hidden bg-slate-100 p-4 text-slate-900"
       style={{
         ...accentVars,
-        backgroundColor: accentTheme.soft,
-        borderColor: accentTheme.id === 'black' ? hexToRgba('#0f172a', 0.08) : hexToRgba(accentTheme.accent, 0.18),
       }}
     >
       <aside
-        className={`hidden md:flex shrink-0 border-r bg-white/88 backdrop-blur-xl flex-col transition-all duration-300 ${navCollapsed && mainTab === 'rag' ? 'w-12' : 'w-[24.5rem]'}`}
-        style={{ borderRightColor: accentTheme.id === 'black' ? hexToRgba('#0f172a', 0.08) : hexToRgba(accentTheme.accent, 0.14) }}
+        className={`hidden shrink-0 overflow-hidden rounded-xl text-slate-900 shadow-[0_18px_60px_rgba(15,23,42,0.10)] transition-all duration-300 md:flex md:flex-col ${PASTEL_SURFACES.slate} ${navCollapsed && mainTab === 'rag' ? 'w-12' : 'w-[24.5rem]'}`}
       >
         {navCollapsed && mainTab === 'rag' ? (
           /* Collapsed strip */
@@ -2246,20 +2348,14 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
             ].map(({ key, icon: Icon }) => (
               <button key={key} onClick={() => { setNavCollapsed(false); setMainTab(key) }}
                 title={key}
-                className={`p-2 rounded-xl transition-colors ${mainTab === key ? 'bg-violet-100 text-violet-600' : 'text-slate-400 hover:bg-slate-100'}`}>
+                className={`p-2 rounded-lg transition-colors ${mainTab === key ? 'bg-slate-100 text-slate-700' : 'text-slate-400 hover:bg-slate-100'}`}>
                 <Icon className="h-4 w-4" />
               </button>
             ))}
           </div>
         ) : (
           <>
-        <div
-          className="border-b px-5 py-4"
-          style={{
-            borderBottomColor: accentTheme.id === 'black' ? hexToRgba('#0f172a', 0.08) : hexToRgba(accentTheme.accent, 0.14),
-            backgroundColor: accentTheme.id === 'black' ? 'rgba(255,255,255,0.96)' : hexToRgba(accentTheme.accent, 0.08),
-          }}
-        >
+        <div className="border-b border-slate-200/70 bg-white/60 px-5 py-4 backdrop-blur-sm">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-[10px] font-semibold uppercase tracking-[0.18em]" style={{ color: accentTheme.text }}>Chatbot</p>
@@ -2284,28 +2380,27 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
             const active = mainTab === key
             const isExpanded = expandedSection === key
             const menuTheme = getSidebarMenuTheme(key)
+            const tone = getMainTabTone(key)
             return (
               <div key={key}>
                 <button
-                  className={`w-full rounded-2xl border px-3 py-2.5 text-left transition-all ${active || isExpanded ? 'shadow-sm' : 'hover:shadow-sm'}`}
-                  style={active || isExpanded ? {
-                    borderColor: accentTheme.id === 'black' ? hexToRgba('#0f172a', 0.12) : hexToRgba(accentTheme.accent, 0.2),
-                    backgroundColor: menuTheme.surface,
-                  } : {
-                    borderColor: 'rgba(203,213,225,0.3)',
-                    backgroundColor: 'rgba(255,255,255,0.74)',
-                  }}
+	                  className={`w-full rounded-lg px-3 py-2.5 text-left shadow-sm transition-all ${
+                      active || isExpanded
+                        ? PASTEL_SURFACES[tone]
+                        : 'border border-slate-200/60 bg-white/70 hover:border-slate-300 hover:bg-white'
+                    }`}
                   onClick={() => {
                     if (key === 'rag') {
                       const already = expandedSection === 'rag'
                       setExpandedSection(already ? null : 'rag')
+                      setMainTab('rag')
+                      setNavCollapsed(true)
                       // If no sessions yet, auto-create one and navigate
                       if (!already && ragSessions.length === 0) {
                         const s = createRagSession()
                         saveRagSession(s)
                         setRagSessions([s])
                         setActiveRagSessionId(s.id)
-                        setMainTab('rag')
                         setExpandedSection(null)
                       }
                     } else {
@@ -2315,8 +2410,7 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
                 >
                   <div className="flex items-center gap-2.5">
                     <div
-                      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl"
-                      style={{ backgroundColor: active || isExpanded ? menuTheme.surfaceStrong : menuTheme.iconBg, color: menuTheme.iconColor }}
+	                      className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${PASTEL_ICON_BACKGROUNDS[tone]} ${PASTEL_ICON_TEXT[tone]}`}
                     >
                       <Icon className="h-3.5 w-3.5" />
                     </div>
@@ -2324,10 +2418,11 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
                       <div className="flex items-center justify-between gap-1">
                         <span className="text-sm font-semibold text-slate-800">{label}</span>
                         <div className="flex items-center gap-1">
-                          <span className="rounded-full px-1.5 py-0.5 text-[10px] font-bold"
-                            style={{ backgroundColor: 'rgba(255,255,255,0.9)', color: menuTheme.iconColor }}>
-                            {badge}
-                          </span>
+                          {badge !== undefined && (
+                            <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold ${PASTEL_ICON_BACKGROUNDS[tone]} ${PASTEL_ICON_TEXT[tone]}`}>
+                              {badge}
+                            </span>
+                          )}
                           <ChevronDown className={`h-3 w-3 transition-transform text-slate-400 ${isExpanded ? 'rotate-180' : ''}`} />
                         </div>
                       </div>
@@ -2345,7 +2440,7 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
                         <button
                           key={profile.key}
                           onClick={() => handleSelectProfile(profile.key)}
-                          className={`w-full flex items-start gap-3 px-3 py-3 rounded-xl text-left transition-all ${isActive ? 'bg-white shadow-sm' : 'hover:bg-white/70'}`}
+                          className={`w-full flex items-start gap-3 rounded-lg px-3 py-3 text-left transition-all ${isActive ? 'bg-slate-50' : 'hover:bg-slate-50'}`}
                           style={isActive ? { borderLeft: `3px solid ${menuTheme.iconColor}`, paddingLeft: '9px' } : undefined}
                         >
                           <div className="w-8 h-8 rounded-xl flex items-center justify-center shrink-0"
@@ -2374,7 +2469,7 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
                         <button
                           key={bot.id}
                           onClick={() => handleSelectTeacherbot(bot)}
-                          className={`w-full flex items-start gap-3 px-3 py-3 rounded-xl text-left transition-all ${isActive ? 'bg-white shadow-sm' : 'hover:bg-white/70'}`}
+                          className={`w-full flex items-start gap-3 rounded-lg px-3 py-3 text-left transition-all ${isActive ? 'bg-slate-50' : 'hover:bg-slate-50'}`}
                           style={isActive ? { borderLeft: `3px solid ${menuTheme.iconColor}`, paddingLeft: '9px' } : undefined}
                         >
                           <div className="w-8 h-8 rounded-xl flex items-center justify-center shrink-0"
@@ -2403,9 +2498,9 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
                         setActiveRagSessionId(s.id)
                         setMainTab('rag')
                         setExpandedSection(null)
-                        setNavCollapsed(false)
+                        setNavCollapsed(true)
                       }}
-                      className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-left hover:bg-white/70 transition-all"
+                      className="w-full flex items-center gap-2 rounded-lg px-3 py-2 text-left transition-all hover:bg-slate-50"
                     >
                       <div className="w-6 h-6 rounded-lg flex items-center justify-center shrink-0"
                         style={{ backgroundColor: menuTheme.iconBg, color: menuTheme.iconColor }}>
@@ -2423,9 +2518,9 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
                             setActiveRagSessionId(ragSession.id)
                             setMainTab('rag')
                             setExpandedSection(null)
-                            setNavCollapsed(false)
+                            setNavCollapsed(true)
                           }}
-                          className={`w-full flex items-center gap-2 px-3 py-2 rounded-xl text-left transition-all ${isActive ? 'bg-white shadow-sm' : 'hover:bg-white/70'}`}
+                          className={`w-full flex items-center gap-2 rounded-lg px-3 py-2 text-left transition-all ${isActive ? 'bg-slate-50' : 'hover:bg-slate-50'}`}
                           style={isActive ? { borderLeft: `3px solid ${menuTheme.iconColor}`, paddingLeft: '9px' } : undefined}
                         >
                           <div className="w-6 h-6 rounded-lg flex items-center justify-center shrink-0"
@@ -2448,7 +2543,7 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
                   <div className="mt-1 ml-2 space-y-0.5">
                     <button
                       onClick={() => setShowNewLessonDialog(true)}
-                      className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-left hover:bg-white/70 transition-all"
+                      className="w-full flex items-center gap-2 rounded-lg px-3 py-2 text-left transition-all hover:bg-slate-50"
                     >
                       <div className="w-6 h-6 rounded-lg flex items-center justify-center shrink-0"
                         style={{ backgroundColor: menuTheme.iconBg, color: menuTheme.iconColor }}>
@@ -2462,7 +2557,7 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
                         <button
                           key={session.id}
                           onClick={() => openLearningSession(session)}
-                          className={`w-full flex items-center gap-2 px-3 py-2 rounded-xl text-left transition-all ${isActive ? 'bg-white shadow-sm' : 'hover:bg-white/70'}`}
+                          className={`w-full flex items-center gap-2 rounded-lg px-3 py-2 text-left transition-all ${isActive ? 'bg-slate-50' : 'hover:bg-slate-50'}`}
                           style={isActive ? { borderLeft: `3px solid ${menuTheme.iconColor}`, paddingLeft: '9px' } : undefined}
                         >
                           <div className="w-6 h-6 rounded-lg flex items-center justify-center shrink-0"
@@ -2480,13 +2575,13 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
           })}
         </nav>
 
-        <div className="border-t px-3 py-3" style={{ borderTopColor: accentTheme.id === 'black' ? hexToRgba('#0f172a', 0.06) : hexToRgba(accentTheme.accent, 0.1) }}>
+	        <div className="border-t border-slate-200/70 bg-white/45 px-3 py-3 backdrop-blur-sm">
           <div className="grid grid-cols-2 gap-1.5">
-            <div className="rounded-xl border bg-white/90 px-3 py-2" style={{ borderColor: accentTheme.id === 'black' ? hexToRgba('#0f172a', 0.06) : hexToRgba(accentTheme.accent, 0.12) }}>
+	            <div className={`rounded-lg px-3 py-2 shadow-sm ${PASTEL_SURFACES.slate}`}>
               <div className="text-[10px] uppercase tracking-wide text-slate-400">Chat</div>
               <div className="mt-0.5 text-base font-semibold text-slate-900">{conversations.length}</div>
             </div>
-            <div className="rounded-xl border bg-white/90 px-3 py-2" style={{ borderColor: accentTheme.id === 'black' ? hexToRgba('#0f172a', 0.06) : hexToRgba(accentTheme.accent, 0.12) }}>
+	            <div className={`rounded-lg px-3 py-2 shadow-sm ${PASTEL_SURFACES.slate}`}>
               <div className="text-[10px] uppercase tracking-wide text-slate-400">Lezioni</div>
               <div className="mt-0.5 text-base font-semibold text-slate-900">{learningSessions.length}</div>
             </div>
@@ -2496,12 +2591,12 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
         )}
       </aside>
 
-      <div className="flex-1 min-w-0 min-h-0 flex overflow-hidden">
+      <div className={`flex min-h-0 min-w-0 flex-1 overflow-hidden rounded-xl text-slate-900 shadow-[0_18px_60px_rgba(15,23,42,0.10)] ${PASTEL_SURFACES.sky}`}>
         {(selectedProfile || selectedTeacherbot) && (
-          <div className={`${showHistory ? 'w-64' : 'w-10'} hidden md:flex min-h-0 border-r bg-white flex-col transition-all duration-200 shrink-0`} style={{ borderRightColor: accentTheme.border }}>
+	          <div className={`${showHistory ? 'w-64' : 'w-10'} hidden md:flex min-h-0 shrink-0 flex-col border-r border-slate-200/70 bg-white/60 transition-all duration-200 backdrop-blur-sm`}>
             {showHistory ? (
               <>
-                <div className="p-3 border-b bg-white" style={{ borderBottomColor: accentTheme.border }}>
+	                <div className="border-b border-slate-200/70 bg-white/60 p-3 backdrop-blur-sm">
                   <div className="flex items-center justify-between">
                     <div>
                       <h4 className="font-semibold text-sm text-slate-700">Cronologia</h4>
@@ -2520,7 +2615,7 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
                 <div className="flex-1 overflow-y-auto p-2 space-y-1">
                   <button
                     onClick={handleStartNewConversation}
-                    className="w-full text-left px-3 py-2 rounded-lg text-sm transition-colors flex items-center gap-2 border"
+                    className="flex w-full items-center gap-2 rounded-xl border px-3 py-2 text-left text-sm shadow-sm transition-colors"
                     style={selectedSoftStyle}
                   >
                     <Sparkles className="h-4 w-4" />
@@ -2533,7 +2628,7 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
                     .map((conv) => (
                       <div
                         key={conv.id}
-                        className={`group relative w-full text-left px-3 py-2 rounded-lg text-sm transition-colors cursor-pointer border ${conversationId === conv.id ? '' : 'hover:bg-slate-100 text-slate-600'}`}
+                        className={`group relative w-full cursor-pointer rounded-lg border px-3 py-2 text-left text-sm transition-colors ${conversationId === conv.id ? '' : 'border-transparent text-slate-600 hover:bg-white/80'}`}
                         style={conversationId === conv.id ? selectedSoftStyle : undefined}
                         onClick={() => loadConversation(conv.id)}
                       >
@@ -2587,7 +2682,7 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
                 {conversations.filter(c => selectedTeacherbot
                   ? c.profile_key === `teacherbot-${selectedTeacherbot.id}`
                   : c.profile_key === selectedProfile).length > 0 && (
-                    <div className="p-2 border-t border-slate-200 bg-white">
+                    <div className="border-t border-slate-200 bg-white/60 p-2">
                       <button
                         onClick={async () => {
                           if (confirm('Eliminare tutta la cronologia?')) {
@@ -2620,7 +2715,7 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
         )}
 
         <div
-          className="flex-1 flex flex-col min-w-0 min-h-0"
+          className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
         style={chatBg ? { backgroundColor: chatBg } : undefined}
         onDragOver={(e) => {
           e.preventDefault()
@@ -2723,26 +2818,22 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
             </Suspense>
           ) : isDesktopSelection ? (
             <>
-              <div
-                className="flex shrink-0 items-center justify-between border-b px-5 py-3"
-                style={{
-                  borderBottomColor: accentTheme.border,
-                  backgroundColor: accentTheme.id === 'black' ? 'rgba(255,255,255,0.96)' : accentTheme.soft,
-                }}
-              >
+	              <div
+	                className="flex shrink-0 items-center justify-between border-b border-slate-200/70 bg-white/60 px-5 py-3 backdrop-blur-sm"
+	              >
                 <div className="flex items-center gap-2">
                   <p className="text-[10px] font-semibold uppercase tracking-[0.18em]" style={{ color: accentTheme.text }}>
                     {mainTab === 'assistants' ? 'Assistenti AI' : mainTab === 'teacherbots' ? 'Teacherbot' : 'Oggi Imparo'}
                   </p>
-                  {mainTab === 'teacherbots' && (
-                    <span className="rounded-full px-1.5 py-0.5 text-[10px] font-bold" style={{ backgroundColor: accentTheme.soft, color: accentTheme.text }}>
-                      {availableTeacherbots.length}
-                    </span>
-                  )}
+	                  {mainTab === 'teacherbots' && (
+	                    <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-bold" style={{ color: accentTheme.text }}>
+	                      {availableTeacherbots.length}
+	                    </span>
+	                  )}
                   {mainTab === 'assistants' && topProfiles.length > 0 && (
                     <div className="hidden xl:flex gap-2 ml-4">
                       {topProfiles.slice(0, 3).map(([key, count]) => (
-                        <span key={key} className="rounded-full border px-2 py-0.5 text-[10px] font-medium" style={{ borderColor: accentTheme.border, backgroundColor: accentTheme.soft, color: accentTheme.text }}>
+	                        <span key={key} className="rounded-full border bg-white px-2 py-0.5 text-[10px] font-medium" style={{ borderColor: '#e2e8f0', color: accentTheme.text }}>
                           {profiles.find(p => p.key === key)?.name || key} · {count}
                         </span>
                       ))}
@@ -2750,7 +2841,7 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
                   )}
                 </div>
                 {mainTab === 'learning' && (
-                  <Button size="sm" onClick={() => setShowNewLessonDialog(true)} className="rounded-xl text-white shadow-sm" style={selectedSolidStyle}>
+	                  <Button size="sm" onClick={() => setShowNewLessonDialog(true)} className="rounded-xl text-white shadow-sm transition-transform hover:-translate-y-0.5" style={selectedSolidStyle}>
                     <Plus className="mr-1.5 h-3.5 w-3.5" />
                     Nuova lezione
                   </Button>
@@ -2762,33 +2853,22 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
                   <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                     {profiles.map((profile) => {
                       const usage = profileUsageCounts[profile.key] || 0
-                      const accent = profile.key === 'tutor'
-                        ? { surface: 'rgba(220,252,231,0.72)', icon: 'rgba(16,185,129,0.18)', color: '#0f766e', border: 'rgba(16,185,129,0.22)' }
-                        : profile.key === 'quiz'
-                          ? { surface: 'rgba(255,228,230,0.72)', icon: 'rgba(244,63,94,0.16)', color: '#be123c', border: 'rgba(244,63,94,0.18)' }
-                          : profile.key === 'interview'
-                            ? { surface: 'rgba(243,232,255,0.74)', icon: 'rgba(139,92,246,0.16)', color: '#7c3aed', border: 'rgba(139,92,246,0.2)' }
-                            : profile.key === 'oral_exam'
-                              ? { surface: 'rgba(255,237,213,0.78)', icon: 'rgba(245,158,11,0.16)', color: '#c2410c', border: 'rgba(245,158,11,0.2)' }
-                              : profile.key === 'dataset_generator'
-                                ? { surface: 'rgba(207,250,254,0.78)', icon: 'rgba(14,165,233,0.16)', color: '#0369a1', border: 'rgba(14,165,233,0.2)' }
-                                : { surface: 'rgba(224,231,255,0.76)', icon: 'rgba(99,102,241,0.16)', color: '#4338ca', border: 'rgba(99,102,241,0.2)' }
+                      const tone = getProfileTone(profile.key)
 
                       return (
                         <motion.button
                           key={profile.key}
                           whileTap={{ scale: 0.99 }}
                           onClick={() => handleSelectProfile(profile.key)}
-                          className="group relative flex flex-col overflow-hidden rounded-2xl border bg-white p-4 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md"
-                          style={{ borderColor: accent.border }}
+	                          className={`group relative flex min-h-[156px] flex-col overflow-hidden rounded-lg p-4 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-lg ${PASTEL_SURFACES[tone]}`}
                         >
-                          <div className="absolute inset-x-0 top-0 h-16" style={{ backgroundColor: accent.surface }} />
+	                          <div className={`absolute inset-x-0 top-0 h-1 ${CHAT_TONE_STRIPES[tone]}`} />
                           <div className="relative flex flex-col">
                             <div className="flex items-center justify-between gap-2">
-                              <div className="flex h-9 w-9 items-center justify-center rounded-xl shadow-sm" style={{ backgroundColor: accent.icon, color: accent.color }}>
+	                              <div className={`flex h-10 w-10 items-center justify-center rounded-lg shadow-sm ${PASTEL_ICON_BACKGROUNDS[tone]} ${PASTEL_ICON_TEXT[tone]}`}>
                                 <div className="scale-75">{PROFILE_ICONS[profile.key] || <Bot className="h-5 w-5" />}</div>
                               </div>
-                              <span className="rounded-full px-2 py-0.5 text-[10px] font-semibold" style={{ backgroundColor: 'rgba(255,255,255,0.9)', color: accent.color }}>
+                              <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${PASTEL_ICON_BACKGROUNDS[tone]} ${PASTEL_ICON_TEXT[tone]}`}>
                                 {usage > 0 ? `${usage} chat` : 'Nuovo'}
                               </span>
                             </div>
@@ -2798,7 +2878,7 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
                             </div>
                             <div className="mt-3 flex flex-wrap gap-1">
                               {(profile.suggested_prompts || []).slice(0, 1).map((prompt) => (
-                                <span key={prompt} className="rounded-full border px-2 py-0.5 text-[10px] line-clamp-1" style={{ borderColor: accent.border, backgroundColor: accent.surface, color: accent.color }}>
+	                                <span key={prompt} className={`line-clamp-1 rounded-full px-2 py-0.5 text-[10px] ${PASTEL_ICON_BACKGROUNDS[tone]} ${PASTEL_ICON_TEXT[tone]}`}>
                                   {prompt}
                                 </span>
                               ))}
@@ -2812,7 +2892,7 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
 
                 {mainTab === 'teacherbots' && (
                   availableTeacherbots.length === 0 ? (
-                    <div className="flex h-full min-h-[360px] items-center justify-center rounded-3xl border border-dashed border-slate-300 bg-white">
+	                    <div className={`flex h-full min-h-[360px] items-center justify-center rounded-xl border border-dashed text-center shadow-sm ${PASTEL_SURFACES.slate}`}>
                       <div className="text-center">
                         <Wand2 className="mx-auto h-10 w-10 text-slate-300" />
                         <p className="mt-4 text-sm font-medium text-slate-500">Nessun teacherbot disponibile</p>
@@ -2822,21 +2902,22 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
                   ) : (
                     <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                       {availableTeacherbots.map((bot) => {
-                        const visual = getTeacherbotVisual(bot)
+                        const visual = getTeacherbotVisual(bot, uiLanguage)
                         const surface = getTeacherbotSurface(bot.color)
                         return (
                           <motion.button
                             key={bot.id}
                             whileTap={{ scale: 0.99 }}
                             onClick={() => handleSelectTeacherbot(bot)}
-                            className={`group flex flex-col overflow-hidden rounded-2xl border bg-white text-left shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md ${surface.border}`}
+	                            className={`group relative flex min-h-[156px] flex-col overflow-hidden rounded-lg text-left shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-lg ${surface.surface}`}
                           >
-                            <div className={`relative overflow-hidden border-b px-4 py-3 ${surface.soft} ${surface.border}`}>
+	                            <div className={`absolute inset-x-0 top-0 h-1 ${surface.stripe}`} />
+                            <div className="relative overflow-hidden border-b border-slate-200/60 bg-white/45 px-4 py-3">
                               <div className="absolute right-3 bottom-2 opacity-[0.08]">
                                 <visual.Icon className="h-12 w-12 text-slate-900" />
                               </div>
                               <div className="flex items-center gap-2.5">
-                                <div className={`relative flex h-9 w-9 items-center justify-center rounded-xl ${surface.icon}`}>
+                                <div className={`relative flex h-10 w-10 items-center justify-center rounded-lg ${surface.icon}`}>
                                   <visual.Icon className="h-4 w-4" />
                                 </div>
                                 <div>
@@ -2867,10 +2948,10 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
                         { label: 'Chat attiva', value: learningSessions.filter((session) => session.conversationId).length, icon: ClipboardCheck },
                         { label: 'Argomenti', value: learningTopics.length, icon: Sparkles },
                       ].map(({ label, value, icon: Icon }) => (
-                        <div key={label} className="rounded-2xl border bg-white px-3 py-2.5 shadow-sm" style={{ borderColor: accentTheme.border }}>
+	                        <div key={label} className={`rounded-lg px-3 py-2.5 shadow-sm ${PASTEL_SURFACES.slate}`}>
                           <div className="flex items-center justify-between gap-1">
                             <p className="text-[10px] uppercase tracking-wide text-slate-400">{label}</p>
-                            <div className="flex h-6 w-6 items-center justify-center rounded-lg" style={{ backgroundColor: accentTheme.soft, color: accentTheme.text }}>
+	                            <div className={`flex h-6 w-6 items-center justify-center rounded-lg ${PASTEL_ICON_BACKGROUNDS.violet} ${PASTEL_ICON_TEXT.violet}`}>
                               <Icon className="h-3 w-3" />
                             </div>
                           </div>
@@ -2879,10 +2960,10 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
                       ))}
                     </div>
 
-                    <div className="overflow-hidden rounded-2xl border bg-white shadow-sm" style={{ borderColor: accentTheme.border }}>
+	                    <div className={`overflow-hidden rounded-xl shadow-sm ${PASTEL_SURFACES.slate}`}>
                       <div
                         className="grid grid-cols-[minmax(0,1.2fr)_minmax(0,2fr)_110px_100px] gap-3 border-b px-4 py-2 text-[10px] font-semibold uppercase tracking-[0.16em]"
-                        style={{ borderBottomColor: accentTheme.border, backgroundColor: accentTheme.soft, color: accentTheme.text }}
+	                        style={{ borderBottomColor: '#e2e8f0', color: accentTheme.text }}
                       >
                         <div>Argomento</div>
                         <div>Sintesi</div>
@@ -2900,7 +2981,7 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
                             key={session.id}
                             onClick={() => expandingLearningSessionId !== session.id && openLearningSession(session)}
                             className="grid w-full grid-cols-[minmax(0,1.2fr)_minmax(0,2fr)_110px_100px] gap-3 border-b px-4 py-3 text-left transition-colors hover:bg-slate-50 last:border-b-0"
-                            style={{ borderBottomColor: accentTheme.softStrong }}
+	                            style={{ borderBottomColor: '#e2e8f0' }}
                           >
                             <div className="min-w-0">
                               <div className="truncate text-sm font-semibold text-slate-900">{session.topic}</div>
@@ -2926,7 +3007,7 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
             </>
           ) : (
             <>
-              <div className="hidden md:flex shrink-0 items-center gap-3 px-4 py-3 bg-white border-b" style={{ borderBottomColor: accentTheme.border }}>
+	              <div className="hidden shrink-0 items-center gap-3 border-b border-slate-200/70 bg-white/60 px-4 py-3 backdrop-blur-sm md:flex">
                 <div className="w-10 h-10 rounded-xl flex items-center justify-center shadow-md" style={selectedSolidStyle}>
                   {selectedTeacherbot ? (
                     <div className="text-white scale-90 w-full h-full flex items-center justify-center">
@@ -2955,7 +3036,7 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
                       variant="ghost"
                       size="sm"
                       onClick={() => setShowBgPalette((v) => !v)}
-                      className="text-slate-500 hover:text-slate-700"
+                      className={`rounded-xl text-slate-500 shadow-sm hover:text-slate-700 ${PASTEL_SURFACES.slate}`}
                       title={t('chatbot.choose_color')}
                     >
                       <Palette className="h-4 w-4" />
@@ -2975,7 +3056,7 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
                                       setShowBgPalette(false)
                                     }}
                                     className={`h-6 w-6 rounded-md border transition-transform hover:scale-105 ${chatBg === color ? 'ring-2 ring-offset-1' : ''}`}
-                                    style={chatBg === color ? { backgroundColor: color, boxShadow: `0 0 0 2px ${accentTheme.accent}` } : { backgroundColor: color }}
+	                                    style={chatBg === color ? { backgroundColor: color, boxShadow: '0 0 0 2px #0f172a' } : { backgroundColor: color }}
                                     title={color}
                                   />
                                 ))}
@@ -3024,7 +3105,7 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
                   <div className="hidden lg:block relative" ref={modelMenuRef}>
                     <button
                       onClick={() => setShowModelMenu(!showModelMenu)}
-                      className="flex items-center gap-2 px-4 py-2 rounded-full text-xs font-bold transition-all shadow-sm hover:opacity-90 border"
+                      className="flex items-center gap-2 rounded-xl border px-4 py-2 text-xs font-bold shadow-sm transition-all hover:-translate-y-0.5 hover:opacity-90"
                       style={selectedSoftStyle}
                     >
                       {effectiveSelectedModel?.provider === 'openai' ? (
@@ -3097,12 +3178,12 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
               {/* Mode toolbar */}
               <div
                 ref={messagesContainerRef}
-                className={`flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-6 py-4 md:px-10 md:py-6 space-y-3 md:space-y-6 ${chatBgIsDark ? 'text-white' : ''}`}
+                className={`min-h-0 flex-1 space-y-3 overflow-y-auto overflow-x-hidden px-6 py-4 md:space-y-6 md:px-10 md:py-6 ${chatBg ? '' : 'bg-white/30'} ${chatBgIsDark ? 'text-white' : ''}`}
                 style={{ WebkitOverflowScrolling: 'touch', scrollBehavior: 'smooth' }}
               >
           {messages.length === 0 ? (
             <div className="text-center py-12">
-              <div className={`inline-flex items-center justify-center w-20 h-20 rounded-2xl mb-6 shadow-lg ${selectedTeacherbot ? getTeacherbotColorClass(selectedTeacherbot.color) : ''}`} style={selectedTeacherbot ? undefined : selectedSolidStyle}>
+	              <div className={`mb-6 inline-flex h-20 w-20 items-center justify-center rounded-lg shadow-lg ${selectedTeacherbot ? getTeacherbotColorClass(selectedTeacherbot.color) : ''}`} style={selectedTeacherbot ? undefined : selectedSolidStyle}>
                 {selectedTeacherbot ? (
                   <Wand2 className="h-10 w-10 text-white" />
                 ) : selectedProfile && PROFILE_ICONS[selectedProfile] ? (
@@ -3118,7 +3199,7 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
                   <button
                     key={suggestion}
                     onClick={() => setInput(suggestion)}
-                    className={`px-4 py-2 rounded-full text-sm transition-all shadow-sm ${chatBgIsDark ? 'bg-white/10 border border-white/15 text-white hover:bg-white/15' : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 hover:border-slate-300'}`}
+                    className={`rounded-xl px-4 py-2 text-sm shadow-sm transition-all hover:-translate-y-0.5 ${chatBgIsDark ? 'border border-white/15 bg-white/10 text-white hover:bg-white/15' : PASTEL_SURFACES.slate}`}
                   >
                     {suggestion}
                   </button>
@@ -3129,7 +3210,7 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
             messages.map((message) => (
               <div key={message.id} className={`flex gap-3 ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                 {message.role === 'assistant' && (
-                  <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 shadow-md ${selectedTeacherbot ? getTeacherbotColorClass(selectedTeacherbot.color) : ''}`} style={selectedTeacherbot ? undefined : selectedSolidStyle}>
+	                  <div className={`w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 shadow-md ${selectedTeacherbot ? getTeacherbotColorClass(selectedTeacherbot.color) : ''}`} style={selectedTeacherbot ? undefined : selectedSolidStyle}>
                     {selectedTeacherbot ? (
                       <Wand2 className="h-5 w-5 text-white" />
                     ) : selectedProfile && PROFILE_ICONS[selectedProfile] ? (
@@ -3139,7 +3220,7 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
                     )}
                   </div>
                 )}
-                <div className={`max-w-[80%] rounded-2xl px-4 py-3 ${message.role === 'user'
+	                <div className={`max-w-[80%] rounded-xl px-4 py-3 ${message.role === 'user'
                   ? 'text-white rounded-br-md shadow-md'
                   : `${chatBgIsDark ? 'bg-white/10 text-white border border-white/15' : 'bg-white border border-slate-100'} shadow-sm rounded-bl-md`
                   }`}
@@ -3169,7 +3250,7 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
                   )}
                 </div>
                 {message.role === 'user' && (
-                  <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 shadow-sm border border-white/10 bg-slate-800/92">
+	              <div className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 shadow-sm border border-white/10 bg-slate-800/92">
                     <User className="h-5 w-5 text-white" />
                   </div>
                 )}
@@ -3178,7 +3259,7 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
           )}
           {(sendMessageMutation.isPending && !isStreaming) && (
             <div className="flex gap-3">
-              <div className={`w-9 h-9 rounded-xl flex items-center justify-center shadow-md ${selectedTeacherbot ? getTeacherbotColorClass(selectedTeacherbot.color) : ''}`} style={selectedTeacherbot ? undefined : selectedSolidStyle}>
+	              <div className={`w-9 h-9 rounded-lg flex items-center justify-center shadow-md ${selectedTeacherbot ? getTeacherbotColorClass(selectedTeacherbot.color) : ''}`} style={selectedTeacherbot ? undefined : selectedSolidStyle}>
                 {selectedTeacherbot ? (
                   <Wand2 className="h-5 w-5 text-white" />
                 ) : selectedProfile && PROFILE_ICONS[selectedProfile] ? (
@@ -3187,12 +3268,12 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
                   <Bot className="h-5 w-5 text-white" />
                 )}
               </div>
-              <div className={`${chatBgIsDark ? 'bg-white/10 border border-white/15' : 'bg-white border border-slate-100'} shadow-sm rounded-2xl rounded-bl-md px-4 py-3`}>
+	              <div className={`${chatBgIsDark ? 'bg-white/10 border border-white/15' : 'bg-white border border-slate-100'} shadow-sm rounded-xl rounded-bl-md px-4 py-3`}>
                 <div className="flex items-center gap-2">
                   <div className="flex gap-1">
-                    <span className="w-2 h-2 rounded-full animate-bounce" style={{ animationDelay: '0ms', backgroundColor: chatBgIsDark ? '#ffffff' : accentTheme.accent }}></span>
-                    <span className="w-2 h-2 rounded-full animate-bounce" style={{ animationDelay: '150ms', backgroundColor: chatBgIsDark ? '#ffffff' : accentTheme.accent }}></span>
-                    <span className="w-2 h-2 rounded-full animate-bounce" style={{ animationDelay: '300ms', backgroundColor: chatBgIsDark ? '#ffffff' : accentTheme.accent }}></span>
+	                    <span className="w-2 h-2 rounded-full animate-bounce" style={{ animationDelay: '0ms', backgroundColor: chatBgIsDark ? '#ffffff' : '#64748b' }}></span>
+	                    <span className="w-2 h-2 rounded-full animate-bounce" style={{ animationDelay: '150ms', backgroundColor: chatBgIsDark ? '#ffffff' : '#64748b' }}></span>
+	                    <span className="w-2 h-2 rounded-full animate-bounce" style={{ animationDelay: '300ms', backgroundColor: chatBgIsDark ? '#ffffff' : '#64748b' }}></span>
                   </div>
                   <span className={`text-sm ${chatBgIsDark ? 'text-white/70' : 'text-slate-400'}`}>Sto pensando...</span>
                 </div>
@@ -3201,20 +3282,20 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
           )}
           {streamingStatus && (
             <div className="flex gap-3">
-              <div className={`w-9 h-9 rounded-xl flex items-center justify-center shadow-md`} style={selectedSolidStyle}>
+	              <div className="w-9 h-9 rounded-lg flex items-center justify-center bg-slate-900 shadow-md">
                 <Loader2 className="h-4 w-4 text-white animate-spin" />
               </div>
-              <div className={`${chatBgIsDark ? 'bg-white/10 border border-white/15' : 'bg-white border border-slate-100'} shadow-sm rounded-2xl rounded-bl-md px-3 py-2`}>
+	              <div className={`${chatBgIsDark ? 'bg-white/10 border border-white/15' : 'bg-white border border-slate-100'} shadow-sm rounded-xl rounded-bl-md px-3 py-2`}>
                 <span className={`text-xs ${chatBgIsDark ? 'text-white/70' : 'text-slate-400'}`}>{streamingStatus}</span>
               </div>
             </div>
           )}
           {imageGenerationProgress && (
             <div className="flex gap-3 justify-start">
-              <div className="w-9 h-9 rounded-xl flex items-center justify-center shadow-md flex-shrink-0" style={selectedSolidStyle}>
+	              <div className="w-9 h-9 rounded-lg flex items-center justify-center bg-slate-900 shadow-md flex-shrink-0">
                 <ImageIcon className="h-4 w-4 text-white" />
               </div>
-              <div className="bg-white border border-slate-100 shadow-sm rounded-2xl rounded-bl-md px-4 py-3 max-w-[75%]">
+	              <div className="bg-white border border-slate-100 shadow-sm rounded-xl rounded-bl-md px-4 py-3 max-w-[75%]">
                 <div className="flex items-center gap-2 mb-1">
                   <Loader2 className="h-3.5 w-3.5 animate-spin text-fuchsia-500" />
                   <span className="font-medium text-slate-700 text-sm">{imageGenerationProgress.status}</span>
@@ -3236,7 +3317,7 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
                   {composerContent}
                 </div>
               ) : (
-                <div className="hidden md:block shrink-0 border-t border-slate-200 bg-white/92">
+                <div className="hidden shrink-0 border-t border-slate-200/70 bg-white/60 backdrop-blur-sm md:block">
                   {composerContent}
                 </div>
               )}
@@ -3247,7 +3328,7 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
 
       {showNewLessonDialog && (
         <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setShowNewLessonDialog(false)}>
-          <div className="bg-white rounded-2xl shadow-2xl border border-slate-100 p-6 w-full max-w-sm" onClick={e => e.stopPropagation()}>
+	          <div className="bg-white rounded-xl shadow-2xl border border-slate-100 p-6 w-full max-w-sm" onClick={e => e.stopPropagation()}>
             <div className="flex items-center gap-3 mb-4">
               <div className="w-10 h-10 rounded-xl bg-violet-100 flex items-center justify-center">
                 <BookOpen className="h-5 w-5 text-violet-600" />
@@ -3277,7 +3358,7 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
               <button
                 onClick={handleGenerateLesson}
                 disabled={!newLessonTopic.trim() || generatingLesson}
-                className="px-4 py-2 text-sm font-semibold bg-violet-600 hover:bg-violet-700 text-white rounded-xl disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-1.5"
+                className="px-4 py-2 text-sm font-semibold bg-slate-900 hover:bg-slate-800 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-1.5"
               >
                 {generatingLesson ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
                 Genera lezione
@@ -3376,6 +3457,8 @@ function SessionSelector({ sessions, onSelect, darkMode = false }: { sessions: a
 }
 
 function LearningUnitsBlock({ topic, units, onGenerateQuiz, onGenerateImage }: { topic: string; units: LearningUnit[]; onGenerateQuiz?: (prompt: string) => void; onGenerateImage?: (prompt: string) => void }) {
+  const { i18n } = useTranslation()
+  const uiLanguage: 'it' | 'en' = i18n.resolvedLanguage?.startsWith('en') ? 'en' : 'it'
   const [openUnitId, setOpenUnitId] = useState<string | null>(units[0]?.id || null)
 
   return (
@@ -3383,7 +3466,7 @@ function LearningUnitsBlock({ topic, units, onGenerateQuiz, onGenerateImage }: {
       {units.map((unit, index) => {
         const isOpen = openUnitId === unit.id
         return (
-          <div key={unit.id} className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+          <div key={unit.id} className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
             <button
               onClick={() => setOpenUnitId(isOpen ? null : unit.id)}
               className="flex w-full items-start justify-between gap-3 px-4 py-4 text-left hover:bg-slate-50 transition-colors"
@@ -3402,12 +3485,12 @@ function LearningUnitsBlock({ topic, units, onGenerateQuiz, onGenerateImage }: {
 
             {isOpen && (
               <div className="border-t border-slate-200 px-4 py-4">
-                <div className="rounded-2xl bg-slate-50 px-4 py-4">
+                <div className="rounded-xl bg-slate-50 px-4 py-4">
                   <p className="text-sm leading-7 text-slate-700 whitespace-pre-wrap">{unit.explanation}</p>
                 </div>
                 {unit.keyPoints.length > 0 && (
                   <div className="mt-4">
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">Punti chiave</p>
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">{uiLanguage === 'en' ? 'Key points' : 'Punti chiave'}</p>
                     <div className="mt-2 flex flex-wrap gap-2">
                       {unit.keyPoints.map((point) => (
                         <span key={point} className="rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-xs font-medium text-sky-700">
@@ -3419,16 +3502,16 @@ function LearningUnitsBlock({ topic, units, onGenerateQuiz, onGenerateImage }: {
                 )}
                 <div className="mt-4 flex flex-wrap justify-end gap-2">
                   <button
-                    onClick={() => onGenerateImage?.(buildLearningImagePrompt(topic, unit))}
+                    onClick={() => onGenerateImage?.(buildLearningImagePrompt(topic, unit, uiLanguage))}
                     className="rounded-xl border border-sky-200 bg-sky-50 px-4 py-2 text-sm font-semibold text-sky-700 hover:bg-sky-100 transition-colors"
                   >
-                    Genera immagine
+                    {uiLanguage === 'en' ? 'Generate image' : 'Genera immagine'}
                   </button>
                   <button
-                    onClick={() => onGenerateQuiz?.(buildLearningQuizPrompt(topic, unit))}
+                    onClick={() => onGenerateQuiz?.(buildLearningQuizPrompt(topic, unit, uiLanguage))}
                     className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 transition-colors"
                   >
-                    Genera quiz
+                    {uiLanguage === 'en' ? 'Generate quiz' : 'Genera quiz'}
                   </button>
                 </div>
               </div>

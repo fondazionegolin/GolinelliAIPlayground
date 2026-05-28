@@ -13,6 +13,7 @@ import {
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { DEFAULT_STUDENT_ACCENT, getStudentAccentTheme, type StudentAccentId } from '@/lib/studentAccent'
 import { VoiceRecorder } from '@/components/VoiceRecorder'
+import { VoiceRoomPanel } from '@/components/VoiceRoomPanel'
 
 export type { ChatMessage }
 
@@ -71,7 +72,31 @@ export default function ChatSidebar({
   onWidthChange,
   initialWidth = 380
 }: ChatSidebarProps) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
+  const isEnglish = i18n.resolvedLanguage?.startsWith('en') ?? false
+  const sidebarLabels = {
+    resize: isEnglish ? 'Drag to resize' : 'Trascina per ridimensionare',
+    studentHeader: isEnglish ? 'Class chat' : 'Chat di classe',
+    teacherHeader: isEnglish ? 'Live chat' : 'Chat live',
+    pin: isEnglish ? 'Pin sidebar' : 'Fissa Sidebar',
+    unpin: isEnglish ? 'Unpin sidebar' : 'Sblocca Sidebar',
+    sessionTab: isEnglish ? 'Class' : 'Classe',
+    privateTab: isEnglish ? 'Private' : 'Privata',
+    filesTab: isEnglish ? 'Files' : 'File',
+    usersTab: isEnglish ? 'Users' : 'Utenti',
+    searchFiles: isEnglish ? 'Search files or folders...' : 'Cerca file o cartelle...',
+    uploadFiles: isEnglish ? 'Upload files' : 'Carica file',
+    newFolder: isEnglish ? 'New folder' : 'Nuova cartella',
+    toggleView: isEnglish ? 'Change view' : 'Cambia vista',
+    listView: isEnglish ? 'List view' : 'Vista elenco',
+    gridView: isEnglish ? 'Grid view' : 'Vista griglia',
+    smallerIcons: isEnglish ? 'Smaller icons' : 'Riduci icone',
+    largerIcons: isEnglish ? 'Larger icons' : 'Aumenta icone',
+    all: isEnglish ? 'All' : 'Tutti',
+    images: isEnglish ? 'Images' : 'Immagini',
+    other: isEnglish ? 'Other' : 'Altro',
+    allFiles: isEnglish ? 'All files' : 'Tutti i file',
+  }
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [inputText, setInputText] = useState('')
   const [dragActive, setDragActive] = useState(false)
@@ -103,6 +128,7 @@ export default function ChatSidebar({
   const [replyingTo, setReplyingTo] = useState<ChatMessage | null>(null)
 
   const {
+    socket,
     connected,
     messages: socketMessages,
     sendPublicMessage,
@@ -1099,9 +1125,15 @@ export default function ChatSidebar({
 
   const renderSessionChat = () => {
     return (
-      <div className="flex-1 overflow-hidden relative">
+      <div className="flex-1 overflow-hidden relative flex flex-col">
+        <VoiceRoomPanel
+          sessionId={sessionId}
+          userType={userType}
+          currentUserId={currentUserId}
+          socket={socket}
+        />
         <div
-          className="h-full overflow-y-auto p-4 space-y-6 bg-slate-50/30 scroll-smooth overscroll-contain"
+          className="flex-1 overflow-y-auto p-4 space-y-6 bg-slate-50/30 scroll-smooth overscroll-contain"
           ref={scrollRef}
         >
           {loadingOlderPublicMessages && (
@@ -1440,7 +1472,7 @@ export default function ChatSidebar({
             <Input
               value={filesSearch}
               onChange={(e) => setFilesSearch(e.target.value)}
-              placeholder="Cerca file o cartelle..."
+              placeholder={sidebarLabels.searchFiles}
               className="pl-9 h-9"
             />
           </div>
@@ -1451,12 +1483,12 @@ export default function ChatSidebar({
                 variant="outline"
                 onClick={() => libraryFileInputRef.current?.click()}
                 className="h-8 w-8"
-                title="Carica file"
+                title={sidebarLabels.uploadFiles}
               >
                 <Upload className="h-4 w-4" />
               </Button>
               <div className="pointer-events-none absolute -bottom-8 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-md bg-slate-900 px-2 py-1 text-[10px] text-white opacity-0 group-hover:opacity-100 transition-opacity">
-                Carica file
+                {sidebarLabels.uploadFiles}
               </div>
             </div>
             <div className="relative group">
@@ -1465,12 +1497,12 @@ export default function ChatSidebar({
                 variant="outline"
                 onClick={createFolderWithKeep}
                 className="h-8 w-8"
-                title="Nuova cartella"
+                title={sidebarLabels.newFolder}
               >
                 <Folder className="h-4 w-4" />
               </Button>
               <div className="pointer-events-none absolute -bottom-8 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-md bg-slate-900 px-2 py-1 text-[10px] text-white opacity-0 group-hover:opacity-100 transition-opacity">
-                Nuova cartella
+                {sidebarLabels.newFolder}
               </div>
             </div>
             <div className="relative group">
@@ -1479,12 +1511,12 @@ export default function ChatSidebar({
                 variant="outline"
                 onClick={() => setFilesViewMode(prev => prev === 'grid' ? 'list' : 'grid')}
                 className="h-8 w-8"
-                title="Cambia vista"
+                title={sidebarLabels.toggleView}
               >
                 {filesViewMode === 'grid' ? <List className="h-4 w-4" /> : <Grid2X2 className="h-4 w-4" />}
               </Button>
               <div className="pointer-events-none absolute -bottom-8 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-md bg-slate-900 px-2 py-1 text-[10px] text-white opacity-0 group-hover:opacity-100 transition-opacity">
-                {filesViewMode === 'grid' ? 'Vista elenco' : 'Vista griglia'}
+                {filesViewMode === 'grid' ? sidebarLabels.listView : sidebarLabels.gridView}
               </div>
             </div>
             <div className="relative group">
@@ -1493,12 +1525,12 @@ export default function ChatSidebar({
                 variant="outline"
                 onClick={() => setFilesIconScale((s) => Math.max(0.8, Number((s - 0.1).toFixed(2))))}
                 className="h-8 w-8"
-                title="Riduci icone"
+                title={sidebarLabels.smallerIcons}
               >
                 <Minus className="h-4 w-4" />
               </Button>
               <div className="pointer-events-none absolute -bottom-8 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-md bg-slate-900 px-2 py-1 text-[10px] text-white opacity-0 group-hover:opacity-100 transition-opacity">
-                Riduci icone
+                {sidebarLabels.smallerIcons}
               </div>
             </div>
             <div className="relative group">
@@ -1507,12 +1539,12 @@ export default function ChatSidebar({
                 variant="outline"
                 onClick={() => setFilesIconScale((s) => Math.min(1.4, Number((s + 0.1).toFixed(2))))}
                 className="h-8 w-8"
-                title="Aumenta icone"
+                title={sidebarLabels.largerIcons}
               >
                 <Plus className="h-4 w-4" />
               </Button>
               <div className="pointer-events-none absolute -bottom-8 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-md bg-slate-900 px-2 py-1 text-[10px] text-white opacity-0 group-hover:opacity-100 transition-opacity">
-                Aumenta icone
+                {sidebarLabels.largerIcons}
               </div>
             </div>
             <input
@@ -1525,14 +1557,14 @@ export default function ChatSidebar({
           </div>
           <div className="mt-3 flex flex-wrap gap-2">
             {[
-              { key: 'all', label: 'Tutti' },
-              { key: 'images', label: 'Immagini' },
+              { key: 'all', label: sidebarLabels.all },
+              { key: 'images', label: sidebarLabels.images },
               { key: 'pdf', label: 'PDF' },
               { key: 'docs', label: 'Doc' },
               { key: 'csv', label: 'CSV' },
               { key: 'audio', label: 'Audio' },
               { key: 'video', label: 'Video' },
-              { key: 'other', label: 'Altro' },
+              { key: 'other', label: sidebarLabels.other },
             ].map(item => (
               <button
                 key={item.key}
@@ -1551,7 +1583,7 @@ export default function ChatSidebar({
               onClick={() => setActiveFolder(null)}
               className={`font-semibold ${!activeFolder ? 'text-[#181b1e]' : 'text-slate-500 hover:text-[#181b1e]'}`}
             >
-              Tutti i file
+              {sidebarLabels.allFiles}
             </button>
             {activeFolder && (
               <>
@@ -1631,7 +1663,7 @@ export default function ChatSidebar({
           : 'bg-slate-200/50 hover:bg-[#181b1e] hover:w-3'
           }`}
         onMouseDown={handleMouseDown}
-        title="Trascina per ridimensionare"
+        title={sidebarLabels.resize}
       />
 
       {/* Header with connection status */}
@@ -1639,7 +1671,7 @@ export default function ChatSidebar({
         <div className="flex items-center gap-2">
           <div className={`w-2 h-2 rounded-full ${connected ? 'bg-emerald-500 animate-pulse' : 'bg-slate-300'}`} />
           <h3 className="font-bold text-xs uppercase tracking-widest text-slate-500">
-            {userType === 'student' ? 'Chat di classe' : 'Chat live'}
+            {userType === 'student' ? sidebarLabels.studentHeader : sidebarLabels.teacherHeader}
           </h3>
         </div>
         <div className="flex items-center gap-1">
@@ -1649,7 +1681,7 @@ export default function ChatSidebar({
               size="icon"
               className={`h-6 w-6 ${isPinned ? 'text-[#181b1e] bg-[#181b1e]/5' : 'text-slate-400'}`}
               onClick={onPinToggle}
-              title={isPinned ? "Sblocca Sidebar" : "Fissa Sidebar"}
+              title={isPinned ? sidebarLabels.unpin : sidebarLabels.pin}
             >
               {isPinned ? <PinOff className="h-3 w-3" /> : <Pin className="h-3 w-3" />}
             </Button>
@@ -1675,7 +1707,12 @@ export default function ChatSidebar({
         >
           {availableTabs.map((tab) => {
             const isTabActive = activeTab === tab
-            const tabLabels = { session: 'Classe', private: 'Privata', files: 'File', users: 'Utenti' }
+            const tabLabels = {
+              session: sidebarLabels.sessionTab,
+              private: sidebarLabels.privateTab,
+              files: sidebarLabels.filesTab,
+              users: sidebarLabels.usersTab,
+            }
             const TabIcons = { session: MessageSquare, private: MessagesSquare, files: Folder, users: Users }
             const TabIcon = TabIcons[tab]
             return (
