@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
-  ArrowRight, BookOpen, FileCode2, Gamepad2, Layers3, Loader2, Music2, Plus, Search, Sparkles, Trash2, X,
+  BookOpen, FileCode2, Gamepad2, Layers3, Loader2, Music2, Plus, Search, Sparkles, Trash2, X,
 } from 'lucide-react'
 import { notebooksApi } from '@/lib/api'
 import { formatDistanceToNow } from 'date-fns'
@@ -463,11 +463,10 @@ function PrimaryCreateButton({
       surface="solid"
       density="roomy"
       onClick={onClick}
-      className={`group min-h-[52px] px-6 text-sm font-extrabold shadow-lg ${className}`}
+      className={className}
     >
       <Plus className="h-4 w-4" />
       <span>{isEnglish ? 'New notebook' : 'Nuovo notebook'}</span>
-      <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
     </Button>
   )
 }

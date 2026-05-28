@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, type CSSProperties } from 'react'
 import { Link, useNavigate, useLocation } from 'react-router-dom'
-import { User, Settings, LogOut, ChevronDown, Users, MessageSquare, FileText, Check, Brain, MonitorPlay, FileCode2, KeyRound, Loader2, LayoutDashboard, ShieldCheck, BookOpen, Zap, Box } from 'lucide-react'
+import { User, Settings, LogOut, ChevronDown, Users, MessageSquare, Mic, FileText, Check, Brain, MonitorPlay, FileCode2, KeyRound, Loader2, LayoutDashboard, ShieldCheck, BookOpen, Zap, Box } from 'lucide-react'
 import { Button } from './ui/button'
 import { useToast } from '@/components/ui/use-toast'
 import { LogoMark } from './LogoMark'
@@ -64,6 +64,7 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
   const [showSessionsMenu, setShowSessionsMenu] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
   const [showWhatsNew, setShowWhatsNew] = useState(false)
+  const [voiceActive, setVoiceActive] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
   const sessionsMenuRef = useRef<HTMLDivElement>(null)
   const accentTheme = getTeacherAccentTheme(profile.uiAccent)
@@ -85,6 +86,21 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
     root.style.setProperty('--app-body-bg', '#ffffff')
     root.style.setProperty('--surface-page', '#ffffff')
   }, [accentTheme])
+
+  useEffect(() => {
+    setVoiceActive(false)
+    if (!currentSession?.id) return
+
+    const handleVoiceState = (event: Event) => {
+      const detail = (event as CustomEvent<{ sessionId?: string; active?: boolean }>).detail
+      if (detail?.sessionId === currentSession.id) {
+        setVoiceActive(Boolean(detail.active))
+      }
+    }
+
+    window.addEventListener('golinelli:voice-room-state', handleVoiceState)
+    return () => window.removeEventListener('golinelli:voice-room-state', handleVoiceState)
+  }, [currentSession?.id])
 
   // Global notifications state
   const [teacherNotifications, setTeacherNotifications] = useState<TeacherNotification[]>([])
@@ -324,10 +340,10 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
               <LogoMark className="h-9 w-9" />
               <div className="flex items-center gap-2">
                 <span className="flex items-center text-[18px] leading-none tracking-tight" style={{ fontFamily: '"SofiaPro"' }}>
-                  <span className="font-bold text-[#2d2d2d]/85">
+                  <span className="font-bold text-[var(--logo-ink)]">
                     Golinelli
                   </span>
-                  <span className="font-black text-[#e85c8d]">.ai</span>
+                  <span className="font-black text-[var(--logo-pink)]">.ai</span>
                 </span>
                 <button
                   type="button"
@@ -337,7 +353,7 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
                   }}
                   className="inline-flex items-center self-center transition-transform hover:-translate-y-px"
                 >
-                  <Badge tone="warning" surface="soft" density="compact" className="inline-flex min-h-[22px] items-center border border-orange-200 px-2 py-0.5 text-[10px] font-bold leading-none tracking-[0.14em] text-orange-700">
+                  <Badge tone="warning" surface="soft" density="compact" className="inline-flex min-h-[22px] items-center px-2 py-0.5 text-[10px] font-bold leading-none tracking-[0.14em]">
                     BETA
                   </Badge>
                 </button>
@@ -396,7 +412,7 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
                   <ChevronDown className={`h-3 w-3 ml-0.5 text-slate-400 transition-transform flex-shrink-0 ${showSessionsMenu ? 'rotate-180' : ''}`} />
                 </button>
                 <button
-                  className="hidden lg:flex items-center justify-center p-2.5 rounded-xl border transition-colors duration-150 shadow-[var(--shadow-sm)] hover:-translate-y-px"
+                  className="relative hidden lg:flex items-center justify-center p-2.5 rounded-xl border transition-colors duration-150 shadow-[var(--shadow-sm)] hover:-translate-y-px"
                   style={chatSidebarOpen
                     ? { backgroundColor: accentTheme.accent, borderColor: accentTheme.accent, color: '#fff' }
                     : { backgroundColor: 'rgba(255,255,255,0.92)', borderColor: `${accentTheme.accent}35`, color: accentTheme.text }}
@@ -404,6 +420,18 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
                   title={chatSidebarOpen ? t('navbar.hide_class_chat') : t('navbar.show_class_chat')}
                 >
                   <MessageSquare className="h-4 w-4" />
+                  {voiceActive && (
+                    <span
+                      className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full text-white ring-2 ring-white"
+                      style={{ backgroundColor: accentTheme.accent }}
+                    >
+                      <span
+                        className="absolute inline-flex h-full w-full animate-ping rounded-full opacity-40"
+                        style={{ backgroundColor: accentTheme.accent }}
+                      />
+                      <Mic className="relative h-2.5 w-2.5" />
+                    </span>
+                  )}
                 </button>
 
                 {/* Sessions Dropdown Menu */}
@@ -533,7 +561,7 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
                       <>
                         <button
                           onClick={() => { setShowDropdown(false); navigate('/admin') }}
-                          className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-indigo-700 hover:bg-indigo-50 transition-colors"
+                          className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-[var(--logo-violet)] hover:bg-[var(--logo-violet-10)] transition-colors"
                         >
                           <ShieldCheck className="h-4 w-4" />
                           {t('navbar.nav_admin')}
@@ -592,9 +620,9 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
                 className="flex h-11 w-11 items-center justify-center rounded-xl border text-slate-600 transition-colors hover:bg-white/70 hover:text-[var(--teacher-accent-text)]"
                 style={isActiveItem
                   ? {
-                      backgroundColor: accentTheme.softStrong,
+                      backgroundColor: accentTheme.accent,
                       borderColor: `${accentTheme.accent}45`,
-                      color: accentTheme.text,
+                      color: '#fff',
                     }
                   : {
                       backgroundColor: 'rgba(255,255,255,0.56)',

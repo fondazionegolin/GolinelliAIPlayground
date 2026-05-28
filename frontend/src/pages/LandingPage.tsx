@@ -177,8 +177,8 @@ export default function LandingPage() {
               <div className="flex items-center gap-3 cursor-pointer" onClick={() => switchTab('home')}>
                 <img src="/logo_new.png" alt="Golinelli AI" className="h-10 w-auto rounded-md shadow-sm" />
                 <span className="text-2xl tracking-tight" style={{ fontFamily: '"SofiaPro"' }}>
-                  <span className="font-bold text-[#2d2d2d]/85">Golinelli</span>
-                  <span className="font-black text-[#e85c8d]">.ai</span>
+                  <span className="font-bold text-[var(--logo-ink)]">Golinelli</span>
+                  <span className="font-black text-[var(--logo-pink)]">.ai</span>
                 </span>
               </div>
               <div className="mx-1 hidden h-7 w-px bg-slate-200 md:block" />
@@ -193,8 +193,8 @@ export default function LandingPage() {
             </div>
 
             <div className="hidden md:flex items-center gap-1 rounded-full border border-slate-200/80 bg-slate-50/90 p-1">
-              <TabButton active={activeTab === 'home'} onClick={() => switchTab('home')} color="#e85c8d">{t('landing.nav_explore')}</TabButton>
-              <TabButton active={activeTab === 'teachers'} onClick={() => switchTab('teachers')} color="#a855f7">{t('landing.nav_teachers')}</TabButton>
+              <TabButton active={activeTab === 'home'} onClick={() => switchTab('home')} color="#fe004d">{t('landing.nav_explore')}</TabButton>
+              <TabButton active={activeTab === 'teachers'} onClick={() => switchTab('teachers')} color="#7b69c9">{t('landing.nav_teachers')}</TabButton>
               <TabButton active={activeTab === 'students'} onClick={() => switchTab('students')} color="#38bdf8">{t('landing.nav_students')}</TabButton>
             </div>
 
@@ -202,14 +202,14 @@ export default function LandingPage() {
               <div className="hidden md:flex items-center gap-3">
                 <button
                   onClick={() => setOpenDocument('privacy')}
-                  className="flex items-center gap-1.5 px-2 py-1 text-xs font-medium text-slate-500 transition-colors hover:text-[#e85c8d]"
+                  className="flex items-center gap-1.5 px-2 py-1 text-xs font-medium text-slate-500 transition-colors hover:text-[var(--logo-pink)]"
                 >
                   <ShieldCheck size={13} />
                   Privacy
                 </button>
                 <button
                   onClick={() => setOpenDocument('ai-act')}
-                  className="flex items-center gap-1.5 px-2 py-1 text-xs font-medium text-slate-500 transition-colors hover:text-[#a855f7]"
+                  className="flex items-center gap-1.5 px-2 py-1 text-xs font-medium text-slate-500 transition-colors hover:text-[#7b69c9]"
                 >
                   <Sparkles size={13} />
                   AI Act
@@ -269,7 +269,7 @@ export default function LandingPage() {
             href="https://www.fondazionegolinelli.it"
             target="_blank"
             rel="noreferrer"
-            className="font-semibold text-slate-500 hover:text-[#e85c8d] transition-colors"
+            className="font-semibold text-slate-500 hover:text-[var(--logo-pink)] transition-colors"
           >
             Fondazione Golinelli
           </a>
@@ -278,21 +278,21 @@ export default function LandingPage() {
           <span className="inline-flex items-center gap-3 text-xs">
             <button
               onClick={() => setOpenDocument('privacy')}
-              className="text-slate-400 hover:text-[#e85c8d] transition-colors underline underline-offset-2"
+              className="text-slate-400 hover:text-[var(--logo-pink)] transition-colors underline underline-offset-2"
             >
               Privacy
             </button>
             <span className="text-slate-300">•</span>
             <button
               onClick={() => setOpenDocument('ai-act')}
-              className="text-slate-400 hover:text-[#a855f7] transition-colors underline underline-offset-2"
+              className="text-slate-400 hover:text-[#7b69c9] transition-colors underline underline-offset-2"
             >
               AI Act
             </button>
             <span className="text-slate-300">•</span>
             <Link
               to="/terms"
-              className="text-slate-400 hover:text-[#e85c8d] transition-colors underline underline-offset-2"
+              className="text-slate-400 hover:text-[var(--logo-pink)] transition-colors underline underline-offset-2"
             >
               Termini
             </Link>

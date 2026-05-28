@@ -124,11 +124,29 @@ def _voice_participant_name(user_id: str, user_type: str) -> str:
 def _voice_public_state(session_id: str) -> dict:
     state = voice_rooms.get(session_id) or {}
     queue_ids = state.get("queue", [])
+    active_speaker_ids = state.get("active_speaker_ids")
+    if active_speaker_ids is None:
+        active_speaker_ids = [state.get("active_speaker_id")] if state.get("active_speaker_id") else []
+    active_speaker_id = active_speaker_ids[0] if active_speaker_ids else None
     return {
         "session_id": session_id,
         "active": bool(state.get("active")),
         "teacher_id": state.get("teacher_id"),
-        "active_speaker_id": state.get("active_speaker_id"),
+        "active_speaker_id": active_speaker_id,
+        "active_speaker": {
+            "student_id": active_speaker_id,
+            "nickname": student_nicknames.get(active_speaker_id, "Studente"),
+            "avatar_url": student_avatars.get(active_speaker_id),
+        } if active_speaker_id else None,
+        "active_speaker_ids": active_speaker_ids,
+        "active_speakers": [
+            {
+                "student_id": student_id,
+                "nickname": student_nicknames.get(student_id, "Studente"),
+                "avatar_url": student_avatars.get(student_id),
+            }
+            for student_id in active_speaker_ids
+        ],
         "queue": [
             {
                 "student_id": student_id,
@@ -381,6 +399,9 @@ async def disconnect(sid):
             queue = voice_state.get("queue", [])
             if user["id"] in queue:
                 voice_state["queue"] = [student_id for student_id in queue if student_id != user["id"]]
+            voice_state["active_speaker_ids"] = [
+                student_id for student_id in voice_state.get("active_speaker_ids", []) if student_id != user["id"]
+            ]
             if voice_state.get("active_speaker_id") == user["id"]:
                 voice_state["active_speaker_id"] = None
             await _broadcast_voice_state(session_id)
@@ -827,6 +848,7 @@ async def voice_room_start(sid, data):
         "active": True,
         "teacher_id": user["id"],
         "active_speaker_id": None,
+        "active_speaker_ids": [],
         "queue": [],
         "started_at": datetime.utcnow().isoformat(),
     }
@@ -846,6 +868,7 @@ async def voice_room_end(sid, data):
         "active": False,
         "teacher_id": user["id"],
         "active_speaker_id": None,
+        "active_speaker_ids": [],
         "queue": [],
         "ended_at": datetime.utcnow().isoformat(),
     }
@@ -865,8 +888,9 @@ async def voice_request_speak(sid, data):
         return {"error": "Voice room is not active"}
 
     queue = state.setdefault("queue", [])
+    active_speaker_ids = state.setdefault("active_speaker_ids", [])
     student_id = user["id"]
-    if state.get("active_speaker_id") != student_id and student_id not in queue:
+    if student_id not in active_speaker_ids and student_id not in queue:
         queue.append(student_id)
     await _broadcast_voice_state(session_id)
     return {"success": True, **_voice_public_state(session_id)}
@@ -885,6 +909,9 @@ async def voice_cancel_request(sid, data):
 
     student_id = user["id"]
     state["queue"] = [queued_id for queued_id in state.get("queue", []) if queued_id != student_id]
+    state["active_speaker_ids"] = [
+        speaker_id for speaker_id in state.get("active_speaker_ids", []) if speaker_id != student_id
+    ]
     if state.get("active_speaker_id") == student_id:
         state["active_speaker_id"] = None
     await _broadcast_voice_state(session_id)
@@ -906,7 +933,10 @@ async def voice_grant_speaker(sid, data):
     if not state or not state.get("active"):
         return {"error": "Voice room is not active"}
 
-    state["active_speaker_id"] = student_id
+    active_speaker_ids = state.setdefault("active_speaker_ids", [])
+    if student_id not in active_speaker_ids:
+        active_speaker_ids.append(student_id)
+    state["active_speaker_id"] = active_speaker_ids[0] if active_speaker_ids else None
     state["queue"] = [queued_id for queued_id in state.get("queue", []) if queued_id != student_id]
     await _broadcast_voice_state(session_id)
     return {"success": True, **_voice_public_state(session_id)}
@@ -924,7 +954,14 @@ async def voice_revoke_speaker(sid, data):
     if not state:
         return {"success": True}
 
-    state["active_speaker_id"] = None
+    student_id = data.get("student_id")
+    if student_id:
+        state["active_speaker_ids"] = [
+            speaker_id for speaker_id in state.get("active_speaker_ids", []) if speaker_id != student_id
+        ]
+    else:
+        state["active_speaker_ids"] = []
+    state["active_speaker_id"] = state["active_speaker_ids"][0] if state.get("active_speaker_ids") else None
     await _broadcast_voice_state(session_id)
     return {"success": True, **_voice_public_state(session_id)}
 

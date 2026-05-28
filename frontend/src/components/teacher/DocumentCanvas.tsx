@@ -33,23 +33,23 @@ const DISPENSA_CSS = `
 html{scroll-behavior:smooth}
 body{font-family:'Inter',sans-serif;background:#f7f5f8;color:#1a1a2e;line-height:1.78;font-size:15px}
 
-#progress-bar{position:fixed;top:0;left:0;height:3px;width:0%;background:linear-gradient(90deg,#e85c8d,#f29db8);z-index:9999;transition:width .1s linear}
+#progress-bar{position:fixed;top:0;left:0;height:3px;width:0%;background:linear-gradient(90deg,#fe004d,#f29db8);z-index:9999;transition:width .1s linear}
 
 .layout{display:flex;min-height:100vh}
 
 .sidebar{width:240px;flex-shrink:0;background:linear-gradient(180deg,#1a1a2e 0%,#232340 100%);position:sticky;top:0;height:100vh;overflow-y:auto;padding:22px 0 40px;z-index:100}
 .sidebar-logo{padding:0 18px 18px;border-bottom:1px solid rgba(255,255,255,.1);margin-bottom:16px}
-.sidebar-logo .badge{background:#e85c8d;color:#fff;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;padding:4px 10px;border-radius:20px;display:inline-block;margin-bottom:8px;box-shadow:0 10px 24px rgba(232,92,141,.25)}
+.sidebar-logo .badge{background:#fe004d;color:#fff;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;padding:4px 10px;border-radius:20px;display:inline-block;margin-bottom:8px;box-shadow:0 10px 24px rgba(232,92,141,.25)}
 .sidebar-logo h2{color:#fff;font-size:12px;font-weight:600;line-height:1.4;opacity:.9}
 .sidebar-section{padding:10px 18px 4px;color:rgba(255,255,255,.3);font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px}
 .sidebar nav a{display:flex;align-items:center;gap:8px;padding:8px 18px;color:rgba(255,255,255,.64);text-decoration:none;font-size:12px;font-weight:500;border-left:3px solid transparent;transition:all .2s}
-.sidebar nav a:hover,.sidebar nav a.active{color:#fff;background:rgba(255,255,255,.08);border-left-color:#e85c8d}
+.sidebar nav a:hover,.sidebar nav a.active{color:#fff;background:rgba(255,255,255,.08);border-left-color:#fe004d}
 .sidebar nav a .sn{background:rgba(255,255,255,.12);color:#f3a2be;font-size:9px;font-weight:700;width:20px;height:20px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-family:'JetBrains Mono',monospace}
 
 .main{flex:1;min-width:0;padding-bottom:80px}
 
 .hero{background:
-linear-gradient(135deg,#1a1a2e 0%,#2a2346 52%,#e85c8d 180%);
+linear-gradient(135deg,#1a1a2e 0%,#2a2346 52%,#fe004d 180%);
 padding:64px 56px 54px;position:relative;overflow:hidden}
 .hero::before{content:'';position:absolute;top:-40px;right:-40px;width:350px;height:350px;background:radial-gradient(circle,rgba(232,92,141,.2) 0%,transparent 70%);pointer-events:none}
 .hero::after{content:'';position:absolute;left:8%;bottom:-120px;width:420px;height:220px;background:radial-gradient(circle,rgba(255,255,255,.12) 0%,transparent 72%);pointer-events:none}
@@ -71,12 +71,12 @@ padding:64px 56px 54px;position:relative;overflow:hidden}
 .abstract-box ol li{color:#1a1a2e;font-size:13.5px;margin-bottom:5px;font-weight:500}
 
 .section-header{display:flex;align-items:center;gap:14px;margin-bottom:28px;padding-bottom:18px;border-bottom:2px solid #f1d9e4}
-.section-num{font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700;color:#fff;background:#e85c8d;padding:6px 12px;border-radius:999px;letter-spacing:1px;box-shadow:0 10px 24px rgba(232,92,141,.18)}
+.section-num{font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700;color:#fff;background:#fe004d;padding:6px 12px;border-radius:999px;letter-spacing:1px;box-shadow:0 10px 24px rgba(232,92,141,.18)}
 .section-header h2{font-size:1.82em;font-weight:750;color:#1a1a2e;line-height:1.2}
 
 section{margin-bottom:56px;scroll-margin-top:20px}
 .content p{margin-bottom:16px;color:#3f4657;line-height:1.9}
-.content h3{font-size:1.08em;font-weight:700;color:#1a1a2e;margin:24px 0 10px;padding-left:10px;border-left:3px solid #e85c8d}
+.content h3{font-size:1.08em;font-weight:700;color:#1a1a2e;margin:24px 0 10px;padding-left:10px;border-left:3px solid #fe004d}
 .content ul,.content ol{padding-left:22px;margin-bottom:16px}
 .content ul li,.content ol li{margin-bottom:7px;line-height:1.7;color:#3f4657}
 .content ul li strong,.content ol li strong{color:#1a1a2e}
@@ -90,7 +90,7 @@ section{margin-bottom:56px;scroll-margin-top:20px}
 .theorem-box .box-label{color:#7f46bc}
 .example-box{background:#edf9f3;border-left:4px solid #30a36b}
 .example-box .box-label{color:#22804f}
-.warning-box{background:#fff5fa;border-left:4px solid #e85c8d}
+.warning-box{background:#fff5fa;border-left:4px solid #fe004d}
 .warning-box .box-label{color:#b73e68}
 .exercise-box{background:#fff4ec;border-left:4px solid #f19b61}
 .exercise-box .box-label{color:#b06227}

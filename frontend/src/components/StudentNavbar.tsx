@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, type CSSProperties } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { User, Settings, LogOut, ChevronDown, Bot, Brain, Award, FileEdit, FileText, Menu, X, MessageSquare, Check, FileCode2, MonitorPlay, LayoutDashboard, BookOpen } from 'lucide-react'
+import { User, Settings, LogOut, ChevronDown, Bot, Brain, Award, FileEdit, FileText, Menu, X, MessageSquare, Mic, Check, FileCode2, MonitorPlay, LayoutDashboard, BookOpen } from 'lucide-react'
 import { Button } from './ui/button'
 import { LogoMark } from './LogoMark'
 import { studentApi } from '@/lib/api'
@@ -73,6 +73,7 @@ export function StudentNavbar({
   const [showSettings, setShowSettings] = useState(false)
   const [showMobileMenu, setShowMobileMenu] = useState(false)
   const [showWhatsNew, setShowWhatsNew] = useState(false)
+  const [voiceActive, setVoiceActive] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
   const mobileMenuRef = useRef<HTMLDivElement>(null)
 
@@ -99,6 +100,21 @@ export function StudentNavbar({
     root.style.setProperty('--app-body-bg', '#ffffff')
     root.style.setProperty('--surface-page', '#ffffff')
   }, [accentTheme])
+
+  useEffect(() => {
+    setVoiceActive(false)
+    if (!sessionId) return
+
+    const handleVoiceState = (event: Event) => {
+      const detail = (event as CustomEvent<{ sessionId?: string; active?: boolean }>).detail
+      if (detail?.sessionId === sessionId) {
+        setVoiceActive(Boolean(detail.active))
+      }
+    }
+
+    window.addEventListener('golinelli:voice-room-state', handleVoiceState)
+    return () => window.removeEventListener('golinelli:voice-room-state', handleVoiceState)
+  }, [sessionId])
 
   // Load profile from API
   useEffect(() => {
@@ -150,12 +166,9 @@ export function StudentNavbar({
   // Generate random color based on nickname (consistent)
   const getAvatarColor = () => {
     const colors = [
-      'bg-violet-500',
-      'bg-fuchsia-500',
-      'bg-purple-500',
-      'bg-pink-500',
-      'bg-rose-500',
-      'bg-indigo-500'
+      'bg-[var(--logo-pink)]',
+      'bg-[var(--logo-blue)]',
+      'bg-[var(--logo-violet)]'
     ]
     const hash = profile.nickname.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0)
     return colors[hash % colors.length]
@@ -186,7 +199,7 @@ export function StudentNavbar({
     <>
       {/* Preview mode banner */}
       {isPreviewMode && (
-        <div className="fixed top-0 left-0 right-0 z-[60] bg-amber-500 text-white text-xs font-semibold flex items-center justify-center gap-3 py-1.5 px-4">
+        <div className="fixed top-0 left-0 right-0 z-[60] bg-[var(--logo-violet)] text-white text-xs font-semibold flex items-center justify-center gap-3 py-1.5 px-4">
           <MonitorPlay className="h-3.5 w-3.5 flex-shrink-0" />
           <span>{t('navbar.preview_banner')}</span>
           <button
@@ -208,10 +221,10 @@ export function StudentNavbar({
               <LogoMark className="h-9 w-9" />
               <div className="flex items-center gap-2">
                 <span className="flex items-center text-[18px] leading-none tracking-tight" style={{ fontFamily: '"SofiaPro"' }}>
-                  <span className="font-bold text-[#2d2d2d]/85">
+                  <span className="font-bold text-[var(--logo-ink)]">
                     Golinelli
                   </span>
-                  <span className="font-black text-[#e85c8d]">.ai</span>
+                  <span className="font-black text-[var(--logo-pink)]">.ai</span>
                 </span>
                 <button
                   type="button"
@@ -221,7 +234,7 @@ export function StudentNavbar({
                   }}
                   className="inline-flex items-center self-center transition-transform hover:-translate-y-px"
                 >
-                  <Badge tone="warning" surface="soft" density="compact" className="inline-flex min-h-[22px] items-center border border-orange-200 px-2 py-0.5 text-[10px] font-bold leading-none tracking-[0.14em] text-orange-700">
+                  <Badge tone="warning" surface="soft" density="compact" className="inline-flex min-h-[22px] items-center px-2 py-0.5 text-[10px] font-bold leading-none tracking-[0.14em]">
                     BETA
                   </Badge>
                 </button>
@@ -285,7 +298,7 @@ export function StudentNavbar({
 
               {chatAvailable && onToggleChatSidebar && (
                 <button
-                  className="hidden lg:flex items-center justify-center w-10 h-10 rounded-xl border transition-colors duration-150 shadow-[var(--shadow-sm)] hover:-translate-y-px"
+                  className="relative hidden lg:flex items-center justify-center w-10 h-10 rounded-xl border transition-colors duration-150 shadow-[var(--shadow-sm)] hover:-translate-y-px"
                   style={chatSidebarOpen
                     ? { backgroundColor: accentTheme.accent, borderColor: accentTheme.accent, color: '#fff' }
                     : { backgroundColor: 'rgba(255,255,255,0.92)', borderColor: `${accentTheme.accent}35`, color: accentTheme.text }}
@@ -293,6 +306,18 @@ export function StudentNavbar({
                   title={chatSidebarOpen ? t('navbar.hide_class_chat') : t('navbar.show_class_chat')}
                 >
                   <MessageSquare className="h-4 w-4 flex-shrink-0" />
+                  {voiceActive && (
+                    <span
+                      className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full text-white ring-2 ring-white"
+                      style={{ backgroundColor: accentTheme.accent }}
+                    >
+                      <span
+                        className="absolute inline-flex h-full w-full animate-ping rounded-full opacity-40"
+                        style={{ backgroundColor: accentTheme.accent }}
+                      />
+                      <Mic className="relative h-2.5 w-2.5" />
+                    </span>
+                  )}
                 </button>
               )}
 
@@ -407,9 +432,9 @@ export function StudentNavbar({
                   className="flex h-11 w-11 items-center justify-center rounded-xl border text-slate-600 transition-colors hover:bg-white/70 hover:text-[var(--student-accent-text)]"
                   style={isActiveItem
                     ? {
-                        backgroundColor: accentTheme.softStrong,
+                        backgroundColor: accentTheme.accent,
                         borderColor: `${accentTheme.accent}45`,
-                        color: accentTheme.text,
+                        color: '#fff',
                       }
                     : {
                         backgroundColor: 'rgba(255,255,255,0.56)',

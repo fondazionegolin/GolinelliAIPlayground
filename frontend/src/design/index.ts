@@ -1,4 +1,5 @@
 export * from '@/design/tokens/color'
+export * from '@/design/tokens/brand'
 export * from '@/design/tokens/typography'
 export * from '@/design/tokens/spacing'
 export * from '@/design/tokens/radius'

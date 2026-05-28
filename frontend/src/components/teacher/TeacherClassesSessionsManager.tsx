@@ -89,11 +89,11 @@ export default function TeacherClassesSessionsManager({
     t('classes.grade_university'),
   ] as const
   const statusMeta: Record<string, { label: string; tone: string; dot: string }> = {
-    draft: { label: t('sessions.status_draft'), tone: 'bg-slate-100 text-slate-600', dot: 'bg-slate-400' },
-    active: { label: t('sessions.status_active'), tone: 'bg-emerald-100 text-emerald-700', dot: 'bg-emerald-500' },
-    paused: { label: t('sessions.status_paused'), tone: 'bg-amber-100 text-amber-700', dot: 'bg-amber-500' },
-    finished: { label: t('sessions.status_ended'), tone: 'bg-rose-100 text-rose-700', dot: 'bg-rose-500' },
-    ended: { label: t('sessions.status_ended'), tone: 'bg-rose-100 text-rose-700', dot: 'bg-rose-500' },
+    draft: { label: t('sessions.status_draft'), tone: 'logo-ink', dot: 'bg-[var(--logo-ink)]' },
+    active: { label: t('sessions.status_active'), tone: 'logo-blue', dot: 'bg-[var(--logo-blue)]' },
+    paused: { label: t('sessions.status_paused'), tone: 'logo-violet', dot: 'bg-[var(--logo-violet)]' },
+    finished: { label: t('sessions.status_ended'), tone: 'logo-pink', dot: 'bg-[var(--logo-pink)]' },
+    ended: { label: t('sessions.status_ended'), tone: 'logo-pink', dot: 'bg-[var(--logo-pink)]' },
   }
   const [newClassGrade, setNewClassGrade] = useState<string>(schoolGradeOptions[1])
   const [isEditingClass, setIsEditingClass] = useState(false)
@@ -364,7 +364,7 @@ export default function TeacherClassesSessionsManager({
             <div className="grid grid-cols-3 gap-1.5">
               <SummaryCell label={isEnglish ? 'Classes' : 'Classi'} value={summary.totalClasses} tone="slate" />
               <SummaryCell label={isEnglish ? 'Sessions' : 'Sessioni'} value={summary.totalSessions} tone="slate" />
-              <SummaryCell label={isEnglish ? 'Active' : 'Attive'} value={summary.activeSessions} tone="emerald" />
+              <SummaryCell label={isEnglish ? 'Active' : 'Attive'} value={summary.activeSessions} tone="cyan" />
             </div>
           </div>
 
@@ -584,8 +584,8 @@ export default function TeacherClassesSessionsManager({
 
                 <div className="mt-4 grid grid-cols-2 gap-2 xl:grid-cols-4">
                   <MetricCard label={isEnglish ? 'Open' : 'Aperte'} value={groupedSessions.open.length} tone="slate" />
-                  <MetricCard label={isEnglish ? 'Active' : 'Attive'} value={summary.activeSessions} tone="emerald" />
-                  <MetricCard label={t('sessions.status_paused')} value={summary.pausedSessions} tone="amber" />
+                  <MetricCard label={isEnglish ? 'Active' : 'Attive'} value={summary.activeSessions} tone="cyan" />
+                  <MetricCard label={t('sessions.status_paused')} value={summary.pausedSessions} tone="violet" />
                   <MetricCard label={isEnglish ? 'Archive' : 'Archivio'} value={groupedSessions.archive.length} tone="rose" />
                 </div>
               </div>
@@ -723,10 +723,10 @@ function EmptyStateCard({
   tone?: PastelTone
 }) {
   const iconToneClass =
-    tone === 'emerald' ? 'bg-emerald-100 text-emerald-700' :
-    tone === 'amber' ? 'bg-amber-100 text-amber-700' :
-    tone === 'rose' ? 'bg-rose-100 text-rose-700' :
-    'bg-slate-100 text-slate-600'
+    tone === 'cyan' || tone === 'blue' || tone === 'sky' || tone === 'teal' ? 'bg-[var(--logo-blue)] text-white' :
+    tone === 'violet' || tone === 'amber' || tone === 'orange' ? 'bg-[var(--logo-violet)] text-white' :
+    tone === 'rose' || tone === 'indigo' || tone === 'emerald' ? 'bg-[var(--logo-pink)] text-white' :
+    'bg-[var(--logo-ink)] text-white'
 
   return (
     <Card
@@ -882,14 +882,14 @@ function SessionRow({
   return (
     <Card
       surface="base"
-      className="cursor-pointer overflow-hidden rounded-lg border border-emerald-300 bg-emerald-50/55 px-4 py-4 shadow-sm transition-all hover:border-emerald-400"
+      className="cursor-pointer overflow-hidden rounded-lg border border-[rgba(62,169,244,0.34)] bg-[rgba(62,169,244,0.10)] px-4 py-4 shadow-sm transition-all hover:border-[rgba(62,169,244,0.52)]"
       onClick={() => navigate(`/teacher/sessions/${session.id}`)}
     >
       <div className="flex flex-col gap-3">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div className="min-w-0 flex-1" onClick={e => e.stopPropagation()}>
             <div className="flex items-start gap-2.5">
-              <div className={`mt-1.5 h-3 w-3 shrink-0 rounded-full ${meta.dot} animate-pulse shadow-sm shadow-emerald-300`} />
+              <div className={`mt-1.5 h-3 w-3 shrink-0 rounded-full ${meta.dot} animate-pulse shadow-sm shadow-[rgba(62,169,244,0.34)]`} />
               <div className="min-w-0 flex-1">
                 {editingTitleId === session.id ? (
                   <form className="flex min-w-0 flex-1 items-center gap-1.5" onSubmit={(e) => { e.preventDefault(); onRename(session.id) }}>
@@ -956,7 +956,7 @@ function SessionRow({
           </div>
         </div>
 
-        <div className="border-t border-emerald-200/70 pt-3" onClick={e => e.stopPropagation()}>
+        <div className="border-t border-[rgba(62,169,244,0.20)] pt-3" onClick={e => e.stopPropagation()}>
           <div className="flex flex-wrap items-center gap-2">
             <Button onClick={() => onStatusChange(session.id, 'paused')} disabled={updatePending} tone="neutral" surface="outline" density="compact" className="rounded-md bg-white/80">
               <Pause className="mr-1.5 h-3.5 w-3.5" />
@@ -974,13 +974,13 @@ function SessionRow({
 }
 
 function StatusBadge({ meta }: { meta: { label: string; tone: string } }) {
-  if (meta.tone.includes('emerald')) {
+  if (meta.tone.includes('blue')) {
     return <Badge tone="success" surface="soft" density="compact">{meta.label}</Badge>
   }
-  if (meta.tone.includes('amber')) {
+  if (meta.tone.includes('violet')) {
     return <Badge tone="warning" surface="soft" density="compact">{meta.label}</Badge>
   }
-  if (meta.tone.includes('rose')) {
+  if (meta.tone.includes('pink')) {
     return <Badge tone="danger" surface="soft" density="compact">{meta.label}</Badge>
   }
   return <Badge tone="neutral" surface="soft" density="compact">{meta.label}</Badge>

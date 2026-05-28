@@ -147,7 +147,7 @@ const TEMPLATES = [
     emoji: '📚',
     create(): CanvasDoc {
       const cols = [
-        { x: 40, text: '🔵 Conosco già', color: '#2563eb', postColor: '#dbeafe' },
+        { x: 40, text: '🔵 Conosco già', color: '#3ea9f4', postColor: '#dbeafe' },
         { x: 460, text: '🟡 Voglio sapere', color: '#ca8a04', postColor: '#fef9c3' },
         { x: 880, text: '🟢 Ho imparato', color: '#16a34a', postColor: '#dcfce7' },
       ]
@@ -175,7 +175,7 @@ const TEMPLATES = [
       const quads = [
         { x: 40, y: 40, text: '💪 Punti di forza', color: '#16a34a', postColor: '#dcfce7' },
         { x: 520, y: 40, text: '⚠️ Debolezze', color: '#dc2626', postColor: '#fee2e2' },
-        { x: 40, y: 440, text: '🌟 Opportunità', color: '#2563eb', postColor: '#dbeafe' },
+        { x: 40, y: 440, text: '🌟 Opportunità', color: '#3ea9f4', postColor: '#dbeafe' },
         { x: 520, y: 440, text: '⚡ Minacce', color: '#ea580c', postColor: '#ffedd5' },
       ]
       const items: CanvasItem[] = quads.flatMap(({ x, y, text, color, postColor }) => {
@@ -200,7 +200,7 @@ const TEMPLATES = [
       labels.forEach((label, i) => {
         const fId = mkId()
         frameIds.push(fId)
-        items.push({ id: fId, type: 'frame', x: 40 + i * 300, y: 160, w: 260, h: 340, text: label, color: '#3b82f6', textStyle: { ...DEFAULT_TEXT_STYLE, fontWeight: '600' } } as CanvasItem)
+        items.push({ id: fId, type: 'frame', x: 40 + i * 300, y: 160, w: 260, h: 340, text: label, color: '#3ea9f4', textStyle: { ...DEFAULT_TEXT_STYLE, fontWeight: '600' } } as CanvasItem)
         items.push({ id: mkId(), type: 'postit', x: 60 + i * 300, y: 260, w: 220, h: 220, text: '', color: '#dbeafe', textStyle: DEFAULT_TEXT_STYLE, parentFrameId: fId } as CanvasItem)
       })
       for (let i = 0; i < frameIds.length - 1; i++) {
@@ -392,7 +392,7 @@ export function CollaborativeCanvas({
 
   // Canvas state
   const [tool, setTool] = useState<Tool>('select')
-  const [strokeColor, setStrokeColor] = useState('#2563eb')
+  const [strokeColor, setStrokeColor] = useState('#3ea9f4')
   const [strokeWidth, setStrokeWidth] = useState(3)
   const [newPostitColor, setNewPostitColor] = useState('#fef9c3')
   const [newShapeFill, setNewShapeFill] = useState('#bae6fd')
@@ -738,7 +738,7 @@ export function CollaborativeCanvas({
   const createItem = (type: Tool, x: number, y: number): CanvasItem | null => {
     const id = mkId()
     if (type === 'postit') return { id, type: 'postit', x, y, w: 220, h: 180, text: '', color: newPostitColor, textStyle: DEFAULT_TEXT_STYLE }
-    if (type === 'frame') return { id, type: 'frame', x, y, w: 360, h: 260, text: 'Frame', color: '#3b82f6', textStyle: DEFAULT_TEXT_STYLE }
+    if (type === 'frame') return { id, type: 'frame', x, y, w: 360, h: 260, text: 'Frame', color: '#3ea9f4', textStyle: DEFAULT_TEXT_STYLE }
     if (type === 'text') return { id, type: 'text', x, y, w: 280, h: 120, text: 'Testo', color: '#0f172a', textStyle: DEFAULT_TEXT_STYLE }
     if (type === 'roundedRect') return { id, type: 'shape', shape: 'rounded-rect', x, y, w: 220, h: 140, fill: newShapeFill, stroke: newShapeStroke }
     if (type === 'triangle') return { id, type: 'shape', shape: 'triangle', x, y, w: 220, h: 160, fill: newShapeFill, stroke: newShapeStroke }
@@ -1080,7 +1080,7 @@ export function CollaborativeCanvas({
     const curve = Math.max(36, Math.min(180, Math.hypot(p2.x - p1.x, p2.y - p1.y) * 0.35))
     const c1 = { x: p1.x + d1.x * curve, y: p1.y + d1.y * curve }
     const c2 = { x: p2.x + d2.x * curve, y: p2.y + d2.y * curve }
-    return <path d={`M ${p1.x} ${p1.y} C ${c1.x} ${c1.y}, ${c2.x} ${c2.y}, ${p2.x} ${p2.y}`} stroke="#3b82f6" strokeWidth={2.5} strokeDasharray="6 4" fill="none" markerEnd="url(#canvas-arrow)" />
+    return <path d={`M ${p1.x} ${p1.y} C ${c1.x} ${c1.y}, ${c2.x} ${c2.y}, ${p2.x} ${p2.y}`} stroke="#3ea9f4" strokeWidth={2.5} strokeDasharray="6 4" fill="none" markerEnd="url(#canvas-arrow)" />
   }
 
   // ─── Cursor ──────────────────────────────────────────────────────────────

@@ -1,4 +1,5 @@
 /* Base fonts */
+@import url('https://fonts.cdnfonts.com/css/lufga');
 @import url('https://fonts.googleapis.com/css2?family=Lexend:wght@300;400;500;600;700&display=swap');
 @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Space+Mono:wght@400;700&family=Courier+Prime:wght@400;700&family=Victor+Mono:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
 
@@ -9,8 +10,8 @@
 @layer base {
   :root {
     /* Typography */
-    --font-family-ui: 'Lexend', system-ui, sans-serif;
-    --font-family-brand: 'SofiaPro', 'Lexend', system-ui, sans-serif;
+    --font-family-ui: 'Lufga', 'Lexend', system-ui, sans-serif;
+    --font-family-brand: 'SofiaPro', 'Lufga', 'Lexend', system-ui, sans-serif;
     --font-family-mono: 'JetBrains Mono', 'IBM Plex Mono', monospace;
     --font-family: var(--font-family-ui);
     --font-size-xs: 0.75rem;
@@ -27,62 +28,112 @@
     --line-height-md: 1.5;
     --line-height-lg: 1.6;
     --line-height-title: 1.15;
-    --letter-spacing-tight: -0.025em;
+    --letter-spacing-tight: 0em;
     --letter-spacing-normal: 0em;
     --letter-spacing-wide: 0.02em;
 
+    /* Logo palette */
+    --logo-pink: #fe004d;
+    --logo-blue: #3ea9f4;
+    --logo-violet: #7b69c9;
+    --logo-ink: #17151b;
+    --logo-pink-06: rgba(254, 0, 77, 0.06);
+    --logo-pink-10: rgba(254, 0, 77, 0.10);
+    --logo-pink-14: rgba(254, 0, 77, 0.14);
+    --logo-pink-22: rgba(254, 0, 77, 0.22);
+    --logo-blue-06: rgba(62, 169, 244, 0.06);
+    --logo-blue-10: rgba(62, 169, 244, 0.10);
+    --logo-blue-14: rgba(62, 169, 244, 0.14);
+    --logo-blue-22: rgba(62, 169, 244, 0.22);
+    --logo-violet-06: rgba(123, 105, 201, 0.06);
+    --logo-violet-10: rgba(123, 105, 201, 0.10);
+    --logo-violet-14: rgba(123, 105, 201, 0.14);
+    --logo-violet-22: rgba(123, 105, 201, 0.22);
+
+    /* Component control tokens: update these before touching individual screens. */
+    --button-radius: 1rem;
+    --button-height-compact: 2.25rem;
+    --button-height-default: 2.75rem;
+    --button-height-roomy: 3.125rem;
+    --button-height-icon: 2.75rem;
+    --button-padding-x-compact: 0.875rem;
+    --button-padding-x-default: 1.25rem;
+    --button-padding-x-roomy: 1.5rem;
+    --button-font-weight: 700;
+    --button-accent-bg: linear-gradient(135deg, color-mix(in srgb, var(--app-accent) 82%, white), var(--app-accent));
+    --button-accent-shadow: 0 14px 26px color-mix(in srgb, var(--app-accent) 24%, transparent);
+    --button-accent-shadow-hover: 0 16px 30px color-mix(in srgb, var(--app-accent) 30%, transparent);
+    --button-blue-bg: linear-gradient(135deg, color-mix(in srgb, var(--logo-blue) 82%, white), var(--logo-blue));
+    --button-violet-bg: linear-gradient(135deg, color-mix(in srgb, var(--logo-violet) 82%, white), var(--logo-violet));
+    --control-radius: 0.875rem;
+    --card-radius: 1rem;
+    --selection-radius: 0.625rem;
+    --selection-height: 2.25rem;
+    --selection-padding-x: 0.875rem;
+    --selection-bg: color-mix(in srgb, var(--app-accent) 10%, white);
+    --selection-bg-hover: color-mix(in srgb, var(--app-accent) 14%, white);
+    --selection-border: color-mix(in srgb, var(--app-accent) 28%, transparent);
+    --selection-border-hover: color-mix(in srgb, var(--app-accent) 38%, transparent);
+    --selection-text: var(--app-accent-text);
+    --selection-active-bg: var(--app-accent);
+    --selection-active-text: #ffffff;
+    --selection-shadow: 0 1px 2px color-mix(in srgb, var(--app-accent) 10%, transparent);
+
     /* Core surfaces */
-    --background: 210 40% 98%;
-    --foreground: 222 47% 11%;
+    --background: 0 0% 99%;
+    --foreground: 260 13% 9%;
     --card: 0 0% 100%;
     --card-foreground: 222 47% 11%;
     --popover: 0 0% 100%;
     --popover-foreground: 222 47% 11%;
 
     /* Core actions */
-    --primary: 217 91% 60%;
+    --primary: 342 100% 50%;
     --primary-foreground: 210 40% 98%;
     --secondary: 210 40% 96%;
     --secondary-foreground: 222 47% 11%;
     --muted: 210 40% 96%;
     --muted-foreground: 215 16% 47%;
-    --accent: 217 100% 97%;
-    --accent-foreground: 217 91% 60%;
+    --accent: 342 100% 97%;
+    --accent-foreground: 342 100% 50%;
     --destructive: 0 84% 60%;
     --destructive-foreground: 210 40% 98%;
 
     /* Borders and focus */
     --border: 214 32% 91%;
     --input: 214 32% 91%;
-    --ring: 217 91% 60%;
+    --ring: 342 100% 50%;
     --radius: 0.5rem;
 
     /* Semantic mirrors for feature code migration */
-    --app-body-bg: #ffffff;
+    --app-body-bg: #fbfafc;
     --surface-page: var(--app-body-bg);
-    --surface-base: #ffffff;
-    --surface-elevated: rgba(255, 255, 255, 0.92);
-    --surface-muted: #f1f5f9;
-    --surface-glass: rgba(255, 255, 255, 0.86);
-    --surface-header: rgba(255, 255, 255, 0.94);
-    --text-primary: #0f172a;
-    --text-secondary: #64748b;
-    --text-muted: #94a3b8;
-    --border-subtle: #e2e8f0;
-    --border-strong: #cbd5e1;
+    --surface-base: rgba(255, 255, 255, 0.96);
+    --surface-elevated: rgba(255, 255, 255, 0.9);
+    --surface-muted: rgba(123, 105, 201, 0.08);
+    --surface-glass: rgba(255, 255, 255, 0.78);
+    --surface-header: rgba(255, 255, 255, 0.9);
+    --surface-logo-pink: var(--logo-pink-10);
+    --surface-logo-blue: var(--logo-blue-10);
+    --surface-logo-violet: var(--logo-violet-10);
+    --text-primary: #17151b;
+    --text-secondary: #5f5969;
+    --text-muted: #8f879c;
+    --border-subtle: rgba(123, 105, 201, 0.16);
+    --border-strong: rgba(254, 0, 77, 0.26);
     --overlay-soft: rgba(15, 23, 42, 0.12);
     --overlay-modal: rgba(15, 23, 42, 0.5);
-    --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.06);
-    --shadow-md: 0 8px 24px rgba(15, 23, 42, 0.08);
-    --shadow-lg: 0 14px 36px rgba(15, 23, 42, 0.12);
-    --shadow-xl: 0 20px 56px rgba(15, 23, 42, 0.16);
+    --shadow-sm: 0 1px 2px rgba(23, 21, 27, 0.04);
+    --shadow-md: 0 8px 22px rgba(23, 21, 27, 0.06);
+    --shadow-lg: 0 14px 34px rgba(23, 21, 27, 0.08);
+    --shadow-xl: 0 20px 52px rgba(23, 21, 27, 0.12);
 
     /* Public-page accent fallbacks */
-    --app-accent: #2563eb;
-    --app-accent-text: #1d4ed8;
-    --app-accent-soft: #eff6ff;
-    --app-accent-soft-strong: #dbeafe;
-    --app-accent-border: #93c5fd;
+    --app-accent: var(--logo-pink);
+    --app-accent-text: var(--logo-pink);
+    --app-accent-soft: var(--logo-pink-10);
+    --app-accent-soft-strong: var(--logo-pink);
+    --app-accent-border: var(--logo-pink);
   }
 
   .dark {

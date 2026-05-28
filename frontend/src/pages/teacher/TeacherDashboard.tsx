@@ -266,11 +266,14 @@ export default function TeacherDashboard() {
           </Suspense>
         </main>
 
-        {/* Right chat sidebar — desktop only */}
-        {!isMobile && showSidebar && (
+        {/* Right chat sidebar — kept mounted so voice stays connected when hidden */}
+        {!isMobile && (
           <div
-            className="border-l border-slate-200 bg-white h-full flex-shrink-0 relative"
-            style={{ width: `${sidebarWidth}px` }}
+            className={`h-full flex-shrink-0 overflow-hidden bg-white transition-[width,opacity] duration-200 ${
+              showSidebar ? 'relative border-l border-slate-200 opacity-100' : 'pointer-events-none border-l-0 opacity-0'
+            }`}
+            style={{ width: showSidebar ? `${sidebarWidth}px` : 0 }}
+            aria-hidden={!showSidebar}
           >
             {activeSessionId && teacherProfile ? (
               <ChatSidebar

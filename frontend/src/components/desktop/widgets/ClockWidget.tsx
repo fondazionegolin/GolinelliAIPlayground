@@ -99,8 +99,8 @@ export default function ClockWidget({ config, onConfigChange }: ClockWidgetProps
               <>
                 <line x1={hx(secAngle + 180, 8)} y1={hy(secAngle + 180, 8)}
                   x2={hx(secAngle, 38)} y2={hy(secAngle, 38)}
-                  stroke="#e85c8d" strokeWidth="1" strokeLinecap="round" />
-                <circle cx={50} cy={50} r="2" fill="#e85c8d" />
+                  stroke="#fe004d" strokeWidth="1" strokeLinecap="round" />
+                <circle cx={50} cy={50} r="2" fill="#fe004d" />
               </>
             )}
             {!showSeconds && <circle cx="50" cy="50" r="2.5" fill="rgba(255,255,255,0.8)" />}

@@ -189,8 +189,8 @@ export default function TermsPage() {
         <Link to="/" className="flex items-center gap-3">
           <img src="/logo_new.png" alt="Golinelli AI" className="h-9 w-auto rounded-md shadow-sm" />
           <span className="text-xl tracking-tight" style={{ fontFamily: '"SofiaPro"' }}>
-            <span className="font-bold text-[#2d2d2d]/85">Golinelli</span>
-            <span className="font-black text-[#e85c8d]">.ai</span>
+            <span className="font-bold text-[var(--logo-ink)]">Golinelli</span>
+            <span className="font-black text-[var(--logo-pink)]">.ai</span>
           </span>
         </Link>
         <div className="flex items-center gap-3">
@@ -211,7 +211,7 @@ export default function TermsPage() {
           </div>
           <h1 className="mb-3 text-4xl font-black leading-tight text-slate-900 sm:text-5xl">
             Termini e Condizioni <br />
-            <span className="bg-gradient-to-r from-[#e85c8d] via-indigo-600 to-[#2d2d2d] bg-clip-text text-transparent">
+            <span className="bg-gradient-to-r from-[#fe004d] via-indigo-600 to-[#2d2d2d] bg-clip-text text-transparent">
               della piattaforma Golinelli.ai
             </span>
           </h1>
@@ -231,7 +231,7 @@ export default function TermsPage() {
             <p className="mb-3 text-[10px] font-bold uppercase tracking-widest text-slate-400">Contenuto</p>
             <nav className="space-y-1">
               {TOC.map((item) => (
-                <a key={item.id} href={`#${item.id}`} className="block truncate py-1 text-xs text-slate-500 transition-colors hover:font-medium hover:text-[#e85c8d]">
+                <a key={item.id} href={`#${item.id}`} className="block truncate py-1 text-xs text-slate-500 transition-colors hover:font-medium hover:text-[var(--logo-pink)]">
                   {item.label}
                 </a>
               ))}

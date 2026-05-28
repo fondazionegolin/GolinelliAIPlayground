@@ -5,7 +5,7 @@ import { cva, type VariantProps } from 'class-variance-authority'
 import { cn } from '@/lib/utils'
 
 const buttonVariants = cva(
-  'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-lg font-medium transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-45 [&_svg]:pointer-events-none [&_svg]:h-4 [&_svg]:w-4 [&_svg]:shrink-0',
+  'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-[var(--button-radius)] font-[var(--button-font-weight)] transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-45 [&_svg]:pointer-events-none [&_svg]:h-4 [&_svg]:w-4 [&_svg]:shrink-0',
   {
     variants: {
       tone: {
@@ -23,10 +23,10 @@ const buttonVariants = cva(
         link: 'rounded-none px-0 shadow-none underline-offset-4 hover:underline',
       },
       density: {
-        compact: 'h-9 px-3 text-sm',
-        default: 'h-10 px-4 text-sm',
-        roomy: 'h-11 px-5 text-base',
-        icon: 'h-10 w-10 p-0',
+        compact: 'h-[var(--button-height-compact)] px-[var(--button-padding-x-compact)] text-sm',
+        default: 'h-[var(--button-height-default)] px-[var(--button-padding-x-default)] text-sm',
+        roomy: 'h-[var(--button-height-roomy)] px-[var(--button-padding-x-roomy)] text-base',
+        icon: 'h-[var(--button-height-icon)] w-[var(--button-height-icon)] p-0',
       },
       fullWidth: {
         true: 'w-full',
@@ -44,25 +44,25 @@ const buttonVariants = cva(
         tone: 'accent',
         surface: 'solid',
         className:
-          'border border-[var(--app-accent-border,var(--app-accent,var(--ring)))] bg-[var(--app-accent,var(--primary))] text-white shadow-[var(--shadow-sm)] hover:-translate-y-px hover:brightness-[0.98] hover:shadow-[var(--shadow-md)] focus-visible:ring-[var(--app-accent-border,var(--ring))]',
+          'border border-transparent bg-[image:var(--button-accent-bg)] text-white shadow-[var(--button-accent-shadow)] hover:-translate-y-px hover:brightness-[0.98] hover:shadow-[var(--button-accent-shadow-hover)] focus-visible:ring-[var(--app-accent,var(--ring))]',
       },
       {
         tone: 'success',
         surface: 'solid',
         className:
-          'border border-emerald-300/70 bg-emerald-600 text-white shadow-[var(--shadow-sm)] hover:-translate-y-px hover:bg-emerald-700 hover:shadow-[var(--shadow-md)] focus-visible:ring-emerald-200',
+          'border border-transparent bg-[image:var(--button-blue-bg)] text-white shadow-[var(--shadow-sm)] hover:-translate-y-px hover:brightness-[0.98] hover:shadow-[var(--shadow-md)] focus-visible:ring-[var(--logo-blue)]',
       },
       {
         tone: 'warning',
         surface: 'solid',
         className:
-          'border border-orange-300/70 bg-orange-500 text-white shadow-[var(--shadow-sm)] hover:-translate-y-px hover:bg-orange-600 hover:shadow-[var(--shadow-md)] focus-visible:ring-orange-200',
+          'border border-transparent bg-[image:var(--button-violet-bg)] text-white shadow-[var(--shadow-sm)] hover:-translate-y-px hover:brightness-[0.98] hover:shadow-[var(--shadow-md)] focus-visible:ring-[var(--logo-violet)]',
       },
       {
         tone: 'danger',
         surface: 'solid',
         className:
-          'border border-rose-300/70 bg-rose-600 text-white shadow-[var(--shadow-sm)] hover:-translate-y-px hover:bg-rose-700 hover:shadow-[var(--shadow-md)] focus-visible:ring-rose-200',
+          'border border-transparent bg-[image:var(--button-accent-bg)] text-white shadow-[var(--button-accent-shadow)] hover:-translate-y-px hover:brightness-[0.98] hover:shadow-[var(--button-accent-shadow-hover)] focus-visible:ring-[var(--logo-pink)]',
       },
       {
         tone: 'neutral',
@@ -74,25 +74,25 @@ const buttonVariants = cva(
         tone: 'accent',
         surface: 'soft',
         className:
-          'border border-[var(--app-accent-border,var(--app-accent,var(--ring)))] bg-[var(--app-accent-soft,var(--accent))] text-[var(--app-accent-text,var(--primary))] hover:bg-[var(--app-accent-soft-strong,var(--accent))] focus-visible:ring-[var(--app-accent-border,var(--ring))]',
+          'border border-transparent bg-[image:var(--button-accent-bg)] text-white shadow-[var(--shadow-sm)] hover:-translate-y-px hover:brightness-[0.98] focus-visible:ring-[var(--app-accent,var(--ring))]',
       },
       {
         tone: 'success',
         surface: 'soft',
         className:
-          'border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 focus-visible:ring-emerald-200',
+          'border border-transparent bg-[image:var(--button-blue-bg)] text-white hover:brightness-[0.98] focus-visible:ring-[var(--logo-blue)]',
       },
       {
         tone: 'warning',
         surface: 'soft',
         className:
-          'border border-orange-200 bg-orange-50 text-orange-700 hover:bg-orange-100 focus-visible:ring-orange-200',
+          'border border-transparent bg-[image:var(--button-violet-bg)] text-white hover:brightness-[0.98] focus-visible:ring-[var(--logo-violet)]',
       },
       {
         tone: 'danger',
         surface: 'soft',
         className:
-          'border border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100 focus-visible:ring-rose-200',
+          'border border-transparent bg-[image:var(--button-accent-bg)] text-white hover:brightness-[0.98] focus-visible:ring-[var(--logo-pink)]',
       },
       {
         tone: 'neutral',
@@ -104,25 +104,25 @@ const buttonVariants = cva(
         tone: 'accent',
         surface: 'outline',
         className:
-          'border border-[var(--app-accent-border,var(--app-accent,var(--ring)))] bg-[var(--surface-base)] text-[var(--app-accent-text,var(--primary))] hover:bg-[var(--app-accent-soft,var(--accent))] focus-visible:ring-[var(--app-accent-border,var(--ring))]',
+          'border border-[var(--app-accent,var(--ring))] bg-[var(--surface-base)] text-[var(--app-accent-text,var(--primary))] hover:border-[var(--app-accent,var(--ring))] hover:bg-[var(--app-accent,var(--primary))] hover:text-white focus-visible:ring-[var(--app-accent,var(--ring))]',
       },
       {
         tone: 'success',
         surface: 'outline',
         className:
-          'border border-emerald-200 bg-[var(--surface-base)] text-emerald-700 hover:bg-emerald-50 focus-visible:ring-emerald-200',
+          'border border-[var(--logo-blue)] bg-[var(--surface-base)] text-[var(--logo-blue)] hover:bg-[var(--logo-blue)] hover:text-white focus-visible:ring-[var(--logo-blue)]',
       },
       {
         tone: 'warning',
         surface: 'outline',
         className:
-          'border border-orange-200 bg-[var(--surface-base)] text-orange-700 hover:bg-orange-50 focus-visible:ring-orange-200',
+          'border border-[var(--logo-violet)] bg-[var(--surface-base)] text-[var(--logo-violet)] hover:bg-[var(--logo-violet)] hover:text-white focus-visible:ring-[var(--logo-violet)]',
       },
       {
         tone: 'danger',
         surface: 'outline',
         className:
-          'border border-rose-200 bg-[var(--surface-base)] text-rose-700 hover:bg-rose-50 focus-visible:ring-rose-200',
+          'border border-[var(--logo-pink)] bg-[var(--surface-base)] text-[var(--logo-pink)] hover:bg-[var(--logo-pink)] hover:text-white focus-visible:ring-[var(--logo-pink)]',
       },
       {
         tone: 'neutral',
@@ -134,25 +134,25 @@ const buttonVariants = cva(
         tone: 'accent',
         surface: 'ghost',
         className:
-          'text-[var(--app-accent-text,var(--primary))] hover:bg-[var(--app-accent-soft,var(--accent))] focus-visible:ring-[var(--app-accent-border,var(--ring))]',
+          'text-[var(--app-accent-text,var(--primary))] hover:bg-[var(--app-accent,var(--primary))] hover:text-white focus-visible:ring-[var(--app-accent,var(--ring))]',
       },
       {
         tone: 'success',
         surface: 'ghost',
         className:
-          'text-emerald-700 hover:bg-emerald-50 focus-visible:ring-emerald-200',
+          'text-[var(--logo-blue)] hover:bg-[var(--logo-blue)] hover:text-white focus-visible:ring-[var(--logo-blue)]',
       },
       {
         tone: 'warning',
         surface: 'ghost',
         className:
-          'text-orange-700 hover:bg-orange-50 focus-visible:ring-orange-200',
+          'text-[var(--logo-violet)] hover:bg-[var(--logo-violet)] hover:text-white focus-visible:ring-[var(--logo-violet)]',
       },
       {
         tone: 'danger',
         surface: 'ghost',
         className:
-          'text-rose-700 hover:bg-rose-50 focus-visible:ring-rose-200',
+          'text-[var(--logo-pink)] hover:bg-[var(--logo-pink)] hover:text-white focus-visible:ring-[var(--logo-pink)]',
       },
       {
         tone: 'neutral',
@@ -167,17 +167,17 @@ const buttonVariants = cva(
       {
         tone: 'success',
         surface: 'link',
-        className: 'text-emerald-700',
+        className: 'text-[var(--logo-blue)]',
       },
       {
         tone: 'warning',
         surface: 'link',
-        className: 'text-orange-700',
+        className: 'text-[var(--logo-violet)]',
       },
       {
         tone: 'danger',
         surface: 'link',
-        className: 'text-rose-700',
+        className: 'text-[var(--logo-pink)]',
       },
     ],
     defaultVariants: {

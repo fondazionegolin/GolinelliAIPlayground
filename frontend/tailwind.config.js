@@ -15,8 +15,8 @@ export default {
     },
     extend: {
       fontFamily: {
-        sans: ['Lexend', 'system-ui', 'sans-serif'],
-        brand: ['SofiaPro', 'Lexend', 'system-ui', 'sans-serif'],
+        sans: ['Lufga', 'Lexend', 'system-ui', 'sans-serif'],
+        brand: ['SofiaPro', 'Lufga', 'Lexend', 'system-ui', 'sans-serif'],
         mono: ['JetBrains Mono', 'IBM Plex Mono', 'monospace'],
       },
       fontSize: {

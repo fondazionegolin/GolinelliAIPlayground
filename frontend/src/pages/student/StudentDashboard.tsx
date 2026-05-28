@@ -477,10 +477,13 @@ export default function StudentDashboard() {
           </AnimatePresence>
         </main>
 
-        {showSidebar ? (
+        {sessionInfo ? (
           <div
-            className="hidden lg:block border-l border-slate-200 bg-white flex-shrink-0 relative"
-            style={{ width: `${sidebarWidth}px`, height: '100%' }}
+            className={`hidden h-full flex-shrink-0 overflow-hidden bg-white transition-[width,opacity] duration-200 lg:block ${
+              showSidebar ? 'relative border-l border-slate-200 opacity-100' : 'pointer-events-none border-l-0 opacity-0'
+            }`}
+            style={{ width: showSidebar ? `${sidebarWidth}px` : 0, height: '100%' }}
+            aria-hidden={!showSidebar}
           >
             <ChatSidebar
               sessionId={sessionInfo.session.id}

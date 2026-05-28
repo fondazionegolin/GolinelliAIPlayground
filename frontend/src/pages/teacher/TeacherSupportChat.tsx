@@ -442,10 +442,11 @@ export default function TeacherSupportChat() {
     '--teacher-accent-border': accentTheme.border,
   }) as CSSProperties, [accentTheme])
   const selectedSoftStyle = useMemo(() => ({
-    backgroundColor: `${accentTheme.accent}15`,
+    backgroundColor: `color-mix(in srgb, ${accentTheme.accent} 10%, white)`,
     color: accentTheme.text,
-    borderColor: `${accentTheme.accent}40`,
+    borderColor: `color-mix(in srgb, ${accentTheme.accent} 28%, transparent)`,
     backdropFilter: 'blur(8px)',
+    boxShadow: `0 1px 2px color-mix(in srgb, ${accentTheme.accent} 10%, transparent)`,
   }) as CSSProperties, [accentTheme])
   const selectedSolidStyle = useMemo(() => ({
     backgroundColor: accentTheme.accent,
@@ -2782,7 +2783,7 @@ REGOLE IMPORTANTI:
                             <div className="relative" ref={modelMenuRef}>
                               <button
                                 onClick={() => setShowModelMenu(!showModelMenu)}
-                                className="flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all shadow-sm group hover:opacity-90 border"
+                                className="flex h-[var(--selection-height)] items-center gap-2 rounded-[var(--selection-radius)] border px-[var(--selection-padding-x)] text-xs font-bold transition-all group hover:opacity-90"
                                 style={selectedSoftStyle}
                               >
                                 <div className="p-0.5 bg-white/20 rounded-md">
@@ -2802,7 +2803,7 @@ REGOLE IMPORTANTI:
                                   {availableModels.map(m => (
                                     <div
                                       key={m.id}
-                                      className={`flex items-center justify-between px-3 py-2.5 mx-1 rounded-lg hover:bg-slate-50 transition-colors cursor-pointer group border ${selectedModel === m.id ? '' : 'border-transparent'}`}
+                                      className={`flex items-center justify-between px-3 py-2.5 mx-1 rounded-[var(--selection-radius)] transition-colors cursor-pointer group border ${selectedModel === m.id ? '' : 'border-transparent hover:bg-[var(--selection-bg)]'}`}
                                       style={selectedModel === m.id ? selectedSoftStyle : undefined}
                                       onClick={() => {
                                         setSelectedModel(m.id)

@@ -1,7 +1,7 @@
 export const typographyTokens = {
   fontFamily: {
-    ui: "'Lexend', system-ui, sans-serif",
-    brand: "'SofiaPro', 'Lexend', system-ui, sans-serif",
+    ui: "'Lufga', 'Lexend', system-ui, sans-serif",
+    brand: "'SofiaPro', 'Lufga', 'Lexend', system-ui, sans-serif",
     mono: "'JetBrains Mono', 'IBM Plex Mono', monospace",
   },
   fontSize: {
@@ -30,7 +30,7 @@ export const typographyTokens = {
     xl: 1.15,
   },
   letterSpacing: {
-    tight: '-0.025em',
+    tight: '0em',
     normal: '0em',
     wide: '0.02em',
   },
@@ -69,43 +69,43 @@ export const typographyTokens = {
       fontSize: '1.125rem',
       lineHeight: 1.2,
       fontWeight: 600,
-      letterSpacing: '-0.025em',
+      letterSpacing: '0em',
     },
     titleMd: {
       fontSize: '1.5rem',
       lineHeight: 1.15,
       fontWeight: 700,
-      letterSpacing: '-0.025em',
+      letterSpacing: '0em',
     },
     titleLg: {
       fontSize: '1.875rem',
       lineHeight: 1.15,
       fontWeight: 700,
-      letterSpacing: '-0.025em',
+      letterSpacing: '0em',
     },
     h1: {
       fontSize: '2rem',
       lineHeight: 1.1,
       fontWeight: 700,
-      letterSpacing: '-0.025em',
+      letterSpacing: '0em',
     },
     h2: {
       fontSize: '1.5rem',
       lineHeight: 1.15,
       fontWeight: 700,
-      letterSpacing: '-0.025em',
+      letterSpacing: '0em',
     },
     h3: {
       fontSize: '1.125rem',
       lineHeight: 1.25,
       fontWeight: 600,
-      letterSpacing: '-0.01em',
+      letterSpacing: '0em',
     },
     display: {
       fontSize: '3rem',
       lineHeight: 1,
       fontWeight: 900,
-      letterSpacing: '-0.025em',
+      letterSpacing: '0em',
     },
   },
 } as const

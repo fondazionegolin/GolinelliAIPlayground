@@ -4,16 +4,16 @@ import { cva, type VariantProps } from 'class-variance-authority'
 import { cn } from '@/lib/utils'
 
 const cardVariants = cva(
-  'rounded-xl border text-[var(--text-primary)] transition-colors',
+  'rounded-[var(--card-radius)] border text-[var(--text-primary)] transition-colors',
   {
     variants: {
       surface: {
         base: 'border-[var(--border-subtle)] bg-[var(--surface-base)] shadow-[var(--shadow-sm)]',
         elevated:
-          'border-white/60 bg-[var(--surface-elevated)] shadow-[var(--shadow-md)] backdrop-blur-md',
+          'border-[var(--border-subtle)] bg-[var(--surface-elevated)] shadow-[var(--shadow-md)] backdrop-blur-md',
         muted: 'border-[var(--border-subtle)] bg-[var(--surface-muted)] shadow-none',
         glass:
-          'border-white/50 bg-[var(--surface-glass)] shadow-[var(--shadow-lg)] backdrop-blur-xl',
+          'border-[var(--border-subtle)] bg-[var(--surface-glass)] shadow-[var(--shadow-lg)] backdrop-blur-xl',
       },
       density: {
         compact: '',
@@ -36,9 +36,9 @@ const cardVariants = cva(
 const cardSectionVariants = cva('', {
   variants: {
     density: {
-      compact: 'p-4',
-      default: 'p-6',
-      roomy: 'p-8',
+      compact: 'p-3',
+      default: 'p-5',
+      roomy: 'p-7',
     },
     flushTop: {
       true: 'pt-0',

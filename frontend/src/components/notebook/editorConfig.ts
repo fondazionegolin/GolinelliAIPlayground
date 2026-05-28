@@ -124,8 +124,8 @@ const highlightStyles: Record<NotebookTheme, HighlightStyle> = {
 
   // background #ffffff  (light)
   light: HighlightStyle.define([
-    { tag: [tags.keyword, tags.modifier],                          color: '#1d4ed8', fontWeight: '700' },
-    { tag: [tags.self],                                            color: '#1d4ed8', fontWeight: '700' },
+    { tag: [tags.keyword, tags.modifier],                          color: '#1278bd', fontWeight: '700' },
+    { tag: [tags.self],                                            color: '#1278bd', fontWeight: '700' },
     { tag: [tags.bool, tags.null],                                 color: '#dc2626', fontWeight: '700' },
     { tag: [tags.string, tags.special(tags.string)],               color: '#059669' },
     { tag: tags.number,                                            color: '#b45309' },

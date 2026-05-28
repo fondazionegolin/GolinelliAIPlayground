@@ -788,6 +788,16 @@ export default function ChatSidebar({
     })
   }
 
+  const copyMessageText = useCallback(async (text: string) => {
+    const value = text.trim()
+    if (!value || !navigator.clipboard) return
+    try {
+      await navigator.clipboard.writeText(value)
+    } catch {
+      // Text remains selectable even when clipboard permissions are unavailable.
+    }
+  }, [])
+
   const renderMessage = (msg: ChatMessage, idx: number, messageList: ChatMessage[]) => {
     const isMe = msg.sender_id === currentUserId || msg.sender_id === socketCurrentUserId
     const isNotification = !!msg.notification_type
@@ -887,6 +897,11 @@ export default function ChatSidebar({
         className={`flex gap-3 group/msg ${isMe ? 'flex-row-reverse' : ''}`}
         draggable
         onDragStart={(e) => {
+          const target = e.target as HTMLElement | null
+          if (target?.closest('[data-chat-copyable="true"]')) {
+            e.preventDefault()
+            return
+          }
           const payload = JSON.stringify({ text: msg.text, sender_name: msg.sender_name || 'Utente' })
           e.dataTransfer.setData('desktop/note', payload)
           e.dataTransfer.effectAllowed = 'copy'
@@ -917,13 +932,20 @@ export default function ChatSidebar({
             </span>
           )}
           <div className={`
-            px-3.5 py-2.5 text-sm leading-snug shadow-sm backdrop-blur-md transition-all relative
+            px-3.5 py-2.5 text-sm leading-snug shadow-sm backdrop-blur-md transition-all relative select-text cursor-text
             ${isMe
               ? messageAccentTheme
                 ? 'border rounded-2xl rounded-tr-none'
                 : 'bg-slate-50/60 text-slate-800 border border-slate-200/80 rounded-2xl rounded-tr-none'
               : 'bg-white/60 text-slate-700 border border-slate-200/80 rounded-2xl rounded-tl-none'}
           `}
+            data-chat-copyable="true"
+            draggable={false}
+            onDoubleClick={(e) => {
+              e.stopPropagation()
+              void copyMessageText(content)
+            }}
+            title="Doppio click per copiare il testo"
             style={messageAccentTheme ? {
               backgroundColor: `${messageAccentTheme.accent}15`, // 15 is ~8% opacity for ethereal look
               borderColor: `${messageAccentTheme.accent}40`, // 40 is ~25% opacity for outline
@@ -1033,13 +1055,16 @@ export default function ChatSidebar({
 
   const renderPrivateChatsTab = () => {
     const chatList = Object.values(privateChats)
+    const currentChat = activePrivateChat ? privateChats[activePrivateChat] : null
 
     if (chatList.length === 0) {
       return (
-        <div className="flex-1 flex flex-col items-center justify-center text-slate-300 opacity-50 p-4">
-          <MessagesSquare className="h-8 w-8 mb-2" />
-          <p className="text-[10px] font-medium uppercase text-center">{t('chat_sidebar.no_private_chat')}</p>
-          <p className="text-[9px] mt-1 text-center">
+        <div className="flex-1 flex flex-col items-center justify-center p-6 text-center">
+          <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-300 shadow-sm">
+            <MessagesSquare className="h-6 w-6" />
+          </div>
+          <p className="text-xs font-bold uppercase tracking-wide text-slate-500">{t('chat_sidebar.no_private_chat')}</p>
+          <p className="mt-1 max-w-48 text-[11px] leading-relaxed text-slate-400">
             {userType === 'teacher' ? t('chat_sidebar.start_chat_from_students') : t('chat_sidebar.wait_teacher_private_chat')}
           </p>
         </div>
@@ -1049,9 +1074,13 @@ export default function ChatSidebar({
     const currentChatMessages = activePrivateChat ? privateChats[activePrivateChat]?.messages || [] : []
 
     return (
-      <div className="flex-1 flex overflow-hidden">
+      <div className="flex-1 flex overflow-hidden bg-white">
         {/* Vertical tabs for private chats */}
-        <div className="w-16 bg-slate-100 border-r border-slate-200 overflow-y-auto flex flex-col items-center py-2 gap-2 flex-shrink-0">
+        <div className="w-[76px] flex-shrink-0 overflow-y-auto border-r border-slate-200 bg-slate-50/80 px-2 py-3">
+          <div className="mb-3 text-center text-[9px] font-bold uppercase tracking-wide text-slate-400">
+            Private
+          </div>
+          <div className="flex flex-col items-center gap-2">
           {chatList.map((chat) => (
             <button
               key={chat.oderId}
@@ -1059,9 +1088,9 @@ export default function ChatSidebar({
                 setActivePrivateChat(chat.oderId)
                 markPrivateChatRead(chat.oderId)
               }}
-              className={`relative w-12 h-12 rounded-xl flex items-center justify-center transition-all ${activePrivateChat === chat.oderId
-                ? 'bg-[#181b1e] shadow-md'
-                : 'bg-white hover:bg-[#181b1e]/5 border border-slate-200'
+              className={`relative flex h-12 w-12 items-center justify-center rounded-2xl border transition-all ${activePrivateChat === chat.oderId
+                ? 'border-[var(--app-accent)] bg-[var(--app-accent-soft)] shadow-sm'
+                : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-white'
                 }`}
               title={chat.peerName}
             >
@@ -1074,7 +1103,7 @@ export default function ChatSidebar({
                   />
                 ) : (
                   <AvatarFallback className={`text-xs font-bold ${activePrivateChat === chat.oderId
-                    ? 'bg-[#181b1e] text-white'
+                    ? 'bg-[var(--app-accent)] text-white'
                     : 'bg-slate-200 text-slate-600'
                     }`}>
                     {chat.peerName.substring(0, 2).toUpperCase()}
@@ -1088,24 +1117,45 @@ export default function ChatSidebar({
               )}
             </button>
           ))}
+          </div>
         </div>
 
         {/* Chat messages area */}
-        <div className="flex-1 flex flex-col overflow-hidden">
+        <div className="flex-1 flex min-w-0 flex-col overflow-hidden">
           {activePrivateChat ? (
             <>
               {/* Chat header */}
-              <div className="px-3 py-2 border-b border-slate-100 bg-white">
-                <p className="font-semibold text-sm text-slate-700">
-                  {privateChats[activePrivateChat]?.peerName || 'Chat'}
-                </p>
+              <div className="flex items-center gap-3 border-b border-slate-100 bg-white px-4 py-3">
+                <Avatar className="h-9 w-9 border border-slate-200">
+                  {currentChat?.peerAvatarUrl ? (
+                    <img
+                      src={currentChat.peerAvatarUrl}
+                      alt={currentChat.peerName}
+                      className="h-full w-full rounded-full object-cover"
+                    />
+                  ) : (
+                    <AvatarFallback className="bg-[var(--app-accent-soft)] text-xs font-black text-[var(--app-accent-text)]">
+                      {(currentChat?.peerName || 'Chat').substring(0, 2).toUpperCase()}
+                    </AvatarFallback>
+                  )}
+                </Avatar>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-bold text-slate-800">
+                    {currentChat?.peerName || 'Chat privata'}
+                  </p>
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                    Chat privata
+                  </p>
+                </div>
               </div>
               {/* Messages */}
-              <div className="flex-1 overflow-y-auto p-3 space-y-4 bg-slate-50/30" ref={scrollRef}>
+              <div className="flex-1 overflow-y-auto space-y-4 bg-slate-50/50 p-4" ref={scrollRef}>
                 {currentChatMessages.length === 0 ? (
-                  <div className="h-full flex flex-col items-center justify-center text-slate-300 opacity-50">
-                    <MessageCircle className="h-6 w-6 mb-2" />
-                    <p className="text-[10px] font-medium uppercase">{t('chat_sidebar.start_conversation')}</p>
+                  <div className="flex h-full flex-col items-center justify-center text-center">
+                    <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-300 shadow-sm">
+                      <MessageCircle className="h-5 w-5" />
+                    </div>
+                    <p className="text-xs font-bold uppercase tracking-wide text-slate-400">{t('chat_sidebar.start_conversation')}</p>
                   </div>
                 ) : (
                   currentChatMessages.map((msg, idx) => renderMessage(msg, idx, currentChatMessages))
@@ -1113,9 +1163,11 @@ export default function ChatSidebar({
               </div>
             </>
           ) : (
-            <div className="flex-1 flex flex-col items-center justify-center text-slate-300 opacity-50 p-4">
-              <MessageCircle className="h-6 w-6 mb-2" />
-              <p className="text-[10px] font-medium uppercase">{t('chat_sidebar.select_chat')}</p>
+            <div className="flex-1 flex flex-col items-center justify-center p-6 text-center">
+              <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-300 shadow-sm">
+                <MessageCircle className="h-5 w-5" />
+              </div>
+              <p className="text-xs font-bold uppercase tracking-wide text-slate-400">{t('chat_sidebar.select_chat')}</p>
             </div>
           )}
         </div>
@@ -1126,12 +1178,6 @@ export default function ChatSidebar({
   const renderSessionChat = () => {
     return (
       <div className="flex-1 overflow-hidden relative flex flex-col">
-        <VoiceRoomPanel
-          sessionId={sessionId}
-          userType={userType}
-          currentUserId={currentUserId}
-          socket={socket}
-        />
         <div
           className="flex-1 overflow-y-auto p-4 space-y-6 bg-slate-50/30 scroll-smooth overscroll-contain"
           ref={scrollRef}
@@ -1757,6 +1803,13 @@ export default function ChatSidebar({
 
       {/* Tab content */}
       <div className="flex-1 overflow-hidden flex flex-col">
+        <VoiceRoomPanel
+          sessionId={sessionId}
+          userType={userType}
+          currentUserId={currentUserId}
+          socket={socket}
+        />
+
         {activeTab === 'session' && renderSessionChat()}
 
         {activeTab === 'private' && renderPrivateChatsTab()}

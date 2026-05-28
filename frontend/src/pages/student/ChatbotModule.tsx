@@ -524,10 +524,11 @@ export default function ChatbotModule({ sessionId, studentId, initialTeacherbotI
     '--student-accent-border': accentTheme.border,
   }) as CSSProperties, [accentTheme])
   const selectedSoftStyle = useMemo(() => ({
-    backgroundColor: '#f8fafc',
+    backgroundColor: `color-mix(in srgb, ${accentTheme.accent} 10%, white)`,
     color: accentTheme.text,
-    borderColor: '#e2e8f0',
+    borderColor: `color-mix(in srgb, ${accentTheme.accent} 28%, transparent)`,
     backdropFilter: 'blur(8px)',
+    boxShadow: `0 1px 2px color-mix(in srgb, ${accentTheme.accent} 10%, transparent)`,
   }) as CSSProperties, [accentTheme])
   const selectedSolidStyle = useMemo(() => ({
     backgroundColor: '#0f172a',
@@ -3105,7 +3106,7 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
                   <div className="hidden lg:block relative" ref={modelMenuRef}>
                     <button
                       onClick={() => setShowModelMenu(!showModelMenu)}
-                      className="flex items-center gap-2 rounded-xl border px-4 py-2 text-xs font-bold shadow-sm transition-all hover:-translate-y-0.5 hover:opacity-90"
+                      className="flex h-[var(--selection-height)] items-center gap-2 rounded-[var(--selection-radius)] border px-[var(--selection-padding-x)] text-xs font-bold transition-all hover:opacity-90"
                       style={selectedSoftStyle}
                     >
                       {effectiveSelectedModel?.provider === 'openai' ? (
@@ -3129,7 +3130,7 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
                           return (
                             <div
                               key={modelKey(m)}
-                              className={`mx-1 my-0.5 px-3 py-2 rounded-lg border cursor-pointer flex items-center justify-between ${selected ? '' : 'border-transparent hover:bg-slate-50'}`}
+                              className={`mx-1 my-0.5 px-3 py-2 rounded-[var(--selection-radius)] border cursor-pointer flex items-center justify-between ${selected ? '' : 'border-transparent hover:bg-[var(--selection-bg)]'}`}
                               style={selected ? selectedSoftStyle : undefined}
                               onClick={() => handleChangeModel(m)}
                             >

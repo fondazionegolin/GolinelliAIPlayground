@@ -185,10 +185,10 @@ export default function ActivatePage() {
           <div className="flex items-center justify-center gap-4 mb-2">
             <LogoMark className="h-12 w-12" />
             <span className="text-[28px] leading-[1.15] tracking-tight text-left pb-[1px]" style={{ fontFamily: '"SofiaPro"' }}>
-              <span className="font-bold text-[#2d2d2d]/85">
+              <span className="font-bold text-[var(--logo-ink)]">
                 Golinelli
               </span>
-              <span className="font-black text-[#e85c8d]">.ai</span>
+              <span className="font-black text-[var(--logo-pink)]">.ai</span>
             </span>
           </div>
           <h1 className="text-3xl font-bold text-gray-900">{t('activate.title')}</h1>
