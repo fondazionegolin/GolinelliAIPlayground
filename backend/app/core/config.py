@@ -45,6 +45,16 @@ class Settings(BaseSettings):
     LIVEKIT_API_KEY: Optional[str] = None
     LIVEKIT_API_SECRET: Optional[str] = None
     LIVEKIT_TOKEN_TTL_MINUTES: int = 90
+
+    # External TURN server (coturn on turn.golinelli.ai)
+    # TURN_HOST: hostname or IP of the coturn server (e.g. "turn.golinelli.ai")
+    # TURN_PORT: TURNs/TLS port (default 5349); set to 3478 for plain UDP only
+    # TURN_SECRET: must match coturn's `static-auth-secret` (use-auth-secret mode)
+    # TURN_TTL_SECONDS: how long each generated credential is valid
+    TURN_HOST: Optional[str] = None
+    TURN_PORT: int = 5349
+    TURN_SECRET: Optional[str] = None
+    TURN_TTL_SECONDS: int = 86400
     
     # Default LLM settings
     DEFAULT_LLM_PROVIDER: str = "openai"

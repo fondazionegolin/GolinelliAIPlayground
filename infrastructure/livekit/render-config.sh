@@ -24,7 +24,7 @@ awk \
     gsub(/\$\{LIVEKIT_REDIS_ADDRESS\}/, redis_address)
     gsub(/\$\{LIVEKIT_API_KEY\}/, api_key)
     gsub(/\$\{LIVEKIT_API_SECRET\}/, api_secret)
-    gsub(/use_external_ip: false/, "use_external_ip: " use_external_ip)
+    gsub(/\$\{LIVEKIT_USE_EXTERNAL_IP\}/, use_external_ip)
     print
   }' config.yaml > config.generated.yaml
 

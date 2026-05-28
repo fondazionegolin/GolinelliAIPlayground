@@ -154,10 +154,9 @@ async def join_session(
     nickname = _normalize_nickname(request.nickname)
     existing = await _get_student_by_nickname(db, session.id, nickname)
 
-    # ── Recupera tenant per limiti strutturali ──────────────────────────────
+    # ── Recupera tenant per limite sessione ─────────────────────────────────
     tenant = (await db.execute(select(Tenant).where(Tenant.id == session.tenant_id))).scalar_one_or_none()
     max_per_class = getattr(tenant, 'max_students_per_class', 30) if tenant else 30
-    max_per_teacher = getattr(tenant, 'max_students_per_teacher', 100) if tenant else 100
 
     if existing:
         if existing.is_frozen:
@@ -181,32 +180,17 @@ async def join_session(
         await db.commit()
         return response
 
-    # ── Verifica limite studenti per classe ─────────────────────────────────
-    students_in_class = (await db.execute(
+    # ── Verifica limite studenti per sessione corrente ──────────────────────
+    students_in_session = (await db.execute(
         select(func.count(SessionStudent.id))
-        .join(Session, Session.id == SessionStudent.session_id)
-        .where(Session.class_id == session.class_id, Session.tenant_id == session.tenant_id)
+        .where(SessionStudent.session_id == session.id)
     )).scalar_one() or 0
-    if students_in_class >= max_per_class:
+    if students_in_session >= max_per_class:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail=f"Classe piena (max {max_per_class} studenti per classe)",
+            detail=f"Sessione piena (max {max_per_class} studenti)",
         )
 
-    # ── Verifica limite studenti per docente ────────────────────────────────
-    cls = (await db.execute(select(Class).where(Class.id == session.class_id))).scalar_one_or_none()
-    if cls:
-        students_of_teacher = (await db.execute(
-            select(func.count(SessionStudent.id))
-            .join(Session, Session.id == SessionStudent.session_id)
-            .join(Class, Class.id == Session.class_id)
-            .where(Class.teacher_id == cls.teacher_id, Class.tenant_id == session.tenant_id)
-        )).scalar_one() or 0
-        if students_of_teacher >= max_per_teacher:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"Limite studenti del docente raggiunto (max {max_per_teacher})",
-            )
 
     password = _validate_student_password(request.password)
     join_token_placeholder = "pending"

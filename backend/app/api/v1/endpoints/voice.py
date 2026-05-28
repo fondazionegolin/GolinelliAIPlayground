@@ -1,3 +1,7 @@
+import base64
+import hashlib
+import hmac
+import time
 from datetime import datetime, timedelta, timezone
 from typing import Annotated
 import uuid
@@ -17,6 +21,25 @@ from app.realtime.gateway import voice_rooms
 
 
 router = APIRouter()
+
+
+def _generate_turn_credentials(secret: str, ttl: int) -> tuple[str, str]:
+    """
+    Generate time-limited TURN credentials compatible with coturn's use-auth-secret.
+
+    coturn config must include:
+        use-auth-secret
+        static-auth-secret=<same value as TURN_SECRET>
+
+    Algorithm:
+        username   = "{expiry_unix_timestamp}:livekit"
+        credential = base64( HMAC-SHA1(secret, username) )
+    """
+    expiry = int(time.time()) + ttl
+    username = f"{expiry}:livekit"
+    mac = hmac.new(secret.encode("utf-8"), username.encode("utf-8"), hashlib.sha1)
+    credential = base64.b64encode(mac.digest()).decode("utf-8")
+    return username, credential
 
 
 class LiveKitTokenRequest(BaseModel):
@@ -110,6 +133,21 @@ async def create_livekit_token(
     }
     token = jwt.encode(payload, settings.LIVEKIT_API_SECRET, algorithm="HS256")
 
+    # Build ICE server list for the client: include the external TURN if configured.
+    ice_servers = []
+    if settings.TURN_HOST and settings.TURN_SECRET:
+        turn_user, turn_cred = _generate_turn_credentials(
+            settings.TURN_SECRET, settings.TURN_TTL_SECONDS
+        )
+        ice_servers.append({
+            "urls": [
+                f"turns:{settings.TURN_HOST}:{settings.TURN_PORT}?transport=tcp",
+                f"turn:{settings.TURN_HOST}:3478?transport=udp",
+            ],
+            "username": turn_user,
+            "credential": turn_cred,
+        })
+
     return {
         "url": settings.LIVEKIT_URL,
         "token": token,
@@ -117,4 +155,5 @@ async def create_livekit_token(
         "identity": identity,
         "can_publish": can_publish,
         "expires_at": expires_at.isoformat(),
+        "ice_servers": ice_servers,   # empty list when TURN not configured
     }

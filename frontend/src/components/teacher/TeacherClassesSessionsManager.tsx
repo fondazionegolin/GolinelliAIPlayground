@@ -9,16 +9,12 @@ import {
   Clock,
   Copy,
   Edit2,
-  Eye,
   MonitorPlay,
   Pause,
-  Play,
-  PlayCircle,
   Plus,
   School,
   Share2,
   Square,
-  Trash2,
   UserPlus,
   Users,
   X,
@@ -204,21 +200,20 @@ export default function TeacherClassesSessionsManager({
     },
   })
 
-  const deleteSessionMutation = useMutation({
-    mutationFn: (id: string) => teacherApi.deleteSession(id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['sessions', selectedClassId] })
-      queryClient.invalidateQueries({ queryKey: ['classes'] })
-      toast({ title: t('sessions.deleted') })
-    },
-  })
-
   const groupedSessions = useMemo(() => {
     const sorted = [...sessions].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
     return {
       open: sorted.filter((session) => session.status !== 'finished' && session.status !== 'ended'),
       archive: sorted.filter((session) => session.status === 'finished' || session.status === 'ended'),
     }
+  }, [sessions])
+
+  const orderedSessions = useMemo(() => {
+    const sorted = [...sessions].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+    return [
+      ...sorted.filter((session) => session.status === 'active'),
+      ...sorted.filter((session) => session.status !== 'active'),
+    ]
   }, [sessions])
 
   const summary = useMemo(() => ({
@@ -610,42 +605,20 @@ export default function TeacherClassesSessionsManager({
                     tone="slate"
                   />
                 ) : (
-                  <div className="space-y-4">
-                    <SessionSection
-                      title={isEnglish ? 'Open sessions' : 'Sessioni aperte'}
-                      isEnglish={isEnglish}
-                      statusMeta={statusMeta}
-                      sessions={groupedSessions.open}
-                      editingTitleId={editingTitleId}
-                      editingTitleValue={editingTitleValue}
-                      setEditingTitleId={setEditingTitleId}
-                      setEditingTitleValue={setEditingTitleValue}
-                      onRename={handleRenameSession}
-                      onCopyCode={copyCode}
-                      renamePending={renameSessionMutation.isPending}
-                      updatePending={updateSessionMutation.isPending}
-                      deletePending={deleteSessionMutation.isPending}
-                      onStatusChange={(id, status) => updateSessionMutation.mutate({ id, status })}
-                      onDelete={(id) => deleteSessionMutation.mutate(id)}
-                    />
-                    <SessionSection
-                      title={isEnglish ? 'Archive' : 'Archivio'}
-                      isEnglish={isEnglish}
-                      statusMeta={statusMeta}
-                      sessions={groupedSessions.archive}
-                      editingTitleId={editingTitleId}
-                      editingTitleValue={editingTitleValue}
-                      setEditingTitleId={setEditingTitleId}
-                      setEditingTitleValue={setEditingTitleValue}
-                      onRename={handleRenameSession}
-                      onCopyCode={copyCode}
-                      renamePending={renameSessionMutation.isPending}
-                      updatePending={updateSessionMutation.isPending}
-                      deletePending={deleteSessionMutation.isPending}
-                      onStatusChange={(id, status) => updateSessionMutation.mutate({ id, status })}
-                      onDelete={(id) => deleteSessionMutation.mutate(id)}
-                    />
-                  </div>
+                  <SessionList
+                    isEnglish={isEnglish}
+                    statusMeta={statusMeta}
+                    sessions={orderedSessions}
+                    editingTitleId={editingTitleId}
+                    editingTitleValue={editingTitleValue}
+                    setEditingTitleId={setEditingTitleId}
+                    setEditingTitleValue={setEditingTitleValue}
+                    onRename={handleRenameSession}
+                    onCopyCode={copyCode}
+                    renamePending={renameSessionMutation.isPending}
+                    updatePending={updateSessionMutation.isPending}
+                    onStatusChange={(id, status) => updateSessionMutation.mutate({ id, status })}
+                  />
                 )}
               </div>
             </div>
@@ -771,8 +744,7 @@ function EmptyStateCard({
   )
 }
 
-function SessionSection({
-  title,
+function SessionList({
   isEnglish,
   statusMeta,
   sessions,
@@ -784,11 +756,8 @@ function SessionSection({
   onCopyCode,
   renamePending,
   updatePending,
-  deletePending,
   onStatusChange,
-  onDelete,
 }: {
-  title: string
   isEnglish: boolean
   statusMeta: Record<string, { label: string; tone: string; dot: string }>
   sessions: SessionData[]
@@ -800,22 +769,35 @@ function SessionSection({
   onCopyCode: (code?: string) => void
   renamePending: boolean
   updatePending: boolean
-  deletePending: boolean
   onStatusChange: (id: string, status: string) => void
-  onDelete: (id: string) => void
 }) {
   if (sessions.length === 0) return null
+  const activeCount = sessions.filter((session) => session.status === 'active').length
+  const compactCount = sessions.length - activeCount
 
   return (
     <div className="space-y-3">
-      <div className="px-0.5">
-        <h3 className="text-base font-semibold tracking-[var(--letter-spacing-tight)] text-slate-950">{title}</h3>
-        <p className="text-xs text-slate-500">
-          {sessions.length} {sessions.length === 1 ? (isEnglish ? 'session available' : 'sessione disponibile') : (isEnglish ? 'sessions available' : 'sessioni disponibili')}
+      <div className="flex flex-col gap-1 px-0.5 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <h3 className="text-base font-semibold tracking-[var(--letter-spacing-tight)] text-slate-950">
+            {isEnglish ? 'Sessions' : 'Sessioni'}
+          </h3>
+          <p className="text-xs text-slate-500">
+            {activeCount > 0
+              ? (isEnglish
+                  ? `${activeCount} active expanded, ${compactCount} in compact list`
+                  : `${activeCount} attiva in evidenza, ${compactCount} in elenco compatto`)
+              : (isEnglish
+                  ? `${sessions.length} sessions in compact list`
+                  : `${sessions.length} sessioni in elenco compatto`)}
+          </p>
+        </div>
+        <p className="text-[11px] font-medium text-slate-400">
+          {isEnglish ? 'Click a row to open configuration' : 'Clicca una riga per aprire la configurazione'}
         </p>
       </div>
 
-      <div className="space-y-2.5">
+      <div className="space-y-2">
         {sessions.map((session) => (
           <SessionRow
             key={session.id}
@@ -828,9 +810,7 @@ function SessionSection({
             onCopyCode={onCopyCode}
             renamePending={renamePending}
             updatePending={updatePending}
-            deletePending={deletePending}
             onStatusChange={onStatusChange}
-            onDelete={onDelete}
             statusMeta={statusMeta}
             isEnglish={isEnglish}
           />
@@ -850,9 +830,7 @@ function SessionRow({
   onCopyCode,
   renamePending,
   updatePending,
-  deletePending,
   onStatusChange,
-  onDelete,
   statusMeta,
   isEnglish,
 }: {
@@ -865,30 +843,53 @@ function SessionRow({
   onCopyCode: (code?: string) => void
   renamePending: boolean
   updatePending: boolean
-  deletePending: boolean
   onStatusChange: (id: string, status: string) => void
-  onDelete: (id: string) => void
   statusMeta: Record<string, { label: string; tone: string; dot: string }>
   isEnglish: boolean
 }) {
   const meta = statusMeta[session.status] || statusMeta.draft
-  const isEnded = session.status === 'ended' || session.status === 'finished'
-  const isPaused = session.status === 'paused'
-  const isDraft = session.status === 'draft'
   const isActive = session.status === 'active'
 
   const navigate = useNavigate()
+  const createdAt = new Date(session.created_at).toLocaleDateString(isEnglish ? 'en-GB' : 'it-IT', { day: '2-digit', month: '2-digit', year: '2-digit' })
+
+  if (!isActive) {
+    return (
+      <button
+        type="button"
+        className="group grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-left transition-all hover:border-slate-300 hover:bg-slate-50"
+        onClick={() => navigate(`/teacher/sessions/${session.id}`)}
+      >
+        <div className="flex min-w-0 items-center gap-3">
+          <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${meta.dot}`} />
+          <div className="min-w-0 flex-1">
+            <div className="flex min-w-0 items-center gap-2">
+              <span className="truncate text-sm font-semibold text-slate-900">{session.title}</span>
+              <StatusBadge meta={meta} />
+            </div>
+            <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-slate-500">
+              <span>{createdAt}</span>
+              <span>{session.active_students_count ?? 0} {isEnglish ? 'active students' : 'studenti attivi'}</span>
+              <span className="hidden text-slate-400 sm:inline">{isEnglish ? 'Configuration' : 'Configurazione'}</span>
+            </div>
+          </div>
+        </div>
+        <ChevronRight className="h-4 w-4 text-slate-300 transition-transform group-hover:translate-x-0.5 group-hover:text-slate-500" />
+      </button>
+    )
+  }
+
   return (
     <Card
       surface="base"
-      className="cursor-pointer rounded-lg border border-slate-300 bg-white px-4 py-3.5 transition-all hover:border-slate-400"
+      className="cursor-pointer overflow-hidden rounded-lg border border-emerald-300 bg-emerald-50/55 px-4 py-4 shadow-sm transition-all hover:border-emerald-400"
       onClick={() => navigate(`/teacher/sessions/${session.id}`)}
     >
-      <div className="flex flex-col gap-3.5">
-        <div className="flex flex-col gap-2.5 lg:flex-row lg:items-start lg:justify-between">
+      <div className="flex flex-col gap-3">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div className="min-w-0 flex-1" onClick={e => e.stopPropagation()}>
             <div className="flex items-start gap-2.5">
-              <div className={`mt-1 h-2.5 w-2.5 shrink-0 rounded-full ${meta.dot} ${isActive ? 'animate-pulse' : ''}`} />
+              <div className={`mt-1.5 h-3 w-3 shrink-0 rounded-full ${meta.dot} animate-pulse shadow-sm shadow-emerald-300`} />
               <div className="min-w-0 flex-1">
                 {editingTitleId === session.id ? (
                   <form className="flex min-w-0 flex-1 items-center gap-1.5" onSubmit={(e) => { e.preventDefault(); onRename(session.id) }}>
@@ -910,7 +911,8 @@ function SessionRow({
                 ) : (
                   <>
                     <div className="flex min-w-0 items-center gap-2">
-                      <h4 className="truncate text-[16px] font-semibold tracking-[-0.01em] text-slate-900">{session.title}</h4>
+                      <h4 className="truncate text-[18px] font-semibold tracking-[-0.01em] text-slate-950">{session.title}</h4>
+                      <StatusBadge meta={meta} />
                       <IconButton
                         onClick={() => { setEditingTitleId(session.id); setEditingTitleValue(session.title) }}
                         className="shrink-0"
@@ -922,11 +924,10 @@ function SessionRow({
                         <Edit2 className="h-3 w-3" />
                       </IconButton>
                     </div>
-                    <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-slate-600">
-                      <StatusBadge meta={meta} />
-                      <span>{new Date(session.created_at).toLocaleDateString(isEnglish ? 'en-GB' : 'it-IT', { day: '2-digit', month: '2-digit', year: '2-digit' })}</span>
+                    <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-slate-600">
+                      <span>{createdAt}</span>
                       <span>{session.active_students_count ?? 0} {isEnglish ? 'active students' : 'studenti attivi'}</span>
-                      {isActive && session.join_code ? (
+                      {session.join_code ? (
                         <Button
                           onClick={() => onCopyCode(session.join_code)}
                           tone="neutral"
@@ -938,13 +939,7 @@ function SessionRow({
                           <Copy className="h-2.5 w-2.5" />
                         </Button>
                       ) : (
-                        <span className="text-slate-400">
-                          {isPaused
-                            ? (isEnglish ? 'Code unavailable' : 'Codice non disponibile')
-                            : isEnded
-                              ? (isEnglish ? 'Code retired' : 'Codice dismesso')
-                              : (isEnglish ? 'Code inactive' : 'Codice non attivo')}
-                        </span>
+                        <span className="text-slate-400">{isEnglish ? 'Code unavailable' : 'Codice non disponibile'}</span>
                       )}
                     </div>
                   </>
@@ -954,70 +949,23 @@ function SessionRow({
           </div>
 
           <div className="flex shrink-0 items-center gap-2" onClick={e => e.stopPropagation()}>
-            <Button tone="neutral" surface="outline" density="compact" className="rounded-md" onClick={() => navigate(`/teacher/sessions/${session.id}`)}>
-              <Eye className="mr-1.5 h-3.5 w-3.5" />
-              {isEnglish ? 'Open' : 'Apri'}
+            <Button tone="accent" surface="solid" density="compact" className="rounded-md" onClick={() => navigate(`/teacher/sessions/${session.id}`)}>
+              <ChevronRight className="mr-1.5 h-3.5 w-3.5" />
+              {isEnglish ? 'Configure session' : 'Configura sessione'}
             </Button>
           </div>
         </div>
 
-        <div className="border-t border-slate-200 pt-3" onClick={e => e.stopPropagation()}>
-          <div className="flex flex-wrap items-center gap-2 justify-start">
-            {isDraft && (
-              <Button
-                onClick={() => onStatusChange(session.id, 'active')}
-                disabled={updatePending}
-                tone="accent"
-                surface="solid"
-                density="compact"
-                className="rounded-md"
-              >
-                <Play className="mr-1.5 h-3.5 w-3.5" />
-                {isEnglish ? 'Start' : 'Avvia'}
-              </Button>
-            )}
-            {isActive && (
-              <>
-                <Button onClick={() => onStatusChange(session.id, 'paused')} disabled={updatePending} tone="neutral" surface="outline" density="compact" className="rounded-md">
-                  <Pause className="mr-1.5 h-3.5 w-3.5" />
-                  {isEnglish ? 'Pause' : 'Pausa'}
-                </Button>
-                <Button onClick={() => onStatusChange(session.id, 'ended')} disabled={updatePending} tone="danger" surface="soft" density="compact" className="rounded-md">
-                  <Square className="mr-1.5 h-3.5 w-3.5" />
-                  {isEnglish ? 'Close' : 'Chiudi'}
-                </Button>
-              </>
-            )}
-            {isPaused && (
-              <Button
-                onClick={() => onStatusChange(session.id, 'active')}
-                disabled={updatePending}
-                tone="accent"
-                surface="solid"
-                density="compact"
-                className="rounded-md"
-              >
-                <PlayCircle className="mr-1.5 h-3.5 w-3.5" />
-                {isEnglish ? 'Resume' : 'Riprendi'}
-              </Button>
-            )}
-            <Button tone="neutral" surface="outline" density="compact" className="rounded-md" onClick={() => navigate(`/teacher/sessions/${session.id}`)}>
-              <ChevronRight className="mr-1.5 h-3.5 w-3.5" />
-              {isEnglish ? 'Details' : 'Dettagli'}
+        <div className="border-t border-emerald-200/70 pt-3" onClick={e => e.stopPropagation()}>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button onClick={() => onStatusChange(session.id, 'paused')} disabled={updatePending} tone="neutral" surface="outline" density="compact" className="rounded-md bg-white/80">
+              <Pause className="mr-1.5 h-3.5 w-3.5" />
+              {isEnglish ? 'Pause' : 'Pausa'}
             </Button>
-            {isEnded && (
-              <Button
-                onClick={() => { if (confirm(isEnglish ? 'Delete this session?' : 'Eliminare questa sessione?')) onDelete(session.id) }}
-                disabled={deletePending}
-                tone="danger"
-                surface="soft"
-                density="compact"
-                className="rounded-md"
-              >
-                <Trash2 className="mr-1.5 h-3.5 w-3.5" />
-                {isEnglish ? 'Delete' : 'Elimina'}
-              </Button>
-            )}
+            <Button onClick={() => onStatusChange(session.id, 'ended')} disabled={updatePending} tone="danger" surface="soft" density="compact" className="rounded-md">
+              <Square className="mr-1.5 h-3.5 w-3.5" />
+              {isEnglish ? 'Close' : 'Chiudi'}
+            </Button>
           </div>
         </div>
       </div>

@@ -10,15 +10,16 @@ services:
       - ./config.generated.yaml:/etc/livekit.yaml:ro
     ports:
       - "${LIVEKIT_HTTP_PORT:-7880}:7880"
-      - "${LIVEKIT_RTC_TCP_PORT:-7881}:7881"
+      - "${LIVEKIT_RTC_TCP_PORT:-7881}:7881/tcp"
       - "${LIVEKIT_RTC_UDP_PORT:-7882}:7882/udp"
-      - "${LIVEKIT_TURN_UDP_PORT:-3478}:3478/udp"
       - "${LIVEKIT_RTC_PORT_RANGE:-50000-50100}:50000-50100/udp"
+    # TURN (porta 3478) NON è esposta qui: il relay è gestito dal coturn su turn.golinelli.ai
     networks:
-      - eduai-network
+      - livekit-net
     restart: unless-stopped
 
 networks:
-  eduai-network:
-    external: true
-    name: ${LIVEKIT_DOCKER_NETWORK:-dev_golinelli_ai_eduai-network}
+  livekit-net:
+    # Rete bridge locale isolata: LiveKit non dipende dalla rete Docker dell'app principale.
+    # La connessione a Redis avviene via IP/hostname esterno (LIVEKIT_REDIS_ADDRESS).
+    driver: bridge

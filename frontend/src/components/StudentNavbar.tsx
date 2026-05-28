@@ -242,7 +242,7 @@ export function StudentNavbar({
 
             {/* Desktop Navigation */}
             {onNavigate && (
-              <div className="hidden md:flex items-center gap-1 h-11 rounded-xl border p-1" style={buildAccentNavClusterStyle(accentTheme)}>
+              <div className="hidden xl:flex items-center gap-1 h-11 rounded-xl border p-1" style={buildAccentNavClusterStyle(accentTheme)}>
                 {(() => {
                   const activeIdx = navItems.findIndex(item => activeModule === item.key)
                   return navItems.map((item, idx) => (
@@ -261,7 +261,7 @@ export function StudentNavbar({
               </div>
             )}
 
-            <div className="hidden lg:block h-8 w-px bg-slate-200/80 mx-1" />
+            <div className="hidden xl:block h-8 w-px bg-slate-200/80 mx-1" />
 
             <div className="flex items-center gap-2">
               {/* Date/time + mini calendar */}
@@ -387,6 +387,42 @@ export function StudentNavbar({
           )}
         </div>
       </nav>
+
+      {onNavigate && (
+        <aside
+          className={`fixed left-0 bottom-0 z-40 hidden w-16 border-r px-2 py-3 md:flex xl:hidden ${isPreviewMode ? 'top-24' : 'top-16'}`}
+          style={accentVars}
+          aria-label={t('navbar.nav_desktop')}
+        >
+          <div className="flex w-full flex-col items-center gap-1.5">
+            {navItems.map((item) => {
+              const Icon = item.icon
+              const isActiveItem = activeModule === item.key
+              return (
+                <button
+                  key={item.key}
+                  onClick={() => onNavigate(item.key)}
+                  title={item.label}
+                  aria-label={item.label}
+                  className="flex h-11 w-11 items-center justify-center rounded-xl border text-slate-600 transition-colors hover:bg-white/70 hover:text-[var(--student-accent-text)]"
+                  style={isActiveItem
+                    ? {
+                        backgroundColor: accentTheme.softStrong,
+                        borderColor: `${accentTheme.accent}45`,
+                        color: accentTheme.text,
+                      }
+                    : {
+                        backgroundColor: 'rgba(255,255,255,0.56)',
+                        borderColor: 'rgba(255,255,255,0.34)',
+                      }}
+                >
+                  <Icon className="h-5 w-5" />
+                </button>
+              )
+            })}
+          </div>
+        </aside>
+      )}
       {showWhatsNew && <WhatsNewModal onClose={() => setShowWhatsNew(false)} />}
 
       {/* Settings Modal */}

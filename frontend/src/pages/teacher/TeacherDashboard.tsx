@@ -155,7 +155,7 @@ export default function TeacherDashboard() {
       )}
 
       {/* ── Main Content ── */}
-      <div className={`flex-1 flex overflow-hidden ${isMobile ? 'pt-12 pb-16' : 'pt-16'}`}>
+      <div className={`flex-1 flex overflow-hidden ${isMobile ? 'pt-12 pb-16' : 'pt-16 md:pl-16 xl:pl-0'}`}>
 
         {/* ── Session Context Strip (left, desktop only) ── */}
         {!isMobile && currentSession && (

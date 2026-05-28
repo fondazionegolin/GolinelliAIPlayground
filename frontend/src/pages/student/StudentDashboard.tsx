@@ -408,7 +408,7 @@ export default function StudentDashboard() {
       </div>
 
       {/* Main Layout with Chat Sidebar */}
-      <div className="flex flex-1 overflow-hidden">
+      <div className="flex flex-1 overflow-hidden md:pl-16 xl:pl-0">
         {/* Main Content Area */}
         <main className={`flex-1 min-h-0 relative ${activeModule ? 'overflow-hidden flex flex-col' : 'overflow-y-auto'}`}>
           <AnimatePresence mode="wait">
