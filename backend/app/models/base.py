@@ -9,6 +9,7 @@ from app.models.ml import MLDataset, MLExperiment, MLResult
 from app.models.assessment import Lesson, Quiz, QuizAttempt, Badge, BadgeAward
 from app.models.document_draft import DocumentDraft
 from app.models.template_version import TenantTemplateVersion
+from app.models.toy_lm import ToyLMJob, ToyLMJobPublication
 
 __all__ = [
     "Tenant",
@@ -39,4 +40,6 @@ __all__ = [
     "BadgeAward",
     "DocumentDraft",
     "TenantTemplateVersion",
+    "ToyLMJob",
+    "ToyLMJobPublication",
 ]

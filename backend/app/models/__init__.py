@@ -20,6 +20,7 @@ from app.models.desktop import UserDesktop, DesktopWidget, AdminDesktopWidgetTem
 from app.models.calendar import SessionCalendarEvent
 from app.models.changelog import PlatformChangelogRelease
 from app.models.live_interaction import LiveInteraction, LiveInteractionResponse
+from app.models.toy_lm import ToyLMJob, ToyLMJobPublication
 
 __all__ = [
     "Tenant",
@@ -76,4 +77,6 @@ __all__ = [
     "PlatformChangelogRelease",
     "LiveInteraction",
     "LiveInteractionResponse",
+    "ToyLMJob",
+    "ToyLMJobPublication",
 ]

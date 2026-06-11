@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, Dispatch, SetStateAction, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
-import { chatApi, filesApi } from '@/lib/api'
+import { chatApi, filesApi, toyLmApi } from '@/lib/api'
 import FileViewerModal from '@/components/ui/FileViewerModal'
 import { useSocket, ChatMessage, OnlineUser } from '@/hooks/useSocket'
 import { Button } from '@/components/ui/button'
@@ -8,12 +8,13 @@ import { Input } from '@/components/ui/input'
 import {
   Send, MessageSquare, Bell, Paperclip, X, Image as ImageIcon,
   MessagesSquare, MessageCircle, Pin, PinOff,
-  File, Wand2, Users, Folder, Search, Upload, List, Grid2X2, Minus, Plus, ChevronDown, CornerUpLeft
+  File, Wand2, Users, Folder, Search, Upload, List, Grid2X2, Minus, Plus, ChevronDown, CornerUpLeft, Brain
 } from 'lucide-react'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { DEFAULT_STUDENT_ACCENT, getStudentAccentTheme, type StudentAccentId } from '@/lib/studentAccent'
 import { VoiceRecorder } from '@/components/VoiceRecorder'
 import { VoiceRoomPanel } from '@/components/VoiceRoomPanel'
+import ToyLMInferencePanel, { type ToyLMGeneratePayload } from '@/components/toy-lm/ToyLMInferencePanel'
 
 export type { ChatMessage }
 
@@ -27,6 +28,15 @@ interface SessionFile {
   url: string
   created_at: string
   owner_type: 'student' | 'teacher'
+}
+
+interface ToyLMModelAttachment {
+  type: 'toy_lm_model'
+  job_id: string
+  name: string
+  vocab_size?: number
+  saved_epoch?: number
+  param_count?: number
 }
 
 type SessionFilesCache = {
@@ -116,6 +126,7 @@ export default function ChatSidebar({
   const [tagInputs, setTagInputs] = useState<Record<string, string>>({})
   const [filesViewMode, setFilesViewMode] = useState<'grid' | 'list'>('grid')
   const [filesIconScale, setFilesIconScale] = useState(1)
+  const [activeToyLMModel, setActiveToyLMModel] = useState<ToyLMModelAttachment | null>(null)
   const studentAccentTheme = getStudentAccentTheme(studentAccent)
   const scrollRef = useRef<HTMLDivElement>(null)
   const prependScrollHeightRef = useRef<number | null>(null)
@@ -798,6 +809,12 @@ export default function ChatSidebar({
     }
   }, [])
 
+  const generateSharedToyLMText = useCallback(async (payload: ToyLMGeneratePayload) => {
+    if (!activeToyLMModel) return ''
+    const res = await toyLmApi.generateShared(activeToyLMModel.job_id, sessionId, payload)
+    return res.data?.generated ?? ''
+  }, [activeToyLMModel, sessionId])
+
   const renderMessage = (msg: ChatMessage, idx: number, messageList: ChatMessage[]) => {
     const isMe = msg.sender_id === currentUserId || msg.sender_id === socketCurrentUserId
     const isNotification = !!msg.notification_type
@@ -882,8 +899,12 @@ export default function ChatSidebar({
       )
     }
 
-    const allAttachments = Array.isArray(msg.attachments)
-      ? msg.attachments.filter((att: any) => att.url)
+    const rawAttachments = Array.isArray(msg.attachments) ? msg.attachments : []
+    const toyLmAttachments = rawAttachments.filter((att: any): att is ToyLMModelAttachment =>
+      att?.type === 'toy_lm_model' && typeof att.job_id === 'string'
+    )
+    const allAttachments = rawAttachments
+      ? rawAttachments.filter((att: any) => att.url)
       : []
     const imageAttachments = allAttachments.filter((att: any) => att.type === 'image')
     const fileAttachments = allAttachments.filter((att: any) => att.type !== 'image')
@@ -967,6 +988,36 @@ export default function ChatSidebar({
                 }
                 return part
               })
+            )}
+            {toyLmAttachments.length > 0 && (
+              <div className="mt-2 space-y-2">
+                {toyLmAttachments.map((att, idx) => (
+                  <button
+                    key={`${att.job_id}-${idx}`}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setActiveToyLMModel(att)
+                    }}
+                    className="w-full rounded-xl border border-violet-200 bg-violet-50 px-3 py-2 text-left shadow-sm transition-colors hover:border-violet-300 hover:bg-violet-100"
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-violet-600 text-white">
+                        <Brain className="h-4.5 w-4.5" style={{ width: 18, height: 18 }} />
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-xs font-black uppercase tracking-wide text-violet-700">Toy LM condiviso</p>
+                        <p className="truncate text-sm font-semibold text-slate-800">{att.name || 'Modello Toy LM'}</p>
+                        <p className="mt-0.5 truncate text-[10px] text-slate-500">
+                          {att.saved_epoch ?? 0} epoch · {Number(att.param_count || 0).toLocaleString()} parametri · vocab {att.vocab_size ?? 0}
+                        </p>
+                      </div>
+                    </div>
+                    <span className="mt-2 inline-flex w-full items-center justify-center rounded-lg bg-violet-600 px-2 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-violet-700">
+                      Prova modello
+                    </span>
+                  </button>
+                ))}
+              </div>
             )}
             {imageAttachments.length > 0 && (
               <div className="mt-2 space-y-2">
@@ -1924,6 +1975,41 @@ export default function ChatSidebar({
 
       {/* File Viewer Modal */}
       <FileViewerModal file={viewingFile} onClose={() => setViewingFile(null)} />
+
+      {activeToyLMModel && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-sm" onClick={() => setActiveToyLMModel(null)}>
+          <div className="w-full max-w-2xl rounded-2xl border border-slate-200 bg-slate-50 p-5 shadow-2xl" onClick={e => e.stopPropagation()}>
+            <div className="mb-4 flex items-start justify-between gap-3">
+              <div className="flex min-w-0 items-center gap-3">
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-violet-600 text-white shadow-sm">
+                  <Brain className="h-5 w-5" />
+                </span>
+                <div className="min-w-0">
+                  <p className="truncate text-base font-black text-slate-900">{activeToyLMModel.name || 'Modello Toy LM'}</p>
+                  <p className="text-xs text-slate-500">
+                    {activeToyLMModel.saved_epoch ?? 0} epoch · {Number(activeToyLMModel.param_count || 0).toLocaleString()} parametri
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setActiveToyLMModel(null)}
+                className="rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-white hover:text-slate-700"
+                title="Chiudi"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="rounded-2xl border border-slate-200 bg-white p-4">
+              <ToyLMInferencePanel
+                key={activeToyLMModel.job_id}
+                canGenerate
+                unavailableMessage="Modello non disponibile."
+                onGenerate={generateSharedToyLMText}
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

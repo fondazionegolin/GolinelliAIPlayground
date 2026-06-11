@@ -411,6 +411,11 @@ export const chatApi = {
   },
 }
 
+export const toyLmApi = {
+  generateShared: (jobId: string, sessionId: string, payload: { seed: string; max_tokens: number; temperature: number }) =>
+    api.post(`/toy-lm/shared/jobs/${jobId}/generate`, { ...payload, session_id: sessionId }),
+}
+
 export const llmApi = {
   getProfiles: () => api.get('/llm/profiles'),
   getChatbotProfiles: () => api.get('/llm/chatbot-profiles'),

@@ -304,7 +304,7 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
     { path: '/teacher/notebooks', label: t('navbar.nav_notebook'), icon: FileCode2 },
     { path: '/teacher/live-interaction', label: 'Live', icon: Zap },
     { path: '/teacher/3d-lab', label: '3D Lab', icon: Box },
-    { path: '/teacher/desktop', label: t('navbar.nav_desktop'), icon: LayoutDashboard },
+    { path: '/teacher/toy-lm', label: 'Toy LM', icon: Brain },
   ]
 
   const handleNotificationClick = (notification: TeacherNotification) => {
