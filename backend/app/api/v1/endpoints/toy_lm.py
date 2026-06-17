@@ -14,6 +14,7 @@ POST   /toy-lm/jobs/{id}/resume        — resume paused job
 POST   /toy-lm/jobs/{id}/stop          — stop running job
 GET    /toy-lm/jobs/{id}/stream        — SSE stream (EventSource)
 POST   /toy-lm/jobs/{id}/generate      — text autocompletion
+GET    /toy-lm/jobs/{id}/embeddings    — checkpoint token embeddings
 POST   /toy-lm/jobs/{id}/corpus        — update corpus text
 GET    /toy-lm/queue                   — global queue status
 """
@@ -42,7 +43,7 @@ from app.models.session import Session
 from app.models.toy_lm import ToyLMJob, ToyLMJobPublication
 from app.models.user import User
 from app.realtime.gateway import sio
-from app.services.toy_lm_trainer import toy_lm_service
+from app.services.toy_lm_trainer import build_toy_vocab, infer_vocab_token_mode, normalize_token_mode, toy_lm_service
 
 logger = logging.getLogger(__name__)
 
@@ -142,10 +143,16 @@ async def _generate_from_job(row: ToyLMJob, body: GenerateBody) -> dict:
     return {"generated": text}
 
 
-def _build_vocab(corpus: str) -> dict:
-    chars = sorted(set(corpus))
-    char_to_index = {c: i for i, c in enumerate(chars)}
-    return {"charToIndex": char_to_index, "indexToChar": chars, "vocabSize": len(chars)}
+async def _embeddings_from_job(row: ToyLMJob) -> dict:
+    _assert_checkpoint_ready(row)
+    loop = __import__("asyncio").get_event_loop()
+    return await loop.run_in_executor(
+        None,
+        toy_lm_service.embeddings_sync,
+        row.checkpoint_path,
+        row.vocab_json,
+        row.hyperparams_json or {},
+    )
 
 
 def _count_params(vocab_size: int, params: dict) -> int:
@@ -171,6 +178,7 @@ def _job_to_dict(row: ToyLMJob, queue_pos: int = -1) -> dict:
         "corpusCharCount": row.corpus_char_count,
         "hyperparams": row.hyperparams_json,
         "vocabSize": (row.vocab_json or {}).get("vocabSize", 0),
+        "tokenMode": infer_vocab_token_mode(row.vocab_json or {}, row.hyperparams_json or {}),
         "savedEpoch": row.saved_epoch,
         "paramCount": row.param_count,
         "metrics": row.metrics_json,
@@ -191,14 +199,16 @@ async def create_job(
     teacher: Annotated[User, Depends(get_current_teacher)],
 ):
     corpus = body.corpus[:MAX_CORPUS_CHARS]
-    vocab = _build_vocab(corpus)
     params = {
         "seqLen": 40, "batchSize": 64, "embedDim": 32,
         "hiddenSize": 128, "numLayers": 2,
         "learningRate": 0.002, "totalEpochs": 20,
         "metricEvery": 20,
+        "tokenMode": "word",
         **body.hyperparams,
     }
+    params["tokenMode"] = normalize_token_mode(params.get("tokenMode"))
+    vocab = build_toy_vocab(corpus, params["tokenMode"])
     n_params = _count_params(vocab["vocabSize"], params)
 
     row = ToyLMJob(
@@ -285,8 +295,9 @@ async def update_corpus(
     if row.status not in ("draft", "stopped", "completed", "failed"):
         raise HTTPException(status.HTTP_409_CONFLICT, "Ferma il training prima di modificare il corpus")
     corpus = body.corpus[:MAX_CORPUS_CHARS]
-    vocab = _build_vocab(corpus)
     params = row.hyperparams_json or {}
+    params["tokenMode"] = normalize_token_mode(params.get("tokenMode"))
+    vocab = build_toy_vocab(corpus, params["tokenMode"])
     row.corpus_text = corpus
     row.corpus_char_count = len(corpus)
     row.vocab_json = vocab
@@ -438,6 +449,16 @@ async def generate_text(
 ):
     row = await _get_job(job_id, teacher, db)
     return await _generate_from_job(row, body)
+
+
+@router.get("/jobs/{job_id}/embeddings")
+async def get_embeddings(
+    job_id: str,
+    teacher: Annotated[User, Depends(get_current_teacher)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    row = await _get_job(job_id, teacher, db)
+    return await _embeddings_from_job(row)
 
 
 @router.post("/jobs/{job_id}/publish")

@@ -148,7 +148,7 @@ export default function StudentDashboard() {
   const location = useLocation()
   const [sessionInfo, setSessionInfo] = useState<SessionInfo | null>(null)
   const [loading, setLoading] = useState(true)
-  const [activeModule, setActiveModule] = useState<string | null>('desktop')
+  const [activeModule, setActiveModule] = useState<string | null>('chatbot')
   const [openTaskId, setOpenTaskId] = useState<string | null>(null)
   const [openDocumentTaskId, setOpenDocumentTaskId] = useState<string | null>(null)
   const [pendingTasksCount, setPendingTasksCount] = useState(0)
@@ -341,7 +341,7 @@ export default function StudentDashboard() {
 
   const privateChatEnabled = sessionInfo?.enabled_modules?.some((m) => m.key === 'chat') ?? false
   const sessionModules = sessionInfo?.enabled_modules?.map(m => m.key).filter(k => k !== 'chat') ?? []
-  const enabledModules = [...new Set([...sessionModules, 'classe', 'documents', 'desktop', 'wiki'])]
+  const enabledModules = [...new Set([...sessionModules, 'classe', 'documents', 'wiki'])]
 
   if (loading) {
     return (

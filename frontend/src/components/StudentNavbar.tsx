@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, type CSSProperties } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { User, Settings, LogOut, ChevronDown, Bot, Brain, Award, FileEdit, FileText, Menu, X, MessageSquare, Mic, Check, FileCode2, MonitorPlay, LayoutDashboard, BookOpen } from 'lucide-react'
+import { User, Settings, LogOut, ChevronDown, Bot, Brain, Award, FileEdit, FileText, Menu, X, MessageSquare, Mic, Check, FileCode2, MonitorPlay, BookOpen } from 'lucide-react'
 import { Button } from './ui/button'
 import { LogoMark } from './LogoMark'
 import { studentApi } from '@/lib/api'
@@ -12,7 +12,7 @@ import { useAuthStore } from '@/stores/auth'
 import { NavbarCalendarClock } from './NavbarCalendarClock'
 import WhatsNewModal from './WhatsNewModal'
 import { buildAccentNavbarStyle, buildAccentNavClusterStyle } from '@/lib/navbarGlass'
-import { Badge } from '@/components/ui/badge'
+import { CreditBalancePill } from './CreditBalancePill'
 
 interface StudentProfile {
   id?: string
@@ -181,7 +181,6 @@ export function StudentNavbar({
   }
 
   const ALL_NAV_ITEMS = [
-    { key: 'desktop', label: t('navbar.nav_desktop'), icon: LayoutDashboard },
     { key: 'chatbot', label: t('navbar.nav_chatbot'), icon: Bot },
     { key: 'wiki', label: t('navbar.nav_wiki'), icon: BookOpen },
     { key: 'classification', label: t('navbar.nav_ml_lab'), icon: Brain },
@@ -189,8 +188,8 @@ export function StudentNavbar({
     { key: 'self_assessment', label: t('navbar.nav_tasks'), icon: Award },
     { key: 'notebook', label: t('navbar.nav_notebook'), icon: FileCode2 },
   ]
-  // Always show desktop and documents; filter optional modules by session settings
-  const ALWAYS_SHOWN = new Set(['desktop', 'documents', 'notebook', 'wiki'])
+  // Always show core modules; filter optional modules by session settings
+  const ALWAYS_SHOWN = new Set(['chatbot', 'documents', 'notebook', 'wiki'])
   const navItems = enabledModules
     ? ALL_NAV_ITEMS.filter(item => ALWAYS_SHOWN.has(item.key) || enabledModules.includes(item.key))
     : ALL_NAV_ITEMS
@@ -219,12 +218,9 @@ export function StudentNavbar({
             {/* Logo/Brand */}
             <div className="flex items-center gap-3 cursor-pointer" onClick={() => onNavigate?.(null)}>
               <LogoMark className="h-9 w-9" />
-              <div className="flex items-center gap-2">
-                <span className="flex items-center text-[18px] leading-none tracking-tight" style={{ fontFamily: '"SofiaPro"' }}>
-                  <span className="font-bold text-[var(--logo-ink)]">
-                    Golinelli
-                  </span>
-                  <span className="font-black text-[var(--logo-pink)]">.ai</span>
+              <div className="flex items-center gap-1.5">
+                <span className="brand-wordmark">
+                  Golinelli<span style={{ color: 'var(--logo-pink)', WebkitTextFillColor: 'var(--logo-pink)' }}>.ai</span>
                 </span>
                 <button
                   type="button"
@@ -234,9 +230,9 @@ export function StudentNavbar({
                   }}
                   className="inline-flex items-center self-center transition-transform hover:-translate-y-px"
                 >
-                  <Badge tone="warning" surface="soft" density="compact" className="inline-flex min-h-[22px] items-center px-2 py-0.5 text-[10px] font-bold leading-none tracking-[0.14em]">
+                  <span className="brand-beta-badge">
                     BETA
-                  </Badge>
+                  </span>
                 </button>
               </div>
             </div>
@@ -266,7 +262,6 @@ export function StudentNavbar({
                       isActive={activeModule === item.key}
                       isAdjacent={Math.abs(idx - activeIdx) === 1}
                       onClick={() => onNavigate(item.key)}
-                      accentClass="bg-[color:var(--student-accent-soft-strong)]"
                       accentTextClass="text-[var(--student-accent-text)]"
                     />
                   ))
@@ -285,7 +280,10 @@ export function StudentNavbar({
 
               {/* Session Info - Always visible */}
               {sessionTitle && (
-                <div className="hidden lg:flex items-center gap-2 h-9 px-3 rounded-xl border bg-white/92 border-slate-200 shadow-[var(--shadow-sm)]">
+                <div
+                  className="navbar-inline-control hidden h-9 items-center gap-2 rounded-xl px-3 lg:flex"
+                  style={{ '--btn-tone': accentTheme.accent } as CSSProperties}
+                >
                   <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse shadow-sm shadow-green-300" />
                   <div className="text-left min-w-0">
                     <span className="text-sm font-bold text-[var(--student-accent-text)] truncate max-w-[120px]">{sessionTitle}</span>
@@ -298,10 +296,8 @@ export function StudentNavbar({
 
               {chatAvailable && onToggleChatSidebar && (
                 <button
-                  className="relative hidden lg:flex items-center justify-center w-10 h-10 rounded-xl border transition-colors duration-150 shadow-[var(--shadow-sm)] hover:-translate-y-px"
-                  style={chatSidebarOpen
-                    ? { backgroundColor: accentTheme.accent, borderColor: accentTheme.accent, color: '#fff' }
-                    : { backgroundColor: 'rgba(255,255,255,0.92)', borderColor: `${accentTheme.accent}35`, color: accentTheme.text }}
+                  className={`navbar-inline-control relative hidden h-10 w-10 items-center justify-center rounded-xl lg:flex ${chatSidebarOpen ? 'navbar-inline-control-active' : ''}`}
+                  style={{ '--btn-tone': accentTheme.accent } as CSSProperties}
                   onClick={onToggleChatSidebar}
                   title={chatSidebarOpen ? t('navbar.hide_class_chat') : t('navbar.show_class_chat')}
                 >
@@ -321,23 +317,25 @@ export function StudentNavbar({
                 </button>
               )}
 
+              <CreditBalancePill audience="student" accentColor={accentTheme.accent} />
+
               {/* Avatar Dropdown */}
               <div className="relative" ref={dropdownRef}>
                 <button
                   onClick={() => setShowDropdown(!showDropdown)}
-                  className="flex items-center gap-1 hover:bg-slate-100 rounded-full p-1 transition-colors border border-transparent hover:border-slate-200"
+                  className="group flex items-center gap-1 rounded-full border border-transparent p-1 transition-colors hover:bg-slate-100"
                   title={profile.nickname}
                 >
                   {profile.avatarUrl ? (
                     <img
                       src={profile.avatarUrl}
                       alt="Avatar"
-                      className="w-8 h-8 rounded-full object-cover"
+                      className="h-10 w-10 rounded-full object-cover transition-transform duration-200 group-hover:scale-110"
                       style={{ boxShadow: `0 0 0 2px ${accentTheme.accent}` }}
                     />
                   ) : (
                     <div
-                      className={`w-8 h-8 rounded-full ${getAvatarColor()} flex items-center justify-center text-white text-xs font-bold`}
+                      className={`h-10 w-10 rounded-full ${getAvatarColor()} flex items-center justify-center text-sm font-bold text-white transition-transform duration-200 group-hover:scale-110`}
                       style={{ boxShadow: `0 0 0 2px ${accentTheme.accent}` }}
                     >
                       {getInitials()}
@@ -626,8 +624,8 @@ function SettingsModal({ profile, accent, onSave, onClose }: SettingsModalProps)
             </Button>
             <Button
               type="submit"
-              className="flex-1 text-white shadow-lg rounded-xl"
-              style={{ backgroundColor: selectedTheme.accent }}
+              className="flex-1 rounded-xl"
+              style={{ '--btn-tone': selectedTheme.accent } as CSSProperties}
             >
               {t('common.save')}
             </Button>

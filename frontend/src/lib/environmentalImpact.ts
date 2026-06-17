@@ -37,6 +37,7 @@ const OUTPUT_TOKEN_WEIGHT = 1.0
 const BASELINE_WEIGHTED_TOKENS = 1600
 
 const MODEL_INTENSITY_OVERRIDES: Record<string, number> = {
+  'gpt-5.4-mini': 1.0,
   'gpt-5-nano': 0.7,
   'gpt-5-mini': 1.0,
   'gpt-4o-mini': 0.9,

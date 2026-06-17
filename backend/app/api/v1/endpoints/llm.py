@@ -25,7 +25,7 @@ from app.schemas.llm import (
     LLMProfileResponse, ConversationCreate, ConversationResponse,
     MessageCreate, ConversationMessageResponse, ExplainRequest, ExplainResponse,
 )
-from app.services.llm_service import llm_service
+from app.services.llm_service import DEFAULT_OPENAI_CHAT_MODEL, llm_service, normalize_llm_model
 from app.services.credit_service import credit_service
 from app.services.chatbot_profiles import get_profile, get_all_profiles, CHATBOT_PROFILES
 from app.services.education_level import get_school_grade_instruction
@@ -288,8 +288,7 @@ async def list_available_models():
     # OpenAI models
     if settings.OPENAI_API_KEY:
         models.extend([
-            {"provider": "openai", "model": "gpt-5-mini", "name": "GPT-5 Mini", "description": "Veloce e intelligente", "icon": "openai"},
-            {"provider": "openai", "model": "gpt-5-nano", "name": "GPT-5 Nano", "description": "Ultra veloce ed economico", "icon": "openai"},
+            {"provider": "openai", "model": DEFAULT_OPENAI_CHAT_MODEL, "name": "GPT-5.4 Mini", "description": "Veloce e intelligente", "icon": "openai"},
         ])
     
     # Anthropic models
@@ -331,7 +330,7 @@ async def list_available_models():
         except Exception:
             pass  # Ollama not available, skip
     
-    return {"models": models, "default_provider": "openai", "default_model": "gpt-5-mini"}
+    return {"models": models, "default_provider": "openai", "default_model": DEFAULT_OPENAI_CHAT_MODEL}
 
 
 @router.get("/profiles", response_model=list[LLMProfileResponse])
@@ -382,7 +381,7 @@ async def create_conversation(
         profile_key=request.profile_key,
         title=request.title or f"Conversation {datetime.utcnow().strftime('%Y-%m-%d %H:%M')}",
         llm_provider=request.provider,
-        llm_model=request.model,
+        llm_model=normalize_llm_model(request.provider, request.model),
     )
     db.add(conversation)
     await db.commit()
@@ -875,19 +874,19 @@ async def send_message(
         # Call teacher agent for intelligent routing even for students
         try:
             from app.services.teacher_agent import run_teacher_agent
+            provider = conversation.llm_provider or "openai"
+            model = normalize_llm_model(provider, conversation.llm_model) or DEFAULT_OPENAI_CHAT_MODEL
             
             assistant_content = await run_teacher_agent(
                 messages=messages,
                 context="", # Minimal context for student
                 structured_context={},
-                provider=conversation.llm_provider,
-                model=conversation.llm_model,
+                provider=provider,
+                model=model,
                 actor_type="STUDENT",
                 profile_key=conversation.profile_key,
                 school_grade=class_obj.school_grade,
             )
-            provider = conversation.llm_provider or "openai"
-            model = conversation.llm_model or "gpt-5-mini"
             token_usage = enrich_usage_with_environmental_impact(
                 build_estimated_token_usage(messages, assistant_content),
                 provider=provider,
@@ -1117,7 +1116,7 @@ async def send_message_stream(
         pii_prefix = f"⚠️ *Nota: il tuo messaggio conteneva dati sensibili ({pii_label}) che sono stati automaticamente rimossi per la tua sicurezza.*\n\n"
 
     provider = conversation.llm_provider or "openai"
-    model = conversation.llm_model or "gpt-5-mini"
+    model = normalize_llm_model(provider, conversation.llm_model) or DEFAULT_OPENAI_CHAT_MODEL
     profile_key = conversation.profile_key or "tutor"
 
     # chat_mode overrides the profile so the right system prompt is used
@@ -1237,6 +1236,7 @@ async def student_chat(
     profile_key = request.get("profile_key", "tutor")
     provider = request.get("provider")
     model = request.get("model")
+    model = normalize_llm_model(provider, model)
 
     if not content:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Content required")
@@ -1814,6 +1814,41 @@ async def load_session_context(db: AsyncSession, session_id_str: str, teacher: U
             if text:
                 parts.append(f"- [{timestamp}] {sender}: {text[:220]}")
 
+    # Live interactions (sondaggi, MCQ, word wall, opinion, feedback)
+    from app.models.live_interaction import LiveInteraction, LiveInteractionResponse
+    li_rows = (await db.execute(
+        select(LiveInteraction)
+        .where(LiveInteraction.session_id == sess_uuid)
+        .order_by(LiveInteraction.created_at.asc())
+    )).scalars().all()
+    if li_rows:
+        parts.append(f"\nInterazioni live ({len(li_rows)}):")
+        for li in li_rows:
+            slides = li.slides_json or []
+            parts.append(f"\n### Attività live: '{li.title}' | stato: {li.status} | slide: {len(slides)}")
+            li_responses = (await db.execute(
+                select(LiveInteractionResponse, SessionStudent.nickname)
+                .join(SessionStudent, LiveInteractionResponse.student_id == SessionStudent.id)
+                .where(LiveInteractionResponse.live_interaction_id == li.id)
+                .order_by(LiveInteractionResponse.slide_index, LiveInteractionResponse.created_at)
+            )).all()
+            # Group by slide
+            by_slide: dict[int, list] = {}
+            for resp, nickname in li_responses:
+                by_slide.setdefault(resp.slide_index, []).append((nickname, resp.response_json))
+            for slide_idx in sorted(by_slide.keys()):
+                slide_cfg = slides[slide_idx] if slide_idx < len(slides) else {}
+                slide_type = slide_cfg.get("type", "unknown")
+                slide_title = slide_cfg.get("question") or slide_cfg.get("prompt") or slide_cfg.get("title") or f"Slide {slide_idx + 1}"
+                slide_responses = by_slide[slide_idx]
+                parts.append(f"  Slide {slide_idx + 1} [{slide_type}] — {slide_title!r} ({len(slide_responses)} risposte):")
+                for nickname, resp_json in slide_responses:
+                    if isinstance(resp_json, dict):
+                        answer = resp_json.get("answer") or resp_json.get("word") or resp_json.get("choice") or str(resp_json)
+                    else:
+                        answer = str(resp_json)
+                    parts.append(f"    - {nickname}: {str(answer)[:200]}")
+
     return "\n".join(parts)
 
 
@@ -1946,6 +1981,7 @@ async def teacher_chat(
     profile_key = request.get("profile_key", "teacher_support")
     provider = request.get("provider")
     model = request.get("model")
+    model = normalize_llm_model(provider, model)
 
     if not content:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Content required")
@@ -1977,14 +2013,14 @@ async def teacher_chat(
                 context=context,
                 structured_context=structured_context,
                 provider=provider or "openai",
-                model=model or "gpt-5-mini",
+                model=model or DEFAULT_OPENAI_CHAT_MODEL,
                 ui_language=ui_language,
             )
 
             return {
                 "response": llm_response_content,
                 "provider": provider or "openai",
-                "model": model or "gpt-5-mini",
+                "model": model or DEFAULT_OPENAI_CHAT_MODEL,
                 "prompt_tokens": 0,  # TODO: track token usage accurately
                 "completion_tokens": 0,
             }
@@ -2071,7 +2107,8 @@ async def teacher_chat_stream(
     content = request.get("content", "")
     history = request.get("history", [])
     provider = request.get("provider", "openai")
-    model = request.get("model", "gpt-5-mini")
+    model = request.get("model", DEFAULT_OPENAI_CHAT_MODEL)
+    model = normalize_llm_model(provider, model) or DEFAULT_OPENAI_CHAT_MODEL
     agent_mode = request.get("agent_mode", "default")
     max_tokens = min(int(request.get("max_tokens", 4096)), 16000)
     ui_language = get_ui_language(http_request)

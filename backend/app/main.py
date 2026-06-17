@@ -27,6 +27,8 @@ REQUEST_DURATION = Histogram(
 async def lifespan(app: FastAPI):
     # Startup
     await storage_service.ensure_bucket()
+    from app.services.toy_lm_trainer import toy_lm_service
+    toy_lm_service.start_queue_processor()
     yield
     # Shutdown
 

@@ -8,13 +8,16 @@ export function buildAccentNavbarStyle(
 ): CSSProperties {
   return {
     ...cssVars,
-    backgroundColor: hexToRgba(theme.accent, 0.1),
-    backgroundImage: 'linear-gradient(180deg, rgba(255,255,255,0.64), rgba(255,255,255,0.72))',
-    backdropFilter: 'blur(20px) saturate(138%)',
-    WebkitBackdropFilter: 'blur(20px) saturate(138%)',
-    borderBottomColor: hexToRgba(theme.accent, 0.15),
+    backgroundColor: hexToRgba(theme.accent, theme.id === 'black' ? 0.045 : 0.07),
+    backgroundImage: [
+      `linear-gradient(180deg, ${hexToRgba(theme.accent, theme.id === 'black' ? 0.06 : 0.095)} 0%, ${hexToRgba(theme.accent, theme.id === 'black' ? 0.035 : 0.055)} 58%, ${hexToRgba(theme.accent, theme.id === 'black' ? 0.02 : 0.035)} 100%)`,
+      'linear-gradient(180deg, rgba(255,255,255,0.72), rgba(255,255,255,0.60))',
+    ].join(', '),
+    backdropFilter: 'blur(24px) saturate(142%)',
+    WebkitBackdropFilter: 'blur(24px) saturate(142%)',
+    borderBottomColor: hexToRgba(theme.accent, theme.id === 'black' ? 0.12 : 0.16),
     borderBottomWidth: '1px',
-    boxShadow: `inset 0 1px 0 rgba(255,255,255,0.42), 0 8px 24px ${hexToRgba(theme.accent, 0.04)}`,
+    boxShadow: `inset 0 1px 0 rgba(255,255,255,0.58), 0 8px 24px ${hexToRgba(theme.accent, theme.id === 'black' ? 0.025 : 0.035)}`,
   }
 }
 

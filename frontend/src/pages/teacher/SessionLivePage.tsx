@@ -4,8 +4,17 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import type { Socket } from 'socket.io-client'
 import { useTranslation } from 'react-i18next'
 import { teacherApi, teacherbotsApi } from '@/lib/api'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import {
+  Badge,
+  Button,
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  Tabs,
+  TabsList,
+  TabsTrigger,
+} from '@/design'
 import { useToast } from '@/components/ui/use-toast'
 import {
   ArrowLeft, Users, Copy, Play, Square,
@@ -14,6 +23,7 @@ import {
   MonitorPlay, Send, ChevronRight, LayoutGrid, List
 } from 'lucide-react'
 import { llmApi } from '@/lib/api'
+import { PASTEL_SURFACES, type PastelTone } from '@/design/themes/pastelSurfaces'
 import TaskBuilder from '@/components/TaskBuilder'
 import TeacherbotTestChat from '@/components/teacher/TeacherbotTestChat'
 import { MessageBubble } from '@/components/student/ChatConversationView'
@@ -361,7 +371,7 @@ export default function SessionLivePage() {
             </div>
 
             {/* Center: join code */}
-            <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
+            <div className="flex items-center gap-2 rounded-lg border border-[var(--border-subtle)] bg-[var(--surface-base)] px-3 py-2 shadow-[var(--shadow-sm)]">
               <span className="text-xs text-slate-500">Codice:</span>
               {joinCodeAvailable ? (
                 <>
@@ -384,24 +394,24 @@ export default function SessionLivePage() {
             {/* Right: actions */}
             <div className="flex items-center gap-2">
               {session.status === 'draft' && (
-                <Button size="sm" onClick={() => updateStatusMutation.mutate('active')}>
+                <Button size="sm" tone="accent" surface="solid" onClick={() => updateStatusMutation.mutate('active')}>
                   <Play className="h-3.5 w-3.5 mr-1.5" />
                   Avvia
                 </Button>
               )}
               {session.status === 'active' && (
                 <>
-                  <Button size="sm" variant="outline" onClick={() => updateStatusMutation.mutate('paused')}>
+                  <Button size="sm" tone="neutral" surface="outline" onClick={() => updateStatusMutation.mutate('paused')}>
                     <Square className="h-3.5 w-3.5 mr-1.5" />
                     Pausa
                   </Button>
-                  <Button size="sm" variant="destructive" onClick={() => updateStatusMutation.mutate('ended')}>
+                  <Button size="sm" tone="danger" surface="outline" onClick={() => updateStatusMutation.mutate('ended')}>
                     Termina
                   </Button>
                 </>
               )}
               {session.status === 'paused' && (
-                <Button size="sm" onClick={() => updateStatusMutation.mutate('active')}>
+                <Button size="sm" tone="accent" surface="solid" onClick={() => updateStatusMutation.mutate('active')}>
                   <Play className="h-3.5 w-3.5 mr-1.5" />
                   Riprendi
                 </Button>
@@ -415,19 +425,19 @@ export default function SessionLivePage() {
           <div className="flex gap-4">
 
             {/* ── Left Sidebar: Students ── */}
-            <div className="w-52 shrink-0">
-              <div className="sticky top-4 rounded-2xl border border-slate-200 shadow-sm overflow-hidden bg-white">
+            <div className="w-60 shrink-0">
+              <Card surface="glass" className="sticky top-4 overflow-visible rounded-xl border-slate-200 bg-white/95">
                 {/* Header */}
-                <div className="px-3 py-2.5 bg-gradient-to-r from-slate-800 to-slate-700 flex items-center justify-between">
-                  <span className="text-xs font-bold text-white flex items-center gap-1.5">
-                    <Users className="h-3.5 w-3.5" /> Studenti
+                <div className="flex items-center justify-between border-b border-slate-100 px-3 py-3">
+                  <span className="flex items-center gap-1.5 text-xs font-semibold text-slate-800">
+                    <Users className="h-3.5 w-3.5 text-slate-500" /> Studenti
                   </span>
-                  <span className="px-1.5 py-0.5 bg-emerald-400/25 text-emerald-300 text-[10px] font-bold rounded-full">
+                  <Badge tone="success" surface="outline" density="compact">
                     {onlineStudents.length} online
-                  </span>
+                  </Badge>
                 </div>
 
-                <div className="p-2">
+                <div className="p-2.5">
                   {students.length === 0 ? (
                     <div className="text-center py-6">
                       <Users className="h-7 w-7 mx-auto mb-1.5 text-slate-200" />
@@ -437,19 +447,19 @@ export default function SessionLivePage() {
                       </span>
                     </div>
                   ) : (
-                    <div className="space-y-0.5 max-h-[65vh] overflow-y-auto">
+                    <div className="space-y-1 max-h-[65vh] overflow-y-auto pr-1">
                       {onlineStudents.map((student) => (
                         <div
                           key={student.id}
-                          className={`flex items-center gap-1.5 px-2 py-1.5 rounded-xl transition-colors ${
-                            student.is_frozen ? 'bg-blue-50 border border-blue-100' : 'hover:bg-slate-50'
+                          className={`flex items-center gap-2 rounded-lg border px-2 py-2 transition-colors ${
+                            student.is_frozen ? 'border-sky-200 bg-sky-50/70' : 'border-transparent hover:border-slate-200 hover:bg-slate-50'
                           }`}
                         >
                           {/* Avatar */}
-                          <div className={`w-6 h-6 rounded-lg flex items-center justify-center text-[10px] font-bold text-white flex-shrink-0 ${
+                          <div className={`w-7 h-7 rounded-lg flex items-center justify-center text-[11px] font-semibold text-white flex-shrink-0 ${
                             student.is_frozen
-                              ? 'bg-gradient-to-br from-blue-400 to-blue-500'
-                              : 'bg-gradient-to-br from-emerald-400 to-teal-500'
+                              ? 'bg-[var(--logo-blue)]'
+                              : 'bg-[var(--logo-ink)]'
                           }`}>
                             {student.nickname.charAt(0).toUpperCase()}
                           </div>
@@ -467,7 +477,7 @@ export default function SessionLivePage() {
                               <button
                                 onClick={() => setPushBotStudentId(pushBotStudentId === student.id ? null : student.id)}
                                 title="Invia bot"
-                                className="h-5 w-5 flex items-center justify-center rounded-md text-slate-300 hover:text-violet-500 hover:bg-violet-50 transition-colors"
+                                className="h-5 w-5 flex items-center justify-center rounded-md text-slate-300 hover:text-[var(--logo-violet)] hover:bg-violet-50 transition-colors"
                               >
                                 <Bot className="h-3 w-3" />
                               </button>
@@ -519,7 +529,7 @@ export default function SessionLivePage() {
                         <>
                           <button
                             onClick={() => setShowOfflineStudents(!showOfflineStudents)}
-                            className="w-full flex items-center justify-between px-2 py-1.5 text-[10px] text-slate-400 hover:text-slate-600 transition-colors mt-1 rounded-lg hover:bg-slate-50"
+                            className="mt-2 flex w-full items-center justify-between rounded-lg border border-slate-100 bg-slate-50/70 px-2 py-1.5 text-[11px] text-slate-500 transition-colors hover:border-slate-200 hover:bg-slate-100/70"
                           >
                             <span className="flex items-center gap-1.5">
                               <User className="h-3 w-3" />
@@ -540,63 +550,57 @@ export default function SessionLivePage() {
                     </div>
                   )}
                 </div>
-              </div>
+              </Card>
             </div>
 
             {/* ── Main Content Area ── */}
             <div className="flex-1 min-w-0">
 
-              {/* Pill tab bar */}
-              <div className="flex bg-slate-100 rounded-2xl p-1 gap-1 mb-4">
-                {([
-                  { key: 'modules', icon: Brain, label: 'Moduli' },
-                  { key: 'tasks',   icon: ClipboardList, label: t('teacher_dashboard.session_tasks') },
-                  { key: 'history', icon: History, label: t('teacher_dashboard.chat_history') },
-                ] as { key: string; icon: React.FC<{ className?: string }>; label: string }[]).map(tab => (
-                  <button
-                    key={tab.key}
-                    onClick={() => setActiveTab(tab.key)}
-                    className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-xl text-sm font-semibold transition-all ${
-                      activeTab === tab.key
-                        ? 'bg-slate-900 text-white shadow-sm'
-                        : 'text-slate-500 hover:text-slate-800 hover:bg-white/60'
-                    }`}
-                  >
-                    <tab.icon className="h-4 w-4" />
-                    <span>{tab.label}</span>
-                  </button>
-                ))}
-              </div>
+              <Tabs value={activeTab} onValueChange={setActiveTab} density="default" tone="neutral" className="mb-4">
+                <TabsList surface="base" className="grid h-auto w-full grid-cols-3 rounded-xl">
+                  {([
+                    { key: 'modules', icon: Brain, label: 'Moduli' },
+                    { key: 'tasks',   icon: ClipboardList, label: t('teacher_dashboard.session_tasks') },
+                    { key: 'history', icon: History, label: t('teacher_dashboard.chat_history') },
+                  ] as { key: string; icon: React.FC<{ className?: string }>; label: string }[]).map(tab => (
+                    <TabsTrigger key={tab.key} value={tab.key} className="gap-2">
+                      <tab.icon className="h-4 w-4" />
+                      <span>{tab.label}</span>
+                    </TabsTrigger>
+                  ))}
+                </TabsList>
+              </Tabs>
 
               {/* ── Moduli ── */}
               {activeTab === 'modules' && (
                 <div className="space-y-4">
 
                   {/* Module toggles */}
-                  <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                  <Card surface="glass" className="overflow-hidden rounded-xl border-slate-200 bg-white/95">
                     <div className="px-4 py-3 border-b border-slate-100 flex items-center gap-2">
                       <Brain className="h-4 w-4 text-slate-500" />
                       <span className="font-semibold text-sm text-slate-800">Moduli Attivi</span>
                     </div>
-                    <div className="p-3 space-y-2">
+                    <div className="grid gap-3 p-3 lg:grid-cols-2">
                       {modules.map((mod) => {
-                        const cfg: Record<string, { border: string; bg: string; activeBg: string; icon: React.FC<{ className?: string }>; label: string; desc: string }> = {
-                          chatbot:         { border: 'border-l-violet-400', bg: 'bg-violet-50',  activeBg: 'bg-gradient-to-br from-violet-500 to-purple-600', icon: Bot,          label: 'Chatbot AI',       desc: 'Assistente AI con diverse modalità' },
-                          classification:  { border: 'border-l-sky-400',    bg: 'bg-sky-50',     activeBg: 'bg-gradient-to-br from-sky-500 to-cyan-600',      icon: Brain,        label: 'Classificazione ML', desc: 'Immagini, testo, dati' },
-                          self_assessment: { border: 'border-l-amber-400',  bg: 'bg-amber-50',   activeBg: 'bg-gradient-to-br from-amber-500 to-orange-500',  icon: ClipboardList,label: 'Autovalutazione',   desc: 'Quiz e autovalutazione' },
-                          chat:            { border: 'border-l-emerald-400', bg: 'bg-emerald-50', activeBg: 'bg-gradient-to-br from-emerald-500 to-teal-600',  icon: MessageSquare,label: 'Chat privata',      desc: 'Solo docente e singolo studente' },
+                        const cfg: Record<string, { tone: PastelTone; iconTone: string; icon: React.FC<{ className?: string }>; label: string; desc: string }> = {
+                          chatbot:         { tone: 'violet',  iconTone: 'bg-[var(--logo-violet)]', icon: Bot,           label: 'Chatbot AI',          desc: 'Assistente AI con diverse modalità' },
+                          classification:  { tone: 'sky',     iconTone: 'bg-[var(--logo-blue)]',   icon: Brain,         label: 'Classificazione ML',  desc: 'Immagini, testo, dati' },
+                          self_assessment: { tone: 'amber',   iconTone: 'bg-[var(--logo-violet)]', icon: ClipboardList, label: 'Autovalutazione',     desc: 'Quiz e autovalutazione' },
+                          chat:            { tone: 'emerald', iconTone: 'bg-[var(--logo-ink)]',    icon: MessageSquare, label: 'Chat privata',         desc: 'Solo docente e singolo studente' },
                         }
-                        const c = cfg[mod.module_key] ?? { border: 'border-l-slate-300', bg: 'bg-slate-50', activeBg: 'bg-slate-500', icon: Bot, label: mod.module_key, desc: '' }
+                        const c = cfg[mod.module_key] ?? { tone: 'slate' as PastelTone, iconTone: 'bg-slate-500', icon: Bot, label: mod.module_key, desc: '' }
                         const ModIcon = c.icon
                         return (
-                          <div
+                          <Card
                             key={mod.module_key}
-                            className={`flex items-center gap-3 px-3 py-2.5 rounded-xl border border-slate-100 border-l-4 transition-all ${
-                              mod.is_enabled ? `${c.border} ${c.bg}` : 'border-l-slate-200 bg-white'
+                            surface="base"
+                            className={`flex items-center gap-3 rounded-lg px-3 py-3 ${
+                              mod.is_enabled ? PASTEL_SURFACES[c.tone] : 'border-slate-200 bg-white'
                             }`}
                           >
-                            <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${mod.is_enabled ? c.activeBg : 'bg-slate-200'}`}>
-                              <ModIcon className="h-4 w-4 text-white" />
+                            <div className={`w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 ${mod.is_enabled ? c.iconTone : 'bg-slate-100'}`}>
+                              <ModIcon className={`h-4 w-4 ${mod.is_enabled ? 'text-white' : 'text-slate-400'}`} />
                             </div>
                             <div className="flex-1 min-w-0">
                               <p className="text-sm font-semibold text-slate-800">{c.label}</p>
@@ -604,23 +608,25 @@ export default function SessionLivePage() {
                             </div>
                             {/* Pill toggle */}
                             <button
+                              type="button"
                               onClick={() => toggleModuleMutation.mutate({ moduleKey: mod.module_key, isEnabled: !mod.is_enabled })}
-                              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors flex-shrink-0 ${
-                                mod.is_enabled ? 'bg-emerald-500' : 'bg-slate-300'
+                              className={`relative inline-flex h-6 w-11 items-center rounded-full border transition-colors flex-shrink-0 ${
+                                mod.is_enabled ? 'border-[var(--logo-blue)] bg-[var(--logo-blue)]' : 'border-slate-200 bg-slate-100'
                               }`}
+                              aria-pressed={mod.is_enabled}
                             >
                               <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
                                 mod.is_enabled ? 'translate-x-6' : 'translate-x-1'
                               }`} />
                             </button>
-                          </div>
+                          </Card>
                         )
                       })}
                     </div>
-                  </div>
+                  </Card>
 
                   {/* Default LLM model */}
-                  <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                  <Card surface="glass" className="overflow-hidden rounded-xl border-slate-200 bg-white/95">
                     <div className="px-4 py-3 border-b border-slate-100 flex items-center gap-2">
                       <Bot className="h-4 w-4 text-slate-500" />
                       <span className="font-semibold text-sm text-slate-800">Modello AI di Default</span>
@@ -634,10 +640,10 @@ export default function SessionLivePage() {
                           <button
                             key={`${m.provider}:${m.model}`}
                             onClick={() => updateDefaultModelMutation.mutate({ provider: m.provider, model: m.model })}
-                            className={`flex items-center gap-2 px-3 py-2 rounded-full border text-xs font-semibold transition-all ${
+                            className={`app-button-chrome flex items-center gap-2 rounded-full border px-3 py-2 text-xs font-semibold transition-all ${
                               isSelected
-                                ? 'bg-slate-900 text-white border-slate-900 shadow-sm'
-                                : 'bg-white text-slate-600 border-slate-200 hover:border-slate-400 hover:bg-slate-50'
+                                ? 'app-button-chrome-active text-[var(--app-accent-text,var(--logo-pink))]'
+                                : 'text-slate-600 hover:text-slate-800'
                             }`}
                           >
                             <span className={`w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 ${isSelected ? 'bg-white/20' : 'bg-slate-100'}`}>
@@ -657,7 +663,7 @@ export default function SessionLivePage() {
                         )
                       })}
                     </div>
-                  </div>
+                  </Card>
                 </div>
               )}
 

@@ -408,13 +408,17 @@ async def approve_teacher_request(
     )
     db.add(token_record)
     
-    # Crea limite crediti in base al tipo di tenant
+    # Ogni docente parte da 300 crediti (€3) o dal default configurato sul tenant.
+    # L'admin puo' poi modificare il limite del singolo docente.
     tenant_obj = (await db.execute(select(Tenant).where(Tenant.id == user.tenant_id))).scalar_one_or_none()
+    await credit_service.ensure_teacher_limit(
+        db,
+        user.tenant_id,
+        user.id,
+        tenant_obj.teacher_monthly_cap if tenant_obj else 3.0,
+    )
     if tenant_obj and getattr(tenant_obj, 'tenant_type', TenantType.INDIVIDUAL.value) == TenantType.INDIVIDUAL.value:
-        # Tenant individuale: limite personale del docente
-        await credit_service.ensure_teacher_limit(db, user.tenant_id, user.id, tenant_obj.teacher_monthly_cap)
         await credit_service.ensure_student_pool_limit(db, user.tenant_id, tenant_obj.monthly_credit_pool)
-    # Per SCHOOL: il GLOBAL limit è già sul tenant, non serve limite per-teacher
 
     # Update request
     teacher_request.status = TeacherRequestStatus.APPROVED

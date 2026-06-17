@@ -24,10 +24,12 @@ import { Card } from '@/design/primitives/Card'
 import { Button } from '@/components/ui/button'
 import { teacherApi } from '@/lib/api'
 import ToyLMInferencePanel, { type ToyLMGeneratePayload } from '@/components/toy-lm/ToyLMInferencePanel'
+import ToyLMEmbeddingPanel, { type ToyLMEmbeddingPayload } from '@/components/toy-lm/ToyLMEmbeddingPanel'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface HyperParams {
+  tokenMode: 'word' | 'char'
   seqLen: number
   batchSize: number
   embedDim: number
@@ -57,6 +59,7 @@ interface Job {
   savedEpoch: number
   paramCount: number
   metrics: TrainingPoint[]
+  tokenMode?: 'word' | 'char'
   errorMessage: string | null
   queuePosition: number
   createdAt: string | null
@@ -76,6 +79,7 @@ interface SessionOption {
 }
 
 const DEFAULT_PARAMS: HyperParams = {
+  tokenMode: 'word',
   seqLen: 40,
   batchSize: 64,
   embedDim: 32,
@@ -417,6 +421,11 @@ export default function ToyLMPage() {
     return res.generated ?? ''
   }, [selectedJobId])
 
+  const loadSelectedJobEmbeddings = useCallback(async (): Promise<ToyLMEmbeddingPayload> => {
+    if (!selectedJobId) return { embeddingDim: 0, tokens: [] }
+    return apiFetch(`/jobs/${selectedJobId}/embeddings`)
+  }, [selectedJobId])
+
   const loadShareSessions = useCallback(async (classId: string) => {
     if (!classId) {
       setShareSessions([])
@@ -523,7 +532,7 @@ export default function ToyLMPage() {
           </span>
           <div className="min-w-0">
             <p className="truncate text-sm font-black leading-tight">Toy LM Lab</p>
-            <p className="text-[10px] text-[var(--text-muted)]">LSTM character-level</p>
+            <p className="text-[10px] text-[var(--text-muted)]">LSTM token lab</p>
           </div>
         </div>
 
@@ -574,7 +583,7 @@ export default function ToyLMPage() {
                   ) : (
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-[13px] font-bold leading-tight">{job.name}</p>
-                      <p className="truncate text-[10px] text-[var(--text-muted)]">{job.savedEpoch}/{job.hyperparams?.totalEpochs ?? '?'} epoch · {job.status}</p>
+                      <p className="truncate text-[10px] text-[var(--text-muted)]">{job.savedEpoch}/{job.hyperparams?.totalEpochs ?? '?'} epoch · {tokenModeLabel(job.tokenMode ?? job.hyperparams?.tokenMode)} · {job.status}</p>
                     </div>
                   )}
                   {!editing && (
@@ -693,6 +702,35 @@ export default function ToyLMPage() {
 
               <div className="rounded-2xl border border-[var(--border-subtle)] bg-white/60 p-4">
                 <SubLabel>Iperparametri iniziali</SubLabel>
+                <div className="mt-3">
+                  <FieldLabel>Tokenizzazione</FieldLabel>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setParams(p => ({ ...p, tokenMode: 'word' }))}
+                      className={`rounded-xl border px-3 py-2 text-left text-xs transition-colors ${
+                        params.tokenMode === 'word'
+                          ? 'border-[var(--logo-violet)] bg-[var(--logo-violet-10)] text-[var(--logo-violet-strong)]'
+                          : 'border-[var(--border-subtle)] bg-white text-[var(--text-secondary)] hover:border-[var(--logo-violet)]'
+                      }`}
+                    >
+                      <span className="block font-black">Parole</span>
+                      <span className="mt-0.5 block text-[10px] opacity-75">embedding di parole e punteggiatura</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setParams(p => ({ ...p, tokenMode: 'char' }))}
+                      className={`rounded-xl border px-3 py-2 text-left text-xs transition-colors ${
+                        params.tokenMode === 'char'
+                          ? 'border-[var(--logo-violet)] bg-[var(--logo-violet-10)] text-[var(--logo-violet-strong)]'
+                          : 'border-[var(--border-subtle)] bg-white text-[var(--text-secondary)] hover:border-[var(--logo-violet)]'
+                      }`}
+                    >
+                      <span className="block font-black">Caratteri</span>
+                      <span className="mt-0.5 block text-[10px] opacity-75">modalità character-level classica</span>
+                    </button>
+                  </div>
+                </div>
                 <div className="mt-3 grid grid-cols-2 gap-x-5 gap-y-3">
                   <ParamSlider label="Seq len" value={params.seqLen} min={20} max={120} step={5} onChange={v => setParams(p => ({...p, seqLen: v}))} />
                   <ParamSlider label="Batch size" value={params.batchSize} min={16} max={256} step={16} onChange={v => setParams(p => ({...p, batchSize: v}))} />
@@ -780,6 +818,15 @@ export default function ToyLMPage() {
                 <ChartPanel title="Perplexity" dataKey="perplexity" data={chartData} color="#f97316" height={150} />
               </div>
 
+              <Card className="p-4">
+                <ToyLMEmbeddingPanel
+                  key={`embeddings-${selectedJob.id}`}
+                  canLoad={!!canGenerate}
+                  unavailableMessage="Completa almeno una epoch (o metti in pausa) prima di esplorare gli embedding."
+                  loadEmbeddings={loadSelectedJobEmbeddings}
+                />
+              </Card>
+
               {/* Bottom: architecture + hyperparams | generate */}
               <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
 
@@ -787,7 +834,8 @@ export default function ToyLMPage() {
                   <div>
                     <SubLabel>Architettura</SubLabel>
                     <div className="mt-2 space-y-1 font-mono text-[11px]">
-                      <ArchRow label="Vocab" val={`${selectedJob.vocabSize} chars`} />
+                      <ArchRow label="Tokenizzazione" val={tokenModeLabel(selectedJob.tokenMode ?? params.tokenMode)} />
+                      <ArchRow label="Vocab" val={`${selectedJob.vocabSize} token`} />
                       <ArchRow label="Embedding" val={`${selectedJob.vocabSize} → ${params.embedDim}`} />
                       <ArchRow label={`LSTM ×${params.numLayers}`} val={`→ ${params.hiddenSize}`} />
                       <ArchRow label="Dense" val={`→ ${selectedJob.vocabSize}`} />
@@ -904,6 +952,10 @@ function dotColor(status: string): string {
     case 'failed': return 'bg-red-500'
     default: return 'bg-slate-300'
   }
+}
+
+function tokenModeLabel(mode?: string): string {
+  return mode === 'char' ? 'caratteri' : 'parole'
 }
 
 function StatusPill({ job, isRunning, isQueued, currentEpoch }: {

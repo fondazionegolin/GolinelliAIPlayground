@@ -28,7 +28,6 @@ interface Props {
 
 const NOTEBOOK_STYLES: Record<NotebookProjectType, {
   card: string
-  stripe: string
   iconBg: string
   icon: string
   badge: string
@@ -36,8 +35,7 @@ const NOTEBOOK_STYLES: Record<NotebookProjectType, {
   section: string
 }> = {
   python: {
-    card: 'border-indigo-200/80 bg-gradient-to-br from-white via-indigo-50/70 to-white hover:border-indigo-300 hover:shadow-indigo-100/80',
-    stripe: 'bg-indigo-500',
+    card: 'border-[rgba(123,105,201,0.18)] bg-[rgba(123,105,201,0.075)] hover:border-[rgba(123,105,201,0.30)] hover:bg-[rgba(123,105,201,0.11)]',
     iconBg: 'bg-indigo-100 ring-1 ring-indigo-200',
     icon: 'text-indigo-700',
     badge: 'border border-indigo-200 bg-indigo-100 text-indigo-800',
@@ -45,8 +43,7 @@ const NOTEBOOK_STYLES: Record<NotebookProjectType, {
     section: 'border-indigo-200 bg-indigo-50 text-indigo-700',
   },
   p5js: {
-    card: 'border-emerald-200/80 bg-gradient-to-br from-white via-emerald-50/70 to-white hover:border-emerald-300 hover:shadow-emerald-100/80',
-    stripe: 'bg-emerald-500',
+    card: 'border-[rgba(62,169,244,0.18)] bg-[rgba(62,169,244,0.075)] hover:border-[rgba(62,169,244,0.30)] hover:bg-[rgba(62,169,244,0.11)]',
     iconBg: 'bg-emerald-100 ring-1 ring-emerald-200',
     icon: 'text-emerald-700',
     badge: 'border border-emerald-200 bg-emerald-100 text-emerald-800',
@@ -54,8 +51,7 @@ const NOTEBOOK_STYLES: Record<NotebookProjectType, {
     section: 'border-emerald-200 bg-emerald-50 text-emerald-700',
   },
   strudel: {
-    card: 'border-violet-200/80 bg-gradient-to-br from-white via-violet-50/70 to-white hover:border-violet-300 hover:shadow-violet-100/80',
-    stripe: 'bg-violet-500',
+    card: 'border-[rgba(123,105,201,0.18)] bg-[rgba(123,105,201,0.075)] hover:border-[rgba(123,105,201,0.30)] hover:bg-[rgba(123,105,201,0.11)]',
     iconBg: 'bg-violet-100 ring-1 ring-violet-200',
     icon: 'text-violet-700',
     badge: 'border border-violet-200 bg-violet-100 text-violet-800',
@@ -63,8 +59,7 @@ const NOTEBOOK_STYLES: Record<NotebookProjectType, {
     section: 'border-violet-200 bg-violet-50 text-violet-700',
   },
   game2d: {
-    card: 'border-cyan-200/80 bg-gradient-to-br from-white via-cyan-50/70 to-white hover:border-cyan-300 hover:shadow-cyan-100/80',
-    stripe: 'bg-cyan-500',
+    card: 'border-[rgba(254,0,77,0.18)] bg-[rgba(254,0,77,0.075)] hover:border-[rgba(254,0,77,0.28)] hover:bg-[rgba(254,0,77,0.11)]',
     iconBg: 'bg-cyan-100 ring-1 ring-cyan-200',
     icon: 'text-cyan-700',
     badge: 'border border-cyan-200 bg-cyan-100 text-cyan-800',
@@ -127,9 +122,8 @@ function NotebookCard({
       whileHover={{ y: -2 }}
       whileTap={{ scale: 0.97 }}
       onClick={onOpen}
-      className={`group relative flex min-h-[156px] cursor-pointer flex-col justify-between overflow-hidden rounded-lg border p-4 text-left shadow-sm transition-all hover:shadow-lg ${s.card}`}
+      className={`group relative flex min-h-[156px] cursor-pointer flex-col justify-between overflow-hidden rounded-[24px] border p-4 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-lg ${s.card}`}
     >
-      <div className={`absolute inset-x-0 top-0 h-1 ${s.stripe}`} />
       <button
         onClick={onDelete}
         disabled={isDeleting}

@@ -163,66 +163,74 @@ ${/converti in formula|formula|latex/i.test(customInstruction)
     return (
       <div
         ref={panelRef}
-        className="absolute left-0 right-0 bottom-0 z-[60] overflow-hidden border-t border-slate-700 bg-slate-900 shadow-2xl"
+        className="absolute left-0 right-0 bottom-0 z-[60] overflow-hidden border-t border-slate-600 bg-slate-900 shadow-2xl"
       >
-        <div className="flex items-center justify-between gap-3 px-4 py-3">
-          <div className="min-w-0">
-            <p className="text-xs font-medium text-slate-300">Assistente AI</p>
-            <p className="truncate text-sm text-slate-100">
-              {selectedText.length > 140 ? `${selectedText.substring(0, 140)}...` : selectedText}
+        {/* Header */}
+        <div className="flex items-center justify-between gap-3 px-4 py-2.5 border-b border-slate-700/50">
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2">
+              <Sparkles className="h-3.5 w-3.5 text-violet-400 flex-shrink-0" />
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-300">Assistente AI</p>
+            </div>
+            <p className="truncate text-xs text-slate-400 mt-0.5">
+              {selectedText.length > 120 ? `${selectedText.substring(0, 120)}...` : selectedText}
             </p>
           </div>
-          <div className="flex items-center gap-2">
-            {!isLoading && !result && (
-              <>
-                <button
-                  onClick={() => handleAction('expand')}
-                  className="rounded-md bg-white/10 px-2.5 py-1.5 text-left text-white transition-colors hover:bg-white/20"
-                >
-                  <span className="block text-xs font-medium leading-tight">Espandi</span>
-                  <span className="block text-[10px] leading-tight text-slate-300">Più dettagli</span>
-                </button>
-                <button
-                  onClick={() => handleAction('reformat')}
-                  className="rounded-md bg-white/10 px-2.5 py-1.5 text-left text-white transition-colors hover:bg-white/20"
-                >
-                  <span className="block text-xs font-medium leading-tight">Riformatta</span>
-                  <span className="block text-[10px] leading-tight text-slate-300">Più chiaro</span>
-                </button>
-                <button
-                  onClick={() => handleAction('generate')}
-                  className="rounded-md bg-white/10 px-2.5 py-1.5 text-left text-white transition-colors hover:bg-white/20"
-                >
-                  <span className="block text-xs font-medium leading-tight">Genera</span>
-                  <span className="block text-[10px] leading-tight text-slate-300">Nuovo testo</span>
-                </button>
-                <button
-                  onClick={() => handleAction('formula')}
-                  className="rounded-md bg-violet-600/80 px-2.5 py-1.5 text-left text-white transition-colors hover:bg-violet-500"
-                  title="Converti il testo selezionato in una formula KaTeX"
-                >
-                  <span className="block text-xs font-medium leading-tight">∑ Formula</span>
-                  <span className="block text-[10px] leading-tight text-violet-200">KaTeX</span>
-                </button>
-                <button
-                  onClick={() => setActiveAction(activeAction === 'custom' ? null : 'custom')}
-                  className="rounded-md bg-white/10 px-2.5 py-1.5 text-left text-white transition-colors hover:bg-white/20"
-                >
-                  <span className="block text-xs font-medium leading-tight">Personalizza</span>
-                  <span className="block text-[10px] leading-tight text-slate-300">Istruzione libera</span>
-                </button>
-              </>
-            )}
+          <button
+            onClick={onClose}
+            className="p-1 text-slate-400 transition-colors hover:bg-white/10 hover:text-white flex-shrink-0"
+            disabled={isLoading}
+            aria-label="Chiudi assistente AI"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        {/* Actions grid */}
+        {!isLoading && !result && (
+          <div className="px-4 py-2.5 grid grid-cols-5 gap-1.5">
             <button
-              onClick={onClose}
-              className="rounded-md p-1 text-slate-300 transition-colors hover:bg-white/10 hover:text-white"
-              disabled={isLoading}
-              aria-label="Chiudi assistente AI"
+              onClick={() => handleAction('expand')}
+              className="flex flex-col items-center gap-1 rounded-lg bg-white/8 px-2 py-1.5 text-center transition-colors hover:bg-white/15"
+              title="Espandi il testo con più dettagli"
             >
-              <X className="h-4 w-4" />
+              <Expand className="h-3.5 w-3.5 text-slate-300" />
+              <span className="text-[10px] font-medium text-slate-200 leading-tight">Espandi</span>
+            </button>
+            <button
+              onClick={() => handleAction('reformat')}
+              className="flex flex-col items-center gap-1 rounded-lg bg-white/8 px-2 py-1.5 text-center transition-colors hover:bg-white/15"
+              title="Riformatta per chiarezza"
+            >
+              <RefreshCw className="h-3.5 w-3.5 text-slate-300" />
+              <span className="text-[10px] font-medium text-slate-200 leading-tight">Riformatta</span>
+            </button>
+            <button
+              onClick={() => handleAction('generate')}
+              className="flex flex-col items-center gap-1 rounded-lg bg-white/8 px-2 py-1.5 text-center transition-colors hover:bg-white/15"
+              title="Genera nuovo testo"
+            >
+              <Wand2 className="h-3.5 w-3.5 text-slate-300" />
+              <span className="text-[10px] font-medium text-slate-200 leading-tight">Genera</span>
+            </button>
+            <button
+              onClick={() => handleAction('formula')}
+              className="flex flex-col items-center gap-1 rounded-lg bg-violet-600/40 px-2 py-1.5 text-center transition-colors hover:bg-violet-600/60"
+              title="Converti in formula KaTeX"
+            >
+              <span className="text-[11px] font-bold text-violet-300">∑</span>
+              <span className="text-[10px] font-medium text-violet-200 leading-tight">Formula</span>
+            </button>
+            <button
+              onClick={() => setActiveAction(activeAction === 'custom' ? null : 'custom')}
+              className="flex flex-col items-center gap-1 rounded-lg bg-white/8 px-2 py-1.5 text-center transition-colors hover:bg-white/15"
+              title="Istruzione personalizzata"
+            >
+              <Sparkles className="h-3.5 w-3.5 text-slate-300" />
+              <span className="text-[10px] font-medium text-slate-200 leading-tight">Custom</span>
             </button>
           </div>
-        </div>
+        )}
 
         {activeAction === 'custom' && !isLoading && !result && (
           <div className="border-t border-slate-700 px-4 py-3">

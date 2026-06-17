@@ -93,6 +93,8 @@ export const studentApi = {
   getProfile: () => api.get('/student/profile'),
   updateProfile: (data: { avatar_url?: string; ui_accent?: string }) =>
     api.patch('/student/profile', data),
+  getCreditBalance: () => api.get('/student/credits/balance'),
+  getCreditHistory: (limit = 20) => api.get('/student/credits/history', { params: { limit } }),
 }
 
 export const adminApi = {
@@ -282,6 +284,15 @@ export const teacherApi = {
     const formData = new FormData()
     formData.append('file', file)
     return api.post('/teacher/avatar', formData, { headers: { 'Content-Type': 'multipart/form-data' } })
+  },
+  transcribeOcr: (file: File) => {
+    const formData = new FormData()
+    formData.append('file', file)
+    return api.post<{ text: string; engine: string; confidence?: number | null; lines?: Array<Record<string, unknown>> | null }>(
+      '/teacher/ocr/transcribe',
+      formData,
+      { headers: { 'Content-Type': 'multipart/form-data' } }
+    )
   },
   // Invitations
   getInvitations: () => api.get('/teacher/invitations'),
@@ -646,6 +657,8 @@ export const teacherbotsApi = {
 }
 
 export const creditsApi = {
+  getBalance: () => api.get('/credits/balance'),
+  getHistory: (limit = 20) => api.get('/credits/history', { params: { limit } }),
   getStats: (startDate?: string, endDate?: string) =>
     api.get('/credits/stats', { params: { start_date: startDate, end_date: endDate } }),
   getLimits: (level?: string) =>

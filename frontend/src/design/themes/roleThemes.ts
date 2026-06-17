@@ -19,7 +19,8 @@ export const ACCENT_THEMES: Record<AccentId, AccentTheme> = {
     id: 'cyan',
     label: 'Logo Blue',
     accent: colorTokens.logo.blue,
-    text: colorTokens.logo.blue,
+    // Darker readable blue for text on light surfaces (the vivid blue fails contrast on white/chrome).
+    text: colorTokens.info[700],
     soft: 'rgba(62, 169, 244, 0.08)',
     softMid: 'rgba(62, 169, 244, 0.12)',
     softStrong: colorTokens.logo.blue,
@@ -29,7 +30,8 @@ export const ACCENT_THEMES: Record<AccentId, AccentTheme> = {
     id: 'orange',
     label: 'Logo Violet',
     accent: colorTokens.logo.violet,
-    text: colorTokens.logo.violet,
+    // Darker readable violet for text on light surfaces (the vivid violet is too light on white/chrome).
+    text: colorTokens.overlap[700],
     soft: 'rgba(123, 105, 201, 0.08)',
     softMid: 'rgba(123, 105, 201, 0.12)',
     softStrong: colorTokens.logo.violet,

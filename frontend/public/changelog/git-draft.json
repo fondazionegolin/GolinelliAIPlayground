@@ -1,19 +1,14 @@
 {
-  "generated_at": "2026-05-26T08:59:23.149398+00:00",
-  "version_label": "2026.05.26-9dfd7405",
-  "title": "Aggiornamenti branch gamedev",
-  "summary": "Bozza generata automaticamente da 2 commit nuovi.",
-  "git_ref": "9dfd740584cc03e9e1dc0d62af85e54b92b20465",
+  "generated_at": "2026-06-17T07:30:31.749650+00:00",
+  "version_label": "2026.06.17-bc973b67",
+  "title": "Aggiornamenti branch testing",
+  "summary": "Bozza generata automaticamente da 1 commit nuovi.",
+  "git_ref": "bc973b676e31dfce30432aca8823bd24574c594c",
   "items": [
     {
-      "category": "new",
-      "title": "Prototype schema driven 2d notebooks",
-      "description": "Prototype schema driven 2d notebooks"
-    },
-    {
-      "category": "new",
-      "title": "Add school tenants and 3d lab",
-      "description": "Add school tenants and 3d lab"
+      "category": "improved",
+      "title": "Mega commit stato attuale",
+      "description": "Mega commit stato attuale"
     }
   ]
 }

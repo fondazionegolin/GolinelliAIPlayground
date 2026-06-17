@@ -5,7 +5,7 @@ import {
   Send, Bot, Paperclip, X, Trash2, Plus, File, Image as ImageIcon, Loader2,
   Database, Download, ChevronDown, ChevronRight, Edit3, Check, MessageCircle, Sparkles,
   Palette, FileText, CheckSquare, MessageSquare, Settings, RotateCcw, BarChart2, Layout,
-  Link2, Video
+  Link2, Video, ScanText
 } from 'lucide-react'
 import DocumentCanvas, { type GeneratedDoc } from '@/components/teacher/DocumentCanvas'
 import { llmApi, teacherApi } from '@/lib/api'
@@ -23,6 +23,7 @@ import { DataVisualizationPanel } from '@/components/DataVisualizationPanel'
 import TeacherbotsPanel from '@/components/teacher/TeacherbotsPanel'
 import TeacherbotForm from '@/components/teacher/TeacherbotForm'
 import { DEFAULT_TEACHER_ACCENT, getTeacherAccentTheme } from '@/lib/teacherAccent'
+import { buildAccentNavClusterStyle } from '@/lib/navbarGlass'
 import { useTeacherProfile } from '@/hooks/useTeacherProfile'
 import { VoiceRecorder } from '@/components/VoiceRecorder'
 import { useTranslation } from 'react-i18next'
@@ -43,8 +44,7 @@ import {
 
 // Constants
 const FALLBACK_MODELS = [
-  { id: 'gpt-5-mini', name: 'GPT-5 Mini', provider: 'openai' },
-  { id: 'gpt-5-nano', name: 'GPT-5 Nano', provider: 'openai' },
+  { id: 'gpt-5.4-mini', name: 'GPT-5.4 Mini', provider: 'openai' },
   { id: 'claude-haiku-4-5-20251001', name: 'Claude Haiku 4.5', provider: 'anthropic' },
   { id: 'mistral-nemo', name: 'Mistral Nemo', provider: 'ollama' },
 ]
@@ -56,6 +56,7 @@ const AGENT_MODES = [
   { id: 'quiz', label: 'Quiz' },
   { id: 'exercise', label: 'Esercizio' },
   { id: 'image', label: 'Immagine' },
+  { id: 'ocr', label: 'OCR' },
   { id: 'dataset', label: 'Dataset' },
   { id: 'analysis', label: 'Analisi' },
   { id: 'brochure', label: 'Brochure' },
@@ -131,6 +132,24 @@ interface AttachedFile {
   preview?: string
   type: 'image' | 'document' | 'data'
   dataPreview?: import('@/components/DataFileCard').DataFilePreview
+}
+
+interface OcrOverlayLine {
+  text: string
+  confidence?: number | null
+  bbox?: {
+    left: number
+    top: number
+    width: number
+    height: number
+  } | null
+}
+
+interface OcrOverlayData {
+  imageUrl: string
+  filename: string
+  engine: string
+  lines: OcrOverlayLine[]
 }
 
 interface AttachedYouTube {
@@ -209,6 +228,75 @@ function parseJsonBlockLoose<T>(raw: string, blockName: string): T | null {
 function isAgentMode(value: string | null | undefined): value is AgentMode {
   if (!value) return false
   return AGENT_MODES.some((mode) => mode.id === value) || value === 'web_search'
+}
+
+function OcrImageOverlay({ overlay }: { overlay: OcrOverlayData }) {
+  const boxes = overlay.lines.filter((line) => line.bbox && line.text)
+  if (boxes.length === 0) return null
+
+  return (
+    <div className="mt-3 overflow-hidden rounded-xl border border-cyan-200 bg-white shadow-sm">
+      <div className="flex items-center justify-between gap-3 border-b border-cyan-100 bg-cyan-50 px-3 py-2">
+        <div className="min-w-0">
+          <div className="text-xs font-semibold text-cyan-900">Overlay OCR</div>
+          <div className="truncate text-[11px] text-cyan-700">{overlay.filename} · {overlay.engine} · {boxes.length} elementi</div>
+        </div>
+        <ScanText className="h-4 w-4 flex-shrink-0 text-cyan-700" />
+      </div>
+      <div className="relative max-h-[420px] overflow-auto bg-slate-950">
+        <div className="relative inline-block min-w-full">
+          <img
+            src={overlay.imageUrl}
+            alt={overlay.filename}
+            className="block h-auto w-full select-none"
+            draggable={false}
+          />
+          {boxes.map((line, index) => {
+            const bbox = line.bbox!
+            const confidence = typeof line.confidence === 'number' ? `${Math.round(line.confidence * 100)}%` : undefined
+            return (
+              <div
+                key={`${line.text}-${index}`}
+                className="group absolute rounded-[3px] border border-cyan-300 bg-cyan-300/20 shadow-[0_0_0_1px_rgba(8,145,178,0.25)]"
+                style={{
+                  left: `${bbox.left * 100}%`,
+                  top: `${bbox.top * 100}%`,
+                  width: `${bbox.width * 100}%`,
+                  height: `${bbox.height * 100}%`,
+                }}
+                title={confidence ? `${line.text} (${confidence})` : line.text}
+              >
+                <span className="pointer-events-none absolute -top-5 left-0 hidden max-w-48 truncate rounded bg-slate-950 px-1.5 py-0.5 text-[10px] font-semibold text-white shadow group-hover:block">
+                  {line.text}{confidence ? ` · ${confidence}` : ''}
+                </span>
+              </div>
+            )
+          })}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function normalizeOcrOverlayLines(rawLines: Array<Record<string, unknown>> | null | undefined): OcrOverlayLine[] {
+  return (rawLines || []).flatMap((line) => {
+    const rawBbox = line.bbox as Record<string, unknown> | null | undefined
+    const text = typeof line.text === 'string' ? line.text.trim() : ''
+    if (!text || !rawBbox) return []
+
+    const left = Number(rawBbox.left)
+    const top = Number(rawBbox.top)
+    const width = Number(rawBbox.width)
+    const height = Number(rawBbox.height)
+    if (![left, top, width, height].every(Number.isFinite)) return []
+
+    const confidence = typeof line.confidence === 'number' ? line.confidence : null
+    return [{
+      text,
+      confidence,
+      bbox: { left, top, width, height },
+    }]
+  })
 }
 
 async function consumeSseStream(
@@ -382,6 +470,7 @@ export default function TeacherSupportChat() {
   const conversationCacheRef = useRef<Record<string, Message[]>>({})
   const justCreatedConvRef = useRef<Set<string>>(new Set())
   const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([])
+  const [ocrOverlays, setOcrOverlays] = useState<Record<string, OcrOverlayData>>({})
   const [agentMode, setAgentMode] = useState<AgentMode>('default')
   const [imageProvider, setImageProvider] = useState<'dall-e' | 'gpt-image-1.5'>('gpt-image-1.5')
   const [imageSize, setImageSize] = useState<string>('1024x1024')
@@ -454,11 +543,6 @@ export default function TeacherSupportChat() {
   }) as CSSProperties, [accentTheme])
   const accentButtonStyle = useMemo(() => ({
     backgroundColor: accentTheme.soft,
-    color: accentTheme.text,
-    borderColor: accentTheme.border,
-  }) as CSSProperties, [accentTheme])
-  const accentButtonStrongStyle = useMemo(() => ({
-    backgroundColor: accentTheme.softStrong,
     color: accentTheme.text,
     borderColor: accentTheme.border,
   }) as CSSProperties, [accentTheme])
@@ -1701,7 +1785,13 @@ export default function TeacherSupportChat() {
 
     const filesInfo = attachedFiles.length > 0 ? ` [Allegati: ${attachedFiles.map(f => f.file.name).join(', ')}]` : ''
     const youtubeInfo = attachedYoutube ? ` [YouTube: ${attachedYoutube.title || attachedYoutube.videoId}]` : ''
-    let messageContent = userInput || (agentMode === 'analysis' ? 'Analizza le risposte degli studenti' : 'Analizza questi documenti')
+    let messageContent = userInput || (
+      agentMode === 'analysis'
+        ? 'Analizza le risposte degli studenti'
+        : agentMode === 'ocr'
+          ? 'Trascrivi elaborato con OCR'
+          : 'Analizza questi documenti'
+    )
 
     if (userInput && agentMode !== 'default' && agentMode !== 'image') {
       const prefixes: Partial<Record<AgentMode, string>> = {
@@ -1710,6 +1800,7 @@ export default function TeacherSupportChat() {
         dataset: 'GENERA DATASET:',
         quiz: 'GENERA QUIZ:',
         exercise: 'GENERA ESERCIZIO:',
+        ocr: 'OCR:',
       }
       const prefix = prefixes[agentMode]
       if (prefix && !messageContent.startsWith(prefix)) {
@@ -1751,7 +1842,59 @@ export default function TeacherSupportChat() {
     }
 
     try {
-      if (agentMode === 'image') {
+      if (agentMode === 'ocr') {
+        const imageFile = currentFiles.find(f => f.type === 'image')?.file
+        const imageAttachment = currentFiles.find(f => f.type === 'image')
+        if (!imageFile) {
+          throw new Error('Allega una foto dell elaborato prima di avviare l OCR.')
+        }
+
+        const assistantId = `ocr-${Date.now()}`
+        setMessages(prev => [...prev, {
+          id: assistantId,
+          role: 'assistant' as const,
+          content: 'Sto leggendo l immagine con OCR locale...',
+          timestamp: new Date()
+        }])
+
+        const response = await teacherApi.transcribeOcr(imageFile)
+        const text = (response.data?.text || '').trim()
+        const confidence = typeof response.data?.confidence === 'number'
+          ? `\n\n**Confidenza media:** ${(response.data.confidence * 100).toFixed(1)}%`
+          : ''
+        const assistantContent = text
+          ? [
+              '**Trascrizione OCR**',
+              '',
+              '```text',
+              text,
+              '```',
+              '',
+              `**Motore locale:** ${response.data.engine}${confidence}`,
+            ].join('\n')
+          : `**Trascrizione OCR**\n\nNon ho rilevato testo leggibile nell immagine.\n\n**Motore locale:** ${response.data.engine}`
+
+        setMessages(prev => prev.map(m => m.id === assistantId ? { ...m, content: assistantContent } : m))
+        setOcrOverlays(prev => ({
+          ...prev,
+          [assistantId]: {
+            imageUrl: imageAttachment?.preview || URL.createObjectURL(imageFile),
+            filename: imageFile.name,
+            engine: response.data.engine,
+            lines: normalizeOcrOverlayLines(response.data.lines),
+          },
+        }))
+        const assistantMessage: Message = {
+          id: assistantId,
+          role: 'assistant',
+          content: assistantContent,
+          timestamp: new Date(),
+          provider: 'local',
+          model: response.data.engine,
+        }
+        await saveMessageToServer(convId, userMessage, assistantMessage, response.data.engine)
+
+      } else if (agentMode === 'image') {
         // IMAGE GENERATION FLOW
         const providerLabel = imageProvider === 'dall-e' ? 'DALL-E 3' : 'GPT Image 1.5'
 
@@ -1790,7 +1933,7 @@ REGOLE IMPORTANTI:
           expansionHistory,
           'tutor',  // NON usare 'teacher_support' - ha uses_agent:true che attiva intent classification
           'openai',
-          'gpt-5-mini'
+          'gpt-5.4-mini'
         )
 
         const enhancedPrompt = expansionResponse.data?.response?.trim() || llmContent
@@ -2198,6 +2341,7 @@ REGOLE IMPORTANTI:
     setMessages([])
     setCurrentConversationId(null)
     setAttachedFiles([])
+    setOcrOverlays({})
     setActiveDoc(null)
     setShowCanvas(false)
   }
@@ -2237,6 +2381,7 @@ REGOLE IMPORTANTI:
       setCurrentConversationId(null)
       setActiveDoc(null)
       setShowCanvas(false)
+      setOcrOverlays({})
       setConversationCache({})
       conversationCacheRef.current = {}
       docCacheRef.current = {}
@@ -2263,6 +2408,9 @@ REGOLE IMPORTANTI:
     }
     if (mode === 'exercise') {
       return 'Sei in modalità **Esercizio**. Descrivi l\'esercizio che vuoi generare: argomento, consegna, livello di difficoltà, eventuali esempi o vincoli.'
+    }
+    if (mode === 'ocr') {
+      return 'Sei in modalità **OCR**. Allega una foto nitida dell elaborato a mano: genererò una trascrizione automatica locale, pronta da copiare o usare come base per correzione e feedback.'
     }
     if (mode === 'report') {
       const sessions = classesData || []
@@ -2307,7 +2455,7 @@ REGOLE IMPORTANTI:
     if (currentConversationId) {
       void syncConversationMode(currentConversationId, mode)
     }
-    if (mode === 'dataset' || mode === 'image' || mode === 'report' || mode === 'quiz' || mode === 'exercise') {
+    if (mode === 'dataset' || mode === 'image' || mode === 'ocr' || mode === 'report' || mode === 'quiz' || mode === 'exercise') {
       setAttachedFiles([])
       setInputText('')
     }
@@ -2461,7 +2609,7 @@ REGOLE IMPORTANTI:
                 {/* Unified card: sidebar + chat together */}
                 <div className={`flex-1 flex h-full overflow-hidden ${isMobile ? '' : 'bg-white rounded-2xl border border-slate-200 shadow-[var(--shadow-md)]'}`}>
                  {/* Sidebar — desktop only */}
-                 <aside className={`${isMobile ? 'hidden' : ''} ${isSidebarCollapsed ? 'w-12' : 'w-64'} flex flex-col transition-all duration-300 flex-shrink-0 overflow-hidden border-r border-slate-200/70 bg-slate-50/90 backdrop-blur-sm`}>
+                 <aside className={`${isMobile ? 'hidden' : ''} ${isSidebarCollapsed ? 'w-12' : 'w-80'} flex flex-col transition-all duration-300 flex-shrink-0 overflow-hidden border-r border-slate-200/70 bg-slate-50/90 backdrop-blur-sm`}>
                   {isSidebarCollapsed ? (
                     /* Collapsed: just expand button */
                     <div className="p-2 flex flex-col items-center gap-3 pt-3">
@@ -2479,25 +2627,23 @@ REGOLE IMPORTANTI:
                     <>
                       {/* Section tabs — pill switcher */}
                       <div className="px-2.5 pt-2 pb-1.5 bg-white/70 border-b border-slate-200/70 shrink-0 flex items-center gap-1 backdrop-blur-sm">
-                        <div className="flex-1 flex items-center gap-1 rounded-xl border border-slate-200 bg-white p-1 shadow-sm">
+                        <div className="flex-1 flex items-center gap-1 rounded-xl border p-1" style={buildAccentNavClusterStyle(accentTheme)}>
                           <button
                             onClick={() => setActiveTab('chat')}
-                            className={`flex-1 flex items-center justify-center gap-1 py-1.5 text-[10px] font-bold rounded-lg transition-all duration-200 ${activeTab === 'chat'
-                              ? 'border'
-                              : 'text-slate-500 hover:text-slate-700 hover:bg-slate-50'}`}
-                            style={activeTab === 'chat' ? accentButtonStyle : undefined}
+                            className={`group flex flex-1 min-h-[var(--selection-height)] items-center justify-center gap-1 px-2 rounded-[var(--selection-radius)] text-[11px] font-semibold border transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--selection-border-hover)] ${activeTab === 'chat'
+                              ? 'bg-[image:var(--selection-active-bg)] text-[var(--selection-active-text)] border-[color:var(--selection-border-hover)] shadow-[var(--selection-shadow)]'
+                              : 'border-transparent text-slate-600 hover:border-[color:var(--selection-border)] hover:bg-[image:var(--selection-bg)] hover:text-[var(--selection-text)]'}`}
                           >
-                            <MessageCircle className="h-3 w-3" />
+                            <MessageCircle className="h-3.5 w-3.5" />
                             Cronologia
                           </button>
                           <button
                             onClick={() => setActiveTab('teacherbots')}
-                            className={`flex-1 flex items-center justify-center gap-1 py-1.5 text-[10px] font-bold rounded-lg transition-all duration-200 ${activeTab === 'teacherbots'
-                              ? 'border'
-                              : 'text-slate-500 hover:text-slate-700 hover:bg-slate-50'}`}
-                            style={activeTab === 'teacherbots' ? accentButtonStyle : undefined}
+                            className={`group flex flex-1 min-h-[var(--selection-height)] items-center justify-center gap-1 px-2 rounded-[var(--selection-radius)] text-[11px] font-semibold border transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--selection-border-hover)] ${activeTab === 'teacherbots'
+                              ? 'bg-[image:var(--selection-active-bg)] text-[var(--selection-active-text)] border-[color:var(--selection-border-hover)] shadow-[var(--selection-shadow)]'
+                              : 'border-transparent text-slate-600 hover:border-[color:var(--selection-border)] hover:bg-[image:var(--selection-bg)] hover:text-[var(--selection-text)]'}`}
                           >
-                            <Sparkles className="h-3 w-3" />
+                            <Sparkles className="h-3.5 w-3.5" />
                             Teacherbots
                           </button>
                         </div>
@@ -2655,8 +2801,8 @@ REGOLE IMPORTANTI:
 
                   {/* Teacherbot config modal — full-screen centered modal */}
                   {botPanelTarget && (
-                    <div className="fixed inset-0 z-[80] bg-black/40 backdrop-blur-sm flex items-start justify-center overflow-y-auto p-6">
-                      <div className="bg-white rounded-2xl w-full max-w-2xl my-8 shadow-2xl overflow-hidden">
+                    <div className="fixed inset-0 z-[80] flex items-start justify-center overflow-y-auto bg-black/40 p-4 backdrop-blur-sm md:p-6">
+                      <div className="my-6 h-[min(88vh,980px)] w-full max-w-6xl overflow-hidden rounded-[28px] bg-white shadow-2xl">
                         <TeacherbotForm
                           teacherbotId={botPanelTarget !== 'create' ? botPanelTarget : undefined}
                           onBack={() => setBotPanelTarget(null)}
@@ -2697,14 +2843,13 @@ REGOLE IMPORTANTI:
                       /* Desktop header — full controls */
                       <>
                     <div className="flex items-center gap-3">
-                      <div className="w-9 h-9 rounded-xl flex items-center justify-center border shadow-sm" style={accentButtonStrongStyle}>
-                        <Bot className="h-4 w-4 translate-y-[1px]" />
-                      </div>
                       <div>
                         <h1 className="text-sm font-bold text-slate-800">Supporto Docente AI</h1>
                         <p className="text-xs text-slate-500">
                           {(agentMode === 'brochure' || agentMode === 'dispensa' || agentMode === 'html_page')
                             ? 'Claude Sonnet 4.6'
+                            : agentMode === 'ocr'
+                              ? 'OCR locale'
                             : (agentMode === 'quiz' || agentMode === 'exercise' || agentMode === 'dataset' || agentMode === 'web_search' || agentMode === 'report' || agentMode === 'analysis')
                             ? 'Claude Haiku'
                             : availableModels.find(m => m.id === selectedModel)?.name}
@@ -2803,7 +2948,7 @@ REGOLE IMPORTANTI:
                                   {availableModels.map(m => (
                                     <div
                                       key={m.id}
-                                      className={`flex items-center justify-between px-3 py-2.5 mx-1 rounded-[var(--selection-radius)] transition-colors cursor-pointer group border ${selectedModel === m.id ? '' : 'border-transparent hover:bg-[var(--selection-bg)]'}`}
+                                      className={`flex items-center justify-between px-3 py-2.5 mx-1 rounded-[var(--selection-radius)] transition-colors cursor-pointer group border ${selectedModel === m.id ? '' : 'border-transparent hover:bg-[image:var(--selection-bg)]'}`}
                                       style={selectedModel === m.id ? selectedSoftStyle : undefined}
                                       onClick={() => {
                                         setSelectedModel(m.id)
@@ -3060,6 +3205,9 @@ REGOLE IMPORTANTI:
                                 <ReactMarkdown className={`prose prose-sm max-w-none prose-p:leading-relaxed prose-pre:bg-slate-800 prose-pre:text-slate-100 ${msg.role === 'user' ? '[&_*]:!text-white' : ''} [&_strong]:font-bold`}>
                                   {convertEmoticons(msg.content)}
                                 </ReactMarkdown>
+                              )}
+                              {msg.role === 'assistant' && ocrOverlays[msg.id] && (
+                                <OcrImageOverlay overlay={ocrOverlays[msg.id]} />
                               )}
                               {/* Inline "Riapri documento" button for brochure/dispensa result messages */}
                               {msg.role === 'assistant' && /\*\*(Brochure|Dispensa|Pagina Interattiva|Dashboard)/.test(msg.content) && currentConversationId && convsWithDocs.has(currentConversationId) && (
@@ -3373,7 +3521,7 @@ REGOLE IMPORTANTI:
                       {/* Input Pill */}
                       <div className="relative flex items-center gap-1.5 bg-white border border-slate-200 shadow-sm rounded-xl p-1.5 focus-within:ring-2 focus-within:ring-slate-200 transition-all">
                         <input type="file" ref={fileInputRef} className="hidden" multiple
-                          accept="image/*,.pdf,.doc,.docx,.ppt,.pptx,.txt,.csv,.xlsx,.xls,.json"
+                          accept={agentMode === 'ocr' ? 'image/*' : 'image/*,.pdf,.doc,.docx,.ppt,.pptx,.txt,.csv,.xlsx,.xls,.json'}
                           onChange={handleFileSelect} />
 
                         {/* Mode Selector — desktop only (mobile uses pills above) */}
@@ -3398,6 +3546,8 @@ REGOLE IMPORTANTI:
                                         ? 'bg-teal-100 text-teal-700'
                                         : selectedModeMeta.id === 'image'
                                           ? 'bg-fuchsia-100 text-fuchsia-700'
+                                          : selectedModeMeta.id === 'ocr'
+                                            ? 'bg-cyan-100 text-cyan-700'
                                           : selectedModeMeta.id === 'dataset'
                                             ? 'bg-emerald-100 text-emerald-700'
                                             : selectedModeMeta.id === 'analysis'
@@ -3423,6 +3573,8 @@ REGOLE IMPORTANTI:
                                           ? <Edit3 className="h-3.5 w-3.5" />
                                           : m.id === 'image'
                                             ? <ImageIcon className="h-3.5 w-3.5" />
+                                            : m.id === 'ocr'
+                                              ? <ScanText className="h-3.5 w-3.5" />
                                   : m.id === 'analysis'
                                             ? <BarChart2 className="h-3.5 w-3.5" />
                                             : m.id === 'brochure'

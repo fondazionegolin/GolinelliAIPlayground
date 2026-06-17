@@ -14,6 +14,7 @@ OUTPUT_TOKEN_WEIGHT = 1.0
 BASELINE_WEIGHTED_TOKENS = 1600.0
 
 MODEL_INTENSITY_OVERRIDES = {
+    "gpt-5.4-mini": 1.0,
     "gpt-5-nano": 0.7,
     "gpt-5-mini": 1.0,
     "gpt-4o-mini": 0.9,

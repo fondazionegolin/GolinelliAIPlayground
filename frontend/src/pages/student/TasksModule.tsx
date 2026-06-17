@@ -262,13 +262,13 @@ export default function TasksModule({ openTaskId, onOpenDocument }: TasksModuleP
   )
 }
 
-const TASK_TILE_STYLES: Record<string, { card: string; stripe: string; iconBg: string; icon: string; badge: string; time: string }> = {
-  completed:    { card: 'border border-emerald-200 bg-gradient-to-br from-white via-emerald-50/45 to-white shadow-sm hover:border-emerald-400 hover:shadow-lg', stripe: 'bg-emerald-500', iconBg: 'border border-emerald-200 bg-emerald-100', icon: 'text-emerald-800', badge: 'border border-emerald-200 bg-emerald-100 text-emerald-800', time: 'text-emerald-800' },
-  quiz:         { card: 'border border-rose-200 bg-gradient-to-br from-white via-rose-50/45 to-white shadow-sm hover:border-rose-400 hover:shadow-lg',       stripe: 'bg-rose-500',    iconBg: 'border border-rose-200 bg-rose-100',    icon: 'text-rose-800',    badge: 'border border-rose-200 bg-rose-100 text-rose-800',       time: 'text-rose-800' },
-  lesson:       { card: 'border border-sky-200 bg-gradient-to-br from-white via-sky-50/45 to-white shadow-sm hover:border-sky-400 hover:shadow-lg',         stripe: 'bg-sky-500',     iconBg: 'border border-sky-200 bg-sky-100',      icon: 'text-sky-800',     badge: 'border border-sky-200 bg-sky-100 text-sky-800',          time: 'text-sky-800' },
-  presentation: { card: 'border border-indigo-200 bg-gradient-to-br from-white via-indigo-50/45 to-white shadow-sm hover:border-indigo-400 hover:shadow-lg', stripe: 'bg-indigo-500',  iconBg: 'border border-indigo-200 bg-indigo-100', icon: 'text-indigo-800', badge: 'border border-indigo-200 bg-indigo-100 text-indigo-800', time: 'text-indigo-800' },
-  exercise:     { card: 'border border-amber-200 bg-gradient-to-br from-white via-amber-50/45 to-white shadow-sm hover:border-amber-400 hover:shadow-lg',     stripe: 'bg-amber-500',   iconBg: 'border border-amber-200 bg-amber-100',   icon: 'text-amber-800',   badge: 'border border-amber-200 bg-amber-100 text-amber-800',    time: 'text-amber-800' },
-  default:      { card: 'border border-slate-200 bg-gradient-to-br from-white via-slate-50 to-white shadow-sm hover:border-slate-400 hover:shadow-lg',       stripe: 'bg-slate-500',   iconBg: 'border border-slate-200 bg-slate-100',   icon: 'text-slate-800',   badge: 'border border-slate-200 bg-slate-100 text-slate-800',    time: 'text-slate-700' },
+const TASK_TILE_STYLES: Record<string, { card: string; iconBg: string; icon: string; badge: string; time: string }> = {
+  completed:    { card: 'border border-[rgba(62,169,244,0.18)] bg-[rgba(62,169,244,0.075)] shadow-sm hover:border-[rgba(62,169,244,0.30)] hover:bg-[rgba(62,169,244,0.11)] hover:shadow-lg', iconBg: 'border border-sky-200 bg-sky-100', icon: 'text-sky-800', badge: 'border border-sky-200 bg-sky-100 text-sky-800', time: 'text-sky-800' },
+  quiz:         { card: 'border border-[rgba(254,0,77,0.18)] bg-[rgba(254,0,77,0.075)] shadow-sm hover:border-[rgba(254,0,77,0.28)] hover:bg-[rgba(254,0,77,0.11)] hover:shadow-lg',    iconBg: 'border border-rose-200 bg-rose-100',    icon: 'text-rose-800',    badge: 'border border-rose-200 bg-rose-100 text-rose-800',       time: 'text-rose-800' },
+  lesson:       { card: 'border border-[rgba(62,169,244,0.18)] bg-[rgba(62,169,244,0.075)] shadow-sm hover:border-[rgba(62,169,244,0.30)] hover:bg-[rgba(62,169,244,0.11)] hover:shadow-lg',     iconBg: 'border border-sky-200 bg-sky-100',      icon: 'text-sky-800',     badge: 'border border-sky-200 bg-sky-100 text-sky-800',          time: 'text-sky-800' },
+  presentation: { card: 'border border-[rgba(123,105,201,0.18)] bg-[rgba(123,105,201,0.075)] shadow-sm hover:border-[rgba(123,105,201,0.30)] hover:bg-[rgba(123,105,201,0.11)] hover:shadow-lg',  iconBg: 'border border-indigo-200 bg-indigo-100', icon: 'text-indigo-800', badge: 'border border-indigo-200 bg-indigo-100 text-indigo-800', time: 'text-indigo-800' },
+  exercise:     { card: 'border border-[rgba(123,105,201,0.18)] bg-[rgba(123,105,201,0.075)] shadow-sm hover:border-[rgba(123,105,201,0.30)] hover:bg-[rgba(123,105,201,0.11)] hover:shadow-lg',   iconBg: 'border border-violet-200 bg-violet-100',   icon: 'text-violet-800',   badge: 'border border-violet-200 bg-violet-100 text-violet-800',    time: 'text-violet-800' },
+  default:      { card: 'border border-[rgba(23,21,27,0.10)] bg-[rgba(23,21,27,0.035)] shadow-sm hover:border-[rgba(23,21,27,0.16)] hover:bg-[rgba(23,21,27,0.055)] hover:shadow-lg',   iconBg: 'border border-slate-200 bg-slate-100',   icon: 'text-slate-800',   badge: 'border border-slate-200 bg-slate-100 text-slate-800',    time: 'text-slate-700' },
 }
 
 const UDA_TYPE_CHIP: Record<string, string> = {
@@ -367,9 +367,8 @@ function TaskCard({ task, onClick }: { task: TaskData; onClick: () => void; acce
       whileHover={{ y: -2 }}
       whileTap={{ scale: 0.97 }}
       onClick={onClick}
-      className={`relative flex min-h-[154px] cursor-pointer flex-col overflow-hidden rounded-lg p-3.5 text-left transition-all hover:-translate-y-0.5 ${s.card}`}
+      className={`relative flex min-h-[154px] cursor-pointer flex-col overflow-hidden rounded-[24px] p-3.5 text-left transition-all hover:-translate-y-0.5 ${s.card}`}
     >
-      <div className={`absolute inset-x-0 top-0 h-1 ${s.stripe}`} />
       <span className={`absolute right-3 top-4 rounded-full px-2.5 py-1 text-[10px] font-black uppercase ${s.badge}`}>
         {isCompleted ? 'Fatto' : (UDA_TYPE_LABELS[task.task_type] ?? task.task_type)}
       </span>
@@ -533,6 +532,9 @@ function TaskViewerOverlay({ task, onClose, accentTheme, onSuccess }: { task: Ta
                     <textarea
                       value={response}
                       onChange={(e) => setResponse(e.target.value)}
+                      onPaste={(e) => e.preventDefault()}
+                      onCopy={(e) => e.preventDefault()}
+                      onCut={(e) => e.preventDefault()}
                       placeholder={t('tasks.answer_placeholder')}
                       className="w-full p-4 rounded-xl border border-slate-300 bg-white min-h-[200px] focus:ring-2 outline-none text-slate-800 resize-none shadow-sm"
                       style={{ '--tw-ring-color': accentTheme.accent } as React.CSSProperties}
@@ -725,6 +727,9 @@ function ExerciseViewer({ content, onSubmit, accentTheme, isSubmitting }: {
       <textarea
         value={response}
         onChange={(e) => setResponse(e.target.value)}
+        onPaste={(e) => e.preventDefault()}
+        onCopy={(e) => e.preventDefault()}
+        onCut={(e) => e.preventDefault()}
         placeholder="Scrivi qui la tua risposta..."
         className="w-full p-4 rounded-xl border border-slate-300 bg-white min-h-[220px] focus:ring-2 outline-none text-slate-800 resize-none shadow-sm"
         style={{ '--tw-ring-color': accentTheme.accent } as React.CSSProperties}

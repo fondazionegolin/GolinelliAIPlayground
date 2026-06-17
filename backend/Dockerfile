@@ -5,6 +5,9 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y \
     build-essential \
     libpq-dev \
+    tesseract-ocr \
+    tesseract-ocr-eng \
+    tesseract-ocr-ita \
     texlive-latex-base \
     texlive-latex-recommended \
     texlive-latex-extra \

@@ -50,6 +50,8 @@ from app.services.education_level import SCHOOL_GRADE_OPTIONS
 from app.services.storage_service import storage_service
 from app.services.llm_service import llm_service
 from app.services.credit_service import credit_service
+from app.services.ocr_service import OCRUnavailableError, SUPPORTED_IMAGE_TYPES, ocr_service
+from app.core.config import settings
 
 router = APIRouter()
 TEACHER_ACCENTS = {"cyan", "orange", "black", "red"}
@@ -79,6 +81,13 @@ class CanvasUpsertRequest(BaseModel):
     content_json: str
     base_version: int | None = None
     students_can_write: bool | None = None
+
+
+class OCRTranscriptionResponse(BaseModel):
+    text: str
+    engine: str
+    confidence: float | None = None
+    lines: list[dict] | None = None
 
 
 # Profile endpoints
@@ -152,6 +161,44 @@ async def upload_avatar(
     teacher.avatar_url = avatar_url
     await db.commit()
     return {"avatar_url": avatar_url}
+
+
+@router.post("/ocr/transcribe", response_model=OCRTranscriptionResponse)
+async def transcribe_assignment_image(
+    teacher: Annotated[User, Depends(get_current_teacher)],
+    file: UploadFile = File(...),
+):
+    """Transcribe a teacher-uploaded assignment image with a local OCR engine."""
+    content_type = file.content_type or ""
+    if content_type not in SUPPORTED_IMAGE_TYPES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Carica un'immagine JPG, PNG, WEBP o GIF.",
+        )
+
+    data = await file.read()
+    max_bytes = settings.OCR_MAX_UPLOAD_SIZE_MB * 1024 * 1024
+    if len(data) > max_bytes:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=f"Immagine troppo grande. Limite: {settings.OCR_MAX_UPLOAD_SIZE_MB}MB.",
+        )
+
+    try:
+        import asyncio
+
+        result = await asyncio.to_thread(ocr_service.transcribe, data, content_type)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    except OCRUnavailableError as exc:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
+
+    return OCRTranscriptionResponse(
+        text=result.text,
+        engine=result.engine,
+        confidence=result.confidence,
+        lines=result.lines,
+    )
 
 
 DEFAULT_MODULES = ["chatbot", "classification", "self_assessment", "chat"]

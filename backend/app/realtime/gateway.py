@@ -221,13 +221,6 @@ async def notify_session_teacher(session_id: str, notification_data: dict):
             notification_data,
             room=f"user:{teacher_id}"
         )
-    
-    # Still emit to session room for redundancy/other listeners
-    await sio.emit(
-        "teacher_notification",
-        notification_data,
-        room=f"session:{session_id}"
-    )
 
 
 def get_user_from_token(token: str) -> Optional[dict]:
@@ -303,13 +296,20 @@ async def connect(sid, environ, auth):
 
         if session_id not in session_presence:
             session_presence[session_id] = set()
+        # Whether this student already has a live connection in the session
+        # (transport upgrade / reconnect / extra tab). Used to avoid notifying the
+        # teacher more than once per real "entrata".
+        already_present = any(
+            connected_users.get(s, {}).get("id") == student_id
+            for s in session_presence[session_id]
+        )
         session_presence[session_id].add(sid)
         print(f"[Gateway] Student {student_id} added to session {session_id}, total: {len(session_presence[session_id])}")
 
         await sio.enter_room(sid, f"session:{session_id}")
         # Also join personal room for private messages
         await sio.enter_room(sid, f"student:{student_id}")
-        
+
         # Notify others in session
         await sio.emit(
             "presence_update",
@@ -324,19 +324,21 @@ async def connect(sid, environ, auth):
             room=f"session:{session_id}",
             skip_sid=sid,
         )
-        
-        # Send teacher notification for student join
-        await notify_session_teacher(
-            session_id,
-            {
-                "type": "student_joined",
-                "session_id": session_id,
-                "student_id": student_id,
-                "nickname": nickname,
-                "message": f"{nickname} è entrato nella sessione",
-                "timestamp": datetime.utcnow().isoformat(),
-            }
-        )
+
+        # Send the teacher notification only on the student's first connection,
+        # so one "entrata" produces exactly one notification.
+        if not already_present:
+            await notify_session_teacher(
+                session_id,
+                {
+                    "type": "student_joined",
+                    "session_id": session_id,
+                    "student_id": student_id,
+                    "nickname": nickname,
+                    "message": f"{nickname} è entrato nella sessione",
+                    "timestamp": datetime.utcnow().isoformat(),
+                }
+            )
     else:
         teacher_id = user["id"]
         try:
@@ -370,29 +372,37 @@ async def disconnect(sid):
         
         user_activities.pop(user["id"], None)
         nickname = student_nicknames.get(user["id"], "Studente")
-        
-        await sio.emit(
-            "presence_update",
-            {
-                "student_id": user["id"],
-                "status": "offline",
-                "last_seen_at": datetime.utcnow().isoformat(),
-            },
-            room=f"session:{session_id}",
+
+        # Only treat this as a real "uscita" when the student has no other live
+        # connection left (transport upgrade / extra tab), so one action = one notification.
+        still_present = any(
+            connected_users.get(s, {}).get("id") == user["id"]
+            for s in session_presence.get(session_id, set())
         )
-        
-        # Send teacher notification for student leave
-        await notify_session_teacher(
-            session_id,
-            {
-                "type": "student_left",
-                "session_id": session_id,
-                "student_id": user["id"],
-                "nickname": nickname,
-                "message": f"{nickname} ha lasciato la sessione",
-                "timestamp": datetime.utcnow().isoformat(),
-            }
-        )
+
+        if not still_present:
+            await sio.emit(
+                "presence_update",
+                {
+                    "student_id": user["id"],
+                    "status": "offline",
+                    "last_seen_at": datetime.utcnow().isoformat(),
+                },
+                room=f"session:{session_id}",
+            )
+
+            # Send teacher notification for student leave
+            await notify_session_teacher(
+                session_id,
+                {
+                    "type": "student_left",
+                    "session_id": session_id,
+                    "student_id": user["id"],
+                    "nickname": nickname,
+                    "message": f"{nickname} ha lasciato la sessione",
+                    "timestamp": datetime.utcnow().isoformat(),
+                }
+            )
 
         voice_state = voice_rooms.get(session_id)
         if voice_state and voice_state.get("active"):

@@ -35,6 +35,7 @@ interface LiveInteractionItem {
   title: string
   status: string
   slides_count: number
+  slides_json?: Slide[]
   current_slide_index: number
   created_at: string
 }
@@ -70,8 +71,6 @@ function defaultSlide(type: SlideType): Slide {
 }
 
 // ── Tutorial ──
-
-const TUTORIAL_KEY = 'live_interaction_tutorial_v1'
 
 const TUTORIAL_STEPS = [
   {
@@ -600,6 +599,49 @@ function SlideCard({
   )
 }
 
+function SlidePreviewStrip({ slides, count }: { slides?: Slide[]; count: number }) {
+  const previewSlides = (slides || []).slice(0, 5)
+  if (previewSlides.length === 0) {
+    return (
+      <div className="mt-3 flex items-center gap-2 text-xs text-slate-400">
+        <div className="h-10 w-16 rounded-xl border border-dashed border-slate-200 bg-slate-50" />
+        <span>{count} slide</span>
+      </div>
+    )
+  }
+
+  return (
+    <div className="mt-3 flex items-center gap-2 overflow-hidden">
+      {previewSlides.map((slide, idx) => {
+        const Icon = SLIDE_ICONS[slide.type] || Zap
+        const label = slide.question || slide.prompt || SLIDE_LABELS[slide.type]
+        return (
+          <div
+            key={idx}
+            className="flex h-[78px] w-[124px] flex-shrink-0 flex-col justify-between rounded-2xl border border-slate-200 bg-white/72 p-2.5 shadow-sm"
+            title={label}
+          >
+            <div className="flex items-center justify-between gap-1">
+              <span className={`inline-flex h-6 w-6 items-center justify-center rounded-lg border ${SLIDE_COLORS[slide.type]}`}>
+                <Icon className="h-3.5 w-3.5" />
+              </span>
+              <span className="text-[11px] font-black text-slate-400">{idx + 1}</span>
+            </div>
+            <p className="line-clamp-3 text-[11px] font-semibold leading-[14px] text-slate-600">
+              {label}
+            </p>
+          </div>
+        )
+      })}
+      {count > previewSlides.length && (
+        <div className="flex h-[78px] min-w-[60px] items-center justify-center rounded-2xl border border-slate-200 bg-slate-50 text-xs font-black text-slate-400">
+          +{count - previewSlides.length}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Editor panel ──
 
 function InteractionEditor({
@@ -738,14 +780,7 @@ export default function LiveInteractionBuilderPage({ sessionId }: { sessionId?: 
 
   const [editingId, setEditingId] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
-  const [showTutorial, setShowTutorial] = useState(() => {
-    return !localStorage.getItem(TUTORIAL_KEY)
-  })
-
-  const dismissTutorial = () => {
-    localStorage.setItem(TUTORIAL_KEY, '1')
-    setShowTutorial(false)
-  }
+  const [showTutorial, setShowTutorial] = useState(true)
 
   const { data: interactions, isLoading } = useQuery<LiveInteractionItem[]>({
     queryKey: ['live-interactions', activeSessionId],
@@ -786,15 +821,13 @@ export default function LiveInteractionBuilderPage({ sessionId }: { sessionId?: 
         <div>
           <div className="flex items-center gap-2">
             <h1 className="text-2xl font-bold text-slate-800">Live Interaction</h1>
-            {!showTutorial && (
-              <button
-                onClick={() => setShowTutorial(true)}
-                className="w-7 h-7 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-500 hover:text-slate-700 transition-colors"
-                title="Mostra tutorial"
-              >
-                <HelpCircle className="h-4 w-4" />
-              </button>
-            )}
+            <button
+              onClick={() => setShowTutorial(v => !v)}
+              className="w-7 h-7 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-500 hover:text-slate-700 transition-colors"
+              title={showTutorial ? 'Nascondi tutorial' : 'Mostra tutorial'}
+            >
+              <HelpCircle className="h-4 w-4" />
+            </button>
           </div>
           <p className="text-sm text-slate-500 mt-0.5">
             {storedSession ? `Sessione: ${storedSession.name}` : 'Seleziona una sessione dalla navbar'}
@@ -816,7 +849,7 @@ export default function LiveInteractionBuilderPage({ sessionId }: { sessionId?: 
             exit={{ opacity: 0, y: -12, height: 0 }}
             transition={{ duration: 0.3 }}
           >
-            <HowItWorks onDismiss={dismissTutorial} />
+            <HowItWorks onDismiss={() => setShowTutorial(false)} />
           </motion.div>
         )}
       </AnimatePresence>
@@ -844,7 +877,8 @@ export default function LiveInteractionBuilderPage({ sessionId }: { sessionId?: 
       {/* List */}
       <div className="space-y-3">
         {interactions?.map(item => (
-          <div key={item.id} className="border border-slate-200 rounded-xl bg-white shadow-sm p-4 flex items-center gap-3">
+          <div key={item.id} className="border border-slate-200 rounded-[24px] bg-white/86 shadow-sm p-4 transition-all hover:-translate-y-0.5 hover:shadow-md">
+            <div className="flex items-center gap-3">
             {item.status === 'ACTIVE' && (
               <span className="flex-shrink-0 w-2 h-2 rounded-full bg-green-500 animate-pulse" />
             )}
@@ -902,6 +936,8 @@ export default function LiveInteractionBuilderPage({ sessionId }: { sessionId?: 
                 </Button>
               )}
             </div>
+            </div>
+            <SlidePreviewStrip slides={item.slides_json} count={item.slides_count} />
           </div>
         ))}
       </div>

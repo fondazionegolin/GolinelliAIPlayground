@@ -39,12 +39,12 @@ const badgeVariants = cva(
       {
         tone: 'success',
         surface: 'solid',
-        className: 'border-transparent bg-[var(--logo-blue)] text-white',
+        className: 'border-transparent bg-[var(--logo-blue-strong)] text-white',
       },
       {
         tone: 'warning',
         surface: 'solid',
-        className: 'border-transparent bg-[var(--logo-violet)] text-white',
+        className: 'border-transparent bg-[var(--logo-violet-strong)] text-white',
       },
       {
         tone: 'danger',
@@ -64,12 +64,12 @@ const badgeVariants = cva(
       {
         tone: 'success',
         surface: 'soft',
-        className: 'border-transparent bg-[var(--logo-blue)] text-white',
+        className: 'border-transparent bg-[var(--logo-blue-strong)] text-white',
       },
       {
         tone: 'warning',
         surface: 'soft',
-        className: 'border-transparent bg-[var(--logo-violet)] text-white',
+        className: 'border-transparent bg-[var(--logo-violet-strong)] text-white',
       },
       {
         tone: 'danger',
@@ -89,12 +89,12 @@ const badgeVariants = cva(
       {
         tone: 'success',
         surface: 'outline',
-        className: 'border-[var(--logo-blue)] bg-transparent text-[var(--logo-blue)]',
+        className: 'border-[var(--logo-blue)] bg-transparent text-[var(--logo-blue-strong)]',
       },
       {
         tone: 'warning',
         surface: 'outline',
-        className: 'border-[var(--logo-violet)] bg-transparent text-[var(--logo-violet)]',
+        className: 'border-[var(--logo-violet)] bg-transparent text-[var(--logo-violet-strong)]',
       },
       {
         tone: 'danger',

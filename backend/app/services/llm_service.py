@@ -14,6 +14,15 @@ from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
+DEFAULT_OPENAI_CHAT_MODEL = "gpt-5.4-mini"
+LEGACY_OPENAI_CHAT_MODELS = {"gpt-5-mini", "gpt-5-nano"}
+
+
+def normalize_llm_model(provider: Optional[str], model: Optional[str]) -> Optional[str]:
+    if (provider in (None, "openai")) and model in LEGACY_OPENAI_CHAT_MODELS:
+        return DEFAULT_OPENAI_CHAT_MODEL
+    return model
+
 
 @dataclass
 class LLMResponse:
@@ -130,6 +139,7 @@ class LLMService:
     ) -> LLMResponse:
         provider = provider or settings.DEFAULT_LLM_PROVIDER
         model = model or settings.DEFAULT_LLM_MODEL
+        model = normalize_llm_model(provider, model) or model
         use_web_search = allow_web_search and _needs_web_search(messages)
         if use_web_search:
             logger.info("Web search enabled for %s/%s", provider, model)

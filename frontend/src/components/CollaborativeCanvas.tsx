@@ -6,13 +6,13 @@ import { chatApi, teacherApi, studentApi } from '@/lib/api'
 import {
   Eraser, StickyNote, Type, ImagePlus, Table, Pencil, Frame, MoveRight,
   RectangleHorizontal, Triangle, Undo2, Redo2, Maximize, Minimize,
-  LayoutTemplate, Maximize2, MousePointer, Trash2, Users, Check,
+  LayoutTemplate, Maximize2, MousePointer, Trash2, Users, Move,
 } from 'lucide-react'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type CanvasRole = 'teacher' | 'student'
-type Tool = 'select' | 'postit' | 'frame' | 'text' | 'pen' | 'roundedRect' | 'triangle' | 'parallelogram' | 'connector'
+type Tool = 'select' | 'hand' | 'postit' | 'frame' | 'text' | 'pen' | 'roundedRect' | 'triangle' | 'connector'
 
 type Point = { x: number; y: number }
 type Anchor = 'top' | 'right' | 'bottom' | 'left'
@@ -372,11 +372,13 @@ export function CollaborativeCanvas({
 }: CollaborativeCanvasProps) {
   // Refs
   const containerRef = useRef<HTMLDivElement>(null)
-  const draggingRef = useRef<{ id: string; offsetX: number; offsetY: number } | null>(null)
+  const draggingRef = useRef<{ id: string; offsetX: number; offsetY: number; pendingX?: number; pendingY?: number } | null>(null)
   const pendingDragRef = useRef<{ id: string; offsetX: number; offsetY: number; startX: number; startY: number } | null>(null)
-  const resizingRef = useRef<{ id: string; startX: number; startY: number; startW: number; startH: number } | null>(null)
+  const resizingRef = useRef<{ id: string; startX: number; startY: number; startW: number; startH: number; pendingW?: number; pendingH?: number } | null>(null)
   const drawingRef = useRef<{ points: Point[] } | null>(null)
   const panningRef = useRef<{ startMouseX: number; startMouseY: number; startPanX: number; startPanY: number } | null>(null)
+  const dragCreateRef = useRef<{ tool: Tool; startX: number; startY: number; currentX: number; currentY: number } | null>(null)
+  const skipNextClickRef = useRef(false)
   const spaceHeldRef = useRef(false)
   const saveTimerRef = useRef<number | null>(null)
   const pollTimerRef = useRef<number | null>(null)
@@ -385,10 +387,14 @@ export function CollaborativeCanvas({
   const latestSerializedRef = useRef('')
   const remoteWhileInteractingRef = useRef<string | null>(null)
   const rafDrawRef = useRef<number | null>(null)
+  const dragRafRef = useRef<number | null>(null)
+  const resizeRafRef = useRef<number | null>(null)
+  const lockTimestampsRef = useRef<Record<string, number>>({})
   const historyRef = useRef<string[]>([])
   const historyIndexRef = useRef(-1)
   const undoRedoRef = useRef(false)
   const deleteSelectedRef = useRef<() => void>(() => { /* noop */ })
+  const versionRef = useRef(0)
 
   // Canvas state
   const [tool, setTool] = useState<Tool>('select')
@@ -406,6 +412,7 @@ export function CollaborativeCanvas({
   const [isDropActive, setIsDropActive] = useState(false)
   const [version, setVersion] = useState(0)
   const [previewPoints, setPreviewPoints] = useState<Point[]>([])
+  const [previewCreate, setPreviewCreate] = useState<{ x: number; y: number; w: number; h: number } | null>(null)
   const [locks, setLocks] = useState<Record<string, LockInfo>>({})
   const [socketConnected, setSocketConnected] = useState(false)
 
@@ -416,8 +423,8 @@ export function CollaborativeCanvas({
   const [studentsCanWrite, setStudentsCanWrite] = useState(false)
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [showTemplates, setShowTemplates] = useState(false)
-  const [showShare, setShowShare] = useState(false)
   const [historyIndex, setHistoryIndex] = useState(-1)
+  const [contextMenu, setContextMenu] = useState<{ screenX: number; screenY: number; itemId: string | null } | null>(null)
 
   // Derived
   const canEdit = !readOnly && (role === 'teacher' || studentsCanWrite)
@@ -631,14 +638,18 @@ export function CollaborativeCanvas({
     return () => { socket.off('connect', onConnect); socket.off('disconnect', onDisconnect) }
   }, [])
 
+  // Keep versionRef in sync so socket handler doesn't need version in its deps
+  useEffect(() => { versionRef.current = version }, [version])
+
   useEffect(() => {
     const socket = (window as any).socket
     if (!socket || !sessionId) return
     const onCanvasUpdated = (payload: any) => {
       if (payload?.session_id !== sessionId) return
-      const incomingVersion = Number(payload?.version || 0)
-      if (incomingVersion <= version) return
+      // Process students_can_write unconditionally — must not be gated by version check
       if (payload?.students_can_write !== undefined) setStudentsCanWrite(Boolean(payload.students_can_write))
+      const incomingVersion = Number(payload?.version || 0)
+      if (incomingVersion <= versionRef.current) return
       if (isInteractingRef.current) { remoteWhileInteractingRef.current = String(payload?.content_json || ''); return }
       const remote = parseCanvasDoc(payload?.content_json)
       const remoteSerialized = JSON.stringify(remote)
@@ -649,19 +660,52 @@ export function CollaborativeCanvas({
       if (payload?.session_id !== sessionId) return
       const itemId = String(payload?.item_id || ''), userId = String(payload?.user_id || ''), userType = String(payload?.user_type || '')
       if (!itemId || !userId) return
+      lockTimestampsRef.current[itemId] = Date.now()
       setLocks((prev) => ({ ...prev, [itemId]: { userId, userType } }))
     }
     const onItemUnlock = (payload: any) => {
       if (payload?.session_id !== sessionId) return
       const itemId = String(payload?.item_id || '')
       if (!itemId) return
+      delete lockTimestampsRef.current[itemId]
       setLocks((prev) => { const next = { ...prev }; delete next[itemId]; return next })
     }
     socket.on('canvas_updated', onCanvasUpdated)
     socket.on('canvas_item_lock', onItemLock)
     socket.on('canvas_item_unlock', onItemUnlock)
     return () => { socket.off('canvas_updated', onCanvasUpdated); socket.off('canvas_item_lock', onItemLock); socket.off('canvas_item_unlock', onItemUnlock) }
-  }, [sessionId, version])
+  }, [sessionId])
+
+  // Auto-expire stale locks (60 s) — prevents permanently stuck "In uso" state
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      const now = Date.now()
+      const expired = Object.entries(lockTimestampsRef.current)
+        .filter(([, ts]) => now - ts > 60_000)
+        .map(([id]) => id)
+      if (expired.length > 0) {
+        expired.forEach((id) => delete lockTimestampsRef.current[id])
+        setLocks((prev) => {
+          const next = { ...prev }
+          expired.forEach((id) => delete next[id])
+          return next
+        })
+      }
+    }, 15_000)
+    return () => window.clearInterval(interval)
+  }, [])
+
+  // Clear all locks on socket reconnect (prevents stale locks after disconnect)
+  useEffect(() => {
+    const socket = (window as any).socket
+    if (!socket) return
+    const onReconnect = () => {
+      lockTimestampsRef.current = {}
+      setLocks({})
+    }
+    socket.on('connect', onReconnect)
+    return () => socket.off('connect', onReconnect)
+  }, [])
 
   // Auto-save with debounce
   useEffect(() => {
@@ -683,16 +727,19 @@ export function CollaborativeCanvas({
       if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) { e.preventDefault(); undo(); return }
       if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) { e.preventDefault(); redo(); return }
       if (isTyping) return
-      if (e.key === 'Escape') { setSelectedId(null); setEditingId(null); setTool('select') }
+      if (e.key === 'Escape') { setSelectedId(null); setEditingId(null); setTool('select'); setContextMenu(null) }
       if ((e.key === 'Delete' || e.key === 'Backspace') && canEdit) deleteSelectedRef.current()
-      if (!e.ctrlKey && !e.metaKey && canEdit) {
+      if (!e.ctrlKey && !e.metaKey) {
         if (e.key === 'v' || e.key === 'V') setTool('select')
-        if (e.key === 'p' || e.key === 'P') setTool('postit')
-        if (e.key === 'f' || e.key === 'F') setTool('frame')
-        if (e.key === 't' || e.key === 'T') setTool('text')
-        if (e.key === 'r' || e.key === 'R') setTool('roundedRect')
-        if (e.key === 'c' || e.key === 'C') setTool('connector')
-        if (e.key === 'd' || e.key === 'D') setTool('pen')
+        if (e.key === 'h' || e.key === 'H') setTool('hand')
+        if (canEdit) {
+          if (e.key === 'p' || e.key === 'P') setTool('postit')
+          if (e.key === 'f' || e.key === 'F') setTool('frame')
+          if (e.key === 't' || e.key === 'T') setTool('text')
+          if (e.key === 'r' || e.key === 'R') setTool('roundedRect')
+          if (e.key === 'c' || e.key === 'C') setTool('connector')
+          if (e.key === 'd' || e.key === 'D') setTool('pen')
+        }
       }
     }
     const onKeyUp = (e: KeyboardEvent) => { if (e.key === ' ') spaceHeldRef.current = false }
@@ -735,14 +782,17 @@ export function CollaborativeCanvas({
 
   // ─── Item creation ────────────────────────────────────────────────────────
 
-  const createItem = (type: Tool, x: number, y: number): CanvasItem | null => {
+  const DEFAULT_ITEM_SIZES: Partial<Record<Tool, [number, number]>> = {
+    postit: [220, 180], frame: [360, 260], text: [280, 120], roundedRect: [220, 140], triangle: [220, 160],
+  }
+
+  const createItemAtBounds = (type: Tool, x: number, y: number, w: number, h: number): CanvasItem | null => {
     const id = mkId()
-    if (type === 'postit') return { id, type: 'postit', x, y, w: 220, h: 180, text: '', color: newPostitColor, textStyle: DEFAULT_TEXT_STYLE }
-    if (type === 'frame') return { id, type: 'frame', x, y, w: 360, h: 260, text: 'Frame', color: '#3ea9f4', textStyle: DEFAULT_TEXT_STYLE }
-    if (type === 'text') return { id, type: 'text', x, y, w: 280, h: 120, text: 'Testo', color: '#0f172a', textStyle: DEFAULT_TEXT_STYLE }
-    if (type === 'roundedRect') return { id, type: 'shape', shape: 'rounded-rect', x, y, w: 220, h: 140, fill: newShapeFill, stroke: newShapeStroke }
-    if (type === 'triangle') return { id, type: 'shape', shape: 'triangle', x, y, w: 220, h: 160, fill: newShapeFill, stroke: newShapeStroke }
-    if (type === 'parallelogram') return { id, type: 'shape', shape: 'parallelogram', x, y, w: 230, h: 140, fill: newShapeFill, stroke: newShapeStroke }
+    if (type === 'postit') return { id, type: 'postit', x, y, w, h, text: '', color: newPostitColor, textStyle: DEFAULT_TEXT_STYLE }
+    if (type === 'frame') return { id, type: 'frame', x, y, w, h, text: 'Frame', color: '#3ea9f4', textStyle: DEFAULT_TEXT_STYLE }
+    if (type === 'text') return { id, type: 'text', x, y, w, h, text: 'Testo', color: '#0f172a', textStyle: DEFAULT_TEXT_STYLE }
+    if (type === 'roundedRect') return { id, type: 'shape', shape: 'rounded-rect', x, y, w, h, fill: newShapeFill, stroke: newShapeStroke }
+    if (type === 'triangle') return { id, type: 'shape', shape: 'triangle', x, y, w, h, fill: newShapeFill, stroke: newShapeStroke }
     return null
   }
 
@@ -784,6 +834,47 @@ export function CollaborativeCanvas({
   // Keep ref in sync
   deleteSelectedRef.current = deleteSelected
 
+  // ─── Z-order & duplicate ─────────────────────────────────────────────────
+
+  const reorderItem = useCallback((id: string, action: 'front' | 'back' | 'forward' | 'backward') => {
+    if (!canEdit) return
+    beginInteraction()
+    setCanvasDoc((prev) => {
+      const idx = prev.items.findIndex((i) => i.id === id)
+      if (idx === -1) return prev
+      const items = [...prev.items]
+      if (action === 'front' && idx < items.length - 1) items.push(items.splice(idx, 1)[0])
+      else if (action === 'back' && idx > 0) items.unshift(items.splice(idx, 1)[0])
+      else if (action === 'forward' && idx < items.length - 1) { [items[idx], items[idx + 1]] = [items[idx + 1], items[idx]] }
+      else if (action === 'backward' && idx > 0) { [items[idx - 1], items[idx]] = [items[idx], items[idx - 1]] }
+      else return prev
+      return { ...prev, items }
+    })
+    endInteraction()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canEdit])
+
+  const duplicateItem = useCallback((id: string) => {
+    if (!canEdit) return
+    beginInteraction()
+    setCanvasDoc((prev) => {
+      const item = prev.items.find((i) => i.id === id)
+      if (!item) return prev
+      const copy = { ...item, id: mkId() } as CanvasItem
+      if (isPositioned(copy)) { (copy as any).x += 24; (copy as any).y += 24 }
+      return { ...prev, items: [...prev.items, copy] }
+    })
+    endInteraction()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canEdit])
+
+  const forceUnlockItem = useCallback((id: string) => {
+    delete lockTimestampsRef.current[id]
+    setLocks((prev) => { const next = { ...prev }; delete next[id]; return next })
+    const socket = (window as any).socket
+    if (socket && sessionId) socket.emit('canvas_item_unlock', { session_id: sessionId, item_id: id })
+  }, [sessionId])
+
   // ─── Templates ───────────────────────────────────────────────────────────
 
   const applyTemplate = (doc: CanvasDoc) => {
@@ -795,26 +886,28 @@ export function CollaborativeCanvas({
     endInteraction()
   }
 
+  // ─── Context menu ─────────────────────────────────────────────────────────
+
+  const openContextMenu = (e: React.MouseEvent, itemId: string | null) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setContextMenu({ screenX: e.clientX, screenY: e.clientY, itemId })
+    if (itemId) { setSelectedId(itemId); setEditingId(null) }
+  }
+
+  const closeContextMenu = () => setContextMenu(null)
+
   // ─── Mouse / touch handlers ───────────────────────────────────────────────
 
-  const onCanvasClick = (e: React.MouseEvent<HTMLDivElement>) => {
+  const onCanvasClick = (_e: React.MouseEvent<HTMLDivElement>) => {
     if (panningRef.current) return
-    if (!canEdit) return
+    if (tool === 'hand') return
+    // Items stop propagation on onClick — a click reaching here is on the background
+    if (skipNextClickRef.current) { skipNextClickRef.current = false; return }
     if (tool === 'select' || tool === 'pen' || tool === 'connector') {
-      setSelectedId(null); setEditingId(null); return
+      setSelectedId(null); setEditingId(null)
     }
-    const wp = toWorld(e.clientX, e.clientY)
-    const item = createItem(tool, Math.max(10, wp.x), Math.max(10, wp.y))
-    if (!item) return
-    beginInteraction()
-    setCanvasDoc((prev) => {
-      const parentFrameId = getParentFrameId(item, prev.items)
-      return { ...prev, items: [...prev.items, { ...item, parentFrameId }] }
-    })
-    setSelectedId(item.id)
-    setEditingId(null)
-    setTool('select')
-    endInteraction()
+    // Shape tools: item creation is handled in onMouseUp via dragCreate
   }
 
   const onMouseDownItem = (e: React.MouseEvent, item: CanvasItem) => {
@@ -839,20 +932,29 @@ export function CollaborativeCanvas({
   }
 
   const onContainerMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (spaceHeldRef.current || e.button === 1) {
+    if (spaceHeldRef.current || tool === 'hand' || e.button === 1) {
       e.preventDefault()
       panningRef.current = { startMouseX: e.clientX, startMouseY: e.clientY, startPanX: pan.x, startPanY: pan.y }
       setIsPanning(true)
       return
     }
-    if (!canEdit || tool !== 'pen') return
-    beginInteraction()
-    const wp = toWorld(e.clientX, e.clientY)
-    drawingRef.current = { points: [wp] }
-    setPreviewPoints([wp])
+    if (!canEdit) return
+    if (tool === 'pen') {
+      beginInteraction()
+      const wp = toWorld(e.clientX, e.clientY)
+      drawingRef.current = { points: [wp] }
+      setPreviewPoints([wp])
+      return
+    }
+    // Drag-to-create for shape/content tools
+    if (tool !== 'select' && tool !== 'connector') {
+      const wp = toWorld(e.clientX, e.clientY)
+      dragCreateRef.current = { tool, startX: wp.x, startY: wp.y, currentX: wp.x, currentY: wp.y }
+    }
   }
 
   const onMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    // Panning
     if (panningRef.current) {
       const { startMouseX, startMouseY, startPanX, startPanY } = panningRef.current
       setPan({ x: startPanX + (e.clientX - startMouseX), y: startPanY + (e.clientY - startMouseY) })
@@ -861,11 +963,13 @@ export function CollaborativeCanvas({
 
     const wp = toWorld(e.clientX, e.clientY)
 
+    // Connector drag preview
     if (connectorDrag) {
       setConnectorDrag((prev) => (prev ? { ...prev, toPoint: wp } : prev))
       return
     }
 
+    // Pen drawing (RAF throttled)
     if (drawingRef.current && tool === 'pen' && canEdit) {
       drawingRef.current.points.push(wp)
       if (!rafDrawRef.current) {
@@ -877,10 +981,31 @@ export function CollaborativeCanvas({
       return
     }
 
+    // Drag-to-create preview (RAF throttled)
+    if (dragCreateRef.current && canEdit) {
+      const dc = dragCreateRef.current
+      dc.currentX = wp.x
+      dc.currentY = wp.y
+      if (!dragRafRef.current) {
+        dragRafRef.current = window.requestAnimationFrame(() => {
+          dragRafRef.current = null
+          const dc = dragCreateRef.current
+          if (!dc) { setPreviewCreate(null); return }
+          const x = Math.min(dc.startX, dc.currentX)
+          const y = Math.min(dc.startY, dc.currentY)
+          const w = Math.abs(dc.currentX - dc.startX)
+          const h = Math.abs(dc.currentY - dc.startY)
+          if (w > 6 || h > 6) setPreviewCreate({ x, y, w: Math.max(w, 20), h: Math.max(h, 20) })
+        })
+      }
+      return
+    }
+
+    // Promote pendingDrag → active drag once threshold crossed
     if (!draggingRef.current && pendingDragRef.current && canEdit) {
       const candidate = pendingDragRef.current
       const moved = Math.hypot(e.clientX - candidate.startX, e.clientY - candidate.startY)
-      if (moved > 4) {
+      if (moved > 2) {
         beginInteraction()
         emitLock(candidate.id)
         draggingRef.current = { id: candidate.id, offsetX: candidate.offsetX, offsetY: candidate.offsetY }
@@ -888,38 +1013,59 @@ export function CollaborativeCanvas({
       }
     }
 
+    // Resize (RAF throttled) — store pending size in ref, apply in RAF
     if (resizingRef.current && canEdit) {
       const resize = resizingRef.current
-      const nextW = Math.max(140, resize.startW + (e.clientX - resize.startX) / zoom)
-      const nextH = Math.max(90, resize.startH + (e.clientY - resize.startY) / zoom)
-      setCanvasDoc((prev) => ({
-        ...prev,
-        items: prev.items.map((item) =>
-          item.id !== resize.id || !isPositioned(item) ? item : { ...item, w: nextW, h: nextH } as CanvasItem,
-        ),
-      }))
+      resize.pendingW = Math.max(80, resize.startW + (e.clientX - resize.startX) / zoom)
+      resize.pendingH = Math.max(60, resize.startH + (e.clientY - resize.startY) / zoom)
+      if (!resizeRafRef.current) {
+        resizeRafRef.current = window.requestAnimationFrame(() => {
+          resizeRafRef.current = null
+          const r = resizingRef.current
+          if (!r || r.pendingW === undefined) return
+          setCanvasDoc((prev) => ({
+            ...prev,
+            items: prev.items.map((item) =>
+              item.id !== r.id || !isPositioned(item) ? item : { ...item, w: r.pendingW!, h: r.pendingH! } as CanvasItem,
+            ),
+          }))
+        })
+      }
       return
     }
 
-    if (!draggingRef.current || !canEdit) return
-    const drag = draggingRef.current
-    setCanvasDoc((prev) => {
-      const target = prev.items.find((i) => i.id === drag.id)
-      if (!target || !isPositioned(target)) return prev
-      const nx = Math.max(0, wp.x - drag.offsetX)
-      const ny = Math.max(0, wp.y - drag.offsetY)
-      let moved = isFrame(target) ? moveFrameWithChildren(prev.items, target.id, nx, ny) : prev.items.map((item) =>
-        item.id !== drag.id || !isPositioned(item) ? item : { ...item, x: nx, y: ny } as CanvasItem,
-      )
-      const normalized = moved.map((item) => {
-        if (!isPositioned(item) || item.id !== drag.id) return item
-        return { ...item, parentFrameId: getParentFrameId(item, moved, isFrame(item) ? item.id : undefined) } as CanvasItem
-      })
-      return { ...prev, items: normalized }
-    })
+    // Drag (RAF throttled) — store pending position in ref, apply in RAF
+    if (draggingRef.current && canEdit) {
+      const drag = draggingRef.current
+      drag.pendingX = wp.x
+      drag.pendingY = wp.y
+      if (!dragRafRef.current) {
+        dragRafRef.current = window.requestAnimationFrame(() => {
+          dragRafRef.current = null
+          const drag = draggingRef.current
+          if (!drag || drag.pendingX === undefined || drag.pendingY === undefined) return
+          const nx = Math.max(0, drag.pendingX - drag.offsetX)
+          const ny = Math.max(0, drag.pendingY - drag.offsetY)
+          setCanvasDoc((prev) => {
+            const target = prev.items.find((i) => i.id === drag.id)
+            if (!target || !isPositioned(target)) return prev
+            const moved = isFrame(target)
+              ? moveFrameWithChildren(prev.items, target.id, nx, ny)
+              : prev.items.map((item) =>
+                  item.id !== drag.id || !isPositioned(item) ? item : { ...item, x: nx, y: ny } as CanvasItem,
+                )
+            return { ...prev, items: moved }
+          })
+        })
+      }
+    }
   }
 
   const onMouseUp = () => {
+    // Cancel any pending RAF updates
+    if (dragRafRef.current) { window.cancelAnimationFrame(dragRafRef.current); dragRafRef.current = null }
+    if (resizeRafRef.current) { window.cancelAnimationFrame(resizeRafRef.current); resizeRafRef.current = null }
+
     if (panningRef.current) { panningRef.current = null; setIsPanning(false); return }
 
     if (connectorDrag) {
@@ -937,6 +1083,42 @@ export function CollaborativeCanvas({
       }
       setConnectorDrag(null)
       pendingDragRef.current = null
+      return
+    }
+
+    // Finalize drag-to-create
+    if (dragCreateRef.current && canEdit) {
+      const dc = dragCreateRef.current
+      dragCreateRef.current = null
+      setPreviewCreate(null)
+      const dragW = Math.abs(dc.currentX - dc.startX)
+      const dragH = Math.abs(dc.currentY - dc.startY)
+      const MIN_DRAG = 15
+      const [dw, dh] = DEFAULT_ITEM_SIZES[dc.tool] ?? [220, 160]
+      let itemX: number, itemY: number, itemW: number, itemH: number
+      if (dragW > MIN_DRAG || dragH > MIN_DRAG) {
+        itemX = Math.min(dc.startX, dc.currentX)
+        itemY = Math.min(dc.startY, dc.currentY)
+        itemW = Math.max(dragW, 80)
+        itemH = Math.max(dragH, 60)
+      } else {
+        itemX = dc.startX - dw / 2
+        itemY = dc.startY - dh / 2
+        itemW = dw; itemH = dh
+      }
+      const item = createItemAtBounds(dc.tool, Math.max(0, itemX), Math.max(0, itemY), itemW, itemH)
+      if (item) {
+        beginInteraction()
+        setCanvasDoc((prev) => {
+          const parentFrameId = getParentFrameId(item, prev.items)
+          return { ...prev, items: [...prev.items, { ...item, parentFrameId }] }
+        })
+        setSelectedId(item.id)
+        setEditingId(null)
+        setTool('select')
+        skipNextClickRef.current = true
+        endInteraction()
+      }
       return
     }
 
@@ -963,22 +1145,40 @@ export function CollaborativeCanvas({
     setPreviewPoints([])
     if (rafDrawRef.current) { window.cancelAnimationFrame(rafDrawRef.current); rafDrawRef.current = null }
 
-    if (dragId) { emitUnlock(dragId); didMutate = true }
+    // After drag ends, recompute parentFrameId with final positions
+    if (dragId) {
+      emitUnlock(dragId)
+      didMutate = true
+      setCanvasDoc((prev) => ({
+        ...prev,
+        items: prev.items.map((item) => {
+          if (!isPositioned(item)) return item
+          return { ...item, parentFrameId: getParentFrameId(item, prev.items, isFrame(item) ? item.id : undefined) } as CanvasItem
+        }),
+      }))
+    }
     if (resizedId && resizedId !== dragId) { emitUnlock(resizedId); didMutate = true }
     if (didMutate) endInteraction()
     if (hadPendingDrag) setEditingId(null)
   }
 
-  const onWheel = (e: React.WheelEvent<HTMLDivElement>) => {
-    e.preventDefault()
-    if (e.ctrlKey || e.metaKey) {
-      const rect = containerRef.current?.getBoundingClientRect()
-      if (!rect) return
-      applyZoom(e.deltaY < 0 ? 1.1 : 0.9, e.clientX - rect.left, e.clientY - rect.top)
-    } else {
-      setPan((prev) => ({ x: prev.x - e.deltaX, y: prev.y - e.deltaY }))
+  // Native (non-passive) wheel listener — React 17+ registers wheel as passive by default,
+  // which silently swallows preventDefault() and causes a render loop on every scroll event.
+  useEffect(() => {
+    const el = containerRef.current
+    if (!el) return
+    const onNativeWheel = (e: WheelEvent) => {
+      e.preventDefault()
+      if (e.ctrlKey || e.metaKey) {
+        const rect = el.getBoundingClientRect()
+        applyZoom(e.deltaY < 0 ? 1.1 : 0.9, e.clientX - rect.left, e.clientY - rect.top)
+      } else {
+        setPan((prev) => ({ x: prev.x - e.deltaX, y: prev.y - e.deltaY }))
+      }
     }
-  }
+    el.addEventListener('wheel', onNativeWheel, { passive: false })
+    return () => el.removeEventListener('wheel', onNativeWheel)
+  }, [applyZoom])
 
   // ─── Drop handler ─────────────────────────────────────────────────────────
 
@@ -1085,7 +1285,12 @@ export function CollaborativeCanvas({
 
   // ─── Cursor ──────────────────────────────────────────────────────────────
 
-  const cursor = isPanning ? 'grabbing' : spaceHeldRef.current ? 'grab' : tool === 'pen' ? 'crosshair' : tool !== 'select' ? 'cell' : 'default'
+  const cursor = isPanning
+    ? 'grabbing'
+    : (spaceHeldRef.current || tool === 'hand') ? 'grab'
+    : tool === 'pen' ? 'crosshair'
+    : (tool === 'select' || tool === 'connector') ? 'default'
+    : 'crosshair'  // shape/content creation tools
 
   // ─── Render ───────────────────────────────────────────────────────────────
 
@@ -1145,24 +1350,28 @@ export function CollaborativeCanvas({
         {/* Teacher-only actions */}
         {role === 'teacher' && (
           <>
-            <Button
-              size="sm"
-              variant="outline"
-              className="h-7 gap-1.5 text-xs"
-              onClick={() => setShowTemplates(true)}
-            >
-              <LayoutTemplate className="h-3.5 w-3.5" />
-              Template
+            <Button size="sm" variant="outline" className="h-7 gap-1.5 text-xs" onClick={() => setShowTemplates(true)}>
+              <LayoutTemplate className="h-3.5 w-3.5" /> Template
             </Button>
-            <Button
-              size="sm"
-              variant={studentsCanWrite ? 'default' : 'outline'}
-              className={`h-7 gap-1.5 text-xs ${studentsCanWrite ? 'bg-green-600 hover:bg-green-700 text-white border-green-600' : ''}`}
-              onClick={() => setShowShare(true)}
+            {/* Inline student write toggle — always visible for teacher */}
+            <button
+              type="button"
+              title={studentsCanWrite ? 'Studenti possono modificare — clicca per disabilitare' : 'Clicca per permettere agli studenti di modificare'}
+              onClick={toggleStudentsCanWrite}
+              className={`flex h-7 items-center gap-1.5 rounded-lg border px-2.5 text-xs font-medium transition-all ${
+                studentsCanWrite
+                  ? 'border-green-300 bg-green-50 text-green-700 hover:bg-green-100'
+                  : 'border-slate-200 text-slate-500 hover:border-slate-300 hover:bg-slate-50'
+              }`}
             >
               <Users className="h-3.5 w-3.5" />
-              {studentsCanWrite ? 'Studenti attivi' : 'Condividi'}
-            </Button>
+              <span className="hidden sm:inline">{studentsCanWrite ? 'Studenti ON' : 'Studenti'}</span>
+              <span
+                className={`flex h-4 w-7 shrink-0 items-center rounded-full transition-colors ${studentsCanWrite ? 'bg-green-500' : 'bg-slate-300'}`}
+              >
+                <span className={`mx-0.5 h-3 w-3 rounded-full bg-white shadow transition-transform ${studentsCanWrite ? 'translate-x-3' : 'translate-x-0'}`} />
+              </span>
+            </button>
           </>
         )}
 
@@ -1177,9 +1386,9 @@ export function CollaborativeCanvas({
         </button>
       </div>
 
-      {/* ── Context property bar ─────────────────────────────────────────── */}
-      {selectedItem && (
-        <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-slate-100 bg-slate-50 px-3 py-1 text-xs">
+      {/* ── Context property bar — always visible ───────────────────────── */}
+      <div className={`flex shrink-0 flex-wrap items-center gap-2 border-b border-slate-100 bg-slate-50 px-3 py-1 text-xs transition-opacity duration-100 ${!selectedItem ? 'opacity-40 pointer-events-none' : ''}`} style={{ minHeight: 34 }}>
+        {selectedItem ? (<>
           {isShape(selectedItem) && (
             <>
               <span className="text-slate-500">Forma</span>
@@ -1226,8 +1435,10 @@ export function CollaborativeCanvas({
               <Trash2 className="h-3.5 w-3.5" /> Elimina
             </button>
           )}
-        </div>
-      )}
+        </>) : (
+          <span className="text-[11px] text-slate-400 select-none">Seleziona un elemento per vedere le proprietà</span>
+        )}
+      </div>
 
       {/* ── Main area ────────────────────────────────────────────────────── */}
       <div className="flex min-h-0 flex-1">
@@ -1235,17 +1446,17 @@ export function CollaborativeCanvas({
         {canEdit && (
           <div className="flex w-11 shrink-0 flex-col items-center gap-0.5 border-r border-slate-200 bg-white py-2">
             <ToolButton activeTool={tool} t="select" icon={MousePointer} label="Seleziona (V)" onSetTool={setTool} />
+            <ToolButton activeTool={tool} t="hand" icon={Move} label="Muovi canvas (H)" onSetTool={setTool} />
             <div className="my-0.5 h-px w-7 bg-slate-200" />
-            <ToolButton activeTool={tool} t="postit" icon={StickyNote} label="Post-it (P)" onSetTool={setTool} />
-            <ToolButton activeTool={tool} t="frame" icon={Frame} label="Frame (F)" onSetTool={setTool} />
+            <ToolButton activeTool={tool} t="postit" icon={StickyNote} label="Post-it — trascina per dimensionare (P)" onSetTool={setTool} />
+            <ToolButton activeTool={tool} t="frame" icon={Frame} label="Frame — trascina per dimensionare (F)" onSetTool={setTool} />
             <ToolButton activeTool={tool} t="text" icon={Type} label="Testo (T)" onSetTool={setTool} />
             <div className="my-0.5 h-px w-7 bg-slate-200" />
-            <ToolButton activeTool={tool} t="roundedRect" icon={RectangleHorizontal} label="Rettangolo (R)" onSetTool={setTool} />
-            <ToolButton activeTool={tool} t="triangle" icon={Triangle} label="Triangolo" onSetTool={setTool} />
-            <ToolButton activeTool={tool} t="parallelogram" icon={() => <span className="text-xs leading-none">▱</span>} label="Parallelogramma" onSetTool={setTool} />
+            <ToolButton activeTool={tool} t="roundedRect" icon={RectangleHorizontal} label="Rettangolo — trascina per dimensionare (R)" onSetTool={setTool} />
+            <ToolButton activeTool={tool} t="triangle" icon={Triangle} label="Triangolo — trascina per dimensionare" onSetTool={setTool} />
             <div className="my-0.5 h-px w-7 bg-slate-200" />
-            <ToolButton activeTool={tool} t="connector" icon={MoveRight} label="Connettore (C)" onSetTool={setTool} />
-            <ToolButton activeTool={tool} t="pen" icon={Pencil} label="Penna (D)" onSetTool={setTool} />
+            <ToolButton activeTool={tool} t="connector" icon={MoveRight} label="Connettore — trascina da un punto di ancoraggio (C)" onSetTool={setTool} />
+            <ToolButton activeTool={tool} t="pen" icon={Pencil} label="Penna libera (D)" onSetTool={setTool} />
             <div className="my-0.5 h-px w-7 bg-slate-200" />
             <button type="button" title="Elimina selezionato (Del)" onClick={deleteSelected} disabled={!selectedId} className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-red-50 hover:text-red-500 disabled:opacity-30">
               <Eraser className="h-4 w-4" />
@@ -1271,7 +1482,7 @@ export function CollaborativeCanvas({
             )}
 
             {/* Shape color (when shape tool active) */}
-            {(tool === 'roundedRect' || tool === 'triangle' || tool === 'parallelogram') && (
+            {(tool === 'roundedRect' || tool === 'triangle') && (
               <>
                 <div className="my-0.5 h-px w-7 bg-slate-200" />
                 <Input type="color" value={newShapeFill} onChange={(e) => setNewShapeFill(e.target.value)} className="h-7 w-7 cursor-pointer rounded border-slate-200 p-0.5" title="Riempimento" />
@@ -1286,12 +1497,12 @@ export function CollaborativeCanvas({
           ref={containerRef}
           className="relative flex-1 overflow-hidden bg-slate-50"
           style={{ cursor }}
-          onMouseDown={onContainerMouseDown}
+          onMouseDown={(e) => { closeContextMenu(); onContainerMouseDown(e) }}
           onMouseMove={onMouseMove}
           onMouseUp={onMouseUp}
           onMouseLeave={onMouseUp}
           onClick={onCanvasClick}
-          onWheel={onWheel}
+          onContextMenu={(e) => openContextMenu(e, null)}
           onDragEnter={(e) => { e.preventDefault(); if (canEdit) setIsDropActive(true) }}
           onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setIsDropActive(false) }}
           onDragOver={(e) => { e.preventDefault(); if (canEdit) { e.dataTransfer.dropEffect = 'copy'; setIsDropActive(true) } }}
@@ -1324,6 +1535,14 @@ export function CollaborativeCanvas({
               )}
             </svg>
 
+            {/* Drag-to-create ghost */}
+            {previewCreate && (
+              <div
+                className="pointer-events-none absolute rounded border-2 border-dashed border-blue-500 bg-blue-100/20"
+                style={{ left: previewCreate.x, top: previewCreate.y, width: previewCreate.w, height: previewCreate.h }}
+              />
+            )}
+
             {/* Items */}
             {canvasDoc.items.filter((item) => !isPath(item) && !isConnector(item)).map((item) => {
               const lockedByOther = isLockedByOther(item.id)
@@ -1333,8 +1552,13 @@ export function CollaborativeCanvas({
                 <div
                   key={item.id}
                   className={`absolute ${selectedId === item.id ? 'ring-2 ring-blue-500 ring-offset-1' : ''} ${lockedByOther ? 'opacity-60' : ''}`}
-                  style={{ left: item.x, top: item.y, width: item.w, height: item.h }}
+                  style={{
+                    left: item.x, top: item.y, width: item.w, height: item.h,
+                    zIndex: selectedId === item.id ? 100 : item.type === 'frame' ? 1 : 10,
+                  }}
                   onMouseDown={(e) => onMouseDownItem(e, item)}
+                  onClick={(e) => e.stopPropagation()}
+                  onContextMenu={(e) => openContextMenu(e, item.id)}
                   onDoubleClick={() => {
                     if (!canEdit || lockedByOther) return
                     if (isTextEditable(item)) { setEditingId(item.id); setSelectedId(item.id) }
@@ -1454,10 +1678,21 @@ export function CollaborativeCanvas({
                     />
                   )}
 
-                  {/* Lock badge */}
+                  {/* Lock badge — teacher can force-unlock */}
                   {lockedByOther && (
-                    <div className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-md bg-slate-100/40">
-                      <span className="rounded bg-slate-700/70 px-1.5 py-0.5 text-xs text-white">In uso</span>
+                    <div className="absolute inset-0 flex items-center justify-center rounded-md bg-slate-100/40">
+                      {role === 'teacher' ? (
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); forceUnlockItem(item.id) }}
+                          className="rounded bg-amber-600/80 px-2 py-0.5 text-xs text-white hover:bg-amber-700/90"
+                          title="Forza sblocco"
+                        >
+                          🔒 Sblocca
+                        </button>
+                      ) : (
+                        <span className="pointer-events-none rounded bg-slate-700/70 px-1.5 py-0.5 text-xs text-white">In uso</span>
+                      )}
                     </div>
                   )}
                 </div>
@@ -1483,10 +1718,17 @@ export function CollaborativeCanvas({
             </div>
           )}
 
-          {/* Read-only badge for students */}
-          {!canEdit && role === 'student' && !studentsCanWrite && (
-            <div className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs text-slate-500 shadow-sm">
-              Solo visualizzazione
+          {/* Student banner — different messages depending on state */}
+          {role === 'student' && !canEdit && (
+            <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-2 rounded-full border border-slate-200 bg-white/95 px-4 py-1.5 text-xs text-slate-500 shadow-md backdrop-blur-sm">
+              <span className="h-1.5 w-1.5 rounded-full bg-slate-400" />
+              Solo visualizzazione · il docente non ha ancora abilitato le modifiche
+            </div>
+          )}
+          {role === 'student' && canEdit && (
+            <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-2 rounded-full border border-green-200 bg-green-50/95 px-4 py-1.5 text-xs text-green-700 shadow-md backdrop-blur-sm">
+              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-green-500" />
+              Modifica abilitata dal docente
             </div>
           )}
 
@@ -1497,6 +1739,64 @@ export function CollaborativeCanvas({
           </div>
         </div>
       </div>
+
+      {/* ── Context menu ────────────────────────────────────────────────── */}
+      {contextMenu && (
+        <div
+          className="fixed z-[200] min-w-[180px] rounded-xl border border-slate-200 bg-white py-1 shadow-xl"
+          style={{ left: contextMenu.screenX, top: contextMenu.screenY }}
+          onMouseDown={(e) => e.stopPropagation()}
+          onClick={(e) => e.stopPropagation()}
+          onContextMenu={(e) => e.preventDefault()}
+        >
+          {contextMenu.itemId ? (
+            <>
+              <div className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400">Livello Z</div>
+              <button type="button" className="flex w-full items-center gap-2 px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50" onClick={() => { reorderItem(contextMenu.itemId!, 'front'); closeContextMenu() }}>
+                <span className="text-slate-400">⬆⬆</span> Porta in primo piano
+              </button>
+              <button type="button" className="flex w-full items-center gap-2 px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50" onClick={() => { reorderItem(contextMenu.itemId!, 'forward'); closeContextMenu() }}>
+                <span className="text-slate-400">⬆</span> Porta avanti
+              </button>
+              <button type="button" className="flex w-full items-center gap-2 px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50" onClick={() => { reorderItem(contextMenu.itemId!, 'backward'); closeContextMenu() }}>
+                <span className="text-slate-400">⬇</span> Manda indietro
+              </button>
+              <button type="button" className="flex w-full items-center gap-2 px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50" onClick={() => { reorderItem(contextMenu.itemId!, 'back'); closeContextMenu() }}>
+                <span className="text-slate-400">⬇⬇</span> Manda in secondo piano
+              </button>
+              <div className="mx-2 my-1 h-px bg-slate-100" />
+              <div className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400">Azioni</div>
+              <button type="button" className="flex w-full items-center gap-2 px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50" onClick={() => { duplicateItem(contextMenu.itemId!); closeContextMenu() }}>
+                <span className="text-slate-400">⧉</span> Duplica
+              </button>
+              {isLockedByOther(contextMenu.itemId) && role === 'teacher' && (
+                <button type="button" className="flex w-full items-center gap-2 px-3 py-1.5 text-xs text-amber-700 hover:bg-amber-50" onClick={() => { forceUnlockItem(contextMenu.itemId!); closeContextMenu() }}>
+                  <span>🔓</span> Forza sblocco
+                </button>
+              )}
+              <button type="button" className="flex w-full items-center gap-2 px-3 py-1.5 text-xs text-red-600 hover:bg-red-50" onClick={() => { setSelectedId(contextMenu.itemId!); deleteSelected(); closeContextMenu() }}>
+                <Trash2 className="h-3 w-3" /> Elimina
+              </button>
+            </>
+          ) : (
+            <>
+              <div className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400">Canvas</div>
+              <button type="button" className="flex w-full items-center gap-2 px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50" onClick={() => { fitToScreen(); closeContextMenu() }}>
+                <Maximize2 className="h-3.5 w-3.5 text-slate-400" /> Adatta alla schermata
+              </button>
+              {role === 'teacher' && (
+                <button type="button" className="flex w-full items-center gap-2 px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50" onClick={() => { setShowTemplates(true); closeContextMenu() }}>
+                  <LayoutTemplate className="h-3.5 w-3.5 text-slate-400" /> Template
+                </button>
+              )}
+            </>
+          )}
+        </div>
+      )}
+      {/* Click-outside overlay to close context menu */}
+      {contextMenu && (
+        <div className="fixed inset-0 z-[199]" onMouseDown={closeContextMenu} onContextMenu={(e) => { e.preventDefault(); closeContextMenu() }} />
+      )}
 
       {/* ── Templates modal ─────────────────────────────────────────────── */}
       {showTemplates && (
@@ -1537,44 +1837,6 @@ export function CollaborativeCanvas({
         </div>
       )}
 
-      {/* ── Share / permissions modal ────────────────────────────────────── */}
-      {showShare && role === 'teacher' && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 p-4" onClick={() => setShowShare(false)}>
-          <div className="w-full max-w-sm rounded-2xl bg-white shadow-2xl" onClick={(e) => e.stopPropagation()}>
-            <div className="border-b px-5 py-4">
-              <h2 className="text-base font-semibold text-slate-800">Condivisione lavagna</h2>
-            </div>
-            <div className="space-y-4 p-5">
-              <div className="rounded-lg bg-slate-50 p-3 text-sm text-slate-600">
-                <span className="font-medium text-slate-800">📺 Visibile agli studenti</span><br />
-                La lavagna è sempre visibile agli studenti della sessione attiva.
-              </div>
-              <div className="flex items-center justify-between gap-4 rounded-lg border border-slate-200 p-3">
-                <div>
-                  <p className="text-sm font-medium text-slate-800">Studenti possono modificare</p>
-                  <p className="text-xs text-slate-500">Permetti agli studenti di aggiungere e modificare elementi</p>
-                </div>
-                <button
-                  type="button"
-                  onClick={toggleStudentsCanWrite}
-                  className={`flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${studentsCanWrite ? 'bg-green-500' : 'bg-slate-300'}`}
-                >
-                  <span className={`mx-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${studentsCanWrite ? 'translate-x-5' : 'translate-x-0'}`} />
-                </button>
-              </div>
-              {studentsCanWrite && (
-                <div className="flex items-center gap-2 rounded-lg bg-green-50 p-3 text-sm text-green-700">
-                  <Check className="h-4 w-4 shrink-0" />
-                  Gli studenti possono ora modificare la lavagna in tempo reale.
-                </div>
-              )}
-            </div>
-            <div className="border-t px-5 py-3 text-right">
-              <Button variant="ghost" size="sm" onClick={() => setShowShare(false)}>Chiudi</Button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   )
 }

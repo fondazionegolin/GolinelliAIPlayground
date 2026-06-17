@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, type CSSProperties } from 'react'
 import { Link, useNavigate, useLocation } from 'react-router-dom'
-import { User, Settings, LogOut, ChevronDown, Users, MessageSquare, Mic, FileText, Check, Brain, MonitorPlay, FileCode2, KeyRound, Loader2, LayoutDashboard, ShieldCheck, BookOpen, Zap, Box } from 'lucide-react'
+import { User, Settings, LogOut, ChevronDown, Users, MessageSquare, Mic, FileText, Check, Brain, FileCode2, KeyRound, Loader2, ShieldCheck, BookOpen, Zap, Box } from 'lucide-react'
 import { Button } from './ui/button'
 import { useToast } from '@/components/ui/use-toast'
 import { LogoMark } from './LogoMark'
@@ -17,7 +17,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { NavbarCalendarClock } from './NavbarCalendarClock'
 import WhatsNewModal from './WhatsNewModal'
 import { buildAccentNavbarStyle, buildAccentNavClusterStyle } from '@/lib/navbarGlass'
-import { Badge } from '@/components/ui/badge'
+import { CreditBalancePill } from './CreditBalancePill'
 
 interface TeacherProfile {
   firstName: string
@@ -65,6 +65,7 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
   const [showSettings, setShowSettings] = useState(false)
   const [showWhatsNew, setShowWhatsNew] = useState(false)
   const [voiceActive, setVoiceActive] = useState(false)
+  const processedNotificationIdsRef = useRef<Set<string>>(new Set())
   const dropdownRef = useRef<HTMLDivElement>(null)
   const sessionsMenuRef = useRef<HTMLDivElement>(null)
   const accentTheme = getTeacherAccentTheme(profile.uiAccent)
@@ -159,7 +160,11 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
           timestamp: nd.timestamp || new Date().toISOString(),
           read: false,
         }
-        setTeacherNotifications(prev => [newNotification, ...prev])
+        const dedupeKey = `${nd.type}:${nd.session_id || ''}:${nd.student_id || ''}:${nd.timestamp || latestNotification.created_at || latestNotification.id}`
+        if (processedNotificationIdsRef.current.has(latestNotification.id) || processedNotificationIdsRef.current.has(dedupeKey)) return
+        processedNotificationIdsRef.current.add(latestNotification.id)
+        processedNotificationIdsRef.current.add(dedupeKey)
+        setTeacherNotifications(prev => prev.some(n => n.id === newNotification.id) ? prev : [newNotification, ...prev])
       }
     }
   }, [socketNotifications])
@@ -297,9 +302,7 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
   const navItems = [
     { path: '/teacher', label: t('navbar.nav_support'), icon: MessageSquare },
     { path: '/teacher/classes', label: t('navbar.nav_classes'), icon: Users },
-    { path: '/teacher/demo', label: t('navbar.nav_studentbot'), icon: MonitorPlay },
     { path: '/teacher/documents', label: t('navbar.nav_documents'), icon: FileText },
-    { path: '/teacher/wiki', label: t('navbar.nav_wiki'), icon: BookOpen },
     { path: '/teacher/ml-lab', label: t('navbar.nav_ml_lab'), icon: Brain },
     { path: '/teacher/notebooks', label: t('navbar.nav_notebook'), icon: FileCode2 },
     { path: '/teacher/live-interaction', label: 'Live', icon: Zap },
@@ -338,12 +341,9 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
             {/* Logo/Brand */}
             <div className="flex items-center gap-3 cursor-pointer" onClick={() => navigate('/teacher')}>
               <LogoMark className="h-9 w-9" />
-              <div className="flex items-center gap-2">
-                <span className="flex items-center text-[18px] leading-none tracking-tight" style={{ fontFamily: '"SofiaPro"' }}>
-                  <span className="font-bold text-[var(--logo-ink)]">
-                    Golinelli
-                  </span>
-                  <span className="font-black text-[var(--logo-pink)]">.ai</span>
+              <div className="flex items-center gap-1.5">
+                <span className="brand-wordmark">
+                  Golinelli<span style={{ color: 'var(--logo-pink)', WebkitTextFillColor: 'var(--logo-pink)' }}>.ai</span>
                 </span>
                 <button
                   type="button"
@@ -353,9 +353,9 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
                   }}
                   className="inline-flex items-center self-center transition-transform hover:-translate-y-px"
                 >
-                  <Badge tone="warning" surface="soft" density="compact" className="inline-flex min-h-[22px] items-center px-2 py-0.5 text-[10px] font-bold leading-none tracking-[0.14em]">
+                  <span className="brand-beta-badge">
                     BETA
-                  </Badge>
+                  </span>
                 </button>
               </div>
             </div>
@@ -370,7 +370,6 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
                       label={item.label}
                       isActive={isActive(item.path)}
                       isAdjacent={Math.abs(idx - activeIdx) === 1}
-                      accentClass="bg-[color:var(--teacher-accent-soft-strong)]"
                       accentTextClass="text-[var(--teacher-accent-text)]"
                     />
                   </Link>
@@ -400,22 +399,21 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
               <div className="relative flex items-center gap-2" ref={sessionsMenuRef}>
                 <button
                   onClick={() => setShowSessionsMenu(!showSessionsMenu)}
-                  className="hidden lg:flex items-center gap-1.5 h-auto py-1.5 px-2.5 rounded-xl border bg-white/92 border-slate-200 hover:bg-white hover:border-slate-300 transition-colors duration-150 cursor-pointer shadow-[var(--shadow-sm)]"
+                  className="navbar-inline-control hidden min-h-11 items-center gap-2 rounded-xl px-3 py-2 lg:flex"
+                  style={{ '--btn-tone': accentTheme.accent } as CSSProperties}
                 >
-                  <div className={`w-2 h-2 rounded-full flex-shrink-0 ${currentSession ? 'bg-green-500 animate-pulse shadow-sm shadow-green-300' : 'bg-slate-300'}`} />
+                  <div className={`h-2.5 w-2.5 flex-shrink-0 rounded-full ${currentSession ? 'bg-green-500 animate-pulse shadow-sm shadow-green-300' : 'bg-slate-300'}`} />
                   <div className="text-left min-w-0">
-                    <span className="text-[11px] font-semibold text-[var(--teacher-accent-text)] truncate max-w-[120px] block leading-tight">{currentSession ? currentSession.name : t('navbar.no_session')}</span>
+                    <span className="block max-w-[190px] truncate text-[13px] font-black leading-tight text-[var(--teacher-accent-text)]">{currentSession ? currentSession.name : t('navbar.no_session')}</span>
                     {currentSession?.joinCode && (
-                      <span className="text-[9px] font-mono font-bold tracking-widest leading-tight block" style={{ color: accentTheme.accent }}>{currentSession.joinCode}</span>
+                      <span className="block text-[10px] font-mono font-black leading-tight tracking-widest" style={{ color: accentTheme.accent }}>{currentSession.joinCode}</span>
                     )}
                   </div>
-                  <ChevronDown className={`h-3 w-3 ml-0.5 text-slate-400 transition-transform flex-shrink-0 ${showSessionsMenu ? 'rotate-180' : ''}`} />
+                  <ChevronDown className={`ml-0.5 h-3.5 w-3.5 flex-shrink-0 text-slate-500 transition-transform ${showSessionsMenu ? 'rotate-180' : ''}`} />
                 </button>
                 <button
-                  className="relative hidden lg:flex items-center justify-center p-2.5 rounded-xl border transition-colors duration-150 shadow-[var(--shadow-sm)] hover:-translate-y-px"
-                  style={chatSidebarOpen
-                    ? { backgroundColor: accentTheme.accent, borderColor: accentTheme.accent, color: '#fff' }
-                    : { backgroundColor: 'rgba(255,255,255,0.92)', borderColor: `${accentTheme.accent}35`, color: accentTheme.text }}
+                  className={`navbar-inline-control relative hidden items-center justify-center rounded-xl p-2.5 lg:flex ${chatSidebarOpen ? 'navbar-inline-control-active' : ''}`}
+                  style={{ '--btn-tone': accentTheme.accent } as CSSProperties}
                   onClick={onToggleChatSidebar}
                   title={chatSidebarOpen ? t('navbar.hide_class_chat') : t('navbar.show_class_chat')}
                 >
@@ -506,22 +504,24 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
                 )}
               </div>
 
+              <CreditBalancePill audience="teacher" accentColor={accentTheme.accent} />
+
               {/* Avatar Dropdown */}
               <div className="relative" ref={dropdownRef}>
                 <button
                   onClick={() => setShowDropdown(!showDropdown)}
-                  className="flex items-center gap-1 hover:bg-slate-100 rounded-full p-1 transition-colors border border-transparent hover:border-slate-200"
+                  className="group flex items-center gap-1 rounded-full border border-transparent p-1 transition-colors hover:bg-slate-100"
                   title={`${profile.firstName} ${profile.lastName}`}
                 >
                   {profile.avatarUrl ? (
                     <img
                       src={profile.avatarUrl}
                       alt="Avatar"
-                      className="w-8 h-8 rounded-full object-cover"
+                      className="h-10 w-10 rounded-full object-cover transition-transform duration-200 group-hover:scale-110"
                       style={{ boxShadow: `0 0 0 2px ${accentTheme.accent}` }}
                     />
                   ) : (
-                    <div className={`w-8 h-8 rounded-full ${getAvatarColor()} flex items-center justify-center text-white text-xs font-bold`} style={{ boxShadow: `0 0 0 2px ${accentTheme.accent}` }}>
+                    <div className={`h-10 w-10 rounded-full ${getAvatarColor()} flex items-center justify-center text-sm font-bold text-white transition-transform duration-200 group-hover:scale-110`} style={{ boxShadow: `0 0 0 2px ${accentTheme.accent}` }}>
                       {getInitials()}
                     </div>
                   )}
@@ -569,6 +569,16 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
                       </>
                     )}
                     <div className="h-px bg-slate-50 my-1"></div>
+                    <button
+                      onClick={() => {
+                        setShowDropdown(false)
+                        navigate('/teacher/wiki')
+                      }}
+                      className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-600 hover:bg-slate-50 hover:text-[var(--teacher-accent-text)] transition-colors"
+                    >
+                      <BookOpen className="h-4 w-4" />
+                      Guida all'uso
+                    </button>
                     <button
                       onClick={handleLogout}
                       className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 transition-colors"
@@ -899,8 +909,8 @@ function SettingsModal({ profile, onSave, onClose }: SettingsModalProps) {
                   type="button"
                   size="sm"
                   disabled={changingPassword}
-                  className="w-full text-white"
-                  style={{ backgroundColor: modalAccentTheme.accent }}
+                  className="w-full"
+                  style={{ '--btn-tone': modalAccentTheme.accent } as CSSProperties}
                   onClick={handleChangePassword}
                 >
                   {changingPassword ? <><Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />Aggiornamento…</> : 'Aggiorna password'}
@@ -914,7 +924,7 @@ function SettingsModal({ profile, onSave, onClose }: SettingsModalProps) {
             <Button type="button" variant="ghost" onClick={onClose} className="flex-1 text-slate-500 hover:text-slate-700 hover:bg-slate-100">
               {t('common.cancel')}
             </Button>
-            <Button type="submit" className="flex-1 text-white shadow-lg" style={{ backgroundColor: modalAccentTheme.accent }} disabled={isUploading}>
+            <Button type="submit" className="flex-1" style={{ '--btn-tone': modalAccentTheme.accent } as CSSProperties} disabled={isUploading}>
               {t('common.save')}
             </Button>
           </div>

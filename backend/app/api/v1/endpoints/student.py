@@ -1,7 +1,7 @@
 import json
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, or_, func
+from sqlalchemy import select, or_, func, desc
 from typing import Annotated
 from datetime import datetime
 from uuid import UUID
@@ -12,7 +12,8 @@ from app.core.security import create_student_join_token, get_password_hash, veri
 from app.api.deps import get_current_student
 from app.models.session import Session, SessionStudent, SessionModule
 from app.models.credits import CreditLimit
-from app.models.enums import LimitLevel
+from app.models.credits import CreditTransaction
+from app.models.enums import LimitLevel, CreditTransactionType
 from app.models.task import Task, TaskSubmission, TaskStatus, TaskType
 from app.models.document_draft import DocumentDraft
 from app.models.session_canvas import SessionCanvas
@@ -21,6 +22,7 @@ from app.models.session import Class
 from app.models.tenant import Tenant
 from app.schemas.document_draft import DocumentDraftCreate, DocumentDraftUpdate
 from app.models.enums import SessionStatus
+from app.services.credit_service import credit_service
 from app.schemas.auth import (
     StudentAccessCheckRequest,
     StudentAccessCheckResponse,
@@ -28,6 +30,7 @@ from app.schemas.auth import (
     StudentJoinResponse,
 )
 from app.schemas.session import SessionResponse, SessionModuleResponse
+from app.schemas.credits import CreditUsageHistoryItem
 from app.realtime.gateway import sio
 
 router = APIRouter()
@@ -268,6 +271,57 @@ async def get_session_info(
             for m in modules
         ],
     }
+
+
+@router.get("/credits/balance")
+async def get_student_credit_balance(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    student: Annotated[SessionStudent, Depends(get_current_student)],
+):
+    session = (await db.execute(
+        select(Session).where(Session.id == student.session_id)
+    )).scalar_one_or_none()
+    if not session:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
+
+    return await credit_service.get_balance(
+        db,
+        student.tenant_id,
+        class_id=session.class_id,
+        session_id=session.id,
+        student_id=student.id,
+    )
+
+
+@router.get("/credits/history", response_model=list[CreditUsageHistoryItem])
+async def get_student_credit_history(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    student: Annotated[SessionStudent, Depends(get_current_student)],
+    limit: int = Query(20, ge=1, le=50),
+):
+    rows = (await db.execute(
+        select(CreditTransaction)
+        .where(
+            CreditTransaction.tenant_id == student.tenant_id,
+            CreditTransaction.student_id == student.id,
+            CreditTransaction.transaction_type == CreditTransactionType.API_CALL,
+        )
+        .order_by(desc(CreditTransaction.timestamp))
+        .limit(limit)
+    )).scalars().all()
+
+    return [
+        CreditUsageHistoryItem(
+            id=tx.id,
+            timestamp=tx.timestamp,
+            provider=tx.provider,
+            model=tx.model,
+            cost_eur=float(tx.cost or 0.0),
+            cost_credits=round(float(tx.cost or 0.0) * 100, 6),
+            usage_details=tx.usage_details,
+        )
+        for tx in rows
+    ]
 
 
 @router.get("/profile")

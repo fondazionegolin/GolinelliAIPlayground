@@ -27,7 +27,7 @@ from app.schemas.teacherbot import (
     TeacherbotTestMessage, TeacherbotTestResponse,
     TeacherbotReportResponse, StudentTeacherbotResponse,
 )
-from app.services.llm_service import llm_service
+from app.services.llm_service import llm_service, normalize_llm_model
 from app.services.credit_service import credit_service
 from app.services.education_level import get_school_grade_instruction
 from app.services.environmental_impact import enrich_usage_with_environmental_impact
@@ -145,7 +145,7 @@ async def create_teacherbot(
         enable_reporting=request.enable_reporting,
         report_prompt=request.report_prompt,
         llm_provider=request.llm_provider,
-        llm_model=request.llm_model,
+        llm_model=normalize_llm_model(request.llm_provider, request.llm_model),
         temperature=request.temperature,
         status=TeacherbotStatus.DRAFT,
     )
@@ -213,7 +213,7 @@ async def update_teacherbot(
     if request.llm_provider is not None:
         bot.llm_provider = request.llm_provider
     if request.llm_model is not None:
-        bot.llm_model = request.llm_model
+        bot.llm_model = normalize_llm_model(request.llm_provider or bot.llm_provider, request.llm_model)
     if request.temperature is not None:
         bot.temperature = request.temperature
     if request.status is not None and request.status in [s.value for s in TeacherbotStatus]:

@@ -58,7 +58,7 @@ class Settings(BaseSettings):
     
     # Default LLM settings
     DEFAULT_LLM_PROVIDER: str = "openai"
-    DEFAULT_LLM_MODEL: str = "gpt-4o-mini"
+    DEFAULT_LLM_MODEL: str = "gpt-5.4-mini"
     
     # Embedding
     EMBEDDING_MODEL: str = "text-embedding-3-small"
@@ -103,6 +103,10 @@ class Settings(BaseSettings):
     
     # File upload limits
     MAX_UPLOAD_SIZE_MB: int = 50
+    OCR_MAX_UPLOAD_SIZE_MB: int = 20
+    OCR_ENGINE: str = "auto"  # auto, paddle, trocr, tesseract
+    OCR_LANGUAGE: str = "it"
+    OCR_TROCR_MODEL: str = "microsoft/trocr-base-handwritten"
     ALLOWED_MIME_TYPES: list[str] = [
         "application/pdf",
         "text/html",

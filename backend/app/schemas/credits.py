@@ -77,6 +77,27 @@ class ConsumptionStats(BaseModel):
     model_breakdown: Dict[str, float]
     daily_usage: List[Dict[str, Any]] # [{"date": "2023-10-01", "cost": 1.2}]
 
+
+class CreditBalanceResponse(BaseModel):
+    credits_remaining: Optional[int] = None
+    credits_used: int
+    credits_cap: Optional[int] = None
+    eur_remaining: Optional[float] = None
+    eur_used: float
+    eur_cap: Optional[float] = None
+    limit_level: Optional[str] = None
+    period_end: Optional[datetime] = None
+
+
+class CreditUsageHistoryItem(BaseModel):
+    id: UUID
+    timestamp: datetime
+    provider: Optional[str] = None
+    model: Optional[str] = None
+    cost_eur: float
+    cost_credits: float
+    usage_details: Optional[Dict[str, Any]] = None
+
 # --- Invitations ---
 class PlatformInvitationCreate(BaseModel):
     email: str

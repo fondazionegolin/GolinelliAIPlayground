@@ -95,39 +95,35 @@ export default function TeacherbotsPanel({ onOpenSettings, onCreateNew }: Teache
     setSelectedBot(null)
   }
 
-  const getStatusBadge = (status: string) => {
-    const styles: Record<string, string> = {
-      draft: 'bg-slate-100/50 text-slate-600 border-slate-200',
-      testing: 'bg-amber-100/50 text-amber-700 border-amber-200',
-      published: 'bg-green-100/50 text-green-700 border-green-200',
-      archived: 'bg-gray-100/50 text-gray-500 border-gray-200',
-    }
-    const labels: Record<string, string> = {
-      draft: 'Bozza',
-      testing: 'In test',
-      published: 'Pubblicato',
-      archived: 'Archiviato',
-    }
+  const renderStatusDot = (status: string) => {
+    const online = status === 'published'
     return (
-      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide border backdrop-blur-sm ${styles[status] || styles.draft}`}>
-        {labels[status] || status}
+      <span
+        title={online ? 'Pubblicato · online' : 'Non pubblicato · offline'}
+        aria-label={online ? 'online' : 'offline'}
+        className="relative flex h-2.5 w-2.5 flex-shrink-0 items-center justify-center"
+      >
+        {online && (
+          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-40" />
+        )}
+        <span className={`relative inline-flex h-2.5 w-2.5 rounded-full ${online ? 'bg-emerald-500' : 'bg-red-500'}`} />
       </span>
     )
   }
 
   const getCardBg = (color: string) => {
     const colorMap: Record<string, string> = {
-      indigo: 'bg-indigo-50 border-indigo-100 hover:border-indigo-200',
-      blue: 'bg-blue-50 border-blue-100 hover:border-blue-200',
-      green: 'bg-emerald-50 border-emerald-100 hover:border-emerald-200',
-      red: 'bg-red-50 border-red-100 hover:border-red-200',
-      purple: 'bg-purple-50 border-purple-100 hover:border-purple-200',
-      pink: 'bg-pink-50 border-pink-100 hover:border-pink-200',
-      orange: 'bg-orange-50 border-orange-100 hover:border-orange-200',
-      teal: 'bg-teal-50 border-teal-100 hover:border-teal-200',
-      cyan: 'bg-cyan-50 border-cyan-100 hover:border-cyan-200',
+      indigo: 'border-[rgba(123,105,201,0.18)] bg-[rgba(123,105,201,0.075)] hover:border-[rgba(123,105,201,0.30)] hover:bg-[rgba(123,105,201,0.11)]',
+      blue: 'border-[rgba(62,169,244,0.18)] bg-[rgba(62,169,244,0.075)] hover:border-[rgba(62,169,244,0.30)] hover:bg-[rgba(62,169,244,0.11)]',
+      green: 'border-[rgba(62,169,244,0.18)] bg-[rgba(62,169,244,0.075)] hover:border-[rgba(62,169,244,0.30)] hover:bg-[rgba(62,169,244,0.11)]',
+      red: 'border-[rgba(254,0,77,0.18)] bg-[rgba(254,0,77,0.075)] hover:border-[rgba(254,0,77,0.28)] hover:bg-[rgba(254,0,77,0.11)]',
+      purple: 'border-[rgba(123,105,201,0.18)] bg-[rgba(123,105,201,0.075)] hover:border-[rgba(123,105,201,0.30)] hover:bg-[rgba(123,105,201,0.11)]',
+      pink: 'border-[rgba(254,0,77,0.18)] bg-[rgba(254,0,77,0.075)] hover:border-[rgba(254,0,77,0.28)] hover:bg-[rgba(254,0,77,0.11)]',
+      orange: 'border-[rgba(123,105,201,0.18)] bg-[rgba(123,105,201,0.075)] hover:border-[rgba(123,105,201,0.30)] hover:bg-[rgba(123,105,201,0.11)]',
+      teal: 'border-[rgba(62,169,244,0.18)] bg-[rgba(62,169,244,0.075)] hover:border-[rgba(62,169,244,0.30)] hover:bg-[rgba(62,169,244,0.11)]',
+      cyan: 'border-[rgba(62,169,244,0.18)] bg-[rgba(62,169,244,0.075)] hover:border-[rgba(62,169,244,0.30)] hover:bg-[rgba(62,169,244,0.11)]',
     }
-    return colorMap[color] || 'bg-slate-50 border-slate-100 hover:border-slate-200'
+    return colorMap[color] || 'border-[rgba(23,21,27,0.10)] bg-[rgba(23,21,27,0.035)] hover:border-[rgba(23,21,27,0.16)] hover:bg-[rgba(23,21,27,0.055)]'
   }
 
   const getIconColor = (color: string) => {
@@ -184,10 +180,10 @@ export default function TeacherbotsPanel({ onOpenSettings, onCreateNew }: Teache
   }
 
   return (
-    <div className="h-full flex flex-col">
-      <div className="flex justify-center mb-3">
-        <Button onClick={() => onCreateNew ? onCreateNew() : setViewMode('create')} className="bg-[#181b1e] hover:bg-[#0f1113] h-10 w-10 p-0 rounded-full" title="Nuovo teacherbot">
-          <Plus className="h-5 w-5" />
+    <div className="flex h-full flex-col">
+      <div className="flex justify-center px-2 pb-3">
+        <Button onClick={() => onCreateNew ? onCreateNew() : setViewMode('create')} tone="neutral" surface="outline" density="icon" className="h-10 w-10 rounded-full" title="Nuovo teacherbot">
+          <Plus className="h-4 w-4" />
         </Button>
       </div>
 
@@ -196,31 +192,29 @@ export default function TeacherbotsPanel({ onOpenSettings, onCreateNew }: Teache
           <Loader2 className="h-8 w-8 animate-spin text-[#181b1e]" />
         </div>
       ) : teacherbots && teacherbots.length > 0 ? (
-        <div className="space-y-2 px-1 py-1">
+        <div className="space-y-2 px-2 pb-3">
           {teacherbots.map((bot) => (
             <div
               key={bot.id}
-              className={`rounded-xl border p-3.5 transition-all ${getCardBg(bot.color)}`}
+              className={`rounded-[18px] border px-3.5 py-3 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md ${getCardBg(bot.color)}`}
             >
-              {/* Status badge */}
-              <div className="mb-1.5">{getStatusBadge(bot.status)}</div>
-              {/* Name */}
-              <p className="font-semibold text-sm text-slate-800 truncate leading-tight">{bot.name}</p>
-              {/* Description */}
-              <p className="text-[11px] text-slate-500 leading-snug line-clamp-2 mt-0.5">
+              <div className="mb-1.5 flex items-center gap-2">
+                {renderStatusDot(bot.status)}
+                <p className="min-w-0 flex-1 truncate text-sm font-black leading-tight text-slate-900">{bot.name}</p>
+              </div>
+              <p className="min-h-[32px] text-[11px] leading-[16px] text-slate-500 line-clamp-2">
                 {bot.synopsis || 'Nessuna descrizione'}
               </p>
-              {/* Action icons */}
-              <div className="flex items-center gap-1 mt-2.5">
+              <div className="mt-2 flex items-center gap-1">
                 <button
-                  className={`h-7 w-7 flex items-center justify-center rounded-lg transition-colors ${getIconColor(bot.color)}`}
+                  className={`flex h-6 w-6 items-center justify-center rounded-lg transition-colors ${getIconColor(bot.color)}`}
                   onClick={() => handleEdit(bot.id)}
                   title="Configura"
                 >
                   <Settings className="h-3.5 w-3.5" />
                 </button>
                 <button
-                  className={`h-7 w-7 flex items-center justify-center rounded-lg transition-colors ${getIconColor(bot.color)}`}
+                  className={`flex h-6 w-6 items-center justify-center rounded-lg transition-colors ${getIconColor(bot.color)}`}
                   onClick={() => handleTest(bot.id)}
                   title="Testa"
                 >
@@ -228,7 +222,7 @@ export default function TeacherbotsPanel({ onOpenSettings, onCreateNew }: Teache
                 </button>
                 {bot.enable_reporting && bot.conversation_count > 0 && (
                   <button
-                    className={`h-7 w-7 flex items-center justify-center rounded-lg transition-colors ${getIconColor(bot.color)}`}
+                    className={`flex h-6 w-6 items-center justify-center rounded-lg transition-colors ${getIconColor(bot.color)}`}
                     onClick={() => handleReports(bot.id)}
                     title="Report"
                   >
@@ -236,7 +230,7 @@ export default function TeacherbotsPanel({ onOpenSettings, onCreateNew }: Teache
                   </button>
                 )}
                 <button
-                  className="ml-auto h-7 w-7 flex items-center justify-center rounded-lg text-slate-300 hover:text-red-500 hover:bg-red-50 transition-colors"
+                  className="ml-auto flex h-6 w-6 items-center justify-center rounded-lg text-slate-300 transition-colors hover:bg-red-50 hover:text-red-500"
                   onClick={() => handleDelete(bot.id, bot.name)}
                   title="Elimina"
                 >
@@ -255,7 +249,7 @@ export default function TeacherbotsPanel({ onOpenSettings, onCreateNew }: Teache
           <p className="text-sm text-slate-500 mb-4 max-w-md">
             Crea il tuo primo assistente AI personalizzato per interagire con gli studenti.
           </p>
-          <Button onClick={() => onCreateNew ? onCreateNew() : setViewMode('create')} className="bg-[#181b1e] hover:bg-[#0f1113]">
+          <Button onClick={() => onCreateNew ? onCreateNew() : setViewMode('create')}>
             <Plus className="h-4 w-4 mr-2" />
             Crea il tuo primo Teacherbot
           </Button>

@@ -15,6 +15,7 @@ function getFileType(filename: string, mimeType?: string): string {
   const ext = filename.split('.').pop()?.toLowerCase() || ''
   if (mimeType?.startsWith('image/') || ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp'].includes(ext)) return 'image'
   if (ext === 'pdf' || mimeType === 'application/pdf') return 'pdf'
+  if (['html', 'htm'].includes(ext) || mimeType === 'text/html') return 'html'
   if (['doc', 'docx'].includes(ext) || mimeType?.includes('word')) return 'word'
   if (['xls', 'xlsx', 'csv'].includes(ext) || mimeType?.includes('spreadsheet') || mimeType?.includes('excel') || mimeType?.includes('csv')) return 'excel'
   if (['ppt', 'pptx'].includes(ext) || mimeType?.includes('presentation')) return 'powerpoint'
@@ -45,6 +46,7 @@ function FileViewerContent({ file, onClose }: { file: FileViewerFile; onClose: (
   const getFileIcon = () => {
     switch (fileType) {
       case 'pdf': return <FileText className="h-5 w-5 text-red-500" />
+      case 'html': return <FileText className="h-5 w-5 text-fuchsia-500" />
       case 'word': return <FileText className="h-5 w-5 text-blue-500" />
       case 'excel': return <FileSpreadsheet className="h-5 w-5 text-green-500" />
       case 'powerpoint': return <FileText className="h-5 w-5 text-orange-500" />
@@ -62,6 +64,15 @@ function FileViewerContent({ file, onClose }: { file: FileViewerFile; onClose: (
       case 'pdf':
         return (
           <iframe src={file.url} className="w-full h-[80vh] rounded-lg border-0" title={file.filename} />
+        )
+      case 'html':
+        return (
+          <iframe
+            src={file.url}
+            className="w-full h-[80vh] rounded-lg border-0 bg-white"
+            title={file.filename}
+            sandbox="allow-scripts allow-popups allow-forms"
+          />
         )
       case 'excel': {
         const ext = file.filename.split('.').pop()?.toLowerCase()

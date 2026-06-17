@@ -23,8 +23,8 @@ export function NavTab({ icon: Icon, label, isActive, isAdjacent, onClick, accen
         'group flex min-h-[var(--selection-height)] items-center px-[var(--selection-padding-x)] py-1.5 rounded-[var(--selection-radius)] text-[11px] font-semibold',
         'transition-all duration-150 border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--selection-border-hover)]',
         isActive
-          ? `${accentClass ?? 'bg-[var(--selection-active-bg)]'} text-[var(--selection-active-text)] border-transparent shadow-none`
-          : 'border-transparent text-slate-600 hover:border-[var(--selection-border)] hover:bg-[var(--selection-bg)] hover:text-[var(--selection-text)]',
+          ? `${accentClass ?? 'bg-[image:var(--selection-active-bg)]'} text-[var(--selection-active-text)] border-[color:var(--selection-border-hover)] shadow-[var(--selection-shadow)]`
+          : 'border-transparent text-slate-600 hover:border-[color:var(--selection-border)] hover:bg-[image:var(--selection-bg)] hover:text-[var(--selection-text)]',
       ].join(' ')}
     >
       <Icon className="h-4 w-4 shrink-0" />

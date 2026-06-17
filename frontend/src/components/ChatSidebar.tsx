@@ -8,10 +8,11 @@ import { Input } from '@/components/ui/input'
 import {
   Send, MessageSquare, Bell, Paperclip, X, Image as ImageIcon,
   MessagesSquare, MessageCircle, Pin, PinOff,
-  File, Wand2, Users, Folder, Search, Upload, List, Grid2X2, Minus, Plus, ChevronDown, CornerUpLeft, Brain
+  File, Wand2, Users, Folder, Search, Upload, List, Grid2X2, Minus, Plus, ChevronDown, CornerUpLeft, Brain, ExternalLink
 } from 'lucide-react'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { DEFAULT_STUDENT_ACCENT, getStudentAccentTheme, type StudentAccentId } from '@/lib/studentAccent'
+import { buildAccentNavClusterStyle } from '@/lib/navbarGlass'
 import { VoiceRecorder } from '@/components/VoiceRecorder'
 import { VoiceRoomPanel } from '@/components/VoiceRoomPanel'
 import ToyLMInferencePanel, { type ToyLMGeneratePayload } from '@/components/toy-lm/ToyLMInferencePanel'
@@ -1020,7 +1021,7 @@ export default function ChatSidebar({
               </div>
             )}
             {imageAttachments.length > 0 && (
-              <div className="mt-2 space-y-2">
+              <div className="mt-2 grid grid-cols-2 gap-2">
                 {imageAttachments.map((att: any, idx: number) => (
                   <div
                     key={idx}
@@ -1034,7 +1035,7 @@ export default function ChatSidebar({
                       }))
                       e.dataTransfer.effectAllowed = 'copy'
                     }}
-                    className={`w-full rounded-lg border px-2 py-1.5 text-left text-xs transition-colors cursor-grab active:cursor-grabbing ${
+                    className={`group relative aspect-[4/3] w-full overflow-hidden rounded-xl border text-left text-xs shadow-sm transition-colors cursor-grab active:cursor-grabbing ${
                       isMe
                         ? messageAccentTheme
                           ? 'hover:brightness-95'
@@ -1044,9 +1045,15 @@ export default function ChatSidebar({
                     style={messageAccentTheme ? { backgroundColor: messageAccentTheme.softStrong, color: messageAccentTheme.text } : undefined}
                     onClick={() => setViewingFile({ url: att.url, filename: att.filename || 'image.png', type: att.type })}
                   >
-                    <div className="flex items-center gap-2">
+                    <img
+                      src={att.url}
+                      alt={att.filename || 'Immagine allegata'}
+                      className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-[1.03]"
+                      loading="lazy"
+                    />
+                    <div className="absolute inset-x-0 bottom-0 flex items-center gap-1.5 bg-slate-950/70 px-2 py-1 text-white backdrop-blur-sm">
                       <ImageIcon className="h-3.5 w-3.5 flex-shrink-0" />
-                      <span className="truncate">{att.filename || 'Immagine'}</span>
+                      <span className="truncate text-[10px] font-semibold">{att.filename || 'Immagine'}</span>
                     </div>
                   </div>
                 ))}
@@ -1055,8 +1062,9 @@ export default function ChatSidebar({
             {fileAttachments.length > 0 && (
               <div className="mt-2 space-y-1">
                 {fileAttachments.map((att: any, idx: number) => (
-                  <div
+                  <button
                     key={idx}
+                    type="button"
                     draggable
                     onDragStart={(e) => {
                       e.stopPropagation()
@@ -1067,18 +1075,26 @@ export default function ChatSidebar({
                       }))
                       e.dataTransfer.effectAllowed = 'copy'
                     }}
-                    onClick={() => setViewingFile({ url: att.url, filename: att.filename || 'file', type: att.type })}
-                    className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition-colors cursor-grab active:cursor-grabbing w-full text-left ${isMe
-                      ? messageAccentTheme
-                        ? 'text-slate-800 hover:brightness-95'
-                        : 'bg-gray-200 hover:bg-gray-300 text-gray-700'
-                      : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
-                      }`}
-                    style={messageAccentTheme ? { backgroundColor: messageAccentTheme.softStrong, color: messageAccentTheme.text } : undefined}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setViewingFile({ url: att.url, filename: att.filename || 'file', type: att.type })
+                    }}
+                    title="Apri allegato"
+                    className="group/att flex w-full cursor-pointer items-center gap-2 rounded-lg border border-slate-200 bg-white/85 px-2.5 py-2 text-left text-xs font-semibold text-slate-700 shadow-sm transition-colors hover:bg-white"
+                    style={messageAccentTheme ? {
+                      borderColor: `${messageAccentTheme.accent}55`,
+                      color: messageAccentTheme.text,
+                    } : undefined}
                   >
-                    <Paperclip className="h-3.5 w-3.5 flex-shrink-0" />
-                    <span className="truncate">{att.filename || 'Allegato'}</span>
-                  </div>
+                    <span
+                      className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-slate-200 text-slate-600"
+                      style={messageAccentTheme ? { backgroundColor: messageAccentTheme.accent, color: '#ffffff' } : undefined}
+                    >
+                      <Paperclip className="h-3 w-3" />
+                    </span>
+                    <span className="truncate flex-1">{att.filename || 'Allegato'}</span>
+                    <ExternalLink className="h-3.5 w-3.5 shrink-0 opacity-45 transition-opacity group-hover/att:opacity-90" />
+                  </button>
                 ))}
               </div>
             )}
@@ -1799,8 +1815,8 @@ export default function ChatSidebar({
       {/* Tabs — pill switcher */}
       <div className="px-2.5 pt-2 pb-1.5 bg-white border-b border-slate-100 shrink-0">
         <div
-          className="flex items-center gap-0.5 p-0.5 rounded-xl"
-          style={{ backgroundColor: studentAccentTheme.softMid }}
+          className="flex items-center gap-1 rounded-xl border p-1"
+          style={buildAccentNavClusterStyle(studentAccentTheme)}
         >
           {availableTabs.map((tab) => {
             const isTabActive = activeTab === tab
@@ -1828,18 +1844,15 @@ export default function ChatSidebar({
                     ) setActiveTab('session')
                   }
                 } : {})}
-                className="flex-1 flex items-center justify-center gap-1 py-1.5 text-[10px] font-bold rounded-lg transition-all duration-200 relative"
-                style={isTabActive ? {
-                  backgroundColor: 'rgba(255,255,255,0.92)',
-                  color: studentAccentTheme.text,
-                  boxShadow: `0 1px 4px ${studentAccentTheme.accent}30`,
-                  border: `1px solid ${studentAccentTheme.border}`,
-                } : {
-                  color: studentAccentTheme.text + '80',
-                  border: '1px solid transparent',
-                }}
+                className={[
+                  'group relative flex flex-1 min-h-[var(--selection-height)] items-center justify-center gap-1 px-2 py-1.5 rounded-[var(--selection-radius)] text-[11px] font-semibold',
+                  'border transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--selection-border-hover)]',
+                  isTabActive
+                    ? 'bg-[image:var(--selection-active-bg)] text-[var(--selection-active-text)] border-[color:var(--selection-border-hover)] shadow-[var(--selection-shadow)]'
+                    : 'border-transparent text-slate-600 hover:border-[color:var(--selection-border)] hover:bg-[image:var(--selection-bg)] hover:text-[var(--selection-text)]',
+                ].join(' ')}
               >
-                <TabIcon className="h-3 w-3" />
+                <TabIcon className="h-3.5 w-3.5 shrink-0" />
                 {tabLabels[tab]}
                 {tab === 'private' && totalUnreadPrivate > 0 && (
                   <span className="ml-0.5 px-1 py-0.5 text-[8px] bg-red-500 text-white rounded-full leading-none">

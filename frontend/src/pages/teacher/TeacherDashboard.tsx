@@ -1,7 +1,7 @@
-import { useState, useEffect, lazy, Suspense } from 'react'
+import { useState, useEffect, lazy, Suspense, type CSSProperties } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Routes, Route, useLocation, Link, useNavigate } from 'react-router-dom'
-import { MessageSquare, Users, PlayCircle, Bot, ClipboardList, History, Monitor, BookOpen } from 'lucide-react'
+import { MessageSquare, Users, PlayCircle, Bot, ClipboardList, History, Monitor, BookOpen, UserRound } from 'lucide-react'
 // Heavy pages loaded lazily — only parsed when first visited
 const ClassesPage        = lazy(() => import('./ClassesPage'))
 const SessionsPage       = lazy(() => import('./SessionsPage'))
@@ -31,6 +31,7 @@ import { getAppBackgroundGradient } from '@/lib/theme'
 import { useMobile } from '@/hooks/useMobile'
 import { useTeacherProfile } from '@/hooks/useTeacherProfile'
 import { FloatingHelper } from '@/components/FloatingHelper'
+import { useSocket } from '@/hooks/useSocket'
 
 const CHATBAR_AUTO_HIDE_BREAKPOINT = 1280
 
@@ -44,6 +45,7 @@ export default function TeacherDashboard() {
   const [teacherProfile, setTeacherProfile] = useState<{ id: string, name: string, uiAccent?: TeacherAccentId } | null>(null)
   const [sidebarWidth, setSidebarWidth] = useState(380)
   const [showSidebar, setShowSidebar] = useState(true)
+  const [showOnlineMenu, setShowOnlineMenu] = useState(false)
 
   const getPersistedSession = (): { id: string, name: string, className: string } | null => {
     try {
@@ -57,6 +59,8 @@ export default function TeacherDashboard() {
 
   const [currentSession, setCurrentSession] = useState<{ id: string, name: string, className: string, joinCode?: string } | null>(getPersistedSession)
   const [activeSessionId, setActiveSessionId] = useState<string | null>(currentSession?.id || null)
+  const { onlineUsers } = useSocket(activeSessionId ?? undefined)
+  const onlineStudents = onlineUsers.filter((user) => user.role !== 'teacher')
 
   useEffect(() => {
     const match = location.pathname.match(/\/sessions\/([^\/]+)/)
@@ -116,6 +120,7 @@ export default function TeacherDashboard() {
 
   const teacherTheme = getTeacherAccentTheme(teacherProfile?.uiAccent)
   const bgGradient = getAppBackgroundGradient(teacherTheme)
+  const railButtonStyle = { '--btn-tone': teacherTheme.accent } as CSSProperties
   const mobileNav = [
     { path: '/teacher', label: t('navbar.nav_support'), icon: MessageSquare, exact: true },
     { path: '/teacher/classes', label: t('navbar.nav_classes'), icon: Users },
@@ -172,15 +177,8 @@ export default function TeacherDashboard() {
             <button
               title={currentSession.name}
               onClick={() => navigate(`/teacher/sessions/${currentSession.id}`)}
-              className="w-9 h-9 rounded-lg flex items-center justify-center transition-colors hover:opacity-80"
-              style={{
-                backgroundColor: location.pathname.includes(`/sessions/${currentSession.id}`) && !location.search
-                  ? teacherTheme.accent
-                  : `${teacherTheme.accent}20`,
-                color: location.pathname.includes(`/sessions/${currentSession.id}`) && !location.search
-                  ? 'white'
-                  : teacherTheme.accent,
-              }}
+              className={`app-button-chrome flex h-9 w-9 items-center justify-center rounded-lg ${location.pathname.includes(`/sessions/${currentSession.id}`) && !location.search ? 'app-button-chrome-active' : ''}`}
+              style={railButtonStyle}
             >
               <Monitor className="h-4 w-4" />
             </button>
@@ -189,15 +187,8 @@ export default function TeacherDashboard() {
             <button
               title={t('teacher_dashboard.session_tasks')}
               onClick={() => navigate(`/teacher/sessions/${currentSession.id}?tab=tasks`)}
-              className="w-9 h-9 rounded-lg flex items-center justify-center transition-colors hover:opacity-80"
-              style={{
-                backgroundColor: location.search === '?tab=tasks'
-                  ? teacherTheme.accent
-                  : `${teacherTheme.accent}20`,
-                color: location.search === '?tab=tasks'
-                  ? 'white'
-                  : teacherTheme.accent,
-              }}
+              className={`app-button-chrome flex h-9 w-9 items-center justify-center rounded-lg ${location.search === '?tab=tasks' ? 'app-button-chrome-active' : ''}`}
+              style={railButtonStyle}
             >
               <ClipboardList className="h-4 w-4" />
             </button>
@@ -206,18 +197,49 @@ export default function TeacherDashboard() {
             <button
               title={t('teacher_dashboard.chat_history')}
               onClick={() => navigate(`/teacher/sessions/${currentSession.id}?tab=history`)}
-              className="w-9 h-9 rounded-lg flex items-center justify-center transition-colors hover:opacity-80"
-              style={{
-                backgroundColor: location.search === '?tab=history'
-                  ? teacherTheme.accent
-                  : `${teacherTheme.accent}20`,
-                color: location.search === '?tab=history'
-                  ? 'white'
-                  : teacherTheme.accent,
-              }}
+              className={`app-button-chrome flex h-9 w-9 items-center justify-center rounded-lg ${location.search === '?tab=history' ? 'app-button-chrome-active' : ''}`}
+              style={railButtonStyle}
             >
               <History className="h-4 w-4" />
             </button>
+
+            {/* Online students */}
+            <div className="relative">
+              <button
+                title="Studenti connessi"
+                onClick={() => setShowOnlineMenu(v => !v)}
+                className={`app-button-chrome relative flex h-9 w-9 items-center justify-center rounded-lg ${showOnlineMenu ? 'app-button-chrome-active' : ''}`}
+                style={railButtonStyle}
+              >
+                <UserRound className="h-4 w-4" />
+                <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-emerald-500 px-1 text-[9px] font-black leading-none text-white ring-2 ring-white">
+                  {onlineStudents.length}
+                </span>
+              </button>
+
+              {showOnlineMenu && (
+                <div className="absolute left-full top-0 z-40 ml-2 w-56 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl">
+                  <div className="border-b border-slate-100 px-3 py-2">
+                    <p className="text-xs font-black uppercase tracking-wide text-slate-500">Studenti connessi</p>
+                    <p className="text-[11px] text-slate-400">{onlineStudents.length} online</p>
+                  </div>
+                  <div className="max-h-64 overflow-y-auto p-2">
+                    {onlineStudents.length === 0 ? (
+                      <p className="px-2 py-4 text-center text-xs text-slate-400">Nessuno studente online</p>
+                    ) : (
+                      onlineStudents.map((student) => (
+                        <div key={student.student_id} className="flex items-center gap-2 rounded-xl px-2 py-2 hover:bg-slate-50">
+                          <span className="h-2 w-2 rounded-full bg-emerald-500" />
+                          <span className="min-w-0 flex-1 truncate text-sm font-semibold text-slate-700">
+                            {student.nickname || 'Studente'}
+                          </span>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
 
             <div className="flex-1" />
 
@@ -225,11 +247,8 @@ export default function TeacherDashboard() {
             <button
               title={t('teacher_dashboard.class_chat')}
               onClick={() => setShowSidebar(v => !v)}
-              className="w-9 h-9 rounded-lg flex items-center justify-center transition-colors hover:opacity-80"
-              style={{
-                backgroundColor: showSidebar ? teacherTheme.accent : `${teacherTheme.accent}20`,
-                color: showSidebar ? 'white' : teacherTheme.accent,
-              }}
+              className={`app-button-chrome flex h-9 w-9 items-center justify-center rounded-lg ${showSidebar ? 'app-button-chrome-active' : ''}`}
+              style={railButtonStyle}
             >
               <MessageSquare className="h-4 w-4" />
             </button>

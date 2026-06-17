@@ -12,7 +12,7 @@ from app.core.database import get_db
 from app.core.config import settings
 from app.core.url_utils import resolve_frontend_url
 from app.core.security import get_password_hash
-from app.api.deps import get_current_admin
+from app.api.deps import get_current_admin, get_current_user
 from app.services.email_service import email_service
 from app.models.user import User, ActivationToken
 from app.models.tenant import Tenant
@@ -25,6 +25,7 @@ from app.schemas.credits import (
     CreditLimitResponse, CreditLimitUpdate, CreditLimitBase,
     CreditTransactionResponse, ConsumptionStats,
     CreditRequestResponse, CreditRequestReview,
+    CreditBalanceResponse, CreditUsageHistoryItem,
     PlatformInvitationCreate, PlatformInvitationResponse, BulkInvitationCreate
 )
 
@@ -91,6 +92,51 @@ async def _send_platform_invitation_email(
     )
 
 # ==================== ANALYTICS ====================
+
+@router.get("/balance", response_model=CreditBalanceResponse)
+async def get_my_credit_balance(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    user: Annotated[User, Depends(get_current_user)],
+):
+    """Return the current user's visible credit balance. Admin accounting stays in EUR."""
+    return await credit_service.get_balance(
+        db,
+        user.tenant_id,
+        teacher_id=user.id,
+    )
+
+
+@router.get("/history", response_model=List[CreditUsageHistoryItem])
+async def get_my_credit_history(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    user: Annotated[User, Depends(get_current_user)],
+    limit: int = Query(20, ge=1, le=50),
+):
+    """Return recent API calls for the current teacher/admin user in user-facing credits."""
+    rows = (await db.execute(
+        select(CreditTransaction)
+        .where(
+            CreditTransaction.tenant_id == user.tenant_id,
+            CreditTransaction.teacher_id == user.id,
+            CreditTransaction.transaction_type == CreditTransactionType.API_CALL,
+        )
+        .order_by(desc(CreditTransaction.timestamp))
+        .limit(limit)
+    )).scalars().all()
+
+    return [
+        CreditUsageHistoryItem(
+            id=tx.id,
+            timestamp=tx.timestamp,
+            provider=tx.provider,
+            model=tx.model,
+            cost_eur=float(tx.cost or 0.0),
+            cost_credits=round(float(tx.cost or 0.0) * 100, 6),
+            usage_details=tx.usage_details,
+        )
+        for tx in rows
+    ]
+
 
 @router.get("/stats", response_model=ConsumptionStats)
 async def get_consumption_stats(

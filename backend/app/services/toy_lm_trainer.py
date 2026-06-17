@@ -19,8 +19,10 @@ import asyncio
 import logging
 import math
 import os
+import re
 import threading
 import time
+from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
@@ -36,6 +38,82 @@ CHECKPOINT_DIR = os.environ.get("TOY_LM_CHECKPOINT_DIR", "/tmp/toy_lm_checkpoint
 MAX_CORPUS_CHARS = 200_000
 MAX_SAMPLES = 60_000
 MAX_TRAINING_HOURS = 3.0
+MAX_WORD_VOCAB = 3000
+
+
+def normalize_token_mode(mode: Optional[str]) -> str:
+    return "char" if mode == "char" else "word"
+
+
+def infer_vocab_token_mode(vocab: dict, params: Optional[dict] = None) -> str:
+    explicit = vocab.get("tokenMode") or (params or {}).get("tokenMode")
+    if explicit:
+        return normalize_token_mode(explicit)
+    if "indexToChar" in vocab or "charToIndex" in vocab:
+        return "char"
+    return "word"
+
+
+def build_toy_vocab(corpus: str, token_mode: str = "word") -> dict:
+    mode = normalize_token_mode(token_mode)
+    if mode == "char":
+        chars = sorted(set(corpus))
+        char_to_index = {c: i for i, c in enumerate(chars)}
+        return {
+            "tokenMode": "char",
+            "charToIndex": char_to_index,
+            "indexToChar": chars,
+            "vocabSize": len(chars),
+        }
+
+    raw_tokens = tokenize_toy_text(corpus, "word")
+    counts = Counter(raw_tokens)
+    tokens = ["<unk>"] + [
+        token
+        for token, _ in counts.most_common(MAX_WORD_VOCAB - 1)
+        if token != "<unk>"
+    ]
+    token_to_index = {token: i for i, token in enumerate(tokens)}
+    return {
+        "tokenMode": "word",
+        "tokenToIndex": token_to_index,
+        "indexToToken": tokens,
+        "vocabSize": len(tokens),
+        "rawTokenCount": len(raw_tokens),
+    }
+
+
+def tokenize_toy_text(text: str, token_mode: str) -> list[str]:
+    if normalize_token_mode(token_mode) == "char":
+        return list(text)
+    return re.findall(r"\w+|[^\w\s]", text, flags=re.UNICODE)
+
+
+def detokenize_toy_tokens(tokens: list[str], token_mode: str) -> str:
+    if normalize_token_mode(token_mode) == "char":
+        return "".join(tokens)
+
+    no_space_before = {".", ",", ";", ":", "!", "?", ")", "]", "}", "%", "…"}
+    no_space_after = {"(", "[", "{", "¿", "¡"}
+    out = ""
+    for token in tokens:
+        if token == "<unk>":
+            token = "?"
+        if not out or token in no_space_before or out[-1] in "([{\"'":
+            out += token
+        elif token in no_space_after:
+            out += " " + token
+        else:
+            out += " " + token
+    return out
+
+
+def vocab_tokens(vocab: dict) -> list[str]:
+    return vocab.get("indexToToken") or vocab.get("indexToChar") or []
+
+
+def vocab_token_to_index(vocab: dict) -> dict:
+    return vocab.get("tokenToIndex") or vocab.get("charToIndex") or {}
 
 
 # ─── PyTorch Model ────────────────────────────────────────────────────────────
@@ -283,12 +361,14 @@ class ToyLMService:
         total_epochs: int = int(params.get("totalEpochs", 20))
         metric_every: int = max(1, int(params.get("metricEvery", 20)))
 
-        char_to_idx: dict = vocab.get("charToIndex", {})
-        index_to_char: list = vocab.get("indexToChar", [])
-        vocab_size: int = len(index_to_char) or 1
+        token_mode = infer_vocab_token_mode(vocab, params)
+        token_to_idx: dict = vocab_token_to_index(vocab)
+        index_to_token: list = vocab_tokens(vocab)
+        vocab_size: int = len(index_to_token) or 1
 
         # Tokenise
-        tokens = [char_to_idx.get(c, 0) for c in corpus]
+        units = tokenize_toy_text(corpus, token_mode)
+        tokens = [token_to_idx.get(unit, 0) for unit in units]
         n_samples = min(len(tokens) - seq_len, MAX_SAMPLES)
         if n_samples <= 0:
             job.push({"type": "error", "message": "Corpus troppo breve per il seq_len scelto."})
@@ -301,7 +381,7 @@ class ToyLMService:
             X_all[i] = torch.tensor(tokens[i:i + seq_len], dtype=torch.long)
             Y_all[i] = tokens[i + seq_len]
 
-        n_batches = n_samples // batch_size
+        n_batches = max(1, math.ceil(n_samples / batch_size))
 
         # Build model
         model = CharLSTM(vocab_size, embed_dim, hidden_size, num_layers).to(device)
@@ -341,6 +421,8 @@ class ToyLMService:
                     break
 
                 idx = perm[b * batch_size:(b + 1) * batch_size]
+                if idx.numel() == 0:
+                    continue
                 xb = X_all[idx].to(device)
                 yb = Y_all[idx].to(device)
 
@@ -463,9 +545,10 @@ class ToyLMService:
         temperature: float,
     ) -> str:
         device = self._device
-        char_to_idx: dict = vocab.get("charToIndex", {})
-        index_to_char: list = vocab.get("indexToChar", [])
-        vocab_size = len(index_to_char) or 1
+        token_mode = infer_vocab_token_mode(vocab, params)
+        token_to_idx: dict = vocab_token_to_index(vocab)
+        index_to_token: list = vocab_tokens(vocab)
+        vocab_size = len(index_to_token) or 1
         seq_len = int(params.get("seqLen", 40))
         embed_dim = int(params.get("embedDim", 32))
         hidden_size = int(params.get("hiddenSize", 128))
@@ -476,8 +559,9 @@ class ToyLMService:
         model.load_state_dict(ckpt["model"])
         model.eval()
 
-        tokens = [char_to_idx.get(c, 0) for c in seed]
-        generated = list(seed)
+        seed_units = tokenize_toy_text(seed, token_mode)
+        tokens = [token_to_idx.get(unit, 0) for unit in seed_units]
+        generated = list(seed_units)
 
         with torch.no_grad():
             for _ in range(max_tokens):
@@ -491,14 +575,49 @@ class ToyLMService:
                 logits = logits.squeeze(0) / max(temperature, 1e-6)
                 probs = torch.softmax(logits, dim=-1).cpu()
                 next_idx = torch.multinomial(probs, num_samples=1).item()
-                next_char = index_to_char[next_idx] if next_idx < len(index_to_char) else "?"
-                generated.append(next_char)
+                next_token = index_to_token[next_idx] if next_idx < len(index_to_token) else "?"
+                generated.append(next_token)
                 tokens.append(next_idx)
 
         del model
         if device.type == "cuda":
             torch.cuda.empty_cache()
-        return "".join(generated)
+        return detokenize_toy_tokens(generated, token_mode)
+
+    def embeddings_sync(
+        self,
+        checkpoint_path: str,
+        vocab: dict,
+        params: dict,
+    ) -> dict:
+        """Load the checkpoint embedding matrix for inspection in the UI."""
+        token_mode = infer_vocab_token_mode(vocab, params)
+        index_to_token: list = vocab_tokens(vocab)
+        vocab_size = len(index_to_token) or 1
+        embed_dim = int(params.get("embedDim", 32))
+        hidden_size = int(params.get("hiddenSize", 128))
+        num_layers = int(params.get("numLayers", 2))
+
+        model = CharLSTM(vocab_size, embed_dim, hidden_size, num_layers).to("cpu")
+        ckpt = torch.load(checkpoint_path, map_location="cpu")
+        model.load_state_dict(ckpt["model"])
+        model.eval()
+
+        with torch.no_grad():
+            weights = model.embedding.weight.detach().cpu().tolist()
+
+        return {
+            "embeddingDim": embed_dim,
+            "tokenMode": token_mode,
+            "tokens": [
+                {
+                    "index": i,
+                    "token": index_to_token[i] if i < len(index_to_token) else "?",
+                    "vector": weights[i],
+                }
+                for i in range(min(len(index_to_token), len(weights)))
+            ],
+        }
 
 
 # ── Module-level singleton ─────────────────────────────────────────────────────

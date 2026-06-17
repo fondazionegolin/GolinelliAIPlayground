@@ -350,7 +350,7 @@ Classifica l'intento e rispondi con JSON."""
             messages=[{"role": "user", "content": classification_prompt}],
             system_prompt=INTENT_CLASSIFIER_PROMPT,
             provider="openai",
-            model="gpt-5-nano",  # Fast and cheap
+            model="gpt-5.4-mini",  # Fast and cheap
             temperature=0.1,  # Low temperature for consistent classification
             max_tokens=200,
         )
@@ -1274,7 +1274,7 @@ async def run_teacher_agent(
     context: str,
     structured_context: Optional[dict] = None,
     provider: str = "openai",
-    model: str = "gpt-5-mini",
+    model: str = "gpt-5.4-mini",
     actor_type: str = "TEACHER",
     profile_key: str = "teacher_support",
     ui_language: str = "it",

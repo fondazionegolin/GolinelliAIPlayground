@@ -900,7 +900,7 @@ export default function TeacherDocumentsPage() {
               <FileText className="h-4 w-4 text-slate-500" />
               <h1 className="text-base font-bold text-slate-800">{isEnglish ? 'Documents' : 'Documenti'}</h1>
             </div>
-            <Button onClick={() => setShowNewModal(true)} className="bg-[#E91E63] text-white hover:bg-[#d61b5b]">
+            <Button onClick={() => setShowNewModal(true)}>
               <Plus className="h-4 w-4 mr-2" />
               {isEnglish ? 'New' : 'Nuovo'}
             </Button>
@@ -935,7 +935,7 @@ export default function TeacherDocumentsPage() {
                   </div>
                   <h3 className="text-lg font-bold text-slate-700 mb-1">{isEnglish ? 'No documents yet' : 'Nessun documento'}</h3>
                   <p className="text-sm text-slate-400 mb-6">{isEnglish ? 'Create your first document to get started' : 'Crea il tuo primo documento per iniziare'}</p>
-                  <Button onClick={() => setShowNewModal(true)} className="bg-[#E91E63] text-white hover:bg-[#d61b5b]">
+                  <Button onClick={() => setShowNewModal(true)}>
                     <Plus className="h-4 w-4 mr-2" />
                     {isEnglish ? 'Create document' : 'Crea documento'}
                   </Button>
@@ -1012,13 +1012,13 @@ export default function TeacherDocumentsPage() {
               <h3 className="text-lg font-semibold mb-2">{isEnglish ? 'Create new' : 'Crea nuovo'}</h3>
               <p className="text-sm text-gray-600 mb-4">{isEnglish ? 'Choose the type of content to create.' : 'Scegli il tipo di contenuto da creare.'}</p>
               <div className="flex flex-col gap-3">
-                <Button className="w-full justify-center bg-[#E91E63] hover:bg-[#d61b5b] text-white" onClick={() => { createNewDocument(); setShowNewModal(false) }}>
+                <Button className="w-full justify-center" onClick={() => { createNewDocument(); setShowNewModal(false) }}>
                   <FileText className="h-4 w-4 mr-2" />{isEnglish ? 'New document' : 'Nuovo documento'}
                 </Button>
-                <Button className="w-full justify-center bg-[#E91E63] hover:bg-[#d61b5b] text-white" onClick={() => { createNewPresentation(); setShowNewModal(false) }}>
+                <Button className="w-full justify-center" onClick={() => { createNewPresentation(); setShowNewModal(false) }}>
                   <Monitor className="h-4 w-4 mr-2" />{isEnglish ? 'New presentation' : 'Nuova presentazione'}
                 </Button>
-                <Button className="w-full justify-center bg-[#E91E63] hover:bg-[#d61b5b] text-white" onClick={() => { createNewCanvas(); setShowNewModal(false) }}>
+                <Button className="w-full justify-center" onClick={() => { createNewCanvas(); setShowNewModal(false) }}>
                   <PenTool className="h-4 w-4 mr-2" />{isEnglish ? 'New board' : 'Nuova lavagna'}
                 </Button>
               </div>
@@ -1119,7 +1119,7 @@ export default function TeacherDocumentsPage() {
 
              <Button
                onClick={() => setShowNewModal(true)}
-               className="bg-[#E91E63] text-white hover:bg-[#d61b5b] px-4"
+               className="px-4"
              >
                <Plus className="h-4 w-4 mr-2" />
                {isEnglish ? 'New' : 'Nuovo'}
@@ -1379,7 +1379,7 @@ export default function TeacherDocumentsPage() {
                    minHeight: FORMAT_DIMENSIONS.a4.height,
                    transform: `scale(${docScale})`,
                    transformOrigin: 'top center',
-                   backgroundImage: `repeating-linear-gradient(to bottom, #ffffff 0, #ffffff ${FORMAT_DIMENSIONS.a4.height}px, #f1f5f9 ${FORMAT_DIMENSIONS.a4.height}px, #f1f5f9 ${FORMAT_DIMENSIONS.a4.height + DOC_PAGE_GAP}px)`,
+                   backgroundImage: `repeating-linear-gradient(to bottom, #ffffff 0, #ffffff ${FORMAT_DIMENSIONS.a4.height}px, #e5e7eb ${FORMAT_DIMENSIONS.a4.height}px, #e5e7eb ${FORMAT_DIMENSIONS.a4.height + DOC_PAGE_GAP}px)`,
                    boxShadow: '0 10px 30px rgba(15, 23, 42, 0.12)',
                    padding: `${docMargins.vertical}px ${docMargins.horizontal}px`
                  }}
@@ -1620,7 +1620,7 @@ export default function TeacherDocumentsPage() {
             </div>
             <div className="flex justify-end gap-2">
               <Button variant="outline" onClick={() => setShowPublishModal(false)}>{isEnglish ? 'Cancel' : 'Annulla'}</Button>
-              <Button onClick={handlePublish} disabled={!selectedSessionId} className="bg-violet-600 text-white">
+              <Button onClick={handlePublish} disabled={!selectedSessionId}>
                 {publishMode === 'published'
                   ? (isEnglish ? 'Publish now' : 'Pubblica ora')
                   : (isEnglish ? 'Save draft' : 'Salva bozza')}

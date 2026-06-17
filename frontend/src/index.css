@@ -37,6 +37,10 @@
     --logo-blue: #3ea9f4;
     --logo-violet: #7b69c9;
     --logo-ink: #17151b;
+    /* Darker, readable variants for text on light surfaces / fills behind white text.
+       The vivid logo blue/violet fail contrast as text on white or behind white text. */
+    --logo-blue-strong: #1278bd;
+    --logo-violet-strong: #55449c;
     --logo-pink-06: rgba(254, 0, 77, 0.06);
     --logo-pink-10: rgba(254, 0, 77, 0.10);
     --logo-pink-14: rgba(254, 0, 77, 0.14);
@@ -60,24 +64,42 @@
     --button-padding-x-default: 1.25rem;
     --button-padding-x-roomy: 1.5rem;
     --button-font-weight: 700;
-    --button-accent-bg: linear-gradient(135deg, color-mix(in srgb, var(--app-accent) 82%, white), var(--app-accent));
-    --button-accent-shadow: 0 14px 26px color-mix(in srgb, var(--app-accent) 24%, transparent);
-    --button-accent-shadow-hover: 0 16px 30px color-mix(in srgb, var(--app-accent) 30%, transparent);
-    --button-blue-bg: linear-gradient(135deg, color-mix(in srgb, var(--logo-blue) 82%, white), var(--logo-blue));
-    --button-violet-bg: linear-gradient(135deg, color-mix(in srgb, var(--logo-violet) 82%, white), var(--logo-violet));
+    --button-chrome-bg: radial-gradient(ellipse at center,
+      rgba(255,255,255,0.985) 0%,
+      color-mix(in srgb, var(--btn-tone, var(--app-accent)) 1.5%, white) 60%,
+      color-mix(in srgb, var(--btn-tone, var(--app-accent)) 5%, white) 100%);
+    --button-chrome-bg-hover: radial-gradient(ellipse at center,
+      rgba(255,255,255,0.99) 0%,
+      color-mix(in srgb, var(--btn-tone, var(--app-accent)) 2.5%, white) 58%,
+      color-mix(in srgb, var(--btn-tone, var(--app-accent)) 8%, white) 100%);
+    --button-chrome-border: color-mix(in srgb, var(--btn-tone, var(--app-accent)) 14%, #d8dde6);
+    --button-chrome-border-hover: color-mix(in srgb, var(--btn-tone, var(--app-accent)) 24%, #c9d0dc);
+    --button-chrome-shadow: inset 0 1px 0 rgba(255,255,255,0.9), 0 1px 4px color-mix(in srgb, var(--btn-tone, var(--app-accent)) 3%, transparent);
+    --button-chrome-shadow-hover: inset 0 1px 0 rgba(255,255,255,0.94), 0 2px 7px color-mix(in srgb, var(--btn-tone, var(--app-accent)) 5%, transparent);
+    --button-accent-bg: var(--button-chrome-bg);
+    --button-accent-shadow: var(--button-chrome-shadow);
+    --button-accent-shadow-hover: var(--button-chrome-shadow-hover);
+    --button-blue-bg: radial-gradient(ellipse at center, rgba(255,255,255,0.985), color-mix(in srgb, var(--logo-blue) 5%, white));
+    --button-violet-bg: radial-gradient(ellipse at center, rgba(255,255,255,0.985), color-mix(in srgb, var(--logo-violet) 5%, white));
     --control-radius: 0.875rem;
-    --card-radius: 1rem;
+    --card-radius: 1.5rem;
     --selection-radius: 0.625rem;
     --selection-height: 2.25rem;
     --selection-padding-x: 0.875rem;
-    --selection-bg: color-mix(in srgb, var(--app-accent) 10%, white);
-    --selection-bg-hover: color-mix(in srgb, var(--app-accent) 14%, white);
-    --selection-border: color-mix(in srgb, var(--app-accent) 28%, transparent);
-    --selection-border-hover: color-mix(in srgb, var(--app-accent) 38%, transparent);
+    --selection-bg: radial-gradient(ellipse at center,
+      rgba(255,255,255,0.985) 0%,
+      color-mix(in srgb, var(--app-accent) 1.5%, white) 60%,
+      color-mix(in srgb, var(--app-accent) 5%, white) 100%);
+    --selection-bg-hover: radial-gradient(ellipse at center,
+      rgba(255,255,255,0.99) 0%,
+      color-mix(in srgb, var(--app-accent) 2.5%, white) 58%,
+      color-mix(in srgb, var(--app-accent) 8%, white) 100%);
+    --selection-border: color-mix(in srgb, var(--app-accent) 14%, #d8dde6);
+    --selection-border-hover: color-mix(in srgb, var(--app-accent) 24%, #c9d0dc);
     --selection-text: var(--app-accent-text);
-    --selection-active-bg: var(--app-accent);
-    --selection-active-text: #ffffff;
-    --selection-shadow: 0 1px 2px color-mix(in srgb, var(--app-accent) 10%, transparent);
+    --selection-active-bg: var(--selection-bg-hover);
+    --selection-active-text: var(--app-accent-text);
+    --selection-shadow: inset 0 1px 0 rgba(255,255,255,0.9), 0 1px 4px color-mix(in srgb, var(--app-accent) 3%, transparent);
 
     /* Core surfaces */
     --background: 0 0% 99%;
@@ -108,10 +130,10 @@
     /* Semantic mirrors for feature code migration */
     --app-body-bg: #fbfafc;
     --surface-page: var(--app-body-bg);
-    --surface-base: rgba(255, 255, 255, 0.96);
-    --surface-elevated: rgba(255, 255, 255, 0.9);
-    --surface-muted: rgba(123, 105, 201, 0.08);
-    --surface-glass: rgba(255, 255, 255, 0.78);
+    --surface-base: rgba(255, 255, 255, 0.94);
+    --surface-elevated: rgba(23, 21, 27, 0.035);
+    --surface-muted: rgba(123, 105, 201, 0.075);
+    --surface-glass: rgba(255, 255, 255, 0.82);
     --surface-header: rgba(255, 255, 255, 0.9);
     --surface-logo-pink: var(--logo-pink-10);
     --surface-logo-blue: var(--logo-blue-10);
@@ -227,6 +249,93 @@
   .card-modern {
     @apply rounded-xl border border-slate-200 bg-white/95 shadow-[var(--shadow-md)] backdrop-blur-sm;
   }
+
+  .app-button-chrome {
+    --btn-tone: var(--app-accent);
+    color: var(--btn-tone, var(--app-accent-text));
+    background-image: var(--button-chrome-bg);
+    border: 1px solid var(--button-chrome-border);
+    box-shadow: var(--button-chrome-shadow);
+    transition:
+      transform 160ms ease,
+      border-color 160ms ease,
+      background-image 160ms ease,
+      box-shadow 160ms ease,
+      color 160ms ease;
+  }
+
+  .app-button-chrome:hover {
+    transform: translateY(-1px);
+    background-image: var(--button-chrome-bg-hover);
+    border-color: var(--button-chrome-border-hover);
+    box-shadow: var(--button-chrome-shadow-hover);
+  }
+
+  .app-button-chrome-active {
+    background-image: var(--button-chrome-bg-hover);
+    border-color: var(--button-chrome-border-hover);
+    box-shadow: var(--button-chrome-shadow-hover);
+  }
+
+  .app-button-chrome-quiet {
+    background-image: radial-gradient(ellipse at center,
+      rgba(255,255,255,0.995) 0%,
+      color-mix(in srgb, var(--btn-tone, var(--app-accent)) 1%, white) 68%,
+      color-mix(in srgb, var(--btn-tone, var(--app-accent)) 3.5%, white) 100%);
+    border-color: color-mix(in srgb, var(--btn-tone, var(--app-accent)) 10%, #d8dde6);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.92), 0 1px 2px rgba(23,21,27,0.025);
+  }
+
+  .app-button-chrome-quiet:hover {
+    background-image: radial-gradient(ellipse at center,
+      rgba(255,255,255,0.995) 0%,
+      color-mix(in srgb, var(--btn-tone, var(--app-accent)) 1.5%, white) 66%,
+      color-mix(in srgb, var(--btn-tone, var(--app-accent)) 5%, white) 100%);
+    border-color: color-mix(in srgb, var(--btn-tone, var(--app-accent)) 18%, #c9d0dc);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.95), 0 1px 4px rgba(23,21,27,0.035);
+  }
+
+  .navbar-inline-control {
+    border: 1px solid transparent;
+    background: transparent;
+    box-shadow: none;
+    color: var(--btn-tone, var(--app-accent-text));
+    transition: background-color 160ms ease, color 160ms ease;
+  }
+
+  .navbar-inline-control:hover,
+  .navbar-inline-control-active {
+    background: rgba(255, 255, 255, 0.58);
+  }
+
+  .brand-wordmark {
+    display: inline-flex;
+    align-items: baseline;
+    font-family: "SofiaPro", var(--font-family-brand);
+    font-size: 18px;
+    font-weight: 800;
+    line-height: 1;
+    letter-spacing: 0;
+    background-image: radial-gradient(ellipse at center, rgba(23,21,27,0.68) 0%, rgba(23,21,27,0.88) 48%, #17151b 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  .brand-beta-badge {
+    display: inline-flex;
+    min-height: 18px;
+    align-items: center;
+    border-radius: 999px;
+    border: 1px solid rgba(234, 179, 8, 0.28);
+    background: #fff5c2;
+    padding: 0 0.45rem;
+    color: #8a6412;
+    font-size: 9px;
+    font-weight: 800;
+    line-height: 1;
+    letter-spacing: 0.08em;
+  }
 }
 
 .animate-gradient {
@@ -326,4 +435,17 @@
 }
 .cm-editor.cm-focused .cm-scroller .cm-selectionLayer .cm-selectionBackground {
   background: rgba(250, 204, 21, 0.75) !important;
+}
+
+/* ── TipTap/ProseMirror editor focus outline ────────────────────────────── */
+/* Hide the default blue focus ring; show only the blinking caret */
+.ProseMirror:focus {
+  outline: none !important;
+  box-shadow: none !important;
+}
+.ProseMirror {
+  caret-color: #64748b;  /* slate-500 */
+}
+.ProseMirror:focus {
+  caret-color: #334155;  /* slate-700 for better visibility */
 }

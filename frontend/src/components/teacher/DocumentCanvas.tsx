@@ -5,6 +5,11 @@ import { useToast } from '@/components/ui/use-toast'
 import { chatApi, llmApi } from '@/lib/api'
 import { buildBrochureLatex, buildDispensaLatex, buildReportHtml, parseBrochurePayload, parseDispensaPayload, parseReportPayload } from '@/components/teacher/reportTemplates'
 
+// Toolbar pills — homogeneous with the main navbar (shared --selection-* tokens).
+const TOOLBAR_PILL = 'inline-flex items-center gap-1 h-7 rounded-[var(--selection-radius)] border px-2.5 text-[11px] font-semibold transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--selection-border-hover)] disabled:opacity-50'
+const TOOLBAR_PILL_INACTIVE = 'border-transparent text-slate-600 hover:border-[color:var(--selection-border)] hover:bg-[image:var(--selection-bg)] hover:text-[var(--selection-text)]'
+const TOOLBAR_PILL_ACTIVE = 'bg-[image:var(--selection-active-bg)] text-[var(--selection-active-text)] border-[color:var(--selection-border-hover)] shadow-[var(--selection-shadow)]'
+
 export interface GeneratedDoc {
   type: 'brochure' | 'dispensa' | 'report' | 'html_page'
   content: string
@@ -828,49 +833,39 @@ export default function DocumentCanvas({ doc, onClose, sessions = [], authorName
         <div className="flex items-center gap-1 shrink-0">
           <button
             onClick={() => setShowSource(v => !v)}
-            className={`px-2 py-1 rounded-full text-[10px] transition-all border ${showSource
-              ? 'bg-slate-800 text-white border-slate-800'
-              : 'bg-slate-100 text-slate-500 border-slate-200 hover:bg-slate-200'}`}
+            className={`${TOOLBAR_PILL} ${showSource ? TOOLBAR_PILL_ACTIVE : TOOLBAR_PILL_INACTIVE}`}
           >
             {showSource ? 'Anteprima' : 'Sorgente'}
           </button>
 
-          <Button variant="ghost" size="sm" onClick={printDoc}
-            className="h-7 px-2 text-xs text-slate-500 hover:bg-slate-100">
-            <RotateCcw className="h-3 w-3 mr-1" />Stampa
-          </Button>
+          <button onClick={printDoc} className={`${TOOLBAR_PILL} ${TOOLBAR_PILL_INACTIVE}`}>
+            <RotateCcw className="h-3.5 w-3.5" />Stampa
+          </button>
 
           {doc.type !== 'report' && (
-            <Button
-              variant="ghost"
-              size="sm"
+            <button
               onClick={downloadPdf}
               disabled={pdfLoading}
-              className="h-7 px-2 text-xs text-rose-600 hover:bg-rose-50"
+              className={`${TOOLBAR_PILL} ${TOOLBAR_PILL_INACTIVE}`}
               title={pdfError || 'Converti e scarica PDF'}
             >
-              {pdfLoading ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : <FileText className="h-3 w-3 mr-1" />}
+              {pdfLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileText className="h-3.5 w-3.5" />}
               PDF
-            </Button>
+            </button>
           )}
 
-          <Button variant="ghost" size="sm" onClick={downloadDoc}
-            className="h-7 px-2 text-xs text-slate-500 hover:bg-slate-100">
-            <Download className="h-3 w-3 mr-1" />{pdfBlobUrl && doc.type !== 'report' ? '.pdf' : '.html'}
-          </Button>
+          <button onClick={downloadDoc} className={`${TOOLBAR_PILL} ${TOOLBAR_PILL_INACTIVE}`}>
+            <Download className="h-3.5 w-3.5" />{pdfBlobUrl && doc.type !== 'report' ? '.pdf' : '.html'}
+          </button>
 
           {sessions.length > 0 && (
             <div className="relative">
-              <Button
-                variant="ghost"
-                size="sm"
+              <button
                 onClick={() => setShowShareMenu(v => !v)}
-                className={`h-7 px-2 text-xs border ${isDispensa
-                  ? 'text-amber-700 hover:bg-amber-50 border-amber-200'
-                  : 'text-sky-600 hover:bg-sky-50 border-sky-200'}`}
+                className={`${TOOLBAR_PILL} ${showShareMenu ? TOOLBAR_PILL_ACTIVE : TOOLBAR_PILL_INACTIVE}`}
               >
-                <Share2 className="h-3 w-3 mr-1" />Condividi
-              </Button>
+                <Share2 className="h-3.5 w-3.5" />Condividi
+              </button>
               {showShareMenu && (
                 <div className="absolute right-0 top-full mt-1 w-60 bg-white rounded-xl shadow-xl border border-slate-100 py-1 z-50 animate-in fade-in zoom-in-95 duration-100">
                   <div className="px-3 py-2 text-[10px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-100">

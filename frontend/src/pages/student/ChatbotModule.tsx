@@ -106,20 +106,6 @@ const PROFILE_ICONS: Record<string, React.ReactNode> = {
   'math_coach': <Lightbulb className="h-6 w-6" />,
 }
 
-const CHAT_TONE_STRIPES: Record<PastelTone, string> = {
-  slate: 'bg-[#6a5872]',
-  indigo: 'bg-[#b51f5f]',
-  violet: 'bg-[#9452a3]',
-  emerald: 'bg-[#9452a3]',
-  amber: 'bg-[#9452a3]',
-  rose: 'bg-[#b51f5f]',
-  cyan: 'bg-[#1d7dd8]',
-  blue: 'bg-[#1d7dd8]',
-  sky: 'bg-[#1d7dd8]',
-  teal: 'bg-[#1d7dd8]',
-  orange: 'bg-[#9452a3]',
-}
-
 const PROFILE_TONES: Record<string, PastelTone> = {
   tutor: 'sky',
   quiz: 'rose',
@@ -431,7 +417,6 @@ function getTeacherbotSurface(color: string) {
   return {
     tone,
     surface: PASTEL_SURFACES[tone],
-    stripe: CHAT_TONE_STRIPES[tone],
     icon: `${PASTEL_ICON_BACKGROUNDS[tone]} ${PASTEL_ICON_TEXT[tone]}`,
     badge: `${PASTEL_ICON_BACKGROUNDS[tone]} ${PASTEL_ICON_TEXT[tone]}`,
   }
@@ -1273,7 +1258,7 @@ REGOLE IMPORTANTI:
 - Rispondi SOLO con il prompt ottimizzato.`
 
       const history = messages.map(m => ({ role: m.role, content: m.content }))
-      const expansionRes = await llmApi.studentChat(expansionPrompt, history, 'tutor', 'openai', 'gpt-5-mini')
+      const expansionRes = await llmApi.studentChat(expansionPrompt, history, 'tutor', 'openai', 'gpt-5.4-mini')
       const enhancedPrompt = expansionRes.data?.response?.trim() || messageContent
 
       setImageGenerationProgress({ status: 'Generazione immagine in corso...', step: 'generating', enhancedPrompt })
@@ -2861,9 +2846,8 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
                           key={profile.key}
                           whileTap={{ scale: 0.99 }}
                           onClick={() => handleSelectProfile(profile.key)}
-	                          className={`group relative flex min-h-[156px] flex-col overflow-hidden rounded-lg p-4 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-lg ${PASTEL_SURFACES[tone]}`}
+	                          className={`group relative flex min-h-[156px] flex-col overflow-hidden rounded-[24px] p-4 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-lg ${PASTEL_SURFACES[tone]}`}
                         >
-	                          <div className={`absolute inset-x-0 top-0 h-1 ${CHAT_TONE_STRIPES[tone]}`} />
                           <div className="relative flex flex-col">
                             <div className="flex items-center justify-between gap-2">
 	                              <div className={`flex h-10 w-10 items-center justify-center rounded-lg shadow-sm ${PASTEL_ICON_BACKGROUNDS[tone]} ${PASTEL_ICON_TEXT[tone]}`}>
@@ -2910,10 +2894,9 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
                             key={bot.id}
                             whileTap={{ scale: 0.99 }}
                             onClick={() => handleSelectTeacherbot(bot)}
-	                            className={`group relative flex min-h-[156px] flex-col overflow-hidden rounded-lg text-left shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-lg ${surface.surface}`}
+	                            className={`group relative flex min-h-[156px] flex-col overflow-hidden rounded-[24px] p-4 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-lg ${surface.surface}`}
                           >
-	                            <div className={`absolute inset-x-0 top-0 h-1 ${surface.stripe}`} />
-                            <div className="relative overflow-hidden border-b border-slate-200/60 bg-white/45 px-4 py-3">
+                            <div className="relative overflow-hidden">
                               <div className="absolute right-3 bottom-2 opacity-[0.08]">
                                 <visual.Icon className="h-12 w-12 text-slate-900" />
                               </div>
@@ -2927,7 +2910,7 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
                                 </div>
                               </div>
                             </div>
-                            <div className="flex flex-1 flex-col px-4 py-3">
+                            <div className="flex flex-1 flex-col pt-3">
                               <div className="flex items-start justify-between gap-2">
                                 <h4 className="text-sm font-semibold text-slate-900">{bot.name}</h4>
                                 <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${surface.badge}`}>Dal docente</span>
@@ -3130,7 +3113,7 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
                           return (
                             <div
                               key={modelKey(m)}
-                              className={`mx-1 my-0.5 px-3 py-2 rounded-[var(--selection-radius)] border cursor-pointer flex items-center justify-between ${selected ? '' : 'border-transparent hover:bg-[var(--selection-bg)]'}`}
+                              className={`mx-1 my-0.5 px-3 py-2 rounded-[var(--selection-radius)] border cursor-pointer flex items-center justify-between ${selected ? '' : 'border-transparent hover:bg-[image:var(--selection-bg)]'}`}
                               style={selected ? selectedSoftStyle : undefined}
                               onClick={() => handleChangeModel(m)}
                             >

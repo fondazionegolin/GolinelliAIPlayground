@@ -797,17 +797,25 @@ export function VoiceRoomPanel({ sessionId, userType, currentUserId, socket }: V
   })()
 
   return (
-    <div className="mx-3 mt-3 overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm">
+    <div
+      className="mx-3 mt-3 overflow-hidden rounded-2xl border"
+      style={{
+        background:
+          'linear-gradient(135deg, var(--app-accent) 0%, color-mix(in srgb, var(--app-accent) 80%, #000) 100%)',
+        borderColor: 'color-mix(in srgb, var(--app-accent) 55%, #000)',
+        boxShadow: '0 12px 28px color-mix(in srgb, var(--app-accent) 32%, transparent)',
+      }}
+    >
       <div ref={audioSinkRef} className="hidden" />
 
       {/* Header row */}
-      <div className="flex items-center justify-between gap-2 border-b border-slate-100 bg-slate-50/70 px-3 py-2.5">
+      <div className="flex items-center justify-between gap-2 border-b border-white/15 px-3 py-2.5">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
-            <span className={`h-2 w-2 rounded-full ${isActive ? 'animate-pulse bg-emerald-500' : 'bg-slate-300'}`} />
-            <p className="text-xs font-bold uppercase tracking-wide text-slate-700">Voce classe</p>
+            <span className={`h-2 w-2 rounded-full ${isActive ? 'animate-pulse bg-emerald-300 ring-2 ring-emerald-300/40' : 'bg-white/50'}`} />
+            <p className="text-xs font-bold uppercase tracking-wide text-white">Voce classe</p>
           </div>
-          <p className="truncate text-[10px] text-slate-400">
+          <p className="truncate text-[10px] text-white/75">
             {isActive && activeSpeaker ? `${activeSpeaker.nickname || 'Studente'} in parola` : isActive ? statusText : 'Non attiva'}
           </p>
         </div>
@@ -816,7 +824,7 @@ export function VoiceRoomPanel({ sessionId, userType, currentUserId, socket }: V
           <Button
             size="sm"
             onClick={() => emitVoice(isActive ? 'voice_room_end' : 'voice_room_start')}
-            className={`h-8 rounded-full px-3 text-xs ${isActive ? 'bg-red-600 hover:bg-red-700' : 'bg-slate-900 hover:bg-slate-800'}`}
+            className={`h-8 rounded-full bg-none px-3 text-xs font-bold shadow-sm ${isActive ? 'bg-white text-red-600 hover:bg-white/90' : 'bg-white text-[var(--app-accent-text)] hover:bg-white/90'}`}
           >
             {isActive ? <PhoneOff className="mr-1.5 h-3.5 w-3.5" /> : <Phone className="mr-1.5 h-3.5 w-3.5" />}
             {isActive ? 'Chiudi' : 'Avvia'}
@@ -828,10 +836,10 @@ export function VoiceRoomPanel({ sessionId, userType, currentUserId, socket }: V
             onClick={() => emitVoice(
               isSpeaker || isQueued ? 'voice_cancel_request' : 'voice_request_speak',
             )}
-            className={`h-8 rounded-full px-3 text-xs ${
+            className={`h-8 rounded-full bg-none px-3 text-xs font-bold shadow-sm ${
               isQueued || isSpeaker
-                ? 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-                : 'bg-slate-900 text-white hover:bg-slate-800'
+                ? 'border border-white/40 bg-white/15 text-white hover:bg-white/25'
+                : 'bg-white text-[var(--app-accent-text)] hover:bg-white/90'
             }`}
           >
             {isSpeaker || isQueued ? <X className="mr-1.5 h-3.5 w-3.5" /> : <Hand className="mr-1.5 h-3.5 w-3.5" />}
@@ -902,7 +910,7 @@ export function VoiceRoomPanel({ sessionId, userType, currentUserId, socket }: V
           </div>
 
           {/* Status + VU meters + mute button */}
-          <div className="flex items-center gap-2 text-[11px] text-slate-500">
+          <div className="flex items-center gap-2 rounded-xl bg-white px-2.5 py-2 text-[11px] text-slate-500">
             {/* Icon */}
             {isConnecting ? (
               <Loader2 className="h-3.5 w-3.5 flex-shrink-0 animate-spin" />
@@ -947,7 +955,7 @@ export function VoiceRoomPanel({ sessionId, userType, currentUserId, socket }: V
           </div>
 
           {(canPublishMedia || hasMedia) && (
-            <div className="space-y-2 rounded-xl border border-slate-100 bg-slate-50/60 p-2">
+            <div className="space-y-2 rounded-xl border border-slate-100 bg-white p-2">
               {canPublishMedia && (
                 <div className="flex flex-wrap items-center gap-2">
                   <button

@@ -143,6 +143,7 @@ async def list_live_interactions(
             "title": li.title,
             "status": li.status,
             "slides_count": len(li.slides_json or []),
+            "slides_json": li.slides_json or [],
             "current_slide_index": li.current_slide_index,
             "created_at": li.created_at.isoformat(),
         }

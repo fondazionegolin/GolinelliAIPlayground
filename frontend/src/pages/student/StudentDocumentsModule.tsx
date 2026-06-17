@@ -759,18 +759,11 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId }: 
       return 'border border-emerald-200 bg-emerald-100 text-emerald-800'
     }
     const docCardStyle = (type: string) => {
-      if (type === 'presentation') return 'border-indigo-200 bg-gradient-to-br from-white via-indigo-50/45 to-white hover:border-indigo-400'
-      if (type === 'web') return 'border-fuchsia-200 bg-gradient-to-br from-white via-fuchsia-50/45 to-white hover:border-fuchsia-400'
-      if (type === 'sheet') return 'border-sky-200 bg-gradient-to-br from-white via-sky-50/45 to-white hover:border-sky-400'
-      if (type === 'canvas') return 'border-amber-200 bg-gradient-to-br from-white via-amber-50/45 to-white hover:border-amber-400'
-      return 'border-emerald-200 bg-gradient-to-br from-white via-emerald-50/45 to-white hover:border-emerald-400'
-    }
-    const docStripe = (type: string) => {
-      if (type === 'presentation') return 'bg-indigo-500'
-      if (type === 'web') return 'bg-fuchsia-500'
-      if (type === 'sheet') return 'bg-sky-500'
-      if (type === 'canvas') return 'bg-amber-500'
-      return 'bg-emerald-500'
+      if (type === 'presentation') return 'border-[rgba(123,105,201,0.18)] bg-[rgba(123,105,201,0.075)] hover:border-[rgba(123,105,201,0.30)] hover:bg-[rgba(123,105,201,0.11)]'
+      if (type === 'web') return 'border-[rgba(254,0,77,0.18)] bg-[rgba(254,0,77,0.075)] hover:border-[rgba(254,0,77,0.28)] hover:bg-[rgba(254,0,77,0.11)]'
+      if (type === 'sheet') return 'border-[rgba(62,169,244,0.18)] bg-[rgba(62,169,244,0.075)] hover:border-[rgba(62,169,244,0.30)] hover:bg-[rgba(62,169,244,0.11)]'
+      if (type === 'canvas') return 'border-[rgba(123,105,201,0.18)] bg-[rgba(123,105,201,0.075)] hover:border-[rgba(123,105,201,0.30)] hover:bg-[rgba(123,105,201,0.11)]'
+      return 'border-[rgba(62,169,244,0.18)] bg-[rgba(62,169,244,0.075)] hover:border-[rgba(62,169,244,0.30)] hover:bg-[rgba(62,169,244,0.11)]'
     }
     const docBadge = (type: string) => {
       if (type === 'presentation') return 'border-indigo-200 bg-indigo-100 text-indigo-800'
@@ -815,7 +808,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId }: 
                 </button>
               )}
             </div>
-            <Button tone="neutral" surface="solid" onClick={() => setShowNewModal(true)} className="shrink-0 rounded-lg border border-emerald-200 bg-emerald-100 px-4 font-black text-emerald-800 shadow-sm hover:border-emerald-300 hover:bg-emerald-200">
+            <Button tone="neutral" surface="solid" onClick={() => setShowNewModal(true)} className="shrink-0 px-4">
               <Plus className="h-4 w-4 mr-2" />
               {t('documents.new')}
             </Button>
@@ -838,7 +831,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId }: 
                   </div>
                   <h3 className="text-lg font-black text-slate-950 mb-1">{isEnglishUi ? 'No documents yet' : 'Nessun documento'}</h3>
                   <p className="text-sm text-slate-500 mb-6">{isEnglishUi ? 'Create your first document to get started' : 'Crea il tuo primo documento per iniziare'}</p>
-                  <Button tone="neutral" surface="solid" onClick={() => setShowNewModal(true)} className="rounded-lg border border-emerald-200 bg-emerald-100 font-black text-emerald-800 hover:border-emerald-300 hover:bg-emerald-200">
+                  <Button tone="neutral" surface="solid" onClick={() => setShowNewModal(true)}>
                     <Plus className="h-4 w-4 mr-2" />
                     {isEnglishUi ? 'Create document' : 'Crea documento'}
                   </Button>
@@ -856,9 +849,8 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId }: 
                       <div
                         key={doc.id}
                         onClick={() => loadDraft(doc)}
-                        className={`group relative min-h-[148px] cursor-pointer overflow-hidden rounded-lg border p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-lg ${docCardStyle(doc.type)}`}
+                        className={`group relative min-h-[148px] cursor-pointer overflow-hidden rounded-[24px] border p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-lg ${docCardStyle(doc.type)}`}
                       >
-                        <div className={`absolute inset-x-0 top-0 h-1 ${docStripe(doc.type)}`} />
                         <div className={`w-11 h-11 rounded-lg mb-3 flex items-center justify-center shadow-sm ${docColor(doc.type)}`}>
                           {docIcon(doc.type)}
                         </div>
@@ -893,9 +885,8 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId }: 
                   <div
                     key={doc.id}
                     onClick={() => loadLesson(doc)}
-                    className={`group relative min-h-[148px] cursor-pointer overflow-hidden rounded-lg border p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-lg ${docCardStyle(doc.type)}`}
+                    className={`group relative min-h-[148px] cursor-pointer overflow-hidden rounded-[24px] border p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-lg ${docCardStyle(doc.type)}`}
                   >
-                    <div className={`absolute inset-x-0 top-0 h-1 ${docStripe(doc.type)}`} />
                     <div className={`w-11 h-11 rounded-lg mb-3 flex items-center justify-center shadow-sm ${docColor(doc.type)}`}>
                       {docIcon(doc.type)}
                     </div>
@@ -1306,7 +1297,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId }: 
                    minHeight: FORMAT_DIMENSIONS.a4.height,
                    transform: `scale(${docScale})`,
                    transformOrigin: 'top center',
-                   backgroundImage: `repeating-linear-gradient(to bottom, #ffffff 0, #ffffff ${FORMAT_DIMENSIONS.a4.height}px, #f1f5f9 ${FORMAT_DIMENSIONS.a4.height}px, #f1f5f9 ${FORMAT_DIMENSIONS.a4.height + DOC_PAGE_GAP}px)`,
+                   backgroundImage: `repeating-linear-gradient(to bottom, #ffffff 0, #ffffff ${FORMAT_DIMENSIONS.a4.height}px, #e5e7eb ${FORMAT_DIMENSIONS.a4.height}px, #e5e7eb ${FORMAT_DIMENSIONS.a4.height + DOC_PAGE_GAP}px)`,
                    boxShadow: '0 10px 30px rgba(15, 23, 42, 0.12)',
                    padding: `${docMargins.vertical}px ${docMargins.horizontal}px`
                  }}
