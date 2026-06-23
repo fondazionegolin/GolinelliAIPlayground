@@ -1,14 +1,19 @@
 {
-  "generated_at": "2026-06-17T07:30:31.749650+00:00",
-  "version_label": "2026.06.17-bc973b67",
+  "generated_at": "2026-06-23T09:17:32.992139+00:00",
+  "version_label": "2026.06.23-f8f9955a",
   "title": "Aggiornamenti branch testing",
-  "summary": "Bozza generata automaticamente da 1 commit nuovi.",
-  "git_ref": "bc973b676e31dfce30432aca8823bd24574c594c",
+  "summary": "Bozza generata automaticamente da 2 commit nuovi.",
+  "git_ref": "f8f9955aa65a8ad5821ba5f4ddf8b3d92359ecb6",
   "items": [
     {
       "category": "improved",
       "title": "Mega commit stato attuale",
       "description": "Mega commit stato attuale"
+    },
+    {
+      "category": "improved",
+      "title": "Mega update Coding Lab",
+      "description": "Mega update Coding Lab"
     }
   ]
 }
