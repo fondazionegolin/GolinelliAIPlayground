@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from app.api.v1.endpoints import auth, admin, admin_backend, teacher, student, chat, llm, rag, ml, assessment, files, teacherbots, admin_credits, alerts, stt, uda, media, feedback, notebooks, desktop, calendar, meshy, voice
+from app.api.v1.endpoints import auth, admin, admin_backend, teacher, student, chat, llm, rag, ml, assessment, files, teacherbots, admin_credits, alerts, stt, uda, media, feedback, notebooks, desktop, calendar, meshy, voice, coding
 from app.api.v1.endpoints.live_interaction import teacher_router as live_teacher_router, student_router as live_student_router
 from app.api.v1.endpoints import toy_lm
 
@@ -32,3 +32,4 @@ api_router.include_router(voice.router, prefix="/voice", tags=["voice"])
 api_router.include_router(live_teacher_router, prefix="/teacher", tags=["live-interaction"])
 api_router.include_router(live_student_router, prefix="/student", tags=["live-interaction"])
 api_router.include_router(toy_lm.router, prefix="/toy-lm", tags=["toy-lm"])
+api_router.include_router(coding.router, prefix="/coding", tags=["coding"])

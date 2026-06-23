@@ -59,6 +59,10 @@ class Settings(BaseSettings):
     # Default LLM settings
     DEFAULT_LLM_PROVIDER: str = "openai"
     DEFAULT_LLM_MODEL: str = "gpt-5.4-mini"
+
+    # Coding Lab uses a stronger model for code/UI quality (overridable via env).
+    CODING_LLM_PROVIDER: str = "anthropic"
+    CODING_LLM_MODEL: str = "claude-sonnet-4-6"
     
     # Embedding
     EMBEDDING_MODEL: str = "text-embedding-3-small"

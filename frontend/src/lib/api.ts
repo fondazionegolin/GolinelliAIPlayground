@@ -97,6 +97,117 @@ export const studentApi = {
   getCreditHistory: (limit = 20) => api.get('/student/credits/history', { params: { limit } }),
 }
 
+export const codingApi = {
+  listBriefs: (sessionId?: string) =>
+    api.get('/coding/briefs', { params: sessionId ? { session_id: sessionId } : undefined }),
+  listProjects: (sessionId?: string) =>
+    api.get('/coding/projects', { params: sessionId ? { session_id: sessionId } : undefined }),
+  createProject: (data: {
+    title: string
+    session_id?: string
+    brief_id?: string
+    template_key?: string
+    initial_prompt?: string
+  }) => api.post('/coding/projects', data),
+  getProject: (projectId: string) =>
+    api.get(`/coding/projects/${projectId}`),
+  addMessage: (projectId: string, data: { content: string; metadata_json?: Record<string, unknown> }) =>
+    api.post(`/coding/projects/${projectId}/messages`, data),
+  generateProject: (projectId: string, data: { prompt?: string; files?: { path: string; content: string; language?: string }[] }) =>
+    api.post(`/coding/projects/${projectId}/generate`, data),
+  generateProjectStreamUrl: (projectId: string) => `/api/v1/coding/projects/${projectId}/generate-stream`,
+  interview: (data: { title?: string; prompt?: string }) =>
+    api.post('/coding/ai/interview', data),
+  uiReview: (projectId: string, data: { files?: { path: string; content: string; language?: string }[] }) =>
+    api.post(`/coding/projects/${projectId}/ui-review`, data),
+  createVersion: (projectId: string, data: { parent_version_id?: string | null; source_manifest_json: Record<string, unknown>; artifact_manifest_json?: Record<string, unknown>; build_status?: string; review_status?: string }) =>
+    api.post(`/coding/projects/${projectId}/versions`, data),
+  shareToClass: (projectId: string) =>
+    api.post(`/coding/projects/${projectId}/share-to-class`),
+  forkProject: (projectId: string) =>
+    api.post(`/coding/projects/${projectId}/fork`),
+  commitToCreator: (projectId: string) =>
+    api.post(`/coding/projects/${projectId}/commit-to-creator`),
+  listCommits: (projectId: string) =>
+    api.get(`/coding/projects/${projectId}/commits`),
+  mergeCommit: (projectId: string, commitMessageId: string) =>
+    api.post(`/coding/projects/${projectId}/commits/${commitMessageId}/merge`),
+  rollbackVersion: (projectId: string, versionId: string) =>
+    api.post(`/coding/projects/${projectId}/versions/${versionId}/rollback`),
+  getUpstreamStatus: (projectId: string) =>
+    api.get(`/coding/projects/${projectId}/upstream-status`),
+  pullUpstream: (projectId: string) =>
+    api.post(`/coding/projects/${projectId}/pull-upstream`),
+  publishProject: (projectId: string) =>
+    api.post(`/coding/projects/${projectId}/publish`),
+  getPublicProject: (slug: string) =>
+    api.get(`/coding/public/${slug}`),
+  aiChat: (data: { content: string; history?: { role: string; content: string }[]; profileKey?: string; provider?: string; model?: string }) =>
+    api.post('/coding/ai/chat', data),
+}
+
+export type DesignTokens = {
+  mood?: string
+  palette: {
+    primary: string; primaryText: string
+    accent: string; accentText: string
+    background: string; surface: string
+    text: string; textMuted: string; border: string
+    success: string; danger: string
+  }
+  typography: {
+    fontHeading: string; fontBody: string
+    baseSize: number; scaleRatio: number; headingWeight: number; bodyWeight: number
+  }
+  shape: {
+    radius: number
+    buttonShape: 'squared' | 'soft' | 'pill'
+    buttonStyle: 'solid' | 'outline' | 'soft' | 'gradient' | 'glass' | 'glossy'
+    surfaceStyle: 'flat' | 'transparent' | 'frosted' | 'glossy'
+    shadowLevel: 'none' | 'soft' | 'strong'
+    borderWidth: number
+  }
+  spacing: { base: number; density: 'compact' | 'comfortable' | 'spacious' }
+  priorities: string[]
+}
+
+export type DesignSystem = {
+  id: string
+  tenant_id: string
+  session_id: string | null
+  owner_student_id: string | null
+  owner_user_id: string | null
+  name: string
+  description: string | null
+  tokens_json: DesignTokens
+  created_at: string
+  updated_at: string
+}
+
+export type DesignContrastCheck = { label: string; foreground: string; background: string; ratio: number; passes_aa: boolean }
+export type DesignCompileResult = {
+  tokens: DesignTokens
+  markdown: string
+  path: string
+  contrast_checks: DesignContrastCheck[]
+  coherence_score: number
+  warnings: string[]
+}
+
+export const designSystemApi = {
+  list: () => api.get<DesignSystem[]>('/coding/design-systems'),
+  get: (id: string) => api.get<DesignSystem>(`/coding/design-systems/${id}`),
+  create: (data: { name: string; description?: string; session_id?: string; tokens: DesignTokens }) =>
+    api.post<DesignSystem>('/coding/design-systems', data),
+  update: (id: string, data: { name?: string; description?: string; tokens?: DesignTokens }) =>
+    api.put<DesignSystem>(`/coding/design-systems/${id}`, data),
+  remove: (id: string) => api.delete(`/coding/design-systems/${id}`),
+  suggest: (data: { mood?: string; audience?: string; idea?: string; title?: string }) =>
+    api.post<{ tokens: DesignTokens; rationale: Record<string, string> }>('/coding/design-systems/suggest', data),
+  compile: (tokens: DesignTokens & { name?: string; description?: string }) =>
+    api.post<DesignCompileResult>('/coding/design-systems/compile', { tokens }),
+}
+
 export const adminApi = {
   getTenants: () => api.get('/admin/tenants'),
   createTenant: (data: { name: string; slug: string }) =>

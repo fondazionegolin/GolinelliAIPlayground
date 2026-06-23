@@ -1350,8 +1350,18 @@ async def generate_image(
     try:
         image_url = await llm_service.generate_image(prompt, provider=provider)
     except Exception as e:
-        logger.error(f"Image generation error: {e}")
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+        logger.error(f"Image generation error (provider={provider}): {e}")
+        # Flux/BFL/Golinelli image backends may be unavailable (missing key or unreachable
+        # host). Fall back to the OpenAI image model so the feature keeps working.
+        if provider != "gpt-image-1":
+            try:
+                image_url = await llm_service.generate_image(prompt, provider="gpt-image-1")
+                provider = "gpt-image-1"
+            except Exception as e2:
+                logger.error(f"Image generation fallback (gpt-image-1) failed: {e2}")
+                raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e2))
+        else:
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
     # Track Usage (non-blocking)
     openai_providers = {"dall-e", "gpt-image-1", "gpt-image-1.5", "gpt-image-2"}

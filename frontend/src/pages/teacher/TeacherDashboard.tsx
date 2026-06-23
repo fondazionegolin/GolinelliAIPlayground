@@ -1,7 +1,7 @@
 import { useState, useEffect, lazy, Suspense, type CSSProperties } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Routes, Route, useLocation, Link, useNavigate } from 'react-router-dom'
-import { MessageSquare, Users, PlayCircle, Bot, ClipboardList, History, Monitor, BookOpen, UserRound } from 'lucide-react'
+import { MessageSquare, Users, PlayCircle, Bot, ClipboardList, History, Monitor, BookOpen, UserRound, Code2 } from 'lucide-react'
 // Heavy pages loaded lazily — only parsed when first visited
 const ClassesPage        = lazy(() => import('./ClassesPage'))
 const SessionsPage       = lazy(() => import('./SessionsPage'))
@@ -19,6 +19,7 @@ const DesktopPage        = lazy(() => import('../shared/DesktopPage'))
 const LiveInteractionBuilderPage = lazy(() => import('./LiveInteractionBuilderPage'))
 const LiveInteractionControlPage = lazy(() => import('./LiveInteractionControlPage'))
 const ToyLMPage = lazy(() => import('./ToyLMPage'))
+const StudentCodingLabModule = lazy(() => import('../student/StudentCodingLabModule'))
 // TeacherSupportChat is the index route — load eagerly for fast first paint
 import TeacherSupportChat from './TeacherSupportChat'
 import { TeacherNavbar } from '@/components/TeacherNavbar'
@@ -126,6 +127,7 @@ export default function TeacherDashboard() {
     { path: '/teacher/classes', label: t('navbar.nav_classes'), icon: Users },
     { path: '/teacher/sessions', label: t('navbar.sessions_title'), icon: PlayCircle },
     { path: '/teacher/wiki', label: t('navbar.nav_wiki'), icon: BookOpen },
+    { path: '/teacher/coding', label: t('navbar.nav_coding_lab'), icon: Code2 },
   ]
 
   return (
@@ -256,7 +258,7 @@ export default function TeacherDashboard() {
           </div>
         )}
 
-        <main className={`flex-1 relative ${location.pathname.includes('/notebooks/notebook/') ? 'overflow-hidden flex flex-col' : 'overflow-y-auto'}`}>
+        <main className={`flex-1 relative ${location.pathname.includes('/notebooks/notebook/') || location.pathname.includes('/teacher/coding') ? 'overflow-hidden flex flex-col' : 'overflow-y-auto'}`}>
           <Suspense fallback={<div className="flex items-center justify-center h-full min-h-[40vh] text-sm text-slate-400">{t('common.loading')}</div>}>
             <Routes>
               <Route index element={<TeacherSupportChat />} />
@@ -275,6 +277,23 @@ export default function TeacherDashboard() {
               <Route path="live-interaction" element={<LiveInteractionBuilderPage sessionId={activeSessionId ?? undefined} />} />
               <Route path="live-interaction/:interactionId/control" element={<LiveInteractionControlPage />} />
               <Route path="toy-lm" element={<ToyLMPage />} />
+              <Route path="coding" element={
+                activeSessionId ? (
+                  <div className="h-full min-h-0 overflow-hidden">
+                    <StudentCodingLabModule sessionId={activeSessionId} isTeacher />
+                  </div>
+                ) : (
+                  <div className="flex h-full items-center justify-center p-8">
+                    <div className="max-w-sm rounded-2xl border border-slate-200 bg-white p-6 text-center shadow-sm">
+                      <Code2 className="mx-auto h-8 w-8 text-slate-400" />
+                      <h2 className="mt-3 text-sm font-bold text-slate-900">Seleziona una sessione</h2>
+                      <p className="mt-2 text-xs leading-relaxed text-slate-500">
+                        Il Coding Lab docente usa la sessione corrente per condividere app, versioni e commit con la classe.
+                      </p>
+                    </div>
+                  </div>
+                )
+              } />
               <Route path="desktop" element={
                 <DesktopPage
                   sessionId={activeSessionId ?? undefined}

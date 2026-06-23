@@ -11,7 +11,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import {
   Bot, Brain, Award, MessageSquare, FileEdit,
   Loader2, ChevronRight, Sparkles, ClipboardList, FileText, LayoutDashboard,
-  Home, FileCode2, Menu, BookOpen
+  Home, FileCode2, Menu, BookOpen, Code2
 } from 'lucide-react'
 const ChatbotModule         = lazy(() => import('./ChatbotModule'))
 const TasksModule           = lazy(() => import('./TasksModule'))
@@ -19,6 +19,7 @@ const ClassificationModule  = lazy(() => import('./ClassificationModule'))
 const StudentDocumentsModule = lazy(() => import('./StudentDocumentsModule'))
 const StudentNotebookModule = lazy(() => import('../notebook/StudentNotebookModule'))
 const StudentWikiPage       = lazy(() => import('./StudentWikiPage'))
+const StudentCodingLabModule = lazy(() => import('./StudentCodingLabModule'))
 const DesktopPage           = lazy(() => import('../shared/DesktopPage'))
 import ChatSidebar from '@/components/ChatSidebar'
 import { LogoMark } from '@/components/LogoMark'
@@ -130,6 +131,15 @@ function getModuleConfig(t: (key: string) => string): Record<string, ModuleConfi
       borderClass: 'border-cyan-200/70',
       shadowClass: 'shadow-cyan-100/40',
     },
+    coding: {
+      label: t('navbar.nav_coding_lab'),
+      description: t('student_nav.coding_desc'),
+      icon: Code2,
+      colorClass: 'text-slate-800',
+      bgClass: 'bg-slate-100',
+      borderClass: 'border-slate-200/80',
+      shadowClass: 'shadow-slate-100/40',
+    },
   }
 }
 
@@ -158,6 +168,7 @@ export default function StudentDashboard() {
   const [oggiImparoLesson, setOggiImparoLesson] = useState<string | null>(null)
   const [showSidebar, setShowSidebar] = useState(false)
   const [studentAccent, setStudentAccent] = useState<StudentAccentId>(loadStudentAccent())
+  const [sharedCodingProject, setSharedCodingProject] = useState<{ projectId: string; nonce: number } | null>(null)
 
   const exitStudentSession = useCallback(() => {
     localStorage.removeItem('student_token')
@@ -166,6 +177,18 @@ export default function StudentDashboard() {
   }, [logout, navigate])
 
   const { isMobile } = useMobile()
+
+  useEffect(() => {
+    const handleOpenSharedProject = (event: Event) => {
+      const detail = (event as CustomEvent<{ projectId?: string }>).detail
+      if (!detail?.projectId) return
+      setSharedCodingProject({ projectId: detail.projectId, nonce: Date.now() })
+      setActiveModule('coding')
+      setShowSidebar(false)
+    }
+    window.addEventListener('coding-lab-open-shared-project', handleOpenSharedProject)
+    return () => window.removeEventListener('coding-lab-open-shared-project', handleOpenSharedProject)
+  }, [])
 
   // Handle swipe back on mobile
   const handleSwipeBack = useCallback(() => {
@@ -341,7 +364,7 @@ export default function StudentDashboard() {
 
   const privateChatEnabled = sessionInfo?.enabled_modules?.some((m) => m.key === 'chat') ?? false
   const sessionModules = sessionInfo?.enabled_modules?.map(m => m.key).filter(k => k !== 'chat') ?? []
-  const enabledModules = [...new Set([...sessionModules, 'classe', 'documents', 'wiki'])]
+  const enabledModules = [...new Set([...sessionModules, 'classe', 'documents', 'wiki', 'coding'])]
 
   if (loading) {
     return (
@@ -433,7 +456,7 @@ export default function StudentDashboard() {
                 />
               ) : (
                 <div className="h-full min-h-0 flex flex-col">
-	                  {activeModule !== 'documents' && activeModule !== 'desktop' && activeModule !== 'chatbot' && activeModule !== 'classe' && activeModule !== 'notebook' && activeModule !== 'tasks' && activeModule !== 'self_assessment' && activeModule !== 'classification' && activeModule !== 'wiki' && (
+	                  {activeModule !== 'documents' && activeModule !== 'desktop' && activeModule !== 'chatbot' && activeModule !== 'classe' && activeModule !== 'notebook' && activeModule !== 'tasks' && activeModule !== 'self_assessment' && activeModule !== 'classification' && activeModule !== 'wiki' && activeModule !== 'coding' && (
                     <div className={`mb-4 ${activeModule === 'chatbot' || activeModule === 'classe' ? 'hidden md:block' : ''}`}>
                       <Button
                         variant="ghost"
@@ -469,6 +492,7 @@ export default function StudentDashboard() {
                       }}
                       teacherTarget={sessionInfo.teacher ?? undefined}
                       privateChatEnabled={privateChatEnabled}
+                      sharedCodingProject={sharedCodingProject}
                     />
                   </Suspense>
                 </div>
@@ -561,17 +585,19 @@ function StudentMobileShell({
     { key: 'classe', label: t('student_dashboard.chat_label'), icon: MessageSquare },
     { key: 'documents', label: t('navbar.nav_documents'), icon: FileText },
     { key: 'notebook', label: t('student_nav.notebook_label'), icon: FileCode2 },
+    { key: 'coding', label: t('navbar.nav_coding_lab'), icon: Code2 },
     { key: 'classification', label: t('navbar.nav_ml_lab'), icon: Brain },
     { key: 'self_assessment', label: t('navbar.nav_tasks'), icon: ClipboardList },
     { key: 'desktop', label: t('navbar.nav_desktop'), icon: LayoutDashboard },
   ].filter((item) => item.key === null || enabledModules.includes(item.key))
   const activeTitle = activeModule ? (moduleConfig[activeModule]?.label || activeModule) : t('student_dashboard.back_home')
-  const isImmersiveModule = !!activeModule && ['chatbot', 'wiki', 'classification', 'notebook', 'documents', 'desktop'].includes(activeModule)
+  const isImmersiveModule = !!activeModule && ['chatbot', 'wiki', 'classification', 'notebook', 'documents', 'desktop', 'coding'].includes(activeModule)
   const homeTiles = [
     { key: 'chatbot', label: t('navbar.nav_chatbot'), icon: Bot, meta: t('chatbot.profile_tutor'), tint: 'from-sky-500/22 to-cyan-400/8' },
     { key: 'classe', label: t('student_dashboard.chat_label'), icon: MessageSquare, meta: 'Chat', tint: 'from-indigo-500/22 to-sky-400/8' },
     { key: 'documents', label: t('navbar.nav_documents'), icon: FileText, meta: t('documents.new_document'), tint: 'from-violet-500/22 to-fuchsia-400/8' },
     { key: 'notebook', label: t('student_nav.notebook_label'), icon: FileCode2, meta: 'Python', tint: 'from-emerald-500/22 to-teal-400/8' },
+    { key: 'coding', label: t('navbar.nav_coding_lab'), icon: Code2, meta: 'Web app', tint: 'from-slate-500/18 to-sky-400/8' },
     { key: 'classification', label: t('navbar.nav_ml_lab'), icon: Brain, meta: 'Lab', tint: 'from-amber-400/22 to-orange-400/8' },
     { key: 'self_assessment', label: t('navbar.nav_tasks'), icon: ClipboardList, meta: pendingTasksCount > 0 ? `${pendingTasksCount}` : 'OK', tint: 'from-rose-400/20 to-amber-300/10' },
   ].filter((item) => enabledModules.includes(item.key))
@@ -785,6 +811,7 @@ function getMobileTileClass(key: string, tint: string) {
   if (key === 'classe') return `${base} from-indigo-100 to-sky-50 border-indigo-200`
   if (key === 'documents') return `${base} from-violet-100 to-fuchsia-50 border-violet-200`
   if (key === 'notebook') return `${base} from-emerald-100 to-teal-50 border-emerald-200`
+  if (key === 'coding') return `${base} from-slate-100 to-sky-50 border-slate-200`
   if (key === 'classification') return `${base} from-amber-100 to-orange-50 border-amber-200`
   if (key === 'self_assessment') return `${base} from-rose-100 to-amber-50 border-rose-200`
   return `${base} ${tint} border-slate-200`
@@ -967,7 +994,7 @@ function HomeView({
   )
 }
 
-function ModuleView({ moduleKey, sessionId, sessionName, openTaskId, studentId, studentName, onTeacherbotNotificationClick, selectedTeacherbotId, oggiImparoLesson, onOggiImparoLessonConsumed, studentAccent, openDocumentTaskId, onOpenDocument, teacherTarget, privateChatEnabled }: {
+function ModuleView({ moduleKey, sessionId, sessionName, openTaskId, studentId, studentName, onTeacherbotNotificationClick, selectedTeacherbotId, oggiImparoLesson, onOggiImparoLessonConsumed, studentAccent, openDocumentTaskId, onOpenDocument, teacherTarget, privateChatEnabled, sharedCodingProject }: {
   moduleKey: string;
   sessionId: string;
   sessionName?: string;
@@ -983,6 +1010,7 @@ function ModuleView({ moduleKey, sessionId, sessionName, openTaskId, studentId, 
   onOpenDocument?: (taskId: string) => void;
   teacherTarget?: { id: string; name: string };
   privateChatEnabled?: boolean;
+  sharedCodingProject?: { projectId: string; nonce: number } | null;
 }) {
   const { t } = useTranslation()
   // Class chat module - full screen ChatSidebar
@@ -1071,6 +1099,14 @@ function ModuleView({ moduleKey, sessionId, sessionName, openTaskId, studentId, 
     return (
       <div className="h-full min-h-0 overflow-hidden">
         <StudentWikiPage />
+      </div>
+    )
+  }
+
+  if (moduleKey === 'coding') {
+    return (
+      <div className="h-[calc(100dvh-7rem)] md:h-full min-h-0 overflow-hidden">
+        <StudentCodingLabModule sessionId={sessionId} sharedProject={sharedCodingProject} />
       </div>
     )
   }

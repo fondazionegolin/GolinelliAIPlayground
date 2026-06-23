@@ -40,6 +40,24 @@ interface ToyLMModelAttachment {
   param_count?: number
 }
 
+interface CodingProjectAttachment {
+  type: 'coding_project'
+  project_id: string
+  version_id?: string
+  title: string
+  slug?: string
+  file_count?: number
+  total_lines?: number
+}
+
+interface CodingCommitAttachment {
+  type: 'coding_commit'
+  project_id: string
+  contributor_project_id?: string
+  contributor_name?: string
+  status?: string
+}
+
 type SessionFilesCache = {
   files: SessionFile[]
   updatedAt: number
@@ -904,6 +922,12 @@ export default function ChatSidebar({
     const toyLmAttachments = rawAttachments.filter((att: any): att is ToyLMModelAttachment =>
       att?.type === 'toy_lm_model' && typeof att.job_id === 'string'
     )
+    const codingProjectAttachments = rawAttachments.filter((att: any): att is CodingProjectAttachment =>
+      att?.type === 'coding_project' && typeof att.project_id === 'string'
+    )
+    const codingCommitAttachments = rawAttachments.filter((att: any): att is CodingCommitAttachment =>
+      att?.type === 'coding_commit' && typeof att.project_id === 'string'
+    )
     const allAttachments = rawAttachments
       ? rawAttachments.filter((att: any) => att.url)
       : []
@@ -1015,6 +1039,77 @@ export default function ChatSidebar({
                     </div>
                     <span className="mt-2 inline-flex w-full items-center justify-center rounded-lg bg-violet-600 px-2 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-violet-700">
                       Prova modello
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
+            {codingProjectAttachments.length > 0 && (
+              <div className="mt-2 space-y-2">
+                {codingProjectAttachments.map((att, idx) => (
+                  <button
+                    key={`${att.project_id}-${idx}`}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      window.dispatchEvent(new CustomEvent('coding-lab-open-shared-project', {
+                        detail: {
+                          projectId: att.project_id,
+                          versionId: att.version_id,
+                          title: att.title,
+                        },
+                      }))
+                    }}
+                    className="w-full rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-left shadow-sm transition-colors hover:border-sky-300 hover:bg-sky-100"
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-sky-600 text-white">
+                        <File className="h-4.5 w-4.5" style={{ width: 18, height: 18 }} />
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-xs font-black uppercase tracking-wide text-sky-700">Progetto Coding Lab</p>
+                        <p className="truncate text-sm font-semibold text-slate-800">{att.title || 'Mini app condivisa'}</p>
+                        <p className="mt-0.5 truncate text-[10px] text-slate-500">
+                          {att.file_count ?? 0} file · {att.total_lines ?? 0} righe
+                        </p>
+                      </div>
+                    </div>
+                    <span className="mt-2 inline-flex w-full items-center justify-center rounded-lg bg-sky-600 px-2 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-sky-700">
+                      Apri nel Coding Lab
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
+            {codingCommitAttachments.length > 0 && (
+              <div className="mt-2 space-y-2">
+                {codingCommitAttachments.map((att, idx) => (
+                  <button
+                    key={`${att.project_id}-${att.contributor_project_id || idx}`}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      window.dispatchEvent(new CustomEvent('coding-lab-open-shared-project', {
+                        detail: {
+                          projectId: att.project_id,
+                          openCommits: true,
+                        },
+                      }))
+                    }}
+                    className="w-full rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-left shadow-sm transition-colors hover:border-emerald-300 hover:bg-emerald-100"
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-emerald-600 text-white">
+                        <CornerUpLeft className="h-4.5 w-4.5" style={{ width: 18, height: 18 }} />
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-xs font-black uppercase tracking-wide text-emerald-700">Commit Coding Lab</p>
+                        <p className="truncate text-sm font-semibold text-slate-800">
+                          {att.contributor_name || 'Studente'} ha inviato una proposta
+                        </p>
+                        <p className="mt-0.5 truncate text-[10px] text-slate-500">{att.status || 'pending'}</p>
+                      </div>
+                    </div>
+                    <span className="mt-2 inline-flex w-full items-center justify-center rounded-lg bg-emerald-600 px-2 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-emerald-700">
+                      Apri commit
                     </span>
                   </button>
                 ))}

@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, type CSSProperties } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { User, Settings, LogOut, ChevronDown, Bot, Brain, Award, FileEdit, FileText, Menu, X, MessageSquare, Mic, Check, FileCode2, MonitorPlay, BookOpen } from 'lucide-react'
+import { User, Settings, LogOut, ChevronDown, Bot, Brain, Award, FileEdit, FileText, Menu, X, MessageSquare, Mic, Check, FileCode2, MonitorPlay, BookOpen, Code2 } from 'lucide-react'
 import { Button } from './ui/button'
 import { LogoMark } from './LogoMark'
 import { studentApi } from '@/lib/api'
@@ -187,9 +187,10 @@ export function StudentNavbar({
     { key: 'documents', label: t('navbar.nav_documents'), icon: FileEdit },
     { key: 'self_assessment', label: t('navbar.nav_tasks'), icon: Award },
     { key: 'notebook', label: t('navbar.nav_notebook'), icon: FileCode2 },
+    { key: 'coding', label: t('navbar.nav_coding_lab'), icon: Code2 },
   ]
   // Always show core modules; filter optional modules by session settings
-  const ALWAYS_SHOWN = new Set(['chatbot', 'documents', 'notebook', 'wiki'])
+  const ALWAYS_SHOWN = new Set(['chatbot', 'documents', 'notebook', 'wiki', 'coding'])
   const navItems = enabledModules
     ? ALL_NAV_ITEMS.filter(item => ALWAYS_SHOWN.has(item.key) || enabledModules.includes(item.key))
     : ALL_NAV_ITEMS
