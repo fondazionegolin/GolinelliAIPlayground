@@ -187,7 +187,7 @@ export default function TeacherbotTestChat({ teacherbotId, onBack }: TeacherbotT
                   {msg.role === 'assistant' ? (
                     <ReactMarkdown
                       remarkPlugins={[remarkGfm]}
-                      className="prose prose-sm max-w-none prose-p:my-1"
+                      className="chat-markdown prose max-w-none prose-p:my-1"
                       components={markdownCodeComponents()}
                     >
                       {msg.content}

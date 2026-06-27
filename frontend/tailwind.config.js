@@ -15,8 +15,9 @@ export default {
     },
     extend: {
       fontFamily: {
-        sans: ['Lufga', 'Lexend', 'system-ui', 'sans-serif'],
-        brand: ['SofiaPro', 'Lufga', 'Lexend', 'system-ui', 'sans-serif'],
+        sans: ['Bree 2', 'Sofia Sans Semi Condensed', 'Lufga', 'Lexend', 'system-ui', 'sans-serif'],
+        emphasis: ['Bree 2', 'Sofia Sans', 'Sofia Sans Semi Condensed', 'Lufga', 'Lexend', 'system-ui', 'sans-serif'],
+        brand: ['Bree 2', 'Sofia Sans', 'Sofia Sans Semi Condensed', 'Lufga', 'Lexend', 'system-ui', 'sans-serif'],
         mono: ['JetBrains Mono', 'IBM Plex Mono', 'monospace'],
       },
       fontSize: {

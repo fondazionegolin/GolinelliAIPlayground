@@ -1,6 +1,6 @@
 import type { CellOutput } from '@/hooks/usePyodide'
 
-export type NotebookProjectType = 'python' | 'p5js' | 'strudel' | 'game2d'
+export type NotebookProjectType = 'python' | 'p5js' | 'strudel' | 'game2d' | 'microbit' | 'circuitplayground'
 export type NotebookTheme = 'dark' | 'light' | 'fancy' | 'dracula' | 'p5js'
 export type NotebookFontFamily = 'jetbrains' | 'space' | 'courier' | 'victor' | 'plex'
 
@@ -20,6 +20,8 @@ export interface NotebookEditorSettings {
   live_preview: boolean
   font_weight?: number
   libraries?: string[]  // IDs of loaded extra libraries
+  microbit_language?: 'python' | 'javascript'
+  device_language?: 'python' | 'javascript'
 }
 
 export interface NotebookCodeProposal {

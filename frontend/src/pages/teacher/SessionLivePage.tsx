@@ -557,7 +557,7 @@ export default function SessionLivePage() {
             <div className="flex-1 min-w-0">
 
               <Tabs value={activeTab} onValueChange={setActiveTab} density="default" tone="neutral" className="mb-4">
-                <TabsList surface="base" className="grid h-auto w-full grid-cols-3 rounded-xl">
+                <TabsList surface="muted" className="grid h-auto w-full grid-cols-3 rounded-xl">
                   {([
                     { key: 'modules', icon: Brain, label: 'Moduli' },
                     { key: 'tasks',   icon: ClipboardList, label: t('teacher_dashboard.session_tasks') },

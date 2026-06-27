@@ -575,6 +575,7 @@ export default function TeacherClassesSessionsManager({
                   <SessionList
                     isEnglish={isEnglish}
                     statusMeta={statusMeta}
+                    accentTheme={accentTheme}
                     sessions={orderedSessions}
                     editingTitleId={editingTitleId}
                     editingTitleValue={editingTitleValue}
@@ -685,6 +686,7 @@ function EmptyStateCard({
 function SessionList({
   isEnglish,
   statusMeta,
+  accentTheme,
   sessions,
   editingTitleId,
   editingTitleValue,
@@ -698,6 +700,7 @@ function SessionList({
 }: {
   isEnglish: boolean
   statusMeta: Record<string, { label: string; tone: string; dot: string }>
+  accentTheme: ReturnType<typeof getTeacherAccentTheme>
   sessions: SessionData[]
   editingTitleId: string | null
   editingTitleValue: string
@@ -740,6 +743,7 @@ function SessionList({
           <SessionRow
             key={session.id}
             session={session}
+            accentTheme={accentTheme}
             editingTitleId={editingTitleId}
             editingTitleValue={editingTitleValue}
             setEditingTitleId={setEditingTitleId}
@@ -760,6 +764,7 @@ function SessionList({
 
 function SessionRow({
   session,
+  accentTheme,
   editingTitleId,
   editingTitleValue,
   setEditingTitleId,
@@ -773,6 +778,7 @@ function SessionRow({
   isEnglish,
 }: {
   session: SessionData
+  accentTheme: ReturnType<typeof getTeacherAccentTheme>
   editingTitleId: string | null
   editingTitleValue: string
   setEditingTitleId: (value: string | null) => void
@@ -798,14 +804,21 @@ function SessionRow({
     return (
       <Card
         surface="base"
-        className="cursor-pointer overflow-hidden rounded-xl border border-[rgba(62,169,244,0.34)] bg-[rgba(62,169,244,0.08)] px-4 py-4 shadow-sm transition-all hover:border-[rgba(62,169,244,0.52)]"
+        className="cursor-pointer overflow-hidden rounded-xl border px-4 py-4 shadow-sm transition-all"
+        style={{
+          borderColor: hexToRgba(accentTheme.accent, 0.36),
+          backgroundColor: hexToRgba(accentTheme.accent, 0.08),
+        }}
         onClick={() => navigate(`/teacher/sessions/${session.id}`)}
       >
         <div className="flex flex-col gap-3">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
             <div className="min-w-0 flex-1" onClick={e => e.stopPropagation()}>
               <div className="flex items-start gap-2.5">
-                <div className={`mt-1.5 h-3 w-3 shrink-0 rounded-full ${meta.dot} animate-pulse shadow-sm shadow-[rgba(62,169,244,0.34)]`} />
+                <div
+                  className="mt-1.5 h-3 w-3 shrink-0 rounded-full animate-pulse shadow-sm"
+                  style={{ backgroundColor: accentTheme.accent, boxShadow: `0 0 0 3px ${hexToRgba(accentTheme.accent, 0.18)}` }}
+                />
                 <div className="min-w-0 flex-1">
                   {editingTitleId === session.id ? (
                     <form className="flex min-w-0 flex-1 items-center gap-1.5" onSubmit={(e) => { e.preventDefault(); onRename(session.id) }}>
@@ -828,7 +841,12 @@ function SessionRow({
                     <>
                       <div className="flex min-w-0 items-center gap-2">
                         <h4 className="truncate text-[18px] font-semibold tracking-[-0.01em] text-slate-950">{session.title}</h4>
-                        <StatusBadge meta={meta} />
+                        <span
+                          className="inline-flex shrink-0 items-center rounded-full px-2 py-0.5 text-[11px] font-semibold"
+                          style={{ backgroundColor: hexToRgba(accentTheme.accent, 0.16), color: accentTheme.text }}
+                        >
+                          {meta.label}
+                        </span>
                         <IconButton
                           onClick={() => { setEditingTitleId(session.id); setEditingTitleValue(session.title) }}
                           className="shrink-0"
@@ -872,7 +890,7 @@ function SessionRow({
             </div>
           </div>
 
-          <div className="border-t border-[rgba(62,169,244,0.20)] pt-3" onClick={e => e.stopPropagation()}>
+          <div className="border-t pt-3" style={{ borderTopColor: hexToRgba(accentTheme.accent, 0.2) }} onClick={e => e.stopPropagation()}>
             <div className="flex flex-wrap items-center gap-2">
               <Button onClick={() => onStatusChange(session.id, 'paused')} disabled={updatePending} tone="neutral" surface="outline" density="compact" className="rounded-md bg-white/80">
                 <Pause className="mr-1.5 h-3.5 w-3.5" />
@@ -889,58 +907,39 @@ function SessionRow({
     )
   }
 
-  // Compact row for non-active sessions — still shows control buttons
+  // Compact single-row layout for non-active sessions — controls aligned to the right
   return (
-    <div className="group overflow-hidden rounded-lg border border-slate-200 bg-white transition-all hover:border-slate-300 hover:shadow-sm">
-      <div
-        className="grid cursor-pointer grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 px-3 py-2.5"
+    <div className="group flex items-center gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2 transition-all hover:border-slate-300 hover:shadow-sm">
+      <button
+        type="button"
         onClick={() => navigate(`/teacher/sessions/${session.id}`)}
+        className="flex min-w-0 flex-1 items-center gap-2.5 text-left"
       >
         <span className={`h-2 w-2 shrink-0 rounded-full ${meta.dot}`} />
-        <div className="min-w-0">
-          <div className="flex min-w-0 items-center gap-2">
-            <span className="truncate text-sm font-semibold text-slate-900">{session.title}</span>
-            <StatusBadge meta={meta} />
-          </div>
-          <div className="mt-0.5 flex min-w-0 flex-wrap items-center gap-x-3 text-[11px] text-slate-500">
-            <span>{createdAt}</span>
-            <span>{session.active_students_count ?? 0} {isEnglish ? 'students' : 'studenti'}</span>
-          </div>
-        </div>
-        <ChevronRight className="h-4 w-4 shrink-0 text-slate-300 transition-transform group-hover:translate-x-0.5 group-hover:text-slate-500" />
-      </div>
+        <span className="truncate text-sm font-semibold text-slate-900">{session.title}</span>
+        <StatusBadge meta={meta} />
+        <span className="hidden shrink-0 items-center gap-2 text-[11px] text-slate-500 md:flex">
+          <span>{createdAt}</span>
+          <span className="text-slate-300">·</span>
+          <span>{session.active_students_count ?? 0} {isEnglish ? 'students' : 'studenti'}</span>
+        </span>
+      </button>
 
-      {!isEnded && (
-        <div
-          className="flex items-center gap-1.5 border-t border-slate-100 px-3 py-2"
-          onClick={e => e.stopPropagation()}
-        >
-          {isPaused && (
-            <Button
-              onClick={() => onStatusChange(session.id, 'active')}
-              disabled={updatePending}
-              tone="accent"
-              surface="soft"
-              density="compact"
-              className="rounded-md text-[11px]"
-            >
-              <MonitorPlay className="mr-1 h-3 w-3" />
-              {isEnglish ? 'Resume' : 'Riprendi'}
-            </Button>
-          )}
-          {isDraft && (
-            <Button
-              onClick={() => onStatusChange(session.id, 'active')}
-              disabled={updatePending}
-              tone="accent"
-              surface="soft"
-              density="compact"
-              className="rounded-md text-[11px]"
-            >
-              <MonitorPlay className="mr-1 h-3 w-3" />
-              {isEnglish ? 'Activate' : 'Attiva'}
-            </Button>
-          )}
+      <div className="flex shrink-0 items-center gap-1.5" onClick={e => e.stopPropagation()}>
+        {(isPaused || isDraft) && (
+          <Button
+            onClick={() => onStatusChange(session.id, 'active')}
+            disabled={updatePending}
+            tone="accent"
+            surface="soft"
+            density="compact"
+            className="rounded-md text-[11px]"
+          >
+            <MonitorPlay className="mr-1 h-3 w-3" />
+            {isPaused ? (isEnglish ? 'Resume' : 'Riprendi') : (isEnglish ? 'Activate' : 'Attiva')}
+          </Button>
+        )}
+        {!isEnded && (
           <Button
             onClick={() => onStatusChange(session.id, 'ended')}
             disabled={updatePending}
@@ -952,8 +951,9 @@ function SessionRow({
             <Square className="mr-1 h-3 w-3" />
             {isEnglish ? 'Close' : 'Chiudi'}
           </Button>
-        </div>
-      )}
+        )}
+        <ChevronRight className="ml-0.5 h-4 w-4 shrink-0 text-slate-300 transition-transform group-hover:translate-x-0.5 group-hover:text-slate-500" />
+      </div>
     </div>
   )
 }

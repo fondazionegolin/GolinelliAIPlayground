@@ -39,6 +39,7 @@ interface TeacherNotificationsProps {
   onMarkAsRead: (id: string) => void
   onNotificationClick: (notification: TeacherNotification) => void
   onAlertAction?: (alertId: string, action: 'acknowledged' | 'blocked' | 'accepted') => void
+  inNavCluster?: boolean
 }
 
 const getNotificationIcon = (type: string) => {
@@ -83,6 +84,7 @@ export default function TeacherNotifications({
   onMarkAsRead,
   onNotificationClick,
   onAlertAction,
+  inNavCluster = false,
 }: TeacherNotificationsProps) {
   const [isOpen, setIsOpen] = useState(false)
   const [newNotificationIds, setNewNotificationIds] = useState<Set<string>>(new Set())
@@ -140,7 +142,7 @@ export default function TeacherNotifications({
       <Button
         variant="ghost"
         size="sm"
-        className="relative h-8 w-8 p-0 flex items-center justify-center"
+        className={`${inNavCluster ? 'navbar-inline-control h-9 w-9' : 'navbar-widget-control navbar-widget-control-inset h-10 w-10'} relative flex items-center justify-center rounded-xl p-0`}
         onClick={() => setIsOpen(!isOpen)}
       >
         <Bell className={`h-4 w-4 ${hasUnreadAlerts ? 'text-red-600 animate-bounce' : ''}`} />

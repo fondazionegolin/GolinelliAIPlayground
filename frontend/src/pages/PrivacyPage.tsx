@@ -148,7 +148,7 @@ export default function PrivacyPage() {
       <nav className="sticky top-0 z-50 w-full backdrop-blur-md bg-white/70 border-b border-white/50 px-6 py-4 flex items-center justify-between">
         <Link to="/" className="flex items-center gap-3">
           <img src="/logo_new.png" alt="Golinelli AI" className="h-9 w-auto shadow-sm rounded-md" />
-          <span className="text-xl tracking-tight" style={{ fontFamily: '"SofiaPro"' }}>
+          <span className="text-xl tracking-tight" style={{ fontFamily: 'var(--font-family-brand)' }}>
             <span className="font-bold text-[var(--logo-ink)]">Golinelli</span>
             <span className="font-black text-[var(--logo-pink)]">.ai</span>
           </span>

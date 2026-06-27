@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, type CSSProperties } from 'react'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { calendarApi } from '@/lib/api'
 import { useQuery } from '@tanstack/react-query'
@@ -8,7 +8,7 @@ const MONTHS_IT = ['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno','Lugl
 const MONTHS_ABR = ['gen','feb','mar','apr','mag','giu','lug','ago','set','ott','nov','dic']
 const WEEKDAYS_SHORT = ['L','M','M','G','V','S','D']
 
-export function NavbarCalendarClock({ sessionId, accentColor }: { sessionId?: string; accentColor: string }) {
+export function NavbarCalendarClock({ sessionId, accentColor, inNavCluster = false }: { sessionId?: string; accentColor: string; inNavCluster?: boolean }) {
   const [open, setOpen] = useState(false)
   const [now, setNow] = useState(() => new Date())
   const [viewMonth, setViewMonth] = useState(() => new Date())
@@ -59,7 +59,8 @@ export function NavbarCalendarClock({ sessionId, accentColor }: { sessionId?: st
     <div ref={ref} className="relative hidden lg:flex">
       <button
         onClick={() => setOpen(v => !v)}
-        className="flex items-center gap-2 h-auto py-1.5 px-3 rounded-xl bg-white/88 hover:bg-white transition-colors shadow-sm cursor-pointer"
+        className={`${inNavCluster ? 'navbar-inline-control h-9' : 'navbar-widget-control navbar-widget-control-inset h-auto'} flex cursor-pointer items-center gap-2 rounded-xl px-3 py-1.5 transition-colors`}
+        style={{ '--btn-tone': accentColor } as CSSProperties}
       >
         <div className="text-left">
           <div className="text-[13px] font-semibold text-slate-700 tabular-nums leading-tight">{hh}:{mm}</div>

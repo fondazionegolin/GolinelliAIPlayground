@@ -2630,7 +2630,7 @@ REGOLE IMPORTANTI:
                         <div className="flex-1 flex items-center gap-1 rounded-xl border p-1" style={buildAccentNavClusterStyle(accentTheme)}>
                           <button
                             onClick={() => setActiveTab('chat')}
-                            className={`group flex flex-1 min-h-[var(--selection-height)] items-center justify-center gap-1 px-2 rounded-[var(--selection-radius)] text-[11px] font-semibold border transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--selection-border-hover)] ${activeTab === 'chat'
+                            className={`ui-control-label group flex flex-1 min-h-[var(--selection-height)] items-center justify-center gap-1 px-2 rounded-[var(--selection-radius)] border transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--selection-border-hover)] ${activeTab === 'chat'
                               ? 'bg-[image:var(--selection-active-bg)] text-[var(--selection-active-text)] border-[color:var(--selection-border-hover)] shadow-[var(--selection-shadow)]'
                               : 'border-transparent text-slate-600 hover:border-[color:var(--selection-border)] hover:bg-[image:var(--selection-bg)] hover:text-[var(--selection-text)]'}`}
                           >
@@ -2639,7 +2639,7 @@ REGOLE IMPORTANTI:
                           </button>
                           <button
                             onClick={() => setActiveTab('teacherbots')}
-                            className={`group flex flex-1 min-h-[var(--selection-height)] items-center justify-center gap-1 px-2 rounded-[var(--selection-radius)] text-[11px] font-semibold border transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--selection-border-hover)] ${activeTab === 'teacherbots'
+                            className={`ui-control-label group flex flex-1 min-h-[var(--selection-height)] items-center justify-center gap-1 px-2 rounded-[var(--selection-radius)] border transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--selection-border-hover)] ${activeTab === 'teacherbots'
                               ? 'bg-[image:var(--selection-active-bg)] text-[var(--selection-active-text)] border-[color:var(--selection-border-hover)] shadow-[var(--selection-shadow)]'
                               : 'border-transparent text-slate-600 hover:border-[color:var(--selection-border)] hover:bg-[image:var(--selection-bg)] hover:text-[var(--selection-text)]'}`}
                           >
@@ -3202,7 +3202,7 @@ REGOLE IMPORTANTI:
                                   darkMode={chatBgIsDark}
                                 />
                               ) : (
-                                <ReactMarkdown className={`prose prose-sm max-w-none prose-p:leading-relaxed prose-pre:bg-slate-800 prose-pre:text-slate-100 ${msg.role === 'user' ? '[&_*]:!text-white' : ''} [&_strong]:font-bold`}>
+                                <ReactMarkdown className={`chat-markdown prose max-w-none prose-p:leading-relaxed prose-pre:bg-slate-800 prose-pre:text-slate-100 ${msg.role === 'user' ? '[&_*]:!text-white' : ''} [&_strong]:font-bold`}>
                                   {convertEmoticons(msg.content)}
                                 </ReactMarkdown>
                               )}
@@ -4298,7 +4298,7 @@ function MessageContent({ content, onPublish, onEdit, onInput, toast, darkMode =
   }
 
   return (
-    <div className={`prose prose-sm max-w-none ${darkMode ? 'prose-invert text-white' : 'text-slate-800'} ${darkMode ? '' : 'prose-p:text-slate-700'}`}>
+    <div className={`chat-markdown prose max-w-none ${darkMode ? 'prose-invert text-white' : 'text-slate-800'} ${darkMode ? '' : 'prose-p:text-slate-700'}`}>
       {cleanContent && (
         <ReactMarkdown
           remarkPlugins={[remarkGfm, remarkMath]}

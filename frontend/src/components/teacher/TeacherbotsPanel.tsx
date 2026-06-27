@@ -202,7 +202,7 @@ export default function TeacherbotsPanel({ onOpenSettings, onCreateNew }: Teache
                 {renderStatusDot(bot.status)}
                 <p className="min-w-0 flex-1 truncate text-sm font-black leading-tight text-slate-900">{bot.name}</p>
               </div>
-              <p className="min-h-[32px] text-[11px] leading-[16px] text-slate-500 line-clamp-2">
+              <p className="ui-supporting-text min-h-[40px] text-slate-500 line-clamp-2">
                 {bot.synopsis || 'Nessuna descrizione'}
               </p>
               <div className="mt-2 flex items-center gap-1">

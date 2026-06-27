@@ -1,12 +1,12 @@
-import { useState, useCallback, useMemo, useEffect } from 'react'
-import { X, Download, Layout, FileText, GripVertical, Share2, Check, Loader2, RotateCcw, BarChart2 } from 'lucide-react'
+import { useState, useCallback, useMemo } from 'react'
+import { X, Layout, FileText, GripVertical, Share2, Check, Loader2, BarChart2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useToast } from '@/components/ui/use-toast'
-import { chatApi, llmApi } from '@/lib/api'
-import { buildBrochureLatex, buildDispensaLatex, buildReportHtml, parseBrochurePayload, parseDispensaPayload, parseReportPayload } from '@/components/teacher/reportTemplates'
+import { chatApi } from '@/lib/api'
+import { buildReportHtml, parseBrochurePayload, parseDispensaPayload, parseReportPayload } from '@/components/teacher/reportTemplates'
 
 // Toolbar pills — homogeneous with the main navbar (shared --selection-* tokens).
-const TOOLBAR_PILL = 'inline-flex items-center gap-1 h-7 rounded-[var(--selection-radius)] border px-2.5 text-[11px] font-semibold transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--selection-border-hover)] disabled:opacity-50'
+const TOOLBAR_PILL = 'ui-control-label inline-flex items-center gap-1 h-7 rounded-[var(--selection-radius)] border px-2.5 transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--selection-border-hover)] disabled:opacity-50'
 const TOOLBAR_PILL_INACTIVE = 'border-transparent text-slate-600 hover:border-[color:var(--selection-border)] hover:bg-[image:var(--selection-bg)] hover:text-[var(--selection-text)]'
 const TOOLBAR_PILL_ACTIVE = 'bg-[image:var(--selection-active-bg)] text-[var(--selection-active-text)] border-[color:var(--selection-border-hover)] shadow-[var(--selection-shadow)]'
 
@@ -568,10 +568,6 @@ export default function DocumentCanvas({ doc, onClose, sessions = [], authorName
   const [showShareMenu, setShowShareMenu] = useState(false)
   const [sharingSessionId, setSharingSessionId] = useState<string | null>(null)
   const [sharedSessionIds, setSharedSessionIds] = useState<Set<string>>(new Set())
-  const [pdfBlobUrl, setPdfBlobUrl] = useState<string | null>(null)
-  const [pdfBytes, setPdfBytes] = useState<ArrayBuffer | null>(null)
-  const [pdfLoading, setPdfLoading] = useState(false)
-  const [pdfError, setPdfError] = useState<string | null>(null)
 
   // Build final renderable HTML
   const renderedHtml = useMemo(() => {
@@ -603,161 +599,33 @@ export default function DocumentCanvas({ doc, onClose, sessions = [], authorName
     return parsed ? JSON.stringify(parsed, null, 2) : extractSections(doc.content)
   }, [doc])
 
-  const latexContent = useMemo(() => {
-    if (doc.type === 'dispensa') return buildDispensaLatex(doc.content, doc.title || 'Dispensa', authorName || 'Docente')
-    if (doc.type === 'brochure') return buildBrochureLatex(doc.content, doc.title || 'Brochure', authorName || 'Docente')
-    return null
-  }, [authorName, doc])
-
-  const compilePdf = useCallback(async (): Promise<{ bytes: ArrayBuffer; objectUrl: string } | null> => {
-    if (!latexContent) {
-      setPdfBlobUrl(null)
-      setPdfBytes(null)
-      setPdfError(null)
-      return null
-    }
-    setPdfLoading(true)
-    setPdfError(null)
-    try {
-      const filename = doc.type === 'brochure' ? 'brochure' : 'dispensa'
-      const response = await llmApi.compileLatex(latexContent, `${filename}_v${doc.version}`)
-      const bytes = response.data as ArrayBuffer
-      const blob = new Blob([bytes], { type: 'application/pdf' })
-      const objectUrl = URL.createObjectURL(blob)
-      setPdfBytes(bytes)
-      setPdfBlobUrl((prev) => {
-        if (prev) URL.revokeObjectURL(prev)
-        return objectUrl
-      })
-      return { bytes, objectUrl }
-    } catch (error: any) {
-      console.warn('PDF compilation failed', error)
-      setPdfBytes(null)
-      setPdfBlobUrl((prev) => {
-        if (prev) URL.revokeObjectURL(prev)
-        return null
-      })
-      setPdfError(error?.response?.data?.detail || 'Compilazione PDF non riuscita')
-      return null
-    } finally {
-      setPdfLoading(false)
-    }
-  }, [doc.type, doc.version, latexContent])
-
-  useEffect(() => {
-    setPdfBytes(null)
-    setPdfBlobUrl((prev) => {
-      if (prev) URL.revokeObjectURL(prev)
-      return null
-    })
-    setPdfError(null)
-    setPdfLoading(false)
-  }, [doc.type, doc.version, doc.content])
-
   const handleDragStart = useCallback((e: React.DragEvent) => {
-    const filename = pdfBlobUrl && doc.type !== 'report'
-      ? `${doc.type}_v${doc.version}.pdf`
-      : doc.type === 'brochure'
-        ? `brochure_v${doc.version}.html`
-        : doc.type === 'report'
-          ? `report_v${doc.version}.html`
-          : `dispensa_v${doc.version}.html`
-    e.dataTransfer.setData('application/x-chatbot-document', JSON.stringify({
-      type: doc.type,
-      content: pdfBlobUrl && doc.type !== 'report' ? undefined : renderedHtml,
-      blobUrl: pdfBlobUrl || undefined,
-      filename,
-      title: doc.title,
-      mimeType: pdfBlobUrl && doc.type !== 'report' ? 'application/pdf' : 'text/html',
-    }))
-    e.dataTransfer.effectAllowed = 'copy'
-  }, [doc, renderedHtml, pdfBlobUrl])
-
-  const downloadDoc = useCallback(() => {
-    if (pdfBlobUrl && doc.type !== 'report') {
-      const a = document.createElement('a')
-      a.href = pdfBlobUrl
-      a.download = `${doc.type}_v${doc.version}.pdf`
-      a.click()
-      return
-    }
-    const blob = new Blob([renderedHtml], { type: 'text/html;charset=utf-8' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = doc.type === 'brochure'
+    const filename = doc.type === 'brochure'
       ? `brochure_v${doc.version}.html`
       : doc.type === 'report'
         ? `report_v${doc.version}.html`
-        : doc.type === 'html_page'
-          ? `pagina_interattiva_v${doc.version}.html`
-          : `dispensa_v${doc.version}.html`
-    a.click()
-    URL.revokeObjectURL(url)
-  }, [doc, renderedHtml, pdfBlobUrl])
-
-  const downloadPdf = useCallback(async () => {
-    // Brochure: use browser print-to-PDF to preserve HTML colors and layout
-    if (doc.type === 'brochure') {
-      const printWindow = window.open('', '_blank', 'width=960,height=800')
-      if (!printWindow) {
-        toast({ title: 'Popup bloccato', description: 'Abilita i popup per questo sito per esportare la brochure come PDF.' })
-        return
-      }
-      printWindow.document.write(renderedHtml)
-      printWindow.document.close()
-      printWindow.addEventListener('load', () => {
-        printWindow.print()
-        printWindow.addEventListener('afterprint', () => printWindow.close())
-      })
-      toast({ title: 'Finestra di stampa aperta', description: 'Seleziona "Salva come PDF" nella finestra di stampa.' })
-      return
-    }
-
-    let targetUrl = pdfBlobUrl
-    if (!targetUrl && doc.type !== 'report') {
-      const compiled = await compilePdf()
-      targetUrl = compiled?.objectUrl || null
-    }
-    if (!targetUrl) return
-    const a = document.createElement('a')
-    a.href = targetUrl
-    a.download = `${doc.type}_v${doc.version}.pdf`
-    a.click()
-    toast({
-      title: 'PDF generato',
-      description: 'Dispensa pronta in formato PDF.',
-    })
-  }, [compilePdf, doc.type, doc.version, pdfBlobUrl, renderedHtml, toast])
-
-  const printDoc = useCallback(() => {
-    if (pdfBlobUrl && doc.type !== 'report') {
-      window.open(pdfBlobUrl, '_blank')
-      return
-    }
-    const win = window.open('', '_blank')
-    if (win) {
-      win.document.write(renderedHtml)
-      win.document.close()
-      win.print()
-    }
-  }, [doc.type, pdfBlobUrl, renderedHtml])
+        : `dispensa_v${doc.version}.html`
+    e.dataTransfer.setData('application/x-chatbot-document', JSON.stringify({
+      type: doc.type,
+      content: renderedHtml,
+      filename,
+      title: doc.title,
+      mimeType: 'text/html',
+    }))
+    e.dataTransfer.effectAllowed = 'copy'
+  }, [doc, renderedHtml])
 
   const shareToSession = useCallback(async (sessionId: string) => {
     setSharingSessionId(sessionId)
     setShowShareMenu(false)
     try {
       const targetSession = sessions.find((s) => s.id === sessionId)
-      const filename = pdfBytes && doc.type !== 'report'
-        ? `${doc.type}_v${doc.version}.pdf`
-        : doc.type === 'brochure'
-          ? `brochure_v${doc.version}.html`
-          : doc.type === 'report'
-            ? `report_v${doc.version}.html`
-            : `dispensa_v${doc.version}.html`
-      const file = pdfBytes && doc.type !== 'report'
-        ? new File([pdfBytes], filename, { type: 'application/pdf' })
-        : new File([renderedHtml], filename, { type: 'text/html' })
+      const filename = doc.type === 'brochure'
+        ? `brochure_v${doc.version}.html`
+        : doc.type === 'report'
+          ? `report_v${doc.version}.html`
+          : `dispensa_v${doc.version}.html`
+      const file = new File([renderedHtml], filename, { type: 'text/html' })
 
       const uploadRes = await chatApi.uploadFiles(sessionId, [file])
       const urls: string[] = uploadRes.data?.urls || []
@@ -789,7 +657,7 @@ export default function DocumentCanvas({ doc, onClose, sessions = [], authorName
     } finally {
       setSharingSessionId(null)
     }
-  }, [doc, pdfBytes, renderedHtml, toast])
+  }, [doc, renderedHtml, toast])
 
   const isDispensa = doc.type === 'dispensa'
   const isReport = doc.type === 'report'
@@ -825,7 +693,7 @@ export default function DocumentCanvas({ doc, onClose, sessions = [], authorName
               </span>
             </div>
             <div className="text-[10px] text-slate-400">
-              {isReport ? 'Dashboard HTML interattiva' : (isDispensa ? 'Dispensa HTML interattiva · PDF su richiesta' : 'Brochure HTML interattiva · PDF su richiesta')}
+              {isReport ? 'Dashboard HTML interattiva' : (isDispensa ? 'Dispensa HTML interattiva' : 'Brochure HTML interattiva')}
             </div>
           </div>
         </div>
@@ -836,26 +704,6 @@ export default function DocumentCanvas({ doc, onClose, sessions = [], authorName
             className={`${TOOLBAR_PILL} ${showSource ? TOOLBAR_PILL_ACTIVE : TOOLBAR_PILL_INACTIVE}`}
           >
             {showSource ? 'Anteprima' : 'Sorgente'}
-          </button>
-
-          <button onClick={printDoc} className={`${TOOLBAR_PILL} ${TOOLBAR_PILL_INACTIVE}`}>
-            <RotateCcw className="h-3.5 w-3.5" />Stampa
-          </button>
-
-          {doc.type !== 'report' && (
-            <button
-              onClick={downloadPdf}
-              disabled={pdfLoading}
-              className={`${TOOLBAR_PILL} ${TOOLBAR_PILL_INACTIVE}`}
-              title={pdfError || 'Converti e scarica PDF'}
-            >
-              {pdfLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileText className="h-3.5 w-3.5" />}
-              PDF
-            </button>
-          )}
-
-          <button onClick={downloadDoc} className={`${TOOLBAR_PILL} ${TOOLBAR_PILL_INACTIVE}`}>
-            <Download className="h-3.5 w-3.5" />{pdfBlobUrl && doc.type !== 'report' ? '.pdf' : '.html'}
           </button>
 
           {sessions.length > 0 && (
@@ -909,13 +757,6 @@ export default function DocumentCanvas({ doc, onClose, sessions = [], authorName
               {sourceContent}
             </pre>
           </div>
-        ) : pdfLoading && doc.type !== 'report' ? (
-          <div className="h-full flex items-center justify-center bg-white">
-            <div className="flex items-center gap-2 text-sm text-slate-500">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              Generazione anteprima PDF...
-            </div>
-          </div>
         ) : (
           <iframe
             srcDoc={renderedHtml}
@@ -930,11 +771,6 @@ export default function DocumentCanvas({ doc, onClose, sessions = [], authorName
         <p className="text-[10px] text-slate-400 text-center">
           Trascina l'intestazione nella chat di classe per condividere · Continua la chat per modifiche
         </p>
-        {pdfError && doc.type !== 'report' && (
-          <p className="mt-1 text-[10px] text-center text-rose-500">
-            PDF non disponibile: {pdfError}
-          </p>
-        )}
       </div>
     </div>
   )

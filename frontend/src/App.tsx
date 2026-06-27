@@ -3,6 +3,7 @@ import { Routes, Route, Navigate } from 'react-router-dom'
 import { useAuthStore } from '@/stores/auth'
 import { Toaster } from '@/components/ui/toaster'
 import { CookieBanner } from '@/components/CookieBanner'
+import { LegalConsentGate } from '@/components/LegalConsentGate'
 import { Loader2 } from 'lucide-react'
 
 import LandingPage from '@/pages/LandingPage'
@@ -89,6 +90,7 @@ function App() {
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </Suspense>
+      <LegalConsentGate />
       <Toaster />
       <CookieBanner />
     </>

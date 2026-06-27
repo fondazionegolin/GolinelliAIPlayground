@@ -188,7 +188,7 @@ export default function TermsPage() {
       <nav className="sticky top-0 z-50 flex w-full items-center justify-between border-b border-white/50 bg-white/70 px-6 py-4 backdrop-blur-md">
         <Link to="/" className="flex items-center gap-3">
           <img src="/logo_new.png" alt="Golinelli AI" className="h-9 w-auto rounded-md shadow-sm" />
-          <span className="text-xl tracking-tight" style={{ fontFamily: '"SofiaPro"' }}>
+          <span className="text-xl tracking-tight" style={{ fontFamily: 'var(--font-family-brand)' }}>
             <span className="font-bold text-[var(--logo-ink)]">Golinelli</span>
             <span className="font-black text-[var(--logo-pink)]">.ai</span>
           </span>

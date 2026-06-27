@@ -176,7 +176,7 @@ export default function LandingPage() {
             <div className="flex items-center gap-3">
               <div className="flex items-center gap-3 cursor-pointer" onClick={() => switchTab('home')}>
                 <img src="/logo_new.png" alt="Golinelli AI" className="h-10 w-auto rounded-md shadow-sm" />
-                <span className="text-2xl tracking-tight" style={{ fontFamily: '"SofiaPro"' }}>
+                <span className="text-2xl tracking-tight" style={{ fontFamily: 'var(--font-family-brand)' }}>
                   <span className="font-bold text-[var(--logo-ink)]">Golinelli</span>
                   <span className="font-black text-[var(--logo-pink)]">.ai</span>
                 </span>

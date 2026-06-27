@@ -20,7 +20,7 @@ export function NavTab({ icon: Icon, label, isActive, isAdjacent, onClick, accen
     <button
       onClick={onClick}
       className={[
-        'group flex min-h-[var(--selection-height)] items-center px-[var(--selection-padding-x)] py-1.5 rounded-[var(--selection-radius)] text-[11px] font-semibold',
+        'group flex min-h-[var(--selection-height)] items-center px-[var(--selection-padding-x)] py-1.5 rounded-[var(--selection-radius)] font-emphasis text-xs font-bold',
         'transition-all duration-150 border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--selection-border-hover)]',
         isActive
           ? `${accentClass ?? 'bg-[image:var(--selection-active-bg)]'} text-[var(--selection-active-text)] border-[color:var(--selection-border-hover)] shadow-[var(--selection-shadow)]`

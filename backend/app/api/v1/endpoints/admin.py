@@ -1,23 +1,32 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Query, Request, Body
+from fastapi import APIRouter, Depends, HTTPException, status, Query, Request, Body, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, desc, delete as sa_delete, update as sa_update, cast, Integer
 from typing import Annotated, Optional
 from datetime import date, datetime, timedelta, timezone
 from uuid import UUID
 import secrets
+import csv
+import io
 
 from app.core.database import get_db
 from app.core.security import get_password_hash, verify_password
 from app.core.config import settings
+from app.core.legal_documents import LEGAL_DOCUMENTS
 from app.core.url_utils import resolve_frontend_url
 from app.api.deps import get_current_admin
-from app.models.user import User, TeacherRequest, ActivationToken, PasswordResetToken
+from app.models.user import User, TeacherRequest, ActivationToken, PasswordResetToken, LegalDocumentAcceptance
 from app.models.tenant import Tenant
 from app.models.template_version import TenantTemplateVersion
 from app.models.session import Session, SessionStudent, Class as TeacherClass
+from app.models.chat import ChatMessage
 from app.models.llm import Conversation, ConversationMessage, TeacherConversation, TeacherConversationMessage
 from app.models.credits import CreditLimit, CreditTransaction, CreditRequest
 from app.models.invitation import PlatformInvitation
+from app.models.task import Task
+from app.models.teacherbot import Teacherbot, TeacherbotConversation
+from app.models.coding import CodingProject
+from app.models.notebook import Notebook
+from app.models.ml import MLExperiment
 from app.models.enums import UserRole, TeacherRequestStatus, TenantStatus, LimitLevel, CreditTransactionType
 from app.schemas.tenant import TenantCreate, TenantUpdate, TenantResponse, TenantLimitsUpdate, SchoolTenantCreate
 from app.models.enums import TenantType
@@ -1439,6 +1448,460 @@ async def get_admin_analytics_report(
     }
 
 
+@router.get("/usage/teacher-report.csv")
+async def download_teacher_usage_report_csv(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    admin: Annotated[User, Depends(get_current_admin)],
+    start_date: Optional[date] = Query(None),
+    end_date: Optional[date] = Query(None),
+    include_inactive: bool = Query(True),
+):
+    if start_date and end_date and start_date > end_date:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="start_date must be before end_date")
+    if start_date and end_date and (end_date - start_date).days > 730:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Maximum report range is 730 days")
+
+    start_at = datetime.combine(start_date, datetime.min.time(), tzinfo=timezone.utc) if start_date else None
+    end_exclusive = datetime.combine(end_date + timedelta(days=1), datetime.min.time(), tzinfo=timezone.utc) if end_date else None
+    start_at_naive = start_at.replace(tzinfo=None) if start_at else None
+    end_exclusive_naive = end_exclusive.replace(tzinfo=None) if end_exclusive else None
+
+    def period_conditions(column):
+        conditions = []
+        if start_at:
+            conditions.append(column >= start_at)
+        if end_exclusive:
+            conditions.append(column < end_exclusive)
+        return conditions
+
+    def period_conditions_naive(column):
+        conditions = []
+        if start_at_naive:
+            conditions.append(column >= start_at_naive)
+        if end_exclusive_naive:
+            conditions.append(column < end_exclusive_naive)
+        return conditions
+
+    def add_count(bucket: dict[str, dict[str, int]], teacher_id, key, count) -> None:
+        if teacher_id is None:
+            return
+        bucket.setdefault(str(teacher_id), {})[str(key or "unknown")] = int(count or 0)
+
+    def add_metric(bucket: dict[str, dict[str, float]], teacher_id, values: dict[str, float]) -> None:
+        if teacher_id is None:
+            return
+        item = bucket.setdefault(str(teacher_id), {"calls": 0, "cost": 0.0, "tokens": 0})
+        item["calls"] += int(values.get("calls") or 0)
+        item["cost"] += float(values.get("cost") or 0.0)
+        item["tokens"] += int(values.get("tokens") or 0)
+
+    def format_counts(values: dict[str, int] | None) -> str:
+        if not values:
+            return ""
+        return "; ".join(f"{key}:{values[key]}" for key in sorted(values))
+
+    def format_money(value: float) -> str:
+        return f"{float(value or 0.0):.6f}"
+
+    teacher_roles = [UserRole.TEACHER, UserRole.ADMIN]
+    teacher_conditions = [
+        User.tenant_id == admin.tenant_id,
+        User.role.in_(teacher_roles),
+    ]
+    if not include_inactive:
+        teacher_conditions.append(User.is_active == True)
+    teachers = (
+        await db.execute(
+            select(User)
+            .where(*teacher_conditions)
+            .order_by(User.last_name.asc().nulls_last(), User.first_name.asc().nulls_last(), User.email.asc())
+        )
+    ).scalars().all()
+    teacher_ids = [teacher.id for teacher in teachers]
+    teacher_id_strings = {str(teacher.id) for teacher in teachers}
+
+    class_counts: dict[str, int] = {}
+    session_counts: dict[str, int] = {}
+    student_counts: dict[str, int] = {}
+    student_nicknames: dict[str, dict[str, int]] = {}
+    task_counts: dict[str, dict[str, int]] = {}
+    activity_counts: dict[str, dict[str, int]] = {}
+    teacher_call_metrics: dict[str, dict[str, float]] = {}
+    student_call_metrics: dict[str, dict[str, float]] = {}
+    teacher_call_types: dict[str, dict[str, int]] = {}
+    student_call_types: dict[str, dict[str, int]] = {}
+
+    if teacher_ids:
+        class_rows = (
+            await db.execute(
+                select(TeacherClass.teacher_id, func.count(TeacherClass.id))
+                .where(
+                    TeacherClass.tenant_id == admin.tenant_id,
+                    TeacherClass.teacher_id.in_(teacher_ids),
+                    *period_conditions(TeacherClass.created_at),
+                )
+                .group_by(TeacherClass.teacher_id)
+            )
+        ).all()
+        class_counts = {str(tid): int(count or 0) for tid, count in class_rows}
+
+        session_rows = (
+            await db.execute(
+                select(TeacherClass.teacher_id, func.count(Session.id))
+                .join(Session, Session.class_id == TeacherClass.id)
+                .where(
+                    TeacherClass.tenant_id == admin.tenant_id,
+                    TeacherClass.teacher_id.in_(teacher_ids),
+                    *period_conditions(Session.created_at),
+                )
+                .group_by(TeacherClass.teacher_id)
+            )
+        ).all()
+        session_counts = {str(tid): int(count or 0) for tid, count in session_rows}
+
+        nickname_rows = (
+            await db.execute(
+                select(
+                    TeacherClass.teacher_id,
+                    SessionStudent.nickname,
+                    func.count(func.distinct(SessionStudent.id)),
+                )
+                .join(Session, Session.class_id == TeacherClass.id)
+                .join(SessionStudent, SessionStudent.session_id == Session.id)
+                .where(
+                    TeacherClass.tenant_id == admin.tenant_id,
+                    TeacherClass.teacher_id.in_(teacher_ids),
+                    *period_conditions(SessionStudent.created_at),
+                )
+                .group_by(TeacherClass.teacher_id, SessionStudent.nickname)
+                .order_by(TeacherClass.teacher_id, SessionStudent.nickname)
+            )
+        ).all()
+        for teacher_id_value, nickname, count in nickname_rows:
+            teacher_key = str(teacher_id_value)
+            nick = (nickname or "Senza nickname").strip() or "Senza nickname"
+            student_nicknames.setdefault(teacher_key, {})[nick] = int(count or 0)
+        student_counts = {
+            teacher_key: sum(nicks.values())
+            for teacher_key, nicks in student_nicknames.items()
+        }
+
+        task_session_rows = (
+            await db.execute(
+                select(TeacherClass.teacher_id, Task.task_type, func.count(Task.id))
+                .join(Session, Task.session_id == Session.id)
+                .join(TeacherClass, Session.class_id == TeacherClass.id)
+                .where(
+                    TeacherClass.tenant_id == admin.tenant_id,
+                    TeacherClass.teacher_id.in_(teacher_ids),
+                    *period_conditions_naive(Task.created_at),
+                )
+                .group_by(TeacherClass.teacher_id, Task.task_type)
+            )
+        ).all()
+        for teacher_id_value, task_type, count in task_session_rows:
+            add_count(task_counts, teacher_id_value, getattr(task_type, "value", task_type), count)
+
+        task_class_rows = (
+            await db.execute(
+                select(TeacherClass.teacher_id, Task.task_type, func.count(Task.id))
+                .join(TeacherClass, Task.class_id == TeacherClass.id)
+                .where(
+                    TeacherClass.tenant_id == admin.tenant_id,
+                    TeacherClass.teacher_id.in_(teacher_ids),
+                    Task.session_id.is_(None),
+                    *period_conditions_naive(Task.created_at),
+                )
+                .group_by(TeacherClass.teacher_id, Task.task_type)
+            )
+        ).all()
+        for teacher_id_value, task_type, count in task_class_rows:
+            add_count(task_counts, teacher_id_value, getattr(task_type, "value", task_type), count)
+
+        prompt_tokens = _json_int(CreditTransaction.usage_details, "prompt_tokens")
+        completion_tokens = _json_int(CreditTransaction.usage_details, "completion_tokens")
+        total_tokens = func.coalesce(
+            cast(func.nullif(CreditTransaction.usage_details["total_tokens"].astext, ""), Integer),
+            prompt_tokens + completion_tokens,
+            0,
+        )
+        usage_type = func.coalesce(CreditTransaction.usage_details["type"].astext, "api_call")
+
+        teacher_tx_conditions = [
+            CreditTransaction.tenant_id == admin.tenant_id,
+            CreditTransaction.transaction_type == CreditTransactionType.API_CALL,
+            CreditTransaction.teacher_id.in_(teacher_ids),
+            CreditTransaction.student_id.is_(None),
+            *period_conditions(CreditTransaction.timestamp),
+        ]
+        teacher_tx_rows = (
+            await db.execute(
+                select(
+                    CreditTransaction.teacher_id,
+                    func.count(CreditTransaction.id),
+                    func.coalesce(func.sum(CreditTransaction.cost), 0.0),
+                    func.coalesce(func.sum(total_tokens), 0),
+                )
+                .where(*teacher_tx_conditions)
+                .group_by(CreditTransaction.teacher_id)
+            )
+        ).all()
+        for teacher_id_value, calls, cost, tokens in teacher_tx_rows:
+            add_metric(teacher_call_metrics, teacher_id_value, {"calls": calls, "cost": cost, "tokens": tokens})
+
+        teacher_tx_type_rows = (
+            await db.execute(
+                select(CreditTransaction.teacher_id, usage_type, func.count(CreditTransaction.id))
+                .where(*teacher_tx_conditions)
+                .group_by(CreditTransaction.teacher_id, usage_type)
+            )
+        ).all()
+        for teacher_id_value, tx_type, count in teacher_tx_type_rows:
+            add_count(teacher_call_types, teacher_id_value, tx_type, count)
+            add_count(activity_counts, teacher_id_value, f"docente:{tx_type}", count)
+
+        student_tx_conditions = [
+            CreditTransaction.tenant_id == admin.tenant_id,
+            CreditTransaction.transaction_type == CreditTransactionType.API_CALL,
+            CreditTransaction.teacher_id.in_(teacher_ids),
+            CreditTransaction.student_id.is_not(None),
+            *period_conditions(CreditTransaction.timestamp),
+        ]
+        student_tx_rows = (
+            await db.execute(
+                select(
+                    CreditTransaction.teacher_id,
+                    func.count(CreditTransaction.id),
+                    func.coalesce(func.sum(CreditTransaction.cost), 0.0),
+                    func.coalesce(func.sum(total_tokens), 0),
+                )
+                .where(*student_tx_conditions)
+                .group_by(CreditTransaction.teacher_id)
+            )
+        ).all()
+        for teacher_id_value, calls, cost, tokens in student_tx_rows:
+            add_metric(student_call_metrics, teacher_id_value, {"calls": calls, "cost": cost, "tokens": tokens})
+
+        student_tx_type_rows = (
+            await db.execute(
+                select(CreditTransaction.teacher_id, usage_type, func.count(CreditTransaction.id))
+                .where(*student_tx_conditions)
+                .group_by(CreditTransaction.teacher_id, usage_type)
+            )
+        ).all()
+        for teacher_id_value, tx_type, count in student_tx_type_rows:
+            add_count(student_call_types, teacher_id_value, tx_type, count)
+            add_count(activity_counts, teacher_id_value, f"studenti:{tx_type}", count)
+
+        teacherbot_rows = (
+            await db.execute(
+                select(Teacherbot.teacher_id, func.count(Teacherbot.id))
+                .where(
+                    Teacherbot.tenant_id == admin.tenant_id,
+                    Teacherbot.teacher_id.in_(teacher_ids),
+                    *period_conditions(Teacherbot.created_at),
+                )
+                .group_by(Teacherbot.teacher_id)
+            )
+        ).all()
+        for teacher_id_value, count in teacherbot_rows:
+            add_count(activity_counts, teacher_id_value, "teacherbot_creati", count)
+
+        class_chat_rows = (
+            await db.execute(
+                select(ChatMessage.sender_teacher_id, func.count(ChatMessage.id))
+                .where(
+                    ChatMessage.tenant_id == admin.tenant_id,
+                    ChatMessage.sender_teacher_id.in_(teacher_ids),
+                    *period_conditions(ChatMessage.created_at),
+                )
+                .group_by(ChatMessage.sender_teacher_id)
+            )
+        ).all()
+        for teacher_id_value, count in class_chat_rows:
+            add_count(activity_counts, teacher_id_value, "messaggi_chat_classe", count)
+
+        teacher_conversation_rows = (
+            await db.execute(
+                select(TeacherConversation.teacher_id, func.count(func.distinct(TeacherConversation.id)))
+                .where(
+                    TeacherConversation.tenant_id == admin.tenant_id,
+                    TeacherConversation.teacher_id.in_(teacher_ids),
+                    *period_conditions(TeacherConversation.created_at),
+                )
+                .group_by(TeacherConversation.teacher_id)
+            )
+        ).all()
+        for teacher_id_value, count in teacher_conversation_rows:
+            add_count(activity_counts, teacher_id_value, "conversazioni_chatbot_docente", count)
+
+        student_conversation_rows = (
+            await db.execute(
+                select(TeacherClass.teacher_id, func.count(func.distinct(Conversation.id)))
+                .join(Session, Conversation.session_id == Session.id)
+                .join(TeacherClass, Session.class_id == TeacherClass.id)
+                .where(
+                    Conversation.tenant_id == admin.tenant_id,
+                    TeacherClass.teacher_id.in_(teacher_ids),
+                    *period_conditions(Conversation.created_at),
+                )
+                .group_by(TeacherClass.teacher_id)
+            )
+        ).all()
+        for teacher_id_value, count in student_conversation_rows:
+            add_count(activity_counts, teacher_id_value, "conversazioni_chatbot_studenti", count)
+
+        teacherbot_conversation_rows = (
+            await db.execute(
+                select(TeacherClass.teacher_id, func.count(func.distinct(TeacherbotConversation.id)))
+                .join(Session, TeacherbotConversation.session_id == Session.id)
+                .join(TeacherClass, Session.class_id == TeacherClass.id)
+                .where(
+                    TeacherbotConversation.tenant_id == admin.tenant_id,
+                    TeacherClass.teacher_id.in_(teacher_ids),
+                    *period_conditions(TeacherbotConversation.created_at),
+                )
+                .group_by(TeacherClass.teacher_id)
+            )
+        ).all()
+        for teacher_id_value, count in teacherbot_conversation_rows:
+            add_count(activity_counts, teacher_id_value, "conversazioni_teacherbot_studenti", count)
+
+        coding_teacher_rows = (
+            await db.execute(
+                select(CodingProject.owner_user_id, func.count(CodingProject.id))
+                .where(
+                    CodingProject.tenant_id == admin.tenant_id,
+                    CodingProject.owner_user_id.in_(teacher_ids),
+                    *period_conditions(CodingProject.created_at),
+                )
+                .group_by(CodingProject.owner_user_id)
+            )
+        ).all()
+        for teacher_id_value, count in coding_teacher_rows:
+            add_count(activity_counts, teacher_id_value, "coding_projects_docente", count)
+
+        coding_student_rows = (
+            await db.execute(
+                select(TeacherClass.teacher_id, func.count(CodingProject.id))
+                .join(Session, CodingProject.session_id == Session.id)
+                .join(TeacherClass, Session.class_id == TeacherClass.id)
+                .where(
+                    CodingProject.tenant_id == admin.tenant_id,
+                    TeacherClass.teacher_id.in_(teacher_ids),
+                    CodingProject.owner_student_id.is_not(None),
+                    *period_conditions(CodingProject.created_at),
+                )
+                .group_by(TeacherClass.teacher_id)
+            )
+        ).all()
+        for teacher_id_value, count in coding_student_rows:
+            add_count(activity_counts, teacher_id_value, "coding_projects_studenti", count)
+
+        notebook_teacher_rows = (
+            await db.execute(
+                select(Notebook.owner_id, func.count(Notebook.id))
+                .where(
+                    Notebook.tenant_id == admin.tenant_id,
+                    Notebook.owner_id.in_(teacher_ids),
+                    *period_conditions(Notebook.created_at),
+                )
+                .group_by(Notebook.owner_id)
+            )
+        ).all()
+        for teacher_id_value, count in notebook_teacher_rows:
+            add_count(activity_counts, teacher_id_value, "notebook_docente", count)
+
+        ml_rows = (
+            await db.execute(
+                select(MLExperiment.teacher_id, func.count(MLExperiment.id))
+                .where(
+                    MLExperiment.tenant_id == admin.tenant_id,
+                    MLExperiment.teacher_id.in_(teacher_ids),
+                    *period_conditions(MLExperiment.created_at),
+                )
+                .group_by(MLExperiment.teacher_id)
+            )
+        ).all()
+        for teacher_id_value, count in ml_rows:
+            add_count(activity_counts, teacher_id_value, "esperimenti_ml", count)
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow([
+        "utente_id",
+        "email",
+        "nome",
+        "cognome",
+        "ruolo",
+        "attivo",
+        "data_iscrizione",
+        "ultimo_accesso",
+        "classi_create",
+        "sessioni_create",
+        "tipologie_attivita_fatte",
+        "task_per_tipo",
+        "studenti_gestiti_totale",
+        "studenti_gestiti_per_nickname",
+        "chiamate_docente",
+        "costo_docente_eur",
+        "token_docente",
+        "tipi_chiamate_docente",
+        "chiamate_studenti",
+        "costo_studenti_eur",
+        "token_studenti",
+        "tipi_chiamate_studenti",
+    ])
+
+    for teacher in teachers:
+        teacher_key = str(teacher.id)
+        if teacher_key not in teacher_id_strings:
+            continue
+        teacher_metrics = teacher_call_metrics.get(teacher_key, {"calls": 0, "cost": 0.0, "tokens": 0})
+        student_metrics = student_call_metrics.get(teacher_key, {"calls": 0, "cost": 0.0, "tokens": 0})
+        nick_counts = student_nicknames.get(teacher_key, {})
+        nick_detail = "; ".join(
+            f"{nickname} ({nick_counts[nickname]})"
+            for nickname in sorted(nick_counts, key=lambda item: item.lower())
+        )
+        writer.writerow([
+            str(teacher.id),
+            teacher.email or "",
+            teacher.first_name or "",
+            teacher.last_name or "",
+            teacher.role.value if hasattr(teacher.role, "value") else str(teacher.role),
+            "si" if teacher.is_active else "no",
+            teacher.created_at.isoformat() if teacher.created_at else "",
+            teacher.last_login_at.isoformat() if teacher.last_login_at else "",
+            class_counts.get(teacher_key, 0),
+            session_counts.get(teacher_key, 0),
+            format_counts(activity_counts.get(teacher_key)),
+            format_counts(task_counts.get(teacher_key)),
+            student_counts.get(teacher_key, 0),
+            nick_detail,
+            int(teacher_metrics["calls"]),
+            format_money(teacher_metrics["cost"]),
+            int(teacher_metrics["tokens"]),
+            format_counts(teacher_call_types.get(teacher_key)),
+            int(student_metrics["calls"]),
+            format_money(student_metrics["cost"]),
+            int(student_metrics["tokens"]),
+            format_counts(student_call_types.get(teacher_key)),
+        ])
+
+    filename_parts = ["admin-teacher-usage"]
+    if start_date:
+        filename_parts.append(start_date.isoformat())
+    if end_date:
+        filename_parts.append(end_date.isoformat())
+    filename = "-".join(filename_parts) + ".csv"
+    return Response(
+        content="\ufeff" + output.getvalue(),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
 @router.get("/teachers/status")
 async def get_teachers_status(
     db: Annotated[AsyncSession, Depends(get_db)],
@@ -1536,6 +1999,80 @@ async def get_teachers_status(
             }
             for t in teachers
         ]
+    }
+
+
+@router.get("/legal-consents")
+async def list_legal_consents(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    admin: Annotated[User, Depends(get_current_admin)],
+):
+    teachers = (
+        await db.execute(
+            select(User).where(
+                User.tenant_id == admin.tenant_id,
+                User.role == UserRole.TEACHER,
+                User.is_active == True,
+            ).order_by(User.last_name.asc().nulls_last(), User.first_name.asc().nulls_last(), User.email.asc())
+        )
+    ).scalars().all()
+
+    teacher_ids = [teacher.id for teacher in teachers]
+    acceptance_rows = []
+    if teacher_ids:
+        acceptance_rows = (
+            await db.execute(
+                select(LegalDocumentAcceptance)
+                .where(
+                    LegalDocumentAcceptance.user_id.in_(teacher_ids),
+                    LegalDocumentAcceptance.document_key.in_([doc["key"] for doc in LEGAL_DOCUMENTS]),
+                )
+                .order_by(LegalDocumentAcceptance.accepted_at.desc())
+            )
+        ).scalars().all()
+
+    by_teacher: dict[str, list[LegalDocumentAcceptance]] = {}
+    for row in acceptance_rows:
+        by_teacher.setdefault(str(row.user_id), []).append(row)
+
+    return {
+        "required_documents": LEGAL_DOCUMENTS,
+        "items": [
+            {
+                "teacher": {
+                    "id": str(teacher.id),
+                    "first_name": teacher.first_name,
+                    "last_name": teacher.last_name,
+                    "email": teacher.email,
+                    "institution": teacher.institution,
+                    "created_at": teacher.created_at.isoformat() if teacher.created_at else None,
+                    "last_login_at": teacher.last_login_at.isoformat() if teacher.last_login_at else None,
+                },
+                "acceptances": [
+                    {
+                        "document_key": doc["key"],
+                        "document_title": doc["title"],
+                        "document_version": doc["version"],
+                        "accepted_at": (
+                            match.accepted_at.isoformat()
+                            if match and match.accepted_at
+                            else None
+                        ),
+                    }
+                    for doc in LEGAL_DOCUMENTS
+                    for match in [
+                        next(
+                            (
+                                row for row in by_teacher.get(str(teacher.id), [])
+                                if row.document_key == doc["key"] and row.document_version == doc["version"]
+                            ),
+                            None,
+                        )
+                    ]
+                ],
+            }
+            for teacher in teachers
+        ],
     }
 
 

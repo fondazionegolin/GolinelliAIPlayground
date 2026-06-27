@@ -1940,7 +1940,7 @@ export default function ChatSidebar({
                   }
                 } : {})}
                 className={[
-                  'group relative flex flex-1 min-h-[var(--selection-height)] items-center justify-center gap-1 px-2 py-1.5 rounded-[var(--selection-radius)] text-[11px] font-semibold',
+                  'ui-control-label group relative flex flex-1 min-h-[var(--selection-height)] items-center justify-center gap-1 px-2 py-1.5 rounded-[var(--selection-radius)]',
                   'border transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--selection-border-hover)]',
                   isTabActive
                     ? 'bg-[image:var(--selection-active-bg)] text-[var(--selection-active-text)] border-[color:var(--selection-border-hover)] shadow-[var(--selection-shadow)]'

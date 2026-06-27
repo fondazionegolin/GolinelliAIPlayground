@@ -63,6 +63,10 @@ class Settings(BaseSettings):
     # Coding Lab uses a stronger model for code/UI quality (overridable via env).
     CODING_LLM_PROVIDER: str = "anthropic"
     CODING_LLM_MODEL: str = "claude-sonnet-4-6"
+
+    # Hardware compilation services
+    PXT_COMPILER_URL: str = "http://pxt-compiler:8090"
+    PXT_COMPILER_TIMEOUT_SECONDS: float = 180.0
     
     # Embedding
     EMBEDDING_MODEL: str = "text-embedding-3-small"

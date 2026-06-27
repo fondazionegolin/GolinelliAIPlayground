@@ -1,26 +1,30 @@
 export const typographyTokens = {
   fontFamily: {
-    ui: "'Lufga', 'Lexend', system-ui, sans-serif",
-    brand: "'SofiaPro', 'Lufga', 'Lexend', system-ui, sans-serif",
+    ui: "'Bree 2', 'Sofia Sans Semi Condensed', 'Lufga', 'Lexend', system-ui, sans-serif",
+    emphasis: "'Bree 2', 'Sofia Sans', 'Sofia Sans Semi Condensed', 'Lufga', 'Lexend', system-ui, sans-serif",
+    brand: "'Bree 2', 'Sofia Sans', 'Sofia Sans Semi Condensed', 'Lufga', 'Lexend', system-ui, sans-serif",
     mono: "'JetBrains Mono', 'IBM Plex Mono', monospace",
   },
   fontSize: {
-    xs: '0.75rem',
-    sm: '0.875rem',
-    md: '1rem',
-    lg: '1.125rem',
-    xl: '1.25rem',
-    '2xl': '1.5rem',
-    '3xl': '1.875rem',
-    '4xl': '2.25rem',
-    '5xl': '3rem',
+    xs: '0.9167rem',
+    sm: '1.0417rem',
+    md: '1.1667rem',
+    lg: '1.2917rem',
+    xl: '1.4167rem',
+    '2xl': '1.6667rem',
+    '3xl': '2.0417rem',
+    '4xl': '2.4167rem',
+    '5xl': '3.1667rem',
+    controlLabel: '0.8125rem',
+    supporting: '0.875rem',
+    chatContent: '0.9375rem',
   },
   fontWeight: {
     regular: 400,
-    medium: 500,
-    semibold: 600,
+    medium: 700,
+    semibold: 700,
     bold: 700,
-    black: 900,
+    black: 700,
   },
   lineHeight: {
     xs: 1.35,
@@ -38,7 +42,7 @@ export const typographyTokens = {
     caption: {
       fontSize: '0.75rem',
       lineHeight: 1.35,
-      fontWeight: 500,
+      fontWeight: 700,
       letterSpacing: '0em',
     },
     small: {
@@ -68,7 +72,7 @@ export const typographyTokens = {
     titleSm: {
       fontSize: '1.125rem',
       lineHeight: 1.2,
-      fontWeight: 600,
+      fontWeight: 700,
       letterSpacing: '0em',
     },
     titleMd: {
@@ -98,13 +102,13 @@ export const typographyTokens = {
     h3: {
       fontSize: '1.125rem',
       lineHeight: 1.25,
-      fontWeight: 600,
+      fontWeight: 700,
       letterSpacing: '0em',
     },
     display: {
       fontSize: '3rem',
       lineHeight: 1,
-      fontWeight: 900,
+      fontWeight: 700,
       letterSpacing: '0em',
     },
   },

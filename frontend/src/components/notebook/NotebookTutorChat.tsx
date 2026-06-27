@@ -22,6 +22,8 @@ function projectLabel(projectType: NotebookProjectType) {
   if (projectType === 'python') return 'Python'
   if (projectType === 'strudel') return 'Strudel'
   if (projectType === 'game2d') return 'Game 2D'
+  if (projectType === 'circuitplayground') return 'Circuit Playground'
+  if (projectType === 'microbit') return 'micro:bit'
   return 'p5.js'
 }
 

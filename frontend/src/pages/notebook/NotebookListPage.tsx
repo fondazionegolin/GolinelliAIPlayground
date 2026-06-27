@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
-  BookOpen, FileCode2, Gamepad2, Layers3, Loader2, Music2, Plus, Search, Sparkles, Trash2, X,
+  BookOpen, Cpu, FileCode2, Gamepad2, Layers3, Loader2, Music2, Plus, Search, Sparkles, Trash2, X,
 } from 'lucide-react'
 import { notebooksApi } from '@/lib/api'
 import { formatDistanceToNow } from 'date-fns'
@@ -66,12 +66,30 @@ const NOTEBOOK_STYLES: Record<NotebookProjectType, {
     panel: 'border-cyan-200 bg-cyan-50/80 text-cyan-950',
     section: 'border-cyan-200 bg-cyan-50 text-cyan-700',
   },
+  microbit: {
+    card: 'border-[rgba(14,165,233,0.20)] bg-[rgba(14,165,233,0.08)] hover:border-[rgba(14,165,233,0.34)] hover:bg-[rgba(14,165,233,0.13)]',
+    iconBg: 'bg-sky-100 ring-1 ring-sky-200',
+    icon: 'text-sky-700',
+    badge: 'border border-sky-200 bg-sky-100 text-sky-800',
+    panel: 'border-sky-200 bg-sky-50/80 text-sky-950',
+    section: 'border-sky-200 bg-sky-50 text-sky-700',
+  },
+  circuitplayground: {
+    card: 'border-[rgba(16,185,129,0.20)] bg-[rgba(16,185,129,0.08)] hover:border-[rgba(16,185,129,0.34)] hover:bg-[rgba(16,185,129,0.13)]',
+    iconBg: 'bg-emerald-100 ring-1 ring-emerald-200',
+    icon: 'text-emerald-700',
+    badge: 'border border-emerald-200 bg-emerald-100 text-emerald-800',
+    panel: 'border-emerald-200 bg-emerald-50/80 text-emerald-950',
+    section: 'border-emerald-200 bg-emerald-50 text-emerald-700',
+  },
 }
 
-const PROJECT_ORDER: NotebookProjectType[] = ['python', 'p5js', 'game2d', 'strudel']
+const PROJECT_ORDER: NotebookProjectType[] = ['python', 'microbit', 'circuitplayground', 'p5js']
 
 function ProjectIcon({ type, className }: { type: NotebookProjectType; className: string }) {
   if (type === 'python') return <FileCode2 className={className} />
+  if (type === 'microbit') return <Cpu className={className} />
+  if (type === 'circuitplayground') return <Cpu className={className} />
   if (type === 'strudel') return <Music2 className={className} />
   if (type === 'game2d') return <Gamepad2 className={className} />
   return <Sparkles className={className} />
@@ -79,6 +97,8 @@ function ProjectIcon({ type, className }: { type: NotebookProjectType; className
 
 function getProjectLabel(type: NotebookProjectType) {
   if (type === 'python') return 'Python'
+  if (type === 'microbit') return 'micro:bit'
+  if (type === 'circuitplayground') return 'Circuit Playground'
   if (type === 'strudel') return 'Strudel'
   if (type === 'game2d') return 'Game 2D'
   return 'p5.js'
@@ -86,6 +106,8 @@ function getProjectLabel(type: NotebookProjectType) {
 
 function getProjectDescription(type: NotebookProjectType, isEnglish: boolean) {
   if (type === 'python') return isEnglish ? 'Analysis, logic, data, experiments.' : 'Analisi, logica, dati, esperimenti.'
+  if (type === 'microbit') return isEnglish ? 'Python or JavaScript for a connected micro:bit.' : 'Python o JavaScript per micro:bit collegata.'
+  if (type === 'circuitplayground') return isEnglish ? 'MakeCode TypeScript for Circuit Playground Express.' : 'MakeCode TypeScript per Circuit Playground Express.'
   if (type === 'strudel') return isEnglish ? 'Music, rhythm, live coding.' : 'Musica, ritmo, live coding.'
   if (type === 'game2d') return isEnglish ? 'Schema-driven 2D games with Phaser.' : 'Giochi 2D a schema JSON con Phaser.'
   return isEnglish ? 'Creative sketches and simulations.' : 'Sketch creativi e simulazioni.'
@@ -196,6 +218,10 @@ export default function NotebookListPage({ onOpen }: Props = {}) {
   const handleCreate = () => {
     const defaultTitle = newProjectType === 'python'
       ? (isEnglish ? 'New Python Notebook' : 'Nuovo Notebook Python')
+      : newProjectType === 'microbit'
+        ? (isEnglish ? 'New micro:bit Notebook' : 'Nuovo Notebook micro:bit')
+      : newProjectType === 'circuitplayground'
+        ? (isEnglish ? 'New Circuit Playground Notebook' : 'Nuovo Notebook Circuit Playground')
       : newProjectType === 'strudel'
         ? (isEnglish ? 'New Strudel Sketch' : 'Nuovo Sketch Strudel')
         : newProjectType === 'game2d'
@@ -211,21 +237,27 @@ export default function NotebookListPage({ onOpen }: Props = {}) {
   }
 
   const filtered = useMemo(() => {
-    if (!notebooks) return { python: [], p5js: [], game2d: [], strudel: [] }
+    if (!notebooks) return { python: [], microbit: [], circuitplayground: [], p5js: [], game2d: [], strudel: [] }
     const q = search.toLowerCase()
     const all = q ? notebooks.filter(n => n.title.toLowerCase().includes(q)) : notebooks
     return {
       python:  all.filter(n => n.project_type === 'python'),
+      microbit: all.filter(n => n.project_type === 'microbit'),
+      circuitplayground: all.filter(n => n.project_type === 'circuitplayground'),
       p5js:    all.filter(n => n.project_type === 'p5js'),
-      game2d:  all.filter(n => n.project_type === 'game2d'),
-      strudel: all.filter(n => n.project_type === 'strudel'),
+      game2d:  [],
+      strudel: [],
     }
   }, [notebooks, search])
 
-  const totalCount = (notebooks?.length ?? 0)
-  const visibleCount = filtered.python.length + filtered.p5js.length + filtered.game2d.length + filtered.strudel.length
+  const totalCount = notebooks
+    ? notebooks.filter(n => PROJECT_ORDER.includes(n.project_type)).length
+    : 0
+  const visibleCount = filtered.python.length + filtered.microbit.length + filtered.circuitplayground.length + filtered.p5js.length
   const projectCounts: Record<NotebookProjectType, number> = {
     python: notebooks?.filter(n => n.project_type === 'python').length ?? 0,
+    microbit: notebooks?.filter(n => n.project_type === 'microbit').length ?? 0,
+    circuitplayground: notebooks?.filter(n => n.project_type === 'circuitplayground').length ?? 0,
     p5js: notebooks?.filter(n => n.project_type === 'p5js').length ?? 0,
     game2d: notebooks?.filter(n => n.project_type === 'game2d').length ?? 0,
     strudel: notebooks?.filter(n => n.project_type === 'strudel').length ?? 0,
@@ -255,8 +287,8 @@ export default function NotebookListPage({ onOpen }: Props = {}) {
             </h3>
             <p className="mx-auto mt-3 max-w-2xl text-sm leading-6 text-slate-600">
               {isEnglish
-                ? 'Choose Python for analysis, p5.js for visual sketches, Game 2D for schema-driven prototypes, or Strudel for code music. Each notebook keeps code, outputs, previews, and tutor help together.'
-                : 'Scegli Python per analisi, p5.js per sketch visuali, Game 2D per prototipi a schema o Strudel per musica da codice. Ogni notebook tiene insieme codice, output, preview e supporto del tutor.'}
+                ? 'Choose Python for analysis, micro:bit or Circuit Playground for connected physical computing, or p5.js for visual sketches. Each notebook keeps code, outputs, previews, and tutor help together.'
+                : 'Scegli Python per analisi, micro:bit o Circuit Playground per physical computing collegato, oppure p5.js per sketch visuali. Ogni notebook tiene insieme codice, output, preview e supporto del tutor.'}
             </p>
 
             <PrimaryCreateButton
@@ -308,9 +340,9 @@ export default function NotebookListPage({ onOpen }: Props = {}) {
                 {isEnglish ? 'Build, run, understand' : 'Scrivi, esegui, capisci'}
               </h2>
               <p className="mx-auto mt-3 max-w-2xl text-sm leading-6 text-slate-600">
-                {isEnglish
-                  ? 'One focused place for code, outputs, previews, sound, and tutor hints. Pick the right format and keep every experiment easy to find.'
-                  : 'Un posto ordinato per codice, output, preview, suono e indizi del tutor. Scegli il formato giusto e ritrova subito ogni esperimento.'}
+              {isEnglish
+                  ? 'One focused place for code, outputs, connected boards, previews, and tutor hints. Pick the right format and keep every experiment easy to find.'
+                  : 'Un posto ordinato per codice, output, schede collegate, preview e indizi del tutor. Scegli il formato giusto e ritrova subito ogni esperimento.'}
               </p>
               <PrimaryCreateButton
                 isEnglish={isEnglish}
@@ -373,6 +405,28 @@ export default function NotebookListPage({ onOpen }: Props = {}) {
               notebooks={filtered.python}
               onOpen={openNotebook}
               onDelete={(id) => { if (confirm(isEnglish ? 'Delete this notebook?' : 'Eliminare questo notebook?')) deleteMutation.mutate(id) }}
+              isEnglish={isEnglish}
+              isDeleting={deleteMutation.isPending}
+            />
+          )}
+
+          {filtered.microbit.length > 0 && (
+            <Section
+              type="microbit"
+              notebooks={filtered.microbit}
+              onOpen={openNotebook}
+              onDelete={(id) => { if (confirm(isEnglish ? 'Delete this micro:bit notebook?' : 'Eliminare questo notebook micro:bit?')) deleteMutation.mutate(id) }}
+              isEnglish={isEnglish}
+              isDeleting={deleteMutation.isPending}
+            />
+          )}
+
+          {filtered.circuitplayground.length > 0 && (
+            <Section
+              type="circuitplayground"
+              notebooks={filtered.circuitplayground}
+              onOpen={openNotebook}
+              onDelete={(id) => { if (confirm(isEnglish ? 'Delete this Circuit Playground notebook?' : 'Eliminare questo notebook Circuit Playground?')) deleteMutation.mutate(id) }}
               isEnglish={isEnglish}
               isDeleting={deleteMutation.isPending}
             />
@@ -609,6 +663,10 @@ function CreateDialog({
           onKeyDown={e => e.key === 'Enter' && onCreate()}
           placeholder={newProjectType === 'python'
             ? (isEnglish ? 'e.g. Sales data analysis' : 'es. Analisi dati vendite')
+            : newProjectType === 'microbit'
+              ? (isEnglish ? 'e.g. Light sensor dashboard' : 'es. Cruscotto sensore luce')
+            : newProjectType === 'circuitplayground'
+              ? (isEnglish ? 'e.g. NeoPixel sensor compass' : 'es. Bussola con NeoPixel e sensori')
             : newProjectType === 'strudel'
               ? (isEnglish ? 'e.g. My first beat' : 'es. Il mio primo beat')
               : newProjectType === 'game2d'

@@ -84,7 +84,7 @@ export default function LoginPage() {
       <div className="mx-auto grid min-h-[calc(100vh-2rem)] w-full max-w-7xl grid-cols-1 gap-6 lg:grid-cols-[1.15fr_0.85fr]">
         <section className="rounded-[32px] border border-sky-100/90 bg-white/88 p-6 text-slate-900 md:p-8">
           <p className="text-xs font-semibold uppercase tracking-[0.25em] text-sky-700">Fondazione Golinelli</p>
-          <h1 className="mt-2 text-4xl font-black leading-tight md:text-5xl" style={{ fontFamily: '"SofiaPro"' }}>
+          <h1 className="mt-2 text-4xl font-black leading-tight md:text-5xl" style={{ fontFamily: 'var(--font-family-brand)' }}>
             Golinelli AI Playground
           </h1>
           <p className="mt-3 max-w-2xl text-sm text-slate-600 md:text-base">

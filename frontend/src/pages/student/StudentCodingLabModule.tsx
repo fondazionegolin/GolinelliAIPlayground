@@ -2,16 +2,24 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { EditorView } from '@codemirror/view'
 import CodeMirror from '@uiw/react-codemirror'
+import { AnimatePresence, motion } from 'framer-motion'
 import {
+  ArrowRight,
   Bot,
+  Brush,
   Check,
+  CheckCircle2,
   ChevronRight,
   Code2,
   Eye,
   FileCode2,
+  HelpCircle,
+  Lightbulb,
+  ListChecks,
   Loader2,
   Maximize2,
   MessageSquare,
+  MonitorPlay,
   Palette,
   PanelLeftClose,
   PanelLeftOpen,
@@ -21,6 +29,7 @@ import {
   Send,
   Share2,
   Sparkles,
+  Wand2,
   X,
 } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
@@ -151,8 +160,11 @@ const MODEL_OPTIONS: { key: string; label: string; hint: string }[] = [
   { key: 'sonnet', label: 'Sonnet 4.6', hint: 'Massima qualità' },
   { key: 'haiku', label: 'Haiku 4.5', hint: 'Più veloce' },
   { key: 'gpt-mini', label: 'GPT-5 mini', hint: 'OpenAI, economico' },
+  { key: 'deepseek-flash', label: 'DeepSeek V4 Flash', hint: 'Veloce ed economico' },
+  { key: 'deepseek-pro', label: 'DeepSeek V4 Pro', hint: 'Qualità elevata' },
 ]
 const DEFAULT_MODEL_KEY = 'sonnet'
+const CODING_TUTORIAL_STORAGE_KEY = 'coding_lab_tutorial_seen_v1'
 function composeDescription(title: string, prompt: string, answersText: string) {
   const spec = answersText ? `\n## Specifiche dal colloquio\n${answersText}\n` : ''
   return `# ${title || 'Progetto'}\n\n## Istruzioni di progetto\n${prompt || 'Descrivi qui obiettivo e regole del progetto.'}\n${spec}\n## Richieste\n`
@@ -212,11 +224,23 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
   const [liveFiles, setLiveFiles] = useState<{ path: string; lines: number; status: 'writing' | 'done' }[]>([])
   const [showDesignStudio, setShowDesignStudio] = useState(false)
   const [designNotice, setDesignNotice] = useState<string | null>(null)
+  const [showTutorial, setShowTutorial] = useState(false)
   const conversationEndRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     localStorage.setItem('coding_model_key', modelKey)
   }, [modelKey])
+
+  useEffect(() => {
+    if (localStorage.getItem(CODING_TUTORIAL_STORAGE_KEY) !== 'seen') {
+      setShowTutorial(true)
+    }
+  }, [])
+
+  const closeTutorial = () => {
+    localStorage.setItem(CODING_TUTORIAL_STORAGE_KEY, 'seen')
+    setShowTutorial(false)
+  }
 
   const selectedProject = useMemo(
     () => projects.find((project) => project.id === selectedProjectId) ?? null,
@@ -900,6 +924,22 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
           onApply={applyDesignSystem}
         />
       )}
+      <AnimatePresence>
+        {showTutorial && (
+          <CodingLabTutorialModal
+            onClose={closeTutorial}
+            onCreateProject={() => {
+              closeTutorial()
+              startNewProject()
+              setCreatePanelOpen(true)
+            }}
+            onOpenDesignSystem={() => {
+              closeTutorial()
+              setShowDesignStudio(true)
+            }}
+          />
+        )}
+      </AnimatePresence>
       {designNotice && (
         <div className="fixed bottom-4 left-1/2 z-[80] -translate-x-1/2 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white shadow-lg">
           {designNotice}
@@ -929,7 +969,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
         {projectsPanelOpen ? (
         <div className="flex min-h-0 flex-1 flex-col">
         <div className="min-h-0 flex-1 overflow-y-auto p-3">
-          <div className="grid grid-cols-[1fr_auto_auto] gap-2">
+          <div className="grid grid-cols-[1fr_auto_auto_auto] gap-2">
             <Button
               type="button"
               onClick={startNewProject}
@@ -960,6 +1000,16 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
               title="Design System"
             >
               <Palette className="h-3.5 w-3.5" />
+            </Button>
+            <Button
+              type="button"
+              onClick={() => setShowTutorial(true)}
+              variant="outline"
+              density="compact"
+              className="px-3"
+              title="Tutorial Coding Lab"
+            >
+              <HelpCircle className="h-3.5 w-3.5" />
             </Button>
           </div>
           <div className="my-3 flex items-center justify-between px-1">
@@ -1537,6 +1587,375 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
         />
       )}
     </div>
+  )
+}
+
+const CODING_TUTORIAL_STEPS = [
+  {
+    num: 0,
+    icon: Code2,
+    grad: 'from-sky-500 to-indigo-600',
+    ring: 'ring-sky-300/40',
+    glow: 'shadow-sky-500/25',
+    label: 'Panoramica',
+    title: 'Benvenuto nel Coding Lab',
+    desc: 'Qui trasformi un’idea in una mini app: descrivi il progetto, scegli uno stile, guarda l’anteprima e chiedi modifiche al chatbot finché il risultato funziona.',
+    tips: ['Prompt e cronologia stanno al centro', 'I progetti e le versioni restano nella sidebar', 'Codice e anteprima si alternano a destra'],
+    visual: () => (
+      <div className="grid grid-cols-[0.72fr_1fr] gap-3">
+        <div className="space-y-2 rounded-2xl bg-white/10 p-3">
+          <div className="h-7 rounded-xl bg-white/20" />
+          <div className="h-7 rounded-xl bg-sky-400/70" />
+          <div className="h-16 rounded-xl border border-white/10 bg-white/10" />
+        </div>
+        <div className="space-y-3 rounded-2xl bg-white/10 p-3">
+          <div className="flex gap-1.5">
+            <div className="h-6 w-16 rounded-lg bg-indigo-400" />
+            <div className="h-6 w-20 rounded-lg bg-white/15" />
+          </div>
+          <motion.div
+            animate={{ scale: [1, 1.02, 1] }}
+            transition={{ repeat: Infinity, duration: 2.2, ease: 'easeInOut' }}
+            className="h-28 rounded-2xl border border-white/10 bg-gradient-to-br from-white/20 to-white/5"
+          />
+        </div>
+      </div>
+    ),
+  },
+  {
+    num: 1,
+    icon: Plus,
+    grad: 'from-fuchsia-500 to-rose-500',
+    ring: 'ring-fuchsia-300/40',
+    glow: 'shadow-fuchsia-500/25',
+    label: 'Crea',
+    title: 'Crea il primo progetto',
+    desc: 'Premi Nuovo, dai un titolo chiaro e descrivi cosa deve fare la mini app. Il colloquio iniziale serve a chiarire obiettivo, interazioni e vincoli.',
+    tips: ['Usa un titolo breve e riconoscibile', 'Descrivi l’utente finale', 'Indica cosa deve succedere al click, all’input o al download'],
+    visual: () => (
+      <div className="space-y-3">
+        {['Titolo del progetto', 'Prompt iniziale', 'Domande di chiarimento'].map((item, index) => (
+          <motion.div
+            key={item}
+            initial={{ opacity: 0, x: -12 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ delay: index * 0.12, type: 'spring', stiffness: 260 }}
+            className="flex items-center gap-3 rounded-2xl bg-white/10 px-3 py-2.5"
+          >
+            <span className={`flex h-7 w-7 items-center justify-center rounded-xl bg-gradient-to-br ${index === 0 ? 'from-fuchsia-400 to-rose-400' : index === 1 ? 'from-sky-400 to-indigo-400' : 'from-emerald-400 to-teal-400'} text-xs font-black text-white`}>
+              {index + 1}
+            </span>
+            <span className="text-sm font-semibold text-white/85">{item}</span>
+          </motion.div>
+        ))}
+      </div>
+    ),
+  },
+  {
+    num: 2,
+    icon: Lightbulb,
+    grad: 'from-amber-400 to-orange-500',
+    ring: 'ring-amber-300/40',
+    glow: 'shadow-amber-500/25',
+    label: 'Prompt',
+    title: 'Scrivi prompt efficaci',
+    desc: 'Un buon prompt non dice solo “fammi una pagina bella”: specifica obiettivo, pubblico, contenuti, comportamento, stile e criteri di successo.',
+    tips: ['Formula: obiettivo + utenti + schermate + dati + azioni + stile', 'Aggiungi esempi concreti di contenuto', 'Chiedi output verificabili: pulsanti, stati vuoti, errori, responsive'],
+    visual: () => (
+      <div className="space-y-2.5">
+        {[
+          ['Obiettivo', 'Crea un simulatore per...'],
+          ['Interazioni', 'Input, bottone, risultato, reset'],
+          ['Stile', 'Colori, tono, layout, accessibilità'],
+          ['Vincoli', 'Niente login, funziona mobile'],
+        ].map(([label, text], index) => (
+          <motion.div
+            key={label}
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: index * 0.1 }}
+            className="rounded-xl border border-white/10 bg-white/10 p-2.5"
+          >
+            <p className="text-xs font-black uppercase tracking-wide text-amber-200">{label}</p>
+            <p className="mt-0.5 text-sm text-white/75">{text}</p>
+          </motion.div>
+        ))}
+      </div>
+    ),
+  },
+  {
+    num: 3,
+    icon: Brush,
+    grad: 'from-violet-500 to-purple-600',
+    ring: 'ring-violet-300/40',
+    glow: 'shadow-violet-500/25',
+    label: 'Design',
+    title: 'Gestisci il Design System',
+    desc: 'Il Design System crea regole condivise per palette, tipografia, bottoni, superfici e priorità visive. Applicalo prima di generare o durante l’iterazione.',
+    tips: ['Scegli palette e tono in base al dominio del progetto', 'Mantieni contrasto e leggibilità', 'Salva il contratto di stile nel progetto'],
+    visual: () => (
+      <div className="space-y-3">
+        <div className="grid grid-cols-5 gap-2">
+          {['bg-fuchsia-400', 'bg-sky-400', 'bg-amber-300', 'bg-emerald-400', 'bg-violet-400'].map((color, index) => (
+            <motion.div
+              key={color}
+              animate={{ y: [0, -3, 0] }}
+              transition={{ repeat: Infinity, duration: 1.8, delay: index * 0.08 }}
+              className={`h-9 rounded-xl ${color} shadow-lg`}
+            />
+          ))}
+        </div>
+        <div className="rounded-2xl bg-white/10 p-3">
+          <div className="mb-2 h-3 w-24 rounded-full bg-white/35" />
+          <div className="h-8 rounded-xl border border-white/15 bg-white/15" />
+        </div>
+      </div>
+    ),
+  },
+  {
+    num: 4,
+    icon: MonitorPlay,
+    grad: 'from-emerald-500 to-teal-600',
+    ring: 'ring-emerald-300/40',
+    glow: 'shadow-emerald-500/25',
+    label: 'Test',
+    title: 'Testa codice e anteprima',
+    desc: 'Apri Anteprima per provare l’app come utente. Se serve, passa a Codice per controllare i file o usa Pagina intera per testare layout e interazioni.',
+    tips: ['Controlla mobile e desktop', 'Prova stati vuoti, errori e casi limite', 'Usa le versioni per tornare indietro se una modifica non convince'],
+    visual: () => (
+      <div className="rounded-2xl bg-white/10 p-3">
+        <div className="mb-3 flex gap-2">
+          <span className="rounded-lg bg-white/15 px-3 py-1 text-xs font-bold text-white/55">Codice</span>
+          <span className="rounded-lg bg-emerald-400 px-3 py-1 text-xs font-bold text-white">Anteprima</span>
+        </div>
+        <motion.div
+          animate={{ opacity: [0.75, 1, 0.75] }}
+          transition={{ repeat: Infinity, duration: 1.8 }}
+          className="flex h-32 items-center justify-center rounded-2xl border border-white/10 bg-white/10"
+        >
+          <MonitorPlay className="h-10 w-10 text-emerald-200" />
+        </motion.div>
+      </div>
+    ),
+  },
+  {
+    num: 5,
+    icon: MessageSquare,
+    grad: 'from-blue-500 to-cyan-500',
+    ring: 'ring-blue-300/40',
+    glow: 'shadow-blue-500/25',
+    label: 'Itera',
+    title: 'Itera con il chatbot',
+    desc: 'Dopo la prima generazione chiedi modifiche piccole e verificabili. Il chatbot aggiorna i file, mostra il lavoro degli agenti e salva nuove versioni.',
+    tips: ['Una richiesta per volta funziona meglio', 'Scrivi cosa non va e come dovrebbe comportarsi', 'Esempio: “riduci il testo, aggiungi stato loading, migliora il contrasto del bottone”'],
+    visual: () => (
+      <div className="space-y-2">
+        <div className="ml-auto max-w-[82%] rounded-2xl border border-sky-300/50 bg-sky-400/15 px-3 py-2 text-sm font-semibold text-sky-100">
+          Aggiungi un filtro per categoria e uno stato vuoto.
+        </div>
+        <div className="max-w-[82%] rounded-2xl bg-white/10 px-3 py-2 text-sm text-white/75">
+          Aggiorno componenti, stato e preview.
+        </div>
+        <div className="rounded-2xl border border-emerald-300/25 bg-emerald-400/15 p-2.5 text-xs font-bold text-emerald-100">
+          File Writer: 4/4 file aggiornati
+        </div>
+      </div>
+    ),
+  },
+]
+
+function CodingLabTutorialModal({
+  onClose,
+  onCreateProject,
+  onOpenDesignSystem,
+}: {
+  onClose: () => void
+  onCreateProject: () => void
+  onOpenDesignSystem: () => void
+}) {
+  const [active, setActive] = useState(0)
+  const step = CODING_TUTORIAL_STEPS[active]
+  const StepIcon = step.icon
+  const Visual = step.visual
+  const isLast = active === CODING_TUTORIAL_STEPS.length - 1
+
+  const next = () => setActive((value) => Math.min(value + 1, CODING_TUTORIAL_STEPS.length - 1))
+  const prev = () => setActive((value) => Math.max(value - 1, 0))
+
+  return (
+    <motion.div
+      className="fixed inset-0 z-[90] flex items-center justify-center bg-slate-950/72 p-4 backdrop-blur-md"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+    >
+      <motion.div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Tutorial Coding Lab"
+        initial={{ opacity: 0, y: 18, scale: 0.97 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        exit={{ opacity: 0, y: 18, scale: 0.97 }}
+        transition={{ duration: 0.24 }}
+        className="relative max-h-[92vh] w-full max-w-5xl overflow-hidden rounded-3xl bg-gradient-to-br from-slate-950 via-slate-900 to-indigo-950 shadow-2xl"
+      >
+        <div className="pointer-events-none absolute right-0 top-0 h-80 w-80 translate-x-20 -translate-y-24 rounded-full bg-sky-400/10 blur-2xl" />
+        <div className="pointer-events-none absolute bottom-0 left-0 h-72 w-72 -translate-x-16 translate-y-20 rounded-full bg-fuchsia-400/10 blur-2xl" />
+
+        <button
+          type="button"
+          onClick={onClose}
+          className="absolute right-4 top-4 z-10 flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-white/60 transition hover:bg-white/20 hover:text-white"
+          title="Chiudi tutorial"
+        >
+          <X className="h-4 w-4" />
+        </button>
+
+        <div className="relative grid max-h-[92vh] grid-cols-1 overflow-y-auto lg:grid-cols-[0.92fr_1.08fr]">
+          <div className="flex flex-col p-6 md:p-8">
+            <div className="mb-6">
+              <div className="mb-2 flex items-center gap-2">
+                <Sparkles className="h-4 w-4 text-sky-300" />
+                <span className="text-xs font-black uppercase tracking-widest text-sky-300">Tutorial Coding Lab</span>
+              </div>
+              <h2 className="text-3xl font-black leading-tight text-white">
+                Costruisci mini app con metodo
+              </h2>
+              <p className="mt-2 max-w-md text-sm leading-relaxed text-white/55">
+                Una guida rapida per partire, progettare lo stile, testare l’anteprima e iterare con richieste precise.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-3 gap-2 sm:grid-cols-6 lg:grid-cols-3">
+              {CODING_TUTORIAL_STEPS.map((item, index) => {
+                const Icon = item.icon
+                const selected = index === active
+                return (
+                  <button
+                    key={item.label}
+                    type="button"
+                    onClick={() => setActive(index)}
+                    className={`relative rounded-2xl p-3 text-left transition ${
+                      selected ? `bg-white/15 ring-1 ${item.ring}` : 'bg-white/5 hover:bg-white/10'
+                    }`}
+                  >
+                    <div className={`mb-2 flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br ${item.grad} ${selected ? `shadow-lg ${item.glow}` : ''}`}>
+                      <Icon className="text-white" style={{ width: 18, height: 18 }} />
+                    </div>
+                    <p className={`text-xs font-black ${selected ? 'text-white' : 'text-white/50'}`}>{item.label}</p>
+                    {selected && (
+                      <motion.div
+                        layoutId="coding-tutorial-step"
+                        className={`absolute bottom-0 left-3 right-3 h-0.5 rounded-full bg-gradient-to-r ${item.grad}`}
+                      />
+                    )}
+                  </button>
+                )
+              })}
+            </div>
+
+            <div className="mt-6 rounded-2xl border border-white/10 bg-white/5 p-4">
+              <p className="mb-3 text-xs font-black uppercase tracking-widest text-white/45">Prompting efficace</p>
+              <div className="grid gap-2">
+                {['Obiettivo', 'Pubblico', 'Interazioni', 'Stile', 'Vincoli'].map((item, index) => (
+                  <div key={item} className="flex items-center gap-2 text-sm text-white/70">
+                    <CheckCircle2 className={`h-4 w-4 ${index < 2 ? 'text-sky-300' : index < 4 ? 'text-amber-300' : 'text-emerald-300'}`} />
+                    <span>{item}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div className="flex min-h-[560px] flex-col border-t border-white/10 bg-white/[0.035] p-6 md:p-8 lg:border-l lg:border-t-0">
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={active}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                transition={{ duration: 0.22 }}
+                className="flex flex-1 flex-col"
+              >
+                <div className={`mb-5 inline-flex w-fit items-center gap-2 rounded-full bg-gradient-to-r ${step.grad} px-3 py-1.5`}>
+                  <span className="text-xs font-black text-white">{step.num === 0 ? 'SPLASH' : `STEP ${step.num}`}</span>
+                  <StepIcon className="h-3.5 w-3.5 text-white/85" />
+                </div>
+
+                <h3 className="text-2xl font-black text-white">{step.title}</h3>
+                <p className="mt-2 text-sm leading-relaxed text-white/60">{step.desc}</p>
+
+                <div className="my-6 rounded-3xl border border-white/10 bg-white/5 p-4">
+                  <Visual />
+                </div>
+
+                <div className="grid gap-2">
+                  {step.tips.map((tip) => (
+                    <div key={tip} className="flex items-start gap-2 rounded-2xl bg-white/[0.07] px-3 py-2.5">
+                      <ListChecks className="mt-0.5 h-4 w-4 shrink-0 text-emerald-300" />
+                      <p className="text-sm leading-snug text-white/72">{tip}</p>
+                    </div>
+                  ))}
+                </div>
+              </motion.div>
+            </AnimatePresence>
+
+            <div className="mt-6 flex flex-col gap-3 border-t border-white/10 pt-5 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex gap-1.5">
+                {CODING_TUTORIAL_STEPS.map((_, index) => (
+                  <button
+                    key={index}
+                    type="button"
+                    onClick={() => setActive(index)}
+                    className={`h-2 rounded-full transition-all ${index === active ? 'w-8 bg-white' : 'w-2 bg-white/25 hover:bg-white/45'}`}
+                    title={`Vai allo step ${index + 1}`}
+                  />
+                ))}
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={prev}
+                  disabled={active === 0}
+                  className="inline-flex h-10 items-center justify-center rounded-xl border border-white/10 bg-white/5 px-4 text-sm font-bold text-white/65 transition hover:bg-white/10 disabled:opacity-35"
+                >
+                  Indietro
+                </button>
+                {step.num === 3 ? (
+                  <button
+                    type="button"
+                    onClick={onOpenDesignSystem}
+                    className={`inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-gradient-to-r ${step.grad} px-4 text-sm font-black text-white shadow-lg`}
+                  >
+                    Apri Design System
+                    <Palette className="h-4 w-4" />
+                  </button>
+                ) : isLast ? (
+                  <button
+                    type="button"
+                    onClick={onCreateProject}
+                    className={`inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-gradient-to-r ${step.grad} px-4 text-sm font-black text-white shadow-lg`}
+                  >
+                    Crea progetto
+                    <Wand2 className="h-4 w-4" />
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={next}
+                    className={`inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-gradient-to-r ${step.grad} px-4 text-sm font-black text-white shadow-lg`}
+                  >
+                    Continua
+                    <ArrowRight className="h-4 w-4" />
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      </motion.div>
+    </motion.div>
   )
 }
 

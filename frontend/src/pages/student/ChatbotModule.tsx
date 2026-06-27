@@ -3602,7 +3602,7 @@ function MessageContent({ content, onQuizSubmit, onInput, darkMode = false }: {
   }
 
   return (
-    <div className={`prose prose-sm max-w-none ${darkMode ? 'prose-invert text-white' : 'prose-slate'}`}>
+    <div className={`chat-markdown prose max-w-none ${darkMode ? 'prose-invert text-white' : 'prose-slate'}`}>
       {cleanContent && (
         <ReactMarkdown
           remarkPlugins={[remarkGfm, remarkMath]}
@@ -3612,7 +3612,7 @@ function MessageContent({ content, onQuizSubmit, onInput, darkMode = false }: {
             ...markdownCodeComponents(darkMode),
             ul: ({ children }) => <ul className="list-disc pl-4 mb-2 space-y-1">{children}</ul>,
             ol: ({ children }) => <ol className="list-decimal pl-4 mb-2 space-y-1">{children}</ol>,
-            li: ({ children }) => <li className={`text-sm ${darkMode ? 'text-white' : ''}`}>{children}</li>,
+            li: ({ children }) => <li className={`${darkMode ? 'text-white' : ''}`}>{children}</li>,
             strong: ({ children }) => <strong className={`font-semibold ${darkMode ? 'text-white' : 'text-slate-800'}`}>{children}</strong>,
             h1: ({ children }) => <h1 className={`text-lg font-bold mb-2 ${darkMode ? 'text-white' : 'text-slate-800'}`}>{children}</h1>,
             h2: ({ children }) => <h2 className={`text-base font-bold mb-2 ${darkMode ? 'text-white' : 'text-slate-800'}`}>{children}</h2>,

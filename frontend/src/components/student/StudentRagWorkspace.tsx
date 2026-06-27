@@ -336,7 +336,7 @@ function CitedContent({
 }) {
   const segments = parseCitations(content)
   return (
-    <div className="prose prose-sm max-w-none prose-slate">
+    <div className="chat-markdown prose max-w-none prose-slate">
       {segments.map((seg, i) => {
         if (seg.type === 'cite') {
           const idx = seg.index! - 1

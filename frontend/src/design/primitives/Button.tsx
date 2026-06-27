@@ -5,7 +5,7 @@ import { cva, type VariantProps } from 'class-variance-authority'
 import { cn } from '@/lib/utils'
 
 const buttonVariants = cva(
-  'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-[var(--button-radius)] font-[var(--button-font-weight)] transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:pointer-events-none disabled:cursor-not-allowed disabled:!border-[color:var(--border-subtle)] disabled:!bg-[image:radial-gradient(ellipse_at_center,rgba(255,255,255,0.96),rgba(241,245,249,0.92))] disabled:!text-[var(--text-secondary)] disabled:!opacity-75 disabled:!shadow-none [&_svg]:pointer-events-none [&_svg]:h-4 [&_svg]:w-4 [&_svg]:shrink-0',
+  'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-[var(--button-radius)] font-[var(--button-font-weight)] transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:pointer-events-none disabled:cursor-not-allowed disabled:!border-[color:var(--border-subtle)] disabled:!bg-[image:none] disabled:!bg-[color:color-mix(in_srgb,var(--text-secondary)_6%,transparent)] disabled:!text-[var(--text-secondary)] disabled:!opacity-60 disabled:!shadow-none [&_svg]:pointer-events-none [&_svg]:h-4 [&_svg]:w-4 [&_svg]:shrink-0',
   {
     variants: {
       tone: {

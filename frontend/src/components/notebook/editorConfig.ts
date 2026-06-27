@@ -314,9 +314,9 @@ export function getEditorExtensions(
   runKeys: Extension,
   fontWeight = 400,
 ): Extension[] {
-  const language = projectType === 'python'
+  const language = projectType === 'python' || projectType === 'microbit'
     ? python()
-    : javascript({ jsx: false, typescript: false })
+    : javascript({ jsx: false, typescript: projectType === 'circuitplayground' })
 
   // For p5js: register p5 completions; for strudel: register strudel completions
   const jsLanguageData = projectType === 'p5js'

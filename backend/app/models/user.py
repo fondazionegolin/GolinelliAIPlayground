@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Enum, DateTime, Boolean, ForeignKey, func, Text
+from sqlalchemy import Column, String, Enum, DateTime, Boolean, ForeignKey, func, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
 import uuid
@@ -37,6 +37,28 @@ class User(Base):
     tenant = relationship("Tenant", back_populates="users", foreign_keys=[tenant_id])
     classes = relationship("Class", back_populates="teacher", lazy="dynamic")
     reviewed_requests = relationship("TeacherRequest", back_populates="reviewed_by_admin", lazy="dynamic")
+    legal_acceptances = relationship("LegalDocumentAcceptance", back_populates="user", lazy="dynamic", cascade="all, delete-orphan")
+
+
+class LegalDocumentAcceptance(Base):
+    __tablename__ = "legal_document_acceptances"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id = Column(UUID(as_uuid=True), ForeignKey("tenants.id"), nullable=True, index=True)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
+    document_key = Column(String(64), nullable=False, index=True)
+    document_title = Column(String(180), nullable=False)
+    document_version = Column(String(64), nullable=False)
+    accepted_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    ip_address = Column(String(64), nullable=True)
+    user_agent = Column(Text, nullable=True)
+
+    user = relationship("User", back_populates="legal_acceptances")
+    tenant = relationship("Tenant")
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "document_key", "document_version", name="uq_legal_acceptance_user_doc_version"),
+    )
 
 
 class TeacherRequest(Base):

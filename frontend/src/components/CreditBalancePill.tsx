@@ -116,10 +116,11 @@ export function CreditBalancePill({ audience, accentColor }: CreditBalancePillPr
     <div className="relative" ref={panelRef}>
       <button
         type="button"
-        className="flex flex-col items-center justify-center gap-0.5 rounded-full border-[1.5px] bg-white/25 px-3.5 py-1 leading-none shadow-sm backdrop-blur-sm transition-colors hover:bg-white/55 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
+        className="navbar-inline-control flex h-9 min-w-[66px] flex-col items-center justify-center gap-0.5 rounded-xl px-3 leading-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-0"
         style={{
           color: isLow ? '#dc2626' : gold,
-          borderColor: isLow ? 'rgba(220,38,38,0.55)' : 'color-mix(in srgb, #ff6600 45%, transparent)',
+          borderColor: isLow ? 'rgba(220,38,38,0.35)' : 'transparent',
+          '--btn-tone': accentColor,
           '--tw-ring-color': accentColor,
         } as CSSProperties}
         title="Crediti AI disponibili"

@@ -381,10 +381,12 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
             <div className="hidden xl:block h-8 w-px bg-slate-200/80 mx-1" />
 
             <div className="flex items-center gap-3">
+              <div className="hidden h-11 items-center gap-1 rounded-xl border p-1 lg:flex" style={buildAccentNavClusterStyle(accentTheme)}>
               {/* Date/time + mini calendar */}
               <NavbarCalendarClock
                 sessionId={currentSession?.id}
                 accentColor={accentTheme.accent}
+                inNavCluster
               />
 
               {/* Teacher Notifications (unified) */}
@@ -394,13 +396,14 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
                 onMarkAsRead={handleMarkAsRead}
                 onNotificationClick={handleNotificationClick}
                 onAlertAction={handleAlertAction}
+                inNavCluster
               />
 
               {/* Session Selector */}
               <div className="relative flex items-center gap-2" ref={sessionsMenuRef}>
                 <button
                   onClick={() => setShowSessionsMenu(!showSessionsMenu)}
-                  className="navbar-inline-control hidden min-h-11 items-center gap-2 rounded-xl px-3 py-2 lg:flex"
+                  className="navbar-inline-control flex h-9 items-center gap-2 rounded-xl px-3"
                   style={{ '--btn-tone': accentTheme.accent } as CSSProperties}
                 >
                   <div className={`h-2.5 w-2.5 flex-shrink-0 rounded-full ${currentSession ? 'bg-green-500 animate-pulse shadow-sm shadow-green-300' : 'bg-slate-300'}`} />
@@ -413,7 +416,7 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
                   <ChevronDown className={`ml-0.5 h-3.5 w-3.5 flex-shrink-0 text-slate-500 transition-transform ${showSessionsMenu ? 'rotate-180' : ''}`} />
                 </button>
                 <button
-                  className={`navbar-inline-control relative hidden items-center justify-center rounded-xl p-2.5 lg:flex ${chatSidebarOpen ? 'navbar-inline-control-active' : ''}`}
+                  className={`navbar-inline-control relative flex h-9 w-9 items-center justify-center rounded-xl p-0 ${chatSidebarOpen ? 'navbar-inline-control-active' : ''}`}
                   style={{ '--btn-tone': accentTheme.accent } as CSSProperties}
                   onClick={onToggleChatSidebar}
                   title={chatSidebarOpen ? t('navbar.hide_class_chat') : t('navbar.show_class_chat')}
@@ -504,14 +507,14 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
                   </div>
                 )}
               </div>
-
               <CreditBalancePill audience="teacher" accentColor={accentTheme.accent} />
+              </div>
 
               {/* Avatar Dropdown */}
               <div className="relative" ref={dropdownRef}>
                 <button
                   onClick={() => setShowDropdown(!showDropdown)}
-                  className="group flex items-center gap-1 rounded-full border border-transparent p-1 transition-colors hover:bg-slate-100"
+                  className="group flex items-center gap-1 rounded-full border border-transparent p-1 transition-colors hover:bg-white/55"
                   title={`${profile.firstName} ${profile.lastName}`}
                 >
                   {profile.avatarUrl ? (

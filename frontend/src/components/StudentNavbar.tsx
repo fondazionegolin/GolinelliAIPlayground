@@ -272,53 +272,60 @@ export function StudentNavbar({
 
             <div className="hidden xl:block h-8 w-px bg-slate-200/80 mx-1" />
 
-            <div className="flex items-center gap-2">
-              {/* Date/time + mini calendar */}
-              <NavbarCalendarClock
-                sessionId={sessionId}
-                accentColor={accentTheme.accent}
-              />
+            <div className="flex items-center gap-3">
+              <div className="hidden h-11 items-center gap-1 rounded-xl border p-1 lg:flex" style={buildAccentNavClusterStyle(accentTheme)}>
+                {/* Date/time + mini calendar */}
+                <NavbarCalendarClock
+                  sessionId={sessionId}
+                  accentColor={accentTheme.accent}
+                  inNavCluster
+                />
 
-              {/* Session Info - Always visible */}
-              {sessionTitle && (
-                <div
-                  className="navbar-inline-control hidden h-9 items-center gap-2 rounded-xl px-3 lg:flex"
-                  style={{ '--btn-tone': accentTheme.accent } as CSSProperties}
-                >
-                  <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse shadow-sm shadow-green-300" />
-                  <div className="text-left min-w-0">
-                    <span className="text-sm font-bold text-[var(--student-accent-text)] truncate max-w-[120px]">{sessionTitle}</span>
-                    {joinCode && (
-                      <span className="ml-2 text-xs font-mono font-semibold text-slate-400 tracking-wider">{joinCode}</span>
-                    )}
+                {/* Session Info - Always visible */}
+                {sessionTitle && (
+                  <div
+                    className="navbar-inline-control flex h-9 items-center gap-2 rounded-xl px-3"
+                    style={{ '--btn-tone': accentTheme.accent } as CSSProperties}
+                  >
+                    <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse shadow-sm shadow-green-300" />
+                    <div className="text-left min-w-0">
+                      <span className="block max-w-[150px] truncate text-[13px] font-black leading-tight text-[var(--student-accent-text)]">{sessionTitle}</span>
+                      {joinCode && (
+                        <span className="block text-[10px] font-mono font-black leading-tight tracking-widest" style={{ color: accentTheme.accent }}>{joinCode}</span>
+                      )}
+                    </div>
                   </div>
-                </div>
-              )}
+                )}
 
-              {chatAvailable && onToggleChatSidebar && (
-                <button
-                  className={`navbar-inline-control relative hidden h-10 w-10 items-center justify-center rounded-xl lg:flex ${chatSidebarOpen ? 'navbar-inline-control-active' : ''}`}
-                  style={{ '--btn-tone': accentTheme.accent } as CSSProperties}
-                  onClick={onToggleChatSidebar}
-                  title={chatSidebarOpen ? t('navbar.hide_class_chat') : t('navbar.show_class_chat')}
-                >
-                  <MessageSquare className="h-4 w-4 flex-shrink-0" />
-                  {voiceActive && (
-                    <span
-                      className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full text-white ring-2 ring-white"
-                      style={{ backgroundColor: accentTheme.accent }}
-                    >
+                {chatAvailable && onToggleChatSidebar && (
+                  <button
+                    className={`navbar-inline-control relative flex h-9 w-9 items-center justify-center rounded-xl p-0 ${chatSidebarOpen ? 'navbar-inline-control-active' : ''}`}
+                    style={{ '--btn-tone': accentTheme.accent } as CSSProperties}
+                    onClick={onToggleChatSidebar}
+                    title={chatSidebarOpen ? t('navbar.hide_class_chat') : t('navbar.show_class_chat')}
+                  >
+                    <MessageSquare className="h-4 w-4 flex-shrink-0" />
+                    {voiceActive && (
                       <span
-                        className="absolute inline-flex h-full w-full animate-ping rounded-full opacity-40"
+                        className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full text-white ring-2 ring-white"
                         style={{ backgroundColor: accentTheme.accent }}
-                      />
-                      <Mic className="relative h-2.5 w-2.5" />
-                    </span>
-                  )}
-                </button>
-              )}
+                      >
+                        <span
+                          className="absolute inline-flex h-full w-full animate-ping rounded-full opacity-40"
+                          style={{ backgroundColor: accentTheme.accent }}
+                        />
+                        <Mic className="relative h-2.5 w-2.5" />
+                      </span>
+                    )}
+                  </button>
+                )}
 
-              <CreditBalancePill audience="student" accentColor={accentTheme.accent} />
+                <CreditBalancePill audience="student" accentColor={accentTheme.accent} />
+              </div>
+
+              <div className="lg:hidden">
+                <CreditBalancePill audience="student" accentColor={accentTheme.accent} />
+              </div>
 
               {/* Avatar Dropdown */}
               <div className="relative" ref={dropdownRef}>

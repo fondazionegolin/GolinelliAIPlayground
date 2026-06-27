@@ -120,7 +120,7 @@ export default function ResetPasswordPage() {
         <div className="text-center">
           <div className="flex items-center justify-center gap-4 mb-4">
             <LogoMark className="h-12 w-12" />
-            <span className="text-[28px] leading-[1.15] tracking-tight" style={{ fontFamily: '"SofiaPro"' }}>
+            <span className="text-[28px] leading-[1.15] tracking-tight" style={{ fontFamily: 'var(--font-family-brand)' }}>
               <span className="font-bold text-[var(--logo-ink)]">Golinelli</span>
               <span className="font-black text-[var(--logo-pink)]">.ai</span>
             </span>

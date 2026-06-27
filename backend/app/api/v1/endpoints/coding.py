@@ -1033,6 +1033,9 @@ CODING_MODEL_CHOICES: dict[str, tuple[str, str]] = {
     "sonnet": ("anthropic", "claude-sonnet-4-6"),
     "haiku": ("anthropic", "claude-haiku-4-5-20251001"),
     "gpt-mini": ("openai", "gpt-5.4-mini"),
+    # DeepSeek V4 — Coding Lab only (not exposed in the global /available-models list).
+    "deepseek-flash": ("deepseek", "deepseek-v4-flash"),
+    "deepseek-pro": ("deepseek", "deepseek-v4-pro"),
 }
 
 

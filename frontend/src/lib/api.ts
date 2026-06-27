@@ -55,6 +55,10 @@ export const authApi = {
   login: (email: string, password: string) =>
     api.post('/auth/login', { email, password }),
   logout: () => api.post('/auth/logout'),
+  getLegalConsents: () =>
+    api.get('/auth/legal-consents/me'),
+  acceptLegalConsent: (documentKey: string) =>
+    api.post('/auth/legal-consents/accept', { document_key: documentKey }),
   getPublicSettings: (tenantSlug?: string) =>
     api.get('/auth/public-settings', { params: { tenant_slug: tenantSlug } }),
   requestTeacher: (data: { email: string; first_name: string; last_name: string; tenant_slug?: string; school_name?: string }) =>
@@ -240,6 +244,11 @@ export const adminApi = {
     model?: string
     include_empty?: boolean
   }) => api.get('/admin/analytics/report', { params }),
+  downloadTeacherUsageReport: (params?: {
+    start_date?: string
+    end_date?: string
+    include_inactive?: boolean
+  }) => api.get('/admin/usage/teacher-report.csv', { params, responseType: 'blob' }),
   getDashboardOverview: (days = 30) =>
     api.get('/admin/dashboard/overview', { params: { days } }),
   getTopConsumers: (days = 30, limit = 25) =>
@@ -248,6 +257,8 @@ export const adminApi = {
     api.get('/admin/teachers/status', { params: { days } }),
   getRealtimeStatus: () =>
     api.get('/admin/realtime/status'),
+  getLegalConsents: () =>
+    api.get('/admin/legal-consents'),
   getEmailTemplates: () =>
     api.get('/admin/email-templates'),
   updateEmailTemplates: (data: Record<string, { subject: string; html: string; text: string }>) =>
@@ -827,9 +838,9 @@ export const feedbackApi = {
 
 export const notebooksApi = {
   list: () => api.get('/notebooks'),
-  create: (title: string, projectType: 'python' | 'p5js' | 'strudel' | 'game2d') => api.post('/notebooks', { title, project_type: projectType }),
+  create: (title: string, projectType: 'python' | 'p5js' | 'strudel' | 'game2d' | 'microbit' | 'circuitplayground') => api.post('/notebooks', { title, project_type: projectType }),
   get: (id: string) => api.get(`/notebooks/${id}`),
-  update: (id: string, data: { title?: string; cells?: unknown[]; project_type?: 'python' | 'p5js' | 'strudel' | 'game2d'; editor_settings?: Record<string, unknown> }) => api.put(`/notebooks/${id}`, data),
+  update: (id: string, data: { title?: string; cells?: unknown[]; project_type?: 'python' | 'p5js' | 'strudel' | 'game2d' | 'microbit' | 'circuitplayground'; editor_settings?: Record<string, unknown> }) => api.put(`/notebooks/${id}`, data),
   delete: (id: string) => api.delete(`/notebooks/${id}`),
   tutorChat: (id: string, data: {
     message: string
@@ -843,6 +854,21 @@ export const notebooksApi = {
     current_cell_source?: string
     last_output?: string
   }) => api.post(`/notebooks/${id}/assist`, data),
+}
+
+export interface CircuitPlaygroundCompileResult {
+  ok: boolean
+  board: 'circuitplayground' | string
+  filename: string
+  mime_type: string
+  size_bytes: number
+  uf2_base64: string
+  logs?: string
+}
+
+export const hardwareApi = {
+  compileCircuitPlayground: (code: string) =>
+    api.post<CircuitPlaygroundCompileResult>('/hardware/circuit-playground/compile', { code }),
 }
 
 export const desktopApi = {

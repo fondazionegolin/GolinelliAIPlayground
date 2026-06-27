@@ -12,6 +12,9 @@ import { notebooksApi } from '@/lib/api'
 import { usePyodide } from '@/hooks/usePyodide'
 import { markdownCodeComponents } from '@/components/CodeBlock'
 import NotebookCell from '@/components/notebook/NotebookCell'
+import NotebookMicrobitAgentChat from '@/components/notebook/NotebookMicrobitAgentChat'
+import NotebookMicrobitSerialPanel from '@/components/notebook/NotebookMicrobitSerialPanel'
+import CircuitPlaygroundPanel from '@/components/notebook/CircuitPlaygroundPanel'
 import { useTranslation } from 'react-i18next'
 import {
   PASTEL_ICON_BACKGROUNDS,
@@ -47,7 +50,19 @@ function newCell(name?: string): Cell {
   return { id: uuidv4(), type: 'code', source: '', outputs: [], execution_count: null, name }
 }
 
+function isDeviceNotebook(projectType: NotebookProjectType) {
+  return projectType === 'microbit' || projectType === 'circuitplayground'
+}
+
 function normalizeCells(projectType: NotebookProjectType, nextCells: Cell[]) {
+  if (isDeviceNotebook(projectType)) {
+    const cells = nextCells.length > 0 ? nextCells : [newCell('main.py')]
+    return cells.slice(0, 1).map((cell) => ({
+      ...cell,
+      type: 'code' as const,
+      name: cell.name ?? 'main.py',
+    }))
+  }
   if (projectType === 'game2d') {
     const cells = nextCells.length > 0 ? nextCells : [newCell('game.json')]
     return cells.slice(0, 1).map((cell) => ({
@@ -240,6 +255,8 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
       live_preview: notebookData.editor_settings?.live_preview ?? (nextProjectType === 'p5js'),
       font_weight: notebookData.editor_settings?.font_weight ?? 400,
       libraries: notebookData.editor_settings?.libraries ?? [],
+      microbit_language: notebookData.editor_settings?.microbit_language ?? 'python',
+      device_language: notebookData.editor_settings?.device_language ?? notebookData.editor_settings?.microbit_language ?? 'python',
     }
     setTitle(notebookData.title)
     setProjectType(nextProjectType)
@@ -308,7 +325,7 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
   }, [])
 
   const insertCellBelow = useCallback((afterId?: string) => {
-    if (projectType === 'p5js' || projectType === 'strudel') return
+    if (projectType === 'p5js' || projectType === 'strudel' || isDeviceNotebook(projectType)) return
     const cell = newCell()
     setCells((prev) => {
       if (!afterId) {
@@ -326,7 +343,7 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
   }, [projectType, scheduleSave])
 
   const deleteCell = useCallback((id: string) => {
-    if (projectType === 'p5js' || projectType === 'strudel') return
+    if (projectType === 'p5js' || projectType === 'strudel' || isDeviceNotebook(projectType)) return
     setCells((prev) => {
       const next = prev.length <= 1 ? [newCell()] : prev.filter((cell) => cell.id !== id)
       scheduleSave(next)
@@ -335,7 +352,7 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
   }, [projectType, scheduleSave])
 
   const moveCell = useCallback((id: string, dir: 'up' | 'down') => {
-    if (projectType === 'p5js' || projectType === 'strudel') return
+    if (projectType === 'p5js' || projectType === 'strudel' || isDeviceNotebook(projectType)) return
     setCells((prev) => {
       const idx = prev.findIndex((c) => c.id === id)
       if (idx < 0) return prev
@@ -823,8 +840,15 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
   }
 
   const fontWeight = editorSettings.font_weight ?? 400
+  const deviceLanguage = editorSettings.device_language ?? editorSettings.microbit_language ?? 'python'
+  const deviceLabel = projectType === 'circuitplayground' ? 'Circuit Playground Express' : 'micro:bit'
+  const deviceShortLabel = projectType === 'circuitplayground' ? 'Circuit Playground' : 'micro:bit'
+  const deviceKind = projectType === 'circuitplayground' ? 'circuitplayground' : 'microbit'
+
   const projectTone: PastelTone = projectType === 'python'
     ? 'indigo'
+    : isDeviceNotebook(projectType)
+      ? 'sky'
     : projectType === 'strudel'
       ? 'violet'
       : projectType === 'game2d'
@@ -870,6 +894,11 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
             <div className="flex items-center gap-1.5 text-[11px] text-slate-500">
               {pyStatusIcon}
               <span>{pyStatusText}</span>
+            </div>
+          ) : isDeviceNotebook(projectType) ? (
+            <div className="flex items-center gap-1.5 text-[11px] text-sky-700">
+              <Cpu className="h-3.5 w-3.5" />
+              <span>{deviceShortLabel} · Web Serial</span>
             </div>
           ) : projectType === 'strudel' ? (
             <div className={`flex items-center gap-1.5 text-[11px] ${strudelPlaying ? 'text-violet-600' : 'text-slate-500'}`}>
@@ -989,6 +1018,24 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
             </label>
           )}
 
+          {isDeviceNotebook(projectType) && projectType === 'circuitplayground' ? (
+            <div className="rounded-lg border border-slate-300/80 bg-white/80 px-2 py-1.5 text-xs font-semibold text-slate-700">
+              Linguaggio CircuitPython
+            </div>
+          ) : isDeviceNotebook(projectType) && (
+            <label className="flex items-center gap-1.5 text-xs text-slate-500">
+              Linguaggio
+              <select
+                value={deviceLanguage}
+                onChange={(e) => updateEditorSettings({ device_language: e.target.value as 'python' | 'javascript' })}
+                className="rounded-lg border border-slate-300/80 bg-white/80 px-2 py-1.5 text-slate-700 outline-none"
+              >
+                <option value="python">Python</option>
+                <option value="javascript">JavaScript</option>
+              </select>
+            </label>
+          )}
+
           <div className="flex-1" />
 
           <div className="flex items-center gap-1">
@@ -1002,7 +1049,11 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
                 {isEnglish ? 'Cell' : 'Cella'}
               </button>
             )}
-            {projectType === 'strudel' ? (
+            {isDeviceNotebook(projectType) ? (
+              <div className="rounded-xl bg-sky-100 px-3 py-1.5 text-xs font-semibold text-sky-700">
+                Programma la scheda e leggi la seriale nel cruscotto
+              </div>
+            ) : projectType === 'strudel' ? (
               <>
                 <div className="relative">
                   <button
@@ -1172,7 +1223,65 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
             </div>
           )}
 
-          {projectType === 'strudel' ? (
+          {isDeviceNotebook(projectType) ? (
+            <div className="flex min-h-0 flex-1 p-4 gap-0 overflow-hidden">
+              <div className={`flex min-h-0 flex-1 overflow-hidden rounded-xl shadow-sm ${PASTEL_SURFACES.slate}`}>
+                <div className="flex min-h-0 min-w-0 flex-[1.15] flex-col overflow-hidden bg-slate-950">
+                  <div className="flex flex-shrink-0 items-center gap-2 border-b border-slate-800 bg-slate-900 px-3 py-1.5">
+                    <Cpu className="h-3 w-3 text-sky-300" />
+                    <span className="font-mono text-[10px] text-sky-200/70">
+                      {deviceLanguage === 'javascript' ? 'main.js' : 'main.py'} · {deviceLabel}
+                    </span>
+                    <div className="flex-1" />
+                    <span className="rounded-full bg-slate-800 px-2 py-0.5 text-[10px] font-semibold text-slate-400">
+                      single page
+                    </span>
+                  </div>
+                  {activeCell && (
+                    <NotebookCell
+                      cell={activeCell}
+                      projectType={projectType}
+                      theme={editorSettings.theme}
+                      fontSize={editorSettings.font_size}
+                      fontFamily={editorSettings.font_family}
+                      fontWeight={fontWeight}
+                      isRunning={false}
+                      isActive
+                      isCompact
+                      showOutputs={false}
+                      proposals={assistantProposals[activeCell.id] || []}
+                      onActivate={() => setActiveCellId(activeCell.id)}
+                      onChange={(source) => updateCell(activeCell.id, { source })}
+                      onRun={() => undefined}
+                      onApplyProposal={(proposalId) => applyProposal(activeCell.id, proposalId)}
+                      onRejectProposal={(proposalId) => rejectProposal(activeCell.id, proposalId)}
+                    />
+                  )}
+                </div>
+
+                <div className="w-2 flex-shrink-0 bg-slate-200" />
+
+                <div className="min-h-0 min-w-[320px] flex-1 p-4">
+                  {deviceKind === 'circuitplayground' ? (
+                    <CircuitPlaygroundPanel
+                      source={activeCell?.source ?? ''}
+                      onReplaceSource={(source) => {
+                        if (activeCell) updateCell(activeCell.id, { source })
+                      }}
+                    />
+                  ) : (
+                    <NotebookMicrobitSerialPanel
+                      device={deviceKind}
+                      source={activeCell?.source ?? ''}
+                      onReplaceSource={(source) => {
+                        if (activeCell) updateCell(activeCell.id, { source })
+                      }}
+                    />
+                  )}
+                </div>
+              </div>
+            </div>
+          ) : projectType === 'strudel' ? (
             <div className="flex min-h-0 flex-1 p-4 gap-0 overflow-hidden">
               <div className={`flex min-h-0 flex-1 overflow-hidden rounded-xl shadow-sm ${PASTEL_SURFACES.slate}`}>
                 {/* Left: editor */}
@@ -1648,18 +1757,35 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
             }`} />
           </div>
 	          <div className={`flex flex-1 flex-col gap-3 min-h-0 min-w-0 overflow-hidden rounded-xl shadow-sm ${PASTEL_SURFACES[projectTone]}`}>
-            <Suspense fallback={null}>
-              <NotebookTutorChat
+            {isDeviceNotebook(projectType) && activeCell ? (
+              <NotebookMicrobitAgentChat
                 notebookId={notebookId}
-                notebookTitle={title}
-                projectType={projectType}
-                currentCellSource={activeCell?.source}
+                device={deviceKind}
+                currentCellSource={activeCell.source}
                 lastOutput={lastOutput}
-                pendingProposals={activeCell ? (assistantProposals[activeCell.id] || []) : []}
+                pendingProposals={assistantProposals[activeCell.id] || []}
                 initialMessages={notebookData?.tutor_messages || []}
-                variant="sidebar"
+                onProposals={(summary, proposals) => {
+                  setAssistantSummary(summary)
+                  setAssistantProposals((prev) => ({ ...prev, [activeCell.id]: proposals }))
+                }}
+                onApplyProposal={(proposalId) => applyProposal(activeCell.id, proposalId)}
+                onRejectProposal={(proposalId) => rejectProposal(activeCell.id, proposalId)}
               />
-            </Suspense>
+            ) : (
+              <Suspense fallback={null}>
+                <NotebookTutorChat
+                  notebookId={notebookId}
+                  notebookTitle={title}
+                  projectType={projectType}
+                  currentCellSource={activeCell?.source}
+                  lastOutput={lastOutput}
+                  pendingProposals={activeCell ? (assistantProposals[activeCell.id] || []) : []}
+                  initialMessages={notebookData?.tutor_messages || []}
+                  variant="sidebar"
+                />
+              </Suspense>
+            )}
           </div>
         </div>
       )}

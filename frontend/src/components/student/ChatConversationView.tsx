@@ -380,7 +380,7 @@ export const MessageBubble = memo(function MessageBubble({
         {isUser ? (
           <p className="whitespace-pre-wrap text-[15px] leading-6">{message.content}</p>
         ) : (
-          <div className="prose prose-sm prose-slate max-w-none">
+          <div className="chat-markdown prose prose-slate max-w-none">
             <ReactMarkdown
               remarkPlugins={[remarkGfm, remarkMath]}
               rehypePlugins={[rehypeKatex]}

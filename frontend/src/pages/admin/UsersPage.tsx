@@ -161,6 +161,7 @@ export default function CostsPage() {
   const [provider, setProvider] = useState('')
   const [model, setModel] = useState('')
   const [includeEmpty, setIncludeEmpty] = useState(true)
+  const [teacherReportDownloading, setTeacherReportDownloading] = useState(false)
 
   const reportParams = useMemo(() => ({
     start_date: startDate,
@@ -244,6 +245,28 @@ export default function CostsPage() {
     URL.revokeObjectURL(url)
   }
 
+  const downloadTeacherUsageReport = async () => {
+    setTeacherReportDownloading(true)
+    try {
+      const response = await adminApi.downloadTeacherUsageReport({
+        start_date: startDate,
+        end_date: endDate,
+        include_inactive: true,
+      })
+      const blob = new Blob([response.data], { type: 'text/csv;charset=utf-8;' })
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `admin-usage-docenti-${startDate}-${endDate}.csv`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      URL.revokeObjectURL(url)
+    } finally {
+      setTeacherReportDownloading(false)
+    }
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
@@ -268,6 +291,15 @@ export default function CostsPage() {
           >
             <Download className="h-4 w-4" />
             CSV
+          </button>
+          <button
+            type="button"
+            onClick={downloadTeacherUsageReport}
+            disabled={teacherReportDownloading}
+            className="inline-flex h-9 items-center gap-2 rounded-lg bg-emerald-700 px-3 text-sm font-semibold text-white hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <Download className="h-4 w-4" />
+            {teacherReportDownloading ? 'Download...' : 'Report docenti'}
           </button>
         </div>
       </div>

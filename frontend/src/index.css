@@ -1,7 +1,25 @@
 /* Base fonts */
+@import url('https://fonts.googleapis.com/css2?family=Sofia+Sans:wght@400;500;600;700;800;900&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Sofia+Sans+Semi+Condensed:wght@400;500;600;700;800;900&display=swap');
 @import url('https://fonts.cdnfonts.com/css/lufga');
 @import url('https://fonts.googleapis.com/css2?family=Lexend:wght@300;400;500;600;700&display=swap');
 @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Space+Mono:wght@400;700&family=Courier+Prime:wght@400;700&family=Victor+Mono:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+
+@font-face {
+  font-family: 'Bree 2';
+  src: url('/fonts/Bree%20Regular.otf') format('opentype');
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Bree 2';
+  src: url('/fonts/Bree%20Bold.otf') format('opentype');
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+}
 
 @tailwind base;
 @tailwind components;
@@ -10,19 +28,23 @@
 @layer base {
   :root {
     /* Typography */
-    --font-family-ui: 'Lufga', 'Lexend', system-ui, sans-serif;
-    --font-family-brand: 'SofiaPro', 'Lufga', 'Lexend', system-ui, sans-serif;
+    --font-family-ui: 'Bree 2', 'Sofia Sans Semi Condensed', 'Lufga', 'Lexend', system-ui, sans-serif;
+    --font-family-emphasis: 'Bree 2', 'Sofia Sans', 'Sofia Sans Semi Condensed', 'Lufga', 'Lexend', system-ui, sans-serif;
+    --font-family-brand: var(--font-family-emphasis);
     --font-family-mono: 'JetBrains Mono', 'IBM Plex Mono', monospace;
     --font-family: var(--font-family-ui);
-    --font-size-xs: 0.75rem;
-    --font-size-sm: 0.875rem;
-    --font-size-md: 1rem;
-    --font-size-lg: 1.125rem;
-    --font-size-xl: 1.25rem;
-    --font-size-2xl: 1.5rem;
-    --font-size-3xl: 1.875rem;
-    --font-size-4xl: 2.25rem;
-    --font-size-5xl: 3rem;
+    --font-size-xs: 0.9167rem;
+    --font-size-sm: 1.0417rem;
+    --font-size-md: 1.1667rem;
+    --font-size-lg: 1.2917rem;
+    --font-size-xl: 1.4167rem;
+    --font-size-2xl: 1.6667rem;
+    --font-size-3xl: 2.0417rem;
+    --font-size-4xl: 2.4167rem;
+    --font-size-5xl: 3.1667rem;
+    --font-size-control-label: 0.8125rem;
+    --font-size-supporting: 0.875rem;
+    --font-size-chat-content: 0.9375rem;
     --line-height-xs: 1.35;
     --line-height-sm: 1.4;
     --line-height-md: 1.5;
@@ -64,42 +86,40 @@
     --button-padding-x-default: 1.25rem;
     --button-padding-x-roomy: 1.5rem;
     --button-font-weight: 700;
-    --button-chrome-bg: radial-gradient(ellipse at center,
-      rgba(255,255,255,0.985) 0%,
-      color-mix(in srgb, var(--btn-tone, var(--app-accent)) 1.5%, white) 60%,
-      color-mix(in srgb, var(--btn-tone, var(--app-accent)) 5%, white) 100%);
-    --button-chrome-bg-hover: radial-gradient(ellipse at center,
-      rgba(255,255,255,0.99) 0%,
-      color-mix(in srgb, var(--btn-tone, var(--app-accent)) 2.5%, white) 58%,
-      color-mix(in srgb, var(--btn-tone, var(--app-accent)) 8%, white) 100%);
-    --button-chrome-border: color-mix(in srgb, var(--btn-tone, var(--app-accent)) 14%, #d8dde6);
-    --button-chrome-border-hover: color-mix(in srgb, var(--btn-tone, var(--app-accent)) 24%, #c9d0dc);
-    --button-chrome-shadow: inset 0 1px 0 rgba(255,255,255,0.9), 0 1px 4px color-mix(in srgb, var(--btn-tone, var(--app-accent)) 3%, transparent);
-    --button-chrome-shadow-hover: inset 0 1px 0 rgba(255,255,255,0.94), 0 2px 7px color-mix(in srgb, var(--btn-tone, var(--app-accent)) 5%, transparent);
+    --button-chrome-bg: linear-gradient(
+      color-mix(in srgb, var(--btn-tone, var(--app-accent)) 4%, transparent),
+      color-mix(in srgb, var(--btn-tone, var(--app-accent)) 4%, transparent));
+    --button-chrome-bg-hover: linear-gradient(
+      color-mix(in srgb, var(--btn-tone, var(--app-accent)) 9%, transparent),
+      color-mix(in srgb, var(--btn-tone, var(--app-accent)) 9%, transparent));
+    --button-chrome-border: color-mix(in srgb, var(--btn-tone, var(--app-accent)) 30%, transparent);
+    --button-chrome-border-hover: color-mix(in srgb, var(--btn-tone, var(--app-accent)) 46%, transparent);
+    --button-chrome-shadow: none;
+    --button-chrome-shadow-hover: 0 1px 3px color-mix(in srgb, var(--btn-tone, var(--app-accent)) 10%, transparent);
     --button-accent-bg: var(--button-chrome-bg);
     --button-accent-shadow: var(--button-chrome-shadow);
     --button-accent-shadow-hover: var(--button-chrome-shadow-hover);
-    --button-blue-bg: radial-gradient(ellipse at center, rgba(255,255,255,0.985), color-mix(in srgb, var(--logo-blue) 5%, white));
-    --button-violet-bg: radial-gradient(ellipse at center, rgba(255,255,255,0.985), color-mix(in srgb, var(--logo-violet) 5%, white));
+    --button-blue-bg: linear-gradient(color-mix(in srgb, var(--logo-blue) 7%, transparent), color-mix(in srgb, var(--logo-blue) 7%, transparent));
+    --button-violet-bg: linear-gradient(color-mix(in srgb, var(--logo-violet) 7%, transparent), color-mix(in srgb, var(--logo-violet) 7%, transparent));
     --control-radius: 0.875rem;
     --card-radius: 1.5rem;
     --selection-radius: 0.625rem;
     --selection-height: 2.25rem;
     --selection-padding-x: 0.875rem;
-    --selection-bg: radial-gradient(ellipse at center,
-      rgba(255,255,255,0.985) 0%,
-      color-mix(in srgb, var(--app-accent) 1.5%, white) 60%,
-      color-mix(in srgb, var(--app-accent) 5%, white) 100%);
-    --selection-bg-hover: radial-gradient(ellipse at center,
-      rgba(255,255,255,0.99) 0%,
-      color-mix(in srgb, var(--app-accent) 2.5%, white) 58%,
-      color-mix(in srgb, var(--app-accent) 8%, white) 100%);
-    --selection-border: color-mix(in srgb, var(--app-accent) 14%, #d8dde6);
-    --selection-border-hover: color-mix(in srgb, var(--app-accent) 24%, #c9d0dc);
+    --selection-bg: linear-gradient(
+      color-mix(in srgb, var(--app-accent) 4%, transparent),
+      color-mix(in srgb, var(--app-accent) 4%, transparent));
+    --selection-bg-hover: linear-gradient(
+      color-mix(in srgb, var(--app-accent) 9%, transparent),
+      color-mix(in srgb, var(--app-accent) 9%, transparent));
+    --selection-border: color-mix(in srgb, var(--app-accent) 30%, transparent);
+    --selection-border-hover: color-mix(in srgb, var(--app-accent) 46%, transparent);
     --selection-text: var(--app-accent-text);
-    --selection-active-bg: var(--selection-bg-hover);
+    --selection-active-bg: linear-gradient(
+      color-mix(in srgb, var(--app-accent) 18%, transparent),
+      color-mix(in srgb, var(--app-accent) 18%, transparent));
     --selection-active-text: var(--app-accent-text);
-    --selection-shadow: inset 0 1px 0 rgba(255,255,255,0.9), 0 1px 4px color-mix(in srgb, var(--app-accent) 3%, transparent);
+    --selection-shadow: none;
 
     /* Core surfaces */
     --background: 0 0% 99%;
@@ -208,6 +228,7 @@
   body {
     @apply bg-background text-foreground;
     font-family: var(--font-family);
+    font-weight: 400;
     font-size: var(--font-size-md);
     line-height: var(--line-height-md);
     background-color: var(--app-body-bg);
@@ -224,6 +245,7 @@
   }
 
   h1 {
+    font-family: var(--font-family-emphasis);
     font-size: 2rem;
     line-height: 1.1;
     font-weight: 700;
@@ -231,6 +253,7 @@
   }
 
   h2 {
+    font-family: var(--font-family-emphasis);
     font-size: 1.5rem;
     line-height: 1.15;
     font-weight: 700;
@@ -238,9 +261,20 @@
   }
 
   h3 {
+    font-family: var(--font-family-emphasis);
     font-size: 1.125rem;
     line-height: 1.25;
-    font-weight: 600;
+    font-weight: 700;
+  }
+
+  button,
+  [role='button'],
+  strong,
+  b,
+  label,
+  th {
+    font-family: var(--font-family-emphasis);
+    font-weight: 700;
   }
 }
 
@@ -250,8 +284,31 @@
     @apply rounded-xl border border-slate-200 bg-white/95 shadow-[var(--shadow-md)] backdrop-blur-sm;
   }
 
+  .ui-control-label {
+    font-family: var(--font-family-emphasis);
+    font-size: var(--font-size-control-label);
+    font-weight: 700;
+    line-height: 1.2;
+  }
+
+  .ui-supporting-text {
+    font-size: var(--font-size-supporting);
+    line-height: 1.35;
+  }
+
+  .chat-markdown {
+    font-size: var(--font-size-chat-content);
+    line-height: 1.68;
+  }
+
+  .chat-markdown :where(p, li) {
+    line-height: 1.68;
+  }
+
   .app-button-chrome {
     --btn-tone: var(--app-accent);
+    font-family: var(--font-family-emphasis);
+    font-weight: 700;
     color: var(--btn-tone, var(--app-accent-text));
     background-image: var(--button-chrome-bg);
     border: 1px solid var(--button-chrome-border);
@@ -296,6 +353,8 @@
   }
 
   .navbar-inline-control {
+    font-family: var(--font-family-emphasis);
+    font-weight: 700;
     border: 1px solid transparent;
     background: transparent;
     box-shadow: none;
@@ -303,17 +362,46 @@
     transition: background-color 160ms ease, color 160ms ease;
   }
 
+  .navbar-widget-control,
   .navbar-inline-control:hover,
   .navbar-inline-control-active {
-    background: rgba(255, 255, 255, 0.58);
+    background:
+      linear-gradient(180deg, rgba(255,255,255,0.74), rgba(255,255,255,0.46)),
+      color-mix(in srgb, var(--btn-tone, var(--app-accent)) 7%, transparent);
+    border: 1px solid color-mix(in srgb, var(--btn-tone, var(--app-accent)) 16%, rgba(255,255,255,0.72));
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,0.8),
+      inset 0 -1px 0 rgba(255,255,255,0.22),
+      0 5px 14px color-mix(in srgb, var(--btn-tone, var(--app-accent)) 5%, transparent);
+    backdrop-filter: blur(18px) saturate(145%);
+    -webkit-backdrop-filter: blur(18px) saturate(145%);
+  }
+
+  .navbar-widget-control:hover,
+  .navbar-inline-control:hover {
+    background:
+      linear-gradient(180deg, rgba(255,255,255,0.82), rgba(255,255,255,0.54)),
+      color-mix(in srgb, var(--btn-tone, var(--app-accent)) 10%, transparent);
+    border-color: color-mix(in srgb, var(--btn-tone, var(--app-accent)) 24%, rgba(255,255,255,0.78));
+  }
+
+  .navbar-widget-control-inset {
+    background: rgba(255,255,255,0.34);
+    border-color: rgba(255,255,255,0.44);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.52);
+  }
+
+  .navbar-widget-control-inset:hover {
+    background: rgba(255,255,255,0.58);
+    border-color: color-mix(in srgb, var(--btn-tone, var(--app-accent)) 18%, rgba(255,255,255,0.68));
   }
 
   .brand-wordmark {
     display: inline-flex;
     align-items: baseline;
-    font-family: "SofiaPro", var(--font-family-brand);
+    font-family: var(--font-family-brand);
     font-size: 18px;
-    font-weight: 800;
+    font-weight: 700;
     line-height: 1;
     letter-spacing: 0;
     background-image: radial-gradient(ellipse at center, rgba(23,21,27,0.68) 0%, rgba(23,21,27,0.88) 48%, #17151b 100%);
@@ -332,7 +420,7 @@
     padding: 0 0.45rem;
     color: #8a6412;
     font-size: 9px;
-    font-weight: 800;
+    font-weight: 700;
     line-height: 1;
     letter-spacing: 0.08em;
   }
@@ -390,6 +478,21 @@
     background:
       linear-gradient(145deg, rgba(255,255,255,0.56), rgba(255,255,255,0.08)),
       linear-gradient(135deg, var(--logo-blue), var(--logo-pink));
+  }
+}
+
+@layer utilities {
+  .font-light,
+  .font-normal {
+    font-weight: 400;
+  }
+
+  .font-medium,
+  .font-semibold,
+  .font-bold,
+  .font-extrabold,
+  .font-black {
+    font-weight: 700;
   }
 }
 

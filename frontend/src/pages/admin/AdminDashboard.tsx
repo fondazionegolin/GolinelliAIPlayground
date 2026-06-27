@@ -3,7 +3,7 @@ import { Routes, Route, useLocation, useNavigate, Navigate } from 'react-router-
 import { motion } from 'framer-motion'
 import { useAuthStore } from '@/stores/auth'
 import { AppBackground } from '@/components/ui/AppBackground'
-import { LogOut, LayoutDashboard, GraduationCap, BarChart3, Mail, School, Bug, KeyRound, X, Loader2, BookOpen, Database, Building2, Menu, PanelLeftClose, PanelLeftOpen } from 'lucide-react'
+import { LogOut, LayoutDashboard, GraduationCap, BarChart3, Mail, School, Bug, KeyRound, X, Loader2, BookOpen, Database, Building2, Menu, PanelLeftClose, PanelLeftOpen, FileCheck2 } from 'lucide-react'
 import { useMutation } from '@tanstack/react-query'
 import { adminApi } from '@/lib/api'
 import { useToast } from '@/components/ui/use-toast'
@@ -16,11 +16,13 @@ import TeacherRequestsPage from './TeacherRequestsPage'
 import FeedbackPage from './FeedbackPage'
 import AdminBackendPage from './AdminBackendPage'
 import SchoolsPage from './SchoolsPage'
+import LicensesPage from './LicensesPage'
 
 const navItems = [
   { path: '/admin', label: 'Panoramica', icon: LayoutDashboard, exact: true },
   { path: '/admin/schools', label: 'Scuole', icon: Building2, exact: false },
   { path: '/admin/teachers', label: 'Docenti', icon: GraduationCap, exact: false },
+  { path: '/admin/licenses', label: 'Licenze', icon: FileCheck2, exact: false },
   { path: '/admin/classes', label: 'Classi', icon: School, exact: false },
   { path: '/admin/costs', label: 'Costi', icon: BarChart3, exact: false },
   { path: '/admin/email', label: 'Email', icon: Mail, exact: false },
@@ -170,6 +172,7 @@ export default function AdminDashboard() {
                 <Route index element={<AdminOverviewPage />} />
                 <Route path="schools" element={<SchoolsPage />} />
                 <Route path="teachers" element={<TeachersPage />} />
+                <Route path="licenses" element={<LicensesPage />} />
                 <Route path="classes" element={<ClassesPage />} />
                 <Route path="costs" element={<UsersPage />} />
                 <Route path="email" element={<TeacherRequestsPage />} />

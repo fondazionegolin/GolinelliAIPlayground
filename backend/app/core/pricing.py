@@ -67,6 +67,8 @@ PRICING_CATALOG: Dict[str, ModelPricing] = {
     # DeepSeek
     "deepseek-chat": usd(0.0, 0.0),
     "deepseek-reasoner": usd(0.0, 0.0),
+    "deepseek-v4-flash": usd(0.0, 0.0),
+    "deepseek-v4-pro": usd(0.0, 0.0),
     
     # Ollama (Self-hosted = 0 cost usually, unless we want to attribute server cost)
     "mistral": ModelPricing(0.0, 0.0),
