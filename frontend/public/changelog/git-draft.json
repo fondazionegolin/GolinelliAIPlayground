@@ -1,14 +1,19 @@
 {
-  "generated_at": "2026-06-23T09:18:00.590519+00:00",
-  "version_label": "2026.06.23-fa9e0606",
+  "generated_at": "2026-06-27T17:05:47.871775+00:00",
+  "version_label": "2026.06.27-75c5fb18",
   "title": "Aggiornamenti branch testing",
-  "summary": "Bozza generata automaticamente da 1 commit nuovi.",
-  "git_ref": "fa9e06063b0a53f99b156aa29d22ed4c522d0e8e",
+  "summary": "Bozza generata automaticamente da 2 commit nuovi.",
+  "git_ref": "75c5fb18d54645409c4def3600fd3211c370ccff",
   "items": [
     {
       "category": "improved",
-      "title": "Update changelog draft",
-      "description": "Update changelog draft"
+      "title": "Refresh changelog draft for staging",
+      "description": "Refresh changelog draft for staging"
+    },
+    {
+      "category": "improved",
+      "title": "Prepare staging rollout",
+      "description": "Prepare staging rollout"
     }
   ]
 }
