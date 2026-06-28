@@ -47,7 +47,7 @@ function ReasoningMarkdown({ children, dark = false }: { children: string; dark?
     <div
       className={`prose prose-sm max-w-none text-sm leading-relaxed [&_code]:rounded [&_code]:px-1 [&_h1]:mb-1 [&_h1]:mt-2 [&_h1]:text-base [&_h2]:mb-1 [&_h2]:mt-2 [&_h2]:text-base [&_h3]:mb-1 [&_h3]:mt-1.5 [&_h3]:text-sm [&_li]:my-0.5 [&_ol]:my-1 [&_ol]:pl-4 [&_p]:my-1 [&_strong]:font-bold [&_ul]:my-1 [&_ul]:pl-4 ${
         dark
-          ? "prose-invert [font-family:'Courier_New',Courier,monospace] [&_code]:bg-white/10"
+          ? 'prose-invert font-code [&_code]:bg-white/10'
           : 'prose-slate [&_code]:bg-black/5'
       }`}
     >
@@ -183,6 +183,9 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
   const [creating, setCreating] = useState(false)
   const [generating, setGenerating] = useState(false)
   const [sending, setSending] = useState(false)
+  const [draftDirty, setDraftDirty] = useState(false)
+  const [draftSaving, setDraftSaving] = useState(false)
+  const [draftSavedAt, setDraftSavedAt] = useState<Date | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [projectsPanelOpen, setProjectsPanelOpen] = useState(true)
   const [promptPanelOpen, setPromptPanelOpen] = useState(true)
@@ -226,6 +229,13 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
   const [designNotice, setDesignNotice] = useState<string | null>(null)
   const [showTutorial, setShowTutorial] = useState(false)
   const conversationEndRef = useRef<HTMLDivElement>(null)
+  const draftSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const draftRevision = useRef(0)
+
+  const markDraftDirty = () => {
+    draftRevision.current += 1
+    setDraftDirty(true)
+  }
 
   useEffect(() => {
     localStorage.setItem('coding_model_key', modelKey)
@@ -310,6 +320,9 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
     setUpstreamStatus(null)
     setInterviewQuestions(null)
     setInterviewAnswers({})
+    setDraftDirty(false)
+    setDraftSaving(false)
+    setDraftSavedAt(null)
   }
 
   const loadProjects = async () => {
@@ -347,6 +360,9 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
       } else {
         setFiles([])
       }
+      setDraftDirty(false)
+      setDraftSaving(false)
+      setDraftSavedAt(null)
       setPreviewingCommitId(null)
       setPreviewingVersionId(null)
     } catch (err: any) {
@@ -409,6 +425,59 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
     return () => window.clearInterval(interval)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedProjectId, isFork])
+
+  useEffect(() => {
+    return () => {
+      if (draftSaveTimer.current) clearTimeout(draftSaveTimer.current)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!draftDirty || !selectedProjectId || files.length === 0 || generating || previewingCommitId || previewingVersionId) return
+    if (draftSaveTimer.current) clearTimeout(draftSaveTimer.current)
+
+    const projectId = selectedProjectId
+    const filesSnapshot = files
+    const revision = draftRevision.current
+    const collaboration = latestVersion?.source_manifest_json?.collaboration
+    draftSaveTimer.current = setTimeout(async () => {
+      setDraftSaving(true)
+      try {
+        const response = await codingApi.saveDraft(projectId, {
+          parent_version_id: selectedProject?.current_version_id || null,
+          source_manifest_json: {
+            files: filesSnapshot,
+            summary: 'Bozza salvata automaticamente.',
+            ...(collaboration ? { collaboration } : {}),
+          },
+          artifact_manifest_json: {},
+          build_status: 'ready',
+          review_status: 'pending',
+        })
+        const versionId = response.data?.id
+        const now = new Date()
+        setDraftSavedAt(now)
+        if (revision === draftRevision.current) {
+          setDraftDirty(false)
+        }
+        if (versionId) {
+          setProjects((prev) => prev.map((project) => (
+            project.id === projectId
+              ? { ...project, current_version_id: versionId, updated_at: now.toISOString() }
+              : project
+          )))
+        }
+      } catch (err: any) {
+        setError(err?.response?.data?.detail || 'Salvataggio bozza non riuscito.')
+      } finally {
+        setDraftSaving(false)
+      }
+    }, 1200)
+
+    return () => {
+      if (draftSaveTimer.current) clearTimeout(draftSaveTimer.current)
+    }
+  }, [draftDirty, files, selectedProjectId, generating, previewingCommitId, previewingVersionId, selectedProject?.current_version_id, latestVersion?.id])
 
   useEffect(() => {
     if (!sharedProject?.projectId) return
@@ -854,6 +923,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
   const updateSelectedFile = (content: string) => {
     if (!selectedFile) return
     setFiles((prev) => prev.map((file) => file.path === selectedFile.path ? { ...file, content } : file))
+    if (selectedProjectId && !previewingCommitId && !previewingVersionId) markDraftDirty()
   }
 
   // Applies a design system from the studio to the open project: writes design-system.md into the
@@ -912,6 +982,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
       : path.endsWith('.html') ? 'html'
       : 'text'
     setFiles((prev) => [...prev, { path, content: '', language }])
+    if (selectedProjectId && !previewingCommitId && !previewingVersionId) markDraftDirty()
     setSelectedPath(path)
     setActiveWorkbench('code')
   }
@@ -1290,7 +1361,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
                 </div>
               )}
             </div>
-            <div className="border-t border-slate-100 p-3">
+            <div className="border-t border-slate-100 bg-white/90 p-3">
               <div className="mb-2 flex items-center gap-2">
                 <label className="text-[11px] font-bold uppercase tracking-wide text-slate-400">Modello</label>
                 <select
@@ -1306,7 +1377,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
                   ))}
                 </select>
               </div>
-              <div className="flex items-end gap-2">
+              <div className="flex items-end gap-2 rounded-[24px] border border-slate-200 bg-white px-3 py-2 shadow-sm transition-colors focus-within:border-slate-300">
                 <textarea
                   value={message}
                   onChange={(event) => setMessage(event.target.value)}
@@ -1317,15 +1388,15 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
                     }
                   }}
                   disabled={!selectedProjectId}
-                  rows={3}
-                  placeholder="Chiedi una modifica al progetto... (Invio per inviare, Shift+Invio per andare a capo)"
-                  className="min-w-0 flex-1 resize-none rounded-xl border border-slate-200 px-3 py-2 text-base leading-snug outline-none focus:border-slate-400 disabled:bg-slate-50"
+                  rows={2}
+                  placeholder="Chiedi una modifica al progetto..."
+                  className="min-w-0 flex-1 resize-none border-0 bg-transparent px-1 py-2 text-sm leading-snug text-slate-700 outline-none placeholder:text-slate-400 disabled:cursor-not-allowed disabled:text-slate-400"
                 />
                 <button
                   type="button"
                   onClick={handleSendMessage}
                   disabled={sending || !selectedProjectId || !message.trim()}
-                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-950 text-white disabled:opacity-40"
+                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-[var(--logo-violet-22)] bg-[var(--logo-violet-10)] text-[var(--logo-violet-strong)] transition-colors hover:bg-[var(--logo-violet-22)] disabled:opacity-40"
                 >
                   {sending || generating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
                 </button>
@@ -1348,11 +1419,11 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
 
           <section className={`flex min-h-0 flex-col ${activeWorkbench === 'code' ? 'bg-slate-950 text-slate-100' : 'bg-white text-slate-900'}`}>
             <div className={`flex min-h-12 items-center justify-between gap-3 border-b px-4 ${activeWorkbench === 'code' ? 'border-white/10 bg-slate-900' : 'border-slate-100 bg-white'}`}>
-              <div className="inline-flex rounded-xl border border-slate-200 bg-slate-100 p-1 text-xs font-bold">
+              <div className="inline-flex rounded-[var(--selection-radius)] border border-slate-200 bg-slate-100 p-1 text-xs font-bold">
                 <button
                   type="button"
                   onClick={() => setActiveWorkbench('code')}
-                  className={`inline-flex h-8 items-center gap-2 rounded-lg px-3 transition ${
+                  className={`inline-flex h-8 items-center gap-2 rounded-[var(--selection-radius)] px-3 transition ${
                     activeWorkbench === 'code' ? 'bg-slate-950 text-white shadow-sm' : 'text-slate-500 hover:text-slate-800'
                   }`}
                 >
@@ -1362,7 +1433,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
                 <button
                   type="button"
                   onClick={() => setActiveWorkbench('preview')}
-                  className={`inline-flex h-8 items-center gap-2 rounded-lg px-3 transition ${
+                  className={`inline-flex h-8 items-center gap-2 rounded-[var(--selection-radius)] px-3 transition ${
                     activeWorkbench === 'preview' ? 'bg-white text-slate-950 shadow-sm' : 'text-slate-500 hover:text-slate-800'
                   }`}
                 >
@@ -1370,6 +1441,17 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
                   Anteprima
                 </button>
               </div>
+              {activeWorkbench === 'code' && selectedProjectId && (
+                <div className="ml-auto text-[11px] font-semibold text-slate-400">
+                  {draftSaving
+                    ? 'Salvataggio...'
+                    : draftDirty
+                      ? 'Modifiche non salvate'
+                      : draftSavedAt
+                        ? `Salvato ${draftSavedAt.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })}`
+                        : 'Salvato sul server'}
+                </div>
+              )}
               {activeWorkbench === 'preview' && previewHtml && (
                 <div className="flex items-center gap-2">
                   {isFork && (
@@ -1426,7 +1508,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
               )}
             </div>
             {activeWorkbench === 'preview' && shareUrl && (
-              <div className="border-b border-emerald-200 bg-emerald-50 px-4 py-2 text-xs font-semibold text-emerald-800">
+              <div className="border-b border-[rgba(62,169,244,0.18)] bg-[rgba(62,169,244,0.075)] px-4 py-2 text-xs font-semibold text-[#1278bd]">
                 {shareUrl}
               </div>
             )}
@@ -2190,33 +2272,33 @@ function LiveGenerationPanel({
   const doneCount = files.filter((file) => file.status === 'done').length
 
   return (
-    <div className="space-y-2 [font-family:'Courier_New',Courier,monospace]">
-      <div className="rounded-xl border border-slate-700 bg-slate-900 p-3 shadow-sm">
-        <div className="mb-2 flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-sky-300">
+    <div className="space-y-2 font-code">
+      <div className="rounded-2xl border border-[rgba(123,105,201,0.18)] bg-[rgba(123,105,201,0.075)] p-3 shadow-sm">
+        <div className="mb-2 flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-[#55449c]">
           <Loader2 className="h-3.5 w-3.5 animate-spin" />
           {reasoning ? "Architetto" : 'Sto progettando la struttura...'}
         </div>
         {reasoning && (
-          <div ref={reasoningRef} className="h-48 overflow-y-auto rounded-lg bg-slate-950 p-3 text-slate-100">
-            <ReasoningMarkdown dark>{reasoning}</ReasoningMarkdown>
+          <div ref={reasoningRef} className="h-48 overflow-y-auto rounded-xl border border-white/70 bg-white/70 p-3 text-slate-700">
+            <ReasoningMarkdown>{reasoning}</ReasoningMarkdown>
           </div>
         )}
       </div>
 
       {files.length > 0 && (
-        <div className="rounded-xl border border-emerald-700/60 bg-slate-900 p-3 shadow-sm">
-          <div className="mb-2 flex items-center justify-between text-xs font-bold uppercase tracking-wide text-emerald-300">
+        <div className="rounded-2xl border border-[rgba(62,169,244,0.18)] bg-[rgba(62,169,244,0.075)] p-3 shadow-sm">
+          <div className="mb-2 flex items-center justify-between text-xs font-bold uppercase tracking-wide text-[#1278bd]">
             <span>File Writer</span>
             <span>{doneCount}/{files.length} file</span>
           </div>
-          <div className="h-36 space-y-1 overflow-y-auto rounded-lg bg-slate-950 p-2">
+          <div className="h-36 space-y-1 overflow-y-auto rounded-xl border border-white/70 bg-white/70 p-2">
             {files.map((file) => (
-              <div key={file.path} className="flex items-center gap-2 text-sm text-slate-100">
+              <div key={file.path} className="flex items-center gap-2 text-sm text-slate-700">
                 {file.status === 'done'
-                  ? <Check className="h-3.5 w-3.5 shrink-0 text-emerald-400" />
+                  ? <Check className="h-3.5 w-3.5 shrink-0 text-[#1278bd]" />
                   : <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-sky-400" />}
                 <span className="min-w-0 flex-1 truncate">{file.path}</span>
-                <span className="shrink-0 text-xs text-emerald-400">{file.lines} ln</span>
+                <span className="shrink-0 text-xs font-bold text-[#1278bd]">{file.lines} ln</span>
               </div>
             ))}
           </div>
@@ -2243,21 +2325,21 @@ function ConversationBubble({ item, onShowFileDiff }: { item: CodingMessage; onS
       ? item.metadata_json.files.filter((file: any) => file?.path && file?.status !== 'invariato' && file?.status !== 'rimosso')
       : []
     const tone = isFileSummary
-      ? { border: 'border-emerald-200 bg-emerald-50', label: 'text-emerald-700', text: 'text-emerald-950' }
+      ? { border: 'border-[rgba(62,169,244,0.18)] bg-[rgba(62,169,244,0.075)]', label: 'text-[#1278bd]', text: 'text-slate-700' }
       : isReasoning
-        ? { border: 'border-slate-700 bg-slate-900', label: 'text-sky-300', text: 'text-slate-100' }
+        ? { border: 'border-[rgba(123,105,201,0.18)] bg-[rgba(123,105,201,0.075)]', label: 'text-[#55449c]', text: 'text-slate-700' }
         : { border: 'border-[color:var(--border-subtle)] bg-[var(--surface-muted)]', label: 'text-[color:var(--text-secondary)]', text: 'text-[color:var(--text-primary)]' }
     return (
-      <div className={`rounded-xl border px-3 py-2.5 shadow-sm ${tone.border} ${isReasoning ? "[font-family:'Courier_New',Courier,monospace]" : ''}`}>
+      <div className={`rounded-xl border px-3 py-2.5 shadow-sm ${tone.border} ${isReasoning ? 'font-code' : ''}`}>
         <div className={`mb-1.5 text-xs font-black uppercase tracking-wide ${tone.label}`}>
           {label}
         </div>
         {isReasoning ? (
-          <div className={`h-48 overflow-y-auto rounded-lg bg-slate-950 p-3 ${tone.text}`}>
-            <ReasoningMarkdown dark>{item.content}</ReasoningMarkdown>
+          <div className={`h-48 overflow-y-auto rounded-xl border border-white/70 bg-white/70 p-3 ${tone.text}`}>
+            <ReasoningMarkdown>{item.content}</ReasoningMarkdown>
           </div>
         ) : (
-          <p className={`max-h-48 overflow-y-auto whitespace-pre-wrap text-sm leading-relaxed ${tone.text}`}>
+          <p className={`max-h-48 overflow-y-auto whitespace-pre-wrap text-xs leading-relaxed ${tone.text}`}>
             {item.content}
           </p>
         )}
@@ -2268,8 +2350,8 @@ function ConversationBubble({ item, onShowFileDiff }: { item: CodingMessage; onS
                 key={file.path}
                 type="button"
                 onClick={() => onShowFileDiff(String(file.path))}
-                className="rounded-md border border-emerald-200 bg-white px-2 py-1 text-xs font-bold text-emerald-800 hover:border-emerald-400"
-                title="Mostra modifiche (rosso = prima, verde = dopo)"
+                className="rounded-full border border-[rgba(62,169,244,0.24)] bg-white/75 px-2 py-1 text-xs font-bold text-[#1278bd] hover:border-[rgba(62,169,244,0.42)]"
+                title="Mostra modifiche (rosso = prima, celeste = dopo)"
               >
                 {file.path} · {file.lines} righe
               </button>
@@ -2290,7 +2372,7 @@ function ConversationBubble({ item, onShowFileDiff }: { item: CodingMessage; onS
         <div className={`mb-1 text-[11px] font-black uppercase tracking-wide ${isUser ? 'text-[var(--logo-blue-strong)]/70' : 'text-[color:var(--text-secondary)]'}`}>
           {label}
         </div>
-        <p className="whitespace-pre-wrap text-sm leading-relaxed">{item.content}</p>
+        <p className="whitespace-pre-wrap text-xs leading-relaxed">{item.content}</p>
       </div>
     </div>
   )
@@ -2816,15 +2898,15 @@ function DiffViewer({
             ) : (
               <div
                 key={index}
-                className={`flex ${row.type === 'add' ? 'bg-emerald-500/15' : row.type === 'del' ? 'bg-rose-500/15' : ''}`}
+                className={`flex ${row.type === 'add' ? 'bg-sky-500/15' : row.type === 'del' ? 'bg-rose-500/15' : ''}`}
               >
                 <span
-                  className={`w-5 shrink-0 select-none text-center ${row.type === 'add' ? 'text-emerald-400' : row.type === 'del' ? 'text-rose-400' : 'text-slate-600'}`}
+                  className={`w-5 shrink-0 select-none text-center ${row.type === 'add' ? 'text-sky-400' : row.type === 'del' ? 'text-rose-400' : 'text-slate-600'}`}
                 >
                   {row.type === 'add' ? '+' : row.type === 'del' ? '-' : ' '}
                 </span>
                 <span
-                  className={`whitespace-pre-wrap break-words ${row.type === 'add' ? 'text-emerald-200' : row.type === 'del' ? 'text-rose-300' : 'text-slate-300'}`}
+                  className={`whitespace-pre-wrap break-words ${row.type === 'add' ? 'text-sky-200' : row.type === 'del' ? 'text-rose-300' : 'text-slate-300'}`}
                 >
                   {row.text || ' '}
                 </span>
@@ -2837,8 +2919,8 @@ function DiffViewer({
             <span className="h-2.5 w-2.5 rounded bg-rose-400" />
             Prima
           </span>
-          <span className="flex items-center gap-1.5 text-emerald-600">
-            <span className="h-2.5 w-2.5 rounded bg-emerald-400" />
+          <span className="flex items-center gap-1.5 text-sky-600">
+            <span className="h-2.5 w-2.5 rounded bg-sky-400" />
             Dopo
           </span>
         </footer>

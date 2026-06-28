@@ -51,7 +51,7 @@ export const ACCENT_THEMES: Record<AccentId, AccentTheme> = {
     id: 'red',
     label: 'Logo Pink',
     accent: colorTokens.logo.pink,
-    text: colorTokens.logo.pink,
+    text: colorTokens.brand[700],
     soft: 'rgba(254, 0, 77, 0.08)',
     softMid: 'rgba(254, 0, 77, 0.12)',
     softStrong: colorTokens.logo.pink,
@@ -72,8 +72,22 @@ export const roleThemes: Record<RoleThemeId, RoleTheme> = {
   admin: { role: 'admin', defaultAccent: 'black' },
 }
 
-export function getAccentTheme(accent?: string): AccentTheme {
-  if (!accent) return ACCENT_THEMES[DEFAULT_ACCENT]
-  if (accent in ACCENT_THEMES) return ACCENT_THEMES[accent as AccentId]
-  return ACCENT_THEMES[DEFAULT_ACCENT]
+// Per-user accent themes were removed: the app now uses one fixed brand palette.
+// The "accent" (buttons / primary actions / navbar action buttons) is neutral.
+// Selectors and pill-like accent buttons use the lavender/violet CSS tokens.
+// Any stored/selected accent is ignored.
+const BRAND_THEME: AccentTheme = {
+  id: 'red',
+  label: 'Brand',
+  accent: '#475569',  // slate-600 — buttons reset to neutral grey
+  text: '#334155',    // slate-700
+  soft: 'rgba(71, 85, 105, 0.08)',
+  softMid: 'rgba(71, 85, 105, 0.12)',
+  softStrong: '#475569',
+  border: '#475569',
+}
+
+export function getAccentTheme(_accent?: string): AccentTheme {
+  void _accent
+  return BRAND_THEME
 }

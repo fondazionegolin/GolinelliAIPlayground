@@ -1,10 +1,10 @@
 import { useState, useRef, useEffect, type CSSProperties } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { User, Settings, LogOut, ChevronDown, Bot, Brain, Award, FileEdit, FileText, Menu, X, MessageSquare, Mic, Check, FileCode2, MonitorPlay, BookOpen, Code2 } from 'lucide-react'
+import { User, Settings, LogOut, ChevronDown, Bot, Brain, Award, FileEdit, FileText, Menu, X, MessageSquare, Mic, FileCode2, MonitorPlay, BookOpen, Code2 } from 'lucide-react'
 import { Button } from './ui/button'
 import { LogoMark } from './LogoMark'
 import { studentApi } from '@/lib/api'
-import { DEFAULT_STUDENT_ACCENT, getStudentAccentTheme, saveStudentAccent, STUDENT_ACCENTS, type StudentAccentId } from '@/lib/studentAccent'
+import { DEFAULT_STUDENT_ACCENT, getStudentAccentTheme, saveStudentAccent, type StudentAccentId } from '@/lib/studentAccent'
 import { NavTab } from '@/components/ui/NavTab'
 import { useTranslation } from 'react-i18next'
 import { LanguageSwitcher } from '@/components/LanguageSwitcher'
@@ -97,8 +97,8 @@ export function StudentNavbar({
     root.style.setProperty('--app-accent-soft', accentTheme.soft)
     root.style.setProperty('--app-accent-soft-strong', accentTheme.softStrong)
     root.style.setProperty('--app-accent-border', accentTheme.border)
-    root.style.setProperty('--app-body-bg', '#ffffff')
-    root.style.setProperty('--surface-page', '#ffffff')
+    root.style.setProperty('--app-body-bg', '#f1f3f5')
+    root.style.setProperty('--surface-page', '#f1f3f5')
   }, [accentTheme])
 
   useEffect(() => {
@@ -182,7 +182,6 @@ export function StudentNavbar({
 
   const ALL_NAV_ITEMS = [
     { key: 'chatbot', label: t('navbar.nav_chatbot'), icon: Bot },
-    { key: 'wiki', label: t('navbar.nav_wiki'), icon: BookOpen },
     { key: 'classification', label: t('navbar.nav_ml_lab'), icon: Brain },
     { key: 'documents', label: t('navbar.nav_documents'), icon: FileEdit },
     { key: 'self_assessment', label: t('navbar.nav_tasks'), icon: Award },
@@ -190,7 +189,7 @@ export function StudentNavbar({
     { key: 'coding', label: t('navbar.nav_coding_lab'), icon: Code2 },
   ]
   // Always show core modules; filter optional modules by session settings
-  const ALWAYS_SHOWN = new Set(['chatbot', 'documents', 'notebook', 'wiki', 'coding'])
+  const ALWAYS_SHOWN = new Set(['chatbot', 'documents'])
   const navItems = enabledModules
     ? ALL_NAV_ITEMS.filter(item => ALWAYS_SHOWN.has(item.key) || enabledModules.includes(item.key))
     : ALL_NAV_ITEMS
@@ -221,7 +220,7 @@ export function StudentNavbar({
               <LogoMark className="h-9 w-9" />
               <div className="flex items-center gap-1.5">
                 <span className="brand-wordmark">
-                  Golinelli<span style={{ color: 'var(--logo-pink)', WebkitTextFillColor: 'var(--logo-pink)' }}>.ai</span>
+                  Golinelli<span className="brand-wordmark-ai">.ai</span>
                 </span>
                 <button
                   type="button"
@@ -252,7 +251,7 @@ export function StudentNavbar({
 
             {/* Desktop Navigation */}
             {onNavigate && (
-              <div className="hidden xl:flex items-center gap-1 h-11 rounded-xl border p-1" style={buildAccentNavClusterStyle(accentTheme)}>
+              <div className="hidden xl:flex items-center gap-1 h-11 rounded-[var(--selection-radius)] border p-1" style={buildAccentNavClusterStyle(accentTheme)}>
                 {(() => {
                   const activeIdx = navItems.findIndex(item => activeModule === item.key)
                   return navItems.map((item, idx) => (
@@ -273,7 +272,7 @@ export function StudentNavbar({
             <div className="hidden xl:block h-8 w-px bg-slate-200/80 mx-1" />
 
             <div className="flex items-center gap-3">
-              <div className="hidden h-11 items-center gap-1 rounded-xl border p-1 lg:flex" style={buildAccentNavClusterStyle(accentTheme)}>
+              <div className="hidden h-11 items-center gap-1 rounded-[var(--selection-radius)] border p-1 lg:flex" style={buildAccentNavClusterStyle(accentTheme)}>
                 {/* Date/time + mini calendar */}
                 <NavbarCalendarClock
                   sessionId={sessionId}
@@ -284,7 +283,7 @@ export function StudentNavbar({
                 {/* Session Info - Always visible */}
                 {sessionTitle && (
                   <div
-                    className="navbar-inline-control flex h-9 items-center gap-2 rounded-xl px-3"
+                    className="navbar-inline-control flex h-9 items-center gap-2 rounded-[var(--selection-radius)] px-3"
                     style={{ '--btn-tone': accentTheme.accent } as CSSProperties}
                   >
                     <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse shadow-sm shadow-green-300" />
@@ -299,7 +298,7 @@ export function StudentNavbar({
 
                 {chatAvailable && onToggleChatSidebar && (
                   <button
-                    className={`navbar-inline-control relative flex h-9 w-9 items-center justify-center rounded-xl p-0 ${chatSidebarOpen ? 'navbar-inline-control-active' : ''}`}
+                    className={`navbar-inline-control relative flex h-9 w-9 items-center justify-center rounded-[var(--selection-radius)] p-0 ${chatSidebarOpen ? 'navbar-inline-control-active' : ''}`}
                     style={{ '--btn-tone': accentTheme.accent } as CSSProperties}
                     onClick={onToggleChatSidebar}
                     title={chatSidebarOpen ? t('navbar.hide_class_chat') : t('navbar.show_class_chat')}
@@ -368,6 +367,20 @@ export function StudentNavbar({
                     >
                       <Settings className="h-4 w-4" />
                       {t('navbar.settings')}
+                    </button>
+                    <button
+                      onClick={() => {
+                        setShowDropdown(false)
+                        if (onNavigate) {
+                          onNavigate('wiki')
+                        } else {
+                          navigate('/student/wiki')
+                        }
+                      }}
+                      className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-600 hover:bg-slate-50 hover:text-[var(--student-accent-text)] transition-colors"
+                    >
+                      <BookOpen className="h-4 w-4" />
+                      {t('navbar.nav_wiki')}
                     </button>
                     <button
                       onClick={() => {
@@ -498,7 +511,7 @@ function SettingsModal({ profile, accent, onSave, onClose }: SettingsModalProps)
   const { t } = useTranslation()
   const [formData, setFormData] = useState(profile)
   const [previewUrl, setPreviewUrl] = useState(profile.avatarUrl || '')
-  const [selectedAccent, setSelectedAccent] = useState<StudentAccentId>(accent)
+  const [selectedAccent] = useState<StudentAccentId>(accent)
   const selectedTheme = getStudentAccentTheme(selectedAccent)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -598,32 +611,7 @@ function SettingsModal({ profile, accent, onSave, onClose }: SettingsModalProps)
             <LanguageSwitcher variant="full" />
           </div>
 
-          <div>
-            <label className="block text-xs font-semibold text-slate-500 uppercase mb-2">{t('navbar.accent_color')}</label>
-            <div className="grid grid-cols-4 gap-2">
-              {(Object.values(STUDENT_ACCENTS)).map((accentOption) => {
-                const isSelected = selectedAccent === accentOption.id
-                return (
-                  <button
-                    key={accentOption.id}
-                    type="button"
-                    onClick={() => setSelectedAccent(accentOption.id)}
-                    className={`relative h-10 rounded-xl border transition-all ${isSelected ? 'border-slate-500' : 'border-slate-200 hover:border-slate-300'}`}
-                    style={{ backgroundColor: accentOption.soft }}
-                    title={accentOption.label}
-                  >
-                    <span
-                      className="absolute inset-0 m-auto h-5 w-5 rounded-full"
-                      style={{ backgroundColor: accentOption.accent }}
-                    />
-                    {isSelected && (
-                      <Check className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-white text-slate-700 p-0.5 shadow" />
-                    )}
-                  </button>
-                )
-              })}
-            </div>
-          </div>
+          {/* Accent-color picker removed: the app now uses a single fixed brand palette. */}
 
           {/* Actions */}
           <div className="flex gap-3 pt-2">

@@ -1,10 +1,11 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File, Form
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func as sql_func, or_, case
 from typing import Annotated, Optional
 from uuid import UUID
 from pathlib import Path
 import re
+from collections import Counter
 
 from app.core.database import get_db
 from app.api.deps import get_current_teacher, get_current_student, get_student_or_teacher, StudentOrTeacher
@@ -41,6 +42,38 @@ _RAG_STOPWORDS = {
 }
 
 
+def _student_graph_terms(text: str, limit: int = 8) -> list[str]:
+    terms = _student_query_terms(text)
+    if terms:
+        return terms[:limit]
+    return [
+        term for term, _count in Counter(
+            t for t in re.findall(r"[A-Za-zÀ-ÿ0-9_]+", (text or "").lower())
+            if len(t) >= 4 and t not in _RAG_STOPWORDS
+        ).most_common(limit)
+    ]
+
+
+def _clean_rag_text(value: str) -> str:
+    text = (value or "").replace("\u00a0", " ").replace("\u200b", "")
+    text = re.sub(r"https?://\S+", "[link]", text)
+    text = re.sub(r"(?m)^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?\s*$", " ", text)
+    text = re.sub(r"(?m)^\s{0,3}#{1,6}\s*", "", text)
+    text = re.sub(r"[`*_]{2,}", "", text)
+    text = re.sub(r"\s*\|\s*", " · ", text)
+    text = re.sub(r"[ \t]{2,}", " ", text)
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    return text.strip()
+
+
+def _normalize_student_project_id(project_id: Optional[str]) -> Optional[str]:
+    value = (project_id or "").strip()
+    if not value:
+        return None
+    value = re.sub(r"[^A-Za-z0-9_-]", "-", value)
+    return value[:128] or None
+
+
 def _student_query_terms(query: str) -> list[str]:
     terms = []
     for term in re.findall(r"[A-Za-zÀ-ÿ0-9_]+", (query or "").lower()):
@@ -56,6 +89,7 @@ async def _student_vector_search(
     student: SessionStudent,
     query: str,
     doc_ids: Optional[list[str]],
+    project_id: Optional[str],
     top_k: int,
 ) -> list[dict]:
     from sqlalchemy import text as sql_text
@@ -63,15 +97,19 @@ async def _student_vector_search(
     embeddings = await llm_service.compute_embeddings([query])
     qe = embeddings[0]
     embedding_str = "[" + ",".join(map(str, qe)) + "]"
-    extra_filter = ""
+    extra_filters: list[str] = []
     params: dict = {
         "embedding": embedding_str,
         "student_id": str(student.id),
         "top_k": top_k,
     }
     if doc_ids:
-        extra_filter = "AND d.id = ANY(:doc_ids)"
+        extra_filters.append("AND d.id = ANY(:doc_ids)")
         params["doc_ids"] = doc_ids
+    if project_id:
+        extra_filters.append("AND d.project_id = :project_id")
+        params["project_id"] = project_id
+    extra_filter = "\n        ".join(extra_filters)
 
     sql = sql_text(f"""
         SELECT
@@ -94,7 +132,7 @@ async def _student_vector_search(
             "chunk_id": str(r.chunk_id),
             "document_id": str(r.document_id),
             "document_title": r.document_title,
-            "text": r.text,
+            "text": _clean_rag_text(r.text),
             "page": r.page,
             "score": float(r.score),
             "chunk_index": r.chunk_index,
@@ -109,6 +147,7 @@ async def _student_keyword_search(
     student: SessionStudent,
     query: str,
     doc_ids: Optional[list[str]],
+    project_id: Optional[str],
     top_k: int,
 ) -> list[dict]:
     terms = _student_query_terms(query)
@@ -136,6 +175,8 @@ async def _student_keyword_search(
     )
     if doc_ids:
         query_stmt = query_stmt.where(RAGChunk.document_id.in_([UUID(d) for d in doc_ids]))
+    if project_id:
+        query_stmt = query_stmt.where(RAGDocument.project_id == project_id)
     if term_conditions:
         query_stmt = query_stmt.where(or_(RAGChunk.text.ilike(phrase), *term_conditions))
     else:
@@ -148,7 +189,7 @@ async def _student_keyword_search(
             "chunk_id": str(r.RAGChunk.id),
             "document_id": str(r.RAGChunk.document_id),
             "document_title": r.doc_title,
-            "text": r.RAGChunk.text,
+            "text": _clean_rag_text(r.RAGChunk.text),
             "page": r.RAGChunk.page,
             "score": float(r.keyword_score or 0),
             "chunk_index": r.RAGChunk.chunk_index,
@@ -164,11 +205,12 @@ async def _student_hybrid_search(
     student: SessionStudent,
     query: str,
     doc_ids: Optional[list[str]],
+    project_id: Optional[str],
     top_k: int,
 ) -> list[dict]:
     fetch_k = max(top_k * 3, 12)
-    vector_rows = await _student_vector_search(db, student, query, doc_ids, fetch_k)
-    keyword_rows = await _student_keyword_search(db, student, query, doc_ids, fetch_k)
+    vector_rows = await _student_vector_search(db, student, query, doc_ids, project_id, fetch_k)
+    keyword_rows = await _student_keyword_search(db, student, query, doc_ids, project_id, fetch_k)
 
     merged: dict[str, dict] = {}
     for rank, row in enumerate(vector_rows, 1):
@@ -197,7 +239,7 @@ async def _student_hybrid_search(
             "chunk_id": item["chunk_id"],
             "document_id": item["document_id"],
             "document_title": item["document_title"],
-            "text": item["text"],
+            "text": _clean_rag_text(item["text"]),
             "page": item["page"],
             "score": float(item.get("_hybrid_score", item.get("score", 0.0))),
             "chunk_index": item["chunk_index"],
@@ -423,7 +465,7 @@ async def search_documents(
             "chunk_id": str(c.chunk_id),
             "document_id": str(c.document_id),
             "document_title": c.document_title,
-            "text": c.text,
+            "text": _clean_rag_text(c.text),
             "page": c.page,
             "score": c.score,
         }
@@ -434,9 +476,54 @@ async def search_documents(
 # ─── Student Personal RAG ──────────────────────────────────────────────────
 
 
+async def _ingest_student_kb_text(
+    *,
+    db: AsyncSession,
+    student: SessionStudent,
+    title: str,
+    doc_type: str,
+    content: str,
+    project_id: Optional[str],
+    meta: Optional[dict] = None,
+) -> dict:
+    cleaned = _clean_rag_text(content)
+    if not cleaned:
+        raise HTTPException(status_code=400, detail="Contenuto vuoto o non indicizzabile.")
+
+    doc = RAGDocument(
+        tenant_id=student.tenant_id,
+        scope=Scope.USER,
+        session_id=student.session_id,
+        project_id=_normalize_student_project_id(project_id),
+        owner_student_id=student.id,
+        title=title[:255],
+        doc_type=doc_type[:32],
+        status=DocumentStatus.QUEUED,
+    )
+    db.add(doc)
+    await db.flush()
+
+    chunk_count = await rag_service.ingest_document(
+        db,
+        doc,
+        [{"text": cleaned, "kind": doc_type, "meta": meta or {}}],
+    )
+
+    return {
+        "id": str(doc.id),
+        "title": doc.title,
+        "doc_type": doc.doc_type,
+        "status": doc.status,
+        "chunk_count": chunk_count,
+        "key_concepts": [],
+        "summary": cleaned[:500],
+    }
+
+
 @router.post("/student/upload")
 async def student_upload_document(
     file: UploadFile = File(...),
+    project_id: Optional[str] = Form(None),
     db: AsyncSession = Depends(get_db),
     student: SessionStudent = Depends(get_current_student),
 ):
@@ -464,6 +551,7 @@ async def student_upload_document(
         tenant_id=student.tenant_id,
         scope=Scope.USER,
         session_id=student.session_id,
+        project_id=_normalize_student_project_id(project_id),
         owner_student_id=student.id,
         title=filename,
         doc_type=filename.rsplit(".", 1)[-1].lower() if "." in filename else "doc",
@@ -487,18 +575,145 @@ async def student_upload_document(
     }
 
 
+@router.post("/student/youtube")
+async def student_ingest_youtube(
+    request: dict,
+    db: AsyncSession = Depends(get_db),
+    student: SessionStudent = Depends(get_current_student),
+):
+    """Fetch a YouTube transcript and ingest it into the current student KB project."""
+    import asyncio
+    import httpx
+
+    url = (request.get("url") or "").strip()
+    project_id = _normalize_student_project_id(request.get("project_id"))
+    match = re.search(
+        r"(?:youtube\.com/(?:watch\?v=|embed/|shorts/)|youtu\.be/)([a-zA-Z0-9_-]{11})",
+        url,
+    )
+    if not match:
+        raise HTTPException(status_code=400, detail="URL YouTube non valido")
+
+    video_id = match.group(1)
+    title: Optional[str] = None
+    try:
+        async with httpx.AsyncClient(timeout=5) as client:
+            resp = await client.get(
+                f"https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v={video_id}&format=json"
+            )
+            if resp.status_code == 200:
+                title = resp.json().get("title")
+    except Exception:
+        pass
+
+    try:
+        from youtube_transcript_api import YouTubeTranscriptApi
+        from youtube_transcript_api._errors import (
+            NoTranscriptFound, TranscriptsDisabled, VideoUnavailable,
+        )
+
+        def _fetch():
+            api = YouTubeTranscriptApi()
+            try:
+                return api.fetch(video_id, languages=["it", "en", "en-US", "en-GB"])
+            except NoTranscriptFound:
+                transcript_list = api.list(video_id)
+                return transcript_list.find_a_transcript(["it", "en"]).fetch()
+
+        fetched = await asyncio.get_event_loop().run_in_executor(None, _fetch)
+        snippets = list(fetched)
+        transcript = " ".join(s.text for s in snippets)
+    except TranscriptsDisabled:
+        raise HTTPException(status_code=422, detail="I trascritti sono disabilitati per questo video")
+    except VideoUnavailable:
+        raise HTTPException(status_code=422, detail="Video non disponibile o privato")
+    except NoTranscriptFound:
+        raise HTTPException(status_code=422, detail="Nessun trascritto disponibile per questo video")
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=f"Impossibile ottenere il trascritto: {str(exc)}")
+
+    return await _ingest_student_kb_text(
+        db=db,
+        student=student,
+        title=title or f"YouTube {video_id}",
+        doc_type="youtube",
+        content=f"Trascrizione YouTube: {title or video_id}\nURL: {url}\n\n{transcript}",
+        project_id=project_id,
+        meta={"source": "youtube", "video_id": video_id, "url": url},
+    )
+
+
+@router.post("/student/artifact")
+async def student_generate_artifact(
+    request: dict,
+    db: AsyncSession = Depends(get_db),
+    student: SessionStudent = Depends(get_current_student),
+):
+    """Generate an HTML page or brochure draft and index it into the current KB project."""
+    prompt = (request.get("prompt") or "").strip()
+    artifact_type = (request.get("artifact_type") or "html").strip().lower()
+    project_id = _normalize_student_project_id(request.get("project_id"))
+    if artifact_type not in {"html", "brochure"}:
+        raise HTTPException(status_code=400, detail="Tipo artefatto non supportato")
+    if len(prompt) < 8:
+        raise HTTPException(status_code=400, detail="Descrivi cosa vuoi generare")
+
+    if artifact_type == "brochure":
+        system_prompt = (
+            "Sei un designer editoriale. Genera una brochure HTML completa, responsive, "
+            "stampabile, con sezioni chiare, callout, titoli gerarchici e contenuto pronto per studenti. "
+            "Rispondi solo con HTML valido, includendo CSS nel tag style."
+        )
+        title = "Brochure generata"
+    else:
+        system_prompt = (
+            "Sei uno sviluppatore frontend. Genera una pagina HTML interattiva completa e autosufficiente, "
+            "con CSS e JavaScript inline, accessibile e usabile senza librerie esterne. "
+            "Rispondi solo con HTML valido."
+        )
+        title = "Pagina HTML interattiva"
+
+    response = await llm_service.generate(
+        messages=[{"role": "user", "content": prompt}],
+        system_prompt=system_prompt,
+        provider="openai",
+        model="gpt-4o-mini",
+        temperature=0.25,
+        allow_web_search=False,
+    )
+    content = (response.content or "").strip()
+    content = re.sub(r"^```(?:html)?\s*|\s*```$", "", content, flags=re.IGNORECASE).strip()
+
+    result = await _ingest_student_kb_text(
+        db=db,
+        student=student,
+        title=f"{title}: {prompt[:60]}",
+        doc_type=artifact_type,
+        content=content,
+        project_id=project_id,
+        meta={"source": "generated_artifact", "artifact_type": artifact_type, "prompt": prompt},
+    )
+    result["content"] = content
+    return result
+
+
 @router.get("/student/documents")
 async def student_list_documents(
+    project_id: Optional[str] = Query(None),
     db: AsyncSession = Depends(get_db),
     student: SessionStudent = Depends(get_current_student),
 ):
     """List the student's personal RAG documents."""
-    docs_result = await db.execute(
+    query = (
         select(RAGDocument)
         .where(RAGDocument.owner_student_id == student.id)
         .where(RAGDocument.teacherbot_id == None)  # noqa: E711
         .order_by(RAGDocument.created_at.desc())
     )
+    normalized_project_id = _normalize_student_project_id(project_id)
+    if normalized_project_id:
+        query = query.where(RAGDocument.project_id == normalized_project_id)
+    docs_result = await db.execute(query)
     docs = docs_result.scalars().all()
 
     result = []
@@ -562,13 +777,125 @@ async def student_get_chunks(
         {
             "id": str(c.id),
             "chunk_index": c.chunk_index,
-            "text": c.text,
+            "text": _clean_rag_text(c.text),
             "page": c.page,
+            "document_id": str(doc.id),
+            "document_title": doc.title,
             "start": (c.meta_json or {}).get("start"),
             "end": (c.meta_json or {}).get("end"),
+            "kind": (c.meta_json or {}).get("kind", "text"),
         }
         for c in chunks
     ]
+
+
+@router.get("/student/graph")
+async def student_rag_graph(
+    project_id: Optional[str] = Query(None),
+    db: AsyncSession = Depends(get_db),
+    student: SessionStudent = Depends(get_current_student),
+):
+    """Return a compact, real graph of the student's indexed RAG corpus."""
+    query = (
+        select(RAGDocument)
+        .where(RAGDocument.owner_student_id == student.id)
+        .where(RAGDocument.teacherbot_id == None)  # noqa: E711
+        .order_by(RAGDocument.created_at.desc())
+    )
+    normalized_project_id = _normalize_student_project_id(project_id)
+    if normalized_project_id:
+        query = query.where(RAGDocument.project_id == normalized_project_id)
+    docs_result = await db.execute(query)
+    docs = docs_result.scalars().all()
+
+    nodes: list[dict] = []
+    edges: list[dict] = []
+    terms_counter: Counter[str] = Counter()
+    total_chunks = 0
+    ready_docs = 0
+    embedded_chunks = 0
+
+    for doc in docs:
+        doc_id = str(doc.id)
+        chunks_result = await db.execute(
+            select(RAGChunk)
+            .where(RAGChunk.document_id == doc.id)
+            .order_by(RAGChunk.chunk_index.asc())
+            .limit(80)
+        )
+        chunks = chunks_result.scalars().all()
+        total_chunks += len(chunks)
+        if doc.status == DocumentStatus.READY:
+            ready_docs += 1
+
+        nodes.append({
+            "id": f"doc:{doc_id}",
+            "type": "document",
+            "label": doc.title,
+            "status": doc.status.value,
+            "chunk_count": len(chunks),
+            "doc_type": doc.doc_type,
+        })
+
+        for chunk in chunks:
+            chunk_node_id = f"chunk:{chunk.id}"
+            embedding_exists = (await db.execute(
+                select(RAGEmbedding.chunk_id).where(RAGEmbedding.chunk_id == chunk.id)
+            )).scalar_one_or_none() is not None
+            if embedding_exists:
+                embedded_chunks += 1
+            text = _clean_rag_text(chunk.text or "")
+            terms = _student_graph_terms(text, 6)
+            terms_counter.update(terms)
+            nodes.append({
+                "id": chunk_node_id,
+                "type": "chunk",
+                "label": f"#{chunk.chunk_index + 1}",
+                "document_id": doc_id,
+                "document_title": doc.title,
+                "chunk_index": chunk.chunk_index,
+                "page": chunk.page,
+                "length": len(text),
+                "embedded": embedding_exists,
+                "preview": text[:220],
+                "terms": terms,
+            })
+            edges.append({
+                "id": f"edge:{doc_id}:{chunk.id}",
+                "source": f"doc:{doc_id}",
+                "target": chunk_node_id,
+                "type": "contains",
+                "weight": 1,
+            })
+            for term in terms[:4]:
+                term_id = f"term:{term}"
+                edges.append({
+                    "id": f"edge:{chunk.id}:{term}",
+                    "source": chunk_node_id,
+                    "target": term_id,
+                    "type": "mentions",
+                    "weight": 1,
+                })
+
+    for term, count in terms_counter.most_common(40):
+        nodes.append({
+            "id": f"term:{term}",
+            "type": "term",
+            "label": term,
+            "count": count,
+        })
+
+    return {
+        "stats": {
+            "documents": len(docs),
+            "ready_documents": ready_docs,
+            "chunks": total_chunks,
+            "embedded_chunks": embedded_chunks,
+            "terms": len(terms_counter),
+        },
+        "nodes": nodes,
+        "edges": edges,
+    }
 
 
 @router.post("/student/search")
@@ -579,8 +906,9 @@ async def student_search(
 ):
     """Search student's personal KB with hybrid retrieval."""
     query = request.get("query", "")
-    top_k = int(request.get("top_k", 5))
+    top_k = min(max(int(request.get("top_k", 8)), 4), 12)
     doc_ids = request.get("doc_ids")  # optional filter
+    project_id = _normalize_student_project_id(request.get("project_id"))
 
     if not query:
         raise HTTPException(status_code=400, detail="Query required")
@@ -590,6 +918,7 @@ async def student_search(
         student=student,
         query=query,
         doc_ids=doc_ids,
+        project_id=project_id,
         top_k=top_k,
     )
 
@@ -604,7 +933,8 @@ async def student_rag_chat(
     query = request.get("message", "")
     history = request.get("history", [])
     doc_ids = request.get("doc_ids")
-    top_k = int(request.get("top_k", 5))
+    project_id = _normalize_student_project_id(request.get("project_id"))
+    top_k = min(max(int(request.get("top_k", 8)), 4), 12)
 
     if not query:
         raise HTTPException(status_code=400, detail="Message required")
@@ -614,6 +944,7 @@ async def student_rag_chat(
         student=student,
         query=query,
         doc_ids=doc_ids,
+        project_id=project_id,
         top_k=top_k,
     )
 
@@ -639,13 +970,13 @@ async def student_rag_chat(
         "3. Puoi sintetizzare, confrontare, inferire collegamenti espliciti e fare calcoli solo a partire dai dati presenti nei frammenti, spiegando sempre da quali frammenti provengono.\n"
         "4. Se la domanda non ha una risposta diretta ma i frammenti contengono elementi utili, rispondi con la migliore risposta possibile basata sui frammenti e indica chiaramente cosa manca.\n"
         "5. Non citare mai URL, domini, nomi di siti, blog, portali o organizzazioni esterne.\n"
-        "6. Ogni risposta utile deve includere citazioni nel formato [[n]] sulle affermazioni principali.\n"
+        "6. Ogni risposta utile deve includere citazioni nel formato [[n]] subito dopo la frase o il dato supportato, senza mandare la citazione su una riga separata.\n"
         "7. Se i frammenti non contengono alcun elemento utile per rispondere, rispondi con una sola frase, esattamente cosi': "
         f"'{STUDENT_RAG_NO_ANSWER}'\n"
         "8. Non aggiungere consigli generici, spiegazioni esterne o esempi inventati.\n"
         "9. Quando l'utente chiede un dato preciso, apri con la risposta diretta; aggiungi una breve nota solo se serve per chiarire limiti o condizioni.\n"
         "10. Se la richiesta implica un conteggio, una somma, una differenza o l'estrazione di un valore, eseguila solo se i frammenti la supportano chiaramente.\n"
-        "11. Rispondi in italiano, in modo breve ma specifico."
+        "11. Rispondi in italiano, in modo breve, puntuale e documentato: prima la risposta diretta, poi al massimo 2-4 punti di evidenza se servono."
     )
 
     history_context = build_student_rag_history_context(history)
@@ -663,7 +994,7 @@ async def student_rag_chat(
         system_prompt=system_prompt,
         provider="openai",
         model="gpt-4o-mini",
-        temperature=0.1,
+        temperature=0.03,
         allow_web_search=False,
     )
 

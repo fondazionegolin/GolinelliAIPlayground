@@ -10,7 +10,7 @@ import {
   ChevronLeft, ChevronRight, X,
   Award, CheckCircle2,
   Monitor, PenTool, BookOpen, FolderOpen, ChevronDown, ChevronUp,
-  Search
+  Search, LayoutGrid, List
 } from 'lucide-react'
 import { loadStudentAccent, getStudentAccentTheme } from '@/lib/studentAccent'
 
@@ -88,6 +88,13 @@ export default function TasksModule({ openTaskId, onOpenDocument }: TasksModuleP
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(openTaskId || null)
   const [accentTheme] = useState(getStudentAccentTheme(loadStudentAccent()))
   const [taskSearch, setTaskSearch] = useState('')
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>(
+    () => (localStorage.getItem('student_tasks_view') as 'grid' | 'list') || 'grid'
+  )
+
+  useEffect(() => {
+    localStorage.setItem('student_tasks_view', viewMode)
+  }, [viewMode])
 
   const { data: tasks, isLoading, refetch } = useQuery<TaskData[]>({
     queryKey: ['student-tasks'],
@@ -170,11 +177,33 @@ export default function TasksModule({ openTaskId, onOpenDocument }: TasksModuleP
                 <p className="text-xs font-medium text-slate-500">{t('tasks.subtitle')}</p>
               </div>
             </div>
-            <div className="flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-100 px-3 py-1.5 text-emerald-800 shadow-sm">
-              <Award className="h-3.5 w-3.5 text-emerald-700" />
-              <span className="text-xs font-bold">
-                {regularTasks.filter(t => t.submission).length}/{regularTasks.length}
-              </span>
+            <div className="flex items-center gap-2">
+              <div className="flex items-center gap-0.5 rounded-lg border border-slate-200 bg-slate-50 p-0.5 shadow-sm">
+                <button
+                  type="button"
+                  onClick={() => setViewMode('grid')}
+                  aria-label="Vista griglia"
+                  title="Vista griglia"
+                  className={`flex h-7 w-7 items-center justify-center rounded-md transition-colors ${viewMode === 'grid' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+                >
+                  <LayoutGrid className="h-3.5 w-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setViewMode('list')}
+                  aria-label="Vista lista"
+                  title="Vista lista"
+                  className={`flex h-7 w-7 items-center justify-center rounded-md transition-colors ${viewMode === 'list' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+                >
+                  <List className="h-3.5 w-3.5" />
+                </button>
+              </div>
+              <div className="flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-100 px-3 py-1.5 text-emerald-800 shadow-sm">
+                <Award className="h-3.5 w-3.5 text-emerald-700" />
+                <span className="text-xs font-bold">
+                  {regularTasks.filter(t => t.submission).length}/{regularTasks.length}
+                </span>
+              </div>
             </div>
           </div>
 
@@ -221,19 +250,29 @@ export default function TasksModule({ openTaskId, onOpenDocument }: TasksModuleP
             if (filtered.length === 0 && taskSearch) {
               return <p className="text-center text-sm text-slate-400 py-8">Nessun compito corrisponde a "{taskSearch}"</p>
             }
+            const openTask = (task: TaskData) => {
+              if ((task.task_type === 'lesson' || task.task_type === 'presentation') && onOpenDocument) {
+                onOpenDocument(task.id)
+              } else {
+                setSelectedTaskId(task.id)
+              }
+            }
+            if (viewMode === 'list') {
+              return (
+                <div className="space-y-2">
+                  {filtered.map((task) => (
+                    <TaskRow key={task.id} task={task} onClick={() => openTask(task)} />
+                  ))}
+                </div>
+              )
+            }
             return (
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                 {filtered.map((task) => (
                   <TaskCard
                     key={task.id}
                     task={task}
-                    onClick={() => {
-                      if ((task.task_type === 'lesson' || task.task_type === 'presentation') && onOpenDocument) {
-                        onOpenDocument(task.id)
-                      } else {
-                        setSelectedTaskId(task.id)
-                      }
-                    }}
+                    onClick={() => openTask(task)}
                     accentColor={accentTheme.accent}
                   />
                 ))}
@@ -404,6 +443,55 @@ function TaskCard({ task, onClick }: { task: TaskData; onClick: () => void; acce
           Apri per vedere i dettagli
         </div>
       )}
+    </motion.div>
+  )
+}
+
+function TaskRow({ task, onClick }: { task: TaskData; onClick: () => void }) {
+  const isCompleted = !!task.submission
+  const preview = useMemo(() => getTaskCardPreview(task), [task])
+
+  const s = useMemo(() => {
+    if (isCompleted) return TASK_TILE_STYLES.completed
+    return TASK_TILE_STYLES[task.task_type] ?? TASK_TILE_STYLES.default
+  }, [task.task_type, isCompleted])
+
+  const typeIcon = useMemo(() => {
+    switch (task.task_type) {
+      case 'quiz': return <ListChecksIcon className="h-5 w-5" />
+      case 'lesson': return <BookOpen className="h-5 w-5" />
+      case 'presentation': return <Monitor className="h-5 w-5" />
+      case 'exercise': return <PenTool className="h-5 w-5" />
+      default: return <ClipboardList className="h-5 w-5" />
+    }
+  }, [task.task_type])
+
+  return (
+    <motion.div
+      whileTap={{ scale: 0.995 }}
+      onClick={onClick}
+      className={`group flex cursor-pointer items-center gap-3 rounded-2xl px-4 py-3 transition-all ${s.card}`}
+    >
+      <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg shadow-sm ${s.iconBg} ${s.icon}`}>
+        {typeIcon}
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="truncate text-sm font-black text-slate-950">{task.title}</div>
+        {preview && (
+          <p className="truncate text-[12px] leading-5 text-slate-500">{preview}</p>
+        )}
+      </div>
+      <span className={`hidden shrink-0 rounded-full px-2.5 py-1 text-[10px] font-black uppercase sm:inline-block ${s.badge}`}>
+        {isCompleted ? 'Fatto' : (UDA_TYPE_LABELS[task.task_type] ?? task.task_type)}
+      </span>
+      {task.due_at && !isCompleted && (
+        <div className={`hidden shrink-0 items-center gap-1 md:flex ${s.time}`}>
+          <Clock className="h-3 w-3" />
+          <span className="text-[10px]">{new Date(task.due_at).toLocaleDateString('it-IT')}</span>
+        </div>
+      )}
+      {isCompleted && <Check className="h-4 w-4 shrink-0 text-emerald-600" />}
+      <ChevronRight className="h-4 w-4 shrink-0 text-slate-300 transition-colors group-hover:text-slate-400" />
     </motion.div>
   )
 }

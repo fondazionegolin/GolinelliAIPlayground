@@ -23,6 +23,7 @@ import {
 import { Card } from '@/design/primitives/Card'
 import { Button } from '@/components/ui/button'
 import { teacherApi } from '@/lib/api'
+import { PASTEL_SURFACES } from '@/design/themes/pastelSurfaces'
 import ToyLMInferencePanel, { type ToyLMGeneratePayload } from '@/components/toy-lm/ToyLMInferencePanel'
 import ToyLMEmbeddingPanel, { type ToyLMEmbeddingPayload } from '@/components/toy-lm/ToyLMEmbeddingPanel'
 
@@ -175,6 +176,10 @@ export default function ToyLMPage() {
     try {
       const data: Job[] = await apiFetch('/jobs')
       setJobs(data)
+      setSelectedJobId(current => {
+        if (current && data.some(job => job.id === current)) return current
+        return data[0]?.id ?? null
+      })
     } catch (e) {
       setStatusMsg('Errore caricamento jobs: ' + (e as Error).message)
     } finally {
@@ -374,10 +379,24 @@ export default function ToyLMPage() {
     setShowCreate(false)
     setSelectedJobId(job.id)
     setParams({ ...DEFAULT_PARAMS, ...job.hyperparams })
-    setLiveMetrics([])
-    setCurrentLoss(null)
+    setLiveMetrics((job.metrics ?? []).map(m => ({ ...m, loss: m.avgLoss ?? m.loss })))
+    const lastMetric = job.metrics?.slice(-1)[0]
+    setCurrentLoss(lastMetric ? (lastMetric.avgLoss ?? lastMetric.loss ?? null) : null)
+    setCurrentEpoch(job.savedEpoch)
     setIsPausedLocally(false)
   }, [])
+
+  useEffect(() => {
+    if (!selectedJob || showCreate) return
+    setParams({ ...DEFAULT_PARAMS, ...selectedJob.hyperparams })
+    if (!isStreaming) {
+      const storedMetrics = (selectedJob.metrics ?? []).map(m => ({ ...m, loss: m.avgLoss ?? m.loss }))
+      setLiveMetrics(storedMetrics)
+      const lastMetric = storedMetrics.slice(-1)[0]
+      setCurrentLoss(lastMetric ? lastMetric.loss : null)
+      setCurrentEpoch(selectedJob.savedEpoch)
+    }
+  }, [selectedJob?.id, selectedJob?.savedEpoch, selectedJob?.metrics, selectedJob?.hyperparams, showCreate, isStreaming])
 
   const handleRename = useCallback(async (id: string, name: string) => {
     const trimmed = name.trim()
@@ -619,7 +638,7 @@ export default function ToyLMPage() {
           <h1 className="truncate text-sm font-black tracking-tight">
             {showCreate ? 'Nuovo modello' : selectedJob ? selectedJob.name : 'Toy Language Model Lab'}
           </h1>
-          {deviceInfo && <span className="font-mono text-[11px] text-emerald-600">{deviceInfo}</span>}
+          {deviceInfo && <span className="font-mono text-[11px] text-[var(--logo-violet-strong)]">{deviceInfo}</span>}
           <div className="ml-auto flex items-center gap-2">
             {selectedJob && !showCreate && (
               <>
@@ -753,7 +772,7 @@ export default function ToyLMPage() {
             <div className="space-y-4">
 
               {/* Training overview: metrics + progress + controls */}
-              <Card className="space-y-3 p-4">
+              <Card className={`space-y-3 rounded-[24px] p-4 shadow-sm ${PASTEL_SURFACES.violet}`}>
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="flex items-center gap-2">
                     <Zap className="h-4 w-4 text-[var(--logo-violet)]" />
@@ -789,7 +808,7 @@ export default function ToyLMPage() {
                   <MetricBox label="Epoch" value={isRunning ? `${currentEpoch + 1}/${params.totalEpochs}` : `${selectedJob.savedEpoch}/${params.totalEpochs}`} color="violet" />
                   <MetricBox label="Batch" value={isRunning ? `${currentBatch + 1}/${nBatches}` : '—'} color="slate" />
                   <MetricBox label="Loss" value={currentLoss !== null ? currentLoss.toFixed(4) : (selectedJob.metrics?.slice(-1)[0]?.avgLoss?.toFixed(4) ?? '—')} color="rose" />
-                  <MetricBox label="Perplexity" value={currentLoss !== null ? Math.exp(currentLoss).toFixed(2) : (selectedJob.metrics?.slice(-1)[0]?.perplexity?.toFixed(2) ?? '—')} color="amber" />
+                  <MetricBox label="Perplexity" value={currentLoss !== null ? Math.exp(currentLoss).toFixed(2) : (selectedJob.metrics?.slice(-1)[0]?.perplexity?.toFixed(2) ?? '—')} color="violet" />
                 </div>
 
                 <div>
@@ -803,22 +822,22 @@ export default function ToyLMPage() {
                 </div>
 
                 {isQueued && (
-                  <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
+                  <div className="rounded-xl border border-[rgba(62,169,244,0.18)] bg-[rgba(62,169,244,0.075)] px-3 py-2 text-xs text-[#1278bd]">
                     In coda per la GPU — posizione {selectedJob.queuePosition}. Il training partirà automaticamente.
                   </div>
                 )}
                 {selectedJob.errorMessage && (
-                  <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-600">Errore: {selectedJob.errorMessage}</div>
+                  <div className="rounded-xl border border-[rgba(254,0,77,0.18)] bg-[rgba(254,0,77,0.075)] px-3 py-2 text-xs text-[var(--logo-pink)]">Errore: {selectedJob.errorMessage}</div>
                 )}
               </Card>
 
               {/* Charts */}
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                <ChartPanel title="Loss" dataKey="loss" data={chartData} color="#7b69c9" height={150} />
-                <ChartPanel title="Perplexity" dataKey="perplexity" data={chartData} color="#f97316" height={150} />
+                <ChartPanel title="Loss" dataKey="loss" data={chartData} color="#7b69c9" height={150} tone="violet" />
+                <ChartPanel title="Perplexity" dataKey="perplexity" data={chartData} color="#fe004d" height={150} tone="rose" />
               </div>
 
-              <Card className="p-4">
+              <Card className={`rounded-[24px] p-4 shadow-sm ${PASTEL_SURFACES.indigo}`}>
                 <ToyLMEmbeddingPanel
                   key={`embeddings-${selectedJob.id}`}
                   canLoad={!!canGenerate}
@@ -830,7 +849,7 @@ export default function ToyLMPage() {
               {/* Bottom: architecture + hyperparams | generate */}
               <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
 
-                <Card className="space-y-3 p-4">
+                <Card className={`space-y-3 rounded-[24px] p-4 shadow-sm ${PASTEL_SURFACES.slate}`}>
                   <div>
                     <SubLabel>Architettura</SubLabel>
                     <div className="mt-2 space-y-1 font-mono text-[11px]">
@@ -855,7 +874,7 @@ export default function ToyLMPage() {
                   </div>
                 </Card>
 
-                <Card className="space-y-3 p-4">
+                <Card className={`space-y-3 rounded-[24px] p-4 shadow-sm ${PASTEL_SURFACES.cyan}`}>
                   <ToyLMInferencePanel
                     key={selectedJob.id}
                     canGenerate={!!canGenerate}
@@ -945,11 +964,11 @@ export default function ToyLMPage() {
 
 function dotColor(status: string): string {
   switch (status) {
-    case 'running': return 'bg-emerald-500 animate-pulse'
-    case 'queued': return 'bg-amber-400'
+    case 'running': return 'bg-[var(--logo-blue)] animate-pulse'
+    case 'queued': return 'bg-[var(--logo-blue)]'
     case 'completed': return 'bg-[var(--logo-violet)]'
-    case 'paused': return 'bg-amber-500'
-    case 'failed': return 'bg-red-500'
+    case 'paused': return 'bg-[var(--logo-violet)]'
+    case 'failed': return 'bg-[var(--logo-pink)]'
     default: return 'bg-slate-300'
   }
 }
@@ -962,10 +981,10 @@ function StatusPill({ job, isRunning, isQueued, currentEpoch }: {
   job: Job; isRunning: boolean; isQueued: boolean; currentEpoch: number
 }) {
   const { cls, text } =
-    isRunning ? { cls: 'border-emerald-200 bg-emerald-50 text-emerald-700', text: `▶ in training — epoch ${currentEpoch}` } :
-    isQueued ? { cls: 'border-amber-200 bg-amber-50 text-amber-700', text: `⏳ in coda (pos. ${job.queuePosition})` } :
-    job.status === 'completed' ? { cls: 'border-[var(--logo-violet-22)] bg-[var(--logo-violet-06)] text-[var(--logo-violet-strong)]', text: '✓ completato' } :
-    job.status === 'paused' ? { cls: 'border-amber-200 bg-amber-50 text-amber-700', text: '⏸ in pausa' } :
+    isRunning ? { cls: 'border-[rgba(62,169,244,0.22)] bg-[rgba(62,169,244,0.075)] text-[#1278bd]', text: `in training · epoch ${currentEpoch}` } :
+    isQueued ? { cls: 'border-[rgba(62,169,244,0.22)] bg-[rgba(62,169,244,0.075)] text-[#1278bd]', text: `in coda · pos. ${job.queuePosition}` } :
+    job.status === 'completed' ? { cls: 'border-[var(--logo-violet-22)] bg-[var(--logo-violet-06)] text-[var(--logo-violet-strong)]', text: 'completato' } :
+    job.status === 'paused' ? { cls: 'border-[var(--logo-violet-22)] bg-[var(--logo-violet-06)] text-[var(--logo-violet-strong)]', text: 'in pausa' } :
     { cls: 'border-[var(--border-subtle)] bg-white text-[var(--text-secondary)]', text: job.status }
   return (
     <span className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold ${cls} ${isRunning ? 'animate-pulse' : ''}`}>
@@ -1006,11 +1025,11 @@ function ArchRow({ label, val }: { label: string; val: string }) {
   )
 }
 
-function ChartPanel({ title, dataKey, data, color, height = 190 }: {
-  title: string; dataKey: string; data: unknown[]; color: string; height?: number
+function ChartPanel({ title, dataKey, data, color, height = 190, tone = 'slate' }: {
+  title: string; dataKey: string; data: unknown[]; color: string; height?: number; tone?: keyof typeof PASTEL_SURFACES
 }) {
   return (
-    <Card className="p-4">
+    <Card className={`rounded-[24px] p-4 shadow-sm ${PASTEL_SURFACES[tone]}`}>
       <SubLabel>{title}</SubLabel>
       <div className="mt-2">
         {data.length > 0 ? (

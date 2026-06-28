@@ -40,6 +40,11 @@ class Settings(BaseSettings):
     BFL_API_KEY: Optional[str] = None
     MESHY_API_KEY: Optional[str] = None
 
+    # OpenAI Realtime (voice interrogation chatbot — "interrogazione" profile)
+    OPENAI_REALTIME_MODEL: str = "gpt-realtime-2"
+    OPENAI_REALTIME_VOICE: str = "marin"
+    OPENAI_REALTIME_TRANSCRIBE_MODEL: str = "gpt-4o-mini-transcribe"
+
     # Realtime voice (LiveKit)
     LIVEKIT_URL: Optional[str] = None
     LIVEKIT_API_KEY: Optional[str] = None

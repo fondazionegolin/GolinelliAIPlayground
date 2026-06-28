@@ -20,7 +20,7 @@ import {
   ArrowLeft, Users, Copy, Play, Square,
   Snowflake, Sun, Bot, Brain, MessageSquare,
   ClipboardList, Plus, Trash2, Check, Eye, ChevronDown, ChevronUp, History, User, BookOpen, Search, X,
-  MonitorPlay, Send, ChevronRight, LayoutGrid, List
+  MonitorPlay, Send, ChevronRight, LayoutGrid, List, FileCode2, Code2
 } from 'lucide-react'
 import { llmApi } from '@/lib/api'
 import { PASTEL_SURFACES, type PastelTone } from '@/design/themes/pastelSurfaces'
@@ -587,7 +587,9 @@ export default function SessionLivePage() {
                           chatbot:         { tone: 'violet',  iconTone: 'bg-[var(--logo-violet)]', icon: Bot,           label: 'Chatbot AI',          desc: 'Assistente AI con diverse modalità' },
                           classification:  { tone: 'sky',     iconTone: 'bg-[var(--logo-blue)]',   icon: Brain,         label: 'Classificazione ML',  desc: 'Immagini, testo, dati' },
                           self_assessment: { tone: 'amber',   iconTone: 'bg-[var(--logo-violet)]', icon: ClipboardList, label: 'Autovalutazione',     desc: 'Quiz e autovalutazione' },
-                          chat:            { tone: 'emerald', iconTone: 'bg-[var(--logo-ink)]',    icon: MessageSquare, label: 'Chat privata',         desc: 'Solo docente e singolo studente' },
+                          chat:            { tone: 'slate',   iconTone: 'bg-[var(--logo-ink)]',    icon: MessageSquare, label: 'Chat privata',         desc: 'Solo docente e singolo studente' },
+                          notebook:        { tone: 'violet',  iconTone: 'bg-[var(--logo-violet)]', icon: FileCode2,     label: 'Notebook',             desc: 'Notebook di coding e attività guidate' },
+                          coding:          { tone: 'cyan',    iconTone: 'bg-[var(--logo-blue)]',   icon: Code2,         label: 'Coding Lab',           desc: 'Mini app web con prompt, codice e anteprima' },
                         }
                         const c = cfg[mod.module_key] ?? { tone: 'slate' as PastelTone, iconTone: 'bg-slate-500', icon: Bot, label: mod.module_key, desc: '' }
                         const ModIcon = c.icon

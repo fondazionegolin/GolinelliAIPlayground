@@ -126,6 +126,8 @@ export const codingApi = {
     api.post(`/coding/projects/${projectId}/ui-review`, data),
   createVersion: (projectId: string, data: { parent_version_id?: string | null; source_manifest_json: Record<string, unknown>; artifact_manifest_json?: Record<string, unknown>; build_status?: string; review_status?: string }) =>
     api.post(`/coding/projects/${projectId}/versions`, data),
+  saveDraft: (projectId: string, data: { parent_version_id?: string | null; source_manifest_json: Record<string, unknown>; artifact_manifest_json?: Record<string, unknown>; build_status?: string; review_status?: string }) =>
+    api.put(`/coding/projects/${projectId}/draft`, data),
   shareToClass: (projectId: string) =>
     api.post(`/coding/projects/${projectId}/share-to-class`),
   forkProject: (projectId: string) =>
@@ -552,6 +554,15 @@ export const toyLmApi = {
 export const llmApi = {
   getProfiles: () => api.get('/llm/profiles'),
   getChatbotProfiles: () => api.get('/llm/chatbot-profiles'),
+  createRealtimeInterrogationSession: (
+    topic: string,
+    language: string,
+    opts?: { voice?: string; style?: string; pace?: string }
+  ) =>
+    api.post<{ value: string; model: string; expires_at?: number | string | null }>(
+      '/llm/realtime/interrogation-session',
+      { topic, language, ...opts }
+    ),
   getChatbotProfilesFull: () => api.get('/teacher/chatbot-profiles-full'),
   getAvailableModels: () => api.get('/llm/available-models'),
   getSessionConversations: (sessionId: string) => api.get(`/llm/sessions/${sessionId}/conversations`),
@@ -632,18 +643,24 @@ export const ragApi = {
 }
 
 export const studentRagApi = {
-  uploadDocument: (file: File) => {
+  uploadDocument: (file: File, projectId?: string) => {
     const form = new FormData()
     form.append('file', file)
+    if (projectId) form.append('project_id', projectId)
     return api.post('/rag/student/upload', form, { headers: { 'Content-Type': 'multipart/form-data' } })
   },
-  listDocuments: () => api.get('/rag/student/documents'),
+  ingestYoutube: (url: string, projectId?: string) =>
+    api.post('/rag/student/youtube', { url, project_id: projectId }),
+  generateArtifact: (prompt: string, artifactType: 'html' | 'brochure', projectId?: string) =>
+    api.post('/rag/student/artifact', { prompt, artifact_type: artifactType, project_id: projectId }),
+  listDocuments: (projectId?: string) => api.get('/rag/student/documents', { params: { project_id: projectId } }),
   deleteDocument: (docId: string) => api.delete(`/rag/student/documents/${docId}`),
   getChunks: (docId: string) => api.get(`/rag/student/documents/${docId}/chunks`),
-  search: (query: string, docIds?: string[], topK?: number) =>
-    api.post('/rag/student/search', { query, doc_ids: docIds, top_k: topK }),
-  chat: (message: string, history: { role: string; content: string }[], docIds?: string[], topK?: number) =>
-    api.post('/rag/student/chat', { message, history, doc_ids: docIds, top_k: topK }),
+  getGraph: (projectId?: string) => api.get('/rag/student/graph', { params: { project_id: projectId } }),
+  search: (query: string, docIds?: string[], topK?: number, projectId?: string) =>
+    api.post('/rag/student/search', { query, doc_ids: docIds, top_k: topK, project_id: projectId }),
+  chat: (message: string, history: { role: string; content: string }[], docIds?: string[], topK?: number, projectId?: string) =>
+    api.post('/rag/student/chat', { message, history, doc_ids: docIds, top_k: topK, project_id: projectId }),
 }
 
 export const mlApi = {

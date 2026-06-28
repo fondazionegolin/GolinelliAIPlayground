@@ -364,7 +364,7 @@ export default function StudentDashboard() {
 
   const privateChatEnabled = sessionInfo?.enabled_modules?.some((m) => m.key === 'chat') ?? false
   const sessionModules = sessionInfo?.enabled_modules?.map(m => m.key).filter(k => k !== 'chat') ?? []
-  const enabledModules = [...new Set([...sessionModules, 'classe', 'documents', 'wiki', 'coding'])]
+  const enabledModules = [...new Set([...sessionModules, 'classe', 'documents'])]
 
   if (loading) {
     return (
@@ -581,7 +581,6 @@ function StudentMobileShell({
   const topNav = [
     { key: null as string | null, label: t('student_dashboard.back_home'), icon: Home },
     { key: 'chatbot', label: t('navbar.nav_chatbot'), icon: Bot },
-    { key: 'wiki', label: t('navbar.nav_wiki'), icon: BookOpen },
     { key: 'classe', label: t('student_dashboard.chat_label'), icon: MessageSquare },
     { key: 'documents', label: t('navbar.nav_documents'), icon: FileText },
     { key: 'notebook', label: t('student_nav.notebook_label'), icon: FileCode2 },

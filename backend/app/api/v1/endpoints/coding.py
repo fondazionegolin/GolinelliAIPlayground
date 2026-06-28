@@ -1992,6 +1992,62 @@ async def create_project_version(
     return version
 
 
+@router.put("/projects/{project_id}/draft", response_model=CodingVersionResponse)
+async def save_project_draft(
+    project_id: UUID,
+    body: CodingVersionCreate,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    actor: Annotated[StudentOrTeacher, Depends(get_student_or_teacher)],
+):
+    """Persist editor-only changes without creating a new history entry on every keystroke."""
+    project = await _get_accessible_project(db, actor, project_id)
+    actor_type, _actor_id, _tenant_id = _actor_identity(actor)
+
+    manifest = body.source_manifest_json or {}
+    files = manifest.get("files") if isinstance(manifest, dict) else None
+    if not isinstance(files, list):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Draft files required")
+
+    version: CodingVersion | None = None
+    if project.current_version_id:
+        current_result = await db.execute(select(CodingVersion).where(CodingVersion.id == project.current_version_id))
+        version = current_result.scalar_one_or_none()
+
+    if version is None:
+        result = await db.execute(
+            select(func.max(CodingVersion.version_number)).where(CodingVersion.project_id == project.id)
+        )
+        version = CodingVersion(
+            project_id=project.id,
+            parent_version_id=None,
+            version_number=(result.scalar_one_or_none() or 0) + 1,
+            source_manifest_json=manifest,
+            artifact_manifest_json=body.artifact_manifest_json,
+            build_status=body.build_status,
+            review_status=body.review_status,
+            created_by_actor_type=actor_type,
+        )
+        db.add(version)
+        await db.flush()
+        project.current_version_id = version.id
+    else:
+        previous_manifest = version.source_manifest_json or {}
+        previous_collaboration = previous_manifest.get("collaboration") or {}
+        next_manifest = {
+            **manifest,
+            **({"collaboration": previous_collaboration} if previous_collaboration and "collaboration" not in manifest else {}),
+        }
+        version.source_manifest_json = next_manifest
+        version.artifact_manifest_json = body.artifact_manifest_json
+        version.build_status = body.build_status
+        version.review_status = body.review_status
+
+    project.updated_at = func.now()
+    await db.commit()
+    await db.refresh(version)
+    return version
+
+
 @router.post("/projects/{project_id}/generate", response_model=CodingGenerateResponse)
 async def generate_project_code(
     project_id: UUID,

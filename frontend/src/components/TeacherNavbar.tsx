@@ -8,7 +8,7 @@ import { teacherApi } from '@/lib/api'
 import { useAuthStore } from '@/stores/auth'
 import TeacherNotifications, { TeacherNotification } from './TeacherNotifications'
 import { useSocket } from '@/hooks/useSocket'
-import { DEFAULT_TEACHER_ACCENT, getTeacherAccentTheme, TEACHER_ACCENTS, type TeacherAccentId } from '@/lib/teacherAccent'
+import { DEFAULT_TEACHER_ACCENT, getTeacherAccentTheme, type TeacherAccentId } from '@/lib/teacherAccent'
 import { NavTab } from '@/components/ui/NavTab'
 import { useTranslation } from 'react-i18next'
 import { LanguageSwitcher } from '@/components/LanguageSwitcher'
@@ -84,8 +84,8 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
     root.style.setProperty('--app-accent-soft', accentTheme.soft)
     root.style.setProperty('--app-accent-soft-strong', accentTheme.softStrong)
     root.style.setProperty('--app-accent-border', accentTheme.border)
-    root.style.setProperty('--app-body-bg', '#ffffff')
-    root.style.setProperty('--surface-page', '#ffffff')
+    root.style.setProperty('--app-body-bg', '#f1f3f5')
+    root.style.setProperty('--surface-page', '#f1f3f5')
   }, [accentTheme])
 
   useEffect(() => {
@@ -344,7 +344,7 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
               <LogoMark className="h-9 w-9" />
               <div className="flex items-center gap-1.5">
                 <span className="brand-wordmark">
-                  Golinelli<span style={{ color: 'var(--logo-pink)', WebkitTextFillColor: 'var(--logo-pink)' }}>.ai</span>
+                  Golinelli<span className="brand-wordmark-ai">.ai</span>
                 </span>
                 <button
                   type="button"
@@ -361,7 +361,7 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
               </div>
             </div>
 
-            <div className="hidden xl:flex items-center gap-1 h-11 rounded-xl border p-1" style={buildAccentNavClusterStyle(accentTheme)}>
+            <div className="hidden xl:flex items-center gap-1 h-11 rounded-[var(--selection-radius)] border p-1" style={buildAccentNavClusterStyle(accentTheme)}>
               {(() => {
                 const activeIdx = navItems.findIndex(item => isActive(item.path))
                 return navItems.map((item, idx) => (
@@ -381,7 +381,7 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
             <div className="hidden xl:block h-8 w-px bg-slate-200/80 mx-1" />
 
             <div className="flex items-center gap-3">
-              <div className="hidden h-11 items-center gap-1 rounded-xl border p-1 lg:flex" style={buildAccentNavClusterStyle(accentTheme)}>
+              <div className="hidden h-11 items-center gap-1 rounded-[var(--selection-radius)] border p-1 lg:flex" style={buildAccentNavClusterStyle(accentTheme)}>
               {/* Date/time + mini calendar */}
               <NavbarCalendarClock
                 sessionId={currentSession?.id}
@@ -403,7 +403,7 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
               <div className="relative flex items-center gap-2" ref={sessionsMenuRef}>
                 <button
                   onClick={() => setShowSessionsMenu(!showSessionsMenu)}
-                  className="navbar-inline-control flex h-9 items-center gap-2 rounded-xl px-3"
+                  className="navbar-inline-control flex h-9 items-center gap-2 rounded-[var(--selection-radius)] px-3"
                   style={{ '--btn-tone': accentTheme.accent } as CSSProperties}
                 >
                   <div className={`h-2.5 w-2.5 flex-shrink-0 rounded-full ${currentSession ? 'bg-green-500 animate-pulse shadow-sm shadow-green-300' : 'bg-slate-300'}`} />
@@ -416,7 +416,7 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
                   <ChevronDown className={`ml-0.5 h-3.5 w-3.5 flex-shrink-0 text-slate-500 transition-transform ${showSessionsMenu ? 'rotate-180' : ''}`} />
                 </button>
                 <button
-                  className={`navbar-inline-control relative flex h-9 w-9 items-center justify-center rounded-xl p-0 ${chatSidebarOpen ? 'navbar-inline-control-active' : ''}`}
+                  className={`navbar-inline-control relative flex h-9 w-9 items-center justify-center rounded-[var(--selection-radius)] p-0 ${chatSidebarOpen ? 'navbar-inline-control-active' : ''}`}
                   style={{ '--btn-tone': accentTheme.accent } as CSSProperties}
                   onClick={onToggleChatSidebar}
                   title={chatSidebarOpen ? t('navbar.hide_class_chat') : t('navbar.show_class_chat')}
@@ -845,31 +845,7 @@ function SettingsModal({ profile, onSave, onClose }: SettingsModalProps) {
             <LanguageSwitcher variant="full" />
           </div>
 
-          <div>
-            <label className="block text-xs font-semibold text-slate-500 uppercase mb-2">{t('navbar.accent_color')}</label>
-            <div className="grid grid-cols-4 gap-2">
-              {(Object.values(TEACHER_ACCENTS)).map((accentOption) => {
-                const isSelected = formData.uiAccent === accentOption.id
-                return (
-                  <button
-                    key={accentOption.id}
-                    type="button"
-                    onClick={() => setFormData({ ...formData, uiAccent: accentOption.id })}
-                    className={`relative h-10 rounded-lg border transition-all ${isSelected ? 'border-slate-500' : 'border-slate-200 hover:border-slate-300'}`}
-                    style={{ backgroundColor: accentOption.soft }}
-                    title={accentOption.label}
-                  >
-                    <span className="absolute inset-0 m-auto h-5 w-5 rounded-full" style={{ backgroundColor: accentOption.accent }} />
-                    {isSelected && (
-                      <Check className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-white text-slate-700 p-0.5 shadow" />
-                    )}
-                  </button>
-                )
-              })}
-            </div>
-          </div>
-
-
+          {/* Accent-color picker removed: the app now uses a single fixed brand palette. */}
 
           {/* Change password section */}
           <div className="border-t border-slate-100 pt-4">

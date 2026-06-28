@@ -201,7 +201,7 @@ async def transcribe_assignment_image(
     )
 
 
-DEFAULT_MODULES = ["chatbot", "classification", "self_assessment", "chat"]
+DEFAULT_MODULES = ["chatbot", "classification", "self_assessment", "chat", "notebook", "coding"]
 
 
 async def _generate_unique_join_code(db: AsyncSession) -> str:
@@ -580,6 +580,20 @@ async def get_session_live(
         .where(SessionModule.session_id == session_id)
     )
     modules = result.scalars().all()
+    module_map = {m.module_key: m for m in modules}
+    normalized_modules = []
+    for module_key in DEFAULT_MODULES:
+        module = module_map.get(module_key)
+        normalized_modules.append({
+            "module_key": module_key,
+            "is_enabled": module.is_enabled if module else False,
+        })
+    for module in modules:
+        if module.module_key not in DEFAULT_MODULES:
+            normalized_modules.append({
+                "module_key": module.module_key,
+                "is_enabled": module.is_enabled,
+            })
     
     return {
         "session": {
@@ -603,13 +617,7 @@ async def get_session_live(
             }
             for s in students
         ],
-        "modules": [
-            {
-                "module_key": m.module_key,
-                "is_enabled": m.is_enabled,
-            }
-            for m in modules
-        ],
+        "modules": normalized_modules,
     }
 
 
@@ -622,9 +630,11 @@ async def toggle_module(
     is_enabled: bool = True,
 ):
     """Enable or disable a module for a session"""
-    # Verify session access
-    if not await teacher_can_access_session(db, teacher, session_id):
+    # Verify session access and keep tenant data for newly enabled modules.
+    session_data = await get_session_with_access_check(db, teacher, session_id)
+    if not session_data:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
+    session, _ = session_data
     
     # Find or create module entry
     result = await db.execute(
@@ -638,9 +648,11 @@ async def toggle_module(
         module.is_enabled = is_enabled
     else:
         module = SessionModule(
+            tenant_id=session.tenant_id,
             session_id=session_id,
             module_key=module_key,
             is_enabled=is_enabled,
+            config_json={},
         )
         db.add(module)
     

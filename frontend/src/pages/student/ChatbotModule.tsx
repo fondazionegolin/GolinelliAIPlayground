@@ -11,7 +11,7 @@ import {
   Lightbulb, ClipboardCheck, Sparkles,
   Paperclip, X, File, Database, Download, Loader2,
   Trash2, ChevronLeft, ChevronRight, Wand2, Palette, ChevronDown, Check, ImageIcon,
-  FlaskConical, ScrollText, Languages, Landmark, Sigma, Microscope, BookText, type LucideIcon
+  FlaskConical, ScrollText, Languages, Landmark, Sigma, Microscope, BookText, Search, Mic, type LucideIcon
 } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -35,6 +35,7 @@ import EnvironmentalImpactPill from '@/components/chat/EnvironmentalImpactPill'
 import type { TokenUsageJson } from '@/lib/environmentalImpact'
 
 const StudentRagWorkspace = lazy(() => import('@/components/student/StudentRagWorkspace'))
+const RealtimeInterrogationPanel = lazy(() => import('@/components/student/RealtimeInterrogationPanel'))
 
 interface Message {
   id: string
@@ -119,11 +120,59 @@ function getProfileTone(profileKey?: string | null): PastelTone {
   return profileKey ? PROFILE_TONES[profileKey] || 'slate' : 'slate'
 }
 
-function getMainTabTone(key: 'assistants' | 'teacherbots' | 'learning' | 'rag'): PastelTone {
-  if (key === 'assistants') return 'sky'
-  if (key === 'teacherbots') return 'violet'
-  if (key === 'learning') return 'orange'
-  return 'cyan'
+// Macro-area containers carry the four logo colours, but as translucent tinted
+// surfaces with an in-tint border (same visual language as the cards), so they
+// read as section headers while staying light and distinct from nested items.
+type MacroAreaKey = 'assistants' | 'teacherbots' | 'learning' | 'rag'
+const MACRO_AREA_COLORS: Record<MacroAreaKey, {
+  surface: string
+  iconChip: string
+  badge: string
+  line: string
+}> = {
+  assistants: {
+    surface: 'bg-[rgba(254,0,77,0.07)] border-[rgba(254,0,77,0.20)] hover:bg-[rgba(254,0,77,0.10)] hover:border-[rgba(254,0,77,0.30)]',
+    iconChip: 'bg-[rgba(254,0,77,0.14)] text-[#e3004a]',
+    badge: 'bg-[rgba(254,0,77,0.13)] text-[#cf0a45]',
+    line: 'rgba(254,0,77,0.30)',
+  },
+  teacherbots: {
+    surface: 'bg-[rgba(123,105,201,0.08)] border-[rgba(123,105,201,0.20)] hover:bg-[rgba(123,105,201,0.12)] hover:border-[rgba(123,105,201,0.30)]',
+    iconChip: 'bg-[rgba(123,105,201,0.16)] text-[#55449c]',
+    badge: 'bg-[rgba(123,105,201,0.16)] text-[#55449c]',
+    line: 'rgba(123,105,201,0.32)',
+  },
+  learning: {
+    surface: 'bg-[rgba(62,169,244,0.09)] border-[rgba(62,169,244,0.22)] hover:bg-[rgba(62,169,244,0.13)] hover:border-[rgba(62,169,244,0.32)]',
+    iconChip: 'bg-[rgba(62,169,244,0.16)] text-[#1278bd]',
+    badge: 'bg-[rgba(62,169,244,0.16)] text-[#1278bd]',
+    line: 'rgba(62,169,244,0.34)',
+  },
+  rag: {
+    surface: 'bg-[rgba(23,21,27,0.05)] border-[rgba(23,21,27,0.14)] hover:bg-[rgba(23,21,27,0.08)] hover:border-[rgba(23,21,27,0.20)]',
+    iconChip: 'bg-[rgba(23,21,27,0.08)] text-[#17151b]',
+    badge: 'bg-[rgba(23,21,27,0.08)] text-[#17151b]',
+    line: 'rgba(23,21,27,0.22)',
+  },
+}
+
+// Tree connector (vertical rail + curved elbow) linking a nested item to its
+// macro-area header, in the area's logo tint — like the reference sidebar.
+function NavTreeConnector({ tint, isLast }: { tint: string; isLast: boolean }) {
+  return (
+    <>
+      <span
+        className="pointer-events-none absolute left-2 top-0 h-[calc(50%+1px)] w-3.5 rounded-bl-[10px] border-b border-l"
+        style={{ borderColor: tint }}
+      />
+      {!isLast && (
+        <span
+          className="pointer-events-none absolute left-2 top-1/2 bottom-0 w-px"
+          style={{ backgroundColor: tint }}
+        />
+      )}
+    </>
+  )
 }
 
 function getTeacherbotTone(color: string): PastelTone {
@@ -327,39 +376,6 @@ function buildLearningImagePrompt(topic: string, unit: LearningUnit, uiLanguage:
   ].join('\n')}`
 }
 
-function getSidebarMenuTheme(key: 'assistants' | 'teacherbots' | 'learning' | 'rag') {
-  if (key === 'assistants') {
-    return {
-      surface: 'rgba(186, 230, 253, 0.34)',
-      surfaceStrong: 'rgba(125, 211, 252, 0.24)',
-      iconBg: 'rgba(14,165,233,0.14)',
-      iconColor: '#0369a1',
-    }
-  }
-  if (key === 'teacherbots') {
-    return {
-      surface: 'rgba(221, 214, 254, 0.4)',
-      surfaceStrong: 'rgba(196, 181, 253, 0.28)',
-      iconBg: 'rgba(139,92,246,0.14)',
-      iconColor: '#6d28d9',
-    }
-  }
-  if (key === 'rag') {
-    return {
-      surface: 'rgba(237, 233, 254, 0.5)',
-      surfaceStrong: 'rgba(221, 214, 254, 0.34)',
-      iconBg: 'rgba(124,58,237,0.14)',
-      iconColor: '#7c3aed',
-    }
-  }
-  return {
-    surface: 'rgba(254, 215, 170, 0.42)',
-    surfaceStrong: 'rgba(253, 186, 116, 0.28)',
-    iconBg: 'rgba(249,115,22,0.14)',
-    iconColor: '#c2410c',
-  }
-}
-
 type TeacherbotVisual = {
   Icon: LucideIcon
   label: string
@@ -445,6 +461,7 @@ export default function ChatbotModule({ sessionId, studentId, initialTeacherbotI
   const [imageSize, setImageSize] = useState<string>('1024x1024')
   const [chatMode, setChatMode] = useState<'normal' | 'image' | 'quiz' | 'dataset'>('normal')
   const [showChatModeMenu, setShowChatModeMenu] = useState(false)
+  const [showVoiceInterrogation, setShowVoiceInterrogation] = useState(false)
   const [expandedSection, setExpandedSection] = useState<'assistants' | 'teacherbots' | 'learning' | 'rag' | null>(null)
   const [imageGenerationProgress, setImageGenerationProgress] = useState<{
     status: string
@@ -476,6 +493,7 @@ export default function ChatbotModule({ sessionId, studentId, initialTeacherbotI
   const [learningSessions, setLearningSessions] = useState<LearningSession[]>([])
   const [activeLearningSession, setActiveLearningSession] = useState<LearningSession | null>(null)
   const [learningMode, setLearningMode] = useState(false)
+  const [chatbotSearch, setChatbotSearch] = useState('')
   const [showNewLessonDialog, setShowNewLessonDialog] = useState(false)
   const [newLessonTopic, setNewLessonTopic] = useState('')
   const [generatingLesson, setGeneratingLesson] = useState(false)
@@ -1753,6 +1771,31 @@ REGOLE IMPORTANTI:
   )
   const effectiveSelectedModel = selectedModel || savedDefaultModel || teacherDefaultModel || null
   const availableTeacherbots = teacherbotsData || []
+  const normalizedChatbotSearch = chatbotSearch.trim().toLowerCase()
+  const filteredProfiles = useMemo(() => {
+    if (!normalizedChatbotSearch) return profiles
+    return profiles.filter((profile) =>
+      [profile.name, profile.description, ...(profile.suggested_prompts || [])]
+        .filter(Boolean)
+        .some((value) => String(value).toLowerCase().includes(normalizedChatbotSearch))
+    )
+  }, [normalizedChatbotSearch])
+  const filteredTeacherbots = useMemo(() => {
+    if (!normalizedChatbotSearch) return availableTeacherbots
+    return availableTeacherbots.filter((bot) =>
+      [bot.name, bot.synopsis, bot.description]
+        .filter(Boolean)
+        .some((value) => String(value).toLowerCase().includes(normalizedChatbotSearch))
+    )
+  }, [availableTeacherbots, normalizedChatbotSearch])
+  const filteredLearningSessions = useMemo(() => {
+    if (!normalizedChatbotSearch) return learningSessions
+    return learningSessions.filter((session) =>
+      [session.topic, session.lesson]
+        .filter(Boolean)
+        .some((value) => String(value).toLowerCase().includes(normalizedChatbotSearch))
+    )
+  }, [learningSessions, normalizedChatbotSearch])
   const lastAppliedTeacherbotIdRef = useRef<string | null>(null)
 
   useEffect(() => {
@@ -2149,7 +2192,7 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
 
       <div className="bg-white p-2 md:bg-transparent md:p-3">
         <div
-          className="relative flex items-end gap-2 rounded-xl border border-slate-200/80 bg-white/90 p-2 pl-3 shadow-sm transition-all focus-within:border-slate-400"
+          className="relative flex items-end gap-1.5 rounded-[24px] border border-slate-200 bg-white p-1.5 shadow-sm transition-all focus-within:border-slate-300 focus-within:ring-2 focus-within:ring-slate-200"
         >
           <input type="file" ref={fileInputRef} className="hidden" multiple
             accept="image/*,.pdf,.doc,.docx,.ppt,.pptx,.txt,.csv,.xlsx,.xls,.json"
@@ -2168,18 +2211,18 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
           />
 
           <Button
-            variant="ghost" size="icon" className="h-9 w-9 flex-shrink-0 rounded-xl text-slate-400 hover:bg-slate-100"
+            variant="ghost" size="icon" className="h-8 w-8 flex-shrink-0 rounded-full text-slate-400 hover:bg-slate-100"
             style={{ color: 'inherit' }}
             onClick={() => fileInputRef.current?.click()}
           >
-            <Paperclip className="h-5 w-5" />
+            <Paperclip className="h-4 w-4" />
           </Button>
 
           <div className="relative hidden md:block flex-shrink-0">
             <button
               type="button"
               onClick={() => setShowChatModeMenu((prev) => !prev)}
-              className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white/85 px-3 py-1.5 text-[11px] font-semibold text-slate-900 shadow-sm transition-all hover:bg-white"
+              className="inline-flex h-8 items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 text-[11px] font-semibold text-slate-900 shadow-sm transition-all hover:bg-slate-100"
               title="Cambia modalità"
             >
               <span className="px-1.5">Modalita</span>
@@ -2253,7 +2296,7 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
               onPaste={handleInputPaste}
               placeholder={profileInterview.active ? t('chatbot.guided_placeholder') : (chatMode === 'image' ? 'Descrivi l\'immagine da generare...' : chatMode === 'quiz' ? 'Di cosa vuoi un quiz?' : chatMode === 'dataset' ? 'Descrivi il dataset da generare...' : (attachedFiles.length > 0 ? t('chatbot.describe_placeholder') : 'Scrivi un messaggio...'))}
               disabled={sendMessageMutation.isPending || isStreaming}
-              className="w-full py-2.5 bg-transparent border-none text-sm focus:ring-0 focus:outline-none outline-none placeholder:text-slate-400"
+              className="w-full bg-transparent px-1 py-2 text-sm text-slate-800 outline-none placeholder:text-slate-400 focus:outline-none focus:ring-0"
             />
           </div>
 
@@ -2261,7 +2304,7 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
             onClick={() => handleSend()}
             disabled={(!input.trim() && attachedFiles.length === 0) || sendMessageMutation.isPending || isStreaming}
             size="icon"
-            className={`h-9 w-9 flex-shrink-0 rounded-xl transition-all ${(!input.trim() && attachedFiles.length === 0) ? 'bg-slate-200 text-slate-400' : 'text-white shadow-md hover:-translate-y-0.5'}`}
+            className={`h-9 w-9 flex-shrink-0 rounded-full transition-all ${(!input.trim() && attachedFiles.length === 0) ? 'bg-slate-100 text-slate-300' : 'text-white shadow-md hover:-translate-y-0.5'}`}
             style={(!input.trim() && attachedFiles.length === 0) ? undefined : selectedSolidStyle}
           >
             <Send className="h-4 w-4 ml-0.5" />
@@ -2358,22 +2401,20 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
 
         <nav className="px-3 py-3 space-y-1 flex-1 overflow-y-auto">
           {[
-            { key: 'assistants' as const, label: 'Assistenti AI', icon: Bot, badge: profiles.length, note: 'Tutor, quiz e strumenti' },
-            { key: 'teacherbots' as const, label: 'Teacherbot', icon: Wand2, badge: availableTeacherbots.length, note: 'Dal tuo docente' },
-            { key: 'learning' as const, label: 'Oggi Imparo', icon: BookOpen, badge: learningSessions.length, note: 'Microlezioni' },
+            { key: 'assistants' as const, label: 'Assistenti AI', icon: Bot, badge: filteredProfiles.length, note: 'Tutor, quiz e strumenti' },
+            { key: 'teacherbots' as const, label: 'Teacherbot', icon: Wand2, badge: filteredTeacherbots.length, note: 'Dal tuo docente' },
+            { key: 'learning' as const, label: 'Oggi Imparo', icon: BookOpen, badge: filteredLearningSessions.length, note: 'Microlezioni' },
             { key: 'rag' as const, label: 'RAG', icon: Database, badge: undefined, note: 'Documenti & citazioni' },
           ].map(({ key, label, icon: Icon, badge, note }) => {
             const active = mainTab === key
             const isExpanded = expandedSection === key
-            const menuTheme = getSidebarMenuTheme(key)
-            const tone = getMainTabTone(key)
             return (
               <div key={key}>
                 <button
-	                  className={`w-full rounded-lg px-3 py-2.5 text-left shadow-sm transition-all ${
+	                  className={`w-full rounded-2xl border px-3.5 py-3 text-left backdrop-blur-sm transition-all ${MACRO_AREA_COLORS[key].surface} ${
                       active || isExpanded
-                        ? PASTEL_SURFACES[tone]
-                        : 'border border-slate-200/60 bg-white/70 hover:border-slate-300 hover:bg-white'
+                        ? 'shadow-md ring-1 ring-inset ring-black/[0.04]'
+                        : 'shadow-sm hover:shadow-md'
                     }`}
                   onClick={() => {
                     if (key === 'rag') {
@@ -2395,167 +2436,147 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
                   }}
                 >
                   <div className="flex items-center gap-2.5">
-                    <div
-	                      className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${PASTEL_ICON_BACKGROUNDS[tone]} ${PASTEL_ICON_TEXT[tone]}`}
-                    >
-                      <Icon className="h-3.5 w-3.5" />
+                    <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${MACRO_AREA_COLORS[key].iconChip}`}>
+                      <Icon className="h-4 w-4" />
                     </div>
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center justify-between gap-1">
-                        <span className="text-sm font-semibold text-slate-800">{label}</span>
-                        <div className="flex items-center gap-1">
+                        <span className="text-sm font-bold tracking-tight text-slate-800">{label}</span>
+                        <div className="flex items-center gap-1.5">
                           {badge !== undefined && (
-                            <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold ${PASTEL_ICON_BACKGROUNDS[tone]} ${PASTEL_ICON_TEXT[tone]}`}>
+                            <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${MACRO_AREA_COLORS[key].badge}`}>
                               {badge}
                             </span>
                           )}
-                          <ChevronDown className={`h-3 w-3 transition-transform text-slate-400 ${isExpanded ? 'rotate-180' : ''}`} />
+                          <ChevronDown className={`h-3.5 w-3.5 transition-transform text-slate-400 ${isExpanded ? 'rotate-180' : ''}`} />
                         </div>
                       </div>
-                      <p className="text-[11px] text-slate-500">{note}</p>
+                      <p className="text-[11px] font-medium text-slate-500">{note}</p>
                     </div>
                   </div>
                 </button>
 
-                {/* Expanded sub-items */}
+                {/* Expanded sub-items — reference-style tree */}
                 {isExpanded && key === 'assistants' && (
-                  <div className="mt-1 ml-2 space-y-0.5">
-                    {profiles.map((profile) => {
+                  <div className="relative mt-1 ml-3 space-y-0.5">
+                    {filteredProfiles.map((profile, i) => {
                       const isActive = selectedProfile === profile.key && !selectedTeacherbot && !learningMode
+                      const usage = profileUsageCounts[profile.key] || 0
                       return (
-                        <button
-                          key={profile.key}
-                          onClick={() => handleSelectProfile(profile.key)}
-                          className={`w-full flex items-start gap-3 rounded-lg px-3 py-3 text-left transition-all ${isActive ? 'bg-slate-50' : 'hover:bg-slate-50'}`}
-                          style={isActive ? { borderLeft: `3px solid ${menuTheme.iconColor}`, paddingLeft: '9px' } : undefined}
-                        >
-                          <div className="w-8 h-8 rounded-xl flex items-center justify-center shrink-0"
-                            style={{ backgroundColor: menuTheme.iconBg, color: menuTheme.iconColor }}>
-                            {PROFILE_ICONS[profile.key] || <Bot className="h-4 w-4" />}
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <div className="text-sm font-semibold text-slate-700 truncate">{profile.name}</div>
-                            {profile.description && (
-                              <div className="text-[11px] text-slate-400 mt-0.5 line-clamp-2 leading-relaxed">{profile.description}</div>
+                        <div key={profile.key} className="relative">
+                          <NavTreeConnector tint={MACRO_AREA_COLORS.assistants.line} isLast={i === filteredProfiles.length - 1} />
+                          <button
+                            onClick={() => handleSelectProfile(profile.key)}
+                            className={`ml-[26px] flex w-[calc(100%-26px)] items-center justify-between gap-2 rounded-[14px] px-3 py-2 text-left transition-all ${isActive ? 'bg-white shadow-[0_2px_8px_rgba(15,23,42,0.08)]' : 'hover:bg-white/70'}`}
+                          >
+                            <span className={`truncate text-[13px] ${isActive ? 'font-bold text-slate-900' : 'font-medium text-slate-500'}`}>{profile.name}</span>
+                            {usage > 0 && (
+                              <span className={`shrink-0 rounded-md px-1.5 py-0.5 text-[11px] font-bold ${MACRO_AREA_COLORS.assistants.badge}`}>{usage}</span>
                             )}
-                          </div>
-                        </button>
+                          </button>
+                        </div>
                       )
                     })}
                   </div>
                 )}
 
                 {isExpanded && key === 'teacherbots' && (
-                  <div className="mt-1 ml-2 space-y-0.5">
-                    {availableTeacherbots.length === 0 ? (
-                      <p className="text-xs text-slate-400 px-3 py-2">Nessun teacherbot disponibile</p>
-                    ) : availableTeacherbots.map((bot) => {
+                  <div className="relative mt-1 ml-3 space-y-0.5">
+                    {filteredTeacherbots.length === 0 ? (
+                      <p className="ml-[26px] px-3 py-2 text-xs text-slate-400">{normalizedChatbotSearch ? 'Nessun risultato' : 'Nessun teacherbot disponibile'}</p>
+                    ) : filteredTeacherbots.map((bot, i) => {
                       const isActive = selectedTeacherbot?.id === bot.id
                       return (
-                        <button
-                          key={bot.id}
-                          onClick={() => handleSelectTeacherbot(bot)}
-                          className={`w-full flex items-start gap-3 rounded-lg px-3 py-3 text-left transition-all ${isActive ? 'bg-slate-50' : 'hover:bg-slate-50'}`}
-                          style={isActive ? { borderLeft: `3px solid ${menuTheme.iconColor}`, paddingLeft: '9px' } : undefined}
-                        >
-                          <div className="w-8 h-8 rounded-xl flex items-center justify-center shrink-0"
-                            style={{ backgroundColor: menuTheme.iconBg, color: menuTheme.iconColor }}>
-                            <Wand2 className="h-4 w-4" />
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <div className="text-sm font-semibold text-slate-700 truncate">{bot.name}</div>
-                            {bot.synopsis && (
-                              <div className="text-[11px] text-slate-400 mt-0.5 line-clamp-2 leading-relaxed">{bot.synopsis}</div>
-                            )}
-                          </div>
-                        </button>
+                        <div key={bot.id} className="relative">
+                          <NavTreeConnector tint={MACRO_AREA_COLORS.teacherbots.line} isLast={i === filteredTeacherbots.length - 1} />
+                          <button
+                            onClick={() => handleSelectTeacherbot(bot)}
+                            className={`ml-[26px] flex w-[calc(100%-26px)] items-center justify-between gap-2 rounded-[14px] px-3 py-2 text-left transition-all ${isActive ? 'bg-white shadow-[0_2px_8px_rgba(15,23,42,0.08)]' : 'hover:bg-white/70'}`}
+                          >
+                            <span className={`truncate text-[13px] ${isActive ? 'font-bold text-slate-900' : 'font-medium text-slate-500'}`}>{bot.name}</span>
+                          </button>
+                        </div>
                       )
                     })}
                   </div>
                 )}
 
-                {isExpanded && key === 'rag' && (
-                  <div className="mt-1 ml-2 space-y-0.5">
-                    <button
-                      onClick={() => {
-                        const s = createRagSession()
-                        saveRagSession(s)
-                        setRagSessions(getRagSessions())
-                        setActiveRagSessionId(s.id)
-                        setMainTab('rag')
-                        setExpandedSection(null)
-                        setNavCollapsed(true)
-                      }}
-                      className="w-full flex items-center gap-2 rounded-lg px-3 py-2 text-left transition-all hover:bg-slate-50"
-                    >
-                      <div className="w-6 h-6 rounded-lg flex items-center justify-center shrink-0"
-                        style={{ backgroundColor: menuTheme.iconBg, color: menuTheme.iconColor }}>
-                        <Plus className="h-3 w-3" />
-                      </div>
-                      <div className="text-xs font-semibold text-slate-700">Nuova sessione</div>
-                    </button>
-                    {ragSessions.slice(0, 8).map((ragSession) => {
-                      const isActive = activeRagSessionId === ragSession.id && mainTab === 'rag'
-                      const lastMsg = ragSession.messages.filter(m => m.role === 'user').pop()
-                      return (
+                {isExpanded && key === 'rag' && (() => {
+                  const ragList = ragSessions.slice(0, 8)
+                  return (
+                    <div className="relative mt-1 ml-3 space-y-0.5">
+                      <div className="relative">
+                        <NavTreeConnector tint={MACRO_AREA_COLORS.rag.line} isLast={ragList.length === 0} />
                         <button
-                          key={ragSession.id}
                           onClick={() => {
-                            setActiveRagSessionId(ragSession.id)
+                            const s = createRagSession()
+                            saveRagSession(s)
+                            setRagSessions(getRagSessions())
+                            setActiveRagSessionId(s.id)
                             setMainTab('rag')
                             setExpandedSection(null)
                             setNavCollapsed(true)
                           }}
-                          className={`w-full flex items-center gap-2 rounded-lg px-3 py-2 text-left transition-all ${isActive ? 'bg-slate-50' : 'hover:bg-slate-50'}`}
-                          style={isActive ? { borderLeft: `3px solid ${menuTheme.iconColor}`, paddingLeft: '9px' } : undefined}
+                          className="ml-[26px] flex w-[calc(100%-26px)] items-center gap-1.5 rounded-[14px] px-3 py-2 text-left text-[13px] font-semibold text-slate-500 transition-all hover:bg-white/70 hover:text-slate-700 [&_svg]:h-3.5 [&_svg]:w-3.5"
                         >
-                          <div className="w-6 h-6 rounded-lg flex items-center justify-center shrink-0"
-                            style={{ backgroundColor: menuTheme.iconBg, color: menuTheme.iconColor }}>
-                            <Database className="h-3 w-3" />
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <div className="text-xs font-semibold text-slate-700 truncate">{ragSession.name}</div>
-                            {lastMsg && (
-                              <div className="text-[10px] text-slate-400 truncate">{lastMsg.content.slice(0, 40)}</div>
-                            )}
-                          </div>
+                          <Plus />
+                          Nuova sessione
                         </button>
-                      )
-                    })}
-                  </div>
-                )}
-
-                {isExpanded && key === 'learning' && (
-                  <div className="mt-1 ml-2 space-y-0.5">
-                    <button
-                      onClick={() => setShowNewLessonDialog(true)}
-                      className="w-full flex items-center gap-2 rounded-lg px-3 py-2 text-left transition-all hover:bg-slate-50"
-                    >
-                      <div className="w-6 h-6 rounded-lg flex items-center justify-center shrink-0"
-                        style={{ backgroundColor: menuTheme.iconBg, color: menuTheme.iconColor }}>
-                        <Plus className="h-3 w-3" />
                       </div>
-                      <div className="text-xs font-semibold text-slate-700">Nuova microlezione</div>
-                    </button>
-                    {learningSessions.slice(0, 5).map((session) => {
-                      const isActive = activeLearningSession?.id === session.id
-                      return (
-                        <button
-                          key={session.id}
-                          onClick={() => openLearningSession(session)}
-                          className={`w-full flex items-center gap-2 rounded-lg px-3 py-2 text-left transition-all ${isActive ? 'bg-slate-50' : 'hover:bg-slate-50'}`}
-                          style={isActive ? { borderLeft: `3px solid ${menuTheme.iconColor}`, paddingLeft: '9px' } : undefined}
-                        >
-                          <div className="w-6 h-6 rounded-lg flex items-center justify-center shrink-0"
-                            style={{ backgroundColor: menuTheme.iconBg, color: menuTheme.iconColor }}>
-                            <BookOpen className="h-3 w-3" />
+                      {ragList.map((ragSession, i) => {
+                        const isActive = activeRagSessionId === ragSession.id && mainTab === 'rag'
+                        return (
+                          <div key={ragSession.id} className="relative">
+                            <NavTreeConnector tint={MACRO_AREA_COLORS.rag.line} isLast={i === ragList.length - 1} />
+                            <button
+                              onClick={() => {
+                                setActiveRagSessionId(ragSession.id)
+                                setMainTab('rag')
+                                setExpandedSection(null)
+                                setNavCollapsed(true)
+                              }}
+                              className={`ml-[26px] flex w-[calc(100%-26px)] items-center justify-between gap-2 rounded-[14px] px-3 py-2 text-left transition-all ${isActive ? 'bg-white shadow-[0_2px_8px_rgba(15,23,42,0.08)]' : 'hover:bg-white/70'}`}
+                            >
+                              <span className={`truncate text-[13px] ${isActive ? 'font-bold text-slate-900' : 'font-medium text-slate-500'}`}>{ragSession.name}</span>
+                            </button>
                           </div>
-                          <div className="text-xs font-semibold text-slate-700 truncate">{session.topic}</div>
+                        )
+                      })}
+                    </div>
+                  )
+                })()}
+
+                {isExpanded && key === 'learning' && (() => {
+                  const lessonList = filteredLearningSessions.slice(0, 5)
+                  return (
+                    <div className="relative mt-1 ml-3 space-y-0.5">
+                      <div className="relative">
+                        <NavTreeConnector tint={MACRO_AREA_COLORS.learning.line} isLast={lessonList.length === 0} />
+                        <button
+                          onClick={() => setShowNewLessonDialog(true)}
+                          className="ml-[26px] flex w-[calc(100%-26px)] items-center gap-1.5 rounded-[14px] px-3 py-2 text-left text-[13px] font-semibold text-slate-500 transition-all hover:bg-white/70 hover:text-slate-700 [&_svg]:h-3.5 [&_svg]:w-3.5"
+                        >
+                          <Plus />
+                          Nuova microlezione
                         </button>
-                      )
-                    })}
-                  </div>
-                )}
+                      </div>
+                      {lessonList.map((session, i) => {
+                        const isActive = activeLearningSession?.id === session.id
+                        return (
+                          <div key={session.id} className="relative">
+                            <NavTreeConnector tint={MACRO_AREA_COLORS.learning.line} isLast={i === lessonList.length - 1} />
+                            <button
+                              onClick={() => openLearningSession(session)}
+                              className={`ml-[26px] flex w-[calc(100%-26px)] items-center justify-between gap-2 rounded-[14px] px-3 py-2 text-left transition-all ${isActive ? 'bg-white shadow-[0_2px_8px_rgba(15,23,42,0.08)]' : 'hover:bg-white/70'}`}
+                            >
+                              <span className={`truncate text-[13px] ${isActive ? 'font-bold text-slate-900' : 'font-medium text-slate-500'}`}>{session.topic}</span>
+                            </button>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )
+                })()}
               </div>
             )
           })}
@@ -2805,39 +2826,69 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
           ) : isDesktopSelection ? (
             <>
 	              <div
-	                className="flex shrink-0 items-center justify-between border-b border-slate-200/70 bg-white/60 px-5 py-3 backdrop-blur-sm"
+	                className="shrink-0 border-b border-slate-200/70 bg-white/60 px-5 py-3 backdrop-blur-sm"
 	              >
-                <div className="flex items-center gap-2">
-                  <p className="text-[10px] font-semibold uppercase tracking-[0.18em]" style={{ color: accentTheme.text }}>
-                    {mainTab === 'assistants' ? 'Assistenti AI' : mainTab === 'teacherbots' ? 'Teacherbot' : 'Oggi Imparo'}
-                  </p>
-	                  {mainTab === 'teacherbots' && (
-	                    <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-bold" style={{ color: accentTheme.text }}>
-	                      {availableTeacherbots.length}
-	                    </span>
-	                  )}
-                  {mainTab === 'assistants' && topProfiles.length > 0 && (
-                    <div className="hidden xl:flex gap-2 ml-4">
-                      {topProfiles.slice(0, 3).map(([key, count]) => (
-	                        <span key={key} className="rounded-full border bg-white px-2 py-0.5 text-[10px] font-medium" style={{ borderColor: '#e2e8f0', color: accentTheme.text }}>
-                          {profiles.find(p => p.key === key)?.name || key} · {count}
-                        </span>
-                      ))}
-                    </div>
+                <div className="flex items-center justify-between gap-4">
+                  <div className="flex items-center gap-2">
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.18em]" style={{ color: accentTheme.text }}>
+                      {mainTab === 'assistants' ? 'Assistenti AI' : mainTab === 'teacherbots' ? 'Teacherbot' : 'Oggi Imparo'}
+                    </p>
+	                    {mainTab === 'teacherbots' && (
+	                      <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-bold" style={{ color: accentTheme.text }}>
+	                        {filteredTeacherbots.length}
+	                      </span>
+	                    )}
+                    {mainTab === 'assistants' && topProfiles.length > 0 && (
+                      <div className="hidden xl:flex gap-2 ml-4">
+                        {topProfiles.slice(0, 3).map(([key, count]) => (
+	                          <span key={key} className="rounded-full border bg-white px-2 py-0.5 text-[10px] font-medium" style={{ borderColor: '#e2e8f0', color: accentTheme.text }}>
+                            {profiles.find(p => p.key === key)?.name || key} · {count}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  {mainTab === 'learning' && (
+	                    <Button size="sm" onClick={() => setShowNewLessonDialog(true)} className="rounded-xl text-white shadow-sm transition-transform hover:-translate-y-0.5" style={selectedSolidStyle}>
+                      <Plus className="mr-1.5 h-3.5 w-3.5" />
+                      Nuova lezione
+                    </Button>
                   )}
                 </div>
-                {mainTab === 'learning' && (
-	                  <Button size="sm" onClick={() => setShowNewLessonDialog(true)} className="rounded-xl text-white shadow-sm transition-transform hover:-translate-y-0.5" style={selectedSolidStyle}>
-                    <Plus className="mr-1.5 h-3.5 w-3.5" />
-                    Nuova lezione
-                  </Button>
-                )}
+                <div className={`mt-3 flex max-w-md items-center gap-2 rounded-[24px] px-4 py-2.5 shadow-sm ${PASTEL_SURFACES.slate}`}>
+                  <Search className="h-4 w-4 shrink-0 text-slate-400" />
+                  <input
+                    value={chatbotSearch}
+                    onChange={(event) => setChatbotSearch(event.target.value)}
+                    placeholder={mainTab === 'teacherbots' ? 'Cerca teacherbot...' : mainTab === 'learning' ? 'Cerca lezioni...' : 'Cerca chatbot...'}
+                    className="min-w-0 flex-1 bg-transparent text-sm font-medium text-slate-700 placeholder:text-slate-400 focus:outline-none"
+                  />
+                  {chatbotSearch && (
+                    <button
+                      type="button"
+                      onClick={() => setChatbotSearch('')}
+                      className="rounded-full p-1 text-slate-400 transition hover:bg-white/80 hover:text-slate-600"
+                      aria-label="Cancella ricerca"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                </div>
               </div>
 
               <div className="flex-1 overflow-y-auto p-4">
                 {mainTab === 'assistants' && (
+                  filteredProfiles.length === 0 ? (
+                    <div className={`flex h-full min-h-[360px] items-center justify-center rounded-xl border border-dashed text-center shadow-sm ${PASTEL_SURFACES.slate}`}>
+                      <div className="text-center">
+                        <Bot className="mx-auto h-10 w-10 text-slate-300" />
+                        <p className="mt-4 text-sm font-medium text-slate-500">Nessun risultato</p>
+                        <p className="mt-1 text-sm text-slate-400">Prova con un altro termine di ricerca.</p>
+                      </div>
+                    </div>
+                  ) : (
                   <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                    {profiles.map((profile) => {
+                    {filteredProfiles.map((profile) => {
                       const usage = profileUsageCounts[profile.key] || 0
                       const tone = getProfileTone(profile.key)
 
@@ -2873,20 +2924,21 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
                       )
                     })}
                   </div>
+                  )
                 )}
 
                 {mainTab === 'teacherbots' && (
-                  availableTeacherbots.length === 0 ? (
+                  filteredTeacherbots.length === 0 ? (
 	                    <div className={`flex h-full min-h-[360px] items-center justify-center rounded-xl border border-dashed text-center shadow-sm ${PASTEL_SURFACES.slate}`}>
                       <div className="text-center">
                         <Wand2 className="mx-auto h-10 w-10 text-slate-300" />
-                        <p className="mt-4 text-sm font-medium text-slate-500">Nessun teacherbot disponibile</p>
-                        <p className="mt-1 text-sm text-slate-400">Quando il docente ne pubblica uno, comparirà qui.</p>
+                        <p className="mt-4 text-sm font-medium text-slate-500">{normalizedChatbotSearch ? 'Nessun risultato' : 'Nessun teacherbot disponibile'}</p>
+                        <p className="mt-1 text-sm text-slate-400">{normalizedChatbotSearch ? 'Prova con un altro termine di ricerca.' : 'Quando il docente ne pubblica uno, comparirà qui.'}</p>
                       </div>
                     </div>
                   ) : (
                     <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                      {availableTeacherbots.map((bot) => {
+                      {filteredTeacherbots.map((bot) => {
                         const visual = getTeacherbotVisual(bot, uiLanguage)
                         const surface = getTeacherbotSurface(bot.color)
                         return (
@@ -2954,13 +3006,13 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
                         <div>Data</div>
                         <div>Stato</div>
                       </div>
-                      {learningSessions.length === 0 ? (
+                      {filteredLearningSessions.length === 0 ? (
                         <div className="px-5 py-10 text-center">
                           <BookOpen className="mx-auto h-8 w-8 text-slate-300" />
-                          <p className="mt-3 text-sm font-medium text-slate-500">Nessuna microlezione</p>
+                          <p className="mt-3 text-sm font-medium text-slate-500">{normalizedChatbotSearch ? 'Nessun risultato' : 'Nessuna microlezione'}</p>
                         </div>
                       ) : (
-                        learningSessions.map((session) => (
+                        filteredLearningSessions.map((session) => (
                           <button
                             key={session.id}
                             onClick={() => expandingLearningSessionId !== session.id && openLearningSession(session)}
@@ -3015,6 +3067,18 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
                 </div>
 
                 <div className="hidden lg:flex items-center gap-2 relative">
+                  {selectedProfile === 'oral_exam' && !selectedTeacherbot && !isTeacherPreview && (
+                    <button
+                      type="button"
+                      onClick={() => setShowVoiceInterrogation(true)}
+                      className="inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-bold text-white shadow-sm transition-transform hover:-translate-y-0.5"
+                      style={{ backgroundColor: accentTheme.accent }}
+                      title={uiLanguage === 'en' ? 'Voice oral exam' : 'Interrogazione vocale'}
+                    >
+                      <Mic className="h-3.5 w-3.5" />
+                      {uiLanguage === 'en' ? 'Voice exam' : 'Interrogazione vocale'}
+                    </button>
+                  )}
                   <div className="relative">
                     <Button
                       variant="ghost"
@@ -3189,6 +3253,17 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
                   </button>
                 ))}
               </div>
+              {selectedProfile === 'oral_exam' && !selectedTeacherbot && !isTeacherPreview && (
+                <button
+                  type="button"
+                  onClick={() => setShowVoiceInterrogation(true)}
+                  className="mx-auto mt-8 inline-flex items-center gap-2 rounded-full px-6 py-3 text-sm font-bold text-white shadow-lg transition-transform hover:-translate-y-0.5"
+                  style={{ backgroundColor: accentTheme.accent }}
+                >
+                  <Mic className="h-4 w-4" />
+                  {uiLanguage === 'en' ? 'Start voice oral exam' : 'Avvia interrogazione vocale'}
+                </button>
+              )}
             </div>
           ) : (
             messages.map((message) => (
@@ -3204,28 +3279,28 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
                     )}
                   </div>
                 )}
-	                <div className={`max-w-[80%] rounded-xl px-4 py-3 ${message.role === 'user'
-                  ? 'text-white rounded-br-md shadow-md'
-                  : `${chatBgIsDark ? 'bg-white/10 text-white border border-white/15' : 'bg-white border border-slate-100'} shadow-sm rounded-bl-md`
+	                <div className={`max-w-[92%] md:max-w-[80%] rounded-2xl border px-4 py-3 text-[15px] leading-7 shadow-sm ${message.role === 'user'
+                  ? 'rounded-br-md'
+                  : 'rounded-bl-md border-slate-200 bg-white text-slate-700'
                   }`}
-                  style={message.role === 'user' ? selectedSolidStyle : undefined}
+                  style={message.role === 'user' ? selectedSoftStyle : undefined}
                 >
                   {message.role === 'assistant' ? (
-                    <MessageContent 
-                      content={message.content} 
-                      onQuizSubmit={(answers) => setInput(answers)} 
+                    <MessageContent
+                      content={message.content}
+                      onQuizSubmit={(answers) => setInput(answers)}
                       onInput={(text) => {
                         setInput(text);
                         setTimeout(() => handleSend(text), 100);
                       }}
-                      darkMode={chatBgIsDark} 
+                      darkMode={false}
                     />
                   ) : (
-                    <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+                    <p className="whitespace-pre-wrap">{message.content}</p>
                   )}
                   {message.role === 'assistant' && (
                     <EnvironmentalImpactPill
-                      darkMode={chatBgIsDark}
+                      darkMode={false}
                       className="mt-3"
                       provider={message.provider}
                       model={message.model}
@@ -3350,6 +3425,28 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
             </div>
           </div>
         </div>
+      )}
+
+      {showVoiceInterrogation && (
+        <Suspense fallback={null}>
+          <RealtimeInterrogationPanel
+            language={uiLanguage}
+            accent={{
+              accent: accentTheme.accent,
+              text: accentTheme.text,
+              soft: accentTheme.soft,
+              softStrong: accentTheme.softStrong,
+              border: accentTheme.border,
+            }}
+            onClose={() => setShowVoiceInterrogation(false)}
+            onTurn={(role, text) => {
+              setMessages((prev) => [
+                ...prev,
+                { id: `rt-${role}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, role, content: text, timestamp: new Date() },
+              ])
+            }}
+          />
+        </Suspense>
       )}
     </div>
   )

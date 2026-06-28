@@ -1,4 +1,6 @@
 /* Base fonts */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
 @import url('https://fonts.googleapis.com/css2?family=Sofia+Sans:wght@400;500;600;700;800;900&display=swap');
 @import url('https://fonts.googleapis.com/css2?family=Sofia+Sans+Semi+Condensed:wght@400;500;600;700;800;900&display=swap');
 @import url('https://fonts.cdnfonts.com/css/lufga');
@@ -21,6 +23,31 @@
   font-display: swap;
 }
 
+/* Hasklig — monospace with programming ligatures, used for code/agent blocks */
+@font-face {
+  font-family: 'Hasklig';
+  src: url('/fonts/Hasklig-Regular.otf') format('opentype');
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Hasklig';
+  src: url('/fonts/Hasklig-Medium.otf') format('opentype');
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Hasklig';
+  src: url('/fonts/Hasklig-Bold.otf') format('opentype');
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+}
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -28,23 +55,27 @@
 @layer base {
   :root {
     /* Typography */
-    --font-family-ui: 'Bree 2', 'Sofia Sans Semi Condensed', 'Lufga', 'Lexend', system-ui, sans-serif;
-    --font-family-emphasis: 'Bree 2', 'Sofia Sans', 'Sofia Sans Semi Condensed', 'Lufga', 'Lexend', system-ui, sans-serif;
+    --font-family-ui: 'Inter', system-ui, -apple-system, sans-serif;
+    /* Titles / navbar / pills / menus → Plus Jakarta Sans (body stays Inter). */
+    --font-family-emphasis: 'Plus Jakarta Sans', 'Inter', system-ui, -apple-system, sans-serif;
     --font-family-brand: var(--font-family-emphasis);
     --font-family-mono: 'JetBrains Mono', 'IBM Plex Mono', monospace;
+    /* Code/agent blocks: Hasklig first (ligatures), with mono fallbacks. */
+    --font-family-code: 'Hasklig', 'JetBrains Mono', 'IBM Plex Mono', monospace;
     --font-family: var(--font-family-ui);
-    --font-size-xs: 0.9167rem;
-    --font-size-sm: 1.0417rem;
-    --font-size-md: 1.1667rem;
-    --font-size-lg: 1.2917rem;
-    --font-size-xl: 1.4167rem;
-    --font-size-2xl: 1.6667rem;
-    --font-size-3xl: 2.0417rem;
-    --font-size-4xl: 2.4167rem;
-    --font-size-5xl: 3.1667rem;
-    --font-size-control-label: 0.8125rem;
-    --font-size-supporting: 0.875rem;
-    --font-size-chat-content: 0.9375rem;
+    --font-size-xs: 0.75rem;
+    --font-size-sm: 0.875rem;
+    --font-size-md: 1rem;
+    /* Compact title scale: roughly 2pt smaller than the previous newui pass. */
+    --font-size-lg: 0.875rem;
+    --font-size-xl: 1rem;
+    --font-size-2xl: 1.25rem;
+    --font-size-3xl: 1.625rem;
+    --font-size-4xl: 2rem;
+    --font-size-5xl: 2.75rem;
+    --font-size-control-label: 0.6875rem;
+    --font-size-supporting: 0.75rem;
+    --font-size-chat-content: 0.7708rem;
     --line-height-xs: 1.35;
     --line-height-sm: 1.4;
     --line-height-md: 1.5;
@@ -76,6 +107,28 @@
     --logo-violet-14: rgba(123, 105, 201, 0.14);
     --logo-violet-22: rgba(123, 105, 201, 0.22);
 
+    /* ── Brand color system (single source of truth — replaces per-user accents) ──
+       red    → buttons / primary actions
+       lavender/violet → pill selectors / segmented controls / tabs
+       celeste→ secondary text
+       yellow → mini pills (e.g. BETA badge) */
+    --brand-red: #fe004d;
+    --brand-red-text: #b80039;        /* readable red for text */
+    --brand-red-soft: rgba(254, 0, 77, 0.10);
+    --brand-orange: #f97316;
+    --brand-orange-text: #c2410c;     /* readable orange for text */
+    --brand-orange-soft: rgba(249, 115, 22, 0.12);
+    --brand-orange-soft-strong: rgba(249, 115, 22, 0.18);
+    --brand-celeste: #3ea9f4;         /* secondary text (logo light blue) */
+    --brand-celeste-ink: #1278bd;     /* higher-contrast fallback */
+    --brand-pill-lavender: #ece8ff;
+    --brand-pill-lavender-hover: #e4defc;
+    --brand-pill-lavender-border: #c8bdf3;
+    --brand-pill-violet: #4a3192;
+    --brand-yellow: #facc15;
+    --brand-yellow-soft: rgba(250, 204, 21, 0.18);
+    --brand-yellow-ink: #854d0e;      /* readable text on yellow */
+
     /* Component control tokens: update these before touching individual screens. */
     --button-radius: 1rem;
     --button-height-compact: 2.25rem;
@@ -86,16 +139,13 @@
     --button-padding-x-default: 1.25rem;
     --button-padding-x-roomy: 1.5rem;
     --button-font-weight: 700;
-    --button-chrome-bg: linear-gradient(
-      color-mix(in srgb, var(--btn-tone, var(--app-accent)) 4%, transparent),
-      color-mix(in srgb, var(--btn-tone, var(--app-accent)) 4%, transparent));
-    --button-chrome-bg-hover: linear-gradient(
-      color-mix(in srgb, var(--btn-tone, var(--app-accent)) 9%, transparent),
-      color-mix(in srgb, var(--btn-tone, var(--app-accent)) 9%, transparent));
-    --button-chrome-border: color-mix(in srgb, var(--btn-tone, var(--app-accent)) 30%, transparent);
-    --button-chrome-border-hover: color-mix(in srgb, var(--btn-tone, var(--app-accent)) 46%, transparent);
+    /* Buttons reset to a single neutral grey (slightly darker than cards), tone-independent. */
+    --button-chrome-bg: linear-gradient(#eceef2, #eceef2);
+    --button-chrome-bg-hover: linear-gradient(#e1e4ea, #e1e4ea);
+    --button-chrome-border: #d7dce4;
+    --button-chrome-border-hover: #c3cad5;
     --button-chrome-shadow: none;
-    --button-chrome-shadow-hover: 0 1px 3px color-mix(in srgb, var(--btn-tone, var(--app-accent)) 10%, transparent);
+    --button-chrome-shadow-hover: 0 1px 3px rgba(15, 23, 42, 0.08);
     --button-accent-bg: var(--button-chrome-bg);
     --button-accent-shadow: var(--button-chrome-shadow);
     --button-accent-shadow-hover: var(--button-chrome-shadow-hover);
@@ -103,22 +153,17 @@
     --button-violet-bg: linear-gradient(color-mix(in srgb, var(--logo-violet) 7%, transparent), color-mix(in srgb, var(--logo-violet) 7%, transparent));
     --control-radius: 0.875rem;
     --card-radius: 1.5rem;
-    --selection-radius: 0.625rem;
-    --selection-height: 2.25rem;
-    --selection-padding-x: 0.875rem;
-    --selection-bg: linear-gradient(
-      color-mix(in srgb, var(--app-accent) 4%, transparent),
-      color-mix(in srgb, var(--app-accent) 4%, transparent));
-    --selection-bg-hover: linear-gradient(
-      color-mix(in srgb, var(--app-accent) 9%, transparent),
-      color-mix(in srgb, var(--app-accent) 9%, transparent));
-    --selection-border: color-mix(in srgb, var(--app-accent) 30%, transparent);
-    --selection-border-hover: color-mix(in srgb, var(--app-accent) 46%, transparent);
-    --selection-text: var(--app-accent-text);
-    --selection-active-bg: linear-gradient(
-      color-mix(in srgb, var(--app-accent) 18%, transparent),
-      color-mix(in srgb, var(--app-accent) 18%, transparent));
-    --selection-active-text: var(--app-accent-text);
+    --selection-radius: 999px;
+    --selection-height: 2rem;
+    --selection-padding-x: 0.8125rem;
+    /* Selectors / segmented controls / tabs / selected items → lavender surface + dark violet ink */
+    --selection-bg: linear-gradient(var(--brand-pill-lavender), var(--brand-pill-lavender));
+    --selection-bg-hover: linear-gradient(var(--brand-pill-lavender-hover), var(--brand-pill-lavender-hover));
+    --selection-border: color-mix(in srgb, var(--brand-pill-lavender-border) 72%, transparent);
+    --selection-border-hover: var(--brand-pill-lavender-border);
+    --selection-text: var(--brand-pill-violet);
+    --selection-active-bg: linear-gradient(var(--brand-pill-lavender), var(--brand-pill-lavender));
+    --selection-active-text: var(--brand-pill-violet);
     --selection-shadow: none;
 
     /* Core surfaces */
@@ -148,9 +193,9 @@
     --radius: 0.5rem;
 
     /* Semantic mirrors for feature code migration */
-    --app-body-bg: #fbfafc;
+    --app-body-bg: #f1f3f5;
     --surface-page: var(--app-body-bg);
-    --surface-base: rgba(255, 255, 255, 0.94);
+    --surface-base: #f7f8fa;
     --surface-elevated: rgba(23, 21, 27, 0.035);
     --surface-muted: rgba(123, 105, 201, 0.075);
     --surface-glass: rgba(255, 255, 255, 0.82);
@@ -159,9 +204,11 @@
     --surface-logo-blue: var(--logo-blue-10);
     --surface-logo-violet: var(--logo-violet-10);
     --text-primary: #17151b;
-    --text-secondary: #5f5969;
-    --text-muted: #8f879c;
-    --border-subtle: rgba(123, 105, 201, 0.16);
+    /* Secondary text → brand celeste (logo light blue); muted slightly darker for hierarchy. */
+    --text-secondary: var(--brand-celeste);
+    --text-muted: #6e6679;
+    /* Crisper, slightly more visible borders so cards/panels read as one consistent system. */
+    --border-subtle: rgba(123, 105, 201, 0.24);
     --border-strong: rgba(254, 0, 77, 0.26);
     --overlay-soft: rgba(15, 23, 42, 0.12);
     --overlay-modal: rgba(15, 23, 42, 0.5);
@@ -170,12 +217,12 @@
     --shadow-lg: 0 14px 34px rgba(23, 21, 27, 0.08);
     --shadow-xl: 0 20px 52px rgba(23, 21, 27, 0.12);
 
-    /* Public-page accent fallbacks */
-    --app-accent: var(--logo-pink);
-    --app-accent-text: var(--logo-pink);
-    --app-accent-soft: var(--logo-pink-10);
-    --app-accent-soft-strong: var(--logo-pink);
-    --app-accent-border: var(--logo-pink);
+    /* Buttons & accent surfaces reset to neutral grey (no colour). */
+    --app-accent: #475569;            /* slate-600 */
+    --app-accent-text: #334155;       /* slate-700 */
+    --app-accent-soft: rgba(71, 85, 105, 0.08);
+    --app-accent-soft-strong: #475569;
+    --app-accent-border: #475569;
   }
 
   .dark {
@@ -244,9 +291,10 @@
     font-family: var(--font-family-mono);
   }
 
+
   h1 {
     font-family: var(--font-family-emphasis);
-    font-size: 2rem;
+    font-size: 1.5833rem;
     line-height: 1.1;
     font-weight: 700;
     letter-spacing: var(--letter-spacing-tight);
@@ -254,7 +302,7 @@
 
   h2 {
     font-family: var(--font-family-emphasis);
-    font-size: 1.5rem;
+    font-size: 1.0833rem;
     line-height: 1.15;
     font-weight: 700;
     letter-spacing: var(--letter-spacing-tight);
@@ -262,7 +310,7 @@
 
   h3 {
     font-family: var(--font-family-emphasis);
-    font-size: 1.125rem;
+    font-size: 0.7083rem;
     line-height: 1.25;
     font-weight: 700;
   }
@@ -281,7 +329,7 @@
 /* Shared component affordances */
 @layer components {
   .card-modern {
-    @apply rounded-xl border border-slate-200 bg-white/95 shadow-[var(--shadow-md)] backdrop-blur-sm;
+    @apply rounded-xl border border-slate-200 bg-[#f7f8fa] shadow-[var(--shadow-md)] backdrop-blur-sm;
   }
 
   .ui-control-label {
@@ -355,6 +403,7 @@
   .navbar-inline-control {
     font-family: var(--font-family-emphasis);
     font-weight: 700;
+    border-radius: var(--selection-radius);
     border: 1px solid transparent;
     background: transparent;
     box-shadow: none;
@@ -365,6 +414,7 @@
   .navbar-widget-control,
   .navbar-inline-control:hover,
   .navbar-inline-control-active {
+    border-radius: var(--selection-radius);
     background:
       linear-gradient(180deg, rgba(255,255,255,0.74), rgba(255,255,255,0.46)),
       color-mix(in srgb, var(--btn-tone, var(--app-accent)) 7%, transparent);
@@ -386,6 +436,7 @@
   }
 
   .navbar-widget-control-inset {
+    border-radius: var(--selection-radius);
     background: rgba(255,255,255,0.34);
     border-color: rgba(255,255,255,0.44);
     box-shadow: inset 0 1px 0 rgba(255,255,255,0.52);
@@ -404,21 +455,27 @@
     font-weight: 700;
     line-height: 1;
     letter-spacing: 0;
-    background-image: radial-gradient(ellipse at center, rgba(23,21,27,0.68) 0%, rgba(23,21,27,0.88) 48%, #17151b 100%);
-    -webkit-background-clip: text;
-    background-clip: text;
-    color: transparent;
+    color: #2d2d2d;
   }
 
+  .brand-wordmark-ai {
+    color: color-mix(in srgb, var(--logo-pink) 88%, transparent);
+  }
+
+  .teacher-support-message .chat-markdown {
+    font-size: var(--font-size-sm);
+  }
+
+  /* Mini pills (e.g. BETA) → brand orange */
   .brand-beta-badge {
     display: inline-flex;
     min-height: 18px;
     align-items: center;
     border-radius: 999px;
-    border: 1px solid rgba(234, 179, 8, 0.28);
-    background: #fff5c2;
+    border: 1px solid color-mix(in srgb, var(--brand-orange) 45%, transparent);
+    background: var(--brand-orange-soft);
     padding: 0 0.45rem;
-    color: #8a6412;
+    color: var(--brand-orange-text);
     font-size: 9px;
     font-weight: 700;
     line-height: 1;
@@ -611,4 +668,19 @@
 }
 .ProseMirror:focus {
   caret-color: #334155;  /* slate-700 for better visibility */
+}
+
+/* ── Code / agent blocks: Hasklig with programming ligatures ─────────────── */
+@layer utilities {
+  .font-code,
+  .font-code code,
+  .font-code pre,
+  .font-code kbd,
+  .font-code samp {
+    font-family: var(--font-family-code);
+    font-size: 0.82em;   /* Hasklig runs large — scale down relative to context */
+    font-weight: 700;    /* bold */
+    font-feature-settings: 'liga' 1, 'calt' 1, 'dlig' 1;
+    font-variant-ligatures: common-ligatures contextual discretionary-ligatures;
+  }
 }

@@ -800,22 +800,21 @@ export function VoiceRoomPanel({ sessionId, userType, currentUserId, socket }: V
     <div
       className="mx-3 mt-3 overflow-hidden rounded-2xl border"
       style={{
-        background:
-          'linear-gradient(135deg, var(--app-accent) 0%, color-mix(in srgb, var(--app-accent) 80%, #000) 100%)',
-        borderColor: 'color-mix(in srgb, var(--app-accent) 55%, #000)',
-        boxShadow: '0 12px 28px color-mix(in srgb, var(--app-accent) 32%, transparent)',
+        background: 'color-mix(in srgb, var(--logo-blue) 12%, white)',
+        borderColor: 'color-mix(in srgb, var(--logo-blue) 24%, transparent)',
+        boxShadow: 'none',
       }}
     >
       <div ref={audioSinkRef} className="hidden" />
 
       {/* Header row */}
-      <div className="flex items-center justify-between gap-2 border-b border-white/15 px-3 py-2.5">
+      <div className="flex items-center justify-between gap-2 border-b border-sky-200/50 px-3 py-2.5">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
-            <span className={`h-2 w-2 rounded-full ${isActive ? 'animate-pulse bg-emerald-300 ring-2 ring-emerald-300/40' : 'bg-white/50'}`} />
-            <p className="text-xs font-bold uppercase tracking-wide text-white">Voce classe</p>
+            <span className={`h-2 w-2 rounded-full ${isActive ? 'animate-pulse bg-emerald-500 ring-2 ring-emerald-200' : 'bg-sky-300'}`} />
+            <p className="text-xs font-bold uppercase tracking-wide text-[var(--logo-blue-strong)]">Voce classe</p>
           </div>
-          <p className="truncate text-[10px] text-white/75">
+          <p className="truncate text-[10px] text-[var(--logo-blue-strong)]/70">
             {isActive && activeSpeaker ? `${activeSpeaker.nickname || 'Studente'} in parola` : isActive ? statusText : 'Non attiva'}
           </p>
         </div>

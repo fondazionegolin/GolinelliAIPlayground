@@ -8,12 +8,15 @@ from datetime import datetime
 from uuid import UUID
 import logging
 import base64
+import hashlib
 import io
 import json
 import asyncio
 import aiofiles
+import httpx
 from pathlib import Path
 
+from app.core.config import settings
 from app.core.database import get_db
 from app.api.deps import get_current_teacher, get_current_student, get_student_or_teacher, StudentOrTeacher
 from app.models.user import User
@@ -87,6 +90,202 @@ async def safe_track_usage(
 async def list_chatbot_profiles():
     """Get all available chatbot profiles with their configurations"""
     return get_all_profiles()
+
+
+# Voices supported by gpt-realtime; marin/cedar are the most natural/expressive.
+REALTIME_VOICES = {"alloy", "ash", "ballad", "coral", "echo", "sage", "shimmer", "verse", "marin", "cedar"}
+
+
+class RealtimeInterrogationRequest(BaseModel):
+    topic: Optional[str] = None
+    language: str = "it"
+    voice: Optional[str] = None
+    style: str = "warm"   # warm | natural | strict
+    pace: str = "normal"  # slow | normal | fast
+
+
+def _build_delivery_directive(style: str, pace: str, is_english: bool) -> str:
+    """A strong instruction block steering the voice's warmth, expressivity and tempo."""
+    if is_english:
+        style_map = {
+            "warm": (
+                "Perform as a real, human teacher who is genuinely fond of the student and excited about the subject. "
+                "Your voice is warm, bright and smiling. Be vocally expressive like a real person: change pitch a lot, "
+                "speed up when you get excited, slow down to emphasise, add natural micro-pauses, and let small reactions "
+                "slip out ('Ah, nice!', 'Mmh, let's see…', 'Exactly!', 'Good one.'). Sound like someone who truly cares, "
+                "never like a synthesiser reading text."
+            ),
+            "natural": "Speak in a natural, conversational and friendly tone, with normal human expressiveness and the odd small reaction.",
+            "strict": "Speak with a composed, authoritative and serious tone, like a demanding but fair examiner — still human, never robotic.",
+        }
+        pace_map = {
+            "slow": "Keep a calm, well-articulated pace.",
+            "normal": "Keep a natural, conversational pace.",
+            "fast": "Keep a brisk, dynamic and energetic pace.",
+        }
+        anti_flat = "ABSOLUTELY never sound flat, cold, monotone, bored or robotic. If in doubt, add more warmth and intonation."
+    else:
+        style_map = {
+            "warm": (
+                "Interpreta un professore vero, umano, a cui lo studente sta davvero a cuore e appassionato della materia. "
+                "La tua voce è calda, luminosa e sorridente. Sii espressivo come una persona reale: cambia molto l'intonazione, "
+                "accelera quando ti emozioni, rallenta per enfatizzare, usa micro-pause naturali e lascia uscire piccole reazioni "
+                "('Ah, bene!', 'Mmh, vediamo…', 'Esatto!', 'Bella questa.'). Suona come qualcuno a cui importa davvero, "
+                "mai come un sintetizzatore che legge un testo."
+            ),
+            "natural": "Parla con un tono naturale, colloquiale e cordiale, con la normale espressività umana e qualche piccola reazione spontanea.",
+            "strict": "Parla con un tono fermo, autorevole e serio, come un esaminatore esigente ma giusto — sempre umano, mai robotico.",
+        }
+        pace_map = {
+            "slow": "Mantieni un ritmo calmo e ben scandito.",
+            "normal": "Mantieni un ritmo naturale e colloquiale.",
+            "fast": "Mantieni un ritmo sostenuto, dinamico ed energico.",
+        }
+        anti_flat = "Non risultare ASSOLUTAMENTE MAI piatto, freddo, monotono, annoiato o robotico. Nel dubbio, aggiungi più calore e intonazione."
+
+    header = "\n\nVOICE DELIVERY:\n" if is_english else "\n\nRESA VOCALE:\n"
+    return (
+        f"{header}- {style_map.get(style, style_map['warm'])}\n"
+        f"- {pace_map.get(pace, pace_map['normal'])}\n"
+        f"- {anti_flat}"
+    )
+
+
+def _build_interrogation_instructions(topic: Optional[str], language: str, style: str = "warm", pace: str = "normal") -> str:
+    """Compose the oral-exam ("interrogazione") system prompt for the realtime voice session."""
+    base = get_profile("oral_exam").get("system_prompt", "")
+    is_english = (language or "it").lower().startswith("en")
+    topic = (topic or "").strip()
+
+    if is_english:
+        voice_guidance = (
+            "\n\nVOICE MODE (spoken oral exam):\n"
+            "- You are speaking out loud with the student in real time. Keep a natural, conversational tone.\n"
+            "- Do NOT use markdown, headings, asterisks, emoji or any formatting symbols: everything you say is read aloud.\n"
+            "- Ask one question at a time and wait for the student's spoken answer before continuing.\n"
+            "- Keep your turns short (1–3 sentences) so the conversation stays lively.\n"
+            "- Speak in English.\n"
+            "\nAFTER EVERY STUDENT ANSWER, stay concise and terse (no preambles, short sentences) and always:\n"
+            "1. React briefly to the answer (correct / partial / to review).\n"
+            "2. Add ONE concrete cue to go deeper into the topic (a fact, link or example to explore).\n"
+            "3. Name ONE specific skill or competence the student should strengthen.\n"
+            "4. Encourage them with one short sentence to do better.\n"
+            "5. Then ask the next, slightly more demanding question.\n"
+            "Keep all of this within 2–3 short sentences total: warmth in the voice, dryness in the words."
+        )
+        topic_line = (
+            f"\n\nThe student has chosen this exam topic: \"{topic}\". Open with a short greeting and your first question on it."
+            if topic
+            else "\n\nStart by warmly greeting the student and asking which topic they want to be examined on."
+        )
+    else:
+        voice_guidance = (
+            "\n\nMODALITÀ VOCALE (interrogazione orale parlata):\n"
+            "- Stai parlando a voce con lo studente in tempo reale. Usa un tono naturale e colloquiale.\n"
+            "- NON usare markdown, titoli, asterischi, emoji o simboli di formattazione: tutto ciò che dici viene letto ad alta voce.\n"
+            "- Fai una domanda alla volta e aspetta la risposta parlata dello studente prima di proseguire.\n"
+            "- Mantieni interventi brevi (1–3 frasi) per una conversazione viva e dinamica.\n"
+            "- Parla in italiano.\n"
+            "\nDOPO OGNI RISPOSTA DELLO STUDENTE, resta asciutto e conciso (niente preamboli, frasi brevi) e sempre:\n"
+            "1. Reagisci brevemente alla risposta (corretto / parziale / da rivedere).\n"
+            "2. Aggiungi UNO spunto concreto per approfondire l'argomento (un fatto, un collegamento o un esempio da esplorare).\n"
+            "3. Indica UNA competenza o abilità specifica che lo studente deve sviluppare meglio.\n"
+            "4. Incoraggialo con una frase breve a fare meglio.\n"
+            "5. Poi poni la domanda successiva, un po' più impegnativa.\n"
+            "Tieni tutto entro 2–3 frasi brevi in totale: calore nella voce, asciuttezza nelle parole."
+        )
+        topic_line = (
+            f"\n\nLo studente ha scelto questo argomento d'esame: \"{topic}\". Inizia con un breve saluto e la prima domanda su questo argomento."
+            if topic
+            else "\n\nInizia salutando con cortesia lo studente e chiedendogli su quale argomento desidera essere interrogato."
+        )
+
+    delivery = _build_delivery_directive(style, pace, is_english)
+    return f"{base}{voice_guidance}{delivery}{topic_line}"
+
+
+@router.post("/realtime/interrogation-session")
+async def create_realtime_interrogation_session(
+    request: RealtimeInterrogationRequest,
+    auth: Annotated[StudentOrTeacher, Depends(get_student_or_teacher)],
+):
+    """
+    Mint a short-lived ephemeral client secret for an OpenAI Realtime voice
+    interrogation ("interrogazione"). The browser uses this secret to open a
+    WebRTC connection directly to OpenAI; the real API key never leaves the server.
+    """
+    if not settings.OPENAI_API_KEY:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="L'interrogazione vocale non è configurata",
+        )
+
+    instructions = _build_interrogation_instructions(
+        request.topic, request.language, request.style, request.pace
+    )
+
+    voice = request.voice if request.voice in REALTIME_VOICES else settings.OPENAI_REALTIME_VOICE
+
+    actor_id = str(auth.teacher.id if auth.is_teacher else auth.student.id)
+    safety_identifier = hashlib.sha256(actor_id.encode("utf-8")).hexdigest()
+
+    payload = {
+        "session": {
+            "type": "realtime",
+            "model": settings.OPENAI_REALTIME_MODEL,
+            "instructions": instructions,
+            "audio": {
+                "input": {
+                    "transcription": {"model": settings.OPENAI_REALTIME_TRANSCRIBE_MODEL},
+                    # Push-to-talk: the client controls turns explicitly (commit on
+                    # mic release), so automatic server-side VAD is disabled.
+                    "turn_detection": None,
+                },
+                "output": {"voice": voice},
+            },
+        }
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=20.0) as client:
+            resp = await client.post(
+                "https://api.openai.com/v1/realtime/client_secrets",
+                headers={
+                    "Authorization": f"Bearer {settings.OPENAI_API_KEY}",
+                    "Content-Type": "application/json",
+                    "OpenAI-Safety-Identifier": safety_identifier,
+                },
+                json=payload,
+            )
+    except httpx.HTTPError as exc:
+        logger.error("Realtime client_secrets request failed: %s", exc)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Impossibile avviare l'interrogazione vocale",
+        )
+
+    if resp.status_code >= 400:
+        logger.error("Realtime client_secrets error %s: %s", resp.status_code, resp.text)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Impossibile avviare l'interrogazione vocale",
+        )
+
+    data = resp.json()
+    # The GA response shape is { "value": "ek_...", "expires_at": ..., "session": {...} }
+    value = data.get("value") or (data.get("client_secret") or {}).get("value")
+    if not value:
+        logger.error("Realtime client_secrets returned no token: %s", data)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Impossibile avviare l'interrogazione vocale",
+        )
+
+    return {
+        "value": value,
+        "model": settings.OPENAI_REALTIME_MODEL,
+        "expires_at": data.get("expires_at"),
+    }
 
 
 @router.get("/environmental-footprint")

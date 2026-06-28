@@ -23,9 +23,9 @@ const buttonVariants = cva(
         link: 'rounded-none px-0 shadow-none underline-offset-4 hover:underline',
       },
       density: {
-        compact: 'h-[var(--button-height-compact)] px-[var(--button-padding-x-compact)] text-sm',
-        default: 'h-[var(--button-height-default)] px-[var(--button-padding-x-default)] text-sm',
-        roomy: 'h-[var(--button-height-roomy)] px-[var(--button-padding-x-roomy)] text-base',
+        compact: 'h-[var(--button-height-compact)] px-[var(--button-padding-x-compact)] text-xs',
+        default: 'h-[var(--button-height-default)] px-[var(--button-padding-x-default)] text-xs',
+        roomy: 'h-[var(--button-height-roomy)] px-[var(--button-padding-x-roomy)] text-sm',
         icon: 'h-[var(--button-height-icon)] w-[var(--button-height-icon)] p-0',
       },
       fullWidth: {
@@ -44,7 +44,7 @@ const buttonVariants = cva(
         tone: 'accent',
         surface: 'solid',
         className:
-          '[--btn-tone:var(--app-accent,var(--logo-pink))] border border-[color:var(--button-chrome-border)] bg-[image:var(--button-chrome-bg)] text-[var(--app-accent-text,var(--logo-pink))] shadow-[var(--button-chrome-shadow)] hover:-translate-y-px hover:border-[color:var(--button-chrome-border-hover)] hover:bg-[image:var(--button-chrome-bg-hover)] hover:shadow-[var(--button-chrome-shadow-hover)] focus-visible:ring-[var(--app-accent,var(--ring))]',
+          'border border-[color:var(--selection-border-hover)] bg-[image:var(--selection-active-bg)] text-[var(--selection-active-text)] shadow-[var(--selection-shadow)] hover:-translate-y-px hover:border-[color:var(--selection-border-hover)] hover:bg-[image:var(--selection-bg-hover)] focus-visible:ring-[var(--selection-border-hover)]',
       },
       {
         tone: 'success',
@@ -74,7 +74,7 @@ const buttonVariants = cva(
         tone: 'accent',
         surface: 'soft',
         className:
-          '[--btn-tone:var(--app-accent,var(--logo-pink))] border border-[color:var(--button-chrome-border)] bg-[image:var(--button-chrome-bg)] text-[var(--app-accent-text,var(--logo-pink))] shadow-[var(--button-chrome-shadow)] hover:-translate-y-px hover:border-[color:var(--button-chrome-border-hover)] hover:bg-[image:var(--button-chrome-bg-hover)] focus-visible:ring-[var(--app-accent,var(--ring))]',
+          'border border-[color:var(--selection-border)] bg-[image:var(--selection-bg)] text-[var(--selection-text)] shadow-[var(--selection-shadow)] hover:-translate-y-px hover:border-[color:var(--selection-border-hover)] hover:bg-[image:var(--selection-bg-hover)] focus-visible:ring-[var(--selection-border-hover)]',
       },
       {
         tone: 'success',
@@ -104,7 +104,7 @@ const buttonVariants = cva(
         tone: 'accent',
         surface: 'outline',
         className:
-          '[--btn-tone:var(--app-accent,var(--logo-pink))] border border-[color:var(--button-chrome-border)] bg-[image:var(--button-chrome-bg)] text-[var(--app-accent-text,var(--primary))] shadow-[var(--button-chrome-shadow)] hover:border-[color:var(--button-chrome-border-hover)] hover:bg-[image:var(--button-chrome-bg-hover)] focus-visible:ring-[var(--app-accent,var(--ring))]',
+          'border border-[color:var(--selection-border)] bg-[image:var(--selection-bg)] text-[var(--selection-text)] shadow-[var(--selection-shadow)] hover:border-[color:var(--selection-border-hover)] hover:bg-[image:var(--selection-bg-hover)] focus-visible:ring-[var(--selection-border-hover)]',
       },
       {
         tone: 'success',

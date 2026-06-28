@@ -5,7 +5,7 @@ import {
   Send, Bot, Paperclip, X, Trash2, Plus, File, Image as ImageIcon, Loader2,
   Database, Download, ChevronDown, ChevronRight, Edit3, Check, MessageCircle, Sparkles,
   Palette, FileText, CheckSquare, MessageSquare, Settings, RotateCcw, BarChart2, Layout,
-  Link2, Video, ScanText
+  Video, ScanText, Youtube
 } from 'lucide-react'
 import DocumentCanvas, { type GeneratedDoc } from '@/components/teacher/DocumentCanvas'
 import { llmApi, teacherApi } from '@/lib/api'
@@ -2587,7 +2587,7 @@ REGOLE IMPORTANTI:
                   <button
                     key={conv.id}
                     onClick={() => { openConversation(conv); setMobileHistoryOpen(false) }}
-                    className={`w-full text-left p-3 rounded-xl text-sm transition-all ${currentConversationId === conv.id ? 'font-medium border shadow-sm' : 'bg-white text-slate-600 border border-slate-200/70 hover:border-slate-300 hover:bg-slate-50'}`}
+                    className={`w-full text-left p-3 rounded-xl text-xs transition-all ${currentConversationId === conv.id ? 'font-medium border shadow-sm' : 'bg-white text-slate-600 border border-slate-200/70 hover:border-slate-300 hover:bg-slate-50'}`}
                     style={currentConversationId === conv.id ? selectedSoftStyle : undefined}
                   >
                     <div className="truncate">{conv.title}</div>
@@ -2627,7 +2627,7 @@ REGOLE IMPORTANTI:
                     <>
                       {/* Section tabs — pill switcher */}
                       <div className="px-2.5 pt-2 pb-1.5 bg-white/70 border-b border-slate-200/70 shrink-0 flex items-center gap-1 backdrop-blur-sm">
-                        <div className="flex-1 flex items-center gap-1 rounded-xl border p-1" style={buildAccentNavClusterStyle(accentTheme)}>
+                        <div className="flex-1 flex items-center gap-1 rounded-[var(--selection-radius)] border p-1" style={buildAccentNavClusterStyle(accentTheme)}>
                           <button
                             onClick={() => setActiveTab('chat')}
                             className={`ui-control-label group flex flex-1 min-h-[var(--selection-height)] items-center justify-center gap-1 px-2 rounded-[var(--selection-radius)] border transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--selection-border-hover)] ${activeTab === 'chat'
@@ -2674,7 +2674,7 @@ REGOLE IMPORTANTI:
                               <button
                                 key={conv.id}
                                 onClick={() => { openConversation(conv) }}
-                                className={`w-full text-left p-3 rounded-xl text-sm transition-all group ${currentConversationId === conv.id
+                                className={`w-full text-left p-3 rounded-xl text-xs transition-all group ${currentConversationId === conv.id
                                   ? 'font-medium border shadow-sm'
                                   : 'bg-white text-slate-600 border border-slate-200/70 hover:border-slate-300 hover:bg-slate-50'
                                   }`}
@@ -3179,7 +3179,7 @@ REGOLE IMPORTANTI:
                             </div>
                           )}
                           <div className={`max-w-[75%] space-y-1 ${msg.role === 'user' ? 'items-end flex flex-col' : 'items-start'}`}>
-                            <div className={`px-5 py-3 text-sm leading-relaxed shadow-sm backdrop-blur-md transition-all ${msg.role === 'user'
+                            <div className={`teacher-support-message px-5 py-3 text-sm leading-relaxed shadow-sm backdrop-blur-md transition-all ${msg.role === 'user'
                               ? `${chatBgIsDark ? 'bg-white/20 text-white border border-white/20' : 'text-white border border-transparent shadow-md'} font-medium rounded-2xl rounded-tr-sm`
                               : `${chatBgIsDark ? 'bg-white/10 text-white border border-white/15' : 'bg-slate-50/60 text-slate-800 border border-slate-200/80'} rounded-2xl rounded-tl-sm ${chatBgIsDark ? 'prose prose-invert' : ''}`
                               }`}
@@ -3519,7 +3519,7 @@ REGOLE IMPORTANTI:
                       )}
 
                       {/* Input Pill */}
-                      <div className="relative flex items-center gap-1.5 bg-white border border-slate-200 shadow-sm rounded-xl p-1.5 focus-within:ring-2 focus-within:ring-slate-200 transition-all">
+                      <div className="relative flex items-center gap-1.5 bg-white border border-slate-200 shadow-sm rounded-[24px] p-1.5 focus-within:ring-2 focus-within:ring-slate-200 focus-within:border-slate-300 transition-all">
                         <input type="file" ref={fileInputRef} className="hidden" multiple
                           accept={agentMode === 'ocr' ? 'image/*' : 'image/*,.pdf,.doc,.docx,.ppt,.pptx,.txt,.csv,.xlsx,.xls,.json'}
                           onChange={handleFileSelect} />
@@ -3530,12 +3530,12 @@ REGOLE IMPORTANTI:
                             <Button
                               variant="ghost"
                               size="sm"
-                              className="h-8 rounded-lg px-3 text-slate-900 gap-1.5 border border-slate-200 bg-slate-50 hover:bg-slate-100 shadow-sm"
+                              className="h-8 rounded-full px-3 text-slate-900 gap-1.5 border border-slate-200 bg-slate-50 hover:bg-slate-100 shadow-sm"
                               onClick={() => setShowModeMenu(v => !v)}
                               title="Cambia modalità"
                             >
                               <span className="text-[11px] font-semibold">Modalita</span>
-                              <span className={`rounded-md px-2 py-0.5 text-[10px] font-bold ${
+                              <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
                                 selectedModeMeta.id === 'default'
                                   ? 'bg-slate-900 text-white'
                                   : selectedModeMeta.id === 'report'
@@ -3609,11 +3609,11 @@ REGOLE IMPORTANTI:
                           <Button
                             variant="ghost"
                             size="icon"
-                            className="h-8 w-8 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg flex-shrink-0"
+                            className="h-8 w-8 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-full flex-shrink-0"
                             onClick={() => { setShowLinkModal(v => !v); setLinkInputValue('') }}
-                            title="Aggiungi link"
+                            title="Aggiungi video YouTube"
                           >
-                            <Link2 className="h-4 w-4" />
+                            <Youtube className="h-4 w-4" />
                           </Button>
 
                           {showLinkModal && (
@@ -3704,7 +3704,7 @@ REGOLE IMPORTANTI:
                         <Button
                           onClick={() => { void handleSend() }}
                           disabled={((!inputText.trim() && attachedFiles.length === 0) && !(agentMode === 'analysis' && analysisTaskId)) || isLoading}
-                          className={`h-9 w-9 rounded-lg transition-all flex-shrink-0 ${((!inputText.trim() && attachedFiles.length === 0) && !(agentMode === 'analysis' && analysisTaskId))
+                          className={`h-9 w-9 rounded-full transition-all flex-shrink-0 ${((!inputText.trim() && attachedFiles.length === 0) && !(agentMode === 'analysis' && analysisTaskId))
                             ? 'bg-slate-100 text-slate-300'
                             : 'bg-slate-900 hover:bg-slate-800 text-white shadow-md'
                             }`}

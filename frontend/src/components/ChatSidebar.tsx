@@ -798,15 +798,6 @@ export default function ChatSidebar({
   // Calculate total unread count for private chats
   const totalUnreadPrivate = Object.values(privateChats).reduce((acc, chat) => acc + chat.unreadCount, 0)
 
-  const resolveAccentTheme = (accentId?: string) => {
-    if (!accentId) return null
-    try {
-      return getStudentAccentTheme(accentId as StudentAccentId)
-    } catch {
-      return null
-    }
-  }
-
   // Linkify function
   const linkify = (text: string, linkClassName = 'text-red-600 hover:text-red-700 underline break-all') => {
     const urlRegex = /(https?:\/\/[^\s]+)/g
@@ -885,7 +876,7 @@ export default function ChatSidebar({
                 <div className="flex items-center gap-1.5 mb-0.5">
                   <span className="text-[10px] font-bold text-[#181b1e] uppercase">{t('chat_sidebar.new_assistant')}</span>
                 </div>
-                <p className="text-sm font-semibold text-slate-800 truncate">{data.name}</p>
+                <p className="text-xs font-semibold text-slate-800 truncate">{data.name}</p>
                 {data.synopsis && (
                   <p className="text-xs text-slate-500 line-clamp-2 mt-0.5">{data.synopsis}</p>
                 )}
@@ -933,9 +924,9 @@ export default function ChatSidebar({
       : []
     const imageAttachments = allAttachments.filter((att: any) => att.type === 'image')
     const fileAttachments = allAttachments.filter((att: any) => att.type !== 'image')
-    const accentFromSender = resolveAccentTheme(msg.sender_accent)
-    const accentFallback = isMe && userType === 'student' ? studentAccentTheme : null
-    const messageAccentTheme = accentFromSender || accentFallback
+    // Per-user accent tints removed: chat bubbles are neutral base surfaces
+    // (light grey for own messages, white for received), not accent-coloured.
+    const messageAccentTheme = null as (typeof studentAccentTheme | null)
 
     return (
       <div
@@ -978,7 +969,7 @@ export default function ChatSidebar({
             </span>
           )}
           <div className={`
-            px-3.5 py-2.5 text-sm leading-snug shadow-sm backdrop-blur-md transition-all relative select-text cursor-text
+            px-3.5 py-2.5 text-xs leading-snug shadow-sm backdrop-blur-md transition-all relative select-text cursor-text
             ${isMe
               ? messageAccentTheme
                 ? 'border rounded-2xl rounded-tr-none'
@@ -1030,8 +1021,8 @@ export default function ChatSidebar({
                         <Brain className="h-4.5 w-4.5" style={{ width: 18, height: 18 }} />
                       </span>
                       <div className="min-w-0 flex-1">
-                        <p className="truncate text-xs font-black uppercase tracking-wide text-violet-700">Toy LM condiviso</p>
-                        <p className="truncate text-sm font-semibold text-slate-800">{att.name || 'Modello Toy LM'}</p>
+                        <p className="truncate text-[10px] font-black uppercase tracking-wide text-violet-700">Toy LM condiviso</p>
+                        <p className="truncate text-xs font-semibold text-slate-800">{att.name || 'Modello Toy LM'}</p>
                         <p className="mt-0.5 truncate text-[10px] text-slate-500">
                           {att.saved_epoch ?? 0} epoch · {Number(att.param_count || 0).toLocaleString()} parametri · vocab {att.vocab_size ?? 0}
                         </p>
@@ -1066,8 +1057,8 @@ export default function ChatSidebar({
                         <File className="h-4.5 w-4.5" style={{ width: 18, height: 18 }} />
                       </span>
                       <div className="min-w-0 flex-1">
-                        <p className="truncate text-xs font-black uppercase tracking-wide text-sky-700">Progetto Coding Lab</p>
-                        <p className="truncate text-sm font-semibold text-slate-800">{att.title || 'Mini app condivisa'}</p>
+                        <p className="truncate text-[10px] font-black uppercase tracking-wide text-sky-700">Progetto Coding Lab</p>
+                        <p className="truncate text-xs font-semibold text-slate-800">{att.title || 'Mini app condivisa'}</p>
                         <p className="mt-0.5 truncate text-[10px] text-slate-500">
                           {att.file_count ?? 0} file · {att.total_lines ?? 0} righe
                         </p>
@@ -1094,21 +1085,21 @@ export default function ChatSidebar({
                         },
                       }))
                     }}
-                    className="w-full rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-left shadow-sm transition-colors hover:border-emerald-300 hover:bg-emerald-100"
+                    className="w-full rounded-xl border border-[rgba(123,105,201,0.20)] bg-[rgba(123,105,201,0.075)] px-3 py-2 text-left shadow-sm transition-colors hover:border-[rgba(123,105,201,0.34)] hover:bg-[rgba(123,105,201,0.11)]"
                   >
                     <div className="flex items-center gap-2">
-                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-emerald-600 text-white">
+                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[rgba(123,105,201,0.14)] text-[#55449c]">
                         <CornerUpLeft className="h-4.5 w-4.5" style={{ width: 18, height: 18 }} />
                       </span>
                       <div className="min-w-0 flex-1">
-                        <p className="truncate text-xs font-black uppercase tracking-wide text-emerald-700">Commit Coding Lab</p>
-                        <p className="truncate text-sm font-semibold text-slate-800">
+                        <p className="truncate text-[10px] font-black uppercase tracking-wide text-[#55449c]">Commit Coding Lab</p>
+                        <p className="truncate text-xs font-semibold text-slate-800">
                           {att.contributor_name || 'Studente'} ha inviato una proposta
                         </p>
                         <p className="mt-0.5 truncate text-[10px] text-slate-500">{att.status || 'pending'}</p>
                       </div>
                     </div>
-                    <span className="mt-2 inline-flex w-full items-center justify-center rounded-lg bg-emerald-600 px-2 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-emerald-700">
+                    <span className="mt-2 inline-flex w-full items-center justify-center rounded-lg bg-[rgba(123,105,201,0.14)] px-2 py-1.5 text-xs font-semibold text-[#55449c] transition-colors hover:bg-[rgba(123,105,201,0.22)]">
                       Apri commit
                     </span>
                   </button>
@@ -1910,7 +1901,7 @@ export default function ChatSidebar({
       {/* Tabs — pill switcher */}
       <div className="px-2.5 pt-2 pb-1.5 bg-white border-b border-slate-100 shrink-0">
         <div
-          className="flex items-center gap-1 rounded-xl border p-1"
+          className="flex items-center gap-1 rounded-[var(--selection-radius)] border p-1"
           style={buildAccentNavClusterStyle(studentAccentTheme)}
         >
           {availableTabs.map((tab) => {

@@ -34,7 +34,7 @@ import torch.nn as nn
 
 logger = logging.getLogger(__name__)
 
-CHECKPOINT_DIR = os.environ.get("TOY_LM_CHECKPOINT_DIR", "/tmp/toy_lm_checkpoints")
+CHECKPOINT_DIR = os.path.abspath(os.environ.get("TOY_LM_CHECKPOINT_DIR", "data/toy_lm_checkpoints"))
 MAX_CORPUS_CHARS = 200_000
 MAX_SAMPLES = 60_000
 MAX_TRAINING_HOURS = 3.0
@@ -480,6 +480,7 @@ class ToyLMService:
 
         # Final checkpoint — captures any partial progress past the last epoch.
         job.checkpoint_path = self._write_checkpoint(job, model, optimizer, params, vocab)
+        self._persist_progress(job)
 
         # Free GPU memory
         del model

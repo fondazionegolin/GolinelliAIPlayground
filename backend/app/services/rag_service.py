@@ -2,6 +2,7 @@ from typing import Optional
 from dataclasses import dataclass
 from uuid import UUID
 import io
+import re
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, text
@@ -25,8 +26,19 @@ class ChunkResult:
 
 class RAGService:
     def __init__(self):
-        self.chunk_size = 1000
-        self.chunk_overlap = 200
+        self.chunk_size = 650
+        self.chunk_overlap = 120
+
+    def _clean_text(self, value: str) -> str:
+        text = (value or "").replace("\u00a0", " ").replace("\u200b", "")
+        text = re.sub(r"https?://\S+", "[link]", text)
+        text = re.sub(r"(?m)^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?\s*$", " ", text)
+        text = re.sub(r"(?m)^\s{0,3}#{1,6}\s*", "", text)
+        text = re.sub(r"[`*_]{2,}", "", text)
+        text = re.sub(r"\s*\|\s*", " · ", text)
+        text = re.sub(r"[ \t]{2,}", " ", text)
+        text = re.sub(r"\n{3,}", "\n\n", text)
+        return text.strip()
 
     def _normalize_segments(self, content) -> list[dict]:
         if isinstance(content, str):
@@ -47,8 +59,11 @@ class RAGService:
                 meta = item.get("meta")
             if not text or not str(text).strip():
                 continue
+            cleaned = self._clean_text(str(text))
+            if not cleaned:
+                continue
             normalized.append({
-                "text": str(text).strip(),
+                "text": cleaned,
                 "page": page,
                 "kind": kind or "text",
                 "meta": dict(meta or {}),
@@ -71,17 +86,24 @@ class RAGService:
         chunks = []
         start = 0
         chunk_index = 0
+        text_len = len(text)
         
-        while start < len(text):
+        while start < text_len:
             end = start + chunk_size
             chunk_text = text[start:end]
             
             # Try to break at sentence boundary
-            if end < len(text):
+            if end < text_len:
                 last_period = chunk_text.rfind('. ')
                 if last_period > chunk_size // 2:
                     end = start + last_period + 1
                     chunk_text = text[start:end]
+            chunk_text = self._clean_text(chunk_text)
+            if not chunk_text:
+                if end >= text_len:
+                    break
+                start = end - overlap
+                continue
             
             chunks.append({
                 "chunk_index": chunk_index,
@@ -94,6 +116,8 @@ class RAGService:
             })
             
             chunk_index += 1
+            if end >= text_len:
+                break
             start = end - overlap
         
         return chunks
@@ -127,6 +151,13 @@ class RAGService:
         await db.commit()
         
         try:
+            # Re-ingestion must be idempotent: remove stale chunks/embeddings before writing
+            # the fresh index for this document.
+            existing = await db.execute(select(RAGChunk).where(RAGChunk.document_id == document.id))
+            for chunk in existing.scalars().all():
+                await db.delete(chunk)
+            await db.flush()
+
             # Chunk the content
             chunks_data = self.chunk_content(content)
             

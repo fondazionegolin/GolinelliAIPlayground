@@ -13,6 +13,7 @@ import {
   Pause,
   Plus,
   School,
+  Search,
   Share2,
   Square,
   UserPlus,
@@ -38,7 +39,7 @@ import {
 import { teacherApi } from '@/lib/api'
 import { getTeacherAccentTheme } from '@/lib/teacherAccent'
 import { hexToRgba } from '@/design/themes/colorUtils'
-import { PASTEL_SURFACES, type PastelTone } from '@/design/themes/pastelSurfaces'
+import { PASTEL_ICON_BACKGROUNDS, PASTEL_ICON_TEXT, PASTEL_SURFACES, type PastelTone } from '@/design/themes/pastelSurfaces'
 import { useTeacherProfile } from '@/hooks/useTeacherProfile'
 import { TeachersManagementModal } from '@/components/TeachersManagementModal'
 import { useToast } from '@/components/ui/use-toast'
@@ -75,11 +76,15 @@ export default function TeacherClassesSessionsManager({
   const { toast } = useToast()
   const [searchParams, setSearchParams] = useSearchParams()
   const { data: teacherProfile } = useTeacherProfile()
-  const accentTheme = getTeacherAccentTheme(teacherProfile?.uiAccent)
+  // Highlights/evidenze on this screen use a slightly darker grey (no colour):
+  // selected class + active session read as "evidenza" via grey, like the buttons.
+  const accentTheme = { ...getTeacherAccentTheme(teacherProfile?.uiAccent), accent: '#64748b', text: '#334155' }
 
   const [selectedClassId, setSelectedClassId] = useState(searchParams.get('class') || '')
   const [showNewClassForm, setShowNewClassForm] = useState(false)
   const [showTeachersModal, setShowTeachersModal] = useState(false)
+  const [classSearch, setClassSearch] = useState('')
+  const [sessionSearch, setSessionSearch] = useState('')
   const [newClassName, setNewClassName] = useState('')
   const schoolGradeOptions = [
     t('classes.grade_primary2'),
@@ -208,6 +213,30 @@ export default function TeacherClassesSessionsManager({
     ]
   }, [sessions])
 
+  const filteredClasses = useMemo(() => {
+    const query = classSearch.trim().toLowerCase()
+    if (!query) return classes
+    return classes.filter((cls) =>
+      [cls.name, cls.school_grade, cls.owner_name]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase()
+        .includes(query)
+    )
+  }, [classSearch, classes])
+
+  const filteredOrderedSessions = useMemo(() => {
+    const query = sessionSearch.trim().toLowerCase()
+    if (!query) return orderedSessions
+    return orderedSessions.filter((session) =>
+      [session.title, session.join_code, statusMeta[session.status]?.label]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase()
+        .includes(query)
+    )
+  }, [orderedSessions, sessionSearch, statusMeta])
+
   const handleSelectClass = (classId: string) => {
     setSelectedClassId(classId)
     setSearchParams({ class: classId }, { replace: true })
@@ -264,15 +293,15 @@ export default function TeacherClassesSessionsManager({
     : (isEnglish ? 'Select a class from the side menu to manage its sessions.' : 'Seleziona una classe dal menu laterale per gestire le sessioni in modo ordinato.')
 
   return (
-    <div className="h-full w-full">
+    <div className="h-full w-full bg-slate-100">
       <div
-        className="flex h-full min-h-0 w-full flex-col overflow-hidden bg-white lg:min-h-[680px] lg:flex-row"
+        className="flex h-full min-h-0 w-full flex-col overflow-hidden bg-slate-100 lg:min-h-[680px] lg:flex-row"
         style={{
           borderColor: accentTheme.id === 'black' ? hexToRgba('#94a3b8', 0.28) : hexToRgba(accentTheme.accent, 0.2),
         }}
       >
         <aside
-          className="w-full shrink-0 border-b bg-white lg:w-[22rem] lg:border-b-0 lg:border-r"
+          className="w-full shrink-0 border-b bg-white/80 lg:w-[22rem] lg:border-b-0 lg:border-r"
           style={{
             borderColor: accentTheme.id === 'black' ? hexToRgba('#94a3b8', 0.28) : hexToRgba(accentTheme.accent, 0.2),
           }}
@@ -281,19 +310,19 @@ export default function TeacherClassesSessionsManager({
             className="border-b px-5 py-4"
             style={{
               borderBottomColor: accentTheme.id === 'black' ? hexToRgba('#0f172a', 0.08) : hexToRgba(accentTheme.accent, 0.14),
-              backgroundColor: accentTheme.id === 'black' ? 'rgba(255,255,255,0.92)' : hexToRgba(accentTheme.accent, 0.05),
+              backgroundColor: 'rgba(255,255,255,0.88)',
             }}
           >
             <div className="flex items-start justify-between gap-3">
               <div className="max-w-[14rem]">
-                <p className="text-[11px] font-semibold tracking-[0.08em]" style={{ color: accentTheme.text }}>
+                <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
                   {isEnglish ? 'Teacher panel' : 'Pannello docente'}
                 </p>
                 <h1 className="mt-1 text-[17px] font-semibold tracking-[var(--letter-spacing-tight)] text-slate-950">{t('classes.title')}</h1>
-                <p className="mt-1 text-[12px] leading-5 text-slate-600">
+                <p className="mt-1 text-xs leading-5 text-slate-500">
                   {isEnglish
-                    ? 'Organise classes, invited teachers, and live sessions without leaving this view.'
-                    : 'Organizza classi, docenti invitati e sessioni live senza uscire da questa vista.'}
+                    ? 'Classes, teachers, and live sessions in one explorer.'
+                    : 'Classi, docenti e sessioni live in un explorer.'}
                 </p>
               </div>
               <Button
@@ -301,16 +330,36 @@ export default function TeacherClassesSessionsManager({
                 density="compact"
                 tone="accent"
                 surface="solid"
-                className="shrink-0 rounded-lg"
+                className="shrink-0 rounded-full"
               >
                 <Plus className="mr-1.5 h-3.5 w-3.5" />
                 {t('classes.new_class')}
               </Button>
             </div>
+            <div className={`relative mt-4 rounded-2xl px-3 py-2 shadow-sm ${PASTEL_SURFACES.slate}`}>
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              <input
+                type="text"
+                value={classSearch}
+                onChange={(e) => setClassSearch(e.target.value)}
+                placeholder={isEnglish ? 'Search classes...' : 'Cerca classi...'}
+                className="w-full rounded-lg border-0 bg-transparent py-2 pl-9 pr-8 text-sm text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-0"
+              />
+              {classSearch && (
+                <button
+                  type="button"
+                  onClick={() => setClassSearch('')}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded-full p-1 text-slate-400 transition-colors hover:bg-slate-200/70 hover:text-slate-600"
+                  aria-label={isEnglish ? 'Clear class search' : 'Cancella ricerca classi'}
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </div>
           </div>
 
           {showNewClassForm && (
-            <div className="border-b px-6 py-5" style={{ borderBottomColor: accentTheme.id === 'black' ? hexToRgba('#0f172a', 0.08) : hexToRgba(accentTheme.accent, 0.14) }}>
+            <div className="border-b px-5 py-4" style={{ borderBottomColor: accentTheme.id === 'black' ? hexToRgba('#0f172a', 0.08) : hexToRgba(accentTheme.accent, 0.14) }}>
               <form onSubmit={handleCreateClass} className="space-y-3">
                 <Input
                   placeholder={t('classes.class_name_placeholder')}
@@ -329,11 +378,11 @@ export default function TeacherClassesSessionsManager({
                   ))}
                 </Select>
                 <div className="flex items-center gap-2">
-                  <Button type="submit" disabled={createClassMutation.isPending || !newClassName.trim()} tone="accent" surface="solid" className="rounded-lg">
+                  <Button type="submit" disabled={createClassMutation.isPending || !newClassName.trim()} tone="accent" surface="solid" className="rounded-full">
                     {createClassMutation.isPending ? <Spinner className="mr-2" size="sm" tone="inverse" /> : null}
                     {t('classes.create_class')}
                   </Button>
-                  <Button type="button" surface="ghost" tone="neutral" onClick={() => setShowNewClassForm(false)}>
+                  <Button type="button" surface="ghost" tone="neutral" onClick={() => setShowNewClassForm(false)} className="rounded-full">
                     {t('classes.cancel')}
                   </Button>
                 </div>
@@ -341,11 +390,11 @@ export default function TeacherClassesSessionsManager({
             </div>
           )}
 
-          <div className="max-h-[28rem] overflow-y-auto px-3 pb-4 lg:max-h-[calc(100%-10rem)]">
+          <div className="max-h-[28rem] overflow-y-auto px-4 py-4 lg:max-h-[calc(100%-10rem)]">
             {isClassesLoading ? (
-              <div className="space-y-3 px-2">
+              <div className="space-y-3">
                 {[1, 2, 3].map((item) => (
-                  <div key={item} className="h-20 animate-pulse rounded-xl border border-slate-200 bg-white/80" />
+                  <div key={item} className={`h-28 animate-pulse rounded-[24px] shadow-sm ${PASTEL_SURFACES.slate}`} />
                 ))}
               </div>
             ) : classes.length === 0 ? (
@@ -355,78 +404,52 @@ export default function TeacherClassesSessionsManager({
                 body={emptyBody}
                 compact
               />
+            ) : filteredClasses.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-12 text-center">
+                <Search className="mb-3 h-8 w-8 text-slate-200" />
+                <p className="text-sm text-slate-400">
+                  {isEnglish ? 'No class matches ' : 'Nessuna classe corrisponde a '}<strong>"{classSearch}"</strong>
+                </p>
+              </div>
             ) : (
-              <div className="space-y-2">
-                {classes.map((cls) => {
+              <div className="space-y-3">
+                {filteredClasses.map((cls) => {
                   const isSelected = cls.id === selectedClassId
                   const isShared = cls.role === 'invited'
-                  const selectedCardStyle = {
-                    backgroundColor: hexToRgba(accentTheme.accent, 0.08),
-                    borderColor: hexToRgba(accentTheme.accent, 0.36),
-                  }
-                  const selectedIconStyle = {
-                    backgroundColor: hexToRgba(accentTheme.accent, 0.14),
-                    color: accentTheme.text,
-                  }
-                  const selectedPillStyle = {
-                    backgroundColor: hexToRgba(accentTheme.accent, 0.12),
-                    color: accentTheme.text,
-                  }
+                  const cardTone: PastelTone = isSelected ? 'violet' : isShared ? 'indigo' : 'slate'
                   return (
                     <button
                       key={cls.id}
                       onClick={() => handleSelectClass(cls.id)}
-                      className={`group relative w-full overflow-hidden rounded-lg border px-3 py-3 text-left transition-all ${
-                        isSelected
-                          ? ''
-                          : isShared
-                            ? ''
-                            : 'bg-white border-slate-300 hover:border-slate-400'
-                      }`}
-                      style={isSelected ? selectedCardStyle : isShared ? {
-                        backgroundColor: hexToRgba(accentTheme.accent, 0.06),
-                        borderColor: hexToRgba(accentTheme.accent, 0.22),
-                      } : undefined}
+                      className={`group relative w-full overflow-hidden rounded-[24px] p-4 text-left shadow-sm transition-all ${PASTEL_SURFACES[cardTone]} ${isSelected ? 'ring-1 ring-[rgba(123,105,201,0.32)]' : ''}`}
                     >
-                      <div className="flex items-start gap-2.5">
+                      <div className="flex items-start gap-3">
                         <div
-                          className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${
-                            isShared ? '' : isSelected ? '' : 'bg-slate-100 text-slate-600'
-                          }`}
-                          style={isSelected ? selectedIconStyle : isShared ? selectedIconStyle : undefined}
+                          className={`mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${PASTEL_ICON_BACKGROUNDS[cardTone]} ${PASTEL_ICON_TEXT[cardTone]}`}
                         >
                           <School className="h-4 w-4" />
                         </div>
                         <div className="min-w-0 flex-1">
                           <div className="flex items-start justify-between gap-2">
                             <div className="min-w-0">
-                              <span className="block truncate text-sm font-semibold tracking-[-0.01em] text-slate-900">{cls.name}</span>
+                              <span className="block truncate text-sm font-bold text-slate-800">{cls.name}</span>
                               <span className="mt-1 block text-xs text-slate-500">{cls.school_grade || t('classes.not_set')}</span>
                             </div>
                             <ChevronRight className={`mt-1 h-4 w-4 shrink-0 text-slate-300 transition-transform ${isSelected ? 'translate-x-0.5' : 'group-hover:translate-x-0.5'}`} />
                           </div>
-                          <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px]">
-                            <span className={`rounded-full px-2 py-0.5 font-medium ${
-                              isShared ? '' : isSelected ? '' : 'bg-slate-100 text-slate-600'
-                            }`} style={isSelected || isShared ? selectedPillStyle : undefined}>
+                          <div className="mt-3 flex flex-wrap items-center gap-1.5 text-[11px]">
+                            <span className="rounded-full bg-white/55 px-2 py-0.5 font-bold text-slate-500 ring-1 ring-white/70">
                               {cls.session_count || 0} {isEnglish ? 'sessions' : 'sessioni'}
                             </span>
                             {isShared && (
-                              <span
-                                className="rounded-full px-2 py-0.5 font-medium ring-1"
-                                style={{
-                                  backgroundColor: hexToRgba(accentTheme.accent, 0.08),
-                                  color: accentTheme.text,
-                                  borderColor: hexToRgba(accentTheme.accent, 0.18),
-                                }}
-                              >
+                              <span className="rounded-full bg-white/55 px-2 py-0.5 font-bold text-slate-500 ring-1 ring-white/70">
                                 {cls.owner_name ? (isEnglish ? `by ${cls.owner_name}` : `di ${cls.owner_name}`) : (isEnglish ? 'Shared' : 'Condivisa')}
                               </span>
                             )}
                             <button
                               onClick={(e) => { e.stopPropagation(); navigate(`/teacher/classes/${cls.id}/uda`) }}
                               title={isEnglish ? 'Teaching Units (UDA)' : 'Unità Didattiche (UDA)'}
-                              className="ml-auto flex items-center gap-1 rounded-full px-2 py-0.5 font-medium text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors opacity-0 group-hover:opacity-100"
+                              className="ml-auto flex items-center gap-1 rounded-full bg-white/45 px-2 py-0.5 font-bold text-slate-400 opacity-0 transition-colors hover:bg-white/80 hover:text-slate-700 group-hover:opacity-100"
                             >
                               <BookOpen className="h-3 w-3" />
                               <span>UDA</span>
@@ -442,7 +465,7 @@ export default function TeacherClassesSessionsManager({
           </div>
         </aside>
 
-        <section className="min-w-0 flex-1 bg-white">
+        <section className="min-w-0 flex-1 bg-slate-100">
           {!selectedClass ? (
             <div className="flex h-full min-h-[420px] items-center justify-center px-6">
               <div className="w-full max-w-lg">
@@ -459,12 +482,12 @@ export default function TeacherClassesSessionsManager({
                 className="border-b px-5 py-4"
                 style={{
                   borderBottomColor: accentTheme.id === 'black' ? hexToRgba('#0f172a', 0.08) : hexToRgba(accentTheme.accent, 0.14),
-                  backgroundColor: accentTheme.id === 'black' ? 'rgba(255,255,255,0.96)' : hexToRgba(accentTheme.accent, 0.04),
+                  backgroundColor: 'rgba(255,255,255,0.88)',
                 }}
               >
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                   <div className="min-w-0">
-                    <p className="text-[11px] font-semibold tracking-[0.08em]" style={{ color: accentTheme.text }}>
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
                       {isEnglish ? 'Selected class' : 'Classe selezionata'}
                     </p>
                     {isEditingClass ? (
@@ -502,7 +525,7 @@ export default function TeacherClassesSessionsManager({
                           {selectedClass.name}
                         </h2>
                         <div className="mt-2.5 flex flex-wrap items-center gap-1.5 text-[11px]">
-                          <span className="rounded-full bg-white px-2 py-0.5 font-medium text-slate-600 ring-1 ring-slate-200/80">
+                          <span className="rounded-full bg-white/80 px-2 py-0.5 font-bold text-slate-600 ring-1 ring-slate-200/80">
                             {selectedClass.school_grade || '—'}
                           </span>
                           {selectedClass.role === 'invited' && (
@@ -529,13 +552,13 @@ export default function TeacherClassesSessionsManager({
 
                   {!isEditingClass && (
                     <div className="flex shrink-0 items-center gap-2 self-start sm:pt-0.5">
-                      <IconButton onClick={() => setIsEditingClass(true)} title={isEnglish ? 'Rename class' : 'Rinomina classe'} tone="neutral" surface="outline" size="default">
+                      <IconButton onClick={() => setIsEditingClass(true)} title={isEnglish ? 'Rename class' : 'Rinomina classe'} tone="neutral" surface="soft" size="default" className="rounded-full">
                         <Edit2 className="h-3.5 w-3.5" />
                       </IconButton>
-                      <IconButton onClick={() => setShowTeachersModal(true)} title={isEnglish ? 'Manage teachers' : 'Gestisci docenti'} tone="neutral" surface="outline" size="default">
+                      <IconButton onClick={() => setShowTeachersModal(true)} title={isEnglish ? 'Manage teachers' : 'Gestisci docenti'} tone="neutral" surface="soft" size="default" className="rounded-full">
                         <UserPlus className="h-3.5 w-3.5" />
                       </IconButton>
-                      <IconButton onClick={() => navigate(`/teacher/classes/${selectedClass.id}/uda`)} title="UDA" tone="neutral" surface="outline" size="default">
+                      <IconButton onClick={() => navigate(`/teacher/classes/${selectedClass.id}/uda`)} title="UDA" tone="neutral" surface="soft" size="default" className="rounded-full">
                         <BookOpen className="h-3.5 w-3.5" />
                       </IconButton>
                       <Button
@@ -546,7 +569,7 @@ export default function TeacherClassesSessionsManager({
                           setNewSessionTitle(`${isEnglish ? 'Lesson of' : 'Lezione del'} ${new Date().toLocaleDateString(isEnglish ? 'en-GB' : 'it-IT')}`)
                           setShowNewSessionDialog(true)
                         }}
-                        className="rounded-lg"
+                        className="rounded-full"
                       >
                         <Plus className="mr-1.5 h-3.5 w-3.5" />
                         {t('sessions.new_session')}
@@ -557,11 +580,11 @@ export default function TeacherClassesSessionsManager({
 
               </div>
 
-              <div className="flex-1 overflow-y-auto px-5 py-4">
+              <div className="flex-1 overflow-y-auto px-5 py-5">
                 {isSessionsLoading ? (
-                  <div className="space-y-4">
+                  <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                     {[1, 2, 3].map((item) => (
-                      <div key={item} className="h-32 animate-pulse rounded-xl border border-slate-200 bg-white/80" />
+                      <div key={item} className={`h-44 animate-pulse rounded-[24px] shadow-sm ${PASTEL_SURFACES.slate}`} />
                     ))}
                   </div>
                 ) : sessions.length === 0 ? (
@@ -572,21 +595,57 @@ export default function TeacherClassesSessionsManager({
                     tone="slate"
                   />
                 ) : (
-                  <SessionList
-                    isEnglish={isEnglish}
-                    statusMeta={statusMeta}
-                    accentTheme={accentTheme}
-                    sessions={orderedSessions}
-                    editingTitleId={editingTitleId}
-                    editingTitleValue={editingTitleValue}
-                    setEditingTitleId={setEditingTitleId}
-                    setEditingTitleValue={setEditingTitleValue}
-                    onRename={handleRenameSession}
-                    onCopyCode={copyCode}
-                    renamePending={renameSessionMutation.isPending}
-                    updatePending={updateSessionMutation.isPending}
-                    onStatusChange={(id, status) => updateSessionMutation.mutate({ id, status })}
-                  />
+                  <div className="space-y-5">
+                    <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                      <div className={`relative w-full max-w-sm rounded-2xl px-3 py-2 shadow-sm ${PASTEL_SURFACES.slate}`}>
+                        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                        <input
+                          type="text"
+                          value={sessionSearch}
+                          onChange={(e) => setSessionSearch(e.target.value)}
+                          placeholder={isEnglish ? 'Search sessions...' : 'Cerca sessioni...'}
+                          className="w-full rounded-lg border-0 bg-transparent py-2 pl-9 pr-8 text-sm text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-0"
+                        />
+                        {sessionSearch && (
+                          <button
+                            type="button"
+                            onClick={() => setSessionSearch('')}
+                            className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded-full p-1 text-slate-400 transition-colors hover:bg-slate-200/70 hover:text-slate-600"
+                            aria-label={isEnglish ? 'Clear session search' : 'Cancella ricerca sessioni'}
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </button>
+                        )}
+                      </div>
+                      <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                        {filteredOrderedSessions.length} {isEnglish ? 'sessions' : 'sessioni'}
+                      </p>
+                    </div>
+                    {filteredOrderedSessions.length === 0 ? (
+                      <div className="flex flex-col items-center justify-center py-16 text-center">
+                        <Search className="mb-3 h-8 w-8 text-slate-200" />
+                        <p className="text-sm text-slate-400">
+                          {isEnglish ? 'No session matches ' : 'Nessuna sessione corrisponde a '}<strong>"{sessionSearch}"</strong>
+                        </p>
+                      </div>
+                    ) : (
+                      <SessionList
+                        isEnglish={isEnglish}
+                        statusMeta={statusMeta}
+                        accentTheme={accentTheme}
+                        sessions={filteredOrderedSessions}
+                        editingTitleId={editingTitleId}
+                        editingTitleValue={editingTitleValue}
+                        setEditingTitleId={setEditingTitleId}
+                        setEditingTitleValue={setEditingTitleValue}
+                        onRename={handleRenameSession}
+                        onCopyCode={copyCode}
+                        renamePending={renameSessionMutation.isPending}
+                        updatePending={updateSessionMutation.isPending}
+                        onStatusChange={(id, status) => updateSessionMutation.mutate({ id, status })}
+                      />
+                    )}
+                  </div>
                 )}
               </div>
             </div>
@@ -714,31 +773,21 @@ function SessionList({
 }) {
   if (sessions.length === 0) return null
   const activeCount = sessions.filter((session) => session.status === 'active').length
-  const compactCount = sessions.length - activeCount
 
   return (
     <div className="space-y-3">
-      <div className="flex flex-col gap-1 px-0.5 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <h3 className="text-base font-semibold tracking-[var(--letter-spacing-tight)] text-slate-950">
-            {isEnglish ? 'Sessions' : 'Sessioni'}
-          </h3>
-          <p className="text-xs text-slate-500">
-            {activeCount > 0
-              ? (isEnglish
-                  ? `${activeCount} active expanded, ${compactCount} in compact list`
-                  : `${activeCount} attiva in evidenza, ${compactCount} in elenco compatto`)
-              : (isEnglish
-                  ? `${sessions.length} sessions in compact list`
-                  : `${sessions.length} sessioni in elenco compatto`)}
-          </p>
-        </div>
-        <p className="text-[11px] font-medium text-slate-400">
-          {isEnglish ? 'Click a row to open configuration' : 'Clicca una riga per aprire la configurazione'}
+      <div>
+        <h3 className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+          {isEnglish ? 'Session cards' : 'Card sessione'}
+        </h3>
+        <p className="mt-1 text-xs text-slate-500">
+          {activeCount > 0
+            ? (isEnglish ? `${activeCount} active session highlighted` : `${activeCount} sessione attiva in evidenza`)
+            : (isEnglish ? 'No active sessions right now' : 'Nessuna sessione attiva al momento')}
         </p>
       </div>
 
-      <div className="space-y-2">
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
         {sessions.map((session) => (
           <SessionRow
             key={session.id}
@@ -796,136 +845,95 @@ function SessionRow({
   const isPaused = session.status === 'paused'
   const isDraft = session.status === 'draft'
   const isEnded = session.status === 'finished' || session.status === 'ended'
+  const tone: PastelTone = isActive ? 'rose' : isPaused ? 'violet' : 'slate'
+  const iconTone = isActive ? 'rose' : isPaused ? 'violet' : 'slate'
 
   const navigate = useNavigate()
   const createdAt = new Date(session.created_at).toLocaleDateString(isEnglish ? 'en-GB' : 'it-IT', { day: '2-digit', month: '2-digit', year: '2-digit' })
 
-  if (isActive) {
-    return (
-      <Card
-        surface="base"
-        className="cursor-pointer overflow-hidden rounded-xl border px-4 py-4 shadow-sm transition-all"
-        style={{
-          borderColor: hexToRgba(accentTheme.accent, 0.36),
-          backgroundColor: hexToRgba(accentTheme.accent, 0.08),
-        }}
-        onClick={() => navigate(`/teacher/sessions/${session.id}`)}
-      >
-        <div className="flex flex-col gap-3">
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-            <div className="min-w-0 flex-1" onClick={e => e.stopPropagation()}>
-              <div className="flex items-start gap-2.5">
-                <div
-                  className="mt-1.5 h-3 w-3 shrink-0 rounded-full animate-pulse shadow-sm"
-                  style={{ backgroundColor: accentTheme.accent, boxShadow: `0 0 0 3px ${hexToRgba(accentTheme.accent, 0.18)}` }}
-                />
-                <div className="min-w-0 flex-1">
-                  {editingTitleId === session.id ? (
-                    <form className="flex min-w-0 flex-1 items-center gap-1.5" onSubmit={(e) => { e.preventDefault(); onRename(session.id) }}>
-                      <Input
-                        autoFocus
-                        value={editingTitleValue}
-                        onChange={(e) => setEditingTitleValue(e.target.value)}
-                        onKeyDown={(e) => { if (e.key === 'Escape') setEditingTitleId(null) }}
-                        density="compact"
-                        className="min-w-0 flex-1 bg-white text-sm text-slate-800"
-                      />
-                      <IconButton type="submit" disabled={renamePending} tone="success" surface="ghost" size="sm">
-                        {renamePending ? <Spinner size="sm" tone="success" /> : <Check className="h-3.5 w-3.5" />}
-                      </IconButton>
-                      <IconButton type="button" onClick={() => setEditingTitleId(null)} tone="neutral" surface="ghost" size="sm">
-                        <X className="h-3.5 w-3.5" />
-                      </IconButton>
-                    </form>
-                  ) : (
-                    <>
-                      <div className="flex min-w-0 items-center gap-2">
-                        <h4 className="truncate text-[18px] font-semibold tracking-[-0.01em] text-slate-950">{session.title}</h4>
-                        <span
-                          className="inline-flex shrink-0 items-center rounded-full px-2 py-0.5 text-[11px] font-semibold"
-                          style={{ backgroundColor: hexToRgba(accentTheme.accent, 0.16), color: accentTheme.text }}
-                        >
-                          {meta.label}
-                        </span>
-                        <IconButton
-                          onClick={() => { setEditingTitleId(session.id); setEditingTitleValue(session.title) }}
-                          className="shrink-0"
-                          tone="neutral"
-                          surface="ghost"
-                          size="sm"
-                          title={isEnglish ? 'Rename' : 'Rinomina'}
-                        >
-                          <Edit2 className="h-3 w-3" />
-                        </IconButton>
-                      </div>
-                      <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-slate-600">
-                        <span>{createdAt}</span>
-                        <span>{session.active_students_count ?? 0} {isEnglish ? 'active students' : 'studenti attivi'}</span>
-                        {session.join_code ? (
-                          <Button
-                            onClick={() => onCopyCode(session.join_code)}
-                            tone="neutral"
-                            surface="soft"
-                            density="compact"
-                            className="inline-flex items-center gap-1 rounded-md font-mono text-[11px] font-semibold text-slate-700"
-                          >
-                            {session.join_code}
-                            <Copy className="h-2.5 w-2.5" />
-                          </Button>
-                        ) : (
-                          <span className="text-slate-400">{isEnglish ? 'Code unavailable' : 'Codice non disponibile'}</span>
-                        )}
-                      </div>
-                    </>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            <div className="flex shrink-0 items-center gap-2" onClick={e => e.stopPropagation()}>
-              <Button tone="accent" surface="solid" density="compact" className="rounded-md" onClick={() => navigate(`/teacher/sessions/${session.id}`)}>
-                <ChevronRight className="mr-1.5 h-3.5 w-3.5" />
-                {isEnglish ? 'Configure session' : 'Configura sessione'}
-              </Button>
-            </div>
-          </div>
-
-          <div className="border-t pt-3" style={{ borderTopColor: hexToRgba(accentTheme.accent, 0.2) }} onClick={e => e.stopPropagation()}>
-            <div className="flex flex-wrap items-center gap-2">
-              <Button onClick={() => onStatusChange(session.id, 'paused')} disabled={updatePending} tone="neutral" surface="outline" density="compact" className="rounded-md bg-white/80">
-                <Pause className="mr-1.5 h-3.5 w-3.5" />
-                {isEnglish ? 'Pause' : 'Pausa'}
-              </Button>
-              <Button onClick={() => onStatusChange(session.id, 'ended')} disabled={updatePending} tone="danger" surface="soft" density="compact" className="rounded-md">
-                <Square className="mr-1.5 h-3.5 w-3.5" />
-                {isEnglish ? 'Close' : 'Chiudi'}
-              </Button>
-            </div>
-          </div>
-        </div>
-      </Card>
-    )
-  }
-
-  // Compact single-row layout for non-active sessions — controls aligned to the right
   return (
-    <div className="group flex items-center gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2 transition-all hover:border-slate-300 hover:shadow-sm">
-      <button
-        type="button"
-        onClick={() => navigate(`/teacher/sessions/${session.id}`)}
-        className="flex min-w-0 flex-1 items-center gap-2.5 text-left"
-      >
-        <span className={`h-2 w-2 shrink-0 rounded-full ${meta.dot}`} />
-        <span className="truncate text-sm font-semibold text-slate-900">{session.title}</span>
-        <StatusBadge meta={meta} />
-        <span className="hidden shrink-0 items-center gap-2 text-[11px] text-slate-500 md:flex">
-          <span>{createdAt}</span>
-          <span className="text-slate-300">·</span>
-          <span>{session.active_students_count ?? 0} {isEnglish ? 'students' : 'studenti'}</span>
-        </span>
-      </button>
+    <Card
+      surface="base"
+      className={`group flex min-h-[180px] cursor-pointer flex-col justify-between rounded-[24px] p-4 shadow-sm transition-all ${PASTEL_SURFACES[tone]} ${isActive ? 'ring-1 ring-[rgba(254,0,77,0.20)]' : ''}`}
+      style={isActive ? { boxShadow: `0 0 0 1px ${hexToRgba(accentTheme.accent, 0.08)}` } : undefined}
+      onClick={() => navigate(`/teacher/sessions/${session.id}`)}
+    >
+      <div>
+        <div className="mb-3 flex items-start justify-between gap-3">
+          <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${PASTEL_ICON_BACKGROUNDS[iconTone]} ${PASTEL_ICON_TEXT[iconTone]}`}>
+            <MonitorPlay className="h-5 w-5" />
+          </div>
+          <StatusBadge meta={meta} active={isActive} />
+        </div>
 
-      <div className="flex shrink-0 items-center gap-1.5" onClick={e => e.stopPropagation()}>
+        <div className="min-w-0" onClick={(e) => e.stopPropagation()}>
+          {editingTitleId === session.id ? (
+            <form className="flex min-w-0 items-center gap-1.5" onSubmit={(e) => { e.preventDefault(); onRename(session.id) }}>
+              <Input
+                autoFocus
+                value={editingTitleValue}
+                onChange={(e) => setEditingTitleValue(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Escape') setEditingTitleId(null) }}
+                density="compact"
+                className="min-w-0 flex-1 rounded-2xl bg-white text-sm text-slate-800"
+              />
+              <IconButton type="submit" disabled={renamePending} tone="success" surface="ghost" size="sm" className="rounded-full">
+                {renamePending ? <Spinner size="sm" tone="success" /> : <Check className="h-3.5 w-3.5" />}
+              </IconButton>
+              <IconButton type="button" onClick={() => setEditingTitleId(null)} tone="neutral" surface="ghost" size="sm" className="rounded-full">
+                <X className="h-3.5 w-3.5" />
+              </IconButton>
+            </form>
+          ) : (
+            <div className="flex min-w-0 items-start gap-2">
+              <h4 className="min-w-0 flex-1 truncate text-sm font-bold text-slate-800">{session.title}</h4>
+              <button
+                type="button"
+                onClick={() => { setEditingTitleId(session.id); setEditingTitleValue(session.title) }}
+                className="rounded-full p-1 text-slate-400 opacity-0 transition-all hover:bg-white/70 hover:text-slate-700 group-hover:opacity-100"
+                title={isEnglish ? 'Rename' : 'Rinomina'}
+              >
+                <Edit2 className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          )}
+        </div>
+
+        <div className="mt-3 flex flex-wrap items-center gap-1.5 text-[11px] text-slate-500">
+          <span className="rounded-full bg-white/55 px-2 py-0.5 font-bold ring-1 ring-white/70">{createdAt}</span>
+          <span className="rounded-full bg-white/55 px-2 py-0.5 font-bold ring-1 ring-white/70">
+            {session.active_students_count ?? 0} {isActive ? (isEnglish ? 'active' : 'attivi') : (isEnglish ? 'students' : 'studenti')}
+          </span>
+          {session.join_code ? (
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); onCopyCode(session.join_code) }}
+              className="inline-flex items-center gap-1 rounded-full bg-white/55 px-2 py-0.5 font-mono font-bold text-slate-600 ring-1 ring-white/70 transition-colors hover:bg-white/90"
+            >
+              {session.join_code}
+              <Copy className="h-2.5 w-2.5" />
+            </button>
+          ) : null}
+        </div>
+      </div>
+
+      <div className="mt-4 flex flex-wrap items-center gap-2" onClick={(e) => e.stopPropagation()}>
+        <Button
+          tone={isActive ? 'danger' : 'accent'}
+          surface={isActive ? 'soft' : 'solid'}
+          density="compact"
+          className="rounded-full"
+          onClick={() => navigate(`/teacher/sessions/${session.id}`)}
+        >
+          <ChevronRight className="mr-1.5 h-3.5 w-3.5" />
+          {isEnglish ? 'Configure' : 'Configura'}
+        </Button>
+        {isActive && (
+          <Button onClick={() => onStatusChange(session.id, 'paused')} disabled={updatePending} tone="neutral" surface="soft" density="compact" className="rounded-full bg-white/70">
+            <Pause className="mr-1.5 h-3.5 w-3.5" />
+            {isEnglish ? 'Pause' : 'Pausa'}
+          </Button>
+        )}
         {(isPaused || isDraft) && (
           <Button
             onClick={() => onStatusChange(session.id, 'active')}
@@ -933,9 +941,9 @@ function SessionRow({
             tone="accent"
             surface="soft"
             density="compact"
-            className="rounded-md text-[11px]"
+            className="rounded-full bg-white/65"
           >
-            <MonitorPlay className="mr-1 h-3 w-3" />
+            <MonitorPlay className="mr-1.5 h-3.5 w-3.5" />
             {isPaused ? (isEnglish ? 'Resume' : 'Riprendi') : (isEnglish ? 'Activate' : 'Attiva')}
           </Button>
         )}
@@ -946,19 +954,26 @@ function SessionRow({
             tone="danger"
             surface="ghost"
             density="compact"
-            className="rounded-md text-[11px]"
+            className="rounded-full"
           >
-            <Square className="mr-1 h-3 w-3" />
+            <Square className="mr-1.5 h-3.5 w-3.5" />
             {isEnglish ? 'Close' : 'Chiudi'}
           </Button>
         )}
-        <ChevronRight className="ml-0.5 h-4 w-4 shrink-0 text-slate-300 transition-transform group-hover:translate-x-0.5 group-hover:text-slate-500" />
       </div>
-    </div>
+    </Card>
   )
 }
 
-function StatusBadge({ meta }: { meta: { label: string; tone: string } }) {
+function StatusBadge({ meta, active = false }: { meta: { label: string; tone: string }; active?: boolean }) {
+  if (active) {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-white/60 px-2 py-0.5 text-[11px] font-bold text-[#b51f5f] ring-1 ring-white/70">
+        <span className="h-1.5 w-1.5 rounded-full bg-[#fe004d]" />
+        {meta.label}
+      </span>
+    )
+  }
   if (meta.tone.includes('blue')) {
     return <Badge tone="success" surface="soft" density="compact">{meta.label}</Badge>
   }
