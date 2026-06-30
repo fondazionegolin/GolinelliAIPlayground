@@ -13,6 +13,7 @@ import { NavbarCalendarClock } from './NavbarCalendarClock'
 import WhatsNewModal from './WhatsNewModal'
 import { buildAccentNavbarStyle, buildAccentNavClusterStyle } from '@/lib/navbarGlass'
 import { CreditBalancePill } from './CreditBalancePill'
+import { StudentNotificationBell } from './StudentNotificationBell'
 
 interface StudentProfile {
   id?: string
@@ -74,8 +75,34 @@ export function StudentNavbar({
   const [showMobileMenu, setShowMobileMenu] = useState(false)
   const [showWhatsNew, setShowWhatsNew] = useState(false)
   const [voiceActive, setVoiceActive] = useState(false)
+  const [chatBadge, setChatBadge] = useState(0)
   const dropdownRef = useRef<HTMLDivElement>(null)
   const mobileMenuRef = useRef<HTMLDivElement>(null)
+
+  // Chat-related updates (e.g. a teacher sharing new documents) bump a counter on
+  // the class-chat icon. Cleared when the student opens the chat.
+  useEffect(() => {
+    let socket: any = null
+    const bump = () => setChatBadge((n) => n + 1)
+    const attach = () => {
+      const s = (window as any).socket
+      if (s && s !== socket) {
+        socket = s
+        s.on('document_uploaded', bump)
+        s.on('task_published', bump)
+      }
+    }
+    attach()
+    const iv = setInterval(attach, 1500)
+    return () => {
+      clearInterval(iv)
+      if (socket) { socket.off('document_uploaded', bump); socket.off('task_published', bump) }
+    }
+  }, [])
+
+  useEffect(() => {
+    if (chatSidebarOpen) setChatBadge(0)
+  }, [chatSidebarOpen])
 
   const { t } = useTranslation()
   const [profile, setProfile] = useState<StudentProfile>({
@@ -305,7 +332,7 @@ export function StudentNavbar({
                     title={chatSidebarOpen ? t('navbar.hide_class_chat') : t('navbar.show_class_chat')}
                   >
                     <MessageSquare className="h-4 w-4 flex-shrink-0" />
-                    {voiceActive && (
+                    {voiceActive ? (
                       <span
                         className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full text-white ring-2 ring-white"
                         style={{ backgroundColor: accentTheme.accent }}
@@ -316,9 +343,18 @@ export function StudentNavbar({
                         />
                         <Mic className="relative h-2.5 w-2.5" />
                       </span>
-                    )}
+                    ) : chatBadge > 0 ? (
+                      <span
+                        className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-bold text-white ring-2 ring-white"
+                        style={{ backgroundColor: accentTheme.accent }}
+                      >
+                        {chatBadge > 9 ? '9+' : chatBadge}
+                      </span>
+                    ) : null}
                   </button>
                 )}
+
+                <StudentNotificationBell accentColor={accentTheme.accent} onNavigate={onNavigate} />
 
                 <CreditBalancePill audience="student" accentColor={accentTheme.accent} />
               </div>

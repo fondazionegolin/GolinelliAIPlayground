@@ -1261,6 +1261,26 @@ export default function ChatbotModule({ sessionId, studentId, initialTeacherbotI
     }
   }, [activeSharedRoom])
 
+  // Open a shared room requested from elsewhere (e.g. the notification bell).
+  // Handles both a live event and a pending request stored before this module mounted.
+  useEffect(() => {
+    const openRoom = (room: SharedRoom) => {
+      setActiveSharedRoom(room)
+      setSharedInvites((prev) => prev.some((r) => r.id === room.id) ? prev : [room, ...prev])
+    }
+    const onEvent = (e: Event) => {
+      const room = (e as CustomEvent<{ room?: SharedRoom }>).detail?.room
+      if (room) { openRoom(room); try { localStorage.removeItem('pending_shared_chat') } catch { /* noop */ } }
+    }
+    window.addEventListener('golinelli:open-shared-chat', onEvent as EventListener)
+    try {
+      const pending = localStorage.getItem('pending_shared_chat')
+      if (pending) { openRoom(JSON.parse(pending)); localStorage.removeItem('pending_shared_chat') }
+    } catch { /* noop */ }
+    return () => window.removeEventListener('golinelli:open-shared-chat', onEvent as EventListener)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   const sendMessageMutation = useMutation({
     mutationFn: async ({ content, files, existingHistory }: { content: string; files: globalThis.File[]; existingHistory?: Message[] }) => {
       // TEACHERBOT MODE

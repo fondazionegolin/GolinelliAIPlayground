@@ -326,7 +326,8 @@ async def send_room_message(
     participant_ids = [s.id for s in participants]
     nicknames = [s.nickname for s in participants]
 
-    is_peer = _detect_peer_mention(content, nicknames) is not None
+    mentioned_nick = _detect_peer_mention(content, nicknames)
+    is_peer = mentioned_nick is not None
 
     user_msg = SharedChatMessage(
         room_id=room.id,
@@ -346,6 +347,14 @@ async def send_room_message(
     })
 
     if is_peer:
+        # Notify the mentioned peer directly so it surfaces in their notification bell.
+        target = next((s for s in participants if s.nickname == mentioned_nick and s.id != student.id), None)
+        if target:
+            await _broadcast([target.id], "share_chat_mention", {
+                "room": _room_summary(room, participants),
+                "from_nickname": student.nickname,
+                "preview": content[:120],
+            })
         return {"ok": True, "bot_replied": False}
 
     # ── Build the bot reply ─────────────────────────────────────────────────
