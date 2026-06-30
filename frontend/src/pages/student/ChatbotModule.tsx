@@ -1214,6 +1214,19 @@ export default function ChatbotModule({ sessionId, studentId, initialTeacherbotI
     const roomId = activeSharedRoom.id
     if (preSharedMessagesRef.current === null) preSharedMessagesRef.current = messages
 
+    // Select the room's bot/profile so the chat view renders with the right header,
+    // even for an invited student who hadn't opened any chatbot yet.
+    if (activeSharedRoom.kind === 'assistant' && activeSharedRoom.profile_key) {
+      setSelectedTeacherbot(null)
+      setSelectedProfile(activeSharedRoom.profile_key)
+    } else if (activeSharedRoom.kind === 'teacherbot' && activeSharedRoom.teacherbot_id) {
+      const bot = (teacherbotsData || []).find((b) => b.id === activeSharedRoom.teacherbot_id)
+      setSelectedProfile(null)
+      if (bot) setSelectedTeacherbot(bot)
+    }
+    setLearningMode(false)
+    setMainTab((prev) => (prev === 'rag' ? 'assistants' : prev))
+
     let cancelled = false
     collaborationApi.getRoom(roomId)
       .then((res) => {
@@ -2256,13 +2269,25 @@ REGOLE IMPORTANTI:
     )
   }
 
-  const isDesktopSelection = !selectedProfile && !selectedTeacherbot && !learningMode && mainTab !== 'rag'
+  const isDesktopSelection = !selectedProfile && !selectedTeacherbot && !learningMode && !activeSharedRoom && mainTab !== 'rag'
   const profileUsageCounts = (conversationsData || []).reduce<Record<string, number>>((acc, c) => {
     acc[c.profile_key] = (acc[c.profile_key] || 0) + 1
     return acc
   }, {})
   const topProfiles = Object.entries(profileUsageCounts).sort((a, b) => b[1] - a[1]).slice(0, 4)
 const learningTopics = [...new Set(learningSessions.map((session) => session.topic).filter(Boolean))]
+
+  // @mention autocomplete (collaboration): match a trailing "@partial" in the composer.
+  const mentionMatch = activeSharedRoom ? /(^|\s)@([^\s@]*)$/.exec(input) : null
+  const mentionQuery = mentionMatch ? mentionMatch[2].toLowerCase() : null
+  const mentionCandidates = (mentionQuery !== null && activeSharedRoom)
+    ? activeSharedRoom.participants.filter((p) => p.id !== studentId && p.nickname.toLowerCase().includes(mentionQuery))
+    : []
+  const insertMentionNickname = (nickname: string) => {
+    setInput((prev) => prev.replace(/(^|\s)@([^\s@]*)$/, (_m, pre) => `${pre}@${nickname} `))
+    setTimeout(() => inputRef.current?.focus(), 0)
+  }
+
   const composerContent = (
     <>
       {attachedFiles.length > 0 && (
@@ -2318,6 +2343,26 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
         <div
           className="relative flex items-end gap-1.5 rounded-[24px] border border-slate-200 bg-white p-1.5 shadow-sm transition-all focus-within:border-slate-300 focus-within:ring-2 focus-within:ring-slate-200"
         >
+          {mentionCandidates.length > 0 && (
+            <div className="absolute bottom-full left-2 z-30 mb-2 w-60 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl">
+              <div className="border-b border-slate-100 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide text-slate-400">
+                {uiLanguage === 'en' ? 'Mention (private)' : 'Menziona (privato)'}
+              </div>
+              {mentionCandidates.slice(0, 6).map((p) => (
+                <button
+                  key={p.id}
+                  type="button"
+                  onMouseDown={(e) => { e.preventDefault(); insertMentionNickname(p.nickname) }}
+                  className="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-slate-50"
+                >
+                  <span className="flex h-6 w-6 items-center justify-center rounded-full text-[10px] font-bold text-white" style={{ backgroundColor: collabNameColor(p.nickname) }}>
+                    {p.nickname.slice(0, 1).toUpperCase()}
+                  </span>
+                  <span className="truncate text-sm font-medium text-slate-700">{p.nickname}</span>
+                </button>
+              ))}
+            </div>
+          )}
           <input type="file" ref={fileInputRef} className="hidden" multiple
             accept="image/*,.pdf,.doc,.docx,.ppt,.pptx,.txt,.csv,.xlsx,.xls,.json"
             onChange={(e) => {
