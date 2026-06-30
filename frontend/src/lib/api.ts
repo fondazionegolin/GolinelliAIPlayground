@@ -146,6 +146,8 @@ export const codingApi = {
     api.post(`/coding/projects/${projectId}/pull-upstream`),
   publishProject: (projectId: string) =>
     api.post(`/coding/projects/${projectId}/publish`),
+  downloadProjectZip: (projectId: string) =>
+    api.get(`/coding/projects/${projectId}/download.zip`, { responseType: 'blob' }),
   getPublicProject: (slug: string) =>
     api.get(`/coding/public/${slug}`),
   aiChat: (data: { content: string; history?: { role: string; content: string }[]; profileKey?: string; provider?: string; model?: string }) =>
@@ -563,6 +565,15 @@ export const llmApi = {
       '/llm/realtime/interrogation-session',
       { topic, language, ...opts }
     ),
+  createRealtimeTeacherbotSession: (
+    teacherbotId: string,
+    language: string,
+    opts?: { voice?: string; style?: string; pace?: string }
+  ) =>
+    api.post<{ value: string; model: string; expires_at?: number | string | null }>(
+      '/llm/realtime/teacherbot-session',
+      { teacherbot_id: teacherbotId, language, ...opts }
+    ),
   getChatbotProfilesFull: () => api.get('/teacher/chatbot-profiles-full'),
   getAvailableModels: () => api.get('/llm/available-models'),
   getSessionConversations: (sessionId: string) => api.get(`/llm/sessions/${sessionId}/conversations`),
@@ -850,6 +861,68 @@ export const feedbackApi = {
     api.patch(`/feedback/admin/${id}/status`, { status }),
   reply: (id: string, reply_type: 'in_progress' | 'resolved') =>
     api.post(`/feedback/admin/${id}/reply`, { reply_type }),
+
+  // ── Project-management board ──
+  boardAccess: () => api.get('/feedback/board/access'),
+  board: () => api.get('/feedback/board'),
+  boardConfig: () => api.get('/feedback/board/config'),
+  updateBoardConfig: (data: {
+    title?: string
+    columns?: { id: string; label: string; hint?: string; color?: string }[]
+    template_id?: string
+    is_shared_with_class?: boolean
+    students_can_contribute?: boolean
+  }) => api.put('/feedback/board/config', data),
+  createBoardCard: (data: {
+    message: string
+    board_status?: string
+    category?: string
+    urgency?: string
+    internal_note?: string
+  }) => api.post('/feedback/board/cards', data),
+  updateBoardCard: (
+    id: string,
+    patch: { board_status?: string; category?: string; urgency?: string; internal_note?: string },
+  ) => api.patch(`/feedback/board/${id}`, patch),
+  classifyCard: (id: string) => api.post(`/feedback/board/${id}/classify`),
+  classifyAll: () => api.post('/feedback/board/classify-all'),
+  replyBoardCard: (id: string, reply_type: 'in_progress' | 'resolved') =>
+    api.post(`/feedback/board/${id}/reply`, { reply_type }),
+  listCollaborators: () => api.get('/feedback/board/collaborators'),
+  listEligibleCollaborators: () => api.get('/feedback/board/eligible-collaborators'),
+  addCollaborator: (email: string) => api.post('/feedback/board/collaborators', { email }),
+  removeCollaborator: (teacherId: string) => api.delete(`/feedback/board/collaborators/${teacherId}`),
+}
+
+export const boardsApi = {
+  templates: () => api.get('/boards/templates'),
+  list: () => api.get('/boards'),
+  create: (data: {
+    title: string
+    description?: string
+    session_id?: string
+    template_key?: string
+    columns?: { id: string; label: string; hint?: string; color?: string }[]
+    visibility?: 'private' | 'session_shared'
+    students_can_edit?: boolean
+  }) => api.post('/boards', data),
+  get: (id: string) => api.get(`/boards/${id}`),
+  update: (id: string, data: {
+    title?: string
+    description?: string
+    columns?: { id: string; label: string; hint?: string; color?: string }[]
+    visibility?: 'private' | 'session_shared'
+    students_can_edit?: boolean
+    coding_project_id?: string | null
+  }) => api.patch(`/boards/${id}`, data),
+  createCard: (boardId: string, data: { title: string; description?: string; column_id?: string; color?: string }) =>
+    api.post(`/boards/${boardId}/cards`, data),
+  createCardsBulk: (boardId: string, data: { cards: { title: string; description?: string; column_id?: string; color?: string }[] }) =>
+    api.post(`/boards/${boardId}/cards/bulk`, data),
+  updateCard: (boardId: string, cardId: string, data: { title?: string; description?: string; column_id?: string; color?: string; coding_project_id?: string | null; coding_status?: string | null; sort_order?: string }) =>
+    api.patch(`/boards/${boardId}/cards/${cardId}`, data),
+  aiChat: (boardId: string, data: { message: string; history?: { role: string; content: string }[]; generate_tasks?: boolean }) =>
+    api.post(`/boards/${boardId}/ai/chat`, data),
 }
 
 
@@ -871,6 +944,32 @@ export const notebooksApi = {
     current_cell_source?: string
     last_output?: string
   }) => api.post(`/notebooks/${id}/assist`, data),
+  listVersions: (id: string) => api.get<NotebookVersionSummary[]>(`/notebooks/${id}/versions`),
+  createVersion: (id: string, data: { label?: string; source?: NotebookVersionSource }) =>
+    api.post<NotebookVersionSummary>(`/notebooks/${id}/versions`, data),
+  getVersion: (id: string, versionId: string) =>
+    api.get<NotebookVersionDetail>(`/notebooks/${id}/versions/${versionId}`),
+  restoreVersion: (id: string, versionId: string) =>
+    api.post(`/notebooks/${id}/versions/${versionId}/restore`, {}),
+  deleteVersion: (id: string, versionId: string) =>
+    api.delete(`/notebooks/${id}/versions/${versionId}`),
+}
+
+export type NotebookVersionSource = 'manual' | 'ai' | 'auto' | 'rollback'
+
+export interface NotebookVersionSummary {
+  id: string
+  label: string
+  source: NotebookVersionSource
+  title: string
+  project_type: string
+  cell_count: number
+  created_at: string
+}
+
+export interface NotebookVersionDetail extends NotebookVersionSummary {
+  cells: unknown[]
+  editor_settings: Record<string, unknown>
 }
 
 export interface CircuitPlaygroundCompileResult {

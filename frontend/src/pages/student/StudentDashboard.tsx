@@ -11,7 +11,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import {
   Bot, Brain, Award, MessageSquare, FileEdit,
   Loader2, ChevronRight, Sparkles, ClipboardList, FileText, LayoutDashboard,
-  Home, FileCode2, Menu, BookOpen, Code2
+  Home, FileCode2, Menu, BookOpen, Code2, KanbanSquare
 } from 'lucide-react'
 const ChatbotModule         = lazy(() => import('./ChatbotModule'))
 const TasksModule           = lazy(() => import('./TasksModule'))
@@ -20,6 +20,7 @@ const StudentDocumentsModule = lazy(() => import('./StudentDocumentsModule'))
 const StudentNotebookModule = lazy(() => import('../notebook/StudentNotebookModule'))
 const StudentWikiPage       = lazy(() => import('./StudentWikiPage'))
 const StudentCodingLabModule = lazy(() => import('./StudentCodingLabModule'))
+const BoardManager = lazy(() => import('@/components/boards/BoardManager'))
 const DesktopPage           = lazy(() => import('../shared/DesktopPage'))
 import ChatSidebar from '@/components/ChatSidebar'
 import { LogoMark } from '@/components/LogoMark'
@@ -140,6 +141,15 @@ function getModuleConfig(t: (key: string) => string): Record<string, ModuleConfi
       borderClass: 'border-slate-200/80',
       shadowClass: 'shadow-slate-100/40',
     },
+    boards: {
+      label: 'Board',
+      description: 'Organizza task e idee con la classe',
+      icon: KanbanSquare,
+      colorClass: 'text-sky-800',
+      bgClass: 'bg-sky-100',
+      borderClass: 'border-sky-200/80',
+      shadowClass: 'shadow-sky-100/40',
+    },
   }
 }
 
@@ -189,6 +199,14 @@ export default function StudentDashboard() {
     window.addEventListener('coding-lab-open-shared-project', handleOpenSharedProject)
     return () => window.removeEventListener('coding-lab-open-shared-project', handleOpenSharedProject)
   }, [])
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search)
+    if (params.get('module') === 'coding' && params.get('project')) {
+      setActiveModule('coding')
+      setShowSidebar(false)
+    }
+  }, [location.search])
 
   // Handle swipe back on mobile
   const handleSwipeBack = useCallback(() => {
@@ -456,17 +474,15 @@ export default function StudentDashboard() {
                 />
               ) : (
                 <div className="h-full min-h-0 flex flex-col">
-	                  {activeModule !== 'documents' && activeModule !== 'desktop' && activeModule !== 'chatbot' && activeModule !== 'classe' && activeModule !== 'notebook' && activeModule !== 'tasks' && activeModule !== 'self_assessment' && activeModule !== 'classification' && activeModule !== 'wiki' && activeModule !== 'coding' && (
-                    <div className={`mb-4 ${activeModule === 'chatbot' || activeModule === 'classe' ? 'hidden md:block' : ''}`}>
-                      <Button
-                        variant="ghost"
-                        className="gap-2 pl-0 hover:bg-transparent text-slate-600"
-                        onClick={() => setActiveModule(null)}
-                      >
-                        ← {t('student_dashboard.back_home')}
-                      </Button>
-                    </div>
-                  )}
+                  <div className="absolute left-4 top-4 z-40 hidden md:block">
+                    <Button
+                      variant="ghost"
+                      className="h-9 gap-2 rounded-full border border-slate-200 bg-white/90 px-3 text-xs font-semibold text-slate-700 shadow-sm backdrop-blur hover:bg-white"
+                      onClick={() => setActiveModule(null)}
+                    >
+                      ← {t('student_dashboard.back_home')}
+                    </Button>
+                  </div>
 
                   <Suspense fallback={
                     <div className="flex items-center justify-center h-full min-h-[40vh]">
@@ -585,18 +601,20 @@ function StudentMobileShell({
     { key: 'documents', label: t('navbar.nav_documents'), icon: FileText },
     { key: 'notebook', label: t('student_nav.notebook_label'), icon: FileCode2 },
     { key: 'coding', label: t('navbar.nav_coding_lab'), icon: Code2 },
+    { key: 'boards', label: 'Board', icon: KanbanSquare },
     { key: 'classification', label: t('navbar.nav_ml_lab'), icon: Brain },
     { key: 'self_assessment', label: t('navbar.nav_tasks'), icon: ClipboardList },
     { key: 'desktop', label: t('navbar.nav_desktop'), icon: LayoutDashboard },
   ].filter((item) => item.key === null || enabledModules.includes(item.key))
   const activeTitle = activeModule ? (moduleConfig[activeModule]?.label || activeModule) : t('student_dashboard.back_home')
-  const isImmersiveModule = !!activeModule && ['chatbot', 'wiki', 'classification', 'notebook', 'documents', 'desktop', 'coding'].includes(activeModule)
+  const isImmersiveModule = !!activeModule && ['chatbot', 'wiki', 'classification', 'notebook', 'documents', 'desktop', 'coding', 'boards'].includes(activeModule)
   const homeTiles = [
     { key: 'chatbot', label: t('navbar.nav_chatbot'), icon: Bot, meta: t('chatbot.profile_tutor'), tint: 'from-sky-500/22 to-cyan-400/8' },
     { key: 'classe', label: t('student_dashboard.chat_label'), icon: MessageSquare, meta: 'Chat', tint: 'from-indigo-500/22 to-sky-400/8' },
     { key: 'documents', label: t('navbar.nav_documents'), icon: FileText, meta: t('documents.new_document'), tint: 'from-violet-500/22 to-fuchsia-400/8' },
     { key: 'notebook', label: t('student_nav.notebook_label'), icon: FileCode2, meta: 'Python', tint: 'from-emerald-500/22 to-teal-400/8' },
     { key: 'coding', label: t('navbar.nav_coding_lab'), icon: Code2, meta: 'Web app', tint: 'from-slate-500/18 to-sky-400/8' },
+    { key: 'boards', label: 'Board', icon: KanbanSquare, meta: 'Task', tint: 'from-cyan-500/18 to-blue-400/8' },
     { key: 'classification', label: t('navbar.nav_ml_lab'), icon: Brain, meta: 'Lab', tint: 'from-amber-400/22 to-orange-400/8' },
     { key: 'self_assessment', label: t('navbar.nav_tasks'), icon: ClipboardList, meta: pendingTasksCount > 0 ? `${pendingTasksCount}` : 'OK', tint: 'from-rose-400/20 to-amber-300/10' },
   ].filter((item) => enabledModules.includes(item.key))
@@ -811,6 +829,7 @@ function getMobileTileClass(key: string, tint: string) {
   if (key === 'documents') return `${base} from-violet-100 to-fuchsia-50 border-violet-200`
   if (key === 'notebook') return `${base} from-emerald-100 to-teal-50 border-emerald-200`
   if (key === 'coding') return `${base} from-slate-100 to-sky-50 border-slate-200`
+  if (key === 'boards') return `${base} from-cyan-100 to-blue-50 border-cyan-200`
   if (key === 'classification') return `${base} from-amber-100 to-orange-50 border-amber-200`
   if (key === 'self_assessment') return `${base} from-rose-100 to-amber-50 border-rose-200`
   return `${base} ${tint} border-slate-200`
@@ -1106,6 +1125,14 @@ function ModuleView({ moduleKey, sessionId, sessionName, openTaskId, studentId, 
     return (
       <div className="h-[calc(100dvh-7rem)] md:h-full min-h-0 overflow-hidden">
         <StudentCodingLabModule sessionId={sessionId} sharedProject={sharedCodingProject} />
+      </div>
+    )
+  }
+
+  if (moduleKey === 'boards') {
+    return (
+      <div className="h-[calc(100dvh-7rem)] md:h-full min-h-0 overflow-hidden">
+        <BoardManager sessionId={sessionId} isStudent />
       </div>
     )
   }

@@ -125,6 +125,9 @@ class PlatformInvitationResponse(BaseModel):
     expires_at: datetime
     responded_at: Optional[datetime] = None   # when the teacher accepted/activated
     invited_by_id: Optional[UUID] = None
+    # Transient flag (not persisted): whether the invitation email was actually
+    # delivered. None = not attempted / unknown, False = SMTP send failed.
+    email_sent: Optional[bool] = None
 
     class Config:
         from_attributes = True

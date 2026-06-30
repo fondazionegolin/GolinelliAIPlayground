@@ -3,7 +3,7 @@ import { Routes, Route, useLocation, useNavigate, Navigate } from 'react-router-
 import { motion } from 'framer-motion'
 import { useAuthStore } from '@/stores/auth'
 import { AppBackground } from '@/components/ui/AppBackground'
-import { LogOut, LayoutDashboard, GraduationCap, BarChart3, Mail, School, Bug, KeyRound, X, Loader2, BookOpen, Database, Building2, Menu, PanelLeftClose, PanelLeftOpen, FileCheck2 } from 'lucide-react'
+import { LogOut, LayoutDashboard, GraduationCap, BarChart3, Mail, School, Bug, KeyRound, X, Loader2, BookOpen, Database, Building2, Menu, PanelLeftClose, PanelLeftOpen, FileCheck2, KanbanSquare } from 'lucide-react'
 import { useMutation } from '@tanstack/react-query'
 import { adminApi } from '@/lib/api'
 import { useToast } from '@/components/ui/use-toast'
@@ -14,6 +14,7 @@ import ClassesPage from './ClassesPage'
 import UsersPage from './UsersPage'
 import TeacherRequestsPage from './TeacherRequestsPage'
 import FeedbackPage from './FeedbackPage'
+import FeedbackBoardPage from './FeedbackBoardPage'
 import AdminBackendPage from './AdminBackendPage'
 import SchoolsPage from './SchoolsPage'
 import LicensesPage from './LicensesPage'
@@ -26,7 +27,8 @@ const navItems = [
   { path: '/admin/classes', label: 'Classi', icon: School, exact: false },
   { path: '/admin/costs', label: 'Costi', icon: BarChart3, exact: false },
   { path: '/admin/email', label: 'Email', icon: Mail, exact: false },
-  { path: '/admin/feedback', label: 'Feedback', icon: Bug, exact: false },
+  { path: '/admin/feedback', label: 'Feedback', icon: Bug, exact: true },
+  { path: '/admin/feedback-board', label: 'Board Feedback', icon: KanbanSquare, exact: false },
   { path: '/admin/backend', label: 'Backend', icon: Database, exact: false },
 ]
 
@@ -177,6 +179,7 @@ export default function AdminDashboard() {
                 <Route path="costs" element={<UsersPage />} />
                 <Route path="email" element={<TeacherRequestsPage />} />
                 <Route path="feedback" element={<FeedbackPage />} />
+                <Route path="feedback-board" element={<FeedbackBoardPage />} />
                 <Route path="backend" element={<AdminBackendPage />} />
                 {/* Legacy redirects */}
                 <Route path="teacher-requests" element={<Navigate to="/admin/teachers" replace />} />

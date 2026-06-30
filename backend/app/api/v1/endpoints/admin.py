@@ -2384,7 +2384,10 @@ async def update_email_templates(
     if not isinstance(payload, dict):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid payload")
 
-    templates = tenant.email_templates_json or {}
+    # Copy into a fresh dict so SQLAlchemy detects the change on the JSONB column.
+    # Mutating tenant.email_templates_json in place and reassigning the same object
+    # is NOT flagged as dirty, so the UPDATE would never be emitted.
+    templates = dict(tenant.email_templates_json or {})
     for key, defaults in DEFAULT_TEMPLATE_CATALOG.items():
         incoming = payload.get(key)
         if incoming is None:
@@ -2438,7 +2441,8 @@ async def reset_email_template_to_default(
     html = str(defaults.get("html", ""))
     text = str(defaults.get("text", ""))
 
-    templates = tenant.email_templates_json or {}
+    # Fresh dict so the JSONB column is flagged dirty (see update_email_templates).
+    templates = dict(tenant.email_templates_json or {})
     await _save_template_version(
         db=db,
         tenant_id=tenant.id,

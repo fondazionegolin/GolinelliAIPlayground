@@ -151,57 +151,84 @@ def _build_delivery_directive(style: str, pace: str, is_english: bool) -> str:
     )
 
 
-def _build_interrogation_instructions(topic: Optional[str], language: str, style: str = "warm", pace: str = "normal") -> str:
-    """Compose the oral-exam ("interrogazione") system prompt for the realtime voice session."""
-    base = get_profile("oral_exam").get("system_prompt", "")
+def _voice_mode_wrapper(
+    base_prompt: str,
+    language: str,
+    style: str = "warm",
+    pace: str = "normal",
+    topic: Optional[str] = None,
+    exam_mode: bool = True,
+) -> str:
+    """Wrap a base system prompt with spoken-conversation guidance + voice delivery directives.
+
+    Shared by the oral-exam ("interrogazione") session and teacherbot live-voice sessions.
+    When ``exam_mode`` is True the wrapper adds the structured oral-exam follow-up routine and
+    the topic-driven opening; otherwise it keeps the bot's own persona and opens with a greeting.
+    """
     is_english = (language or "it").lower().startswith("en")
     topic = (topic or "").strip()
 
     if is_english:
         voice_guidance = (
-            "\n\nVOICE MODE (spoken oral exam):\n"
+            "\n\nVOICE MODE (spoken conversation):\n"
             "- You are speaking out loud with the student in real time. Keep a natural, conversational tone.\n"
             "- Do NOT use markdown, headings, asterisks, emoji or any formatting symbols: everything you say is read aloud.\n"
-            "- Ask one question at a time and wait for the student's spoken answer before continuing.\n"
             "- Keep your turns short (1–3 sentences) so the conversation stays lively.\n"
             "- Speak in English.\n"
-            "\nAFTER EVERY STUDENT ANSWER, stay concise and terse (no preambles, short sentences) and always:\n"
-            "1. React briefly to the answer (correct / partial / to review).\n"
-            "2. Add ONE concrete cue to go deeper into the topic (a fact, link or example to explore).\n"
-            "3. Name ONE specific skill or competence the student should strengthen.\n"
-            "4. Encourage them with one short sentence to do better.\n"
-            "5. Then ask the next, slightly more demanding question.\n"
-            "Keep all of this within 2–3 short sentences total: warmth in the voice, dryness in the words."
         )
-        topic_line = (
-            f"\n\nThe student has chosen this exam topic: \"{topic}\". Open with a short greeting and your first question on it."
-            if topic
-            else "\n\nStart by warmly greeting the student and asking which topic they want to be examined on."
-        )
+        if exam_mode:
+            voice_guidance += (
+                "- Ask one question at a time and wait for the student's spoken answer before continuing.\n"
+                "\nAFTER EVERY STUDENT ANSWER, stay concise and terse (no preambles, short sentences) and always:\n"
+                "1. React briefly to the answer (correct / partial / to review).\n"
+                "2. Add ONE concrete cue to go deeper into the topic (a fact, link or example to explore).\n"
+                "3. Name ONE specific skill or competence the student should strengthen.\n"
+                "4. Encourage them with one short sentence to do better.\n"
+                "5. Then ask the next, slightly more demanding question.\n"
+                "Keep all of this within 2–3 short sentences total: warmth in the voice, dryness in the words."
+            )
+            topic_line = (
+                f"\n\nThe student has chosen this exam topic: \"{topic}\". Open with a short greeting and your first question on it."
+                if topic
+                else "\n\nStart by warmly greeting the student and asking which topic they want to be examined on."
+            )
+        else:
+            topic_line = "\n\nStart by warmly greeting the student out loud and inviting them to ask their first question or say what they need help with."
     else:
         voice_guidance = (
-            "\n\nMODALITÀ VOCALE (interrogazione orale parlata):\n"
+            "\n\nMODALITÀ VOCALE (conversazione parlata):\n"
             "- Stai parlando a voce con lo studente in tempo reale. Usa un tono naturale e colloquiale.\n"
             "- NON usare markdown, titoli, asterischi, emoji o simboli di formattazione: tutto ciò che dici viene letto ad alta voce.\n"
-            "- Fai una domanda alla volta e aspetta la risposta parlata dello studente prima di proseguire.\n"
             "- Mantieni interventi brevi (1–3 frasi) per una conversazione viva e dinamica.\n"
             "- Parla in italiano.\n"
-            "\nDOPO OGNI RISPOSTA DELLO STUDENTE, resta asciutto e conciso (niente preamboli, frasi brevi) e sempre:\n"
-            "1. Reagisci brevemente alla risposta (corretto / parziale / da rivedere).\n"
-            "2. Aggiungi UNO spunto concreto per approfondire l'argomento (un fatto, un collegamento o un esempio da esplorare).\n"
-            "3. Indica UNA competenza o abilità specifica che lo studente deve sviluppare meglio.\n"
-            "4. Incoraggialo con una frase breve a fare meglio.\n"
-            "5. Poi poni la domanda successiva, un po' più impegnativa.\n"
-            "Tieni tutto entro 2–3 frasi brevi in totale: calore nella voce, asciuttezza nelle parole."
         )
-        topic_line = (
-            f"\n\nLo studente ha scelto questo argomento d'esame: \"{topic}\". Inizia con un breve saluto e la prima domanda su questo argomento."
-            if topic
-            else "\n\nInizia salutando con cortesia lo studente e chiedendogli su quale argomento desidera essere interrogato."
-        )
+        if exam_mode:
+            voice_guidance += (
+                "- Fai una domanda alla volta e aspetta la risposta parlata dello studente prima di proseguire.\n"
+                "\nDOPO OGNI RISPOSTA DELLO STUDENTE, resta asciutto e conciso (niente preamboli, frasi brevi) e sempre:\n"
+                "1. Reagisci brevemente alla risposta (corretto / parziale / da rivedere).\n"
+                "2. Aggiungi UNO spunto concreto per approfondire l'argomento (un fatto, un collegamento o un esempio da esplorare).\n"
+                "3. Indica UNA competenza o abilità specifica che lo studente deve sviluppare meglio.\n"
+                "4. Incoraggialo con una frase breve a fare meglio.\n"
+                "5. Poi poni la domanda successiva, un po' più impegnativa.\n"
+                "Tieni tutto entro 2–3 frasi brevi in totale: calore nella voce, asciuttezza nelle parole."
+            )
+            topic_line = (
+                f"\n\nLo studente ha scelto questo argomento d'esame: \"{topic}\". Inizia con un breve saluto e la prima domanda su questo argomento."
+                if topic
+                else "\n\nInizia salutando con cortesia lo studente e chiedendogli su quale argomento desidera essere interrogato."
+            )
+        else:
+            topic_line = "\n\nInizia salutando a voce lo studente e invitandolo a fare la prima domanda o a dirti di cosa ha bisogno."
 
     delivery = _build_delivery_directive(style, pace, is_english)
-    return f"{base}{voice_guidance}{delivery}{topic_line}"
+    return f"{base_prompt}{voice_guidance}{delivery}{topic_line}"
+
+
+def _build_interrogation_instructions(topic: Optional[str], language: str, style: str = "warm", pace: str = "normal") -> str:
+    """Compose the oral-exam ("interrogazione") system prompt for the realtime voice session."""
+    base = get_profile("oral_exam").get("system_prompt", "")
+    return _voice_mode_wrapper(base, language, style, pace, topic=topic, exam_mode=True)
 
 
 @router.post("/realtime/interrogation-session")
@@ -223,10 +250,13 @@ async def create_realtime_interrogation_session(
     instructions = _build_interrogation_instructions(
         request.topic, request.language, request.style, request.pace
     )
-
-    voice = request.voice if request.voice in REALTIME_VOICES else settings.OPENAI_REALTIME_VOICE
-
     actor_id = str(auth.teacher.id if auth.is_teacher else auth.student.id)
+    return await _mint_realtime_voice_secret(instructions, request.voice, actor_id)
+
+
+async def _mint_realtime_voice_secret(instructions: str, voice_pref: Optional[str], actor_id: str) -> dict:
+    """POST to OpenAI for a short-lived realtime client secret. Shared by all voice sessions."""
+    voice = voice_pref if voice_pref in REALTIME_VOICES else settings.OPENAI_REALTIME_VOICE
     safety_identifier = hashlib.sha256(actor_id.encode("utf-8")).hexdigest()
 
     payload = {
@@ -261,14 +291,14 @@ async def create_realtime_interrogation_session(
         logger.error("Realtime client_secrets request failed: %s", exc)
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="Impossibile avviare l'interrogazione vocale",
+            detail="Impossibile avviare l'interazione vocale",
         )
 
     if resp.status_code >= 400:
         logger.error("Realtime client_secrets error %s: %s", resp.status_code, resp.text)
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="Impossibile avviare l'interrogazione vocale",
+            detail="Impossibile avviare l'interazione vocale",
         )
 
     data = resp.json()
@@ -278,7 +308,7 @@ async def create_realtime_interrogation_session(
         logger.error("Realtime client_secrets returned no token: %s", data)
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="Impossibile avviare l'interrogazione vocale",
+            detail="Impossibile avviare l'interazione vocale",
         )
 
     return {
@@ -286,6 +316,79 @@ async def create_realtime_interrogation_session(
         "model": settings.OPENAI_REALTIME_MODEL,
         "expires_at": data.get("expires_at"),
     }
+
+
+class RealtimeTeacherbotSessionRequest(BaseModel):
+    teacherbot_id: UUID
+    language: str = "it"
+    voice: Optional[str] = None
+    style: str = "warm"
+    pace: str = "normal"
+
+
+async def _load_voice_teacherbot(db: AsyncSession, auth: StudentOrTeacher, teacherbot_id: UUID):
+    """Load a teacherbot the actor may talk to, enforcing ownership (teacher) or publication (student)."""
+    from app.models.teacherbot import Teacherbot, TeacherbotPublication, TeacherbotStatus
+
+    if auth.is_teacher:
+        result = await db.execute(
+            select(Teacherbot)
+            .where(Teacherbot.id == teacherbot_id)
+            .where(Teacherbot.teacher_id == auth.teacher.id)
+        )
+        bot = result.scalar_one_or_none()
+        if not bot:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Assistente non trovato")
+        return bot
+
+    student = auth.student
+    session_result = await db.execute(select(Session).where(Session.id == student.session_id))
+    session = session_result.scalar_one_or_none()
+    if not session:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Sessione non trovata")
+
+    result = await db.execute(
+        select(Teacherbot)
+        .join(TeacherbotPublication, TeacherbotPublication.teacherbot_id == Teacherbot.id)
+        .where(Teacherbot.id == teacherbot_id)
+        .where(TeacherbotPublication.class_id == session.class_id)
+        .where(TeacherbotPublication.is_active == True)
+        .where(Teacherbot.status == TeacherbotStatus.PUBLISHED)
+    )
+    bot = result.scalar_one_or_none()
+    if not bot:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Assistente non disponibile")
+    return bot
+
+
+@router.post("/realtime/teacherbot-session")
+async def create_realtime_teacherbot_session(
+    request: RealtimeTeacherbotSessionRequest,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    auth: Annotated[StudentOrTeacher, Depends(get_student_or_teacher)],
+):
+    """
+    Mint a short-lived ephemeral client secret for a live voice chat with a teacherbot.
+    The voice persona is driven by the bot's own system prompt (no RAG during the call).
+    """
+    if not settings.OPENAI_API_KEY:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="L'interazione vocale non è configurata",
+        )
+
+    bot = await _load_voice_teacherbot(db, auth, request.teacherbot_id)
+    if not bot.enable_live_voice:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="La voce live non è abilitata per questo assistente",
+        )
+
+    instructions = _voice_mode_wrapper(
+        bot.system_prompt or "", request.language, request.style, request.pace, exam_mode=False
+    )
+    actor_id = str(auth.teacher.id if auth.is_teacher else auth.student.id)
+    return await _mint_realtime_voice_secret(instructions, request.voice, actor_id)
 
 
 @router.get("/environmental-footprint")

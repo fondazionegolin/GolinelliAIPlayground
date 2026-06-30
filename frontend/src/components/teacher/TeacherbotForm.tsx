@@ -22,6 +22,7 @@ interface FormData {
   system_prompt: string
   is_proactive: boolean
   proactive_message: string
+  enable_live_voice: boolean
   enable_reporting: boolean
   report_prompt: string
   llm_provider: string
@@ -360,6 +361,7 @@ export default function TeacherbotForm({ teacherbotId, onBack, onSaved }: Teache
     system_prompt: '',
     is_proactive: false,
     proactive_message: '',
+    enable_live_voice: false,
     enable_reporting: false,
     report_prompt: '',
     llm_provider: '',
@@ -417,6 +419,7 @@ export default function TeacherbotForm({ teacherbotId, onBack, onSaved }: Teache
         system_prompt: teacherbot.system_prompt || '',
         is_proactive: teacherbot.is_proactive || false,
         proactive_message: teacherbot.proactive_message || '',
+        enable_live_voice: teacherbot.enable_live_voice || false,
         enable_reporting: teacherbot.enable_reporting || false,
         report_prompt: teacherbot.report_prompt || '',
         llm_provider: teacherbot.llm_provider || '',
@@ -681,6 +684,28 @@ export default function TeacherbotForm({ teacherbotId, onBack, onSaved }: Teache
                     />
                   </div>
                 )}
+
+                <div className="pt-4 border-t border-slate-100">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <label className="font-medium text-slate-700">{t('teacherbot.live_voice')}</label>
+                      <p className="text-sm text-slate-500">{t('teacherbot.live_voice_desc')}</p>
+                    </div>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={formData.enable_live_voice}
+                      onClick={() => setFormData({ ...formData, enable_live_voice: !formData.enable_live_voice })}
+                      className={`relative w-12 h-6 rounded-full transition-colors flex-shrink-0 ${
+                        formData.enable_live_voice ? 'bg-[#181b1e]' : 'bg-slate-200'
+                      }`}
+                    >
+                      <span className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${
+                        formData.enable_live_voice ? 'translate-x-7' : 'translate-x-1'
+                      }`} />
+                    </button>
+                  </div>
+                </div>
 
                 <div className="pt-4 border-t border-slate-100">
                   <div className="flex items-center justify-between">

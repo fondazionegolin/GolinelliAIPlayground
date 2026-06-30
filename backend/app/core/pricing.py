@@ -64,11 +64,14 @@ PRICING_CATALOG: Dict[str, ModelPricing] = {
     "gemini-2.0-flash": usd(0.075, 0.30),
     "gemini-2.0-flash-lite": usd(0.0375, 0.15),
 
-    # DeepSeek
-    "deepseek-chat": usd(0.0, 0.0),
-    "deepseek-reasoner": usd(0.0, 0.0),
-    "deepseek-v4-flash": usd(0.0, 0.0),
-    "deepseek-v4-pro": usd(0.0, 0.0),
+    # DeepSeek, official list price per 1M tokens ("fresh"/cache-miss input), converted USD -> EUR.
+    # DeepSeek V4 Pro: input ~$1.74, output ~$3.48 — roughly half of Claude Sonnet on input and
+    # ~4.5x cheaper on output. Flash is the cheaper/faster V4 tier (~half of Pro; estimate until
+    # confirmed against an invoice).
+    "deepseek-chat": usd(0.27, 1.10),
+    "deepseek-reasoner": usd(0.55, 2.19),
+    "deepseek-v4-flash": usd(0.87, 1.74),
+    "deepseek-v4-pro": usd(1.74, 3.48),
     
     # Ollama (Self-hosted = 0 cost usually, unless we want to attribute server cost)
     "mistral": ModelPricing(0.0, 0.0),

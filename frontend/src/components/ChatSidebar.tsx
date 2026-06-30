@@ -2040,13 +2040,19 @@ export default function ChatSidebar({
               compact
               onInsertText={(text) => setInputText((prev) => prev ? prev + ' ' + text : text)}
             />
-            <Input
+            <textarea
+              rows={1}
               value={inputText}
-              onChange={(e) => setInputText(e.target.value)}
+              onChange={(e) => {
+                setInputText(e.target.value)
+                const el = e.currentTarget
+                el.style.height = 'auto'
+                el.style.height = `${Math.min(el.scrollHeight, 120)}px`
+              }}
               onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
               onPaste={handleInputPaste}
               placeholder={activeTab === 'private' ? "Messaggio privato..." : "Scrivi un messaggio..."}
-              className="border-none bg-transparent focus-visible:ring-0 h-9 text-sm px-2 flex-1 shadow-none"
+              className="border-none bg-transparent focus-visible:ring-0 focus:outline-none resize-none text-sm px-2 py-2 leading-6 flex-1 shadow-none max-h-[120px]"
             />
             <Button
               size="icon"

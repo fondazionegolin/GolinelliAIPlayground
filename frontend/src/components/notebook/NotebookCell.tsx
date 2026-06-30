@@ -204,8 +204,9 @@ export default function NotebookCell({
         </div>
       )}
 
-      <div className={`relative min-w-0 flex-1 overflow-hidden rounded-xl shadow-sm ${surface.shell} ${isCompact ? 'flex h-full flex-col' : ''}`}>
+      <div className={`relative min-w-0 flex-1 overflow-hidden ${isCompact ? 'flex h-full flex-col rounded-none shadow-none' : 'rounded-xl shadow-sm'} ${surface.shell}`}>
         <div className={`absolute inset-y-0 left-0 z-10 w-1.5 ${surface.accent}`} />
+        {!isCompact && (
         <div className={`flex flex-shrink-0 items-center justify-between border-b px-3 py-2 ${surface.toolbar}`}>
           <span className={`rounded-full border px-2 py-0.5 font-mono text-[10px] ${surface.accentSoft}`}>
             {projectType === 'python' ? 'python' : projectType === 'strudel' ? 'strudel' : projectType === 'game2d' ? 'game2d' : projectType === 'microbit' ? 'micro:bit' : projectType === 'circuitplayground' ? 'Circuit Playground' : 'p5js'} · {lineCount} ln
@@ -292,13 +293,15 @@ export default function NotebookCell({
             )}
           </div>
         </div>
+        )}
 
         <CodeMirror
           ref={editorRef}
           value={cell.source}
           onChange={onChange}
           extensions={extensions}
-          style={{ fontSize: `${fontSize}px`, ...(isCompact ? { flex: 1, minHeight: 0 } : {}) }}
+          className={isCompact ? 'min-h-0 flex-1' : undefined}
+          style={{ fontSize: `${fontSize}px`, ...(isCompact ? { minHeight: 0 } : {}) }}
           height={editorHeight}
           basicSetup={{
             lineNumbers: true,
@@ -328,12 +331,12 @@ export default function NotebookCell({
         />
 
         {proposals.length > 0 && (
-          <div className={`border-t px-3 py-2 ${isLight ? 'border-slate-200 bg-slate-50' : 'border-white/5 bg-black/20'}`}>
-            <div className={`mb-2 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.18em] ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
+          <div className={`flex max-h-[55%] shrink-0 flex-col overflow-hidden border-t px-3 py-2 ${isLight ? 'border-slate-200 bg-slate-50' : 'border-white/5 bg-black/20'}`}>
+            <div className={`mb-2 flex shrink-0 items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.18em] ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
               <Sparkles className="h-3.5 w-3.5 text-indigo-300" />
               Proposte AI da approvare
             </div>
-            <div className="space-y-2">
+            <div className="min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
               {proposals.map((proposal) => (
                 <div
                   key={proposal.id}
@@ -348,7 +351,7 @@ export default function NotebookCell({
                   {proposal.explanation && (
                     <p className="mt-1 leading-relaxed text-white/75">{proposal.explanation}</p>
                   )}
-                  <pre className="mt-2 overflow-x-auto rounded-lg bg-black/20 p-2 font-mono text-[11px] text-white/90">
+                  <pre className="mt-2 max-h-48 overflow-auto rounded-lg bg-black/20 p-2 font-mono text-[11px] text-white/90">
                     {proposal.replacement}
                   </pre>
                   <div className="mt-2 flex items-center gap-2">

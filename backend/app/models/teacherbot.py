@@ -29,6 +29,7 @@ class Teacherbot(Base):
     system_prompt = Column(Text, nullable=False)  # The core system prompt
     is_proactive = Column(Boolean, default=False, nullable=False)
     proactive_message = Column(Text, nullable=True)  # Initial message if proactive
+    enable_live_voice = Column(Boolean, default=False, nullable=False)  # Realtime voice chat with this bot
     enable_reporting = Column(Boolean, default=False, nullable=False)
     report_prompt = Column(Text, nullable=True)  # Custom prompt for report generation
     llm_provider = Column(String, nullable=True)  # Override default provider

@@ -142,6 +142,7 @@ async def create_teacherbot(
         system_prompt=request.system_prompt,
         is_proactive=request.is_proactive,
         proactive_message=request.proactive_message,
+        enable_live_voice=request.enable_live_voice,
         enable_reporting=request.enable_reporting,
         report_prompt=request.report_prompt,
         llm_provider=request.llm_provider,
@@ -206,6 +207,8 @@ async def update_teacherbot(
         bot.is_proactive = request.is_proactive
     if request.proactive_message is not None:
         bot.proactive_message = request.proactive_message
+    if request.enable_live_voice is not None:
+        bot.enable_live_voice = request.enable_live_voice
     if request.enable_reporting is not None:
         bot.enable_reporting = request.enable_reporting
     if request.report_prompt is not None:
@@ -892,6 +895,7 @@ async def list_available_teacherbots(
             color=bot.color,
             is_proactive=bot.is_proactive,
             proactive_message=bot.proactive_message if bot.is_proactive else None,
+            enable_live_voice=bot.enable_live_voice,
         )
         for bot in bots
     ]

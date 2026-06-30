@@ -14,6 +14,7 @@ from app.core.database import get_db
 from app.core.config import settings
 from app.api.deps import get_student_or_teacher, StudentOrTeacher
 from app.models.notebook import Notebook
+from app.models.notebook_version import NotebookVersion
 from app.models.session import SessionStudent
 from app.services.llm_service import llm_service
 import logging
@@ -60,6 +61,55 @@ forever(function () {
     }
     pause(500)
 })"""
+
+
+# Riferimento API vincolante per la micro:bit. Il notebook compila il codice
+# come main.py dentro il firmware MicroPython e lo flasha sulla scheda via WebUSB.
+# Riferimento ufficiale: https://microbit-micropython.readthedocs.io/en/v2-docs/
+# NB: la MicroPython della micro:bit NON è il CPython del PC: alcune sintassi
+# moderne (in primis le f-string) danno SyntaxError sulla scheda.
+MICROBIT_MICROPYTHON_REFERENCE = """Linguaggio: MicroPython per BBC micro:bit V2 (riferimento: microbit-micropython.readthedocs.io/en/v2-docs).
+Il codice è il main.py che viene caricato sulla scheda: deve essere MicroPython VALIDO per micro:bit, NON Python da PC e NON JavaScript/MakeCode.
+
+REGOLA CRITICA SULLE STRINGHE — le f-string NON sono supportate dalla micro:bit e danno SyntaxError.
+- VIETATO:  print(f"heading={angolo}")          # f-string -> SyntaxError sulla scheda
+- CORRETTO: print("heading={}".format(angolo))   # usa sempre .format()
+- CORRETTO: print("heading=" + str(angolo))      # oppure concatenazione con str()
+Non usare MAI il prefisso f"..." o f'...'. Converti SEMPRE i numeri con str() o con "{}".format(...).
+
+Moduli disponibili (import all'inizio del file):
+- from microbit import *   (sempre, dà display, pulsanti, sensori, pin, Image, sleep, running_time, temperature)
+- import music | import radio | import neopixel | import speech | import audio | import log | import math | import random
+
+API reali da usare (qualsiasi altra cosa è inventata):
+- Tempo: sleep(ms), running_time(), temperature()
+- Display LED 5x5: display.show(Image.HAPPY), display.scroll("ciao"), display.set_pixel(x, y, 0-9),
+  display.get_pixel(x, y), display.clear(), display.read_light_level()
+- Pulsanti: button_a.is_pressed(), button_a.was_pressed(), button_a.get_presses() (e button_b)
+- Accelerometro: accelerometer.get_x()/get_y()/get_z(), accelerometer.get_values(),
+  accelerometer.current_gesture(), accelerometer.is_gesture("shake")
+- Bussola: compass.heading(), compass.is_calibrated(), compass.calibrate(), compass.get_field_strength()
+- Microfono (V2): microphone.sound_level()  (0-255)
+- Pin: pin0.read_analog(), pin0.write_digital(0/1), pin0.is_touched() ...
+- Immagini: Image.HEART, Image.HAPPY, Image.YES, Image.NO, Image.ARROW_N, ecc.
+- Musica: music.play(music.NYAN), music.pitch(440, 500)
+- Radio: radio.on(), radio.config(group=1), radio.send("ciao"), radio.receive()
+
+Comunicazione con il browser: usa print() con UNA riga key=value per ciclo, così il cruscotto del browser
+la legge dal monitor seriale e aggiorna i sensori in tempo reale. Le chiavi note al cruscotto sono:
+temp, light, compass, accx, accy, accz, sound, a, b.
+Ogni blocco di codice proposto deve avere commenti in italiano che spieghino cosa fa e a cosa serve.
+
+Esempio MINIMO che FUNZIONA sulla micro:bit (usalo come base, niente f-string):
+from microbit import *
+
+while True:
+    # Leggo i sensori di bordo
+    angolo = compass.heading()
+    luce = display.read_light_level()
+    # Invio una riga key=value al cruscotto del browser (con .format, non f-string)
+    print("compass={} light={}".format(angolo, luce))
+    sleep(200)"""
 
 
 def _strip_code_fences(code: str) -> str:
@@ -374,6 +424,160 @@ async def delete_notebook(
     await db.commit()
 
 
+# ── Version history / rollback ──────────────────────────────────────────────
+
+# Quante versioni teniamo per notebook: oltre questa soglia le più vecchie
+# vengono potate per non far crescere la tabella all'infinito.
+MAX_VERSIONS_PER_NOTEBOOK = 50
+VALID_VERSION_SOURCES = {"manual", "ai", "auto", "rollback"}
+
+
+def _version_summary(v: NotebookVersion) -> dict:
+    """Versione 'leggera' per l'elenco: niente celle, solo i metadati."""
+    cells = v.cells or []
+    return {
+        "id": str(v.id),
+        "label": v.label,
+        "source": v.source,
+        "title": v.title,
+        "project_type": v.project_type,
+        "cell_count": len(cells) if isinstance(cells, list) else 0,
+        "created_at": v.created_at.isoformat(),
+    }
+
+
+def _version_detail(v: NotebookVersion) -> dict:
+    return {
+        **_version_summary(v),
+        "cells": v.cells or [],
+        "editor_settings": v.editor_settings or {},
+    }
+
+
+async def _snapshot_notebook(
+    db: AsyncSession,
+    nb: Notebook,
+    label: str,
+    source: str,
+) -> NotebookVersion:
+    """Crea una versione con lo stato CORRENTE del notebook e pota le più vecchie.
+    Non fa commit: lo fa il chiamante."""
+    version = NotebookVersion(
+        notebook_id=nb.id,
+        tenant_id=nb.tenant_id,
+        label=(label or "Snapshot")[:160],
+        source=source if source in VALID_VERSION_SOURCES else "manual",
+        title=nb.title,
+        project_type=nb.project_type or "python",
+        cells=nb.cells or [],
+        editor_settings=nb.editor_settings or {},
+    )
+    db.add(version)
+    await db.flush()
+
+    # Potatura: tieni solo le ultime MAX_VERSIONS_PER_NOTEBOOK.
+    stale = await db.execute(
+        select(NotebookVersion.id)
+        .where(NotebookVersion.notebook_id == nb.id)
+        .order_by(NotebookVersion.created_at.desc())
+        .offset(MAX_VERSIONS_PER_NOTEBOOK)
+    )
+    stale_ids = [row[0] for row in stale.all()]
+    for sid in stale_ids:
+        old = await db.get(NotebookVersion, sid)
+        if old is not None:
+            await db.delete(old)
+    return version
+
+
+@router.get("/notebooks/{notebook_id}/versions", response_model=List[dict])
+async def list_notebook_versions(
+    notebook_id: UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    actor: Annotated[StudentOrTeacher, Depends(get_student_or_teacher)],
+):
+    nb = await _get_owned_notebook(db, notebook_id, actor)
+    result = await db.execute(
+        select(NotebookVersion)
+        .where(NotebookVersion.notebook_id == nb.id)
+        .order_by(NotebookVersion.created_at.desc())
+    )
+    return [_version_summary(v) for v in result.scalars().all()]
+
+
+@router.post("/notebooks/{notebook_id}/versions", response_model=dict, status_code=201)
+async def create_notebook_version(
+    notebook_id: UUID,
+    request: dict,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    actor: Annotated[StudentOrTeacher, Depends(get_student_or_teacher)],
+):
+    nb = await _get_owned_notebook(db, notebook_id, actor)
+    label = (request.get("label") or "Salvataggio manuale").strip()
+    source = request.get("source") or "manual"
+    version = await _snapshot_notebook(db, nb, label, source)
+    await db.commit()
+    await db.refresh(version)
+    return _version_summary(version)
+
+
+@router.get("/notebooks/{notebook_id}/versions/{version_id}", response_model=dict)
+async def get_notebook_version(
+    notebook_id: UUID,
+    version_id: UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    actor: Annotated[StudentOrTeacher, Depends(get_student_or_teacher)],
+):
+    nb = await _get_owned_notebook(db, notebook_id, actor)
+    version = await db.get(NotebookVersion, version_id)
+    if version is None or version.notebook_id != nb.id:
+        raise HTTPException(status_code=404, detail="Versione non trovata")
+    return _version_detail(version)
+
+
+@router.post("/notebooks/{notebook_id}/versions/{version_id}/restore", response_model=dict)
+async def restore_notebook_version(
+    notebook_id: UUID,
+    version_id: UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    actor: Annotated[StudentOrTeacher, Depends(get_student_or_teacher)],
+):
+    nb = await _get_owned_notebook(db, notebook_id, actor)
+    version = await db.get(NotebookVersion, version_id)
+    if version is None or version.notebook_id != nb.id:
+        raise HTTPException(status_code=404, detail="Versione non trovata")
+
+    # Prima di sovrascrivere, salviamo lo stato attuale come checkpoint, così
+    # anche il ripristino è reversibile.
+    await _snapshot_notebook(db, nb, "Prima del ripristino", "auto")
+
+    nb.title = version.title or nb.title
+    nb.project_type = _normalize_project_type(version.project_type)
+    nb.cells = version.cells or []
+    if isinstance(version.editor_settings, dict):
+        nb.editor_settings = version.editor_settings
+    nb.updated_at = datetime.utcnow()
+
+    await db.commit()
+    await db.refresh(nb)
+    return _notebook_detail(nb)
+
+
+@router.delete("/notebooks/{notebook_id}/versions/{version_id}", status_code=204)
+async def delete_notebook_version(
+    notebook_id: UUID,
+    version_id: UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    actor: Annotated[StudentOrTeacher, Depends(get_student_or_teacher)],
+):
+    nb = await _get_owned_notebook(db, notebook_id, actor)
+    version = await db.get(NotebookVersion, version_id)
+    if version is None or version.notebook_id != nb.id:
+        raise HTTPException(status_code=404, detail="Versione non trovata")
+    await db.delete(version)
+    await db.commit()
+
+
 # ── Tutor chat ───────────────────────────────────────────────────────────────
 
 @router.post("/notebooks/{notebook_id}/tutor", response_model=dict)
@@ -411,7 +615,7 @@ async def notebook_tutor_chat(
         language_label = "Python"
         code_fence = "python"
     elif project_type == "microbit":
-        language_label = "micro:bit con Python o JavaScript e comunicazione seriale Web Serial"
+        language_label = "micro:bit con MicroPython (codice caricato sulla scheda via WebUSB e monitor seriale)"
         code_fence = "python"
     elif project_type == "circuitplayground":
         language_label = "Circuit Playground Express con MakeCode TypeScript, compilazione UF2 e comunicazione seriale Web Serial"
@@ -461,15 +665,11 @@ Concetti chiave:
     microbit_extra = ""
     if project_type == "microbit":
         microbit_extra = """
-micro:bit usa una singola pagina di codice per programmare la scheda in Python o JavaScript.
-Concetti chiave:
-- Python: from microbit import *, display, button_a, accelerometer, temperature(), sleep()
-- JavaScript MakeCode: basic.forever, input.buttonIsPressed, input.temperature(), led.plot, serial.writeLine
-- Per parlare con il browser usa output seriale semplice, es. temp=22 luce=120, oppure JSON serializzabile
-- Il browser legge la seriale con Web Serial: Chrome/Edge, HTTPS o localhost
-- Ogni blocco di codice proposto deve avere commenti in italiano che spieghino cosa fa e a cosa serve
-- Il tutor deve trasformare intenzioni creative in passi realizzabili e codice, ma facendo una domanda socratica quando l intenzione e ambigua
-"""
+micro:bit usa una singola pagina di codice MicroPython che viene caricata sulla scheda via WebUSB.
+Il tutor deve trasformare intenzioni creative in passi realizzabili e codice MicroPython che gira DAVVERO
+sulla scheda, facendo una domanda socratica quando l'intenzione è ambigua.
+
+""" + MICROBIT_MICROPYTHON_REFERENCE + "\n"
     circuitplayground_extra = ""
     if project_type == "circuitplayground":
         circuitplayground_extra = """

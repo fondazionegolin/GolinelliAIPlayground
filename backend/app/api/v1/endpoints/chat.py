@@ -19,6 +19,16 @@ from app.realtime.gateway import sio
 
 router = APIRouter()
 
+MAX_SESSION_MESSAGE_PREVIEW_CHARS = 4000
+
+
+def _compact_session_message_text(text: str | None) -> tuple[str, bool, int]:
+    raw = text or ""
+    if len(raw) <= MAX_SESSION_MESSAGE_PREVIEW_CHARS:
+        return raw, False, len(raw)
+    preview = raw[:MAX_SESSION_MESSAGE_PREVIEW_CHARS].rstrip()
+    return f"{preview}\n\n[Messaggio troncato: {len(raw)} caratteri totali]", True, len(raw)
+
 
 async def is_private_chat_enabled_for_students(db: AsyncSession, session_id: UUID) -> bool:
     result = await db.execute(
@@ -137,6 +147,7 @@ async def get_session_messages(
     formatted_messages = []
     for m in reversed(messages):
         is_notif, notif_type, notif_data = extract_notification_info(m.attachments)
+        compact_text, text_truncated, text_length = _compact_session_message_text(m.message_text)
         formatted_messages.append({
             "id": str(m.id),
             "sender_type": m.sender_type.value,
@@ -144,7 +155,9 @@ async def get_session_messages(
             "sender_name": nicknames.get(str(m.sender_student_id), "Docente") if m.sender_student_id else "Docente",
             "sender_avatar_url": avatars.get(str(m.sender_student_id)) if m.sender_student_id else None,
             "sender_accent": accents.get(str(m.sender_student_id or m.sender_teacher_id)),
-            "text": m.message_text,
+            "text": compact_text,
+            "text_truncated": text_truncated,
+            "text_length": text_length,
             "attachments": m.attachments,
             "reply_to_id": str(m.reply_to_id) if m.reply_to_id else None,
             "reply_preview": m.reply_preview,

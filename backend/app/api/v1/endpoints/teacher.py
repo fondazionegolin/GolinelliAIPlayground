@@ -201,7 +201,7 @@ async def transcribe_assignment_image(
     )
 
 
-DEFAULT_MODULES = ["chatbot", "classification", "self_assessment", "chat", "notebook", "coding"]
+DEFAULT_MODULES = ["chatbot", "classification", "self_assessment", "chat", "notebook", "coding", "boards"]
 
 
 async def _generate_unique_join_code(db: AsyncSession) -> str:
@@ -220,6 +220,7 @@ class ClassWithRoleResponse(BaseModel):
     name: str
     school_grade: Optional[str] = None
     created_at: datetime
+    session_count: int = 0
     role: str  # 'owner' or 'invited'
     owner_name: Optional[str] = None
 
@@ -276,6 +277,19 @@ async def list_classes(
             "role": "invited",
             "owner_name": owner_name,
         })
+
+    class_ids = [cls["id"] for cls in classes_response]
+    session_counts: dict[UUID, int] = {}
+    if class_ids:
+        counts_result = await db.execute(
+            select(Session.class_id, func.count(Session.id))
+            .where(Session.class_id.in_(class_ids))
+            .group_by(Session.class_id)
+        )
+        session_counts = {class_id: count for class_id, count in counts_result.all()}
+
+    for cls in classes_response:
+        cls["session_count"] = session_counts.get(cls["id"], 0)
 
     # Sort by created_at desc
     classes_response.sort(key=lambda x: x["created_at"], reverse=True)

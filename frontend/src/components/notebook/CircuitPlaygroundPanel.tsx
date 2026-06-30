@@ -238,16 +238,16 @@ function usbFilters(): UsbDeviceFilterLike[] {
   ]
 }
 
-async function requestAdafruitUsbDevice() {
+async function requestAdafruitUsbDevice(): Promise<UsbDeviceLike> {
   const usb = (navigator as DeviceNavigator).usb
   if (!usb) throw new Error('WebUSB non e disponibile. Usa Chrome o Edge desktop su HTTPS o localhost.')
   const authorized = await usb.getDevices?.()
   const existing = authorized?.find((device) => device.vendorId === ADAFRUIT_USB_VENDOR_ID || device.productName?.toLowerCase().includes('circuit playground'))
-  if (existing) return existing
-  return await usb.requestDevice({ filters: usbFilters() })
+  if (existing) return existing as unknown as UsbDeviceLike
+  return (await usb.requestDevice({ filters: usbFilters() })) as unknown as UsbDeviceLike
 }
 
-async function waitForAuthorizedAdafruitUsbDevice(previousSerial?: string) {
+async function waitForAuthorizedAdafruitUsbDevice(previousSerial?: string): Promise<UsbDeviceLike | null> {
   const usb = (navigator as DeviceNavigator).usb
   if (!usb?.getDevices) return null
   for (let attempt = 0; attempt < 24; attempt += 1) {
@@ -256,7 +256,7 @@ async function waitForAuthorizedAdafruitUsbDevice(previousSerial?: string) {
       if (previousSerial && device.serialNumber === previousSerial) return true
       return device.vendorId === ADAFRUIT_USB_VENDOR_ID || device.productName?.toLowerCase().includes('circuit playground')
     })
-    if (match) return match
+    if (match) return match as unknown as UsbDeviceLike
     await delay(250)
   }
   return null

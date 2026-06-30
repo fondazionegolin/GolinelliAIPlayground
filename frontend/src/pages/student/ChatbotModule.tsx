@@ -36,6 +36,7 @@ import type { TokenUsageJson } from '@/lib/environmentalImpact'
 
 const StudentRagWorkspace = lazy(() => import('@/components/student/StudentRagWorkspace'))
 const RealtimeInterrogationPanel = lazy(() => import('@/components/student/RealtimeInterrogationPanel'))
+import type { VoiceSessionSource } from '@/components/student/RealtimeInterrogationPanel'
 
 interface Message {
   id: string
@@ -277,6 +278,7 @@ interface Teacherbot {
   color: string
   is_proactive: boolean
   proactive_message: string | null
+  enable_live_voice?: boolean
 }
 
 interface AttachedFile {
@@ -462,6 +464,7 @@ export default function ChatbotModule({ sessionId, studentId, initialTeacherbotI
   const [chatMode, setChatMode] = useState<'normal' | 'image' | 'quiz' | 'dataset'>('normal')
   const [showChatModeMenu, setShowChatModeMenu] = useState(false)
   const [showVoiceInterrogation, setShowVoiceInterrogation] = useState(false)
+  const [voiceSource, setVoiceSource] = useState<VoiceSessionSource | undefined>(undefined)
   const [expandedSection, setExpandedSection] = useState<'assistants' | 'teacherbots' | 'learning' | 'rag' | null>(null)
   const [imageGenerationProgress, setImageGenerationProgress] = useState<{
     status: string
@@ -505,7 +508,7 @@ export default function ChatbotModule({ sessionId, studentId, initialTeacherbotI
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const modelMenuRef = useRef<HTMLDivElement>(null)
   const isGeneratingRef = useRef(false)
-  const inputRef = useRef<HTMLInputElement>(null)
+  const inputRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [isInputFocused, setIsInputFocused] = useState(false)
   const [studentAccent, setStudentAccent] = useState<StudentAccentId>(accentProp || DEFAULT_STUDENT_ACCENT)
@@ -1135,6 +1138,15 @@ export default function ChatbotModule({ sessionId, studentId, initialTeacherbotI
       }
     }
   }, [messages.length])
+
+  // Keep the auto-growing composer in sync when `input` changes programmatically
+  // (cleared after send, suggestion clicks, voice transcription, …).
+  useEffect(() => {
+    const el = inputRef.current
+    if (!el) return
+    el.style.height = 'auto'
+    el.style.height = `${Math.min(el.scrollHeight, 160)}px`
+  }, [input])
 
   const sendMessageMutation = useMutation({
     mutationFn: async ({ content, files, existingHistory }: { content: string; files: globalThis.File[]; existingHistory?: Message[] }) => {
@@ -2273,11 +2285,16 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
           </div>
 
           <div className="flex-1 relative min-w-0">
-            <input
+            <textarea
               ref={inputRef}
-              type="text"
+              rows={1}
               value={input}
-              onChange={(e) => setInput(e.target.value)}
+              onChange={(e) => {
+                setInput(e.target.value)
+                const el = e.currentTarget
+                el.style.height = 'auto'
+                el.style.height = `${Math.min(el.scrollHeight, 160)}px`
+              }}
               onFocus={() => {
                 setIsInputFocused(true)
                 onInputFocusChange?.(true)
@@ -2296,7 +2313,7 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
               onPaste={handleInputPaste}
               placeholder={profileInterview.active ? t('chatbot.guided_placeholder') : (chatMode === 'image' ? 'Descrivi l\'immagine da generare...' : chatMode === 'quiz' ? 'Di cosa vuoi un quiz?' : chatMode === 'dataset' ? 'Descrivi il dataset da generare...' : (attachedFiles.length > 0 ? t('chatbot.describe_placeholder') : 'Scrivi un messaggio...'))}
               disabled={sendMessageMutation.isPending || isStreaming}
-              className="w-full bg-transparent px-1 py-2 text-sm text-slate-800 outline-none placeholder:text-slate-400 focus:outline-none focus:ring-0"
+              className="w-full resize-none bg-transparent px-1 py-2 text-sm leading-6 text-slate-800 outline-none placeholder:text-slate-400 focus:outline-none focus:ring-0"
             />
           </div>
 
@@ -3070,13 +3087,28 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
                   {selectedProfile === 'oral_exam' && !selectedTeacherbot && !isTeacherPreview && (
                     <button
                       type="button"
-                      onClick={() => setShowVoiceInterrogation(true)}
+                      onClick={() => { setVoiceSource(undefined); setShowVoiceInterrogation(true) }}
                       className="inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-bold text-white shadow-sm transition-transform hover:-translate-y-0.5"
                       style={{ backgroundColor: accentTheme.accent }}
                       title={uiLanguage === 'en' ? 'Voice oral exam' : 'Interrogazione vocale'}
                     >
                       <Mic className="h-3.5 w-3.5" />
                       {uiLanguage === 'en' ? 'Voice exam' : 'Interrogazione vocale'}
+                    </button>
+                  )}
+                  {selectedTeacherbot?.enable_live_voice && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setVoiceSource({ kind: 'teacherbot', teacherbotId: selectedTeacherbot.id, botName: selectedTeacherbot.name })
+                        setShowVoiceInterrogation(true)
+                      }}
+                      className="inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-bold text-white shadow-sm transition-transform hover:-translate-y-0.5"
+                      style={{ backgroundColor: accentTheme.accent }}
+                      title={uiLanguage === 'en' ? 'Live voice' : 'Voce live'}
+                    >
+                      <Mic className="h-3.5 w-3.5" />
+                      {uiLanguage === 'en' ? 'Live voice' : 'Voce live'}
                     </button>
                   )}
                   <div className="relative">
@@ -3438,6 +3470,7 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
               softStrong: accentTheme.softStrong,
               border: accentTheme.border,
             }}
+            sessionSource={voiceSource}
             onClose={() => setShowVoiceInterrogation(false)}
             onTurn={(role, text) => {
               setMessages((prev) => [

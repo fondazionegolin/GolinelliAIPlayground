@@ -1,7 +1,7 @@
 import { useState, useEffect, lazy, Suspense, type CSSProperties } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Routes, Route, useLocation, Link, useNavigate } from 'react-router-dom'
-import { MessageSquare, Users, PlayCircle, Bot, ClipboardList, History, Monitor, BookOpen, UserRound, Code2 } from 'lucide-react'
+import { MessageSquare, Users, PlayCircle, Bot, ClipboardList, History, Monitor, BookOpen, UserRound, Code2, KanbanSquare } from 'lucide-react'
 // Heavy pages loaded lazily — only parsed when first visited
 const ClassesPage        = lazy(() => import('./ClassesPage'))
 const SessionsPage       = lazy(() => import('./SessionsPage'))
@@ -19,6 +19,8 @@ const DesktopPage        = lazy(() => import('../shared/DesktopPage'))
 const LiveInteractionBuilderPage = lazy(() => import('./LiveInteractionBuilderPage'))
 const LiveInteractionControlPage = lazy(() => import('./LiveInteractionControlPage'))
 const ToyLMPage = lazy(() => import('./ToyLMPage'))
+const TeacherFeedbackBoardPage = lazy(() => import('./FeedbackBoardPage'))
+const BoardManagerPage = lazy(() => import('./BoardManagerPage'))
 const StudentCodingLabModule = lazy(() => import('../student/StudentCodingLabModule'))
 // TeacherSupportChat is the index route — load eagerly for fast first paint
 import TeacherSupportChat from './TeacherSupportChat'
@@ -127,6 +129,7 @@ export default function TeacherDashboard() {
     { path: '/teacher/classes', label: t('navbar.nav_classes'), icon: Users },
     { path: '/teacher/sessions', label: t('navbar.sessions_title'), icon: PlayCircle },
     { path: '/teacher/wiki', label: t('navbar.nav_wiki'), icon: BookOpen },
+    { path: '/teacher/boards', label: 'Board', icon: KanbanSquare },
     { path: '/teacher/coding', label: t('navbar.nav_coding_lab'), icon: Code2 },
   ]
 
@@ -277,6 +280,8 @@ export default function TeacherDashboard() {
               <Route path="live-interaction" element={<LiveInteractionBuilderPage sessionId={activeSessionId ?? undefined} />} />
               <Route path="live-interaction/:interactionId/control" element={<LiveInteractionControlPage />} />
               <Route path="toy-lm" element={<ToyLMPage />} />
+              <Route path="feedback-board" element={<TeacherFeedbackBoardPage />} />
+              <Route path="boards" element={<BoardManagerPage sessionId={activeSessionId ?? undefined} />} />
               <Route path="coding" element={
                 activeSessionId ? (
                   <div className="h-full min-h-0 overflow-hidden">

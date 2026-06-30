@@ -56,7 +56,7 @@ const DEFAULT_CHUNK_SIZE = 30
 const MAX_IN_MEMORY_MESSAGES = 300
 const PERSISTED_CACHE_TTL_MS = 10 * 60 * 1000
 
-const getPersistedCacheKey = (sessionId: string) => `chat:session:${sessionId}:v2`
+const getPersistedCacheKey = (sessionId: string) => `chat:session:${sessionId}:v3`
 
 interface UseSocketReturn {
   socket: Socket | null

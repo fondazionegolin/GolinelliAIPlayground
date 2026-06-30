@@ -97,6 +97,9 @@ class CodingProjectResponse(BaseModel):
     brief_id: Optional[UUID]
     owner_student_id: Optional[UUID]
     owner_user_id: Optional[UUID]
+    owner_display_name: Optional[str] = None
+    owner_kind: Optional[str] = None
+    is_owned_by_current_user: bool = False
     title: str
     slug: str
     template_key: str

@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, type CSSProperties } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { User, Settings, LogOut, ChevronDown, Bot, Brain, Award, FileEdit, FileText, Menu, X, MessageSquare, Mic, FileCode2, MonitorPlay, BookOpen, Code2 } from 'lucide-react'
+import { User, Settings, LogOut, ChevronDown, Bot, Brain, Award, FileEdit, FileText, Menu, X, MessageSquare, Mic, FileCode2, MonitorPlay, BookOpen, Code2, KanbanSquare } from 'lucide-react'
 import { Button } from './ui/button'
 import { LogoMark } from './LogoMark'
 import { studentApi } from '@/lib/api'
@@ -187,6 +187,7 @@ export function StudentNavbar({
     { key: 'self_assessment', label: t('navbar.nav_tasks'), icon: Award },
     { key: 'notebook', label: t('navbar.nav_notebook'), icon: FileCode2 },
     { key: 'coding', label: t('navbar.nav_coding_lab'), icon: Code2 },
+    { key: 'boards', label: 'Board', icon: KanbanSquare },
   ]
   // Always show core modules; filter optional modules by session settings
   const ALWAYS_SHOWN = new Set(['chatbot', 'documents'])

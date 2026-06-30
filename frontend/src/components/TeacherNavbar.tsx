@@ -1,10 +1,10 @@
 import { useState, useRef, useEffect, type CSSProperties } from 'react'
 import { Link, useNavigate, useLocation } from 'react-router-dom'
-import { User, Settings, LogOut, ChevronDown, Users, MessageSquare, Mic, FileText, Check, Brain, FileCode2, KeyRound, Loader2, ShieldCheck, BookOpen, Zap, Box, Code2 } from 'lucide-react'
+import { User, Settings, LogOut, ChevronDown, Users, MessageSquare, Mic, FileText, Check, Brain, FileCode2, KeyRound, Loader2, ShieldCheck, BookOpen, Zap, Box, Code2, KanbanSquare } from 'lucide-react'
 import { Button } from './ui/button'
 import { useToast } from '@/components/ui/use-toast'
 import { LogoMark } from './LogoMark'
-import { teacherApi } from '@/lib/api'
+import { teacherApi, feedbackApi } from '@/lib/api'
 import { useAuthStore } from '@/stores/auth'
 import TeacherNotifications, { TeacherNotification } from './TeacherNotifications'
 import { useSocket } from '@/hooks/useSocket'
@@ -13,7 +13,7 @@ import { NavTab } from '@/components/ui/NavTab'
 import { useTranslation } from 'react-i18next'
 import { LanguageSwitcher } from '@/components/LanguageSwitcher'
 import { useTeacherProfile, useInvalidateTeacherProfile, TEACHER_PROFILE_KEY } from '@/hooks/useTeacherProfile'
-import { useQueryClient } from '@tanstack/react-query'
+import { useQueryClient, useQuery } from '@tanstack/react-query'
 import { NavbarCalendarClock } from './NavbarCalendarClock'
 import WhatsNewModal from './WhatsNewModal'
 import { buildAccentNavbarStyle, buildAccentNavClusterStyle } from '@/lib/navbarGlass'
@@ -299,6 +299,13 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
 
   const { t } = useTranslation()
 
+  // Feedback board is visible only to admins and teachers added as collaborators
+  const { data: boardAccess } = useQuery({
+    queryKey: ['feedback-board-access'],
+    queryFn: async () => (await feedbackApi.boardAccess()).data as { has_access: boolean; is_admin: boolean },
+    staleTime: 5 * 60 * 1000,
+  })
+
   const navItems = [
     { path: '/teacher', label: t('navbar.nav_support'), icon: MessageSquare },
     { path: '/teacher/classes', label: t('navbar.nav_classes'), icon: Users },
@@ -306,9 +313,11 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
     { path: '/teacher/ml-lab', label: t('navbar.nav_ml_lab'), icon: Brain },
     { path: '/teacher/notebooks', label: t('navbar.nav_notebook'), icon: FileCode2 },
     { path: '/teacher/coding', label: t('navbar.nav_coding_lab'), icon: Code2 },
+    { path: '/teacher/boards', label: 'Board', icon: KanbanSquare },
     { path: '/teacher/live-interaction', label: 'Live', icon: Zap },
     { path: '/teacher/3d-lab', label: '3D Lab', icon: Box },
     { path: '/teacher/toy-lm', label: 'Toy LM', icon: Brain },
+    ...(boardAccess?.has_access ? [{ path: '/teacher/feedback-board', label: 'Board sviluppo', icon: ShieldCheck }] : []),
   ]
 
   const handleNotificationClick = (notification: TeacherNotification) => {

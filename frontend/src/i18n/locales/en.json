@@ -663,6 +663,8 @@
     "options_section": "Options",
     "proactive": "Proactive",
     "proactive_desc": "The bot introduces itself and starts with a question",
+    "live_voice": "Live voice",
+    "live_voice_desc": "Enable real-time voice conversation with this assistant",
     "reporting": "Reporting",
     "reporting_desc": "Automatically generates conversation reports",
     "save_changes": "Save changes",

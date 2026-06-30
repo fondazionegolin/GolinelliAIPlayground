@@ -15,6 +15,7 @@ class TeacherbotCreate(BaseModel):
     system_prompt: str
     is_proactive: bool = False
     proactive_message: Optional[str] = None
+    enable_live_voice: bool = False
     enable_reporting: bool = False
     report_prompt: Optional[str] = None
     llm_provider: Optional[str] = None
@@ -31,6 +32,7 @@ class TeacherbotUpdate(BaseModel):
     system_prompt: Optional[str] = None
     is_proactive: Optional[bool] = None
     proactive_message: Optional[str] = None
+    enable_live_voice: Optional[bool] = None
     enable_reporting: Optional[bool] = None
     report_prompt: Optional[str] = None
     llm_provider: Optional[str] = None
@@ -51,6 +53,7 @@ class TeacherbotResponse(BaseModel):
     system_prompt: str
     is_proactive: bool
     proactive_message: Optional[str]
+    enable_live_voice: bool
     enable_reporting: bool
     report_prompt: Optional[str]
     llm_provider: Optional[str]
@@ -200,6 +203,7 @@ class StudentTeacherbotResponse(BaseModel):
     color: str
     is_proactive: bool
     proactive_message: Optional[str] = None
+    enable_live_voice: bool = False
 
     class Config:
         from_attributes = True

@@ -14,8 +14,10 @@ from app.models.document_draft import DocumentDraft
 from app.models.session_canvas import SessionCanvas
 from app.models.template_version import TenantTemplateVersion
 from app.models.alert import ContentAlert
-from app.models.feedback import FeedbackReport
+from app.models.feedback import FeedbackReport, FeedbackBoardCollaborator, FeedbackBoardConfig
+from app.models.board import Board, BoardCard
 from app.models.notebook import Notebook
+from app.models.notebook_version import NotebookVersion
 from app.models.desktop import UserDesktop, DesktopWidget, AdminDesktopWidgetTemplate
 from app.models.calendar import SessionCalendarEvent
 from app.models.changelog import PlatformChangelogRelease
@@ -71,7 +73,12 @@ __all__ = [
     "TenantTemplateVersion",
     "ContentAlert",
     "FeedbackReport",
+    "FeedbackBoardCollaborator",
+    "FeedbackBoardConfig",
+    "Board",
+    "BoardCard",
     "Notebook",
+    "NotebookVersion",
     "UserDesktop",
     "DesktopWidget",
     "AdminDesktopWidgetTemplate",

@@ -1,12 +1,14 @@
 import re
+import io
 import json
 import logging
+import zipfile
 from typing import Annotated, Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from fastapi.responses import StreamingResponse
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import StudentOrTeacher, get_student_or_teacher
@@ -16,7 +18,8 @@ from app.core.database import get_db
 from app.models.chat import ChatMessage
 from app.models.coding import CodingBrief, CodingDesignSystem, CodingMessage, CodingProject, CodingPublication, CodingVersion
 from app.models.enums import SenderType
-from app.models.session import Class, Session
+from app.models.session import Class, Session, SessionStudent
+from app.models.user import User
 from app.schemas.coding import (
     CodingMessageCreate,
     CodingMessageResponse,
@@ -1039,8 +1042,17 @@ CODING_MODEL_CHOICES: dict[str, tuple[str, str]] = {
 }
 
 
-def _resolve_coding_model(model_key: str | None) -> tuple[str, str]:
-    return CODING_MODEL_CHOICES.get((model_key or "").strip(), (settings.CODING_LLM_PROVIDER, settings.CODING_LLM_MODEL))
+# Claude models are temporarily disabled for students in the Coding Lab: students may only use
+# DeepSeek. Any other choice (incl. the platform default) is coerced to the DeepSeek default.
+STUDENT_CODING_MODEL_KEYS = {"deepseek-flash", "deepseek-pro"}
+STUDENT_DEFAULT_CODING_MODEL_KEY = "deepseek-pro"
+
+
+def _resolve_coding_model(model_key: str | None, *, is_student: bool = False) -> tuple[str, str]:
+    key = (model_key or "").strip()
+    if is_student and key not in STUDENT_CODING_MODEL_KEYS:
+        key = STUDENT_DEFAULT_CODING_MODEL_KEY
+    return CODING_MODEL_CHOICES.get(key, (settings.CODING_LLM_PROVIDER, settings.CODING_LLM_MODEL))
 
 
 async def _coding_generate_stream(messages: list[dict], system_prompt: str, *, provider: str, model: str, temperature: float = 0.4, max_tokens: int = 16000):
@@ -1370,6 +1382,218 @@ def _inject_static_router(html: str, files: list[dict], title: str) -> str:
     return f"{html}{runtime}"
 
 
+def _safe_zip_path(path: str) -> str:
+    clean = str(path or "").strip().replace("\\", "/").lstrip("/")
+    parts = [part for part in clean.split("/") if part and part not in (".", "..")]
+    return "/".join(parts)[:512]
+
+
+def _project_uses_react(files: list[dict]) -> bool:
+    return _is_react_files([
+        {"path": str(file.get("path") or ""), "content": str(file.get("content") or "")}
+        for file in files
+    ])
+
+
+def _json_file(files: list[dict], path: str) -> dict:
+    for file in files:
+        if str(file.get("path") or "").lstrip("/") == path:
+            try:
+                parsed = json.loads(str(file.get("content") or "{}"))
+                return parsed if isinstance(parsed, dict) else {}
+            except json.JSONDecodeError:
+                return {}
+    return {}
+
+
+def _build_export_package_json(files: list[dict], title: str) -> str:
+    existing = _json_file(files, "package.json")
+    dependencies = dict(existing.get("dependencies") or {})
+    dev_dependencies = dict(existing.get("devDependencies") or {})
+    dependencies.setdefault("react", "^18.2.0")
+    dependencies.setdefault("react-dom", "^18.2.0")
+    dev_dependencies.setdefault("@vitejs/plugin-react", "^4.2.1")
+    dev_dependencies.setdefault("typescript", "^5.3.3")
+    dev_dependencies.setdefault("vite", "^5.0.11")
+    package = {
+        "name": _slugify(title),
+        "version": "1.0.0",
+        "private": True,
+        "type": "module",
+        "scripts": {
+            "dev": "vite --host 0.0.0.0",
+            "build": "tsc && vite build",
+            "preview": "vite preview --host 0.0.0.0",
+        },
+        "dependencies": dependencies,
+        "devDependencies": dev_dependencies,
+    }
+    return json.dumps(package, ensure_ascii=False, indent=2) + "\n"
+
+
+def _build_export_zip(project: CodingProject, version: CodingVersion, files: list[dict]) -> bytes:
+    react = _project_uses_react(files)
+    buffer = io.BytesIO()
+    written: set[str] = set()
+    export_reserved = {"Dockerfile", "docker-compose.yml", "nginx.conf", ".dockerignore", "README.md"}
+
+    def write(path: str, content: str | bytes):
+        safe = _safe_zip_path(path)
+        if not safe or safe in written:
+            return
+        written.add(safe)
+        data = content.encode("utf-8") if isinstance(content, str) else content
+        archive.writestr(safe, data)
+
+    with zipfile.ZipFile(buffer, mode="w", compression=zipfile.ZIP_DEFLATED) as archive:
+        if react:
+            for file in files:
+                path = _safe_zip_path(str(file.get("path") or ""))
+                if not path or path == "package.json" or path in export_reserved:
+                    continue
+                write(path, str(file.get("content") or ""))
+            write("package.json", _build_export_package_json(files, project.title))
+            write("index.html", """<!doctype html>
+<html lang="it">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Mini app</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
+""")
+            write("src/main.tsx", """import '../golinelli-bridge'
+import '../styles.css'
+import React from 'react'
+import { createRoot } from 'react-dom/client'
+import App from '../App'
+
+createRoot(document.getElementById('root')!).render(
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>,
+)
+""")
+            write("golinelli-bridge.ts", """declare global {
+  interface Window {
+    GolinelliAI?: {
+      chat: (args?: { content?: string; history?: unknown[]; profileKey?: string }) => Promise<{ response: string }>
+      generateImage: (args?: { prompt?: string }) => Promise<{ image_url: string }>
+    }
+  }
+}
+
+window.GolinelliAI = window.GolinelliAI || {
+  async chat() {
+    return { response: 'Runtime AI non configurato in questa distribuzione standalone.' }
+  },
+  async generateImage() {
+    throw new Error('Generazione immagini non configurata in questa distribuzione standalone.')
+  },
+}
+
+export {}
+""")
+            write("tsconfig.json", """{
+  "compilerOptions": {
+    "target": "ES2020",
+    "useDefineForClassFields": true,
+    "lib": ["DOM", "DOM.Iterable", "ES2020"],
+    "allowJs": false,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "strict": true,
+    "forceConsistentCasingInFileNames": true,
+    "module": "ESNext",
+    "moduleResolution": "Node",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "jsx": "react-jsx"
+  },
+  "include": ["src", "*.tsx", "*.ts", "components", "hooks", "lib", "types.ts"]
+}
+""")
+            write("vite.config.ts", """import { defineConfig } from 'vite'
+import react from '@vitejs/plugin-react'
+
+export default defineConfig({
+  plugins: [react()],
+})
+""")
+            write("Dockerfile", """FROM node:20-alpine AS build
+WORKDIR /app
+COPY package*.json ./
+RUN npm install
+COPY . .
+RUN npm run build
+
+FROM nginx:1.27-alpine
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+COPY --from=build /app/dist /usr/share/nginx/html
+EXPOSE 80
+""")
+        else:
+            for file in files:
+                path = _safe_zip_path(str(file.get("path") or ""))
+                if not path or path in export_reserved:
+                    continue
+                write(path, str(file.get("content") or ""))
+            if "index.html" not in written:
+                write("index.html", _build_static_html(files, project.title))
+            write("Dockerfile", """FROM nginx:1.27-alpine
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+COPY . /usr/share/nginx/html
+EXPOSE 80
+""")
+
+        write("nginx.conf", """server {
+  listen 80;
+  server_name _;
+  root /usr/share/nginx/html;
+  index index.html;
+
+  location / {
+    try_files $uri $uri/ /index.html;
+  }
+}
+""")
+        write("docker-compose.yml", f"""services:
+  app:
+    build: .
+    ports:
+      - "8080:80"
+    restart: unless-stopped
+""")
+        write(".dockerignore", """node_modules
+dist
+.git
+*.zip
+""")
+        write("README.md", f"""# {project.title}
+
+Export generato dal Coding Lab Golinelli.ai.
+
+## Avvio locale con Docker
+
+```bash
+docker compose up --build
+```
+
+Poi apri `http://localhost:8080`.
+
+Versione esportata: {version.version_number}
+""")
+
+    buffer.seek(0)
+    return buffer.getvalue()
+
+
 def _actor_identity(actor: StudentOrTeacher) -> tuple[str, UUID, UUID]:
     if actor.is_student:
         return "student", actor.student.id, actor.student.tenant_id
@@ -1462,6 +1686,40 @@ async def _get_fork_metadata(db: AsyncSession, project: CodingProject) -> dict:
     return {}
 
 
+async def _project_response_payload(
+    db: AsyncSession,
+    actor: StudentOrTeacher,
+    project: CodingProject,
+) -> dict:
+    owner_display_name: str | None = None
+    owner_kind: str | None = None
+    is_owned = False
+
+    if project.owner_student_id:
+        owner_kind = "student"
+        is_owned = actor.is_student and project.owner_student_id == actor.student.id
+        result = await db.execute(select(SessionStudent).where(SessionStudent.id == project.owner_student_id))
+        student = result.scalar_one_or_none()
+        owner_display_name = student.nickname if student else "Studente"
+    elif project.owner_user_id:
+        owner_kind = "teacher"
+        is_owned = actor.is_teacher and project.owner_user_id == actor.teacher.id
+        result = await db.execute(select(User).where(User.id == project.owner_user_id))
+        user = result.scalar_one_or_none()
+        if user:
+            owner_display_name = " ".join(part for part in [user.first_name, user.last_name] if part).strip() or user.email
+        else:
+            owner_display_name = "Docente"
+
+    payload = CodingProjectResponse.model_validate(project).model_dump()
+    payload.update({
+        "owner_display_name": owner_display_name,
+        "owner_kind": owner_kind,
+        "is_owned_by_current_user": is_owned,
+    })
+    return payload
+
+
 async def _next_slug(db: AsyncSession, session_id: UUID, title: str) -> str:
     base_slug = _slugify(title)
     slug = base_slug
@@ -1549,9 +1807,16 @@ async def list_projects(
             query = query.where(CodingProject.tenant_id == actor.teacher.tenant_id)
         if session_id:
             query = query.where(CodingProject.session_id == session_id)
+        query = query.where(
+            or_(
+                CodingProject.owner_user_id == actor.teacher.id,
+                CodingProject.visibility == "class_shared",
+                CodingProject.status == "shared",
+            )
+        )
 
     result = await db.execute(query.order_by(CodingProject.updated_at.desc()))
-    return list(result.scalars().all())
+    return [await _project_response_payload(db, actor, project) for project in result.scalars().all()]
 
 
 # --- Design System library (reusable, independent from any single project) --------------------
@@ -1883,7 +2148,7 @@ async def create_project(
     project.current_version_id = version.id
     await db.commit()
     await db.refresh(project)
-    return project
+    return await _project_response_payload(db, actor, project)
 
 
 @router.get("/projects/{project_id}", response_model=CodingProjectDetail)
@@ -1906,7 +2171,7 @@ async def get_project(
     )
 
     return CodingProjectDetail(
-        **CodingProjectResponse.model_validate(project).model_dump(),
+        **await _project_response_payload(db, actor, project),
         messages=list(messages_result.scalars().all()),
         versions=list(versions_result.scalars().all()),
     )
@@ -2388,7 +2653,7 @@ async def generate_project_code_stream(
         )
 
     base_context = f"Titolo progetto: {project_title}\n\nRichiesta studente:\n{user_prompt}{kb_context}"
-    gen_provider, gen_model = _resolve_coding_model(body.model_key)
+    gen_provider, gen_model = _resolve_coding_model(body.model_key, is_student=actor.is_student)
 
     def _sse(payload: dict) -> str:
         return f"data: {json.dumps(payload)}\n\n"
@@ -2810,7 +3075,7 @@ async def fork_shared_project(
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Project is not shared with the class")
 
     if actor.is_student and source_project.owner_student_id == actor.student.id:
-        return source_project
+        return await _project_response_payload(db, actor, source_project)
 
     if not actor.is_student:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only students can fork class projects")
@@ -2828,7 +3093,7 @@ async def fork_shared_project(
     for candidate in existing_projects_result.scalars().all():
         metadata = await _get_fork_metadata(db, candidate)
         if metadata.get("source_project_id") == str(source_project.id):
-            return candidate
+            return await _project_response_payload(db, actor, candidate)
 
     slug = await _next_slug(db, source_project.session_id, f"{source_project.slug}-fork")
     fork = CodingProject(
@@ -2878,7 +3143,7 @@ async def fork_shared_project(
     ))
     await db.commit()
     await db.refresh(fork)
-    return fork
+    return await _project_response_payload(db, actor, fork)
 
 
 @router.post("/projects/{project_id}/commit-to-creator")
@@ -3266,6 +3531,27 @@ async def publish_project(
         "api_path": f"/api/v1/coding/public/{publication_slug}",
         "version_id": str(version.id),
     }
+
+
+@router.get("/projects/{project_id}/download.zip")
+async def download_project_zip(
+    project_id: UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    actor: Annotated[StudentOrTeacher, Depends(get_student_or_teacher)],
+):
+    project = await _get_accessible_project(db, actor, project_id)
+    version = await _get_current_version(db, project)
+    files = (version.source_manifest_json or {}).get("files") or []
+    archive = _build_export_zip(project, version, files)
+    filename = f"{_slugify(project.title)}-v{version.version_number}.zip"
+    return Response(
+        content=archive,
+        media_type="application/zip",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Cache-Control": "no-store",
+        },
+    )
 
 
 @router.get("/public/{publication_slug}")

@@ -76,11 +76,12 @@ async def _send_platform_invitation_email(
     admin: User,
     invitation: PlatformInvitation,
     activation_token: str,
-) -> None:
+) -> bool:
+    """Send the invitation email. Returns True only if SMTP delivery succeeded."""
     tenant = (await db.execute(select(Tenant).where(Tenant.id == admin.tenant_id))).scalar_one_or_none()
     templates = _tenant_template_args(tenant, "teacher_invitation")
     activation_link = f"{resolve_frontend_url(request.headers.get('origin'))}/activate/{activation_token}"
-    await email_service.send_invitation_email(
+    return await email_service.send_invitation_email(
         to_email=invitation.email,
         first_name=invitation.first_name or "Docente",
         link=activation_link,
@@ -341,9 +342,9 @@ async def invite_teacher(
 ):
     """
     Invite a new teacher via email.
-    Ogni docente invitato direttamente dall'admin riceve un tenant INDIVIDUAL proprio:
-    - CreditLimit TEACHER €3/mese (uso personale del docente)
-    - CreditLimit STUDENT_POOL €10/mese (pool condiviso studenti)
+    Il docente invitato viene inserito nella scuola dell'admin (admin.tenant_id),
+    NON in un tenant individuale separato. La licenza resta individuale:
+    - CreditLimit TEACHER €3/mese (cap mensile personale del docente)
     """
     email = invitation.email.strip().lower()
 
@@ -363,38 +364,22 @@ async def invite_teacher(
         select(User).where(User.email == email).order_by(desc(User.created_at)).limit(1)
     )).scalar_one_or_none()
 
+    # I docenti invitati vengono inseriti nella scuola (tenant dell'admin) e NON
+    # creano più un tenant individuale separato a testa. La licenza resta però
+    # individuale: ogni docente riceve un proprio cap mensile personale.
     if existing_user and existing_user.is_active:
-        # Reuse existing user — aggiorna dati ma mantieni il tenant esistente
+        # Reuse existing active user — aggiorna i dati ma mantieni il tenant esistente
         user = existing_user
         user.role = UserRole.TEACHER
         user.first_name = invitation.first_name
         user.last_name = invitation.last_name
         user.institution = invitation.school
         user.is_verified = True
-        tenant_id_for_inv = user.tenant_id
         await db.flush()
     else:
-        # Crea tenant INDIVIDUAL per questo docente
-        slug_base = re.sub(r'[^a-z0-9]', '-', email.split('@')[0].lower())[:30]
-        slug = slug_base
-        # Assicura unicità dello slug
-        counter = 1
-        while (await db.execute(select(Tenant).where(Tenant.slug == slug))).scalar_one_or_none():
-            slug = f"{slug_base}-{counter}"
-            counter += 1
-
-        teacher_tenant = Tenant(
-            name=f"{invitation.first_name or ''} {invitation.last_name or ''}".strip() or email,
-            slug=slug,
-            tenant_type=TenantType.INDIVIDUAL.value,
-        )
-        db.add(teacher_tenant)
-        await db.flush()
-        tenant_id_for_inv = teacher_tenant.id
-
         if existing_user and not existing_user.is_active:
             user = existing_user
-            user.tenant_id = teacher_tenant.id
+            user.tenant_id = admin.tenant_id
             user.role = UserRole.TEACHER
             user.first_name = invitation.first_name
             user.last_name = invitation.last_name
@@ -405,7 +390,7 @@ async def invite_teacher(
             user.deactivated_by_admin_id = None
         else:
             user = User(
-                tenant_id=teacher_tenant.id,
+                tenant_id=admin.tenant_id,
                 email=email,
                 password_hash="",
                 role=UserRole.TEACHER,
@@ -417,14 +402,18 @@ async def invite_teacher(
             db.add(user)
         await db.flush()
 
-        # Crea limiti crediti per il tenant individuale
-        await credit_service.ensure_teacher_limit(db, teacher_tenant.id, user.id, 3.0)
-        await credit_service.ensure_student_pool_limit(db, teacher_tenant.id, 10.0)
+        # Licenza individuale: cap mensile personale del docente (default 3€,
+        # o il teacher_monthly_cap configurato sulla scuola).
+        tenant_obj = (await db.execute(
+            select(Tenant).where(Tenant.id == admin.tenant_id)
+        )).scalar_one_or_none()
+        teacher_cap = float(getattr(tenant_obj, "teacher_monthly_cap", 3.0) or 3.0)
+        await credit_service.ensure_teacher_limit(db, admin.tenant_id, user.id, teacher_cap)
 
     _activation, activation_token = await _create_activation_token_for_user(db, user)
 
     inv = PlatformInvitation(
-        tenant_id=tenant_id_for_inv,
+        tenant_id=admin.tenant_id,
         email=email,
         first_name=invitation.first_name,
         last_name=invitation.last_name,
@@ -441,13 +430,14 @@ async def invite_teacher(
     await db.commit()
     await db.refresh(inv)
 
-    await _send_platform_invitation_email(
+    email_sent = await _send_platform_invitation_email(
         db=db,
         request=request,
         admin=admin,
         invitation=inv,
         activation_token=activation_token,
     )
+    inv.email_sent = email_sent
 
     return inv
 
@@ -459,10 +449,14 @@ async def resend_teacher_invitation(
     db: Annotated[AsyncSession, Depends(get_db)],
     admin: Annotated[User, Depends(get_current_admin)],
 ):
+    same_tenant_users = select(User.id).where(User.tenant_id == admin.tenant_id)
     invitation = (await db.execute(
         select(PlatformInvitation).where(
             PlatformInvitation.id == invitation_id,
-            PlatformInvitation.tenant_id == admin.tenant_id,
+            or_(
+                PlatformInvitation.tenant_id == admin.tenant_id,
+                PlatformInvitation.invited_by_id.in_(same_tenant_users),
+            ),
         )
     )).scalar_one_or_none()
     if not invitation:
@@ -496,6 +490,13 @@ async def resend_teacher_invitation(
         db.add(user)
         await db.flush()
 
+    # Licenza individuale del docente nella scuola (cap mensile personale).
+    tenant_obj = (await db.execute(
+        select(Tenant).where(Tenant.id == admin.tenant_id)
+    )).scalar_one_or_none()
+    teacher_cap = float(getattr(tenant_obj, "teacher_monthly_cap", 3.0) or 3.0)
+    await credit_service.ensure_teacher_limit(db, admin.tenant_id, user.id, teacher_cap)
+
     _activation, activation_token = await _create_activation_token_for_user(db, user)
 
     invitation.status = InvitationStatus.PENDING.value
@@ -503,17 +504,20 @@ async def resend_teacher_invitation(
     invitation.expires_at = datetime.utcnow() + timedelta(days=7)
     invitation.token = secrets.token_urlsafe(32)
     invitation.invited_by_id = admin.id
+    # Riallinea l'invito alla scuola dell'admin così resta visibile in elenco.
+    invitation.tenant_id = admin.tenant_id
 
     await db.commit()
     await db.refresh(invitation)
 
-    await _send_platform_invitation_email(
+    email_sent = await _send_platform_invitation_email(
         db=db,
         request=request,
         admin=admin,
         invitation=invitation,
         activation_token=activation_token,
     )
+    invitation.email_sent = email_sent
 
     return invitation
 
@@ -524,10 +528,14 @@ async def delete_teacher_invitation(
     db: Annotated[AsyncSession, Depends(get_db)],
     admin: Annotated[User, Depends(get_current_admin)],
 ):
+    same_tenant_users = select(User.id).where(User.tenant_id == admin.tenant_id)
     invitation = (await db.execute(
         select(PlatformInvitation).where(
             PlatformInvitation.id == invitation_id,
-            PlatformInvitation.tenant_id == admin.tenant_id,
+            or_(
+                PlatformInvitation.tenant_id == admin.tenant_id,
+                PlatformInvitation.invited_by_id.in_(same_tenant_users),
+            ),
         )
     )).scalar_one_or_none()
     if not invitation:
@@ -776,7 +784,16 @@ async def list_invitations(
     db: Annotated[AsyncSession, Depends(get_db)],
     admin: Annotated[User, Depends(get_current_admin)],
 ):
-    stmt = select(PlatformInvitation).where(PlatformInvitation.tenant_id == admin.tenant_id).order_by(desc(PlatformInvitation.created_at))
+    # Mostra gli inviti della scuola dell'admin. Include anche eventuali inviti
+    # "legacy" agganciati a tenant individuali orfani, riconoscendoli dal fatto
+    # che sono stati creati da un admin della stessa scuola.
+    same_tenant_users = select(User.id).where(User.tenant_id == admin.tenant_id)
+    stmt = select(PlatformInvitation).where(
+        or_(
+            PlatformInvitation.tenant_id == admin.tenant_id,
+            PlatformInvitation.invited_by_id.in_(same_tenant_users),
+        )
+    ).order_by(desc(PlatformInvitation.created_at))
     invitations = (await db.execute(stmt)).scalars().all()
 
     changed = False

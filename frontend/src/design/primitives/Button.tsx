@@ -231,11 +231,39 @@ function resolveLegacySize(size?: LegacySize) {
   }
 }
 
+// A solid background-COLOR utility (bg-pink-500, bg-[#fff], bg-black/80, …) but
+// NOT a gradient or an explicit background-image utility.
+const BG_COLOR_OVERRIDE = /\bbg-(?:\[(?:#|rgb|hsl)|[a-z]+-\d+|black|white|transparent|current)\b/
+const BG_IMAGE_OR_GRADIENT = /\b(?:bg-\[image:|bg-gradient|from-|via-|to-)/
+
 function normalizeReadableChromeClasses(className?: string) {
-  if (!className || !/\b!?text-white\b/.test(className)) return className
-  const hasSolidBackgroundClass = /(^|\s)(?:bg-|from-|to-|via-)/.test(className)
-  if (hasSolidBackgroundClass) return className
-  return className.replace(/\s*!?text-white\b/g, '')
+  if (!className) return className
+
+  // The accent variant paints its lavender pill via `background-image`
+  // (var(--selection-active-bg)). A consumer's `bg-<color>` only sets
+  // `background-color`, which renders *underneath* that gradient — so the pill
+  // stays lavender while any `text-white` becomes unreadable. When a solid color
+  // override is present, clear the variant gradient so the intended color shows.
+  const hasColorBg = BG_COLOR_OVERRIDE.test(className) && !/\bbg-\[image:/.test(className)
+  const hasGradientOrImage = BG_IMAGE_OR_GRADIENT.test(className)
+
+  let result = className
+  if (hasColorBg && !/\bbg-none\b/.test(result)) {
+    result = `${result} bg-none`
+    // The variant also swaps in a gradient on hover; neutralize it too when the
+    // consumer supplies its own hover color so the override survives hover.
+    if (/\bhover:bg-(?:\[|[a-z]+-\d|black|white)/.test(result) && !/\bhover:bg-none\b/.test(result)) {
+      result = `${result} hover:bg-none`
+    }
+  }
+
+  // `text-white` is only safe over an actual filled background; with no override
+  // at all, drop it so the variant's own readable text color applies.
+  if (/\b!?text-white\b/.test(result) && !hasColorBg && !hasGradientOrImage) {
+    result = result.replace(/\s*!?text-white\b/g, '')
+  }
+
+  return result
 }
 
 export interface ButtonProps

@@ -10,6 +10,11 @@ interface AccentColors {
   border: string
 }
 
+/** Where the realtime voice session comes from: the oral-exam profile, or a teacher-created bot. */
+export type VoiceSessionSource =
+  | { kind: 'interrogation' }
+  | { kind: 'teacherbot'; teacherbotId: string; botName: string }
+
 interface RealtimeInterrogationPanelProps {
   /** Pre-filled exam topic; the student can still edit it before starting. */
   initialTopic?: string
@@ -18,6 +23,8 @@ interface RealtimeInterrogationPanelProps {
   onClose: () => void
   /** Called with each finalised spoken turn so it can be mirrored into the chat. */
   onTurn?: (role: 'user' | 'assistant', text: string) => void
+  /** Which backend session to mint. Defaults to the oral-exam interrogation. */
+  sessionSource?: VoiceSessionSource
 }
 
 type Phase = 'setup' | 'connecting' | 'live' | 'error'
@@ -201,8 +208,13 @@ export default function RealtimeInterrogationPanel({
   accent,
   onClose,
   onTurn,
+  sessionSource = { kind: 'interrogation' },
 }: RealtimeInterrogationPanelProps) {
   const isEnglish = language === 'en'
+  const isTeacherbot = sessionSource.kind === 'teacherbot'
+  const speakerName = isTeacherbot
+    ? sessionSource.botName
+    : (isEnglish ? 'Professor' : 'Professore')
   const [phase, setPhase] = useState<Phase>('setup')
   const [turnState, setTurnState] = useState<TurnState>('idle')
   const [topic, setTopic] = useState(initialTopic)
@@ -326,11 +338,14 @@ export default function RealtimeInterrogationPanel({
     setError(null)
     setPhase('connecting')
     try {
-      const { data } = await llmApi.createRealtimeInterrogationSession(topic.trim(), language, {
+      const voiceOpts = {
         voice: VOICE_BY_GENDER[prefs.gender],
         style: prefs.style,
         pace: prefs.pace,
-      })
+      }
+      const { data } = sessionSource.kind === 'teacherbot'
+        ? await llmApi.createRealtimeTeacherbotSession(sessionSource.teacherbotId, language, voiceOpts)
+        : await llmApi.createRealtimeInterrogationSession(topic.trim(), language, voiceOpts)
       const ephemeralKey = data.value
       const model = data.model
 
@@ -405,7 +420,7 @@ export default function RealtimeInterrogationPanel({
       cleanup()
       setPhase('error')
     }
-  }, [topic, language, prefs, isEnglish, handleServerEvent, cleanup])
+  }, [topic, language, prefs, isEnglish, handleServerEvent, cleanup, sessionSource])
 
   // ── Tap-to-talk (toggle) ─────────────────────────────────────────────────
   // A toggle is far more robust than hold-to-talk for long answers: the mic can't
@@ -476,7 +491,7 @@ export default function RealtimeInterrogationPanel({
   const statusLabel = turnState === 'recording'
     ? (isEnglish ? 'Recording — release to send' : 'Registrazione — rilascia per inviare')
     : turnState === 'responding'
-      ? (isEnglish ? 'The professor is speaking…' : 'Il professore sta parlando…')
+      ? (isEnglish ? `${speakerName} is speaking…` : `${speakerName} sta parlando…`)
       : (isEnglish ? 'Your turn — hold to answer' : 'Tocca a te — tieni premuto per rispondere')
 
   return (
@@ -490,12 +505,16 @@ export default function RealtimeInterrogationPanel({
           </div>
           <div className="min-w-0 flex-1">
             <h3 className="truncate text-sm font-bold text-slate-900">
-              {isEnglish ? 'Voice oral exam' : 'Interrogazione vocale'}
+              {isTeacherbot
+                ? speakerName
+                : (isEnglish ? 'Voice oral exam' : 'Interrogazione vocale')}
             </h3>
             <p className="truncate text-xs text-slate-500">
               {phase === 'live'
                 ? statusLabel
-                : (isEnglish ? 'A teacher questions you out loud' : 'Un docente ti interroga a voce')}
+                : isTeacherbot
+                  ? (isEnglish ? 'Talk to this assistant out loud' : 'Parla a voce con questo assistente')
+                  : (isEnglish ? 'A teacher questions you out loud' : 'Un docente ti interroga a voce')}
             </p>
           </div>
           <button
@@ -516,25 +535,33 @@ export default function RealtimeInterrogationPanel({
             </div>
             <div>
               <p className="text-base font-semibold text-slate-800">
-                {isEnglish ? 'What topic should I examine you on?' : 'Su quale argomento vuoi essere interrogato?'}
+                {isTeacherbot
+                  ? (isEnglish ? `Talk out loud with ${speakerName}` : `Parla a voce con ${speakerName}`)
+                  : (isEnglish ? 'What topic should I examine you on?' : 'Su quale argomento vuoi essere interrogato?')}
               </p>
               <p className="mt-1 text-xs text-slate-500">
-                {isEnglish
-                  ? 'Optional — you can also let the professor ask you live.'
-                  : 'Facoltativo — puoi anche lasciare che sia il professore a chiedertelo a voce.'}
+                {isTeacherbot
+                  ? (isEnglish
+                      ? 'Choose the voice, then start the conversation.'
+                      : 'Scegli la voce, poi avvia la conversazione.')
+                  : (isEnglish
+                      ? 'Optional — you can also let the professor ask you live.'
+                      : 'Facoltativo — puoi anche lasciare che sia il professore a chiedertelo a voce.')}
               </p>
             </div>
-            <input
-              type="text"
-              value={topic}
-              onChange={(e) => setTopic(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter') void start() }}
-              placeholder={isEnglish ? 'e.g. The French Revolution' : 'es. La Rivoluzione Francese'}
-              className="w-full max-w-sm rounded-2xl border border-slate-200/80 bg-white/70 px-4 py-3 text-sm text-slate-800 outline-none transition-all focus:bg-white"
-              style={{ boxShadow: `0 0 0 0 ${accent.accent}` }}
-              onFocus={(e) => { e.currentTarget.style.boxShadow = `0 0 0 3px ${accent.soft}`; e.currentTarget.style.borderColor = accent.accent }}
-              onBlur={(e) => { e.currentTarget.style.boxShadow = 'none'; e.currentTarget.style.borderColor = '' }}
-            />
+            {!isTeacherbot && (
+              <input
+                type="text"
+                value={topic}
+                onChange={(e) => setTopic(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') void start() }}
+                placeholder={isEnglish ? 'e.g. The French Revolution' : 'es. La Rivoluzione Francese'}
+                className="w-full max-w-sm rounded-2xl border border-slate-200/80 bg-white/70 px-4 py-3 text-sm text-slate-800 outline-none transition-all focus:bg-white"
+                style={{ boxShadow: `0 0 0 0 ${accent.accent}` }}
+                onFocus={(e) => { e.currentTarget.style.boxShadow = `0 0 0 3px ${accent.soft}`; e.currentTarget.style.borderColor = accent.accent }}
+                onBlur={(e) => { e.currentTarget.style.boxShadow = 'none'; e.currentTarget.style.borderColor = '' }}
+              />
+            )}
             {/* Voice settings */}
             <div className="w-full max-w-sm space-y-3 text-left">
               <Segmented
@@ -579,7 +606,9 @@ export default function RealtimeInterrogationPanel({
               style={{ backgroundColor: accent.accent, boxShadow: `0 12px 28px ${accent.soft}` }}
             >
               <Mic className="h-4 w-4" />
-              {isEnglish ? 'Start voice exam' : 'Avvia interrogazione vocale'}
+              {isTeacherbot
+                ? (isEnglish ? 'Start voice chat' : 'Avvia conversazione vocale')
+                : (isEnglish ? 'Start voice exam' : 'Avvia interrogazione vocale')}
             </button>
           </div>
         )}
@@ -614,7 +643,7 @@ export default function RealtimeInterrogationPanel({
               <div className="mt-2 flex items-center justify-center gap-5 text-[11px] font-semibold">
                 <span className="flex items-center gap-1.5" style={{ color: accent.text }}>
                   <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: accent.accent }} />
-                  {isEnglish ? 'Professor' : 'Professore'}
+                  {speakerName}
                 </span>
                 <span className="flex items-center gap-1.5 text-emerald-600">
                   <span className="h-2.5 w-2.5 rounded-full bg-emerald-500" />
@@ -672,7 +701,7 @@ export default function RealtimeInterrogationPanel({
                 {turnState === 'recording'
                   ? (isEnglish ? 'Tap to send your answer' : 'Tocca per inviare la risposta')
                   : turnState === 'responding'
-                    ? (isEnglish ? 'Professor speaking — tap to reply' : 'Il professore parla — tocca per rispondere')
+                    ? (isEnglish ? `${speakerName} speaking — tap to reply` : `${speakerName} parla — tocca per rispondere`)
                     : (isEnglish ? 'Tap to answer' : 'Tocca per rispondere')}
               </p>
 
@@ -682,7 +711,9 @@ export default function RealtimeInterrogationPanel({
                 className="mt-1 inline-flex items-center gap-2 rounded-full border border-rose-200/80 bg-rose-50/70 px-4 py-2 text-xs font-bold text-rose-600 transition-colors hover:bg-rose-100/80"
               >
                 <Square className="h-3.5 w-3.5 fill-rose-600" />
-                {isEnglish ? 'End exam' : 'Termina interrogazione'}
+                {isTeacherbot
+                  ? (isEnglish ? 'End chat' : 'Termina conversazione')
+                  : (isEnglish ? 'End exam' : 'Termina interrogazione')}
               </button>
             </div>
           </>

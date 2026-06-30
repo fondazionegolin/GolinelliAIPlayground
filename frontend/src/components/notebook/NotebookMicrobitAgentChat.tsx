@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Bot, Check, GitCompare, Loader2, Send, Sparkles, Wrench, X } from 'lucide-react'
+import { Bot, Check, GitCompare, History, Loader2, Send, Sparkles, Wrench, X } from 'lucide-react'
 import { notebooksApi } from '@/lib/api'
 import type { NotebookCodeProposal, NotebookTutorMessage } from './types'
 
@@ -13,6 +13,7 @@ interface Props {
   onProposals: (summary: string, proposals: NotebookCodeProposal[]) => void
   onApplyProposal: (proposalId: string) => void
   onRejectProposal: (proposalId: string) => void
+  onOpenVersions?: () => void
 }
 
 function getRangeText(source: string, lineStart: number, lineEnd: number) {
@@ -69,6 +70,7 @@ export default function NotebookMicrobitAgentChat({
   onProposals,
   onApplyProposal,
   onRejectProposal,
+  onOpenVersions,
 }: Props) {
   const copy = DEVICE_COPY[device]
   const [messages, setMessages] = useState<NotebookTutorMessage[]>(initialMessages)
@@ -133,6 +135,15 @@ export default function NotebookMicrobitAgentChat({
           <p className="text-sm font-extrabold text-slate-900">{copy.title}</p>
           <p className="truncate text-[11px] text-slate-500">{copy.subtitle}</p>
         </div>
+        {onOpenVersions && (
+          <button
+            onClick={onOpenVersions}
+            className="rounded-lg p-1.5 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900"
+            title="Cronologia versioni / rollback"
+          >
+            <History className="h-4 w-4" />
+          </button>
+        )}
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3">

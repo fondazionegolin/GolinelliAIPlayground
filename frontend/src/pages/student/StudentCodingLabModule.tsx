@@ -11,6 +11,7 @@ import {
   CheckCircle2,
   ChevronRight,
   Code2,
+  Download,
   Eye,
   FileCode2,
   HelpCircle,
@@ -29,6 +30,7 @@ import {
   Send,
   Share2,
   Sparkles,
+  Smartphone,
   Wand2,
   X,
 } from 'lucide-react'
@@ -62,6 +64,10 @@ type CodingProject = {
   slug: string
   template_key: string
   status: string
+  visibility: string
+  owner_display_name?: string | null
+  owner_kind?: string | null
+  is_owned_by_current_user?: boolean
   current_version_id?: string | null
   created_at: string
   updated_at: string
@@ -163,7 +169,19 @@ const MODEL_OPTIONS: { key: string; label: string; hint: string }[] = [
   { key: 'deepseek-flash', label: 'DeepSeek V4 Flash', hint: 'Veloce ed economico' },
   { key: 'deepseek-pro', label: 'DeepSeek V4 Pro', hint: 'Qualità elevata' },
 ]
-const DEFAULT_MODEL_KEY = 'sonnet'
+// Claude models are temporarily disabled for students: they may only generate with DeepSeek.
+// (Backend enforces the same restriction in CODING_MODEL_CHOICES / _resolve_coding_model.)
+const STUDENT_MODEL_KEYS = new Set(['deepseek-flash', 'deepseek-pro'])
+const TEACHER_DEFAULT_MODEL_KEY = 'sonnet'
+const STUDENT_DEFAULT_MODEL_KEY = 'deepseek-pro'
+function modelOptionsFor(isTeacher: boolean) {
+  return isTeacher ? MODEL_OPTIONS : MODEL_OPTIONS.filter((option) => STUDENT_MODEL_KEYS.has(option.key))
+}
+function initialModelKey(isTeacher: boolean): string {
+  const fallback = isTeacher ? TEACHER_DEFAULT_MODEL_KEY : STUDENT_DEFAULT_MODEL_KEY
+  const stored = localStorage.getItem('coding_model_key') || ''
+  return modelOptionsFor(isTeacher).some((option) => option.key === stored) ? stored : fallback
+}
 const CODING_TUTORIAL_STORAGE_KEY = 'coding_lab_tutorial_seen_v1'
 function composeDescription(title: string, prompt: string, answersText: string) {
   const spec = answersText ? `\n## Specifiche dal colloquio\n${answersText}\n` : ''
@@ -191,9 +209,11 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
   const [promptPanelOpen, setPromptPanelOpen] = useState(true)
   const [activeWorkbench, setActiveWorkbench] = useState<'code' | 'preview'>('preview')
   const [previewFullscreen, setPreviewFullscreen] = useState(false)
+  const [previewDevice, setPreviewDevice] = useState<'desktop' | 'mobile'>('desktop')
   const [previewLoading, setPreviewLoading] = useState(false)
   const [createPanelOpen, setCreatePanelOpen] = useState(false)
   const [publishing, setPublishing] = useState(false)
+  const [downloadingZip, setDownloadingZip] = useState(false)
   const [shareUrl, setShareUrl] = useState<string | null>(null)
   const [pendingCommits, setPendingCommits] = useState<CodingCommit[]>([])
   const [previewingCommitId, setPreviewingCommitId] = useState<string | null>(null)
@@ -209,10 +229,10 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
   const fullscreenLoads = useRef(0)
   const fullscreenResets = useRef(0)
   const previewLoadingTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const detailLoadSeq = useRef(0)
   const [interviewQuestions, setInterviewQuestions] = useState<InterviewQuestion[] | null>(null)
   const [interviewAnswers, setInterviewAnswers] = useState<Record<number, string>>({})
   const [interviewing, setInterviewing] = useState(false)
-  const [reviewing, setReviewing] = useState(false)
   // Agentic auto-fix loop: real compile errors from the Sandpack runtime are fed back to the model
   // until the project builds clean (capped, so a stubborn error can't loop forever / burn credits).
   const [previewErrors, setPreviewErrors] = useState<SandpackRuntimeError[]>([])
@@ -220,7 +240,8 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
   const autoFixAttempts = useRef(0)
   const MAX_AUTO_FIX = 2
   const [diffView, setDiffView] = useState<{ path: string; oldContent: string; newContent: string } | null>(null)
-  const [modelKey, setModelKey] = useState<string>(() => localStorage.getItem('coding_model_key') || DEFAULT_MODEL_KEY)
+  const modelOptions = modelOptionsFor(isTeacher)
+  const [modelKey, setModelKey] = useState<string>(() => initialModelKey(isTeacher))
   // Live generation feedback (streamed): reasoning chain, planned files, and per-file progress.
   const [liveReasoning, setLiveReasoning] = useState('')
   const [livePlan, setLivePlan] = useState<{ path: string; purpose: string }[]>([])
@@ -264,10 +285,22 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
   const latestVersion = useMemo(() => [...(projectDetail?.versions || [])].sort((a, b) => b.version_number - a.version_number)[0], [projectDetail])
   const sortedVersions = useMemo(() => [...(projectDetail?.versions || [])].sort((a, b) => b.version_number - a.version_number), [projectDetail])
   const isFork = selectedProject?.status === 'fork' || Boolean(latestVersion?.source_manifest_json?.collaboration?.source_project_id)
+  const filesSignature = useMemo(
+    () => files.map((file) => `${file.path}:${file.content.length}:${file.content.charCodeAt(0) || 0}:${file.content.charCodeAt(file.content.length - 1) || 0}`).join('|'),
+    [files],
+  )
+  const previewKey = `${selectedProjectId || 'new'}:${latestVersion?.id || selectedProject?.current_version_id || 'draft'}:${previewingCommitId || ''}:${previewingVersionId || ''}:${filesSignature}`
 
   // New preview content (or forced remount) resets the per-mount load counters.
   useEffect(() => { previewLoads.current = 0 }, [previewNonce])
   useEffect(() => { previewLoads.current = 0; previewResets.current = 0 }, [previewHtml])
+  useEffect(() => {
+    previewLoads.current = 0
+    previewResets.current = 0
+    fullscreenLoads.current = 0
+    fullscreenResets.current = 0
+    setPreviewErrors([])
+  }, [previewKey])
   useEffect(() => { fullscreenLoads.current = 0 }, [fullscreenNonce])
   useEffect(() => { fullscreenLoads.current = 0; fullscreenResets.current = 0 }, [fullscreenPreviewHtml])
   useEffect(() => {
@@ -303,6 +336,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
   }
 
   const startNewProject = () => {
+    detailLoadSeq.current += 1
     setSelectedProjectId(null)
     setProjectDetail(null)
     setFiles([{ path: 'description.md', content: DESCRIPTION_TEMPLATE, language: 'markdown' }])
@@ -331,8 +365,13 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
     try {
       const response = await codingApi.listProjects(sessionId)
       const nextProjects = response.data as CodingProject[]
+      const urlProjectId = new URLSearchParams(window.location.search).get('project')
       setProjects(nextProjects)
-      if (selectedProjectId && !nextProjects.some((project) => project.id === selectedProjectId)) {
+      if (urlProjectId) {
+        setSelectedProjectId(urlProjectId)
+        setCreatePanelOpen(false)
+        setActiveWorkbench('preview')
+      } else if (selectedProjectId && !nextProjects.some((project) => project.id === selectedProjectId)) {
         startNewProject()
       } else if (!selectedProjectId) {
         setCreatePanelOpen(true)
@@ -345,9 +384,17 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
   }
 
   const loadProjectDetail = async (projectId: string) => {
+    const seq = ++detailLoadSeq.current
     setError(null)
+    setProjectDetail(null)
+    setFiles([])
+    setSelectedPath('index.html')
+    setPreviewingCommitId(null)
+    setPreviewingVersionId(null)
+    setPreviewErrors([])
     try {
       const response = await codingApi.getProject(projectId)
+      if (seq !== detailLoadSeq.current) return
       const detail = response.data as CodingProjectDetail
       setProjectDetail(detail)
       const latestFiles = [...(detail.versions || [])]
@@ -366,8 +413,43 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
       setPreviewingCommitId(null)
       setPreviewingVersionId(null)
     } catch (err: any) {
-      setError(err?.response?.data?.detail || 'Impossibile caricare il progetto.')
+      if (seq === detailLoadSeq.current) {
+        setError(err?.response?.data?.detail || 'Impossibile caricare il progetto.')
+      }
     }
+  }
+
+  const openProjectFromList = async (project: CodingProject) => {
+    setCreatePanelOpen(false)
+    setShareUrl(null)
+    if (!project.is_owned_by_current_user && project.visibility === 'class_shared' && !isTeacher) {
+      setLoading(true)
+      setError(null)
+      try {
+        const response = await codingApi.forkProject(project.id)
+        const forked = response.data as CodingProject
+        setProjects((prev) => [forked, ...prev.filter((item) => item.id !== forked.id)])
+        setSelectedProjectId(forked.id)
+        setActiveWorkbench('preview')
+        setShareUrl('Copia personale creata dal progetto condiviso.')
+      } catch (err: any) {
+        setError(err?.response?.data?.detail || 'Impossibile aprire il progetto condiviso.')
+      } finally {
+        setLoading(false)
+      }
+      return
+    }
+    if (project.id !== selectedProjectId) {
+      detailLoadSeq.current += 1
+      setProjectDetail(null)
+      setFiles([])
+      setSelectedPath('index.html')
+      setPreviewingCommitId(null)
+      setPreviewingVersionId(null)
+      setPreviewErrors([])
+    }
+    setSelectedProjectId(project.id)
+    setActiveWorkbench('preview')
   }
 
   const loadProjectCommits = async (projectId: string) => {
@@ -490,9 +572,17 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
         if (cancelled) return
         const project = response.data as CodingProject
         setProjects((prev) => [project, ...prev.filter((item) => item.id !== project.id)])
+        detailLoadSeq.current += 1
+        setProjectDetail(null)
+        setFiles([])
+        setSelectedPath('index.html')
+        setPreviewingCommitId(null)
+        setPreviewingVersionId(null)
+        setPreviewErrors([])
         setCreatePanelOpen(false)
         setPromptPanelOpen(true)
         setSelectedProjectId(project.id)
+        setActiveWorkbench('preview')
         setShareUrl(project.status === 'fork' ? 'Copia personale creata. Puoi modificarla e inviare un commit al creatore.' : 'Hai aperto il tuo progetto condiviso.')
       } catch (err: any) {
         if (!cancelled) setError(err?.response?.data?.detail || 'Impossibile aprire il progetto condiviso.')
@@ -767,26 +857,6 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
     setPreviewLoading(false)
   }
 
-  const handleUiReview = async () => {
-    if (!selectedProjectId || !files.length) return
-    setReviewing(true)
-    setError(null)
-    try {
-      const response = await codingApi.uiReview(selectedProjectId, { files })
-      const reviewedFiles = (response.data?.files || []) as GeneratedFile[]
-      const issues = (response.data?.issues || []) as string[]
-      if (reviewedFiles.length) {
-        setFiles(reviewedFiles)
-        setSelectedPath(reviewedFiles.some((file) => file.path === selectedPath) ? selectedPath : (reviewedFiles.find((file) => file.path === 'index.html')?.path || reviewedFiles[0].path))
-      }
-      setShareUrl(issues.length ? `Revisione UI: ${issues.join('; ')}` : 'Revisione UI completata: nessun problema rilevato.')
-    } catch (err: any) {
-      setError(err?.response?.data?.detail || 'Revisione UI non riuscita.')
-    } finally {
-      setReviewing(false)
-    }
-  }
-
   const handleSendMessage = async () => {
     if (!selectedProjectId || !message.trim()) return
     setSending(true)
@@ -845,6 +915,34 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
       setError(err?.response?.data?.detail || 'Condivisione non riuscita.')
     } finally {
       setPublishing(false)
+    }
+  }
+
+  const handleDownloadZip = async () => {
+    if (!selectedProjectId) return
+    setDownloadingZip(true)
+    setError(null)
+    try {
+      await saveCurrentFilesVersion('Versione salvata prima del download ZIP.')
+      const response = await codingApi.downloadProjectZip(selectedProjectId)
+      const blob = new Blob([response.data], { type: 'application/zip' })
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      const safeTitle = (selectedProject?.title || 'coding-lab-app')
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-|-$/g, '') || 'coding-lab-app'
+      link.href = url
+      link.download = `${safeTitle}.zip`
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      URL.revokeObjectURL(url)
+      setShareUrl('ZIP pronto: include sorgenti, Dockerfile, docker-compose.yml e README.')
+    } catch (err: any) {
+      setError(err?.response?.data?.detail || 'Download ZIP non riuscito.')
+    } finally {
+      setDownloadingZip(false)
     }
   }
 
@@ -1103,10 +1201,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
                 <button
                   key={project.id}
                   type="button"
-                  onClick={() => {
-                    setCreatePanelOpen(false)
-                    setSelectedProjectId(project.id)
-                  }}
+                  onClick={() => openProjectFromList(project)}
                   className={`group relative w-full overflow-hidden rounded-xl border px-3 py-3 text-left shadow-sm transition ${
                     selectedProjectId === project.id
                       ? 'border-[color:var(--button-chrome-border-hover)] bg-[image:var(--button-chrome-bg-hover)] text-[var(--text-primary)] shadow-[var(--button-chrome-shadow-hover)]'
@@ -1125,10 +1220,17 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
                     <div className="min-w-0 flex-1">
                       <div className="truncate text-sm font-black">{project.title}</div>
                       <div className="mt-1 flex min-w-0 items-center gap-1.5 text-[11px] font-semibold text-[var(--text-muted)]">
+                        <span className="truncate">{project.owner_display_name || (project.owner_kind === 'teacher' ? 'Docente' : 'Studente')}</span>
+                        <span className="h-1 w-1 shrink-0 rounded-full bg-[var(--text-muted)]/50" />
                         <span className="truncate">{project.template_key}</span>
                         <span className="h-1 w-1 shrink-0 rounded-full bg-[var(--text-muted)]/50" />
                         <span className="shrink-0">{new Date(project.updated_at).toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit' })}</span>
                       </div>
+                      {project.visibility === 'class_shared' && (
+                        <div className="mt-1.5 inline-flex rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-black text-sky-700">
+                          Condiviso con la classe
+                        </div>
+                      )}
                     </div>
                   </div>
                 </button>
@@ -1194,10 +1296,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
               <button
                 key={project.id}
                 type="button"
-                onClick={() => {
-                  setCreatePanelOpen(false)
-                  setSelectedProjectId(project.id)
-                }}
+                onClick={() => openProjectFromList(project)}
                 className={`h-8 w-8 rounded-lg text-xs font-bold ${
                   selectedProjectId === project.id
                     ? 'bg-slate-950 text-white'
@@ -1370,7 +1469,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
                   className="flex-1 rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs font-semibold text-slate-700 outline-none focus:border-slate-400"
                   title="Modello usato per generare il codice"
                 >
-                  {MODEL_OPTIONS.map((option) => (
+                  {modelOptions.map((option) => (
                     <option key={option.key} value={option.key}>
                       {option.label} · {option.hint}
                     </option>
@@ -1419,27 +1518,21 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
 
           <section className={`flex min-h-0 flex-col ${activeWorkbench === 'code' ? 'bg-slate-950 text-slate-100' : 'bg-white text-slate-900'}`}>
             <div className={`flex min-h-12 items-center justify-between gap-3 border-b px-4 ${activeWorkbench === 'code' ? 'border-white/10 bg-slate-900' : 'border-slate-100 bg-white'}`}>
-              <div className="inline-flex rounded-[var(--selection-radius)] border border-slate-200 bg-slate-100 p-1 text-xs font-bold">
-                <button
-                  type="button"
+              <div className={`inline-flex shrink-0 rounded-[var(--selection-radius)] border p-1 ${activeWorkbench === 'code' ? 'border-white/10 bg-white/5' : 'border-slate-200 bg-slate-100'}`}>
+                <CodingToolbarIconButton
+                  icon={<FileCode2 className="h-4 w-4" />}
+                  label="Codice"
+                  active={activeWorkbench === 'code'}
                   onClick={() => setActiveWorkbench('code')}
-                  className={`inline-flex h-8 items-center gap-2 rounded-[var(--selection-radius)] px-3 transition ${
-                    activeWorkbench === 'code' ? 'bg-slate-950 text-white shadow-sm' : 'text-slate-500 hover:text-slate-800'
-                  }`}
-                >
-                  <FileCode2 className="h-4 w-4" />
-                  Codice
-                </button>
-                <button
-                  type="button"
+                  dark={activeWorkbench === 'code'}
+                />
+                <CodingToolbarIconButton
+                  icon={<Eye className="h-4 w-4" />}
+                  label="Anteprima"
+                  active={activeWorkbench === 'preview'}
                   onClick={() => setActiveWorkbench('preview')}
-                  className={`inline-flex h-8 items-center gap-2 rounded-[var(--selection-radius)] px-3 transition ${
-                    activeWorkbench === 'preview' ? 'bg-white text-slate-950 shadow-sm' : 'text-slate-500 hover:text-slate-800'
-                  }`}
-                >
-                  <Eye className="h-4 w-4" />
-                  Anteprima
-                </button>
+                  dark={activeWorkbench === 'code'}
+                />
               </div>
               {activeWorkbench === 'code' && selectedProjectId && (
                 <div className="ml-auto text-[11px] font-semibold text-slate-400">
@@ -1452,58 +1545,59 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
                         : 'Salvato sul server'}
                 </div>
               )}
-              {activeWorkbench === 'preview' && previewHtml && (
-                <div className="flex items-center gap-2">
+              {activeWorkbench === 'preview' && hasPreview && (
+                <div className="flex min-w-0 items-center gap-2 overflow-x-auto py-1">
+                  <div className="inline-flex shrink-0 rounded-[var(--selection-radius)] border border-slate-200 bg-slate-100 p-1">
+                    <CodingToolbarIconButton
+                      icon={<MonitorPlay className="h-4 w-4" />}
+                      label="Desktop"
+                      active={previewDevice === 'desktop'}
+                      onClick={() => setPreviewDevice('desktop')}
+                      title="Anteprima desktop"
+                    />
+                    <CodingToolbarIconButton
+                      icon={<Smartphone className="h-4 w-4" />}
+                      label="Mobile"
+                      active={previewDevice === 'mobile'}
+                      onClick={() => setPreviewDevice('mobile')}
+                      title="Anteprima mobile"
+                    />
+                  </div>
                   {isFork && (
-                    <Button
-                      type="button"
+                    <CodingToolbarIconButton
+                      icon={publishing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Share2 className="h-4 w-4" />}
+                      label="Commit"
                       onClick={handleCommitToCreator}
                       disabled={!selectedProjectId || publishing}
                       tone="success"
-                      surface="soft"
-                      density="compact"
-                      className="text-xs font-bold"
-                    >
-                      {publishing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Share2 className="h-4 w-4" />}
-                      Commit to creator
-                    </Button>
+                      title="Commit to creator"
+                    />
                   )}
-                  {isTeacher && (
-                    <Button
-                      type="button"
-                      onClick={handleUiReview}
-                      disabled={!selectedProjectId || reviewing || generating}
-                      tone="accent"
-                      surface="soft"
-                      density="compact"
-                      className="text-xs font-bold"
-                      title="Revisione UI: corregge contrasto, leggibilità e layout"
-                    >
-                      {reviewing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-                      Revisione UI
-                    </Button>
-                  )}
-                  <Button
-                    type="button"
+                  <CodingToolbarIconButton
+                    icon={publishing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Share2 className="h-4 w-4" />}
+                    label="Condividi"
                     onClick={handleShareProject}
                     disabled={!selectedProjectId || publishing}
-                    variant="outline"
-                    density="compact"
-                    className="text-xs font-bold"
-                  >
-                    {publishing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Share2 className="h-4 w-4" />}
-                    Condividi in classe
-                  </Button>
-                  <Button
-                    type="button"
-                    onClick={() => setPreviewFullscreen(true)}
-                    variant="outline"
-                    density="compact"
-                    className="text-xs font-bold"
-                  >
-                    <Maximize2 className="h-4 w-4" />
-                    Pagina intera
-                  </Button>
+                    title="Condividi in classe"
+                  />
+                  <CodingToolbarIconButton
+                    icon={downloadingZip ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+                    label="ZIP"
+                    onClick={handleDownloadZip}
+                    disabled={!selectedProjectId || downloadingZip || publishing}
+                    title="Scarica sorgenti e Docker compose"
+                  />
+                  <CodingToolbarIconButton
+                    icon={<Maximize2 className="h-4 w-4" />}
+                    label="Schermo"
+                    onClick={() => {
+                      fullscreenLoads.current = 0
+                      fullscreenResets.current = 0
+                      setFullscreenNonce((value) => value + 1)
+                      setPreviewFullscreen(true)
+                    }}
+                    title="Pagina intera"
+                  />
                 </div>
               )}
             </div>
@@ -1561,10 +1655,11 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
               </div>
             </div>
             ) : (
-            <div className="flex min-h-0 flex-1 bg-slate-100">
+            <div className={`flex min-h-0 flex-1 bg-slate-100 ${previewDevice === 'mobile' ? 'items-start justify-center overflow-auto p-4' : ''}`}>
             {isReactPreview && files.length > 0 ? (
-              <div className="relative flex min-h-0 flex-1">
+              <div className={`relative flex min-h-0 ${previewDevice === 'mobile' ? 'h-[844px] max-h-full w-[390px] max-w-full shrink-0 overflow-hidden rounded-[32px] border-[10px] border-slate-950 bg-white shadow-2xl ring-1 ring-slate-900/20' : 'flex-1'}`}>
                 <CodingSandpackPreview
+                  key={previewKey}
                   files={files}
                   enableInspector
                   className="h-full w-full"
@@ -1591,9 +1686,9 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
                 {previewLoading && <PreviewLoadingSplash />}
               </div>
             ) : previewHtml ? (
-              <div className="relative flex min-h-0 flex-1">
+              <div className={`relative flex min-h-0 ${previewDevice === 'mobile' ? 'h-[844px] max-h-full w-[390px] max-w-full shrink-0 overflow-hidden rounded-[32px] border-[10px] border-slate-950 bg-white shadow-2xl ring-1 ring-slate-900/20' : 'flex-1'}`}>
                 <iframe
-                  key={previewNonce}
+                  key={`${previewKey}:${previewNonce}`}
                   title="Anteprima Coding Lab"
                   srcDoc={previewHtml}
                   sandbox="allow-scripts allow-forms"
@@ -1641,10 +1736,10 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
             </button>
           </div>
           {isReactPreview ? (
-            <CodingSandpackPreview files={files} enableInspector={false} className="min-h-0 flex-1" />
+            <CodingSandpackPreview key={`fullscreen:${previewKey}`} files={files} enableInspector={false} className="min-h-0 flex-1" />
           ) : (
             <iframe
-              key={fullscreenNonce}
+              key={`fullscreen:${previewKey}:${fullscreenNonce}`}
               title="Anteprima Coding Lab a pagina intera"
               srcDoc={fullscreenPreviewHtml}
               sandbox="allow-scripts allow-forms"
@@ -2272,33 +2367,33 @@ function LiveGenerationPanel({
   const doneCount = files.filter((file) => file.status === 'done').length
 
   return (
-    <div className="space-y-2 font-code">
-      <div className="rounded-2xl border border-[rgba(123,105,201,0.18)] bg-[rgba(123,105,201,0.075)] p-3 shadow-sm">
-        <div className="mb-2 flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-[#55449c]">
+    <div className="space-y-2">
+      <div className="rounded-2xl border border-amber-300/55 bg-amber-50/85 p-3 shadow-sm ring-1 ring-amber-100/80">
+        <div className="mb-2 flex items-center gap-2 text-xs font-black uppercase tracking-wide text-amber-800">
           <Loader2 className="h-3.5 w-3.5 animate-spin" />
           {reasoning ? "Architetto" : 'Sto progettando la struttura...'}
         </div>
         {reasoning && (
-          <div ref={reasoningRef} className="h-48 overflow-y-auto rounded-xl border border-white/70 bg-white/70 p-3 text-slate-700">
+          <div ref={reasoningRef} className="h-48 overflow-y-auto rounded-xl border border-amber-200/80 bg-white/[0.82] p-3 text-slate-800">
             <ReasoningMarkdown>{reasoning}</ReasoningMarkdown>
           </div>
         )}
       </div>
 
       {files.length > 0 && (
-        <div className="rounded-2xl border border-[rgba(62,169,244,0.18)] bg-[rgba(62,169,244,0.075)] p-3 shadow-sm">
-          <div className="mb-2 flex items-center justify-between text-xs font-bold uppercase tracking-wide text-[#1278bd]">
+        <div className="rounded-2xl border border-sky-300/60 bg-sky-50/90 p-3 shadow-sm ring-1 ring-sky-100/80">
+          <div className="mb-2 flex items-center justify-between text-xs font-black uppercase tracking-wide text-sky-700">
             <span>File Writer</span>
             <span>{doneCount}/{files.length} file</span>
           </div>
-          <div className="h-36 space-y-1 overflow-y-auto rounded-xl border border-white/70 bg-white/70 p-2">
+          <div className="h-36 space-y-1 overflow-y-auto rounded-xl border border-sky-200/75 bg-white/[0.82] p-2 font-code">
             {files.map((file) => (
               <div key={file.path} className="flex items-center gap-2 text-sm text-slate-700">
                 {file.status === 'done'
-                  ? <Check className="h-3.5 w-3.5 shrink-0 text-[#1278bd]" />
+                  ? <Check className="h-3.5 w-3.5 shrink-0 text-sky-700" />
                   : <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-sky-400" />}
                 <span className="min-w-0 flex-1 truncate">{file.path}</span>
-                <span className="shrink-0 text-xs font-bold text-[#1278bd]">{file.lines} ln</span>
+                <span className="shrink-0 text-xs font-bold text-sky-700">{file.lines} ln</span>
               </div>
             ))}
           </div>
@@ -2325,17 +2420,17 @@ function ConversationBubble({ item, onShowFileDiff }: { item: CodingMessage; onS
       ? item.metadata_json.files.filter((file: any) => file?.path && file?.status !== 'invariato' && file?.status !== 'rimosso')
       : []
     const tone = isFileSummary
-      ? { border: 'border-[rgba(62,169,244,0.18)] bg-[rgba(62,169,244,0.075)]', label: 'text-[#1278bd]', text: 'text-slate-700' }
+      ? { border: 'border-sky-300/60 bg-sky-50/90 ring-1 ring-sky-100/80', label: 'text-sky-700', text: 'text-slate-700', inner: 'border-sky-200/75 bg-white/[0.82]' }
       : isReasoning
-        ? { border: 'border-[rgba(123,105,201,0.18)] bg-[rgba(123,105,201,0.075)]', label: 'text-[#55449c]', text: 'text-slate-700' }
-        : { border: 'border-[color:var(--border-subtle)] bg-[var(--surface-muted)]', label: 'text-[color:var(--text-secondary)]', text: 'text-[color:var(--text-primary)]' }
+        ? { border: 'border-amber-300/55 bg-amber-50/85 ring-1 ring-amber-100/80', label: 'text-amber-800', text: 'text-slate-800', inner: 'border-amber-200/80 bg-white/[0.82]' }
+        : { border: 'border-[color:var(--border-subtle)] bg-[var(--surface-muted)]', label: 'text-[color:var(--text-secondary)]', text: 'text-[color:var(--text-primary)]', inner: 'border-white/70 bg-white/70' }
     return (
-      <div className={`rounded-xl border px-3 py-2.5 shadow-sm ${tone.border} ${isReasoning ? 'font-code' : ''}`}>
+      <div className={`rounded-xl border px-3 py-2.5 shadow-sm ${tone.border}`}>
         <div className={`mb-1.5 text-xs font-black uppercase tracking-wide ${tone.label}`}>
           {label}
         </div>
         {isReasoning ? (
-          <div className={`h-48 overflow-y-auto rounded-xl border border-white/70 bg-white/70 p-3 ${tone.text}`}>
+          <div className={`h-48 overflow-y-auto rounded-xl border p-3 ${tone.inner} ${tone.text}`}>
             <ReasoningMarkdown>{item.content}</ReasoningMarkdown>
           </div>
         ) : (
@@ -2926,6 +3021,59 @@ function DiffViewer({
         </footer>
       </div>
     </div>
+  )
+}
+
+function CodingToolbarIconButton({
+  icon,
+  label,
+  active = false,
+  disabled = false,
+  onClick,
+  title,
+  tone = 'neutral',
+  dark = false,
+}: {
+  icon: ReactNode
+  label: string
+  active?: boolean
+  disabled?: boolean
+  onClick: () => void
+  title?: string
+  tone?: 'neutral' | 'success'
+  dark?: boolean
+}) {
+  const toneClasses = tone === 'success'
+    ? 'text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800 focus-visible:bg-emerald-50'
+    : dark
+      ? 'text-slate-300 hover:bg-white/10 hover:text-white focus-visible:bg-white/10'
+      : 'text-slate-500 hover:bg-white hover:text-slate-950 focus-visible:bg-white'
+  const activeClasses = dark ? 'bg-white text-slate-950 shadow-sm' : 'bg-white text-slate-950 shadow-sm'
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      title={title || label}
+      aria-label={title || label}
+      className={`group inline-flex h-8 min-w-8 shrink-0 items-center justify-center overflow-hidden rounded-[var(--selection-radius)] text-xs font-bold transition-[max-width,padding,background-color,color,box-shadow] duration-300 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(62,169,244,0.45)] ${
+        active
+          ? `max-w-[11rem] px-3 ${activeClasses}`
+          : `max-w-8 px-0 hover:max-w-[11rem] hover:px-3 focus-visible:max-w-[11rem] focus-visible:px-3 ${toneClasses}`
+      } disabled:pointer-events-none disabled:max-w-8 disabled:px-0 disabled:opacity-45`}
+    >
+      <span className="flex h-4 w-4 shrink-0 items-center justify-center">{icon}</span>
+      <span
+        className={`overflow-hidden whitespace-nowrap transition-[max-width,margin,opacity] duration-300 ease-out ${
+          active
+            ? 'ml-2 max-w-[9rem] opacity-100'
+            : 'ml-0 max-w-0 opacity-0 group-hover:ml-2 group-hover:max-w-[9rem] group-hover:opacity-100 group-focus-visible:ml-2 group-focus-visible:max-w-[9rem] group-focus-visible:opacity-100'
+        }`}
+      >
+        {label}
+      </span>
+    </button>
   )
 }
 

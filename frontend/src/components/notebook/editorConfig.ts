@@ -1,12 +1,13 @@
 import { autocompletion, completeFromList } from '@codemirror/autocomplete'
 import { indentWithTab } from '@codemirror/commands'
 import { javascript, javascriptLanguage } from '@codemirror/lang-javascript'
-import { python } from '@codemirror/lang-python'
+import { python, pythonLanguage } from '@codemirror/lang-python'
 import { HighlightStyle, indentUnit, syntaxHighlighting } from '@codemirror/language'
 import { type Extension, RangeSetBuilder } from '@codemirror/state'
 import { tags } from '@lezer/highlight'
 import { Decoration } from '@codemirror/view'
 import { EditorView, keymap } from '@codemirror/view'
+import { microbitApiCompletions } from './microbitApi'
 import type { NotebookCodeProposal, NotebookFontFamily, NotebookProjectType, NotebookTheme } from './types'
 
 const p5ApiCompletions = completeFromList([
@@ -325,6 +326,11 @@ export function getEditorExtensions(
       ? javascriptLanguage.data.of({ autocomplete: strudelApiCompletions })
       : []
 
+  // For micro:bit: register the full MicroPython board API as Python completions.
+  const pythonLanguageData = projectType === 'microbit'
+    ? pythonLanguage.data.of({ autocomplete: microbitApiCompletions })
+    : []
+
   const extraAutocomplete = autocompletion({ activateOnTypingDelay: 50, maxRenderedOptions: 16 })
 
   return [
@@ -332,6 +338,7 @@ export function getEditorExtensions(
     syntaxHighlighting(highlightStyles[theme] ?? highlightStyles.dark),
     language,
     jsLanguageData,
+    pythonLanguageData,
     indentUnit.of('  '),
     extraAutocomplete,
     runKeys,

@@ -2,8 +2,8 @@ import { lazy, Suspense, useCallback, useEffect, useRef, useState, type PointerE
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useParams } from 'react-router-dom'
 import {
-  AlertCircle, BookOpen, Bot, CheckCircle, ChevronDown, ChevronUp, Cpu, FilePlus, Gamepad2, Loader2,
-  Monitor, Music2, PackagePlus, Pause, PanelRight, Play, Plus, RotateCcw, Save, Sparkles, Square, Terminal, Trash2, Wrench, Zap,
+  AlertCircle, BookOpen, Bot, CheckCircle, ChevronDown, ChevronUp, Cpu, FilePlus, Gamepad2, History, Loader2,
+  Monitor, Music2, PackagePlus, Pause, PanelRight, Play, Plus, RotateCcw, Save, Square, Terminal, Trash2, Wrench, Zap,
 } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -37,6 +37,18 @@ const NotebookP5Preview = lazy(() => import('@/components/notebook/NotebookP5Pre
 const NotebookStrudelPreview = lazy(() => import('@/components/notebook/NotebookStrudelPreview'))
 const NotebookGame2DPreview = lazy(() => import('@/components/notebook/NotebookGame2DPreview'))
 import NotebookLibraryManager from '@/components/notebook/NotebookLibraryManager'
+import NotebookVersionHistoryModal from '@/components/notebook/NotebookVersionHistoryModal'
+import { Button } from '@/design/primitives/Button'
+import { IconButton } from '@/design/primitives/IconButton'
+import { Select } from '@/design/primitives/Select'
+import {
+  Dialog,
+  DialogBody,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/design/primitives/Dialog'
 import type { StrudelPreviewHandle } from '@/components/notebook/NotebookStrudelPreview'
 
 interface ConsoleEntry {
@@ -190,7 +202,7 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
   const [consoleOpen, setConsoleOpen] = useState(false)
   const [consoleAiLoading, setConsoleAiLoading] = useState(false)
   const [consoleAiResponse, setConsoleAiResponse] = useState<string | null>(null)
-  const [assistantSummary, setAssistantSummary] = useState('')
+  const [, setAssistantSummary] = useState('')
   const [assistantLoading, setAssistantLoading] = useState(false)
   const [assistantProposals, setAssistantProposals] = useState<Record<string, NotebookCodeProposal[]>>({})
   const [p5SplitRatio, setP5SplitRatio] = useState(0.58)
@@ -203,6 +215,9 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
   const [isStrudelResizing, setIsStrudelResizing] = useState(false)
   const [strudelTemplatesOpen, setStrudelTemplatesOpen] = useState(false)
   const [chatSidebarOpen, setChatSidebarOpen] = useState(true)
+  const [versionsOpen, setVersionsOpen] = useState(false)
+  const [microbitManualOpen, setMicrobitManualOpen] = useState(false)
+  const lastSnapshotRef = useRef(0)
   const [tutorSidebarWidth, setTutorSidebarWidth] = useState(340)
   const [isP5Resizing, setIsP5Resizing] = useState(false)
   const [isGameResizing, setIsGameResizing] = useState(false)
@@ -283,6 +298,8 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
       // Do NOT invalidate ['notebook', notebookId] — that would re-fetch and
       // overwrite cells with server data while the user is still editing.
       queryClient.invalidateQueries({ queryKey: ['notebooks'] })
+      // Checkpoint automatico (throttle interno a 3 minuti) sullo stato salvato.
+      maybeAutoSnapshot()
     },
     onError: () => setSaveStatus('unsaved'),
   })
@@ -300,6 +317,33 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
       })
     }, 2000)
   }, [editorSettings, projectType, saveMutation, title])
+
+  // ── Version history ────────────────────────────────────────────────────────
+  // Crea uno snapshot del notebook. Best-effort: non blocca l'editor se fallisce.
+  const createSnapshot = useCallback((label: string, source: 'manual' | 'ai' | 'auto' | 'rollback') => {
+    if (!notebookId) return
+    lastSnapshotRef.current = Date.now()
+    notebooksApi.createVersion(notebookId, { label, source })
+      .then(() => queryClient.invalidateQueries({ queryKey: ['notebook-versions', notebookId] }))
+      .catch(() => { /* lo snapshot è un extra: un errore non deve interrompere il lavoro */ })
+  }, [notebookId, queryClient])
+
+  // Checkpoint automatico al massimo ogni 3 minuti, così la cronologia non si
+  // riempie a ogni autosave ma traccia comunque l'evoluzione del lavoro.
+  const maybeAutoSnapshot = useCallback(() => {
+    if (Date.now() - lastSnapshotRef.current > 180_000) {
+      createSnapshot('Checkpoint automatico', 'auto')
+    }
+  }, [createSnapshot])
+
+  // Ripristina lo stato del notebook dopo un rollback dal modale/chatbot.
+  const handleRestored = useCallback((detail: NotebookDetail) => {
+    if (saveTimer.current) clearTimeout(saveTimer.current)
+    isDirtyRef.current = false
+    lastSnapshotRef.current = Date.now()
+    queryClient.setQueryData(['notebook', notebookId], detail)
+    setSaveStatus('saved')
+  }, [notebookId, queryClient])
 
   const updateCell = useCallback((id: string, patch: Partial<Cell>) => {
     setCells((prev) => {
@@ -634,6 +678,8 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
   const applyProposal = useCallback((cellId: string, proposalId: string) => {
     const proposal = (assistantProposals[cellId] || []).find((item) => item.id === proposalId)
     if (!proposal) return
+    // Snapshot dello stato attuale: così la modifica dell'AI è sempre annullabile.
+    createSnapshot('Prima della proposta AI', 'ai')
     setCells((prev) => {
       const next = prev.map((cell) => {
         if (cell.id !== cellId) return cell
@@ -650,7 +696,7 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
       [cellId]: (prev[cellId] || []).filter((item) => item.id !== proposalId),
     }))
     setAssistantSummary('Ho preparato una proposta didattica applicata al codice. Se vuoi, chiedimi nel tutor perché questa modifica è utile.')
-  }, [assistantProposals, replaceLineRange, scheduleSave])
+  }, [assistantProposals, createSnapshot, replaceLineRange, scheduleSave])
 
   const rejectProposal = useCallback((cellId: string, proposalId: string) => {
     setAssistantProposals((prev) => ({
@@ -848,7 +894,7 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
   const projectTone: PastelTone = projectType === 'python'
     ? 'indigo'
     : isDeviceNotebook(projectType)
-      ? 'sky'
+      ? 'slate'
     : projectType === 'strudel'
       ? 'violet'
       : projectType === 'game2d'
@@ -860,8 +906,8 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
     <div className="flex h-full min-h-0 gap-3 bg-slate-100 p-4">
       {/* ── Main notebook card ───────────────────────────────────────────── */}
       <div className={`flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl text-slate-900 shadow-[0_18px_60px_rgba(15,23,42,0.10)] ${PASTEL_SURFACES[projectTone]}`}>
-        {/* Row 1: Title bar */}
-        <div className="flex items-center gap-3 border-b border-slate-200/70 bg-white/60 px-4 py-3 backdrop-blur-sm">
+        {/* Unified toolbar */}
+        <div className="flex flex-wrap items-center gap-2 border-b border-slate-200/70 bg-white/70 px-4 py-2 backdrop-blur-sm">
           {editingTitle ? (
             <input
               ref={titleRef}
@@ -873,13 +919,17 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
               autoFocus
             />
           ) : (
-            <button
+            <Button
+              type="button"
+              surface="ghost"
+              tone="neutral"
+              density="compact"
               onClick={() => setEditingTitle(true)}
-              className="max-w-sm truncate text-sm font-semibold text-slate-900 transition-colors hover:text-slate-700"
+              className="max-w-[220px] justify-start truncate px-2 text-sm font-semibold"
               title={isEnglish ? 'Edit title' : 'Modifica titolo'}
             >
               {title || (isEnglish ? 'Untitled notebook' : 'Notebook senza titolo')}
-            </button>
+            </Button>
           )}
 
           <span className={`rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] ${
@@ -888,7 +938,234 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
             {projectType}
           </span>
 
+          <div className="flex flex-wrap items-center gap-1.5">
+            <label className="flex items-center gap-1.5 text-xs font-medium text-slate-500">
+              {isEnglish ? 'Theme' : 'Tema'}
+              <Select
+                value={editorSettings.theme}
+                onChange={(e) => updateEditorSettings({ theme: e.target.value as NotebookTheme })}
+                density="compact"
+                surface="glass"
+                className="w-[112px]"
+              >
+                <option value="dark">{isEnglish ? 'Dark' : 'Scuro'}</option>
+                <option value="light">{isEnglish ? 'Light' : 'Chiaro'}</option>
+                <option value="fancy">Fancy</option>
+                <option value="dracula">Dracula</option>
+                <option value="p5js">P5.js</option>
+              </Select>
+            </label>
+
+            <label className="flex items-center gap-1.5 text-xs font-medium text-slate-500">
+              {isEnglish ? 'Size' : 'Dim.'}
+              <Select
+                value={editorSettings.font_size}
+                onChange={(e) => updateEditorSettings({ font_size: Number(e.target.value) })}
+                density="compact"
+                surface="glass"
+                className="w-[82px]"
+              >
+                {[12, 14, 16, 18, 20].map((size) => (
+                  <option key={size} value={size}>{size}px</option>
+                ))}
+              </Select>
+            </label>
+
+            <label className="flex items-center gap-1.5 text-xs font-medium text-slate-500">
+              Font
+              <Select
+                value={editorSettings.font_family}
+                onChange={(e) => updateEditorSettings({ font_family: e.target.value as NotebookFontFamily })}
+                density="compact"
+                surface="glass"
+                className="w-[142px]"
+              >
+                <option value="jetbrains">JetBrains Mono</option>
+                <option value="space">Space Mono</option>
+                <option value="courier">Courier Prime</option>
+                <option value="victor">Victor Mono</option>
+                <option value="plex">IBM Plex Mono</option>
+              </Select>
+            </label>
+
+            <label className="flex items-center gap-1.5 text-xs font-medium text-slate-500" title={`${isEnglish ? 'Font weight' : 'Peso font'}: ${fontWeight}`}>
+              {isEnglish ? 'Weight' : 'Peso'}
+              <input
+                type="range"
+                min={100}
+                max={900}
+                step={100}
+                value={fontWeight}
+                onChange={(e) => updateEditorSettings({ font_weight: Number(e.target.value) })}
+                className="w-16 accent-[var(--selection-border-hover)]"
+              />
+              <span className="w-7 text-right text-slate-400">{fontWeight}</span>
+            </label>
+
+            {isDeviceNotebook(projectType) && projectType === 'circuitplayground' ? (
+              <span className="rounded-[var(--control-radius)] border border-[var(--border-subtle)] bg-[var(--surface-glass)] px-3 py-2 text-xs font-semibold text-[var(--text-primary)]">
+                CircuitPython
+              </span>
+            ) : isDeviceNotebook(projectType) && (
+              <label className="flex items-center gap-1.5 text-xs font-medium text-slate-500">
+                Linguaggio
+                <Select
+                  value={deviceLanguage}
+                  onChange={(e) => updateEditorSettings({ device_language: e.target.value as 'python' | 'javascript' })}
+                  density="compact"
+                  surface="glass"
+                  className="w-[112px]"
+                >
+                  <option value="python">Python</option>
+                  <option value="javascript">JavaScript</option>
+                </Select>
+              </label>
+            )}
+
+            {projectType === 'microbit' && (
+              <IconButton
+                type="button"
+                size="sm"
+                tone="neutral"
+                surface="soft"
+                onClick={() => setMicrobitManualOpen(true)}
+                title="Manuale micro:bit"
+              >
+                <BookOpen />
+              </IconButton>
+            )}
+
+            {(projectType === 'p5js' || projectType === 'game2d') && (
+              <label className="flex h-9 items-center gap-2 rounded-[var(--control-radius)] border border-[var(--border-subtle)] bg-[var(--surface-glass)] px-3 text-xs font-semibold text-[var(--text-primary)]">
+                <input
+                  type="checkbox"
+                  checked={editorSettings.live_preview}
+                  onChange={(e) => updateEditorSettings({ live_preview: e.target.checked })}
+                  className="rounded border-slate-300 bg-white accent-[var(--selection-border-hover)]"
+                />
+                Live
+              </label>
+            )}
+          </div>
+
           <div className="flex-1" />
+
+          <div className="flex flex-wrap items-center gap-1">
+            {projectType === 'python' && (
+              <Button
+                type="button"
+                density="compact"
+                tone="neutral"
+                surface="soft"
+                onClick={() => insertCellBelow(activeCellId ?? cells[cells.length - 1]?.id)}
+                title={isEnglish ? 'Add cell' : 'Aggiungi cella'}
+              >
+                <Plus />
+                {isEnglish ? 'Cell' : 'Cella'}
+              </Button>
+            )}
+            {projectType === 'strudel' && (
+              <>
+                <div className="relative">
+                  <Button
+                    type="button"
+                    density="compact"
+                    tone="warning"
+                    surface="soft"
+                    onClick={() => setStrudelTemplatesOpen((v) => !v)}
+                    title={isEnglish ? 'Ready-made patterns' : 'Modelli pronti'}
+                  >
+                    <BookOpen />
+                    {isEnglish ? 'Templates' : 'Modelli'}
+                    <ChevronDown className={`transition-transform ${strudelTemplatesOpen ? 'rotate-180' : ''}`} />
+                  </Button>
+                  {strudelTemplatesOpen && (
+                    <>
+                      <div className="fixed inset-0 z-40" onClick={() => setStrudelTemplatesOpen(false)} />
+                      <div className="absolute left-0 top-full z-50 mt-1 w-60 overflow-hidden rounded-xl border border-violet-200 bg-white shadow-lg">
+                        {STRUDEL_TEMPLATES.map((tpl) => (
+                          <Button
+                            key={tpl.id}
+                            type="button"
+                            tone="neutral"
+                            surface="ghost"
+                            className="h-auto w-full flex-col items-start gap-0.5 rounded-none px-3 py-2.5 text-left"
+                            onClick={() => {
+                              if (activeCell) updateCell(activeCell.id, { source: tpl.code })
+                              setStrudelTemplatesOpen(false)
+                            }}
+                          >
+                            <span className="text-xs font-semibold text-slate-800">{tpl.label}</span>
+                            <span className="text-[10px] text-slate-500">{tpl.description}</span>
+                          </Button>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                </div>
+                <Button type="button" density="compact" tone="accent" surface="solid" onClick={handleStrudelPlay} title={isEnglish ? 'Play (Shift+Enter)' : 'Suona (Shift+Enter)'}>
+                  <Play />
+                  Play
+                </Button>
+                <Button type="button" density="compact" tone="danger" surface="soft" onClick={handleStrudelStop} disabled={!strudelPlaying} title={isEnglish ? 'Stop' : 'Ferma'}>
+                  <Pause />
+                  Stop
+                </Button>
+              </>
+            )}
+            {projectType === 'game2d' && (
+              <>
+                <Button type="button" density="compact" tone="accent" surface="solid" onClick={handleGamePlay} title={isEnglish ? 'Run game' : 'Esegui gioco'}>
+                  <Play />
+                  Play
+                </Button>
+                <Button type="button" density="compact" tone="danger" surface="soft" onClick={handleGameStop} disabled={!gamePlaying} title={isEnglish ? 'Pause game' : 'Pausa gioco'}>
+                  <Pause />
+                  Pausa
+                </Button>
+              </>
+            )}
+            {projectType === 'p5js' && (
+              <>
+                <Button type="button" density="compact" tone="neutral" surface="soft" onClick={() => setLibraryManagerOpen((v) => !v)} title="Gestisci librerie aggiuntive">
+                  <PackagePlus />
+                  Librerie
+                  {(editorSettings.libraries ?? []).length > 0 && (
+                    <span className="ml-0.5 rounded-full bg-indigo-600 px-1.5 py-0.5 text-[9px] font-bold text-white">
+                      {(editorSettings.libraries ?? []).length}
+                    </span>
+                  )}
+                </Button>
+                <Button type="button" density="compact" tone="accent" surface="solid" onClick={handleP5Play} title={isEnglish ? 'Run sketch' : 'Esegui sketch'}>
+                  <Play />
+                  Play
+                </Button>
+                <Button type="button" density="compact" tone="danger" surface="soft" onClick={handleP5Stop} disabled={!p5Playing} title={isEnglish ? 'Stop sketch' : 'Ferma sketch'}>
+                  <Pause />
+                  Stop
+                </Button>
+              </>
+            )}
+            {projectType === 'python' && (
+              <>
+                <Button type="button" density="compact" tone="accent" surface="solid" onClick={runAll} disabled={pyStatus !== 'ready' || !!runningCellId}>
+                  <Play />
+                  {isEnglish ? 'Run all' : 'Esegui tutto'}
+                </Button>
+                {runningCellId ? (
+                  <Button type="button" density="compact" tone="danger" surface="soft" onClick={handleStop}>
+                    <Square className="fill-current" />
+                    Stop
+                  </Button>
+                ) : (
+                  <Button type="button" density="compact" tone="neutral" surface="soft" onClick={handleRestart} disabled={pyStatus !== 'ready'}>
+                    <RotateCcw />
+                    Restart
+                  </Button>
+                )}
+              </>
+            )}
+          </div>
 
           {projectType === 'python' ? (
             <div className="flex items-center gap-1.5 text-[11px] text-slate-500">
@@ -896,7 +1173,7 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
               <span>{pyStatusText}</span>
             </div>
           ) : isDeviceNotebook(projectType) ? (
-            <div className="flex items-center gap-1.5 text-[11px] text-sky-700">
+            <div className="flex items-center gap-1.5 text-[11px] text-slate-600">
               <Cpu className="h-3.5 w-3.5" />
               <span>{deviceShortLabel} · Web Serial</span>
             </div>
@@ -931,270 +1208,32 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
           </div>
 
           {notebookId && (
-            <button
+            <IconButton
+              type="button"
+              size="sm"
+              tone="neutral"
+              surface="ghost"
+              onClick={() => setVersionsOpen(true)}
+              title={isEnglish ? 'Version history' : 'Cronologia versioni'}
+            >
+              <History />
+            </IconButton>
+          )}
+
+          {notebookId && (
+            <IconButton
+              type="button"
+              size="sm"
+              tone={chatSidebarOpen ? 'accent' : 'neutral'}
+              surface={chatSidebarOpen ? 'soft' : 'ghost'}
               onClick={() => setChatSidebarOpen((v) => !v)}
               title={chatSidebarOpen
                 ? (isEnglish ? 'Close tutor sidebar' : 'Chiudi sidebar tutor')
                 : (isEnglish ? 'Open tutor as sidebar' : 'Apri tutor come sidebar')}
-              className={`rounded-xl p-1.5 transition-colors ${
-                chatSidebarOpen
-                  ? `${PASTEL_ICON_BACKGROUNDS[projectTone]} ${PASTEL_ICON_TEXT[projectTone]}`
-                  : 'text-slate-400 hover:bg-white/70 hover:text-slate-700'
-              }`}
             >
-              <PanelRight className="h-4 w-4" />
-            </button>
+              <PanelRight />
+            </IconButton>
           )}
-        </div>
-
-        {/* Row 2: Toolbar */}
-        <div className="flex flex-wrap items-center gap-2 border-b border-slate-200/80 bg-white/45 px-4 py-2 backdrop-blur-sm">
-          <label className="flex items-center gap-1.5 text-xs text-slate-500">
-            {isEnglish ? 'Theme' : 'Tema'}
-            <select
-              value={editorSettings.theme}
-              onChange={(e) => updateEditorSettings({ theme: e.target.value as NotebookTheme })}
-              className="rounded-lg border border-slate-300/80 bg-white/80 px-2 py-1.5 text-slate-700 outline-none"
-            >
-              <option value="dark">{isEnglish ? 'Dark' : 'Scuro'}</option>
-              <option value="light">{isEnglish ? 'Light' : 'Chiaro'}</option>
-              <option value="fancy">Fancy</option>
-              <option value="dracula">Dracula</option>
-              <option value="p5js">P5.js</option>
-            </select>
-          </label>
-
-          <label className="flex items-center gap-1.5 text-xs text-slate-500">
-            {isEnglish ? 'Size' : 'Dimensione'}
-            <select
-              value={editorSettings.font_size}
-              onChange={(e) => updateEditorSettings({ font_size: Number(e.target.value) })}
-              className="rounded-lg border border-slate-300/80 bg-white/80 px-2 py-1.5 text-slate-700 outline-none"
-            >
-              {[12, 14, 16, 18, 20].map((size) => (
-                <option key={size} value={size}>{size}px</option>
-              ))}
-            </select>
-          </label>
-
-          <label className="flex items-center gap-1.5 text-xs text-slate-500">
-            {isEnglish ? 'Font' : 'Font'}
-            <select
-              value={editorSettings.font_family}
-              onChange={(e) => updateEditorSettings({ font_family: e.target.value as NotebookFontFamily })}
-              className="rounded-lg border border-slate-300/80 bg-white/80 px-2 py-1.5 text-slate-700 outline-none"
-            >
-              <option value="jetbrains">JetBrains Mono</option>
-              <option value="space">Space Mono</option>
-              <option value="courier">Courier Prime</option>
-              <option value="victor">Victor Mono</option>
-              <option value="plex">IBM Plex Mono</option>
-            </select>
-          </label>
-
-          <label className="flex items-center gap-1.5 text-xs text-slate-500" title={`${isEnglish ? 'Font weight' : 'Peso font'}: ${fontWeight}`}>
-            {isEnglish ? 'Weight' : 'Peso'}
-            <input
-              type="range"
-              min={100}
-              max={900}
-              step={100}
-              value={fontWeight}
-              onChange={(e) => updateEditorSettings({ font_weight: Number(e.target.value) })}
-              className="w-20 accent-indigo-600"
-            />
-            <span className="w-7 text-right text-slate-400">{fontWeight}</span>
-          </label>
-
-          {(projectType === 'p5js' || projectType === 'game2d') && (
-            <label className="flex items-center gap-1.5 text-xs text-slate-500">
-              <input
-                type="checkbox"
-                checked={editorSettings.live_preview}
-                onChange={(e) => updateEditorSettings({ live_preview: e.target.checked })}
-                className="rounded border-slate-300 bg-white"
-              />
-              Live preview
-            </label>
-          )}
-
-          {isDeviceNotebook(projectType) && projectType === 'circuitplayground' ? (
-            <div className="rounded-lg border border-slate-300/80 bg-white/80 px-2 py-1.5 text-xs font-semibold text-slate-700">
-              Linguaggio CircuitPython
-            </div>
-          ) : isDeviceNotebook(projectType) && (
-            <label className="flex items-center gap-1.5 text-xs text-slate-500">
-              Linguaggio
-              <select
-                value={deviceLanguage}
-                onChange={(e) => updateEditorSettings({ device_language: e.target.value as 'python' | 'javascript' })}
-                className="rounded-lg border border-slate-300/80 bg-white/80 px-2 py-1.5 text-slate-700 outline-none"
-              >
-                <option value="python">Python</option>
-                <option value="javascript">JavaScript</option>
-              </select>
-            </label>
-          )}
-
-          <div className="flex-1" />
-
-          <div className="flex items-center gap-1">
-            {projectType === 'python' && (
-              <button
-                onClick={() => insertCellBelow(activeCellId ?? cells[cells.length - 1]?.id)}
-                title={isEnglish ? 'Add cell' : 'Aggiungi cella'}
-                className={`flex items-center gap-1 rounded-xl px-3 py-1.5 text-xs shadow-sm transition-colors ${PASTEL_SURFACES.slate}`}
-              >
-                <Plus className="h-3 w-3" />
-                {isEnglish ? 'Cell' : 'Cella'}
-              </button>
-            )}
-            {isDeviceNotebook(projectType) ? (
-              <div className="rounded-xl bg-sky-100 px-3 py-1.5 text-xs font-semibold text-sky-700">
-                Programma la scheda e leggi la seriale nel cruscotto
-              </div>
-            ) : projectType === 'strudel' ? (
-              <>
-                <div className="relative">
-                  <button
-                    onClick={() => setStrudelTemplatesOpen((v) => !v)}
-                    title={isEnglish ? 'Ready-made patterns' : 'Modelli pronti'}
-                    className="flex items-center gap-1 rounded-xl bg-violet-100 px-3 py-1.5 text-xs text-violet-700 shadow-sm transition-colors hover:bg-violet-200"
-                  >
-                    <BookOpen className="h-3 w-3" />
-                    {isEnglish ? 'Templates' : 'Modelli'}
-                    <ChevronDown className={`h-3 w-3 transition-transform ${strudelTemplatesOpen ? 'rotate-180' : ''}`} />
-                  </button>
-                  {strudelTemplatesOpen && (
-                    <>
-                      <div
-                        className="fixed inset-0 z-40"
-                        onClick={() => setStrudelTemplatesOpen(false)}
-                      />
-                      <div className="absolute left-0 top-full z-50 mt-1 w-60 overflow-hidden rounded-xl border border-violet-200 bg-white shadow-lg">
-                        {STRUDEL_TEMPLATES.map((tpl) => (
-                          <button
-                            key={tpl.id}
-                            onClick={() => {
-                              if (activeCell) updateCell(activeCell.id, { source: tpl.code })
-                              setStrudelTemplatesOpen(false)
-                            }}
-                            className="flex w-full flex-col gap-0.5 px-3 py-2.5 text-left transition-colors hover:bg-violet-50"
-                          >
-                            <span className="text-xs font-semibold text-slate-800">{tpl.label}</span>
-                            <span className="text-[10px] text-slate-500">{tpl.description}</span>
-                          </button>
-                        ))}
-                      </div>
-                    </>
-                  )}
-                </div>
-                <button
-                  onClick={handleStrudelPlay}
-                  title={isEnglish ? 'Play (Shift+Enter)' : 'Suona (Shift+Enter)'}
-                  className="flex items-center gap-1 rounded-xl bg-violet-600 px-3 py-1.5 text-xs text-white transition-colors hover:bg-violet-500"
-                >
-                  <Play className="h-3 w-3" />
-                  Play
-                </button>
-                <button
-                  onClick={handleStrudelStop}
-                  disabled={!strudelPlaying}
-                  title={isEnglish ? 'Stop' : 'Ferma'}
-                  className={`flex items-center gap-1 rounded-xl px-3 py-1.5 text-xs shadow-sm transition-colors disabled:opacity-40 ${PASTEL_SURFACES.rose} ${PASTEL_ICON_TEXT.rose}`}
-                >
-                  <Pause className="h-3 w-3" />
-                  Stop
-                </button>
-              </>
-            ) : projectType === 'game2d' ? (
-              <>
-                <button
-                  onClick={handleGamePlay}
-                  title={isEnglish ? 'Run game' : 'Esegui gioco'}
-                  className="flex items-center gap-1 rounded-xl bg-cyan-600 px-3 py-1.5 text-xs text-white transition-colors hover:bg-cyan-500"
-                >
-                  <Play className="h-3 w-3" />
-                  Play
-                </button>
-                <button
-                  onClick={handleGameStop}
-                  disabled={!gamePlaying}
-                  title={isEnglish ? 'Pause game' : 'Pausa gioco'}
-                  className={`flex items-center gap-1 rounded-xl px-3 py-1.5 text-xs shadow-sm transition-colors disabled:opacity-40 ${PASTEL_SURFACES.rose} ${PASTEL_ICON_TEXT.rose}`}
-                >
-                  <Pause className="h-3 w-3" />
-                  Pausa
-                </button>
-              </>
-            ) : projectType === 'p5js' ? (
-              <>
-                <button
-                  onClick={() => setLibraryManagerOpen((v) => !v)}
-                  title="Gestisci librerie aggiuntive"
-                  className={`flex items-center gap-1 rounded-xl px-3 py-1.5 text-xs shadow-sm transition-colors ${
-                    (editorSettings.libraries ?? []).length > 0
-                      ? 'bg-indigo-100 text-indigo-700 hover:bg-indigo-200'
-                      : `${PASTEL_SURFACES.slate} ${PASTEL_ICON_TEXT.slate}`
-                  }`}
-                >
-                  <PackagePlus className="h-3 w-3" />
-                  Librerie
-                  {(editorSettings.libraries ?? []).length > 0 && (
-                    <span className="ml-0.5 rounded-full bg-indigo-600 px-1.5 py-0.5 text-[9px] font-bold text-white">
-                      {(editorSettings.libraries ?? []).length}
-                    </span>
-                  )}
-                </button>
-                <button
-                  onClick={handleP5Play}
-                  title={isEnglish ? 'Run sketch' : 'Esegui sketch'}
-                  className="flex items-center gap-1 rounded-xl bg-[#2196F3] px-3 py-1.5 text-xs text-white transition-colors hover:bg-[#1d84d8]"
-                >
-                  <Play className="h-3 w-3" />
-                  Play
-                </button>
-                <button
-                  onClick={handleP5Stop}
-                  disabled={!p5Playing}
-                  title={isEnglish ? 'Stop sketch' : 'Ferma sketch'}
-                  className={`flex items-center gap-1 rounded-xl px-3 py-1.5 text-xs shadow-sm transition-colors disabled:opacity-40 ${PASTEL_SURFACES.rose} ${PASTEL_ICON_TEXT.rose}`}
-                >
-                  <Pause className="h-3 w-3" />
-                  Stop
-                </button>
-              </>
-            ) : (
-              <button
-                onClick={runAll}
-                disabled={pyStatus !== 'ready' || !!runningCellId}
-                className="flex items-center gap-1 rounded-xl bg-[#E91E63] px-3 py-1.5 text-xs text-white transition-colors hover:bg-[#d61b5b] disabled:opacity-40"
-              >
-                <Play className="h-3 w-3" />
-                {isEnglish ? 'Run all' : 'Esegui tutto'}
-              </button>
-            )}
-            {projectType === 'python' && (
-              runningCellId ? (
-                <button
-                  onClick={handleStop}
-                  className={`flex items-center gap-1 rounded-xl px-3 py-1.5 text-xs shadow-sm transition-colors ${PASTEL_SURFACES.rose} ${PASTEL_ICON_TEXT.rose}`}
-                >
-                  <Square className="h-3 w-3 fill-current" />
-                  Stop
-                </button>
-              ) : (
-                <button
-                  onClick={handleRestart}
-                  disabled={pyStatus !== 'ready'}
-                  className={`flex items-center gap-1 rounded-xl px-3 py-1.5 text-xs shadow-sm transition-colors disabled:opacity-40 ${PASTEL_SURFACES.slate}`}
-                >
-                  <RotateCcw className="h-3 w-3" />
-                  {isEnglish ? 'Restart' : 'Restart'}
-                </button>
-              )
-            )}
-          </div>
         </div>
 
         {projectType === 'python' && pyStatus === 'loading' && (
@@ -1211,25 +1250,13 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
         )}
 
         <div className="flex min-h-0 flex-1 flex-col">
-          {assistantSummary && (
-            <div className="px-4 pt-4">
-                <div className="rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm text-slate-700">
-                <div className="mb-1 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-indigo-600">
-                  <Sparkles className="h-3.5 w-3.5" />
-                  {isEnglish ? 'Learning Support' : 'Supporto Didattico'}
-                </div>
-                <p>{assistantSummary}</p>
-              </div>
-            </div>
-          )}
-
           {isDeviceNotebook(projectType) ? (
-            <div className="flex min-h-0 flex-1 p-4 gap-0 overflow-hidden">
-              <div className={`flex min-h-0 flex-1 overflow-hidden rounded-xl shadow-sm ${PASTEL_SURFACES.slate}`}>
+            <div className="flex min-h-0 flex-1 overflow-hidden">
+              <div className={`flex min-h-0 flex-1 overflow-hidden ${PASTEL_SURFACES.slate}`}>
                 <div className="flex min-h-0 min-w-0 flex-[1.15] flex-col overflow-hidden bg-slate-950">
                   <div className="flex flex-shrink-0 items-center gap-2 border-b border-slate-800 bg-slate-900 px-3 py-1.5">
-                    <Cpu className="h-3 w-3 text-sky-300" />
-                    <span className="font-mono text-[10px] text-sky-200/70">
+                    <Cpu className="h-3 w-3 text-slate-300" />
+                    <span className="font-mono text-[10px] text-slate-300/70">
                       {deviceLanguage === 'javascript' ? 'main.js' : 'main.py'} · {deviceLabel}
                     </span>
                     <div className="flex-1" />
@@ -1259,9 +1286,9 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
                   )}
                 </div>
 
-                <div className="w-2 flex-shrink-0 bg-slate-200" />
+                <div className="w-px flex-shrink-0 bg-slate-300" />
 
-                <div className="min-h-0 min-w-[320px] flex-1 p-4">
+                <div className="min-h-0 min-w-[320px] flex-1 overflow-hidden">
                   {deviceKind === 'circuitplayground' ? (
                     <CircuitPlaygroundPanel
                       source={activeCell?.source ?? ''}
@@ -1771,6 +1798,7 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
                 }}
                 onApplyProposal={(proposalId) => applyProposal(activeCell.id, proposalId)}
                 onRejectProposal={(proposalId) => rejectProposal(activeCell.id, proposalId)}
+                onOpenVersions={() => setVersionsOpen(true)}
               />
             ) : (
               <Suspense fallback={null}>
@@ -1783,6 +1811,7 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
                   pendingProposals={activeCell ? (assistantProposals[activeCell.id] || []) : []}
                   initialMessages={notebookData?.tutor_messages || []}
                   variant="sidebar"
+                  onOpenVersions={() => setVersionsOpen(true)}
                 />
               </Suspense>
             )}
@@ -1809,6 +1838,284 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
         setLibraryManagerOpen(false)
       }}
     />
+    <Dialog open={microbitManualOpen} onOpenChange={setMicrobitManualOpen}>
+      <DialogContent size="xl" surface="base" className="max-h-[calc(100vh-2rem)] overflow-hidden p-0">
+        <DialogHeader className="border-b border-[var(--border-subtle)] px-6 py-5">
+          <DialogTitle>Manuale micro:bit</DialogTitle>
+          <DialogDescription>
+            Guida indicizzata a MicroPython, sensori integrati, pin e sensori esterni, con esercizi pratici per ogni sezione.
+          </DialogDescription>
+        </DialogHeader>
+        <DialogBody className="max-h-[calc(100vh-10rem)] overflow-y-auto px-6 py-5">
+          <div className="grid gap-5 lg:grid-cols-[220px_minmax(0,1fr)]">
+            <nav className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-xs lg:sticky lg:top-0 lg:self-start">
+              <p className="mb-3 font-bold uppercase tracking-wide text-slate-500">Indice</p>
+              <div className="grid gap-2">
+                <a href="#mb-base" className="text-slate-700 hover:text-slate-950">1. Base del programma</a>
+                <a href="#mb-vars" className="text-slate-700 hover:text-slate-950">2. Variabili e tipi</a>
+                <a href="#mb-print" className="text-slate-700 hover:text-slate-950">3. Print e seriale</a>
+                <a href="#mb-if" className="text-slate-700 hover:text-slate-950">4. Condizioni</a>
+                <a href="#mb-loops" className="text-slate-700 hover:text-slate-950">5. Cicli e tempo</a>
+                <a href="#mb-display" className="text-slate-700 hover:text-slate-950">6. Display LED</a>
+                <a href="#mb-buttons" className="text-slate-700 hover:text-slate-950">7. Pulsanti e touch</a>
+                <a href="#mb-sensors" className="text-slate-700 hover:text-slate-950">8. Sensori integrati</a>
+                <a href="#mb-sound" className="text-slate-700 hover:text-slate-950">9. Suono</a>
+                <a href="#mb-pins" className="text-slate-700 hover:text-slate-950">10. Pin e sensori esterni</a>
+                <a href="#mb-projects" className="text-slate-700 hover:text-slate-950">11. Progetti guidati</a>
+              </div>
+            </nav>
+
+            <div className="grid gap-4">
+              <section id="mb-base" className="rounded-lg border border-slate-200 bg-white p-4">
+                <h3 className="text-sm font-bold text-slate-900">1. Base del programma</h3>
+                <p className="mt-2 text-xs leading-5 text-slate-600">
+                  Un programma micro:bit usa MicroPython. Importa le API della scheda, poi descrive cosa deve fare una volta o in un ciclo continuo.
+                </p>
+                <pre className="mt-3 overflow-auto rounded-lg bg-slate-950 p-3 text-xs text-slate-100">{`from microbit import *
+
+display.show(Image.HEART)
+sleep(1000)
+display.clear()`}</pre>
+                <div className="mt-3 rounded-lg bg-slate-50 p-3 text-xs leading-5 text-slate-700">
+                  <strong>Esercizio.</strong> Mostra il tuo nome con `display.scroll`, poi mostra un'icona diversa.
+                </div>
+              </section>
+
+              <section id="mb-vars" className="rounded-lg border border-slate-200 bg-white p-4">
+                <h3 className="text-sm font-bold text-slate-900">2. Variabili e tipi</h3>
+                <p className="mt-2 text-xs leading-5 text-slate-600">
+                  Le variabili salvano numeri, testi e stati booleani. Usa nomi brevi ma leggibili: `temp`, `passi`, `acceso`.
+                </p>
+                <pre className="mt-3 overflow-auto rounded-lg bg-slate-950 p-3 text-xs text-slate-100">{`from microbit import *
+
+passi = 0
+nome = "Ada"
+acceso = True
+
+display.scroll(nome)
+display.show(str(passi))`}</pre>
+                <div className="mt-3 rounded-lg bg-slate-50 p-3 text-xs leading-5 text-slate-700">
+                  <strong>Esercizio.</strong> Crea una variabile `punteggio`, aumentala quando premi A e mostrala sul display.
+                </div>
+              </section>
+
+              <section id="mb-print" className="rounded-lg border border-slate-200 bg-white p-4">
+                <h3 className="text-sm font-bold text-slate-900">3. Print e seriale</h3>
+                <p className="mt-2 text-xs leading-5 text-slate-600">
+                  `print()` invia testo al monitor seriale. Il cruscotto live legge bene righe nel formato `chiave=valore`.
+                  Evita f-string: usa `.format()` per compatibilita con MicroPython micro:bit.
+                </p>
+                <pre className="mt-3 overflow-auto rounded-lg bg-slate-950 p-3 text-xs text-slate-100">{`from microbit import *
+
+while True:
+    temp = temperature()
+    luce = display.read_light_level()
+    print("temp={} light={}".format(temp, luce))
+    sleep(200)`}</pre>
+                <div className="mt-3 rounded-lg bg-slate-50 p-3 text-xs leading-5 text-slate-700">
+                  <strong>Esercizio.</strong> Aggiungi alla riga seriale `a=1` quando il pulsante A e premuto, altrimenti `a=0`.
+                </div>
+              </section>
+
+              <section id="mb-if" className="rounded-lg border border-slate-200 bg-white p-4">
+                <h3 className="text-sm font-bold text-slate-900">4. Condizioni</h3>
+                <p className="mt-2 text-xs leading-5 text-slate-600">
+                  `if`, `elif`, `else` permettono di prendere decisioni. L'indentazione e parte della sintassi: le righe del blocco devono essere rientrate.
+                </p>
+                <pre className="mt-3 overflow-auto rounded-lg bg-slate-950 p-3 text-xs text-slate-100">{`from microbit import *
+
+while True:
+    luce = display.read_light_level()
+    if luce < 30:
+        display.show(Image.MOON)
+    elif luce > 180:
+        display.show(Image.SUN)
+    else:
+        display.clear()
+    sleep(100)`}</pre>
+                <div className="mt-3 rounded-lg bg-slate-50 p-3 text-xs leading-5 text-slate-700">
+                  <strong>Esercizio.</strong> Se la temperatura supera 28 gradi mostra `!`, altrimenti mostra un segno di spunta.
+                </div>
+              </section>
+
+              <section id="mb-loops" className="rounded-lg border border-slate-200 bg-white p-4">
+                <h3 className="text-sm font-bold text-slate-900">5. Cicli e tempo</h3>
+                <p className="mt-2 text-xs leading-5 text-slate-600">
+                  `while True` ripete per sempre. `for` ripete un numero definito di volte. `sleep(ms)` mette in pausa senza consumare troppe risorse.
+                </p>
+                <pre className="mt-3 overflow-auto rounded-lg bg-slate-950 p-3 text-xs text-slate-100">{`from microbit import *
+
+for numero in range(5):
+    display.show(str(numero))
+    sleep(500)
+
+while True:
+    display.show(Image.HEART)
+    sleep(300)
+    display.clear()
+    sleep(300)`}</pre>
+                <div className="mt-3 rounded-lg bg-slate-50 p-3 text-xs leading-5 text-slate-700">
+                  <strong>Esercizio.</strong> Crea un conto alla rovescia da 9 a 0 e poi mostra `GO`.
+                </div>
+              </section>
+
+              <section id="mb-display" className="rounded-lg border border-slate-200 bg-white p-4">
+                <h3 className="text-sm font-bold text-slate-900">6. Display LED</h3>
+                <p className="mt-2 text-xs leading-5 text-slate-600">
+                  Il display e una matrice 5x5. Puoi mostrare immagini predefinite, testo o creare immagini personalizzate con luminosita da 0 a 9.
+                </p>
+                <pre className="mt-3 overflow-auto rounded-lg bg-slate-950 p-3 text-xs text-slate-100">{`from microbit import *
+
+freccia = Image("00900:"
+                "09990:"
+                "90909:"
+                "00900:"
+                "00900")
+
+display.show(freccia)
+sleep(1000)
+display.scroll("N S E O")`}</pre>
+                <div className="mt-3 rounded-lg bg-slate-50 p-3 text-xs leading-5 text-slate-700">
+                  <strong>Esercizio.</strong> Disegna una linea verticale nord-sud e falla lampeggiare ogni mezzo secondo.
+                </div>
+              </section>
+
+              <section id="mb-buttons" className="rounded-lg border border-slate-200 bg-white p-4">
+                <h3 className="text-sm font-bold text-slate-900">7. Pulsanti e touch</h3>
+                <p className="mt-2 text-xs leading-5 text-slate-600">
+                  `button_a` e `button_b` leggono i pulsanti frontali. Su micro:bit V2 puoi usare anche il logo touch con `pin_logo`.
+                </p>
+                <pre className="mt-3 overflow-auto rounded-lg bg-slate-950 p-3 text-xs text-slate-100">{`from microbit import *
+
+contatore = 0
+
+while True:
+    if button_a.was_pressed():
+        contatore = contatore + 1
+    if button_b.was_pressed():
+        contatore = 0
+    display.show(str(contatore % 10))
+    sleep(50)`}</pre>
+                <div className="mt-3 rounded-lg bg-slate-50 p-3 text-xs leading-5 text-slate-700">
+                  <strong>Esercizio.</strong> Usa A per aumentare un valore, B per diminuirlo e stampa `value=...` nel monitor seriale.
+                </div>
+              </section>
+
+              <section id="mb-sensors" className="rounded-lg border border-slate-200 bg-white p-4">
+                <h3 className="text-sm font-bold text-slate-900">8. Sensori integrati</h3>
+                <div className="mt-3 grid gap-2 text-xs leading-5 text-slate-700 md:grid-cols-2">
+                  <div className="rounded-lg bg-slate-50 p-3"><strong>Temperatura:</strong> `temperature()` restituisce gradi Celsius approssimati.</div>
+                  <div className="rounded-lg bg-slate-50 p-3"><strong>Luce:</strong> `display.read_light_level()` restituisce 0-255.</div>
+                  <div className="rounded-lg bg-slate-50 p-3"><strong>Accelerometro:</strong> `get_x()`, `get_y()`, `get_z()`, gesture come `shake`.</div>
+                  <div className="rounded-lg bg-slate-50 p-3"><strong>Bussola:</strong> `compass.heading()` restituisce 0-359 gradi.</div>
+                  <div className="rounded-lg bg-slate-50 p-3"><strong>Microfono V2:</strong> `microphone.sound_level()` restituisce 0-255.</div>
+                  <div className="rounded-lg bg-slate-50 p-3"><strong>Tempo:</strong> `running_time()` restituisce millisecondi dall'avvio.</div>
+                </div>
+                <pre className="mt-3 overflow-auto rounded-lg bg-slate-950 p-3 text-xs text-slate-100">{`from microbit import *
+
+while True:
+    print("temp={} light={} compass={} accx={} accy={} accz={}".format(
+        temperature(),
+        display.read_light_level(),
+        compass.heading(),
+        accelerometer.get_x(),
+        accelerometer.get_y(),
+        accelerometer.get_z()
+    ))
+    sleep(200)`}</pre>
+                <div className="mt-3 rounded-lg bg-slate-50 p-3 text-xs leading-5 text-slate-700">
+                  <strong>Esercizio.</strong> Costruisci una bussola: mostra N, E, S, O sul display e stampa `direction=...`.
+                </div>
+              </section>
+
+              <section id="mb-sound" className="rounded-lg border border-slate-200 bg-white p-4">
+                <h3 className="text-sm font-bold text-slate-900">9. Suono</h3>
+                <p className="mt-2 text-xs leading-5 text-slate-600">
+                  Per riprodurre note importa il modulo `music`. Non importare `music` da `microbit`: usa `import music` su una riga separata.
+                </p>
+                <pre className="mt-3 overflow-auto rounded-lg bg-slate-950 p-3 text-xs text-slate-100">{`from microbit import *
+import music
+
+while True:
+    if accelerometer.was_gesture("shake"):
+        music.play(["C4:2", "E4:2", "G4:2"])
+    sleep(50)`}</pre>
+                <div className="mt-3 rounded-lg bg-slate-50 p-3 text-xs leading-5 text-slate-700">
+                  <strong>Esercizio.</strong> Crea un allarme: se la luce scende sotto 20, suona tre note e mostra una X.
+                </div>
+              </section>
+
+              <section id="mb-pins" className="rounded-lg border border-slate-200 bg-white p-4">
+                <h3 className="text-sm font-bold text-slate-900">10. Pin e sensori esterni</h3>
+                <p className="mt-2 text-xs leading-5 text-slate-600">
+                  I pin permettono di collegare LED, pulsanti, potenziometri e sensori. Collega sempre GND in comune e rispetta 3V.
+                  Evita sensori che richiedono 5V sui pin dati della micro:bit.
+                </p>
+                <div className="mt-3 grid gap-2 text-xs leading-5 text-slate-700 md:grid-cols-2">
+                  <div className="rounded-lg bg-slate-50 p-3"><strong>Digitale:</strong> `pin0.read_digital()`, `pin0.write_digital(1)`.</div>
+                  <div className="rounded-lg bg-slate-50 p-3"><strong>Analogico:</strong> `pin1.read_analog()` restituisce 0-1023.</div>
+                  <div className="rounded-lg bg-slate-50 p-3"><strong>Touch:</strong> `pin0.is_touched()` su pin compatibili.</div>
+                  <div className="rounded-lg bg-slate-50 p-3"><strong>Servo/PWM:</strong> `pin0.write_analog(value)` e `set_analog_period()`.</div>
+                  <div className="rounded-lg bg-slate-50 p-3"><strong>I2C:</strong> `i2c.init()`, `i2c.read(addr, n)`, `i2c.write(addr, bytes)`.</div>
+                  <div className="rounded-lg bg-slate-50 p-3"><strong>UART:</strong> `uart.init()`, `uart.read()`, `uart.write()`.</div>
+                </div>
+                <pre className="mt-3 overflow-auto rounded-lg bg-slate-950 p-3 text-xs text-slate-100">{`from microbit import *
+
+while True:
+    pot = pin1.read_analog()
+    soglia = 500
+    if pot > soglia:
+        pin0.write_digital(1)
+    else:
+        pin0.write_digital(0)
+    print("pot={} led={}".format(pot, 1 if pot > soglia else 0))
+    sleep(100)`}</pre>
+                <div className="mt-3 rounded-lg bg-slate-50 p-3 text-xs leading-5 text-slate-700">
+                  <strong>Esercizio.</strong> Collega un potenziometro a P1 e un LED a P0: il LED si accende sopra meta scala e il cruscotto mostra `pot=...`.
+                </div>
+              </section>
+
+              <section id="mb-projects" className="rounded-lg border border-slate-200 bg-white p-4">
+                <h3 className="text-sm font-bold text-slate-900">11. Progetti guidati</h3>
+                <div className="mt-3 grid gap-3 text-xs leading-5 text-slate-700">
+                  <div className="rounded-lg bg-slate-50 p-3">
+                    <strong>Data logger ambientale.</strong> Stampa ogni secondo temperatura e luce; quando premi A cambia frequenza di lettura.
+                  </div>
+                  <div className="rounded-lg bg-slate-50 p-3">
+                    <strong>Contapassi.</strong> Usa `was_gesture("shake")`, incrementa un contatore e invia `steps=...` al monitor seriale.
+                  </div>
+                  <div className="rounded-lg bg-slate-50 p-3">
+                    <strong>Bussola cardinale.</strong> Converte `compass.heading()` in N, E, S, O e mostra la lettera sul display.
+                  </div>
+                  <div className="rounded-lg bg-slate-50 p-3">
+                    <strong>Allarme con sensore esterno.</strong> Legge un valore analogico su P1 e accende LED/suono quando supera una soglia.
+                  </div>
+                </div>
+                <pre className="mt-3 overflow-auto rounded-lg bg-slate-950 p-3 text-xs text-slate-100">{`from microbit import *
+
+passi = 0
+
+while True:
+    if accelerometer.was_gesture("shake"):
+        passi = passi + 1
+        display.show(str(passi % 10))
+    print("steps={} temp={}".format(passi, temperature()))
+    sleep(200)`}</pre>
+              </section>
+            </div>
+          </div>
+        </DialogBody>
+      </DialogContent>
+    </Dialog>
+    {notebookId && (
+      <NotebookVersionHistoryModal
+        notebookId={notebookId}
+        open={versionsOpen}
+        onOpenChange={setVersionsOpen}
+        onRestored={handleRestored}
+        isEnglish={isEnglish}
+      />
+    )}
     </>
   )
 }

@@ -172,9 +172,17 @@ export default function TeachersPage() {
   const inviteMutation = useMutation({
     mutationFn: (p: { email: string; firstName?: string; lastName?: string; school?: string }) =>
       creditsApi.inviteTeacher(p.email, p.firstName, p.lastName, p.school),
-    onSuccess: () => {
+    onSuccess: (res: any) => {
       queryClient.invalidateQueries({ queryKey: ['admin-platform-invitations'] })
-      toast({ title: 'Invito inviato' })
+      if (res?.data?.email_sent === false) {
+        toast({
+          variant: 'destructive',
+          title: 'Invito creato, ma email NON inviata',
+          description: 'Controlla la configurazione SMTP (password app Google scaduta?). Usa "Reinvia" dopo aver sistemato.',
+        })
+      } else {
+        toast({ title: 'Invito inviato' })
+      }
       setInviteEmail(''); setInviteFirstName(''); setInviteLastName(''); setInviteSchool('')
       setShowInvite(false)
     },
@@ -197,10 +205,18 @@ export default function TeachersPage() {
 
   const resendInvitationMutation = useMutation({
     mutationFn: (invitationId: string) => creditsApi.resendInvitation(invitationId),
-    onSuccess: () => {
+    onSuccess: (res: any) => {
       queryClient.invalidateQueries({ queryKey: ['admin-platform-invitations'] })
       queryClient.invalidateQueries({ queryKey: ['admin-teacher-status'] })
-      toast({ title: 'Invito reinviato' })
+      if (res?.data?.email_sent === false) {
+        toast({
+          variant: 'destructive',
+          title: 'Invito aggiornato, ma email NON inviata',
+          description: 'SMTP non configurato correttamente (password app Google scaduta?).',
+        })
+      } else {
+        toast({ title: 'Invito reinviato' })
+      }
     },
     onError: (error: any) => {
       toast({ variant: 'destructive', title: 'Reinvio fallito', description: error.response?.data?.detail || 'Impossibile reinviare l\'invito' })
