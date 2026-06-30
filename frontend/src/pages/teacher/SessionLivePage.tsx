@@ -301,6 +301,16 @@ export default function SessionLivePage() {
 
   const { session, students, modules } = data
 
+  // Some optional modules are off by default and have no row until first enabled —
+  // surface them in the toggle list so the teacher can turn them on.
+  const OPTIONAL_MODULE_KEYS = ['chat_collaboration']
+  const displayModules = [
+    ...modules,
+    ...OPTIONAL_MODULE_KEYS
+      .filter((k) => !modules.some((m) => m.module_key === k))
+      .map((k) => ({ module_key: k, is_enabled: false })),
+  ]
+
   const statusConfig = {
     active: { dot: 'bg-emerald-500 animate-pulse', badge: 'bg-emerald-100 text-emerald-700', label: t('sessions.status_active') },
     paused: { dot: 'bg-amber-500', badge: 'bg-amber-100 text-amber-700', label: t('sessions.status_paused') },
@@ -582,7 +592,7 @@ export default function SessionLivePage() {
                       <span className="font-semibold text-sm text-slate-800">Moduli Attivi</span>
                     </div>
                     <div className="grid gap-3 p-3 lg:grid-cols-2">
-                      {modules.map((mod) => {
+                      {displayModules.map((mod) => {
                         const cfg: Record<string, { tone: PastelTone; iconTone: string; icon: React.FC<{ className?: string }>; label: string; desc: string }> = {
                           chatbot:         { tone: 'violet',  iconTone: 'bg-[var(--logo-violet)]', icon: Bot,           label: 'Chatbot AI',          desc: 'Assistente AI con diverse modalità' },
                           classification:  { tone: 'sky',     iconTone: 'bg-[var(--logo-blue)]',   icon: Brain,         label: 'Classificazione ML',  desc: 'Immagini, testo, dati' },
@@ -590,6 +600,7 @@ export default function SessionLivePage() {
                           chat:            { tone: 'slate',   iconTone: 'bg-[var(--logo-ink)]',    icon: MessageSquare, label: 'Chat privata',         desc: 'Solo docente e singolo studente' },
                           notebook:        { tone: 'violet',  iconTone: 'bg-[var(--logo-violet)]', icon: FileCode2,     label: 'Notebook',             desc: 'Notebook di coding e attività guidate' },
                           coding:          { tone: 'cyan',    iconTone: 'bg-[var(--logo-blue)]',   icon: Code2,         label: 'Coding Lab',           desc: 'Mini app web con prompt, codice e anteprima' },
+                          chat_collaboration: { tone: 'teal', iconTone: 'bg-[var(--logo-blue)]',   icon: Users,         label: 'Collaborazione chat',  desc: 'Gli studenti condividono una chat con il bot e i compagni' },
                         }
                         const c = cfg[mod.module_key] ?? { tone: 'slate' as PastelTone, iconTone: 'bg-slate-500', icon: Bot, label: mod.module_key, desc: '' }
                         const ModIcon = c.icon

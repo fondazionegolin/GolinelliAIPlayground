@@ -1045,7 +1045,7 @@ CODING_MODEL_CHOICES: dict[str, tuple[str, str]] = {
 # Claude models are temporarily disabled for students in the Coding Lab: students may only use
 # DeepSeek. Any other choice (incl. the platform default) is coerced to the DeepSeek default.
 STUDENT_CODING_MODEL_KEYS = {"deepseek-flash", "deepseek-pro"}
-STUDENT_DEFAULT_CODING_MODEL_KEY = "deepseek-pro"
+STUDENT_DEFAULT_CODING_MODEL_KEY = "deepseek-flash"
 
 
 def _resolve_coding_model(model_key: str | None, *, is_student: bool = False) -> tuple[str, str]:

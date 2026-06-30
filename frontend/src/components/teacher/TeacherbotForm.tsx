@@ -32,6 +32,20 @@ interface FormData {
 
 const COLORS = ['indigo', 'blue', 'green', 'purple', 'pink', 'orange', 'teal', 'cyan', 'red']
 
+const COLOR_META: Record<string, { label: string; hex: string; soft: string; border: string }> = {
+  indigo: { label: 'Grafite', hex: '#181b1e', soft: '#f3f4f6', border: '#d1d5db' },
+  blue: { label: 'Blu', hex: '#3b82f6', soft: '#eff6ff', border: '#bfdbfe' },
+  green: { label: 'Verde', hex: '#22c55e', soft: '#f0fdf4', border: '#bbf7d0' },
+  purple: { label: 'Viola', hex: '#a855f7', soft: '#faf5ff', border: '#e9d5ff' },
+  pink: { label: 'Rosa', hex: '#ec4899', soft: '#fdf2f8', border: '#fbcfe8' },
+  orange: { label: 'Arancio', hex: '#f97316', soft: '#fff7ed', border: '#fed7aa' },
+  teal: { label: 'Teal', hex: '#14b8a6', soft: '#f0fdfa', border: '#99f6e4' },
+  cyan: { label: 'Ciano', hex: '#06b6d4', soft: '#ecfeff', border: '#a5f3fc' },
+  red: { label: 'Rosso', hex: '#ef4444', soft: '#fef2f2', border: '#fecaca' },
+}
+
+const colorMeta = (color: string) => COLOR_META[color] || COLOR_META.indigo
+
 const DOC_TYPE_ICON: Record<string, React.ReactNode> = {
   pdf: <FileText className="h-4 w-4 text-red-500" />,
   xlsx: <Database className="h-4 w-4 text-emerald-500" />,
@@ -143,10 +157,10 @@ function KnowledgeBaseSection({ teacherbotId, pendingFiles, onPendingFilesChange
   const getExt = (filename: string) => filename.split('.').pop()?.toLowerCase() || ''
 
   return (
-    <div className="mt-6 rounded-[24px] border border-[rgba(123,105,201,0.18)] bg-[rgba(123,105,201,0.075)] p-6 shadow-sm md:p-7">
+    <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm md:p-5">
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
-          <h3 className="flex items-center gap-2 text-lg font-black text-slate-900">
+          <h3 className="flex items-center gap-2 text-base font-bold text-slate-900">
             <Database className="h-4 w-4 text-indigo-600" />
             Knowledge Base RAG
           </h3>
@@ -256,7 +270,7 @@ function KnowledgeBaseSection({ teacherbotId, pendingFiles, onPendingFilesChange
 
       {/* Empty state (creation mode) */}
       {!teacherbotId && (!pendingFiles || pendingFiles.length === 0) && (
-        <div className="flex flex-col items-center justify-center rounded-[20px] border-2 border-dashed border-slate-200 bg-white/45 py-8 text-sm text-slate-400">
+        <div className="flex flex-col items-center justify-center rounded-lg border-2 border-dashed border-slate-200 bg-slate-50 py-8 text-sm text-slate-400">
           <Database className="h-8 w-8 mb-2 opacity-30" />
           <p>Nessun documento aggiunto</p>
           <p className="text-xs mt-1">Opzionale — puoi aggiungerne anche dopo il salvataggio</p>
@@ -272,7 +286,7 @@ function KnowledgeBaseSection({ teacherbotId, pendingFiles, onPendingFilesChange
 
       {/* Saved bot: empty */}
       {teacherbotId && !isLoading && (!docs || docs.length === 0) && (
-        <div className="flex flex-col items-center justify-center rounded-[20px] border-2 border-dashed border-slate-200 bg-white/45 py-8 text-sm text-slate-400">
+        <div className="flex flex-col items-center justify-center rounded-lg border-2 border-dashed border-slate-200 bg-slate-50 py-8 text-sm text-slate-400">
           <Database className="h-8 w-8 mb-2 opacity-30" />
           <p>Nessun documento nella knowledge base</p>
           <p className="text-xs mt-1">I documenti caricati guidano le risposte del bot con recupero contestuale</p>
@@ -344,6 +358,107 @@ function KnowledgeBaseSection({ teacherbotId, pendingFiles, onPendingFilesChange
         )}
       </div>
     </div>
+  )
+}
+
+function FieldLabel({ children, required }: { children: React.ReactNode; required?: boolean }) {
+  return (
+    <label className="mb-1.5 block text-xs font-bold uppercase tracking-[0.08em] text-slate-500">
+      {children}
+      {required && <span className="ml-1 text-red-500">*</span>}
+    </label>
+  )
+}
+
+function ToggleRow({
+  title,
+  description,
+  checked,
+  onChange,
+}: {
+  title: string
+  description: string
+  checked: boolean
+  onChange: () => void
+}) {
+  return (
+    <div className="flex items-center justify-between gap-4 border-t border-slate-100 py-3 first:border-t-0 first:pt-0">
+      <div className="min-w-0">
+        <div className="text-sm font-semibold text-slate-800">{title}</div>
+        <p className="mt-0.5 text-sm leading-5 text-slate-500">{description}</p>
+      </div>
+      <button
+        type="button"
+        role="switch"
+        aria-checked={checked}
+        onClick={onChange}
+        className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full border transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-slate-300 focus:ring-offset-2 ${
+          checked ? 'border-slate-900 bg-slate-900' : 'border-slate-200 bg-slate-200'
+        }`}
+      >
+        <span
+          className={`inline-block h-5 w-5 rounded-full bg-white shadow-sm transition-transform duration-200 ease-out ${
+            checked ? 'translate-x-5' : 'translate-x-1'
+          }`}
+        />
+      </button>
+    </div>
+  )
+}
+
+function TeacherbotPreview({ formData }: { formData: FormData }) {
+  const meta = colorMeta(formData.color)
+  const previewName = formData.name.trim() || 'Teacherbot'
+  const previewSynopsis = formData.synopsis.trim() || 'Assistente configurato dal docente'
+  const openingMessage = formData.is_proactive && formData.proactive_message.trim()
+    ? formData.proactive_message.trim()
+    : 'Ciao, sono qui per aiutarti a ragionare sul materiale della lezione.'
+
+  return (
+    <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <h3 className="text-sm font-bold text-slate-950">Anteprima studente</h3>
+        <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] font-semibold text-slate-500">
+          Live
+        </span>
+      </div>
+
+      <div className="rounded-lg border p-3" style={{ borderColor: meta.border, backgroundColor: meta.soft }}>
+        <div className="flex items-start gap-3">
+          <div
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-white shadow-sm"
+            style={{ backgroundColor: meta.hex }}
+          >
+            <Sparkles className="h-4 w-4" />
+          </div>
+          <div className="min-w-0">
+            <div className="truncate text-sm font-bold text-slate-950">{previewName}</div>
+            <p className="mt-0.5 line-clamp-2 text-xs leading-5 text-slate-600">{previewSynopsis}</p>
+          </div>
+        </div>
+
+        <div className="mt-4 rounded-lg border border-white/80 bg-white/90 p-3 text-sm leading-6 text-slate-700 shadow-sm">
+          {openingMessage}
+        </div>
+
+        <div className="mt-3 flex flex-wrap gap-1.5">
+          {formData.is_proactive && <span className="rounded-full bg-white px-2 py-1 text-[11px] font-semibold text-slate-600">Proattivo</span>}
+          {formData.enable_live_voice && <span className="rounded-full bg-white px-2 py-1 text-[11px] font-semibold text-slate-600">Voce live</span>}
+          {formData.enable_reporting && <span className="rounded-full bg-white px-2 py-1 text-[11px] font-semibold text-slate-600">Report</span>}
+        </div>
+      </div>
+
+      <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+        <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+          <div className="font-semibold text-slate-700">Temperatura</div>
+          <div className="text-slate-500">{formData.temperature.toFixed(1)}</div>
+        </div>
+        <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+          <div className="font-semibold text-slate-700">Prompt</div>
+          <div className="text-slate-500">{formData.system_prompt.trim().length} caratteri</div>
+        </div>
+      </div>
+    </section>
   )
 }
 
@@ -541,24 +656,9 @@ export default function TeacherbotForm({ teacherbotId, onBack, onSaved }: Teache
     setSelection(null)
   }
 
-  const getColorClass = (color: string, isSelected: boolean) => {
-    const baseColors: Record<string, string> = {
-      indigo: 'bg-[#181b1e]',
-      blue: 'bg-blue-500',
-      green: 'bg-green-500',
-      purple: 'bg-purple-500',
-      pink: 'bg-pink-500',
-      orange: 'bg-orange-500',
-      teal: 'bg-teal-500',
-      cyan: 'bg-cyan-500',
-      red: 'bg-red-500',
-    }
-    const base = baseColors[color] || 'bg-[#181b1e]'
-    return isSelected ? `${base} ring-2 ring-slate-600 ring-offset-2` : base
-  }
-
   // Get published class IDs
   const publishedClassIds = new Set((publications || []).filter((p: any) => p.is_active).map((p: any) => p.class_id))
+  const selectedColor = colorMeta(formData.color)
 
   if (isLoadingBot && isEditing) {
     return (
@@ -569,22 +669,25 @@ export default function TeacherbotForm({ teacherbotId, onBack, onSaved }: Teache
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-white">
-      <div className="flex flex-shrink-0 items-center gap-4 border-b border-slate-200/70 px-6 py-5 md:px-8">
-        <Button variant="ghost" onClick={onBack} className="text-slate-600">
+    <div className="flex h-full min-h-0 flex-col bg-slate-50 text-slate-950">
+      <div className="flex flex-shrink-0 items-center gap-3 border-b border-slate-200 bg-white px-4 py-3 md:px-5">
+        <Button variant="ghost" onClick={onBack} className="shrink-0 text-slate-600">
           <ArrowLeft className="h-4 w-4 mr-2" />
           {t('common.back')}
         </Button>
-        <div className="flex-1">
-          <h2 className="text-2xl font-black tracking-tight text-slate-950">
+        <div className="min-w-0 flex-1">
+          <h2 className="truncate text-xl font-bold tracking-tight text-slate-950">
             {isEditing ? t('teacherbot.edit_teacherbot') : t('teacherbot.new_teacherbot')}
           </h2>
+          <p className="hidden text-xs text-slate-500 sm:block">
+            {formData.name.trim() || 'Configurazione assistente docente'}
+          </p>
         </div>
         {isEditing && (
           <Button
             variant="outline"
             onClick={() => setShowPublishModal(true)}
-            className="whitespace-nowrap"
+            className="shrink-0 whitespace-nowrap"
           >
             <Globe className="h-4 w-4 mr-2" />
             {t('teacherbot.publish_btn')}
@@ -593,161 +696,122 @@ export default function TeacherbotForm({ teacherbotId, onBack, onSaved }: Teache
       </div>
 
       <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
-        <div className="flex-1 overflow-y-auto px-6 py-6 md:px-8">
-          <div className="grid grid-cols-1 gap-6 xl:grid-cols-[0.95fr_1.05fr]">
-          {/* Left Column - Basic Info */}
-          <div className="space-y-6">
-            <div className="rounded-[24px] border border-[rgba(123,105,201,0.18)] bg-[rgba(123,105,201,0.055)] p-6 shadow-sm md:p-7">
-              <h3 className="mb-5 text-xl font-black text-slate-950">{t('teacherbot.basic_info')}</h3>
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          <div className="grid gap-4 p-4 lg:grid-cols-[minmax(0,1fr)_340px] xl:grid-cols-[minmax(0,1fr)_380px]">
+            <div className="min-w-0 space-y-4">
+              <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm md:p-5">
+                <h3 className="mb-4 text-base font-bold text-slate-950">{t('teacherbot.basic_info')}</h3>
 
-              <div className="space-y-5">
-                <div>
-                  <label className="mb-2 block text-sm font-black uppercase tracking-[0.08em] text-slate-500">
-                    Nome <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.name}
-                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                    className="w-full rounded-2xl border border-slate-200 bg-white/82 px-4 py-3 text-base font-semibold text-slate-900 outline-none transition focus:border-transparent focus:ring-2 focus:ring-slate-300"
-                    placeholder="es. Tutor di Matematica"
-                    maxLength={100}
-                  />
-                </div>
-
-                <div>
-                  <label className="mb-2 block text-sm font-black uppercase tracking-[0.08em] text-slate-500">
-                    {t('teacherbot.synopsis_label')}
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.synopsis}
-                    onChange={(e) => setFormData({ ...formData, synopsis: e.target.value })}
-                    className="w-full rounded-2xl border border-slate-200 bg-white/82 px-4 py-3 text-base font-semibold text-slate-900 outline-none transition focus:border-transparent focus:ring-2 focus:ring-slate-300"
-                    placeholder="es. Un assistente per esercizi di algebra"
-                    maxLength={255}
-                  />
-                </div>
-
-                <div>
-                  <label className="mb-3 block text-sm font-black uppercase tracking-[0.08em] text-slate-500">{t('teacherbot.color_label')}</label>
-                  <div className="flex flex-wrap gap-2.5">
-                    {COLORS.map((color) => (
-                      <button
-                        key={color}
-                        type="button"
-                        onClick={() => setFormData({ ...formData, color })}
-                        className={`h-10 w-10 rounded-xl transition-all ${getColorClass(color, formData.color === color)}`}
-                      />
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Options */}
-            <div className="rounded-[24px] border border-[rgba(123,105,201,0.18)] bg-[rgba(123,105,201,0.055)] p-6 shadow-sm md:p-7">
-              <h3 className="mb-5 text-xl font-black text-slate-950">{t('teacherbot.options_section')}</h3>
-
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
+                <div className="grid gap-4 md:grid-cols-2">
                   <div>
-                    <label className="font-medium text-slate-700">{t('teacherbot.proactive')}</label>
-                    <p className="text-sm text-slate-500">{t('teacherbot.proactive_desc')}</p>
+                    <FieldLabel required>Nome</FieldLabel>
+                    <input
+                      type="text"
+                      value={formData.name}
+                      onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                      className="h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-900 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
+                      placeholder="es. Tutor di Matematica"
+                      maxLength={100}
+                    />
                   </div>
-                  <button
-                    type="button"
-                    role="switch"
-                    aria-checked={formData.is_proactive}
-                    onClick={() => setFormData({ ...formData, is_proactive: !formData.is_proactive })}
-                    className={`relative w-12 h-6 rounded-full transition-colors flex-shrink-0 ${
-                      formData.is_proactive ? 'bg-[#181b1e]' : 'bg-slate-200'
-                    }`}
-                  >
-                    <span className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${
-                      formData.is_proactive ? 'translate-x-7' : 'translate-x-1'
-                    }`} />
-                  </button>
+
+                  <div>
+                    <FieldLabel>{t('teacherbot.synopsis_label')}</FieldLabel>
+                    <input
+                      type="text"
+                      value={formData.synopsis}
+                      onChange={(e) => setFormData({ ...formData, synopsis: e.target.value })}
+                      className="h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-900 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
+                      placeholder="es. Assistente per esercizi di algebra"
+                      maxLength={255}
+                    />
+                  </div>
                 </div>
+
+                <div className="mt-4">
+                  <FieldLabel>{t('teacherbot.color_label')}</FieldLabel>
+                  <div className="flex flex-wrap gap-2">
+                    {COLORS.map((color) => {
+                      const meta = colorMeta(color)
+                      const isSelected = formData.color === color
+                      return (
+                        <button
+                          key={color}
+                          type="button"
+                          title={meta.label}
+                          aria-label={meta.label}
+                          aria-pressed={isSelected}
+                          onClick={() => setFormData({ ...formData, color })}
+                          className={`flex h-9 w-9 items-center justify-center rounded-lg border transition duration-150 focus:outline-none focus:ring-2 focus:ring-slate-300 focus:ring-offset-2 ${
+                            isSelected ? 'border-slate-900 shadow-sm' : 'border-slate-200 hover:-translate-y-0.5 hover:border-slate-400'
+                          }`}
+                          style={{ backgroundColor: meta.hex }}
+                        >
+                          {isSelected && <Check className="h-4 w-4 text-white" />}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              </section>
+
+              <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm md:p-5">
+                <h3 className="mb-3 text-base font-bold text-slate-950">{t('teacherbot.options_section')}</h3>
+
+                <ToggleRow
+                  title={t('teacherbot.proactive')}
+                  description={t('teacherbot.proactive_desc')}
+                  checked={formData.is_proactive}
+                  onChange={() => setFormData({ ...formData, is_proactive: !formData.is_proactive })}
+                />
 
                 {formData.is_proactive && (
-                  <div className="ml-1 pl-4 border-l-2 border-[#181b1e]/15 animate-in slide-in-from-top-2">
-                    <label className="block text-sm font-medium text-slate-700 mb-1">
-                      {t('teacherbot.initial_message_label')}
-                    </label>
+                  <div className="pb-3">
+                    <FieldLabel>{t('teacherbot.initial_message_label')}</FieldLabel>
                     <textarea
                       value={formData.proactive_message}
                       onChange={(e) => setFormData({ ...formData, proactive_message: e.target.value })}
-                      className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#181b1e] focus:border-transparent"
+                      className="min-h-[74px] w-full resize-y rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm leading-5 text-slate-800 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
                       placeholder={t('teacherbot.initial_message_placeholder')}
-                      rows={2}
                     />
                   </div>
                 )}
 
-                <div className="pt-4 border-t border-slate-100">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <label className="font-medium text-slate-700">{t('teacherbot.live_voice')}</label>
-                      <p className="text-sm text-slate-500">{t('teacherbot.live_voice_desc')}</p>
-                    </div>
-                    <button
-                      type="button"
-                      role="switch"
-                      aria-checked={formData.enable_live_voice}
-                      onClick={() => setFormData({ ...formData, enable_live_voice: !formData.enable_live_voice })}
-                      className={`relative w-12 h-6 rounded-full transition-colors flex-shrink-0 ${
-                        formData.enable_live_voice ? 'bg-[#181b1e]' : 'bg-slate-200'
-                      }`}
-                    >
-                      <span className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${
-                        formData.enable_live_voice ? 'translate-x-7' : 'translate-x-1'
-                      }`} />
-                    </button>
-                  </div>
-                </div>
+                <ToggleRow
+                  title={t('teacherbot.live_voice')}
+                  description={t('teacherbot.live_voice_desc')}
+                  checked={formData.enable_live_voice}
+                  onChange={() => setFormData({ ...formData, enable_live_voice: !formData.enable_live_voice })}
+                />
 
-                <div className="pt-4 border-t border-slate-100">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <label className="font-medium text-slate-700">{t('teacherbot.reporting')}</label>
-                      <p className="text-sm text-slate-500">{t('teacherbot.reporting_desc')}</p>
-                    </div>
-                    <button
-                      type="button"
-                      role="switch"
-                      aria-checked={formData.enable_reporting}
-                      onClick={() => setFormData({ ...formData, enable_reporting: !formData.enable_reporting })}
-                      className={`relative w-12 h-6 rounded-full transition-colors flex-shrink-0 ${
-                        formData.enable_reporting ? 'bg-[#181b1e]' : 'bg-slate-200'
-                      }`}
-                    >
-                      <span className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${
-                        formData.enable_reporting ? 'translate-x-7' : 'translate-x-1'
-                      }`} />
-                    </button>
-                  </div>
-                </div>
+                <ToggleRow
+                  title={t('teacherbot.reporting')}
+                  description={t('teacherbot.reporting_desc')}
+                  checked={formData.enable_reporting}
+                  onChange={() => setFormData({ ...formData, enable_reporting: !formData.enable_reporting })}
+                />
 
                 {formData.enable_reporting && (
-                  <div className="ml-1 pl-4 border-l-2 border-[#181b1e]/15 animate-in slide-in-from-top-2">
-                    <label className="block text-sm font-medium text-slate-700 mb-1">
-                      {t('teacherbot.report_prompt_label')}
-                    </label>
+                  <div className="pb-3">
+                    <FieldLabel>{t('teacherbot.report_prompt_label')}</FieldLabel>
                     <textarea
                       value={formData.report_prompt}
                       onChange={(e) => setFormData({ ...formData, report_prompt: e.target.value })}
-                      className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#181b1e] focus:border-transparent text-sm"
+                      className="min-h-[92px] w-full resize-y rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm leading-5 text-slate-800 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
                       placeholder={t('teacherbot.report_prompt_placeholder')}
-                      rows={3}
                     />
                   </div>
                 )}
 
-                <div className="pt-4 border-t border-slate-100">
-                  <label className="block text-sm font-medium text-slate-700 mb-2">
-                    {t('teacherbot.temperature_label', { value: formData.temperature.toFixed(1) })}
-                  </label>
+                <div className="border-t border-slate-100 pt-4">
+                  <div className="mb-2 flex items-center justify-between gap-3">
+                    <span className="text-sm font-semibold text-slate-800">
+                      {t('teacherbot.temperature_label', { value: formData.temperature.toFixed(1) })}
+                    </span>
+                    <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-1 text-xs font-semibold text-slate-500">
+                      {formData.temperature.toFixed(1)}
+                    </span>
+                  </div>
                   <input
                     type="range"
                     min="0"
@@ -755,74 +819,96 @@ export default function TeacherbotForm({ teacherbotId, onBack, onSaved }: Teache
                     step="0.1"
                     value={formData.temperature}
                     onChange={(e) => setFormData({ ...formData, temperature: parseFloat(e.target.value) })}
-                    className="w-full"
+                    className="h-2 w-full cursor-pointer"
+                    style={{ accentColor: selectedColor.hex }}
                   />
-                  <div className="flex justify-between text-xs text-slate-400 mt-1">
+                  <div className="mt-1 flex justify-between text-xs text-slate-400">
                     <span>{t('teacherbot.temp_precise')}</span>
                     <span>{t('teacherbot.temp_creative')}</span>
                   </div>
                 </div>
-              </div>
-            </div>
-          </div>
+              </section>
 
-          {/* Right Column - System Prompt */}
-          <div className="relative flex h-[560px] flex-col rounded-[24px] border border-[rgba(62,169,244,0.18)] bg-[rgba(62,169,244,0.055)] p-6 shadow-sm md:p-7 xl:h-full xl:min-h-[680px]">
-            <h3 className="mb-2 text-xl font-black text-slate-950">
-              System Prompt <span className="text-red-500">*</span>
-            </h3>
-            <p className="mb-5 text-sm leading-6 text-slate-500">
-              {t('teacherbot.system_prompt_desc', 'Define the personality and behaviour of your assistant.')}
-              <br />
-              <span className="text-[#181b1e] text-xs italic">
-                {t('teacherbot.system_prompt_tip')}
-              </span>
-            </p>
+              <section className="relative flex min-h-[420px] flex-col rounded-xl border border-slate-200 bg-white p-4 shadow-sm md:p-5">
+                <div className="mb-3 flex items-start justify-between gap-4">
+                  <div>
+                    <h3 className="text-base font-bold text-slate-950">
+                      System Prompt <span className="text-red-500">*</span>
+                    </h3>
+                    <p className="mt-1 text-sm leading-5 text-slate-500">
+                      {t('teacherbot.system_prompt_desc', 'Define the personality and behaviour of your assistant.')}
+                    </p>
+                  </div>
+                  <span className="shrink-0 rounded-full border border-slate-200 bg-slate-50 px-2 py-1 text-xs font-semibold text-slate-500">
+                    {formData.system_prompt.trim().length}
+                  </span>
+                </div>
 
-            <textarea
-              ref={textareaRef}
-              value={formData.system_prompt}
-              onChange={(e) => setFormData({ ...formData, system_prompt: e.target.value })}
-              onMouseUp={handleMouseUpWithEvent}
-              className="min-h-0 w-full flex-1 resize-none rounded-2xl border border-slate-200 bg-white/86 px-5 py-4 font-mono text-sm leading-6 text-slate-800 outline-none transition focus:border-transparent focus:ring-2 focus:ring-slate-300"
-              placeholder={`Esempio:
+                <textarea
+                  ref={textareaRef}
+                  value={formData.system_prompt}
+                  onChange={(e) => setFormData({ ...formData, system_prompt: e.target.value })}
+                  onMouseUp={handleMouseUpWithEvent}
+                  className="min-h-[320px] flex-1 resize-y rounded-lg border border-slate-200 bg-white px-4 py-3 font-mono text-sm leading-6 text-slate-800 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
+                  placeholder={`Esempio:
 Sei un tutor esperto di matematica per studenti delle scuole superiori.
 
 Il tuo obiettivo è:
 - Aiutare gli studenti a comprendere i concetti matematici
 - Fornire spiegazioni chiare e step-by-step
 - Proporre esercizi di difficoltà crescente`}
-            />
+                />
 
-            {selection && (
-              <TeacherbotPromptOptimizer
-                selectedText={selection.text}
-                teacherbotName={formData.name}
-                teacherbotSynopsis={formData.synopsis}
-                position={selection.position}
-                onClose={() => setSelection(null)}
-                onApply={handleApplyOptimization}
+                {selection && (
+                  <TeacherbotPromptOptimizer
+                    selectedText={selection.text}
+                    teacherbotName={formData.name}
+                    teacherbotSynopsis={formData.synopsis}
+                    position={selection.position}
+                    onClose={() => setSelection(null)}
+                    onApply={handleApplyOptimization}
+                  />
+                )}
+              </section>
+
+              <KnowledgeBaseSection
+                teacherbotId={teacherbotId}
+                pendingFiles={pendingKbFiles}
+                onPendingFilesChange={setPendingKbFiles}
               />
-            )}
+            </div>
+
+            <aside className="min-w-0 space-y-4 lg:sticky lg:top-4 lg:self-start">
+              <TeacherbotPreview formData={formData} />
+              <section className="rounded-xl border border-slate-200 bg-white p-4 text-sm shadow-sm">
+                <h3 className="mb-3 text-sm font-bold text-slate-950">Stato configurazione</h3>
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-slate-600">Nome</span>
+                    <Check className={`h-4 w-4 ${formData.name.trim() ? 'text-emerald-500' : 'text-slate-300'}`} />
+                  </div>
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-slate-600">Prompt</span>
+                    <Check className={`h-4 w-4 ${formData.system_prompt.trim() ? 'text-emerald-500' : 'text-slate-300'}`} />
+                  </div>
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-slate-600">Colore</span>
+                    <span className="h-4 w-4 rounded-full border border-slate-200" style={{ backgroundColor: selectedColor.hex }} />
+                  </div>
+                </div>
+              </section>
+            </aside>
           </div>
         </div>
 
-        {/* Knowledge Base Section — always visible */}
-          <KnowledgeBaseSection
-          teacherbotId={teacherbotId}
-          pendingFiles={pendingKbFiles}
-          onPendingFilesChange={setPendingKbFiles}
-        />
-        </div>
-
-        {/* Save Button */}
-        <div className="flex flex-shrink-0 justify-end gap-3 border-t border-slate-200 bg-white/95 px-6 py-4 backdrop-blur-sm md:px-8">
-          <Button type="button" variant="outline" onClick={onBack}>
+        <div className="flex flex-shrink-0 flex-col-reverse gap-2 border-t border-slate-200 bg-white px-4 py-3 sm:flex-row sm:items-center sm:justify-end md:px-5">
+          <Button type="button" variant="outline" onClick={onBack} className="w-full sm:w-auto">
             {t('common.cancel')}
           </Button>
           <Button
             type="submit"
             disabled={saveMutation.isPending}
+            className="w-full sm:w-auto"
           >
             {saveMutation.isPending ? (
               <Loader2 className="h-4 w-4 mr-2 animate-spin" />

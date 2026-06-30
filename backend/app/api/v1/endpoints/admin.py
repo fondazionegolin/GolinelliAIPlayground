@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Request, Body, Response
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, desc, delete as sa_delete, update as sa_update, cast, Integer
+from sqlalchemy import select, func, desc, delete as sa_delete, update as sa_update, cast, Integer, case, or_
 from typing import Annotated, Optional
 from datetime import date, datetime, timedelta, timezone
 from uuid import UUID
@@ -1010,6 +1010,12 @@ async def get_admin_analytics_report(
                 "connected_users": [],
                 "api_calls": 0,
                 "cost": 0.0,
+                "teacher_api_calls": 0,
+                "teacher_cost": 0.0,
+                "teacher_tokens": 0,
+                "student_api_calls": 0,
+                "student_cost": 0.0,
+                "student_tokens": 0,
                 "prompt_tokens": 0,
                 "completion_tokens": 0,
                 "total_tokens": 0,
@@ -1077,6 +1083,35 @@ async def get_admin_analytics_report(
             if row["api_calls"]
             else 0.0
         )
+
+    actor_role_expr = case(
+        (CreditTransaction.student_id.is_not(None), "student"),
+        else_="teacher",
+    ).label("actor_role")
+    role_daily_rows = (
+        await db.execute(
+            select(
+                tx_bucket,
+                actor_role_expr,
+                func.count(CreditTransaction.id).label("api_calls"),
+                func.coalesce(func.sum(CreditTransaction.cost), 0.0).label("cost"),
+                func.coalesce(func.sum(total_tokens), 0).label("total_tokens"),
+            )
+            .where(*tx_conditions)
+            .group_by(tx_bucket, actor_role_expr)
+            .order_by(tx_bucket)
+        )
+    ).all()
+    for bucket, actor_role, api_calls, cost, token_count in role_daily_rows:
+        row = ensure_row(bucket)
+        if actor_role == "student":
+            row["student_api_calls"] = int(api_calls or 0)
+            row["student_cost"] = float(cost or 0.0)
+            row["student_tokens"] = int(token_count or 0)
+        else:
+            row["teacher_api_calls"] = int(api_calls or 0)
+            row["teacher_cost"] = float(cost or 0.0)
+            row["teacher_tokens"] = int(token_count or 0)
 
     def add_connected_user(bucket_value, user_id, email, first_name=None, last_name=None) -> None:
         if not user_id:
@@ -1330,6 +1365,19 @@ async def get_admin_analytics_report(
             .order_by(func.coalesce(func.sum(CreditTransaction.cost), 0.0).desc())
         )
     ).all()
+    role_rows = (
+        await db.execute(
+            select(
+                actor_role_expr,
+                func.count(CreditTransaction.id),
+                func.coalesce(func.sum(CreditTransaction.cost), 0.0),
+                func.coalesce(func.sum(total_tokens), 0),
+            )
+            .where(*tx_conditions)
+            .group_by(actor_role_expr)
+            .order_by(func.coalesce(func.sum(CreditTransaction.cost), 0.0).desc())
+        )
+    ).all()
     model_rows = (
         await db.execute(
             select(
@@ -1428,6 +1476,15 @@ async def get_admin_analytics_report(
             }
             for item_model, calls, cost, tokens in model_rows
         ],
+        "role_breakdown": [
+            {
+                "role": actor_role,
+                "calls": int(calls or 0),
+                "cost": float(cost or 0.0),
+                "total_tokens": int(tokens or 0),
+            }
+            for actor_role, calls, cost, tokens in role_rows
+        ],
         "top_users": [
             {
                 "user_id": str(user_id),
@@ -1446,6 +1503,291 @@ async def get_admin_analytics_report(
             "models": model_options,
         },
     }
+
+
+def _usage_json_int(details: dict | None, key: str) -> int:
+    if not isinstance(details, dict):
+        return 0
+    try:
+        return int(details.get(key) or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _format_usage_actor(tx: CreditTransaction, teacher: User | None, student: SessionStudent | None) -> dict:
+    teacher_name = " ".join([p for p in [getattr(teacher, "first_name", None), getattr(teacher, "last_name", None)] if p]).strip()
+    teacher_email = getattr(teacher, "email", None)
+    student_name = getattr(student, "nickname", None)
+    if tx.student_id:
+        actor_role = "student"
+        actor_name = student_name or f"Studente {str(tx.student_id)[:8]}"
+    else:
+        teacher_role = getattr(getattr(teacher, "role", None), "value", getattr(teacher, "role", None))
+        actor_role = "admin" if teacher_role == UserRole.ADMIN.value else "teacher"
+        actor_name = teacher_name or teacher_email or f"Utente {str(tx.teacher_id)[:8] if tx.teacher_id else 'sconosciuto'}"
+    return {
+        "actor_role": actor_role,
+        "actor_name": actor_name,
+        "teacher_name": teacher_name or teacher_email,
+        "teacher_email": teacher_email,
+        "student_name": student_name,
+    }
+
+
+def _usage_transaction_dict(tx: CreditTransaction, teacher: User | None, student: SessionStudent | None, class_name: str | None, session_title: str | None) -> dict:
+    details = tx.usage_details or {}
+    prompt_tokens = _usage_json_int(details, "prompt_tokens")
+    completion_tokens = _usage_json_int(details, "completion_tokens")
+    total_tokens = _usage_json_int(details, "total_tokens") or prompt_tokens + completion_tokens
+    actor = _format_usage_actor(tx, teacher, student)
+    return {
+        "id": str(tx.id),
+        "timestamp": tx.timestamp.isoformat() if tx.timestamp else None,
+        "transaction_type": tx.transaction_type.value if hasattr(tx.transaction_type, "value") else str(tx.transaction_type),
+        "provider": tx.provider or "unknown",
+        "model": tx.model or "unknown",
+        "cost": float(tx.cost or 0.0),
+        "cost_credits": int(round(float(tx.cost or 0.0) * 100)),
+        "prompt_tokens": prompt_tokens,
+        "completion_tokens": completion_tokens,
+        "total_tokens": total_tokens,
+        "usage_type": details.get("type") or details.get("usage_type") or "api_call",
+        "teacher_id": str(tx.teacher_id) if tx.teacher_id else None,
+        "student_id": str(tx.student_id) if tx.student_id else None,
+        "class_id": str(tx.class_id) if tx.class_id else None,
+        "session_id": str(tx.session_id) if tx.session_id else None,
+        "class_name": class_name,
+        "session_title": session_title,
+        **actor,
+    }
+
+
+def _usage_transaction_conditions(
+    admin: User,
+    start_date: Optional[date],
+    end_date: Optional[date],
+    teacher_id: Optional[UUID],
+    class_id: Optional[UUID],
+    session_id: Optional[UUID],
+    provider: Optional[str],
+    model: Optional[str],
+    actor_role: Optional[str],
+    search: Optional[str],
+) -> list:
+    end_day = end_date or datetime.now(timezone.utc).date()
+    start_day = start_date or (end_day - timedelta(days=29))
+    start_at = datetime.combine(start_day, datetime.min.time(), tzinfo=timezone.utc)
+    end_exclusive = datetime.combine(end_day + timedelta(days=1), datetime.min.time(), tzinfo=timezone.utc)
+    conditions = [
+        CreditTransaction.tenant_id == admin.tenant_id,
+        CreditTransaction.transaction_type == CreditTransactionType.API_CALL,
+        CreditTransaction.timestamp >= start_at,
+        CreditTransaction.timestamp < end_exclusive,
+    ]
+    if provider:
+        conditions.append(CreditTransaction.provider == provider)
+    if model:
+        conditions.append(CreditTransaction.model == model)
+    if teacher_id:
+        conditions.append(CreditTransaction.teacher_id == teacher_id)
+    if class_id:
+        conditions.append(CreditTransaction.class_id == class_id)
+    if session_id:
+        conditions.append(CreditTransaction.session_id == session_id)
+    if actor_role == "student":
+        conditions.append(CreditTransaction.student_id.is_not(None))
+    elif actor_role in {"teacher", "admin"}:
+        conditions.append(CreditTransaction.student_id.is_(None))
+        if actor_role == "admin":
+            conditions.append(User.role == UserRole.ADMIN)
+        else:
+            conditions.append(User.role != UserRole.ADMIN)
+    if search:
+        needle = f"%{search.strip().lower()}%"
+        conditions.append(
+            or_(
+                func.lower(func.coalesce(User.email, "")).like(needle),
+                func.lower(func.coalesce(User.first_name, "")).like(needle),
+                func.lower(func.coalesce(User.last_name, "")).like(needle),
+                func.lower(func.coalesce(SessionStudent.nickname, "")).like(needle),
+                func.lower(func.coalesce(TeacherClass.name, "")).like(needle),
+                func.lower(func.coalesce(Session.title, "")).like(needle),
+                func.lower(func.coalesce(CreditTransaction.provider, "")).like(needle),
+                func.lower(func.coalesce(CreditTransaction.model, "")).like(needle),
+            )
+        )
+    return conditions
+
+
+def _usage_transactions_from_clause(statement):
+    return (
+        statement
+        .outerjoin(User, User.id == CreditTransaction.teacher_id)
+        .outerjoin(SessionStudent, SessionStudent.id == CreditTransaction.student_id)
+        .outerjoin(TeacherClass, TeacherClass.id == CreditTransaction.class_id)
+        .outerjoin(Session, Session.id == CreditTransaction.session_id)
+    )
+
+
+@router.get("/usage/transactions")
+async def list_usage_transactions(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    admin: Annotated[User, Depends(get_current_admin)],
+    start_date: Optional[date] = Query(None),
+    end_date: Optional[date] = Query(None),
+    teacher_id: Optional[UUID] = Query(None),
+    class_id: Optional[UUID] = Query(None),
+    session_id: Optional[UUID] = Query(None),
+    provider: Optional[str] = Query(None),
+    model: Optional[str] = Query(None),
+    actor_role: Optional[str] = Query(None),
+    q: Optional[str] = Query(None),
+    limit: int = Query(200, ge=1, le=1000),
+    offset: int = Query(0, ge=0),
+):
+    if start_date and end_date and start_date > end_date:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="start_date must be before end_date")
+    if start_date and end_date and (end_date - start_date).days > 730:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Maximum report range is 730 days")
+
+    conditions = _usage_transaction_conditions(admin, start_date, end_date, teacher_id, class_id, session_id, provider, model, actor_role, q)
+    base_columns = (
+        CreditTransaction,
+        User,
+        SessionStudent,
+        TeacherClass.name.label("class_name"),
+        Session.title.label("session_title"),
+    )
+    rows = (
+        await db.execute(
+            _usage_transactions_from_clause(select(*base_columns))
+            .options()
+            .where(*conditions)
+            .order_by(CreditTransaction.timestamp.desc(), CreditTransaction.id.desc())
+            .limit(limit)
+            .offset(offset)
+        )
+    ).all()
+
+    count_result = await db.execute(
+        _usage_transactions_from_clause(select(func.count(CreditTransaction.id))).where(*conditions)
+    )
+    total_result = await db.execute(
+        _usage_transactions_from_clause(
+            select(
+                func.coalesce(func.sum(CreditTransaction.cost), 0.0),
+                func.count(CreditTransaction.id),
+            )
+        ).where(*conditions)
+    )
+    total_cost, total_calls = total_result.one()
+
+    # Load relationship objects from the ORM identity map when present.
+    items = []
+    for tx, teacher, student, class_name, session_title in rows:
+        items.append(_usage_transaction_dict(tx, teacher, student, class_name, session_title))
+
+    return {
+        "items": items,
+        "total": int(count_result.scalar() or 0),
+        "limit": limit,
+        "offset": offset,
+        "summary": {
+            "calls": int(total_calls or 0),
+            "cost": float(total_cost or 0.0),
+        },
+    }
+
+
+@router.get("/usage/transactions.csv")
+async def download_usage_transactions_csv(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    admin: Annotated[User, Depends(get_current_admin)],
+    start_date: Optional[date] = Query(None),
+    end_date: Optional[date] = Query(None),
+    teacher_id: Optional[UUID] = Query(None),
+    class_id: Optional[UUID] = Query(None),
+    session_id: Optional[UUID] = Query(None),
+    provider: Optional[str] = Query(None),
+    model: Optional[str] = Query(None),
+    actor_role: Optional[str] = Query(None),
+    q: Optional[str] = Query(None),
+):
+    if start_date and end_date and start_date > end_date:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="start_date must be before end_date")
+    if start_date and end_date and (end_date - start_date).days > 730:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Maximum report range is 730 days")
+
+    conditions = _usage_transaction_conditions(admin, start_date, end_date, teacher_id, class_id, session_id, provider, model, actor_role, q)
+    rows = (
+        await db.execute(
+            _usage_transactions_from_clause(
+                select(
+                    CreditTransaction,
+                    User,
+                    SessionStudent,
+                    TeacherClass.name.label("class_name"),
+                    Session.title.label("session_title"),
+                )
+            )
+            .where(*conditions)
+            .order_by(CreditTransaction.timestamp.desc(), CreditTransaction.id.desc())
+            .limit(20000)
+        )
+    ).all()
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow([
+        "timestamp",
+        "ruolo",
+        "utente",
+        "studente",
+        "docente_pool",
+        "email_docente",
+        "classe",
+        "sessione",
+        "provider",
+        "modello",
+        "tipo_uso",
+        "prompt_tokens",
+        "completion_tokens",
+        "total_tokens",
+        "costo_eur",
+        "crediti",
+    ])
+    for tx, teacher, student, class_name, session_title in rows:
+        item = _usage_transaction_dict(tx, teacher, student, class_name, session_title)
+        writer.writerow([
+            item["timestamp"] or "",
+            item["actor_role"],
+            item["actor_name"],
+            item["student_name"] or "",
+            item["teacher_name"] or "",
+            item["teacher_email"] or "",
+            item["class_name"] or "",
+            item["session_title"] or "",
+            item["provider"],
+            item["model"],
+            item["usage_type"],
+            item["prompt_tokens"],
+            item["completion_tokens"],
+            item["total_tokens"],
+            f'{item["cost"]:.6f}',
+            item["cost_credits"],
+        ])
+
+    filename_parts = ["admin-credit-ledger"]
+    if start_date:
+        filename_parts.append(start_date.isoformat())
+    if end_date:
+        filename_parts.append(end_date.isoformat())
+    filename = "-".join(filename_parts) + ".csv"
+    return Response(
+        content="\ufeff" + output.getvalue(),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @router.get("/usage/teacher-report.csv")

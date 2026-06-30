@@ -248,6 +248,30 @@ export const adminApi = {
     model?: string
     include_empty?: boolean
   }) => api.get('/admin/analytics/report', { params }),
+  getUsageTransactions: (params?: {
+    start_date?: string
+    end_date?: string
+    teacher_id?: string
+    class_id?: string
+    session_id?: string
+    provider?: string
+    model?: string
+    actor_role?: string
+    q?: string
+    limit?: number
+    offset?: number
+  }) => api.get('/admin/usage/transactions', { params }),
+  downloadUsageTransactions: (params?: {
+    start_date?: string
+    end_date?: string
+    teacher_id?: string
+    class_id?: string
+    session_id?: string
+    provider?: string
+    model?: string
+    actor_role?: string
+    q?: string
+  }) => api.get('/admin/usage/transactions.csv', { params, responseType: 'blob' }),
   downloadTeacherUsageReport: (params?: {
     start_date?: string
     end_date?: string
@@ -716,6 +740,22 @@ export const filesApi = {
     api.get(`/files/${fileId}/download-url`),
   listSessionFiles: (sessionId: string) =>
     api.get(`/files/session/${sessionId}`),
+}
+
+export const collaborationApi = {
+  listParticipants: () => api.get('/collaboration/participants'),
+  createRoom: (data: {
+    kind: 'teacherbot' | 'assistant'
+    teacherbot_id?: string
+    profile_key?: string
+    participant_ids: string[]
+    title?: string
+  }) => api.post('/collaboration/rooms', data),
+  listRooms: () => api.get('/collaboration/rooms'),
+  getRoom: (roomId: string) => api.get(`/collaboration/rooms/${roomId}`),
+  sendMessage: (roomId: string, content: string) =>
+    api.post(`/collaboration/rooms/${roomId}/messages`, { content }),
+  closeRoom: (roomId: string) => api.post(`/collaboration/rooms/${roomId}/close`),
 }
 
 export const teacherbotsApi = {

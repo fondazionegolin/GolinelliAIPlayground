@@ -173,13 +173,19 @@ const MODEL_OPTIONS: { key: string; label: string; hint: string }[] = [
 // (Backend enforces the same restriction in CODING_MODEL_CHOICES / _resolve_coding_model.)
 const STUDENT_MODEL_KEYS = new Set(['deepseek-flash', 'deepseek-pro'])
 const TEACHER_DEFAULT_MODEL_KEY = 'sonnet'
-const STUDENT_DEFAULT_MODEL_KEY = 'deepseek-pro'
+const STUDENT_DEFAULT_MODEL_KEY = 'deepseek-flash'
+const STUDENT_FLASH_DEFAULT_MIGRATION_KEY = 'coding_student_flash_default_v1'
 function modelOptionsFor(isTeacher: boolean) {
   return isTeacher ? MODEL_OPTIONS : MODEL_OPTIONS.filter((option) => STUDENT_MODEL_KEYS.has(option.key))
 }
 function initialModelKey(isTeacher: boolean): string {
   const fallback = isTeacher ? TEACHER_DEFAULT_MODEL_KEY : STUDENT_DEFAULT_MODEL_KEY
   const stored = localStorage.getItem('coding_model_key') || ''
+  if (!isTeacher && stored === 'deepseek-pro' && localStorage.getItem(STUDENT_FLASH_DEFAULT_MIGRATION_KEY) !== '1') {
+    localStorage.setItem(STUDENT_FLASH_DEFAULT_MIGRATION_KEY, '1')
+    localStorage.setItem('coding_model_key', STUDENT_DEFAULT_MODEL_KEY)
+    return STUDENT_DEFAULT_MODEL_KEY
+  }
   return modelOptionsFor(isTeacher).some((option) => option.key === stored) ? stored : fallback
 }
 const CODING_TUTORIAL_STORAGE_KEY = 'coding_lab_tutorial_seen_v1'

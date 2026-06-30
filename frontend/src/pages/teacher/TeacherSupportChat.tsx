@@ -2801,8 +2801,8 @@ REGOLE IMPORTANTI:
 
                   {/* Teacherbot config modal — full-screen centered modal */}
                   {botPanelTarget && (
-                    <div className="fixed inset-0 z-[80] flex items-start justify-center overflow-y-auto bg-black/40 p-4 backdrop-blur-sm md:p-6">
-                      <div className="my-6 h-[min(88vh,980px)] w-full max-w-6xl overflow-hidden rounded-[28px] bg-white shadow-2xl">
+                    <div className="fixed inset-0 z-[80] flex items-start justify-center overflow-y-auto bg-black/40 p-2 backdrop-blur-sm md:p-5">
+                      <div className="my-3 h-[min(94vh,1040px)] w-full max-w-[1180px] overflow-hidden rounded-2xl bg-white shadow-2xl md:my-5">
                         <TeacherbotForm
                           teacherbotId={botPanelTarget !== 'create' ? botPanelTarget : undefined}
                           onBack={() => setBotPanelTarget(null)}

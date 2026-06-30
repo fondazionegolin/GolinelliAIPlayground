@@ -11,7 +11,7 @@ import {
   Lightbulb, ClipboardCheck, Sparkles,
   Paperclip, X, File, Database, Download, Loader2,
   Trash2, ChevronLeft, ChevronRight, Wand2, Palette, ChevronDown, Check, ImageIcon,
-  FlaskConical, ScrollText, Languages, Landmark, Sigma, Microscope, BookText, Search, Mic, type LucideIcon
+  FlaskConical, ScrollText, Languages, Landmark, Sigma, Microscope, BookText, Search, Mic, Users, type LucideIcon
 } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -37,6 +37,11 @@ import type { TokenUsageJson } from '@/lib/environmentalImpact'
 const StudentRagWorkspace = lazy(() => import('@/components/student/StudentRagWorkspace'))
 const RealtimeInterrogationPanel = lazy(() => import('@/components/student/RealtimeInterrogationPanel'))
 import type { VoiceSessionSource } from '@/components/student/RealtimeInterrogationPanel'
+const SharedChatPanel = lazy(() => import('@/components/student/SharedChatPanel'))
+const ShareWithModal = lazy(() => import('@/components/student/ShareWithModal'))
+import type { SharedRoom } from '@/components/student/SharedChatPanel'
+import type { ShareTarget } from '@/components/student/ShareWithModal'
+import { collaborationApi } from '@/lib/api'
 
 interface Message {
   id: string
@@ -97,6 +102,7 @@ interface ChatbotModuleProps {
   onInputFocusChange?: (focused: boolean) => void
   isTeacherPreview?: boolean
   studentAccent?: StudentAccentId
+  collaborationEnabled?: boolean
 }
 
 const PROFILE_ICONS: Record<string, React.ReactNode> = {
@@ -443,7 +449,7 @@ function getTeacherbotSurface(color: string) {
 // Mobile navigation state
 type MobileViewState = 'profiles' | 'conversations' | 'chat'
 
-export default function ChatbotModule({ sessionId, studentId, initialTeacherbotId, oggiImparoContext, onOggiImparoContextConsumed, onInputFocusChange, isTeacherPreview, studentAccent: accentProp }: ChatbotModuleProps) {
+export default function ChatbotModule({ sessionId, studentId, initialTeacherbotId, oggiImparoContext, onOggiImparoContextConsumed, onInputFocusChange, isTeacherPreview, studentAccent: accentProp, collaborationEnabled }: ChatbotModuleProps) {
   const { t, i18n } = useTranslation()
   const uiLanguage: 'it' | 'en' = i18n.resolvedLanguage?.startsWith('en') ? 'en' : 'it'
   const queryClient = useQueryClient()
@@ -465,6 +471,10 @@ export default function ChatbotModule({ sessionId, studentId, initialTeacherbotI
   const [showChatModeMenu, setShowChatModeMenu] = useState(false)
   const [showVoiceInterrogation, setShowVoiceInterrogation] = useState(false)
   const [voiceSource, setVoiceSource] = useState<VoiceSessionSource | undefined>(undefined)
+  // Collaboration ("Condividi con") shared chat
+  const [sharePickerTarget, setSharePickerTarget] = useState<ShareTarget | null>(null)
+  const [activeSharedRoom, setActiveSharedRoom] = useState<SharedRoom | null>(null)
+  const [sharedInvites, setSharedInvites] = useState<SharedRoom[]>([])
   const [expandedSection, setExpandedSection] = useState<'assistants' | 'teacherbots' | 'learning' | 'rag' | null>(null)
   const [imageGenerationProgress, setImageGenerationProgress] = useState<{
     status: string
@@ -1147,6 +1157,33 @@ export default function ChatbotModule({ sessionId, studentId, initialTeacherbotI
     el.style.height = 'auto'
     el.style.height = `${Math.min(el.scrollHeight, 160)}px`
   }, [input])
+
+  // Collaboration: load ongoing shared rooms + listen for invitations.
+  useEffect(() => {
+    if (!collaborationEnabled || isTeacherPreview) return
+    let cancelled = false
+    collaborationApi.listRooms()
+      .then((res) => { if (!cancelled) setSharedInvites((res.data as SharedRoom[]) || []) })
+      .catch(() => { /* noop */ })
+
+    const socket = (window as any).socket as { on: (e: string, cb: (d: any) => void) => void; off: (e: string, cb: (d: any) => void) => void } | undefined
+    if (!socket) return () => { cancelled = true }
+
+    const onInvite = (data: { room: SharedRoom }) => {
+      setSharedInvites((prev) => prev.some((r) => r.id === data.room.id) ? prev : [data.room, ...prev])
+    }
+    const onClosed = (data: { room_id: string }) => {
+      setSharedInvites((prev) => prev.filter((r) => r.id !== data.room_id))
+      setActiveSharedRoom((cur) => (cur && cur.id === data.room_id ? null : cur))
+    }
+    socket.on('share_chat_invite', onInvite)
+    socket.on('share_chat_closed', onClosed)
+    return () => {
+      cancelled = true
+      socket.off('share_chat_invite', onInvite)
+      socket.off('share_chat_closed', onClosed)
+    }
+  }, [collaborationEnabled, isTeacherPreview])
 
   const sendMessageMutation = useMutation({
     mutationFn: async ({ content, files, existingHistory }: { content: string; files: globalThis.File[]; existingHistory?: Message[] }) => {
@@ -3111,6 +3148,22 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
                       {uiLanguage === 'en' ? 'Live voice' : 'Voce live'}
                     </button>
                   )}
+                  {collaborationEnabled && !isTeacherPreview && (selectedTeacherbot || (selectedProfile && !learningMode)) && (
+                    <button
+                      type="button"
+                      onClick={() => setSharePickerTarget(
+                        selectedTeacherbot
+                          ? { kind: 'teacherbot', teacherbotId: selectedTeacherbot.id, title: selectedTeacherbot.name }
+                          : { kind: 'assistant', profileKey: selectedProfile!, title: currentProfile?.name || selectedProfile! }
+                      )}
+                      className="inline-flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-xs font-bold shadow-sm transition-transform hover:-translate-y-0.5"
+                      style={{ borderColor: accentTheme.border, color: accentTheme.text, backgroundColor: accentTheme.soft }}
+                      title={uiLanguage === 'en' ? 'Share with classmates' : 'Condividi con i compagni'}
+                    >
+                      <Users className="h-3.5 w-3.5" />
+                      {uiLanguage === 'en' ? 'Share with' : 'Condividi con'}
+                    </button>
+                  )}
                   <div className="relative">
                     <Button
                       variant="ghost"
@@ -3480,6 +3533,60 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
             }}
           />
         </Suspense>
+      )}
+
+      {/* Collaboration: participant picker */}
+      {sharePickerTarget && (
+        <Suspense fallback={null}>
+          <ShareWithModal
+            target={sharePickerTarget}
+            language={uiLanguage}
+            accent={{ accent: accentTheme.accent, text: accentTheme.text, soft: accentTheme.soft }}
+            onClose={() => setSharePickerTarget(null)}
+            onCreated={(room) => {
+              setSharePickerTarget(null)
+              setSharedInvites((prev) => prev.some((r) => r.id === room.id) ? prev : [room, ...prev])
+              setActiveSharedRoom(room)
+            }}
+          />
+        </Suspense>
+      )}
+
+      {/* Collaboration: active shared chat */}
+      {activeSharedRoom && studentId && (
+        <Suspense fallback={null}>
+          <SharedChatPanel
+            room={activeSharedRoom}
+            currentStudentId={studentId}
+            language={uiLanguage}
+            accent={{ accent: accentTheme.accent, text: accentTheme.text, soft: accentTheme.soft }}
+            onClose={() => setActiveSharedRoom(null)}
+          />
+        </Suspense>
+      )}
+
+      {/* Collaboration: invitations / ongoing shared chats banner */}
+      {!activeSharedRoom && !sharePickerTarget && sharedInvites.length > 0 && (
+        <div className="pointer-events-none fixed bottom-4 right-4 z-50 flex max-w-xs flex-col gap-2">
+          {sharedInvites.slice(0, 3).map((room) => (
+            <button
+              key={room.id}
+              type="button"
+              onClick={() => setActiveSharedRoom(room)}
+              className="pointer-events-auto flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-left shadow-lg transition-transform hover:-translate-y-0.5"
+            >
+              <span className="flex h-8 w-8 items-center justify-center rounded-full" style={{ backgroundColor: accentTheme.soft, color: accentTheme.text }}>
+                <Users className="h-4 w-4" />
+              </span>
+              <span className="min-w-0">
+                <span className="block truncate text-xs font-bold text-slate-800">{room.title}</span>
+                <span className="block truncate text-[11px] text-slate-400">
+                  {uiLanguage === 'en' ? 'Open shared chat' : 'Apri chat condivisa'} · {room.participants.length}
+                </span>
+              </span>
+            </button>
+          ))}
+        </div>
       )}
     </div>
   )

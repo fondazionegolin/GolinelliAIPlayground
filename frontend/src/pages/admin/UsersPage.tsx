@@ -22,6 +22,7 @@ import {
   GraduationCap,
   Mail,
   RefreshCw,
+  Search,
   TrendingUp,
   Users,
   Zap,
@@ -39,6 +40,12 @@ type AnalyticsRow = {
   connected_user_emails: string[]
   api_calls: number
   cost: number
+  teacher_api_calls: number
+  teacher_cost: number
+  teacher_tokens: number
+  student_api_calls: number
+  student_cost: number
+  student_tokens: number
   prompt_tokens: number
   completion_tokens: number
   total_tokens: number
@@ -82,6 +89,7 @@ type AnalyticsReport = {
   rows: AnalyticsRow[]
   provider_breakdown: Array<{ provider: string; calls: number; cost: number; total_tokens: number }>
   model_breakdown: Array<{ model: string; calls: number; cost: number; total_tokens: number }>
+  role_breakdown: Array<{ role: 'teacher' | 'student'; calls: number; cost: number; total_tokens: number }>
   top_users: Array<{
     user_id: string
     name: string
@@ -96,6 +104,34 @@ type AnalyticsReport = {
     providers: string[]
     models: string[]
   }
+}
+
+type UsageTransaction = {
+  id: string
+  timestamp: string | null
+  actor_role: 'admin' | 'teacher' | 'student'
+  actor_name: string
+  teacher_name?: string | null
+  teacher_email?: string | null
+  student_name?: string | null
+  class_name?: string | null
+  session_title?: string | null
+  provider: string
+  model: string
+  usage_type: string
+  prompt_tokens: number
+  completion_tokens: number
+  total_tokens: number
+  cost: number
+  cost_credits: number
+}
+
+type UsageTransactionsResponse = {
+  items: UsageTransaction[]
+  total: number
+  limit: number
+  offset: number
+  summary: { calls: number; cost: number }
 }
 
 type TeacherStatusResponse = {
@@ -145,6 +181,23 @@ function formatPeriod(start?: string | null, end?: string | null) {
   return `${new Date(start).toLocaleDateString('it-IT')} - ${new Date(end).toLocaleDateString('it-IT')}`
 }
 
+function formatDateTime(value?: string | null) {
+  if (!value) return '—'
+  return new Date(value).toLocaleString('it-IT', {
+    day: '2-digit',
+    month: '2-digit',
+    year: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
+function roleLabel(role?: string) {
+  if (role === 'student') return 'Studente'
+  if (role === 'admin') return 'Admin'
+  return 'Docente'
+}
+
 function escapeCsv(value: string | number) {
   const raw = String(value ?? '')
   if (!/[",\n]/.test(raw)) return raw
@@ -160,8 +213,12 @@ export default function CostsPage() {
   const [sessionId, setSessionId] = useState('')
   const [provider, setProvider] = useState('')
   const [model, setModel] = useState('')
+  const [actorRole, setActorRole] = useState('')
+  const [search, setSearch] = useState('')
+  const [ledgerOffset, setLedgerOffset] = useState(0)
   const [includeEmpty, setIncludeEmpty] = useState(true)
   const [teacherReportDownloading, setTeacherReportDownloading] = useState(false)
+  const [ledgerDownloading, setLedgerDownloading] = useState(false)
 
   const reportParams = useMemo(() => ({
     start_date: startDate,
@@ -175,9 +232,28 @@ export default function CostsPage() {
     include_empty: includeEmpty,
   }), [classId, endDate, granularity, includeEmpty, model, provider, sessionId, startDate, teacherId])
 
+  const ledgerParams = useMemo(() => ({
+    start_date: startDate,
+    end_date: endDate,
+    teacher_id: teacherId || undefined,
+    class_id: classId || undefined,
+    session_id: sessionId || undefined,
+    provider: provider.trim() || undefined,
+    model: model.trim() || undefined,
+    actor_role: actorRole || undefined,
+    q: search.trim() || undefined,
+    limit: 200,
+    offset: ledgerOffset,
+  }), [actorRole, classId, endDate, ledgerOffset, model, provider, search, sessionId, startDate, teacherId])
+
   const { data: report, isLoading, isFetching, refetch } = useQuery<AnalyticsReport>({
     queryKey: ['admin-analytics-report', reportParams],
     queryFn: async () => (await adminApi.getAnalyticsReport(reportParams)).data,
+  })
+
+  const { data: ledger, isFetching: ledgerFetching } = useQuery<UsageTransactionsResponse>({
+    queryKey: ['admin-usage-transactions', ledgerParams],
+    queryFn: async () => (await adminApi.getUsageTransactions(ledgerParams)).data,
   })
 
   const { data: teachers } = useQuery<TeacherStatusResponse>({
@@ -202,6 +278,7 @@ export default function CostsPage() {
   }, [classId, classOptions])
 
   const rows = report?.rows || []
+  const ledgerRows = ledger?.items || []
   const summary = report?.summary
   const providerOptions = report?.filter_options?.providers || []
   const modelOptions = report?.filter_options?.models || []
@@ -267,6 +344,34 @@ export default function CostsPage() {
     }
   }
 
+  const downloadLedger = async () => {
+    setLedgerDownloading(true)
+    try {
+      const response = await adminApi.downloadUsageTransactions({
+        start_date: startDate,
+        end_date: endDate,
+        teacher_id: teacherId || undefined,
+        class_id: classId || undefined,
+        session_id: sessionId || undefined,
+        provider: provider.trim() || undefined,
+        model: model.trim() || undefined,
+        actor_role: actorRole || undefined,
+        q: search.trim() || undefined,
+      })
+      const blob = new Blob([response.data], { type: 'text/csv;charset=utf-8;' })
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `admin-credit-ledger-${startDate}-${endDate}.csv`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      URL.revokeObjectURL(url)
+    } finally {
+      setLedgerDownloading(false)
+    }
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
@@ -301,6 +406,15 @@ export default function CostsPage() {
             <Download className="h-4 w-4" />
             {teacherReportDownloading ? 'Download...' : 'Report docenti'}
           </button>
+          <button
+            type="button"
+            onClick={downloadLedger}
+            disabled={ledgerDownloading || ledgerRows.length === 0}
+            className="inline-flex h-9 items-center gap-2 rounded-lg bg-blue-700 px-3 text-sm font-semibold text-white hover:bg-blue-800 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <Download className="h-4 w-4" />
+            {ledgerDownloading ? 'Download...' : 'Ledger crediti'}
+          </button>
         </div>
       </div>
 
@@ -315,18 +429,39 @@ export default function CostsPage() {
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
             <div className="space-y-1.5">
               <Label htmlFor="analytics-start" className="text-xs text-slate-500">Da</Label>
-              <Input id="analytics-start" type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="h-9 text-sm" />
+              <Input
+                id="analytics-start"
+                type="date"
+                value={startDate}
+                onChange={(e) => {
+                  setStartDate(e.target.value)
+                  setLedgerOffset(0)
+                }}
+                className="h-9 text-sm"
+              />
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="analytics-end" className="text-xs text-slate-500">A</Label>
-              <Input id="analytics-end" type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="h-9 text-sm" />
+              <Input
+                id="analytics-end"
+                type="date"
+                value={endDate}
+                onChange={(e) => {
+                  setEndDate(e.target.value)
+                  setLedgerOffset(0)
+                }}
+                className="h-9 text-sm"
+              />
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="analytics-granularity" className="text-xs text-slate-500">Raggruppamento</Label>
               <select
                 id="analytics-granularity"
                 value={granularity}
-                onChange={(e) => setGranularity(e.target.value as Granularity)}
+                onChange={(e) => {
+                  setGranularity(e.target.value as Granularity)
+                  setLedgerOffset(0)
+                }}
                 className="h-9 w-full rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-200"
               >
                 <option value="day">Giorno</option>
@@ -345,6 +480,22 @@ export default function CostsPage() {
               <Label htmlFor="analytics-empty" className="text-sm text-slate-600">Periodi vuoti</Label>
             </div>
             <div className="space-y-1.5">
+              <Label htmlFor="analytics-search" className="text-xs text-slate-500">Cerca nel ledger</Label>
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                <Input
+                  id="analytics-search"
+                  value={search}
+                  onChange={(e) => {
+                    setSearch(e.target.value)
+                    setLedgerOffset(0)
+                  }}
+                  placeholder="nome, studente, classe, modello..."
+                  className="h-9 pl-9 text-sm"
+                />
+              </div>
+            </div>
+            <div className="space-y-1.5">
               <Label htmlFor="analytics-teacher" className="text-xs text-slate-500">Utente</Label>
               <select
                 id="analytics-teacher"
@@ -353,6 +504,7 @@ export default function CostsPage() {
                   setTeacherId(e.target.value)
                   setClassId('')
                   setSessionId('')
+                  setLedgerOffset(0)
                 }}
                 className="h-9 w-full rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-200"
               >
@@ -375,6 +527,7 @@ export default function CostsPage() {
                 onChange={(e) => {
                   setClassId(e.target.value)
                   setSessionId('')
+                  setLedgerOffset(0)
                 }}
                 className="h-9 w-full rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-200"
               >
@@ -391,7 +544,10 @@ export default function CostsPage() {
               <select
                 id="analytics-session"
                 value={sessionId}
-                onChange={(e) => setSessionId(e.target.value)}
+                onChange={(e) => {
+                  setSessionId(e.target.value)
+                  setLedgerOffset(0)
+                }}
                 className="h-9 w-full rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-200"
               >
                 <option value="">Tutte</option>
@@ -404,12 +560,32 @@ export default function CostsPage() {
             </div>
             <div className="grid grid-cols-2 gap-2">
               <div className="space-y-1.5">
+                <Label htmlFor="analytics-role" className="text-xs text-slate-500">Ruolo</Label>
+                <select
+                  id="analytics-role"
+                  value={actorRole}
+                  onChange={(e) => {
+                    setActorRole(e.target.value)
+                    setLedgerOffset(0)
+                  }}
+                  className="h-9 w-full rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-200"
+                >
+                  <option value="">Tutti</option>
+                  <option value="student">Studenti</option>
+                  <option value="teacher">Docenti</option>
+                  <option value="admin">Admin</option>
+                </select>
+              </div>
+              <div className="space-y-1.5">
                 <Label htmlFor="analytics-provider" className="text-xs text-slate-500">Provider</Label>
                 <Input
                   id="analytics-provider"
                   list="analytics-provider-options"
                   value={provider}
-                  onChange={(e) => setProvider(e.target.value)}
+                  onChange={(e) => {
+                    setProvider(e.target.value)
+                    setLedgerOffset(0)
+                  }}
                   placeholder="tutti"
                   className="h-9 text-sm"
                 />
@@ -423,7 +599,10 @@ export default function CostsPage() {
                   id="analytics-model"
                   list="analytics-model-options"
                   value={model}
-                  onChange={(e) => setModel(e.target.value)}
+                  onChange={(e) => {
+                    setModel(e.target.value)
+                    setLedgerOffset(0)
+                  }}
                   placeholder="tutti"
                   className="h-9 text-sm"
                 />
@@ -477,6 +656,41 @@ export default function CostsPage() {
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
         <Card className="xl:col-span-2">
           <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-semibold">Costo docenti vs studenti</CardTitle>
+          </CardHeader>
+          <CardContent className="h-64">
+            {isLoading ? (
+              <div className="flex h-full items-center justify-center text-sm text-slate-400">Caricamento...</div>
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={rows}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                  <XAxis dataKey="period_label" tick={{ fontSize: 11 }} />
+                  <YAxis tick={{ fontSize: 11 }} />
+                  <Tooltip formatter={(value: number) => formatCurrency(Number(value || 0))} />
+                  <Legend />
+                  <Line type="monotone" dataKey="teacher_cost" stroke="#334155" strokeWidth={2} dot={false} name="Docenti €" />
+                  <Line type="monotone" dataKey="student_cost" stroke="#2563eb" strokeWidth={2} dot={false} name="Studenti €" />
+                </LineChart>
+              </ResponsiveContainer>
+            )}
+          </CardContent>
+        </Card>
+
+        <BreakdownTable
+          title="Docenti / Studenti"
+          items={(report?.role_breakdown || []).map((item) => ({
+            key: roleLabel(item.role),
+            calls: item.calls,
+            tokens: item.total_tokens,
+            cost: item.cost,
+          }))}
+        />
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
+        <Card className="xl:col-span-2">
+          <CardHeader className="pb-2">
             <CardTitle className="flex items-center gap-2 text-sm font-semibold">
               <Activity className="h-4 w-4 text-slate-500" />
               Andamento periodo
@@ -517,6 +731,103 @@ export default function CostsPage() {
           </CardContent>
         </Card>
       </div>
+
+      <Card>
+        <CardHeader className="border-b border-slate-100 pb-3">
+          <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+            <div>
+              <CardTitle className="text-sm font-semibold">Ledger cronologico crediti</CardTitle>
+              <p className="mt-1 text-xs text-slate-500">
+                {formatNumber(ledger?.total || 0)} transazioni · {formatCurrency(ledger?.summary?.cost || 0)} nel filtro corrente
+              </p>
+            </div>
+            <div className="text-xs text-slate-400">
+              {ledgerFetching ? 'Aggiornamento...' : 'Ordine: più recenti prima'}
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="p-0">
+          {ledgerRows.length === 0 ? (
+            <p className="px-4 py-6 text-sm text-slate-400">Nessuna transazione nel filtro selezionato</p>
+          ) : (
+            <>
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[1280px] text-sm">
+                  <thead>
+                    <tr className="border-b border-slate-100 text-left text-[11px] uppercase text-slate-400">
+                      <th className="px-4 py-3 font-medium">Quando</th>
+                      <th className="px-3 py-3 font-medium">Ruolo</th>
+                      <th className="px-3 py-3 font-medium">Chi ha consumato</th>
+                      <th className="px-3 py-3 font-medium">Pool / Docente</th>
+                      <th className="px-3 py-3 font-medium">Classe</th>
+                      <th className="px-3 py-3 font-medium">Sessione</th>
+                      <th className="px-3 py-3 font-medium">Servizio</th>
+                      <th className="px-3 py-3 font-medium">Modello</th>
+                      <th className="px-3 py-3 text-right font-medium">Token</th>
+                      <th className="px-3 py-3 text-right font-medium">Crediti</th>
+                      <th className="px-4 py-3 text-right font-medium">Costo</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {ledgerRows.map((item) => (
+                      <tr key={item.id} className="border-t border-slate-100 hover:bg-slate-50">
+                        <td className="px-4 py-3 font-mono text-xs text-slate-600">{formatDateTime(item.timestamp)}</td>
+                        <td className="px-3 py-3">
+                          <span className={`rounded-full px-2 py-1 text-[11px] font-semibold ${
+                            item.actor_role === 'student'
+                              ? 'bg-blue-50 text-blue-700'
+                              : item.actor_role === 'admin'
+                                ? 'bg-amber-50 text-amber-700'
+                                : 'bg-slate-100 text-slate-700'
+                          }`}>
+                            {roleLabel(item.actor_role)}
+                          </span>
+                        </td>
+                        <td className="px-3 py-3">
+                          <p className="font-semibold text-slate-800">{item.actor_name}</p>
+                          {item.actor_role === 'student' && <p className="text-xs text-slate-400">Studente nel pool</p>}
+                        </td>
+                        <td className="px-3 py-3">
+                          <p className="text-sm text-slate-700">{item.teacher_name || '—'}</p>
+                          <p className="text-xs text-slate-400">{item.teacher_email || ''}</p>
+                        </td>
+                        <td className="max-w-[160px] truncate px-3 py-3 text-slate-600">{item.class_name || '—'}</td>
+                        <td className="max-w-[180px] truncate px-3 py-3 text-slate-600">{item.session_title || '—'}</td>
+                        <td className="px-3 py-3 font-mono text-xs text-slate-700">{item.provider}</td>
+                        <td className="max-w-[180px] truncate px-3 py-3 font-mono text-xs text-slate-500">{item.model}</td>
+                        <td className="px-3 py-3 text-right font-mono text-xs text-slate-600">{formatNumber(item.total_tokens)}</td>
+                        <td className="px-3 py-3 text-right font-semibold text-slate-700">{formatNumber(item.cost_credits)}</td>
+                        <td className="px-4 py-3 text-right font-semibold text-slate-900">{formatCurrency(item.cost)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div className="flex items-center justify-between border-t border-slate-100 px-4 py-3">
+                <button
+                  type="button"
+                  onClick={() => setLedgerOffset(Math.max(0, ledgerOffset - 200))}
+                  disabled={ledgerOffset === 0}
+                  className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 disabled:opacity-40"
+                >
+                  Precedenti
+                </button>
+                <span className="text-xs text-slate-500">
+                  {formatNumber(ledgerOffset + 1)} - {formatNumber(ledgerOffset + ledgerRows.length)} di {formatNumber(ledger?.total || 0)}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setLedgerOffset(ledgerOffset + 200)}
+                  disabled={ledgerOffset + ledgerRows.length >= (ledger?.total || 0)}
+                  className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 disabled:opacity-40"
+                >
+                  Successivi
+                </button>
+              </div>
+            </>
+          )}
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader className="pb-2">

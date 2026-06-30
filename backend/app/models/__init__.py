@@ -10,6 +10,7 @@ from app.models.file import File
 from app.models.task import Task, TaskSubmission, TaskStatus, TaskType
 from app.models.invitation import ClassTeacher, ClassInvitation, SessionTeacher, SessionInvitation
 from app.models.teacherbot import Teacherbot, TeacherbotStatus, TeacherbotPublication, TeacherbotConversation, TeacherbotMessage
+from app.models.shared_chat import SharedChatRoom, SharedChatParticipant, SharedChatMessage
 from app.models.document_draft import DocumentDraft
 from app.models.session_canvas import SessionCanvas
 from app.models.template_version import TenantTemplateVersion
@@ -68,6 +69,9 @@ __all__ = [
     "TeacherbotPublication",
     "TeacherbotConversation",
     "TeacherbotMessage",
+    "SharedChatRoom",
+    "SharedChatParticipant",
+    "SharedChatMessage",
     "DocumentDraft",
     "SessionCanvas",
     "TenantTemplateVersion",

@@ -381,7 +381,8 @@ export default function StudentDashboard() {
   }, [])
 
   const privateChatEnabled = sessionInfo?.enabled_modules?.some((m) => m.key === 'chat') ?? false
-  const sessionModules = sessionInfo?.enabled_modules?.map(m => m.key).filter(k => k !== 'chat') ?? []
+  const collaborationEnabled = sessionInfo?.enabled_modules?.some((m) => m.key === 'chat_collaboration') ?? false
+  const sessionModules = sessionInfo?.enabled_modules?.map(m => m.key).filter(k => k !== 'chat' && k !== 'chat_collaboration') ?? []
   const enabledModules = [...new Set([...sessionModules, 'classe', 'documents'])]
 
   if (loading) {
@@ -410,6 +411,7 @@ export default function StudentDashboard() {
         lastDocument={lastDocument}
         openTaskId={openTaskId}
         privateChatEnabled={privateChatEnabled}
+        collaborationEnabled={collaborationEnabled}
         studentAccent={studentAccent}
         selectedTeacherbotId={selectedTeacherbotId}
         oggiImparoLesson={oggiImparoLesson}
@@ -508,6 +510,7 @@ export default function StudentDashboard() {
                       }}
                       teacherTarget={sessionInfo.teacher ?? undefined}
                       privateChatEnabled={privateChatEnabled}
+                      collaborationEnabled={collaborationEnabled}
                       sharedCodingProject={sharedCodingProject}
                     />
                   </Suspense>
@@ -561,6 +564,7 @@ function StudentMobileShell({
   lastDocument,
   openTaskId,
   privateChatEnabled,
+  collaborationEnabled,
   studentAccent,
   selectedTeacherbotId,
   oggiImparoLesson,
@@ -579,6 +583,7 @@ function StudentMobileShell({
   lastDocument: string | null
   openTaskId: string | null
   privateChatEnabled: boolean
+  collaborationEnabled: boolean
   studentAccent: StudentAccentId
   selectedTeacherbotId: string | null
   oggiImparoLesson: string | null
@@ -790,6 +795,7 @@ function StudentMobileShell({
                       onOpenDocument={onOpenDocument}
                       teacherTarget={sessionInfo.teacher ?? undefined}
                       privateChatEnabled={privateChatEnabled}
+                      collaborationEnabled={collaborationEnabled}
                     />
                   </Suspense>
                 </div>
@@ -1012,7 +1018,7 @@ function HomeView({
   )
 }
 
-function ModuleView({ moduleKey, sessionId, sessionName, openTaskId, studentId, studentName, onTeacherbotNotificationClick, selectedTeacherbotId, oggiImparoLesson, onOggiImparoLessonConsumed, studentAccent, openDocumentTaskId, onOpenDocument, teacherTarget, privateChatEnabled, sharedCodingProject }: {
+function ModuleView({ moduleKey, sessionId, sessionName, openTaskId, studentId, studentName, onTeacherbotNotificationClick, selectedTeacherbotId, oggiImparoLesson, onOggiImparoLessonConsumed, studentAccent, openDocumentTaskId, onOpenDocument, teacherTarget, privateChatEnabled, collaborationEnabled, sharedCodingProject }: {
   moduleKey: string;
   sessionId: string;
   sessionName?: string;
@@ -1028,6 +1034,7 @@ function ModuleView({ moduleKey, sessionId, sessionName, openTaskId, studentId, 
   onOpenDocument?: (taskId: string) => void;
   teacherTarget?: { id: string; name: string };
   privateChatEnabled?: boolean;
+  collaborationEnabled?: boolean;
   sharedCodingProject?: { projectId: string; nonce: number } | null;
 }) {
   const { t } = useTranslation()
@@ -1061,6 +1068,7 @@ function ModuleView({ moduleKey, sessionId, sessionName, openTaskId, studentId, 
           oggiImparoContext={oggiImparoLesson ?? undefined}
           onOggiImparoContextConsumed={onOggiImparoLessonConsumed}
           studentAccent={studentAccent}
+          collaborationEnabled={collaborationEnabled}
         />
       </div>
     )
