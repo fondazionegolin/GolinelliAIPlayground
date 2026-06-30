@@ -136,8 +136,7 @@ export default function SharedChatPanel({ room: initialRoom, currentStudentId, l
   const otherParticipants = room.participants.filter((p) => p.id !== currentStudentId)
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-md">
-      <div className="relative flex h-[min(720px,92vh)] w-full max-w-2xl flex-col overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-2xl">
+    <div className="flex h-full w-full flex-col overflow-hidden bg-white">
         {/* Header */}
         <div className="flex items-center gap-3 border-b border-slate-200/70 px-5 py-4">
           <div className="flex h-10 w-10 items-center justify-center rounded-2xl" style={{ backgroundColor: accent.soft, color: accent.text }}>
@@ -276,7 +275,6 @@ export default function SharedChatPanel({ room: initialRoom, currentStudentId, l
             {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
           </button>
         </div>
-      </div>
     </div>
   )
 }

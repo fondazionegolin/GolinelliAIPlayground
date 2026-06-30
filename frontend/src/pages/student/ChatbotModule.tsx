@@ -2776,7 +2776,7 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
         )}
 
         <div
-          className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
+          className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
         style={chatBg ? { backgroundColor: chatBg } : undefined}
         onDragOver={(e) => {
           e.preventDefault()
@@ -2855,6 +2855,20 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
           files.forEach(file => addFileWithPreview(file as globalThis.File))
         }}
         >
+          {/* Collaborative shared chat — fills the chat column (same window as a normal chat) */}
+          {activeSharedRoom && studentId && (
+            <div className="absolute inset-0 z-20">
+              <Suspense fallback={null}>
+                <SharedChatPanel
+                  room={activeSharedRoom}
+                  currentStudentId={studentId}
+                  language={uiLanguage}
+                  accent={{ accent: accentTheme.accent, text: accentTheme.text, soft: accentTheme.soft }}
+                  onClose={() => setActiveSharedRoom(null)}
+                />
+              </Suspense>
+            </div>
+          )}
           {mainTab === 'rag' ? (
             <Suspense fallback={<div className="flex h-full items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-violet-400" /></div>}>
               {activeRagSession && (
@@ -3548,19 +3562,6 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
               setSharedInvites((prev) => prev.some((r) => r.id === room.id) ? prev : [room, ...prev])
               setActiveSharedRoom(room)
             }}
-          />
-        </Suspense>
-      )}
-
-      {/* Collaboration: active shared chat */}
-      {activeSharedRoom && studentId && (
-        <Suspense fallback={null}>
-          <SharedChatPanel
-            room={activeSharedRoom}
-            currentStudentId={studentId}
-            language={uiLanguage}
-            accent={{ accent: accentTheme.accent, text: accentTheme.text, soft: accentTheme.soft }}
-            onClose={() => setActiveSharedRoom(null)}
           />
         </Suspense>
       )}
