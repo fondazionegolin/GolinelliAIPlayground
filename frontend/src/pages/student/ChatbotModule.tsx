@@ -2407,7 +2407,7 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
   // Desktop Chat interface
   return (
     <div
-      className="relative flex h-full min-h-0 w-full gap-3 overflow-hidden bg-slate-100 p-4 text-slate-900"
+      className="relative flex h-full min-h-0 w-full gap-3 overflow-hidden bg-neutral-100 p-4 text-slate-900"
       style={{
         ...accentVars,
       }}
@@ -3325,7 +3325,7 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
               {/* Mode toolbar */}
               <div
                 ref={messagesContainerRef}
-                className={`min-h-0 flex-1 space-y-3 overflow-y-auto overflow-x-hidden px-6 py-4 md:space-y-6 md:px-10 md:py-6 ${chatBg ? '' : 'bg-white/30'} ${chatBgIsDark ? 'text-white' : ''}`}
+                className={`min-h-0 flex-1 space-y-3 overflow-y-auto overflow-x-hidden px-6 py-4 md:space-y-6 md:px-10 md:py-6 ${chatBg ? '' : 'bg-neutral-50'} ${chatBgIsDark ? 'text-white' : ''}`}
                 style={{ WebkitOverflowScrolling: 'touch', scrollBehavior: 'smooth' }}
               >
           {messages.length === 0 ? (
@@ -3556,6 +3556,9 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
             target={sharePickerTarget}
             language={uiLanguage}
             accent={{ accent: accentTheme.accent, text: accentTheme.text, soft: accentTheme.soft }}
+            seedMessages={messages
+              .filter((m) => m.content && m.content.trim() && (m.role === 'user' || m.role === 'assistant'))
+              .map((m) => ({ role: m.role, content: m.content }))}
             onClose={() => setSharePickerTarget(null)}
             onCreated={(room) => {
               setSharePickerTarget(null)

@@ -16,6 +16,7 @@ from app.api.deps import get_current_admin, get_current_user
 from app.services.email_service import email_service
 from app.models.user import User, ActivationToken
 from app.models.tenant import Tenant
+from app.models.session import Session, SessionStudent, Class as TeacherClass
 from app.models.invitation import PlatformInvitation
 from app.models.credits import CreditLimit, CreditTransaction, CreditRequest
 from app.models.enums import LimitLevel, CreditRequestStatus, InvitationStatus, CreditTransactionType, UserRole, TenantType
@@ -107,6 +108,29 @@ async def get_my_credit_balance(
     )
 
 
+@router.get("/student-pool/balance")
+async def get_my_student_pool_balance(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    user: Annotated[User, Depends(get_current_user)],
+):
+    """Return the current teacher's monthly pool for student usage."""
+    _teacher_limit, pool_limit = await credit_service.ensure_default_teacher_credit_setup(db, user.tenant_id, user.id)
+    remaining = max(float(pool_limit.amount_cap or 0.0) - float(pool_limit.current_usage or 0.0), 0.0)
+    used = max(float(pool_limit.current_usage or 0.0), 0.0)
+    cap = max(float(pool_limit.amount_cap or 0.0), 0.0)
+    await db.commit()
+    return {
+        "credits_remaining": int(round(remaining * 100)),
+        "credits_used": int(round(used * 100)),
+        "credits_cap": int(round(cap * 100)),
+        "eur_remaining": round(remaining, 4),
+        "eur_used": round(used, 4),
+        "eur_cap": round(cap, 4),
+        "limit_level": LimitLevel.STUDENT_POOL.value,
+        "period_end": pool_limit.period_end,
+    }
+
+
 @router.get("/history", response_model=List[CreditUsageHistoryItem])
 async def get_my_credit_history(
     db: Annotated[AsyncSession, Depends(get_db)],
@@ -136,6 +160,52 @@ async def get_my_credit_history(
             usage_details=tx.usage_details,
         )
         for tx in rows
+    ]
+
+
+@router.get("/student-pool/history")
+async def get_my_student_pool_history(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    user: Annotated[User, Depends(get_current_user)],
+    limit: int = Query(50, ge=1, le=200),
+):
+    """Return recent student calls charged to this teacher's student pool."""
+    await credit_service.ensure_default_teacher_credit_setup(db, user.tenant_id, user.id)
+    rows = (await db.execute(
+        select(
+            CreditTransaction,
+            SessionStudent.nickname,
+            TeacherClass.name.label("class_name"),
+            Session.title.label("session_title"),
+        )
+        .outerjoin(SessionStudent, SessionStudent.id == CreditTransaction.student_id)
+        .outerjoin(TeacherClass, TeacherClass.id == CreditTransaction.class_id)
+        .outerjoin(Session, Session.id == CreditTransaction.session_id)
+        .where(
+            CreditTransaction.tenant_id == user.tenant_id,
+            CreditTransaction.teacher_id == user.id,
+            CreditTransaction.student_id.is_not(None),
+            CreditTransaction.transaction_type == CreditTransactionType.API_CALL,
+        )
+        .order_by(desc(CreditTransaction.timestamp))
+        .limit(limit)
+    )).all()
+
+    return [
+        {
+            "id": str(tx.id),
+            "timestamp": tx.timestamp,
+            "student_id": str(tx.student_id) if tx.student_id else None,
+            "student_name": nickname or "Studente",
+            "class_name": class_name,
+            "session_title": session_title,
+            "provider": tx.provider,
+            "model": tx.model,
+            "cost_eur": float(tx.cost or 0.0),
+            "cost_credits": round(float(tx.cost or 0.0) * 100, 6),
+            "usage_details": tx.usage_details or {},
+        }
+        for tx, nickname, class_name, session_title in rows
     ]
 
 

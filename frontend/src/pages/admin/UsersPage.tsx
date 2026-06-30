@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { Fragment, useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { adminApi } from '@/lib/api'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -17,6 +17,8 @@ import {
 import {
   Activity,
   CalendarDays,
+  ChevronDown,
+  ChevronRight,
   Cpu,
   Download,
   GraduationCap,
@@ -164,6 +166,7 @@ const compactFormatter = new Intl.NumberFormat('it-IT', { notation: 'compact', m
 const formatCurrency = (value: number) => `€ ${Number(value || 0).toFixed(2)}`
 const formatNumber = (value: number) => numberFormatter.format(Math.round(Number(value || 0)))
 const formatCompact = (value: number) => compactFormatter.format(Number(value || 0))
+const formatCreditValue = (value: number) => Number(value || 0).toLocaleString('it-IT', { maximumFractionDigits: 2 })
 
 function toDateInput(value: Date) {
   return value.toISOString().slice(0, 10)
@@ -216,6 +219,7 @@ export default function CostsPage() {
   const [actorRole, setActorRole] = useState('')
   const [search, setSearch] = useState('')
   const [ledgerOffset, setLedgerOffset] = useState(0)
+  const [expandedLedgerGroups, setExpandedLedgerGroups] = useState<Record<string, boolean>>({})
   const [includeEmpty, setIncludeEmpty] = useState(true)
   const [teacherReportDownloading, setTeacherReportDownloading] = useState(false)
   const [ledgerDownloading, setLedgerDownloading] = useState(false)
@@ -282,6 +286,48 @@ export default function CostsPage() {
   const summary = report?.summary
   const providerOptions = report?.filter_options?.providers || []
   const modelOptions = report?.filter_options?.models || []
+  const ledgerGroups = useMemo(() => {
+    const grouped = new Map<string, {
+      key: string
+      actorName: string
+      actorRole: UsageTransaction['actor_role']
+      teacherName?: string | null
+      teacherEmail?: string | null
+      classNames: Set<string>
+      calls: number
+      cost: number
+      credits: number
+      tokens: number
+      lastAt: string | null
+      items: UsageTransaction[]
+    }>()
+    ledgerRows.forEach((item) => {
+      const key = `${item.actor_role}:${item.actor_name}:${item.teacher_email || item.teacher_name || ''}`
+      const current = grouped.get(key) || {
+        key,
+        actorName: item.actor_name,
+        actorRole: item.actor_role,
+        teacherName: item.teacher_name,
+        teacherEmail: item.teacher_email,
+        classNames: new Set<string>(),
+        calls: 0,
+        cost: 0,
+        credits: 0,
+        tokens: 0,
+        lastAt: item.timestamp,
+        items: [],
+      }
+      if (item.class_name) current.classNames.add(item.class_name)
+      current.calls += 1
+      current.cost += Number(item.cost || 0)
+      current.credits += Number(item.cost_credits || 0)
+      current.tokens += Number(item.total_tokens || 0)
+      if (item.timestamp && (!current.lastAt || new Date(item.timestamp) > new Date(current.lastAt))) current.lastAt = item.timestamp
+      current.items.push(item)
+      grouped.set(key, current)
+    })
+    return Array.from(grouped.values()).sort((a, b) => Number(new Date(b.lastAt || 0)) - Number(new Date(a.lastAt || 0)))
+  }, [ledgerRows])
 
   const exportCsv = () => {
     if (rows.length === 0) return
@@ -747,59 +793,84 @@ export default function CostsPage() {
           </div>
         </CardHeader>
         <CardContent className="p-0">
-          {ledgerRows.length === 0 ? (
+          {ledgerGroups.length === 0 ? (
             <p className="px-4 py-6 text-sm text-slate-400">Nessuna transazione nel filtro selezionato</p>
           ) : (
             <>
               <div className="overflow-x-auto">
-                <table className="w-full min-w-[1280px] text-sm">
+                <table className="w-full min-w-[1180px] text-sm">
                   <thead>
                     <tr className="border-b border-slate-100 text-left text-[11px] uppercase text-slate-400">
-                      <th className="px-4 py-3 font-medium">Quando</th>
+                      <th className="px-4 py-3 font-medium">Utente</th>
                       <th className="px-3 py-3 font-medium">Ruolo</th>
-                      <th className="px-3 py-3 font-medium">Chi ha consumato</th>
                       <th className="px-3 py-3 font-medium">Pool / Docente</th>
                       <th className="px-3 py-3 font-medium">Classe</th>
-                      <th className="px-3 py-3 font-medium">Sessione</th>
-                      <th className="px-3 py-3 font-medium">Servizio</th>
-                      <th className="px-3 py-3 font-medium">Modello</th>
+                      <th className="px-3 py-3 text-right font-medium">Chiamate</th>
                       <th className="px-3 py-3 text-right font-medium">Token</th>
                       <th className="px-3 py-3 text-right font-medium">Crediti</th>
                       <th className="px-4 py-3 text-right font-medium">Costo</th>
+                      <th className="px-4 py-3 text-right font-medium">Ultima</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {ledgerRows.map((item) => (
-                      <tr key={item.id} className="border-t border-slate-100 hover:bg-slate-50">
-                        <td className="px-4 py-3 font-mono text-xs text-slate-600">{formatDateTime(item.timestamp)}</td>
-                        <td className="px-3 py-3">
-                          <span className={`rounded-full px-2 py-1 text-[11px] font-semibold ${
-                            item.actor_role === 'student'
-                              ? 'bg-blue-50 text-blue-700'
-                              : item.actor_role === 'admin'
-                                ? 'bg-amber-50 text-amber-700'
-                                : 'bg-slate-100 text-slate-700'
-                          }`}>
-                            {roleLabel(item.actor_role)}
-                          </span>
-                        </td>
-                        <td className="px-3 py-3">
-                          <p className="font-semibold text-slate-800">{item.actor_name}</p>
-                          {item.actor_role === 'student' && <p className="text-xs text-slate-400">Studente nel pool</p>}
-                        </td>
-                        <td className="px-3 py-3">
-                          <p className="text-sm text-slate-700">{item.teacher_name || '—'}</p>
-                          <p className="text-xs text-slate-400">{item.teacher_email || ''}</p>
-                        </td>
-                        <td className="max-w-[160px] truncate px-3 py-3 text-slate-600">{item.class_name || '—'}</td>
-                        <td className="max-w-[180px] truncate px-3 py-3 text-slate-600">{item.session_title || '—'}</td>
-                        <td className="px-3 py-3 font-mono text-xs text-slate-700">{item.provider}</td>
-                        <td className="max-w-[180px] truncate px-3 py-3 font-mono text-xs text-slate-500">{item.model}</td>
-                        <td className="px-3 py-3 text-right font-mono text-xs text-slate-600">{formatNumber(item.total_tokens)}</td>
-                        <td className="px-3 py-3 text-right font-semibold text-slate-700">{formatNumber(item.cost_credits)}</td>
-                        <td className="px-4 py-3 text-right font-semibold text-slate-900">{formatCurrency(item.cost)}</td>
-                      </tr>
-                    ))}
+                    {ledgerGroups.map((group) => {
+                      const isOpen = !!expandedLedgerGroups[group.key]
+                      return (
+                        <Fragment key={group.key}>
+                          <tr className="border-t border-slate-100 bg-white hover:bg-slate-50">
+                            <td className="px-4 py-3">
+                              <button
+                                type="button"
+                                onClick={() => setExpandedLedgerGroups((current) => ({ ...current, [group.key]: !current[group.key] }))}
+                                className="flex max-w-[260px] items-center gap-2 text-left"
+                              >
+                                {isOpen ? <ChevronDown className="h-4 w-4 text-slate-400" /> : <ChevronRight className="h-4 w-4 text-slate-400" />}
+                                <span className="min-w-0">
+                                  <span className="block truncate font-semibold text-slate-800">{group.actorName}</span>
+                                  {group.actorRole === 'student' && <span className="block text-xs text-slate-400">Studente nel pool</span>}
+                                </span>
+                              </button>
+                            </td>
+                            <td className="px-3 py-3">
+                              <span className={`rounded-full px-2 py-1 text-[11px] font-semibold ${
+                                group.actorRole === 'student'
+                                  ? 'bg-blue-50 text-blue-700'
+                                  : group.actorRole === 'admin'
+                                    ? 'bg-amber-50 text-amber-700'
+                                    : 'bg-slate-100 text-slate-700'
+                              }`}>
+                                {roleLabel(group.actorRole)}
+                              </span>
+                            </td>
+                            <td className="px-3 py-3">
+                              <p className="text-sm text-slate-700">{group.teacherName || '—'}</p>
+                              <p className="text-xs text-slate-400">{group.teacherEmail || ''}</p>
+                            </td>
+                            <td className="max-w-[220px] truncate px-3 py-3 text-slate-600">
+                              {group.classNames.size ? Array.from(group.classNames).join(', ') : '—'}
+                            </td>
+                            <td className="px-3 py-3 text-right font-semibold text-slate-700">{formatNumber(group.calls)}</td>
+                            <td className="px-3 py-3 text-right font-mono text-xs text-slate-600">{formatNumber(group.tokens)}</td>
+                            <td className="px-3 py-3 text-right font-semibold text-slate-700">{formatNumber(group.credits)}</td>
+                            <td className="px-4 py-3 text-right font-semibold text-slate-900">{formatCurrency(group.cost)}</td>
+                            <td className="px-4 py-3 text-right font-mono text-xs text-slate-500">{formatDateTime(group.lastAt)}</td>
+                          </tr>
+                          {isOpen && group.items.map((item) => (
+                            <tr key={item.id} className="border-t border-slate-100 bg-slate-50/60">
+                              <td className="px-10 py-2 font-mono text-xs text-slate-500">{formatDateTime(item.timestamp)}</td>
+                              <td className="px-3 py-2 text-xs text-slate-500">{item.usage_type}</td>
+                              <td className="px-3 py-2 text-xs text-slate-500">{item.teacher_email || '—'}</td>
+                              <td className="max-w-[220px] truncate px-3 py-2 text-xs text-slate-500">{[item.class_name, item.session_title].filter(Boolean).join(' · ') || '—'}</td>
+                              <td className="px-3 py-2 text-right font-mono text-xs text-slate-500">{item.provider}</td>
+                              <td className="max-w-[180px] truncate px-3 py-2 text-right font-mono text-xs text-slate-500">{item.model}</td>
+                              <td className="px-3 py-2 text-right font-mono text-xs text-slate-500">{formatNumber(item.total_tokens)}</td>
+                              <td className="px-4 py-2 text-right font-semibold text-slate-700">{formatCreditValue(item.cost_credits)}</td>
+                              <td className="px-4 py-2 text-right font-semibold text-slate-800">{formatCurrency(item.cost)}</td>
+                            </tr>
+                          ))}
+                        </Fragment>
+                      )
+                    })}
                   </tbody>
                 </table>
               </div>

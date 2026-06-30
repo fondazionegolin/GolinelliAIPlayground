@@ -750,6 +750,7 @@ export const collaborationApi = {
     profile_key?: string
     participant_ids: string[]
     title?: string
+    seed_messages?: { role: string; content: string; sender_nickname?: string }[]
   }) => api.post('/collaboration/rooms', data),
   listRooms: () => api.get('/collaboration/rooms'),
   getRoom: (roomId: string) => api.get(`/collaboration/rooms/${roomId}`),
@@ -849,6 +850,8 @@ export const teacherbotsApi = {
 export const creditsApi = {
   getBalance: () => api.get('/credits/balance'),
   getHistory: (limit = 20) => api.get('/credits/history', { params: { limit } }),
+  getStudentPoolBalance: () => api.get('/credits/student-pool/balance'),
+  getStudentPoolHistory: (limit = 50) => api.get('/credits/student-pool/history', { params: { limit } }),
   getStats: (startDate?: string, endDate?: string) =>
     api.get('/credits/stats', { params: { start_date: startDate, end_date: endDate } }),
   getLimits: (level?: string) =>

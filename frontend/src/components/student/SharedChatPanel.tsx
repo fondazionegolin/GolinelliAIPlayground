@@ -136,23 +136,38 @@ export default function SharedChatPanel({ room: initialRoom, currentStudentId, l
   const otherParticipants = room.participants.filter((p) => p.id !== currentStudentId)
 
   return (
-    <div className="flex h-full w-full flex-col overflow-hidden bg-white">
-        {/* Header */}
-        <div className="flex items-center gap-3 border-b border-slate-200/70 px-5 py-4">
-          <div className="flex h-10 w-10 items-center justify-center rounded-2xl" style={{ backgroundColor: accent.soft, color: accent.text }}>
-            <Users className="h-5 w-5" />
-          </div>
-          <div className="min-w-0 flex-1">
-            <h3 className="truncate text-sm font-bold text-slate-900">{room.title || (isEnglish ? 'Shared chat' : 'Chat condivisa')}</h3>
-            <p className="truncate text-xs text-slate-500">
-              {room.participants.map((p) => p.nickname).join(', ')}
-            </p>
+    <div className="flex h-full w-full flex-col overflow-hidden bg-neutral-50">
+        {/* Presence bar — connected users shown as named bubbles */}
+        <div className="flex items-center gap-2 border-b border-slate-200/70 bg-white px-4 py-2.5">
+          <span className="flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+            <Users className="h-3.5 w-3.5" />
+          </span>
+          <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto">
+            {room.participants.map((p) => {
+              const me = p.id === currentStudentId
+              return (
+                <span
+                  key={p.id}
+                  className="inline-flex flex-shrink-0 items-center gap-1.5 rounded-full border px-2 py-0.5 text-xs font-semibold"
+                  style={{
+                    borderColor: me ? accent.accent : '#e2e8f0',
+                    backgroundColor: me ? accent.soft : '#f8fafc',
+                    color: me ? accent.text : colorFor(p.nickname),
+                  }}
+                >
+                  <span className="flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold text-white" style={{ backgroundColor: me ? accent.accent : colorFor(p.nickname) }}>
+                    {p.nickname.slice(0, 1).toUpperCase()}
+                  </span>
+                  {me ? (isEnglish ? 'You' : 'Tu') : p.nickname}
+                </span>
+              )
+            })}
           </div>
           {isOwner && (
             <button
               type="button"
               onClick={async () => { try { await collaborationApi.closeRoom(room.id) } catch { /* noop */ } onClose() }}
-              className="rounded-full border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-bold text-rose-600 hover:bg-rose-100"
+              className="flex-shrink-0 rounded-full border border-rose-200 bg-rose-50 px-3 py-1 text-xs font-bold text-rose-600 hover:bg-rose-100"
             >
               {isEnglish ? 'End' : 'Termina'}
             </button>
@@ -160,7 +175,7 @@ export default function SharedChatPanel({ room: initialRoom, currentStudentId, l
           <button
             type="button"
             onClick={onClose}
-            className="flex h-8 w-8 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600"
+            className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600"
             aria-label={isEnglish ? 'Close' : 'Chiudi'}
           >
             <X className="h-4 w-4" />
@@ -168,7 +183,7 @@ export default function SharedChatPanel({ room: initialRoom, currentStudentId, l
         </div>
 
         {/* Messages */}
-        <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto px-5 py-4">
+        <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto px-5 py-4 md:px-8">
           {loading ? (
             <div className="flex h-full items-center justify-center text-slate-400">
               <Loader2 className="h-5 w-5 animate-spin" />

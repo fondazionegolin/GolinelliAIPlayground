@@ -516,7 +516,10 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
                   </div>
                 )}
               </div>
-              <CreditBalancePill audience="teacher" accentColor={accentTheme.accent} />
+              <div className="flex items-center gap-1">
+                <CreditBalancePill audience="teacher" accentColor={accentTheme.accent} />
+                <CreditBalancePill audience="studentPool" accentColor={accentTheme.accent} />
+              </div>
               </div>
 
               {/* Avatar Dropdown */}

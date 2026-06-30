@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react'
-import { Moon } from 'lucide-react'
+import { Moon, Users } from 'lucide-react'
 import { creditsApi, studentApi } from '@/lib/api'
 
 type CreditBalance = {
@@ -11,6 +11,9 @@ type CreditBalance = {
 type CreditHistoryItem = {
   id: string
   timestamp: string
+  student_name?: string | null
+  class_name?: string | null
+  session_title?: string | null
   provider?: string | null
   model?: string | null
   cost_eur: number
@@ -18,11 +21,12 @@ type CreditHistoryItem = {
 }
 
 interface CreditBalancePillProps {
-  audience: 'teacher' | 'student'
+  audience: 'teacher' | 'student' | 'studentPool'
   accentColor: string
 }
 
-const gold = '#ff6600'
+const teacherCreditColor = '#f97316'
+const poolCreditColor = '#0e7490'
 
 function formatCreditValue(value: number) {
   if (value === 0) return '0'
@@ -56,7 +60,9 @@ export function CreditBalancePill({ audience, accentColor }: CreditBalancePillPr
       try {
         const response = audience === 'student'
           ? await studentApi.getCreditBalance()
-          : await creditsApi.getBalance()
+          : audience === 'studentPool'
+            ? await creditsApi.getStudentPoolBalance()
+            : await creditsApi.getBalance()
         if (mounted) setBalance(response.data)
       } catch (err) {
         if (mounted) setBalance(null)
@@ -83,7 +89,9 @@ export function CreditBalancePill({ audience, accentColor }: CreditBalancePillPr
       try {
         const response = audience === 'student'
           ? await studentApi.getCreditHistory(20)
-          : await creditsApi.getHistory(20)
+          : audience === 'studentPool'
+            ? await creditsApi.getStudentPoolHistory(50)
+            : await creditsApi.getHistory(20)
         if (mounted) setHistory(response.data)
       } catch (err) {
         if (mounted) setHistory([])
@@ -111,6 +119,10 @@ export function CreditBalancePill({ audience, accentColor }: CreditBalancePillPr
   const credits = balance?.credits_remaining
   const isLow = typeof credits === 'number' && credits < 20
   const label = typeof credits === 'number' ? credits.toLocaleString('it-IT') : '--'
+  const isPool = audience === 'studentPool'
+  const mainColor = isPool ? poolCreditColor : teacherCreditColor
+  const title = isPool ? 'Pool crediti studenti' : 'Crediti AI docente'
+  const Icon = isPool ? Users : Moon
 
   return (
     <div className="relative" ref={panelRef}>
@@ -118,27 +130,27 @@ export function CreditBalancePill({ audience, accentColor }: CreditBalancePillPr
         type="button"
         className="navbar-inline-control flex h-9 min-w-[66px] flex-col items-center justify-center gap-0.5 rounded-xl px-3 leading-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-0"
         style={{
-          color: isLow ? '#dc2626' : gold,
+          color: isLow ? '#dc2626' : mainColor,
           borderColor: isLow ? 'rgba(220,38,38,0.35)' : 'transparent',
           '--btn-tone': accentColor,
           '--tw-ring-color': accentColor,
         } as CSSProperties}
-        title="Crediti AI disponibili"
-        aria-label={`Crediti AI disponibili: ${label}`}
+        title={title}
+        aria-label={`${title}: ${label}`}
         aria-expanded={open}
         onClick={() => setOpen((value) => !value)}
       >
         <span className="flex items-center gap-1 text-[15px] font-black tabular-nums">
           {label}
-          <Moon className="h-3.5 w-3.5" strokeWidth={2.5} aria-hidden />
+          <Icon className="h-3.5 w-3.5" strokeWidth={2.5} aria-hidden />
         </span>
-        <span className="text-[8px] font-bold uppercase tracking-[0.12em] opacity-75">crediti</span>
+        <span className="text-[8px] font-bold uppercase tracking-[0.12em] opacity-75">{isPool ? 'pool' : 'docente'}</span>
       </button>
 
       {open && (
         <div className="absolute right-0 top-full z-50 mt-2 w-[340px] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl animate-in fade-in zoom-in-95 duration-100">
           <div className="border-b border-slate-100 px-4 py-3">
-            <p className="text-sm font-black text-slate-900">Crediti AI</p>
+            <p className="text-sm font-black text-slate-900">{title}</p>
             <p className="mt-0.5 text-xs font-medium text-slate-500">
               {label} disponibili{typeof balance?.credits_cap === 'number' ? ` su ${balance.credits_cap.toLocaleString('it-IT')}` : ''}
             </p>
@@ -154,9 +166,19 @@ export function CreditBalancePill({ audience, accentColor }: CreditBalancePillPr
                   <div key={item.id} className="grid grid-cols-[1fr_auto] gap-3 rounded-lg px-3 py-2 hover:bg-slate-50">
                     <div className="min-w-0">
                       <p className="text-xs font-bold text-slate-700">{formatWhen(item.timestamp)}</p>
-                      <p className="truncate text-xs text-slate-500">{item.provider || 'provider'}{item.model ? ` · ${item.model}` : ''}</p>
+                      {isPool ? (
+                        <>
+                          <p className="truncate text-xs font-semibold text-slate-600">{item.student_name || 'Studente'}</p>
+                          <p className="truncate text-xs text-slate-500">{[item.class_name, item.session_title].filter(Boolean).join(' · ') || 'Sessione'}</p>
+                        </>
+                      ) : (
+                        <p className="truncate text-xs text-slate-500">{item.provider || 'provider'}{item.model ? ` · ${item.model}` : ''}</p>
+                      )}
+                      {isPool && (
+                        <p className="truncate text-[11px] text-slate-400">{item.provider || 'provider'}{item.model ? ` · ${item.model}` : ''}</p>
+                      )}
                     </div>
-                    <div className="self-center text-right text-xs font-black tabular-nums" style={{ color: gold }}>
+                    <div className="self-center text-right text-xs font-black tabular-nums" style={{ color: mainColor }}>
                       {formatCreditValue(item.cost_credits)} crediti
                     </div>
                   </div>

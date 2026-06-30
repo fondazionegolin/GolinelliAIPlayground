@@ -278,15 +278,19 @@ async def get_student_credit_balance(
     db: Annotated[AsyncSession, Depends(get_db)],
     student: Annotated[SessionStudent, Depends(get_current_student)],
 ):
-    session = (await db.execute(
-        select(Session).where(Session.id == student.session_id)
-    )).scalar_one_or_none()
-    if not session:
+    row = (await db.execute(
+        select(Session, Class)
+        .join(Class, Session.class_id == Class.id)
+        .where(Session.id == student.session_id)
+    )).first()
+    if not row:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
+    session, class_obj = row
 
     return await credit_service.get_balance(
         db,
         student.tenant_id,
+        teacher_id=class_obj.teacher_id,
         class_id=session.class_id,
         session_id=session.id,
         student_id=student.id,

@@ -14,11 +14,12 @@ interface ShareWithModalProps {
   target: ShareTarget
   language: 'it' | 'en'
   accent: { accent: string; text: string; soft: string }
+  seedMessages?: { role: string; content: string; sender_nickname?: string }[]
   onClose: () => void
   onCreated: (room: SharedRoom) => void
 }
 
-export default function ShareWithModal({ target, language, accent, onClose, onCreated }: ShareWithModalProps) {
+export default function ShareWithModal({ target, language, accent, seedMessages, onClose, onCreated }: ShareWithModalProps) {
   const isEnglish = language === 'en'
   const [participants, setParticipants] = useState<SharedParticipant[]>([])
   const [loading, setLoading] = useState(true)
@@ -55,6 +56,7 @@ export default function ShareWithModal({ target, language, accent, onClose, onCr
         profile_key: target.profileKey,
         participant_ids: Array.from(selected),
         title: target.title,
+        seed_messages: seedMessages,
       })
       onCreated(res.data as SharedRoom)
     } catch (e: any) {

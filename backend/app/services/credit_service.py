@@ -61,6 +61,8 @@ class CreditService:
                 CreditLimit.level == LimitLevel.TEACHER,
                 CreditLimit.teacher_id == teacher_id,
             )
+            .order_by(CreditLimit.last_updated.desc(), CreditLimit.id.desc())
+            .limit(1)
         )).scalar_one_or_none()
         if existing:
             return existing
@@ -73,19 +75,43 @@ class CreditService:
         db: AsyncSession,
         tenant_id,
         amount_cap: float = 10.0,
+        teacher_id=None,
     ) -> CreditLimit:
-        """Crea il STUDENT_POOL mensile per un tenant INDIVIDUAL se non esiste già."""
+        """Crea il STUDENT_POOL mensile.
+
+        Nei tenant individuali/legacy il pool è per-docente: i suoi studenti
+        consumano qui, separati dal cap personale del docente.
+        """
+        stmt = select(CreditLimit).where(
+            CreditLimit.tenant_id == tenant_id,
+            CreditLimit.level == LimitLevel.STUDENT_POOL,
+        )
+        if teacher_id:
+            stmt = stmt.where(CreditLimit.teacher_id == teacher_id)
+        else:
+            stmt = stmt.where(CreditLimit.teacher_id.is_(None))
         existing = (await db.execute(
-            select(CreditLimit).where(
-                CreditLimit.tenant_id == tenant_id,
-                CreditLimit.level == LimitLevel.STUDENT_POOL,
-            )
+            stmt.order_by(CreditLimit.last_updated.desc(), CreditLimit.id.desc()).limit(1)
         )).scalar_one_or_none()
         if existing:
             return existing
-        limit = self._make_monthly_limit(tenant_id, LimitLevel.STUDENT_POOL, amount_cap)
+        limit = self._make_monthly_limit(tenant_id, LimitLevel.STUDENT_POOL, amount_cap, teacher_id=teacher_id)
         db.add(limit)
         return limit
+
+    async def ensure_default_teacher_credit_setup(
+        self,
+        db: AsyncSession,
+        tenant_id,
+        teacher_id,
+    ) -> tuple[CreditLimit, CreditLimit]:
+        tenant = (await db.execute(select(Tenant).where(Tenant.id == tenant_id))).scalar_one_or_none()
+        teacher_cap = float(getattr(tenant, "teacher_monthly_cap", 3.0) or 3.0)
+        pool_cap = float(getattr(tenant, "monthly_credit_pool", 10.0) or 10.0)
+        teacher_limit = await self.ensure_teacher_limit(db, tenant_id, teacher_id, teacher_cap)
+        pool_limit = await self.ensure_student_pool_limit(db, tenant_id, pool_cap, teacher_id=teacher_id)
+        await db.flush()
+        return teacher_limit, pool_limit
 
     async def ensure_school_global_limit(
         self,
@@ -151,30 +177,15 @@ class CreditService:
         STUDENT_POOL si applica SOLO quando student_id è presente
         (uso da parte di uno studente), non alle chiamate del docente.
         """
+        tenant = None
         if teacher_id:
-            existing_teacher_limit = (await db.execute(
-                select(CreditLimit).where(
-                    CreditLimit.tenant_id == tenant_id,
-                    CreditLimit.level == LimitLevel.TEACHER,
-                    CreditLimit.teacher_id == teacher_id,
-                )
-            )).scalar_one_or_none()
-            if not existing_teacher_limit:
-                tenant = (await db.execute(
-                    select(Tenant).where(Tenant.id == tenant_id)
-                )).scalar_one_or_none()
-                default_teacher_cap = float(getattr(tenant, "teacher_monthly_cap", 3.0) or 3.0)
-                db.add(self._make_monthly_limit(
-                    tenant_id,
-                    LimitLevel.TEACHER,
-                    default_teacher_cap,
-                    teacher_id=teacher_id,
-                ))
-                await db.flush()
+            await self.ensure_default_teacher_credit_setup(db, tenant_id, teacher_id)
+        tenant = (await db.execute(select(Tenant).where(Tenant.id == tenant_id))).scalar_one_or_none()
+        is_school_tenant = getattr(tenant, "tenant_type", None) == TenantType.SCHOOL
 
-        conditions = [CreditLimit.level == LimitLevel.GLOBAL]
+        conditions = [CreditLimit.level == LimitLevel.GLOBAL] if is_school_tenant else []
 
-        if teacher_id:
+        if teacher_id and not student_id:
             conditions.append(and_(
                 CreditLimit.level == LimitLevel.TEACHER,
                 CreditLimit.teacher_id == teacher_id,
@@ -197,9 +208,19 @@ class CreditService:
                 CreditLimit.level == LimitLevel.STUDENT,
                 CreditLimit.student_id == student_id,
             ))
-            # Aggiunge il pool condiviso studenti (per tenant INDIVIDUAL)
-            conditions.append(CreditLimit.level == LimitLevel.STUDENT_POOL)
+            if teacher_id and not is_school_tenant:
+                conditions.append(and_(
+                    CreditLimit.level == LimitLevel.STUDENT_POOL,
+                    CreditLimit.teacher_id == teacher_id,
+                ))
+            elif not is_school_tenant:
+                conditions.append(and_(
+                    CreditLimit.level == LimitLevel.STUDENT_POOL,
+                    CreditLimit.teacher_id.is_(None),
+                ))
 
+        if not conditions:
+            return []
         stmt = select(CreditLimit).where(
             CreditLimit.tenant_id == tenant_id,
             or_(*conditions),

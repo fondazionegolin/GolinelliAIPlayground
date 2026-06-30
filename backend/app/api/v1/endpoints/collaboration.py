@@ -40,12 +40,19 @@ TEACHER_PREVIEW_NICKNAME = "[Anteprima Docente]"
 
 # ==================== Schemas ====================
 
+class SeedMessage(BaseModel):
+    role: str  # 'user' | 'assistant'
+    content: str
+    sender_nickname: Optional[str] = None
+
+
 class CreateRoomRequest(BaseModel):
     kind: str  # 'teacherbot' | 'assistant'
     teacherbot_id: Optional[UUID] = None
     profile_key: Optional[str] = None
     participant_ids: list[UUID] = []
     title: Optional[str] = None
+    seed_messages: list[SeedMessage] = []  # existing conversation history to share
 
 
 class SendMessageRequest(BaseModel):
@@ -233,6 +240,20 @@ async def create_room(
 
     for mid in member_ids:
         db.add(SharedChatParticipant(room_id=room.id, student_id=mid))
+
+    # Seed the room with the owner's existing conversation so invited peers see the history.
+    for seed in (request.seed_messages or [])[:200]:
+        content = (seed.content or "").strip()
+        if not content:
+            continue
+        is_assistant = seed.role == "assistant"
+        db.add(SharedChatMessage(
+            room_id=room.id,
+            sender_student_id=None if is_assistant else student.id,
+            role="assistant" if is_assistant else "user",
+            sender_nickname=(title if is_assistant else (seed.sender_nickname or student.nickname)),
+            content=content,
+        ))
 
     await db.commit()
     await db.refresh(room)
