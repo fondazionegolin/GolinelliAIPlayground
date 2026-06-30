@@ -11,7 +11,7 @@ import {
   Lightbulb, ClipboardCheck, Sparkles,
   Paperclip, X, File, Database, Download, Loader2,
   Trash2, ChevronLeft, ChevronRight, Wand2, Palette, ChevronDown, Check, ImageIcon,
-  FlaskConical, ScrollText, Languages, Landmark, Sigma, Microscope, BookText, Search, Mic, Users, type LucideIcon
+  FlaskConical, ScrollText, Languages, Landmark, Sigma, Microscope, BookText, Search, Mic, Users, AtSign, type LucideIcon
 } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -37,11 +37,18 @@ import type { TokenUsageJson } from '@/lib/environmentalImpact'
 const StudentRagWorkspace = lazy(() => import('@/components/student/StudentRagWorkspace'))
 const RealtimeInterrogationPanel = lazy(() => import('@/components/student/RealtimeInterrogationPanel'))
 import type { VoiceSessionSource } from '@/components/student/RealtimeInterrogationPanel'
-const SharedChatPanel = lazy(() => import('@/components/student/SharedChatPanel'))
 const ShareWithModal = lazy(() => import('@/components/student/ShareWithModal'))
 import type { SharedRoom } from '@/components/student/SharedChatPanel'
 import type { ShareTarget } from '@/components/student/ShareWithModal'
 import { collaborationApi } from '@/lib/api'
+
+// Deterministic colour per nickname so each collaborator is visually distinct.
+const COLLAB_NAME_COLORS = ['#e3004a', '#7b69c9', '#1278bd', '#0d9488', '#d97706', '#9333ea', '#0891b2']
+function collabNameColor(name: string): string {
+  let h = 0
+  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0
+  return COLLAB_NAME_COLORS[h % COLLAB_NAME_COLORS.length]
+}
 
 interface Message {
   id: string
@@ -51,6 +58,10 @@ interface Message {
   provider?: string
   model?: string
   token_usage_json?: TokenUsageJson | null
+  // Collaboration: present on messages coming from a shared room
+  senderStudentId?: string | null
+  senderNickname?: string | null
+  isPeer?: boolean
 }
 
 interface QuizQuestion {
@@ -1185,6 +1196,58 @@ export default function ChatbotModule({ sessionId, studentId, initialTeacherbotI
     }
   }, [collaborationEnabled, isTeacherPreview])
 
+  // Collaboration: when a shared room is active, mirror its messages into the
+  // normal chat (keeping every feature) and subscribe to live updates.
+  const preSharedMessagesRef = useRef<Message[] | null>(null)
+  const mapSharedMessage = useCallback((m: any): Message => ({
+    id: m.id,
+    role: m.role,
+    content: m.content,
+    timestamp: m.created_at ? new Date(m.created_at) : new Date(),
+    senderStudentId: m.sender_student_id ?? null,
+    senderNickname: m.sender_nickname ?? null,
+    isPeer: !!m.is_peer,
+  }), [])
+
+  useEffect(() => {
+    if (!activeSharedRoom) return
+    const roomId = activeSharedRoom.id
+    if (preSharedMessagesRef.current === null) preSharedMessagesRef.current = messages
+
+    let cancelled = false
+    collaborationApi.getRoom(roomId)
+      .then((res) => {
+        if (cancelled) return
+        const data = res.data as { messages?: any[] }
+        setMessages((data.messages || []).map(mapSharedMessage))
+      })
+      .catch(() => { /* keep optimistic */ })
+
+    const socket = (window as any).socket as { on: (e: string, cb: (d: any) => void) => void; off: (e: string, cb: (d: any) => void) => void } | undefined
+    const onMessage = (d: { room_id: string; message: any }) => {
+      if (d.room_id !== roomId) return
+      setMessages((prev) => prev.some((x) => x.id === d.message.id) ? prev : [...prev, mapSharedMessage(d.message)])
+    }
+    const onClosed = (d: { room_id: string }) => { if (d.room_id === roomId) setActiveSharedRoom(null) }
+    socket?.on('share_chat_message', onMessage)
+    socket?.on('share_chat_closed', onClosed)
+    return () => {
+      cancelled = true
+      socket?.off('share_chat_message', onMessage)
+      socket?.off('share_chat_closed', onClosed)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeSharedRoom, mapSharedMessage])
+
+  // Restore the normal conversation when leaving shared mode.
+  useEffect(() => {
+    if (activeSharedRoom) return
+    if (preSharedMessagesRef.current !== null) {
+      setMessages(preSharedMessagesRef.current)
+      preSharedMessagesRef.current = null
+    }
+  }, [activeSharedRoom])
+
   const sendMessageMutation = useMutation({
     mutationFn: async ({ content, files, existingHistory }: { content: string; files: globalThis.File[]; existingHistory?: Message[] }) => {
       // TEACHERBOT MODE
@@ -1368,6 +1431,17 @@ REGOLE IMPORTANTI:
 
     if ((!messageContent.trim() && messageFiles.length === 0) || sendMessageMutation.isPending || isStreaming) return
 
+    // COLLABORATION MODE — send to the shared room; the socket echoes the message
+    // (and the bot reply) back to every participant. Voice transcribes into the
+    // input, so it works here too; @nickname keeps a message peer-only.
+    if (activeSharedRoom) {
+      const text = messageContent.trim()
+      if (!text) return
+      setInput('')
+      collaborationApi.sendMessage(activeSharedRoom.id, text).catch(() => {})
+      return
+    }
+
     if (profileInterview.active && profileInterview.profileKey) {
       const steps = PROFILE_INTERVIEWS[profileInterview.profileKey]
       const currentStep = steps[profileInterview.stepIndex]
@@ -1525,6 +1599,7 @@ REGOLE IMPORTANTI:
     runStudentStreamRequest,
     chatMode,
     handleImageGeneration,
+    activeSharedRoom,
   ])
 
   const handleNewChat = useCallback(async () => {
@@ -2267,6 +2342,20 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
             <Paperclip className="h-4 w-4" />
           </Button>
 
+          {activeSharedRoom && (
+            <Button
+              variant="ghost" size="icon" className="h-8 w-8 flex-shrink-0 rounded-full text-slate-400 hover:bg-slate-100"
+              style={{ color: 'inherit' }}
+              onClick={() => {
+                setInput((prev) => (prev === '' || prev.endsWith(' ') ? prev + '@' : prev + ' @'))
+                setTimeout(() => inputRef.current?.focus(), 0)
+              }}
+              title={uiLanguage === 'en' ? 'Mention a classmate (private)' : 'Menziona un compagno (privato)'}
+            >
+              <AtSign className="h-4 w-4" />
+            </Button>
+          )}
+
           <div className="relative hidden md:block flex-shrink-0">
             <button
               type="button"
@@ -2855,20 +2944,6 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
           files.forEach(file => addFileWithPreview(file as globalThis.File))
         }}
         >
-          {/* Collaborative shared chat — fills the chat column (same window as a normal chat) */}
-          {activeSharedRoom && studentId && (
-            <div className="absolute inset-0 z-20">
-              <Suspense fallback={null}>
-                <SharedChatPanel
-                  room={activeSharedRoom}
-                  currentStudentId={studentId}
-                  language={uiLanguage}
-                  accent={{ accent: accentTheme.accent, text: accentTheme.text, soft: accentTheme.soft }}
-                  onClose={() => setActiveSharedRoom(null)}
-                />
-              </Suspense>
-            </div>
-          )}
           {mainTab === 'rag' ? (
             <Suspense fallback={<div className="flex h-full items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-violet-400" /></div>}>
               {activeRagSession && (
@@ -3162,7 +3237,7 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
                       {uiLanguage === 'en' ? 'Live voice' : 'Voce live'}
                     </button>
                   )}
-                  {collaborationEnabled && !isTeacherPreview && (selectedTeacherbot || (selectedProfile && !learningMode)) && (
+                  {collaborationEnabled && !isTeacherPreview && !activeSharedRoom && (selectedTeacherbot || (selectedProfile && !learningMode)) && (
                     <button
                       type="button"
                       onClick={() => setSharePickerTarget(
@@ -3322,6 +3397,43 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
                 )}
               </div>
 
+              {/* Collaboration presence bar — connected users as named bubbles */}
+              {activeSharedRoom && (
+                <div className="flex shrink-0 items-center gap-2 border-b border-slate-200/70 bg-white px-4 py-2">
+                  <Users className="h-3.5 w-3.5 flex-shrink-0 text-slate-400" />
+                  <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto">
+                    {activeSharedRoom.participants.map((p) => {
+                      const me = p.id === studentId
+                      const c = me ? accentTheme.accent : collabNameColor(p.nickname)
+                      return (
+                        <span key={p.id} className="inline-flex flex-shrink-0 items-center gap-1.5 rounded-full border px-2 py-0.5 text-xs font-semibold"
+                          style={{ borderColor: me ? accentTheme.accent : '#e2e8f0', backgroundColor: me ? accentTheme.soft : '#f8fafc', color: c }}>
+                          <span className="flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold text-white" style={{ backgroundColor: c }}>
+                            {p.nickname.slice(0, 1).toUpperCase()}
+                          </span>
+                          {me ? (uiLanguage === 'en' ? 'You' : 'Tu') : p.nickname}
+                        </span>
+                      )
+                    })}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      if (activeSharedRoom.owner_student_id === studentId) {
+                        try { await collaborationApi.closeRoom(activeSharedRoom.id) } catch { /* noop */ }
+                      }
+                      setActiveSharedRoom(null)
+                      setSharedInvites((prev) => prev.filter((r) => r.id !== activeSharedRoom.id))
+                    }}
+                    className="flex-shrink-0 rounded-full border border-slate-200 bg-slate-50 px-3 py-0.5 text-xs font-bold text-slate-600 hover:bg-slate-100"
+                  >
+                    {activeSharedRoom.owner_student_id === studentId
+                      ? (uiLanguage === 'en' ? 'End' : 'Termina')
+                      : (uiLanguage === 'en' ? 'Leave' : 'Esci')}
+                  </button>
+                </div>
+              )}
+
               {/* Mode toolbar */}
               <div
                 ref={messagesContainerRef}
@@ -3365,8 +3477,12 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
               )}
             </div>
           ) : (
-            messages.map((message) => (
-              <div key={message.id} className={`flex gap-3 ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+            messages.map((message) => {
+              const isPeerUser = !!activeSharedRoom && message.role === 'user' && message.senderStudentId != null && message.senderStudentId !== studentId
+              const isOwnUser = message.role === 'user' && !isPeerUser
+              const nameColor = collabNameColor(message.senderNickname || '')
+              return (
+              <div key={message.id} className={`flex gap-3 ${isOwnUser ? 'justify-end' : 'justify-start'}`}>
                 {message.role === 'assistant' && (
 	                  <div className={`w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 shadow-md ${selectedTeacherbot ? getTeacherbotColorClass(selectedTeacherbot.color) : ''}`} style={selectedTeacherbot ? undefined : selectedSolidStyle}>
                     {selectedTeacherbot ? (
@@ -3378,12 +3494,25 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
                     )}
                   </div>
                 )}
-	                <div className={`max-w-[92%] md:max-w-[80%] rounded-2xl border px-4 py-3 text-[15px] leading-7 shadow-sm ${message.role === 'user'
+                {isPeerUser && (
+                  <div className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 shadow-sm text-white text-xs font-bold" style={{ backgroundColor: nameColor }}>
+                    {(message.senderNickname || '?').slice(0, 1).toUpperCase()}
+                  </div>
+                )}
+	                <div className={`max-w-[92%] md:max-w-[80%] rounded-2xl border px-4 py-3 text-[15px] leading-7 shadow-sm ${isOwnUser
                   ? 'rounded-br-md'
                   : 'rounded-bl-md border-slate-200 bg-white text-slate-700'
-                  }`}
-                  style={message.role === 'user' ? selectedSoftStyle : undefined}
+                  } ${message.isPeer ? 'ring-1 ring-amber-200' : ''}`}
+                  style={isOwnUser ? selectedSoftStyle : undefined}
                 >
+                  {isPeerUser && (
+                    <div className="mb-0.5 flex items-center gap-1 text-[11px] font-bold" style={{ color: nameColor }}>
+                      {message.senderNickname}
+                      {message.isPeer && (
+                        <span className="ml-1 inline-flex items-center gap-0.5 text-amber-600">@ {uiLanguage === 'en' ? 'private' : 'privato'}</span>
+                      )}
+                    </div>
+                  )}
                   {message.role === 'assistant' ? (
                     <MessageContent
                       content={message.content}
@@ -3397,6 +3526,9 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
                   ) : (
                     <p className="whitespace-pre-wrap">{message.content}</p>
                   )}
+                  {isOwnUser && message.isPeer && (
+                    <div className="mt-1 inline-flex items-center gap-0.5 text-[11px] font-semibold text-amber-600">@ {uiLanguage === 'en' ? 'private' : 'privato'}</div>
+                  )}
                   {message.role === 'assistant' && (
                     <EnvironmentalImpactPill
                       darkMode={false}
@@ -3407,13 +3539,14 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
                     />
                   )}
                 </div>
-                {message.role === 'user' && (
+                {isOwnUser && (
 	              <div className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 shadow-sm border border-white/10 bg-slate-800/92">
                     <User className="h-5 w-5 text-white" />
                   </div>
                 )}
               </div>
-            ))
+              )
+            })
           )}
           {(sendMessageMutation.isPending && !isStreaming) && (
             <div className="flex gap-3">
