@@ -128,23 +128,22 @@ export function CreditBalancePill({ audience, accentColor }: CreditBalancePillPr
     <div className="relative" ref={panelRef}>
       <button
         type="button"
-        className="navbar-inline-control flex h-9 min-w-[66px] flex-col items-center justify-center gap-0.5 rounded-xl px-3 leading-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-0"
+        className="navbar-inline-control flex h-8 min-w-[48px] flex-col items-center justify-center gap-0 rounded-lg px-2 leading-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-0"
         style={{
           color: isLow ? '#dc2626' : mainColor,
           borderColor: isLow ? 'rgba(220,38,38,0.35)' : 'transparent',
           '--btn-tone': accentColor,
           '--tw-ring-color': accentColor,
         } as CSSProperties}
-        title={title}
         aria-label={`${title}: ${label}`}
         aria-expanded={open}
         onClick={() => setOpen((value) => !value)}
       >
-        <span className="flex items-center gap-1 text-[15px] font-black tabular-nums">
+        <span className="flex items-center gap-0.5 text-[12px] font-black tabular-nums">
           {label}
-          <Icon className="h-3.5 w-3.5" strokeWidth={2.5} aria-hidden />
+          <Icon className="h-3 w-3" strokeWidth={2.5} aria-hidden />
         </span>
-        <span className="text-[8px] font-bold uppercase tracking-[0.12em] opacity-75">{isPool ? 'pool' : 'docente'}</span>
+        <span className="text-[7px] font-bold uppercase tracking-[0.08em] opacity-75">{isPool ? 'pool' : 'docente'}</span>
       </button>
 
       {open && (

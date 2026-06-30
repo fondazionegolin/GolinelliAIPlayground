@@ -324,6 +324,20 @@ async def update_board(
     return _serialize_board(board, actor=actor)
 
 
+@router.delete("/{board_id}", status_code=204)
+async def delete_board(
+    board_id: str,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    actor: Annotated[StudentOrTeacher, Depends(get_student_or_teacher)],
+):
+    board = await _get_board_for_actor(db, board_id, actor)
+    if not _can_manage_board(board, actor):
+        raise HTTPException(status_code=403, detail="Eliminazione non consentita")
+    await db.delete(board)
+    await db.commit()
+    return None
+
+
 @router.post("/{board_id}/cards", status_code=201)
 async def create_card(
     board_id: str,

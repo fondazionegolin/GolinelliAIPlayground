@@ -483,7 +483,6 @@ export function StudentNavbar({
                 <button
                   key={item.key}
                   onClick={() => onNavigate(item.key)}
-                  title={item.label}
                   aria-label={item.label}
                   className="flex h-11 w-11 items-center justify-center rounded-xl border text-slate-600 transition-colors hover:bg-white/70 hover:text-[var(--student-accent-text)]"
                   style={isActiveItem

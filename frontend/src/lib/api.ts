@@ -950,6 +950,7 @@ export const boardsApi = {
     students_can_edit?: boolean
   }) => api.post('/boards', data),
   get: (id: string) => api.get(`/boards/${id}`),
+  delete: (id: string) => api.delete(`/boards/${id}`),
   update: (id: string, data: {
     title?: string
     description?: string

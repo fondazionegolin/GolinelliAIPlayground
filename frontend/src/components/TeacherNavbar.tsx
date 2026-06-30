@@ -65,6 +65,22 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
   const [showSettings, setShowSettings] = useState(false)
   const [showWhatsNew, setShowWhatsNew] = useState(false)
   const [voiceActive, setVoiceActive] = useState(false)
+  const [chatBadge, setChatBadge] = useState(0)
+
+  // Count incoming class-chat messages on the chat icon, cleared when opened.
+  useEffect(() => {
+    let socket: any = null
+    const onChat = (d: any) => { if (d?.room_type === 'PUBLIC') setChatBadge((n) => n + 1) }
+    const attach = () => {
+      const s = (window as any).socket
+      if (s && s !== socket) { socket = s; s.on('chat_message', onChat) }
+    }
+    attach()
+    const iv = setInterval(attach, 1500)
+    return () => { clearInterval(iv); if (socket) socket.off('chat_message', onChat) }
+  }, [])
+
+  useEffect(() => { if (chatSidebarOpen) setChatBadge(0) }, [chatSidebarOpen])
   const processedNotificationIdsRef = useRef<Set<string>>(new Set())
   const dropdownRef = useRef<HTMLDivElement>(null)
   const sessionsMenuRef = useRef<HTMLDivElement>(null)
@@ -431,6 +447,14 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
                   title={chatSidebarOpen ? t('navbar.hide_class_chat') : t('navbar.show_class_chat')}
                 >
                   <MessageSquare className="h-4 w-4" />
+                  {!voiceActive && chatBadge > 0 && (
+                    <span
+                      className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-bold text-white ring-2 ring-white"
+                      style={{ backgroundColor: accentTheme.accent }}
+                    >
+                      {chatBadge > 9 ? '9+' : chatBadge}
+                    </span>
+                  )}
                   {voiceActive && (
                     <span
                       className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full text-white ring-2 ring-white"
@@ -641,7 +665,6 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
               <Link
                 key={item.path}
                 to={item.path}
-                title={item.label}
                 aria-label={item.label}
                 className="flex h-11 w-11 items-center justify-center rounded-xl border text-slate-600 transition-colors hover:bg-white/70 hover:text-[var(--teacher-accent-text)]"
                 style={isActiveItem
