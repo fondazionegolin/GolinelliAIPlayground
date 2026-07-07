@@ -6,7 +6,7 @@ import { ZoomableImage } from '@/components/ui/ZoomableImage'
 import {
   Bug, Sparkles, Palette, MousePointerClick, AlertTriangle, Wand2, Wrench,
   CheckCircle, Mail, Globe, Monitor, ImageIcon, X, Share2, Trash2, Plus, Loader2,
-  Send, Inbox, LayoutTemplate, Columns3,
+  Send, Columns3,
 } from 'lucide-react'
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -651,52 +651,7 @@ export default function FeedbackBoard({ isAdmin = false }: { isAdmin?: boolean }
 
   return (
     <div className="space-y-4">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="flex items-center gap-2 text-2xl font-bold text-slate-900">
-            <Inbox className="h-6 w-6 text-slate-600" />
-            {config?.title || 'Board sviluppo'}
-          </h1>
-          <p className="mt-0.5 text-sm text-slate-500">Task da feedback, attività manuali e flusso di sviluppo condiviso</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <select
-            onChange={(e) => applyTemplate(e.target.value)}
-            defaultValue=""
-            disabled={updateConfigMutation.isPending}
-            className="h-9 rounded-lg border border-slate-200 bg-white px-2 text-sm font-medium text-slate-600 outline-none hover:bg-slate-50"
-            title="Carica template board"
-          >
-            <option value="" disabled>Template</option>
-            {(config?.templates || []).map((template) => (
-              <option key={template.id} value={template.id}>{template.label}</option>
-            ))}
-          </select>
-          <button
-            onClick={() => classifyAllMutation.mutate()}
-            disabled={classifyAllMutation.isPending || unclassifiedCount === 0}
-            className="flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-50"
-            title={unclassifiedCount === 0 ? 'Tutti i feedback sono già etichettati' : `${unclassifiedCount} feedback da valutare`}
-          >
-            {classifyAllMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
-            Valuta tutti con AI
-            {unclassifiedCount > 0 && (
-              <span className="rounded-full bg-slate-200 px-1.5 py-0.5 text-[11px] font-bold text-slate-600">{unclassifiedCount}</span>
-            )}
-          </button>
-          {isAdmin && (
-            <button
-              onClick={() => setShowCollaborators(true)}
-              className="flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50"
-            >
-              <Share2 className="h-4 w-4" /> Condividi
-            </button>
-          )}
-        </div>
-      </div>
-
-      <div className="grid gap-2 rounded-xl border border-slate-200 bg-white p-3 shadow-sm lg:grid-cols-[1fr_auto_auto]">
+      <div className="grid gap-2 rounded-xl border border-slate-200 bg-white p-3 shadow-sm lg:grid-cols-[1fr_auto_auto_auto_auto]">
         <form
           onSubmit={(e) => {
             e.preventDefault()
@@ -741,8 +696,39 @@ export default function FeedbackBoard({ isAdmin = false }: { isAdmin?: boolean }
             Colonna
           </button>
         </form>
+        <select
+          onChange={(e) => applyTemplate(e.target.value)}
+          defaultValue=""
+          disabled={updateConfigMutation.isPending}
+          className="h-10 rounded-lg border border-slate-200 bg-slate-50 px-2 text-sm font-medium text-slate-600 outline-none hover:bg-slate-100"
+          title="Carica template board"
+        >
+          <option value="" disabled>Template</option>
+          {(config?.templates || []).map((template) => (
+            <option key={template.id} value={template.id}>{template.label}</option>
+          ))}
+        </select>
+        <button
+          onClick={() => classifyAllMutation.mutate()}
+          disabled={classifyAllMutation.isPending || unclassifiedCount === 0}
+          className="flex items-center justify-center gap-1.5 rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+          title={unclassifiedCount === 0 ? 'Tutti i feedback sono già etichettati' : `${unclassifiedCount} feedback da valutare`}
+        >
+          {classifyAllMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
+          Valuta tutti con AI
+          {unclassifiedCount > 0 && (
+            <span className="rounded-full bg-slate-200 px-1.5 py-0.5 text-[11px] font-bold text-slate-600">{unclassifiedCount}</span>
+          )}
+        </button>
+        {isAdmin && (
+          <button
+            onClick={() => setShowCollaborators(true)}
+            className="flex items-center justify-center gap-1.5 rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50"
+          >
+            <Share2 className="h-4 w-4" /> Condividi
+          </button>
+        )}
         <div className="flex items-center gap-2 rounded-lg border border-dashed border-slate-200 px-3 py-2 text-xs font-semibold text-slate-500">
-          <LayoutTemplate className="h-4 w-4" />
           {columns.length} colonne
         </div>
       </div>

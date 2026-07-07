@@ -555,18 +555,28 @@ function predictImageByNearestClass(
   pixels: Float32Array,
   classifier: ImageClassifierSnapshot
 ): { className: string; confidence: number }[] {
-  const nearestDistances = classifier.classNames.map(() => Number.POSITIVE_INFINITY)
+  const distancesByClass = classifier.classNames.map(() => [] as number[])
 
   for (const sample of classifier.samples) {
     const distance = squaredDistance(pixels, sample.pixels)
-    if (distance < nearestDistances[sample.classIndex]) {
-      nearestDistances[sample.classIndex] = distance
-    }
+    distancesByClass[sample.classIndex]?.push(distance)
   }
 
-  const scores = nearestDistances.map(distance =>
-    Number.isFinite(distance) ? 1 / (Math.sqrt(distance) + 1e-4) : 0
-  )
+  const classDistances = distancesByClass.map((distances) => {
+    if (distances.length === 0) return Number.POSITIVE_INFINITY
+    const nearest = distances.sort((a, b) => a - b).slice(0, Math.min(5, distances.length))
+    return nearest.reduce((sum, distance) => sum + distance, 0) / nearest.length
+  })
+  const finiteDistances = classDistances.filter(Number.isFinite)
+  const minDistance = Math.min(...finiteDistances)
+  const maxDistance = Math.max(...finiteDistances)
+  const range = maxDistance - minDistance
+
+  const scores = classDistances.map((distance) => {
+    if (!Number.isFinite(distance)) return 0
+    if (range < 1e-6) return 1
+    return Math.exp(((maxDistance - distance) / range) * 6)
+  })
   const total = scores.reduce((sum, score) => sum + score, 0) || 1
 
   return classifier.classNames.map((className, i) => ({
