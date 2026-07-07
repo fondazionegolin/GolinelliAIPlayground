@@ -869,10 +869,28 @@ export default function SessionLivePage() {
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
 function SessionDocumentsPanel({ documents }: { documents: SharedDocumentData[] }) {
+  const navigate = useNavigate()
+  const [studentDocsCollapsed, setStudentDocsCollapsed] = useState(false)
   const teacherDocuments = documents.filter((doc) => doc.source === 'teacher')
   const studentDocuments = documents.filter((doc) => doc.source === 'student')
+  const formatPublishedAt = (value: string) =>
+    new Date(value).toLocaleString('it-IT', {
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    })
+  const openDocument = (doc: SharedDocumentData) => {
+    navigate(`/teacher/documents?open=${encodeURIComponent(doc.id)}`)
+  }
   const renderCard = (doc: SharedDocumentData) => (
-    <div key={doc.id} className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+    <button
+      key={doc.id}
+      type="button"
+      onClick={() => openDocument(doc)}
+      className="group rounded-xl border border-slate-200 bg-white p-3 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-md"
+    >
       <div className="flex items-start gap-3">
         <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${doc.source === 'student' ? 'bg-emerald-100 text-emerald-700' : 'bg-indigo-100 text-indigo-700'}`}>
           <FileText className="h-4 w-4" />
@@ -884,11 +902,11 @@ function SessionDocumentsPanel({ documents }: { documents: SharedDocumentData[] 
             Autore: {doc.author_name}
           </p>
           <p className="mt-1 text-[10px] text-slate-400">
-            {doc.doc_type || 'documento'} · {new Date(doc.updated_at).toLocaleDateString('it-IT', { day: 'numeric', month: 'short', year: 'numeric' })}
+            {doc.doc_type || 'documento'} · {formatPublishedAt(doc.updated_at)}
           </p>
         </div>
       </div>
-    </div>
+    </button>
   )
 
   return (
@@ -907,6 +925,44 @@ function SessionDocumentsPanel({ documents }: { documents: SharedDocumentData[] 
           </p>
         ) : (
           <>
+            <section className="rounded-2xl border border-emerald-200 bg-emerald-50/80 p-3">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <div>
+                  <h3 className="text-[10px] font-bold uppercase tracking-widest text-emerald-700">Condivisi dagli studenti</h3>
+                  <p className="mt-1 text-xs text-emerald-700/70">{studentDocuments.length} documenti ricevuti</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setStudentDocsCollapsed(value => !value)}
+                  className="rounded-full bg-white/80 px-3 py-1.5 text-[11px] font-bold text-emerald-700 shadow-sm ring-1 ring-emerald-100 transition-colors hover:bg-white"
+                >
+                  {studentDocsCollapsed ? 'Espandi' : 'Comprimi'}
+                </button>
+              </div>
+              {studentDocuments.length === 0 ? (
+                <div className="rounded-xl border border-dashed border-emerald-200 bg-white/55 px-4 py-5 text-center text-xs text-emerald-700/60">
+                  Nessun documento inviato dagli studenti.
+                </div>
+              ) : studentDocsCollapsed ? (
+                <div className="flex min-h-10 items-center gap-2 overflow-x-auto rounded-xl bg-white/65 px-2 py-2">
+                  {studentDocuments.map((doc) => (
+                    <button
+                      key={doc.id}
+                      type="button"
+                      onClick={() => openDocument(doc)}
+                      title={`${doc.title} · ${doc.author_name}`}
+                      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-emerald-100 text-emerald-700 shadow-sm transition-transform hover:-translate-y-0.5"
+                    >
+                      <FileText className="h-3.5 w-3.5" />
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                  {studentDocuments.map(renderCard)}
+                </div>
+              )}
+            </section>
             <section>
               <h3 className="mb-2 text-[10px] font-bold uppercase tracking-widest text-slate-400">Condivisi dal docente</h3>
               {teacherDocuments.length === 0 ? (
@@ -920,16 +976,30 @@ function SessionDocumentsPanel({ documents }: { documents: SharedDocumentData[] 
               )}
             </section>
             <section>
-              <h3 className="mb-2 text-[10px] font-bold uppercase tracking-widest text-slate-400">Condivisi dagli studenti</h3>
-              {studentDocuments.length === 0 ? (
-                <div className="rounded-xl border border-dashed border-slate-200 px-4 py-5 text-center text-xs text-slate-400">
-                  Nessun documento inviato dagli studenti.
-                </div>
-              ) : (
-                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                  {studentDocuments.map(renderCard)}
-                </div>
-              )}
+              <h3 className="mb-2 text-[10px] font-bold uppercase tracking-widest text-slate-400">Tutti i documenti</h3>
+              <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+                {documents.map((doc) => (
+                  <button
+                    key={`list-${doc.id}`}
+                    type="button"
+                    onClick={() => openDocument(doc)}
+                    className="flex w-full items-center gap-3 border-b border-slate-100 px-3 py-2.5 text-left last:border-b-0 hover:bg-slate-50"
+                  >
+                    <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${doc.source === 'student' ? 'bg-emerald-100 text-emerald-700' : 'bg-indigo-100 text-indigo-700'}`}>
+                      <FileText className="h-3.5 w-3.5" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-xs font-semibold text-slate-800">{doc.title}</p>
+                      <p className="truncate text-[10px] text-slate-500">
+                        {doc.source === 'student' ? 'Studente' : 'Docente'} · {doc.author_name}
+                      </p>
+                    </div>
+                    <span className="shrink-0 text-[10px] font-medium text-slate-400">
+                      {formatPublishedAt(doc.updated_at)}
+                    </span>
+                  </button>
+                ))}
+              </div>
             </section>
           </>
         )}

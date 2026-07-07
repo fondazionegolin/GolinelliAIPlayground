@@ -348,6 +348,8 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
         onSessionChange?.(sessionInfo)
         localStorage.setItem('teacher_selected_session', JSON.stringify(sessionInfo))
         navigate(`/teacher/sessions/${notification.session_id}?tab=chat`)
+      } else if (notification.type === 'student_document') {
+        navigate(`/teacher/sessions/${notification.session_id}?tab=documents`)
       } else if (notification.type === 'task_submitted' || notification.type === 'quiz_completed') {
         navigate(`/teacher/sessions/${notification.session_id}?tab=tasks`)
       } else {

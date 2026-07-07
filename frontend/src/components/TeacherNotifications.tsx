@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { Bell, UserPlus, UserMinus, MessageSquare, ClipboardCheck, X, Share2, CheckCircle2, XCircle, ShieldAlert, Eye, Ban, Check } from 'lucide-react'
+import { Bell, UserPlus, UserMinus, MessageSquare, ClipboardCheck, FileText, X, Share2, CheckCircle2, XCircle, ShieldAlert, Eye, Ban, Check } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
 export interface QuizAnswer {
@@ -12,7 +12,7 @@ export interface QuizAnswer {
 
 export interface TeacherNotification {
   id: string
-  type: 'student_joined' | 'student_left' | 'private_message' | 'task_submitted' | 'public_chat' | 'assignment_shared' | 'quiz_completed' | 'content_alert'
+  type: 'student_joined' | 'student_left' | 'private_message' | 'task_submitted' | 'student_document' | 'public_chat' | 'assignment_shared' | 'quiz_completed' | 'content_alert'
   session_id: string
   session_name?: string
   class_name?: string
@@ -54,6 +54,8 @@ const getNotificationIcon = (type: string) => {
       return <MessageSquare className="h-3 w-3 text-cyan-500" />
     case 'task_submitted':
       return <ClipboardCheck className="h-3 w-3 text-purple-500" />
+    case 'student_document':
+      return <FileText className="h-3 w-3 text-emerald-500" />
     case 'assignment_shared':
       return <Share2 className="h-3 w-3 text-indigo-500" />
     case 'quiz_completed':

@@ -9,6 +9,7 @@ import {
   Clock,
   Copy,
   Edit2,
+  FileText,
   MonitorPlay,
   Pause,
   Plus,
@@ -927,6 +928,16 @@ function SessionRow({
         >
           <ChevronRight className="mr-1.5 h-3.5 w-3.5" />
           {isEnglish ? 'Configure' : 'Configura'}
+        </Button>
+        <Button
+          tone="neutral"
+          surface="soft"
+          density="compact"
+          className="rounded-full bg-white/70"
+          onClick={() => navigate(`/teacher/sessions/${session.id}?tab=documents`)}
+        >
+          <FileText className="mr-1.5 h-3.5 w-3.5" />
+          Documenti
         </Button>
         {isActive && (
           <Button onClick={() => onStatusChange(session.id, 'paused')} disabled={updatePending} tone="neutral" surface="soft" density="compact" className="rounded-full bg-white/70">

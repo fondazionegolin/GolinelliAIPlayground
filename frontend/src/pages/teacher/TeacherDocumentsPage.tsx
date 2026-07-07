@@ -15,6 +15,7 @@ import { SheetChartConfig, SpreadsheetEditor } from '@/components/SpreadsheetEdi
 import { CollaborativeCanvas } from '@/components/CollaborativeCanvas'
 import { Editor } from '@tiptap/react'
 import { useTranslation } from 'react-i18next'
+import { useSearchParams } from 'react-router-dom'
 import {
   PASTEL_ICON_BACKGROUNDS,
   PASTEL_ICON_TEXT,
@@ -125,6 +126,7 @@ const docTone = (type: 'presentation' | 'document' | 'sheet' | 'canvas') => DOC_
 export default function TeacherDocumentsPage() {
   const { toast } = useToast()
   const { i18n } = useTranslation()
+  const [searchParams] = useSearchParams()
   const isEnglish = i18n.resolvedLanguage?.startsWith('en') ?? false
   const { isMobile } = useMobile()
   const defaultDocumentTitle = isEnglish ? 'New Document' : 'Nuovo Documento'
@@ -182,12 +184,21 @@ export default function TeacherDocumentsPage() {
   const [showNewModal, setShowNewModal] = useState(false)
   const [draftSaveState, setDraftSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
   const [viewMode, setViewMode] = useState<'list' | 'editor'>('list')
+  const [studentDocsCollapsed, setStudentDocsCollapsed] = useState(false)
   const [aiPanelAnchor, setAiPanelAnchor] = useState<{ x: number; y: number } | null>(null)
   const [aiOpenRequestId, setAiOpenRequestId] = useState(0)
   const [draggingMargin, setDraggingMargin] = useState<'left' | 'right' | null>(null)
 
   const currentSlide = document.slides?.[currentSlideIndex] || { id: 'fallback', title: 'Slide', blocks: [] }
   const selectedBlock = currentSlide.blocks.find(b => b.id === selectedBlockId)
+  const formatDocumentDateTime = (value: string) =>
+    new Date(value).toLocaleString(dateLocale, {
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    })
 
   const createNewDocument = () => {
     const newDocId = crypto.randomUUID()
@@ -556,6 +567,15 @@ export default function TeacherDocumentsPage() {
       toast({ title: "Errore caricamento", description: "Impossibile aprire questo documento.", variant: "destructive" })
     }
   }
+
+  useEffect(() => {
+    const openDocumentId = searchParams.get('open')
+    if (!openDocumentId || storedDocuments.length === 0) return
+    if (viewMode === 'editor' && document.id === openDocumentId) return
+    const doc = storedDocuments.find((item) => item.id === openDocumentId || item.taskId === openDocumentId)
+    if (doc) loadDocument(doc)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, storedDocuments])
 
   const loadDraft = (doc: DraftDocument) => {
     try {
@@ -954,7 +974,7 @@ export default function TeacherDocumentsPage() {
                           {docIcon(doc.type)}
                         </div>
                         <p className="text-sm font-bold text-slate-800 truncate mb-1">{doc.title}</p>
-                        <p className="text-[10px] text-slate-400">{new Date(doc.updatedAt).toLocaleDateString(dateLocale, { day: 'numeric', month: 'short', year: 'numeric' })}</p>
+                        <p className="text-[10px] text-slate-400">{formatDocumentDateTime(doc.updatedAt)}</p>
                         <button
                           onClick={(e) => handleDeleteDraft(e, doc.id)}
                           className="mt-2 opacity-0 group-hover:opacity-100 text-slate-300 hover:text-red-500 transition-all"
@@ -972,6 +992,66 @@ export default function TeacherDocumentsPage() {
                   <Search className="h-8 w-8 text-slate-200 mb-3" />
                   <p className="text-sm text-slate-400">{isEnglish ? 'No document matches ' : 'Nessun documento corrisponde a '}<strong>"{docSearch}"</strong></p>
                 </div>
+              )}
+
+              {filteredStudentDocuments.length > 0 && (
+                <section className="rounded-[26px] border border-emerald-200/80 bg-emerald-50/70 p-4 shadow-sm">
+                  <div className="mb-3 flex items-center justify-between gap-3">
+                    <div>
+                      <h2 className="text-[10px] font-bold uppercase tracking-widest text-emerald-700">{isEnglish ? 'Shared by Students' : 'Condivisi dagli studenti'} {docSearch && <span className="normal-case font-normal">({filteredStudentDocuments.length})</span>}</h2>
+                      <p className="mt-1 text-xs text-emerald-700/70">{isEnglish ? 'Latest submissions from the class' : 'Ultimi invii ricevuti dalla classe'}</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setStudentDocsCollapsed(value => !value)}
+                      className="rounded-full bg-white/80 px-3 py-1.5 text-[11px] font-bold text-emerald-700 shadow-sm ring-1 ring-emerald-100 transition-colors hover:bg-white"
+                    >
+                      {studentDocsCollapsed ? (isEnglish ? 'Expand' : 'Espandi') : (isEnglish ? 'Collapse' : 'Comprimi')}
+                    </button>
+                  </div>
+
+                  {studentDocsCollapsed ? (
+                    <div className="flex min-h-10 items-center gap-2 overflow-x-auto rounded-2xl bg-white/65 px-2 py-2">
+                      {filteredStudentDocuments.map(doc => (
+                        <button
+                          key={doc.id}
+                          type="button"
+                          onClick={() => loadDocument(doc)}
+                          title={`${doc.title} · ${doc.authorName}`}
+                          className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg shadow-sm transition-transform hover:-translate-y-0.5 ${docColor(doc.type)}`}
+                        >
+                          {docIcon(doc.type)}
+                        </button>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                      {filteredStudentDocuments.map(doc => (
+                        <div
+                          key={doc.id}
+                          onClick={() => loadDocument(doc)}
+                          className={`group cursor-pointer rounded-[20px] p-4 shadow-sm transition-all hover:-translate-y-0.5 ${PASTEL_SURFACES[docTone(doc.type)]}`}
+                        >
+                          <div className={`w-9 h-9 rounded-xl mb-3 flex items-center justify-center ${docColor(doc.type)}`}>
+                            {docIcon(doc.type)}
+                          </div>
+                          <p className="text-sm font-bold text-slate-800 truncate mb-1">{doc.title}</p>
+                          <p className="text-[10px] text-slate-500 flex items-center gap-1 truncate">
+                            <User className="h-3 w-3 text-emerald-500" />
+                            {isEnglish ? 'Author' : 'Autore'}: {doc.authorName}
+                          </p>
+                          <p className="mt-1 text-[10px] text-slate-400">{doc.className} · {formatDocumentDateTime(doc.updatedAt)}</p>
+                          <button
+                            onClick={(e) => handleDeletePublished(e, doc)}
+                            className="mt-2 opacity-0 group-hover:opacity-100 text-slate-300 hover:text-red-500 transition-all"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </section>
               )}
 
               {filteredTeacherDocuments.length > 0 && (
@@ -992,38 +1072,7 @@ export default function TeacherDocumentsPage() {
                           <User className="h-3 w-3 text-slate-400" />
                           {isEnglish ? 'Author' : 'Autore'}: {doc.authorName}
                         </p>
-                        <p className="mt-1 text-[10px] text-slate-400">{doc.className} · {new Date(doc.updatedAt).toLocaleDateString(dateLocale, { day: 'numeric', month: 'short', year: 'numeric' })}</p>
-                        <button
-                          onClick={(e) => handleDeletePublished(e, doc)}
-                          className="mt-2 opacity-0 group-hover:opacity-100 text-slate-300 hover:text-red-500 transition-all"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                </section>
-              )}
-
-              {filteredStudentDocuments.length > 0 && (
-                <section>
-                  <h2 className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-3">{isEnglish ? 'Shared by Students' : 'Condivisi dagli studenti'} {docSearch && <span className="normal-case font-normal">({filteredStudentDocuments.length})</span>}</h2>
-                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-                    {filteredStudentDocuments.map(doc => (
-                      <div
-                        key={doc.id}
-                        onClick={() => loadDocument(doc)}
-                        className={`group cursor-pointer rounded-[24px] p-4 shadow-sm transition-all ${PASTEL_SURFACES[docTone(doc.type)]}`}
-                      >
-                        <div className={`w-10 h-10 rounded-xl mb-3 flex items-center justify-center ${docColor(doc.type)}`}>
-                          {docIcon(doc.type)}
-                        </div>
-                        <p className="text-sm font-bold text-slate-800 truncate mb-1">{doc.title}</p>
-                        <p className="text-[10px] text-slate-500 flex items-center gap-1 truncate">
-                          <User className="h-3 w-3 text-slate-400" />
-                          {isEnglish ? 'Author' : 'Autore'}: {doc.authorName}
-                        </p>
-                        <p className="mt-1 text-[10px] text-slate-400">{doc.className} · {new Date(doc.updatedAt).toLocaleDateString(dateLocale, { day: 'numeric', month: 'short', year: 'numeric' })}</p>
+                        <p className="mt-1 text-[10px] text-slate-400">{doc.className} · {formatDocumentDateTime(doc.updatedAt)}</p>
                         <button
                           onClick={(e) => handleDeletePublished(e, doc)}
                           className="mt-2 opacity-0 group-hover:opacity-100 text-slate-300 hover:text-red-500 transition-all"
@@ -1309,7 +1358,7 @@ export default function TeacherDocumentsPage() {
                       <div className="flex items-center justify-between mt-auto">
                         <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-400">
                           <Clock className="h-3 w-3" />
-                          {new Date(doc.updatedAt).toLocaleDateString(dateLocale, { day: 'numeric', month: 'short' })}
+                          {formatDocumentDateTime(doc.updatedAt)}
                         </div>
                         <span className="text-[9px] font-black uppercase tracking-tighter text-slate-300">{isEnglish ? 'Personal Draft' : 'Bozza Personale'}</span>
                       </div>
@@ -1364,7 +1413,7 @@ export default function TeacherDocumentsPage() {
                       <div className="flex items-center justify-between mt-auto">
                         <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-400">
                           <Calendar className="h-3 w-3" />
-                          {new Date(doc.updatedAt).toLocaleDateString(dateLocale, { day: 'numeric', month: 'short' })}
+                          {formatDocumentDateTime(doc.updatedAt)}
                         </div>
                         <div className="flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-indigo-50 border border-indigo-200/70 text-[9px] font-black uppercase tracking-tighter text-indigo-600">
                           <Share2 className="h-2 w-2" />
