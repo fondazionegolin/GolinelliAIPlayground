@@ -58,6 +58,9 @@ interface Document {
 // Stored Document Metadata for Sidebar
 interface StoredDocument {
   id: string
+  taskId: string
+  submissionId?: string | null
+  source: 'teacher' | 'student'
   title: string
   type: 'presentation' | 'document' | 'sheet' | 'canvas'
   updatedAt: string
@@ -340,7 +343,7 @@ export default function TeacherDocumentsPage() {
   const handleDeletePublished = async (e: React.MouseEvent, doc: StoredDocument) => {
     e.stopPropagation()
     try {
-      await teacherApi.deleteTask(doc.sessionId, doc.id)
+      await teacherApi.deleteTask(doc.sessionId, doc.taskId)
       setStoredDocuments(prev => prev.filter(d => d.id !== doc.id))
       if (document.id === doc.id) {
         setViewMode('list')
@@ -390,44 +393,37 @@ export default function TeacherDocumentsPage() {
     fetchDrafts()
 
     const fetchDocuments = async () => {
-      if (!classesData || classesData.length === 0) return
-      
-      const docs: StoredDocument[] = []
-      
-      for (const session of classesData) {
-        try {
-          const tasksRes = await teacherApi.getTasks(session.id)
-          const tasks = tasksRes.data || []
-          
-          tasks.forEach((t: any) => {
-            if (t.content_json) {
-              try {
-                const content = JSON.parse(t.content_json)
-                if (content.type === 'document_v1' || content.type === 'presentation_v2' || content.type === 'sheet_v1' || content.type === 'canvas_v1' ||
-                    t.task_type === 'presentation' || (t.task_type === 'lesson' && content.sections)) {
-                  
-                  docs.push({
-                    id: t.id,
-                    title: t.title,
-                    type: (content.type === 'presentation_v2' || t.task_type === 'presentation')
-                      ? 'presentation'
-                      : (content.type === 'sheet_v1' ? 'sheet' : content.type === 'canvas_v1' ? 'canvas' : 'document'),
-                    updatedAt: t.created_at,
-                    sessionId: session.id,
-                    sessionName: session.name,
-                    className: session.class_name,
-                    contentJson: t.content_json,
-                    authorName: t.author_name || 'Io'
-                  })
-                }
-              } catch (e) { }
-            }
-          })
-        } catch (e) { console.error(e) }
+      try {
+        const res = await teacherApi.listSharedDocuments()
+        const docs: StoredDocument[] = (res.data || []).map((d: any) => {
+          let type: StoredDocument['type'] = d.doc_type === 'presentation' ? 'presentation' : 'document'
+          try {
+            const content = JSON.parse(d.content_json || '{}')
+            if (content.type === 'presentation_v2') type = 'presentation'
+            else if (content.type === 'sheet_v1') type = 'sheet'
+            else if (content.type === 'canvas_v1') type = 'canvas'
+          } catch {
+            // keep backend-provided type
+          }
+          return {
+            id: d.id,
+            taskId: d.task_id,
+            submissionId: d.submission_id,
+            source: d.source,
+            title: d.title,
+            type,
+            updatedAt: d.updated_at || d.created_at,
+            sessionId: d.session_id,
+            sessionName: d.session_name,
+            className: d.class_name,
+            contentJson: d.content_json,
+            authorName: d.author_name || (d.source === 'student' ? 'Studente' : 'Docente'),
+          }
+        })
+        setStoredDocuments(docs)
+      } catch (e) {
+        console.error('Failed to load shared documents', e)
       }
-      
-      docs.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
-      setStoredDocuments(docs)
     }
 
     fetchDocuments()
@@ -883,7 +879,9 @@ export default function TeacherDocumentsPage() {
   // ── Document list view (default) ─────────────────────────────────────────
   if (!isMobile && viewMode === 'list') {
     const filteredDrafts = draftDocuments.filter(d => fuzzyMatch(docSearch, d.title, d.type))
-    const filteredStored = storedDocuments.filter(d => fuzzyMatch(docSearch, d.title, d.sessionName, d.className))
+    const filteredStored = storedDocuments.filter(d => fuzzyMatch(docSearch, d.title, d.sessionName, d.className, d.authorName))
+    const filteredTeacherDocuments = filteredStored.filter(doc => doc.source === 'teacher')
+    const filteredStudentDocuments = filteredStored.filter(doc => doc.source === 'student')
     const docIcon = (type: string) => {
       if (type === 'presentation') return <Monitor className="h-5 w-5" />
       if (type === 'sheet') return <FileSpreadsheet className="h-5 w-5" />
@@ -969,18 +967,18 @@ export default function TeacherDocumentsPage() {
                 </section>
               )}
 
-              {docSearch && filteredDrafts.length === 0 && filteredStored.length === 0 && (
+              {docSearch && filteredDrafts.length === 0 && filteredTeacherDocuments.length === 0 && filteredStudentDocuments.length === 0 && (
                 <div className="flex flex-col items-center justify-center py-16 text-center">
                   <Search className="h-8 w-8 text-slate-200 mb-3" />
                   <p className="text-sm text-slate-400">{isEnglish ? 'No document matches ' : 'Nessun documento corrisponde a '}<strong>"{docSearch}"</strong></p>
                 </div>
               )}
 
-              {filteredStored.length > 0 && (
+              {filteredTeacherDocuments.length > 0 && (
                 <section>
-                  <h2 className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-3">{isEnglish ? 'Published in Sessions' : 'Pubblicati nelle Sessioni'} {docSearch && <span className="normal-case font-normal">({filteredStored.length})</span>}</h2>
+                  <h2 className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-3">{isEnglish ? 'Shared by Teacher' : 'Condivisi dal docente'} {docSearch && <span className="normal-case font-normal">({filteredTeacherDocuments.length})</span>}</h2>
                   <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-                    {filteredStored.map(doc => (
+                    {filteredTeacherDocuments.map(doc => (
                       <div
                         key={doc.id}
                         onClick={() => loadDocument(doc)}
@@ -990,7 +988,42 @@ export default function TeacherDocumentsPage() {
                           {docIcon(doc.type)}
                         </div>
                         <p className="text-sm font-bold text-slate-800 truncate mb-1">{doc.title}</p>
-                        <p className="text-[10px] text-slate-400">{doc.className} · {new Date(doc.updatedAt).toLocaleDateString(dateLocale, { day: 'numeric', month: 'short', year: 'numeric' })}</p>
+                        <p className="text-[10px] text-slate-500 flex items-center gap-1 truncate">
+                          <User className="h-3 w-3 text-slate-400" />
+                          {isEnglish ? 'Author' : 'Autore'}: {doc.authorName}
+                        </p>
+                        <p className="mt-1 text-[10px] text-slate-400">{doc.className} · {new Date(doc.updatedAt).toLocaleDateString(dateLocale, { day: 'numeric', month: 'short', year: 'numeric' })}</p>
+                        <button
+                          onClick={(e) => handleDeletePublished(e, doc)}
+                          className="mt-2 opacity-0 group-hover:opacity-100 text-slate-300 hover:text-red-500 transition-all"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              )}
+
+              {filteredStudentDocuments.length > 0 && (
+                <section>
+                  <h2 className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-3">{isEnglish ? 'Shared by Students' : 'Condivisi dagli studenti'} {docSearch && <span className="normal-case font-normal">({filteredStudentDocuments.length})</span>}</h2>
+                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                    {filteredStudentDocuments.map(doc => (
+                      <div
+                        key={doc.id}
+                        onClick={() => loadDocument(doc)}
+                        className={`group cursor-pointer rounded-[24px] p-4 shadow-sm transition-all ${PASTEL_SURFACES[docTone(doc.type)]}`}
+                      >
+                        <div className={`w-10 h-10 rounded-xl mb-3 flex items-center justify-center ${docColor(doc.type)}`}>
+                          {docIcon(doc.type)}
+                        </div>
+                        <p className="text-sm font-bold text-slate-800 truncate mb-1">{doc.title}</p>
+                        <p className="text-[10px] text-slate-500 flex items-center gap-1 truncate">
+                          <User className="h-3 w-3 text-slate-400" />
+                          {isEnglish ? 'Author' : 'Autore'}: {doc.authorName}
+                        </p>
+                        <p className="mt-1 text-[10px] text-slate-400">{doc.className} · {new Date(doc.updatedAt).toLocaleDateString(dateLocale, { day: 'numeric', month: 'short', year: 'numeric' })}</p>
                         <button
                           onClick={(e) => handleDeletePublished(e, doc)}
                           className="mt-2 opacity-0 group-hover:opacity-100 text-slate-300 hover:text-red-500 transition-all"

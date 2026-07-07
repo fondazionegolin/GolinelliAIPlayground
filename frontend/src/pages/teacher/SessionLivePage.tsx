@@ -20,7 +20,7 @@ import {
   ArrowLeft, Users, Copy, Play, Square,
   Snowflake, Sun, Bot, Brain, MessageSquare,
   ClipboardList, Plus, Trash2, Check, Eye, ChevronDown, ChevronUp, History, User, BookOpen, Search, X,
-  MonitorPlay, Send, ChevronRight, LayoutGrid, List, FileCode2, Code2
+  MonitorPlay, Send, ChevronRight, LayoutGrid, List, FileCode2, Code2, FileText
 } from 'lucide-react'
 import { llmApi } from '@/lib/api'
 import { PASTEL_SURFACES, type PastelTone } from '@/design/themes/pastelSurfaces'
@@ -52,6 +52,21 @@ interface TaskData {
   created_at: string
 }
 
+interface SharedDocumentData {
+  id: string
+  task_id: string
+  submission_id: string | null
+  source: 'teacher' | 'student'
+  title: string
+  doc_type: string
+  content_json: string
+  updated_at: string
+  session_id: string
+  session_name: string
+  class_name: string
+  author_name: string
+}
+
 interface SessionLiveData {
   session: {
     id: string
@@ -79,12 +94,12 @@ export default function SessionLivePage() {
   const [searchParams] = useSearchParams()
   const [activeTab, setActiveTab] = useState(() => {
     const tab = searchParams.get('tab')
-    return tab === 'tasks' || tab === 'history' ? tab : 'modules'
+    return tab === 'tasks' || tab === 'history' || tab === 'documents' ? tab : 'modules'
   })
 
   useEffect(() => {
     const tab = searchParams.get('tab')
-    if (tab === 'tasks' || tab === 'history') setActiveTab(tab)
+    if (tab === 'tasks' || tab === 'history' || tab === 'documents') setActiveTab(tab)
   }, [searchParams])
   const [showOfflineStudents, setShowOfflineStudents] = useState(false)
   const [showTaskBuilder, setShowTaskBuilder] = useState(false)
@@ -132,6 +147,15 @@ export default function SessionLivePage() {
     enabled: !!sessionId,
   })
 
+  const { data: documentsData = [] } = useQuery<SharedDocumentData[]>({
+    queryKey: ['session-documents', sessionId],
+    queryFn: async () => {
+      const res = await teacherApi.listSharedDocuments({ session_id: sessionId! })
+      return res.data
+    },
+    enabled: !!sessionId,
+  })
+
   const { data, isLoading } = useQuery<SessionLiveData>({
     queryKey: ['session-live', sessionId],
     queryFn: async () => {
@@ -164,11 +188,19 @@ export default function SessionLivePage() {
       })
     }
 
+    const handleTeacherNotification = (d: { type?: string }) => {
+      if (d.type === 'student_document') {
+        queryClient.invalidateQueries({ queryKey: ['session-documents', sessionId] })
+      }
+    }
+
     socket.on('student_frozen_status', handleFrozenStatus)
     socket.on('module_toggled', handleModuleToggled)
+    socket.on('teacher_notification', handleTeacherNotification)
     return () => {
       socket.off('student_frozen_status', handleFrozenStatus)
       socket.off('module_toggled', handleModuleToggled)
+      socket.off('teacher_notification', handleTeacherNotification)
     }
   }, [socket, sessionId, queryClient])
 
@@ -570,10 +602,11 @@ export default function SessionLivePage() {
             <div className="flex-1 min-w-0">
 
               <Tabs value={activeTab} onValueChange={setActiveTab} density="default" tone="neutral" className="mb-4">
-                <TabsList surface="muted" className="grid h-auto w-full grid-cols-3 rounded-xl">
+                <TabsList surface="muted" className="grid h-auto w-full grid-cols-4 rounded-xl">
                   {([
                     { key: 'modules', icon: Brain, label: 'Moduli' },
                     { key: 'tasks',   icon: ClipboardList, label: t('teacher_dashboard.session_tasks') },
+                    { key: 'documents', icon: FileText, label: 'Documenti' },
                     { key: 'history', icon: History, label: t('teacher_dashboard.chat_history') },
                   ] as { key: string; icon: React.FC<{ className?: string }>; label: string }[]).map(tab => (
                     <TabsTrigger key={tab.key} value={tab.key} className="gap-2">
@@ -808,6 +841,11 @@ export default function SessionLivePage() {
                 </div>
               )}
 
+              {/* ── Documenti ── */}
+              {activeTab === 'documents' && (
+                <SessionDocumentsPanel documents={documentsData} />
+              )}
+
               {/* ── Storico ── */}
               {activeTab === 'history' && (
                 <>
@@ -829,6 +867,76 @@ export default function SessionLivePage() {
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
+
+function SessionDocumentsPanel({ documents }: { documents: SharedDocumentData[] }) {
+  const teacherDocuments = documents.filter((doc) => doc.source === 'teacher')
+  const studentDocuments = documents.filter((doc) => doc.source === 'student')
+  const renderCard = (doc: SharedDocumentData) => (
+    <div key={doc.id} className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+      <div className="flex items-start gap-3">
+        <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${doc.source === 'student' ? 'bg-emerald-100 text-emerald-700' : 'bg-indigo-100 text-indigo-700'}`}>
+          <FileText className="h-4 w-4" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-semibold text-slate-800">{doc.title}</p>
+          <p className="mt-1 flex items-center gap-1 text-[11px] text-slate-500">
+            <User className="h-3 w-3" />
+            Autore: {doc.author_name}
+          </p>
+          <p className="mt-1 text-[10px] text-slate-400">
+            {doc.doc_type || 'documento'} · {new Date(doc.updated_at).toLocaleDateString('it-IT', { day: 'numeric', month: 'short', year: 'numeric' })}
+          </p>
+        </div>
+      </div>
+    </div>
+  )
+
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+      <div className="flex items-center gap-2 border-b border-slate-100 px-4 py-3">
+        <FileText className="h-4 w-4 text-slate-500" />
+        <span className="text-sm font-semibold text-slate-800">Documenti</span>
+        <span className="ml-auto rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-500">
+          {documents.length}
+        </span>
+      </div>
+      <div className="space-y-5 p-4">
+        {documents.length === 0 ? (
+          <p className="py-8 text-center text-sm text-slate-400">
+            Nessun documento condiviso o inviato in questa sessione.
+          </p>
+        ) : (
+          <>
+            <section>
+              <h3 className="mb-2 text-[10px] font-bold uppercase tracking-widest text-slate-400">Condivisi dal docente</h3>
+              {teacherDocuments.length === 0 ? (
+                <div className="rounded-xl border border-dashed border-slate-200 px-4 py-5 text-center text-xs text-slate-400">
+                  Nessun documento docente in questa sessione.
+                </div>
+              ) : (
+                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                  {teacherDocuments.map(renderCard)}
+                </div>
+              )}
+            </section>
+            <section>
+              <h3 className="mb-2 text-[10px] font-bold uppercase tracking-widest text-slate-400">Condivisi dagli studenti</h3>
+              {studentDocuments.length === 0 ? (
+                <div className="rounded-xl border border-dashed border-slate-200 px-4 py-5 text-center text-xs text-slate-400">
+                  Nessun documento inviato dagli studenti.
+                </div>
+              ) : (
+                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                  {studentDocuments.map(renderCard)}
+                </div>
+              )}
+            </section>
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
 
 function BotColorDot({ color, large }: { color: string; large?: boolean }) {
   const colorMap: Record<string, string> = {

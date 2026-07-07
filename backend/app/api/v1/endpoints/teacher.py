@@ -1048,6 +1048,98 @@ async def list_document_drafts(
     ]
 
 
+@router.get("/documents/shared")
+async def list_shared_documents(
+    class_id: UUID | None = None,
+    session_id: UUID | None = None,
+    db: Annotated[AsyncSession, Depends(get_db)] = None,
+    teacher: Annotated[User, Depends(get_current_teacher)] = None,
+):
+    """List documents shared by the teacher and submitted by students."""
+    if session_id and not await teacher_can_access_session(db, teacher, session_id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
+    if class_id and not await teacher_can_access_class(db, teacher, class_id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Class not found")
+
+    base_conditions = []
+    if session_id:
+        base_conditions.append(Task.session_id == session_id)
+    if class_id:
+        base_conditions.append(Session.class_id == class_id)
+    base_conditions.extend([
+        Session.tenant_id == teacher.tenant_id,
+        or_(
+            Class.teacher_id == teacher.id,
+            Class.id.in_(select(ClassTeacher.class_id).where(ClassTeacher.teacher_id == teacher.id)),
+            Session.id.in_(select(SessionTeacher.session_id).where(SessionTeacher.teacher_id == teacher.id)),
+        ),
+    ])
+
+    teacher_result = await db.execute(
+        select(Task, Session, Class, User.first_name, User.last_name)
+        .join(Session, Task.session_id == Session.id)
+        .join(Class, Session.class_id == Class.id)
+        .join(User, Class.teacher_id == User.id)
+        .where(Task.task_type.in_([TaskType.LESSON, TaskType.PRESENTATION]))
+        .where(Task.content_json.is_not(None))
+        .where(*base_conditions)
+        .order_by(Task.created_at.desc())
+    )
+
+    student_result = await db.execute(
+        select(Task, TaskSubmission, SessionStudent, Session, Class)
+        .join(TaskSubmission, TaskSubmission.task_id == Task.id)
+        .join(SessionStudent, TaskSubmission.student_id == SessionStudent.id)
+        .join(Session, Task.session_id == Session.id)
+        .join(Class, Session.class_id == Class.id)
+        .where(Task.task_type == TaskType.STUDENT_SUBMISSION)
+        .where(TaskSubmission.content_json.is_not(None))
+        .where(*base_conditions)
+        .order_by(TaskSubmission.submitted_at.desc())
+    )
+
+    documents = []
+    for task, session, class_, first_name, last_name in teacher_result.all():
+        documents.append({
+            "id": str(task.id),
+            "task_id": str(task.id),
+            "submission_id": None,
+            "source": "teacher",
+            "title": task.title,
+            "doc_type": "presentation" if task.task_type == TaskType.PRESENTATION else "document",
+            "content_json": task.content_json,
+            "created_at": task.created_at.isoformat(),
+            "updated_at": task.updated_at.isoformat() if task.updated_at else task.created_at.isoformat(),
+            "session_id": str(session.id),
+            "session_name": session.title,
+            "class_id": str(class_.id),
+            "class_name": class_.name,
+            "author_name": f"{first_name} {last_name}".strip() or "Docente",
+        })
+
+    for task, submission, student, session, class_ in student_result.all():
+        title = task.title.replace("[Studente] ", "", 1)
+        documents.append({
+            "id": str(submission.id),
+            "task_id": str(task.id),
+            "submission_id": str(submission.id),
+            "source": "student",
+            "title": title,
+            "doc_type": submission.content.split(":", 1)[0] if submission.content and ":" in submission.content else "document",
+            "content_json": submission.content_json,
+            "created_at": submission.submitted_at.isoformat(),
+            "updated_at": submission.submitted_at.isoformat(),
+            "session_id": str(session.id),
+            "session_name": session.title,
+            "class_id": str(class_.id),
+            "class_name": class_.name,
+            "author_name": student.nickname,
+        })
+
+    documents.sort(key=lambda item: item["updated_at"], reverse=True)
+    return documents
+
+
 @router.post("/documents/drafts")
 async def create_document_draft(
     request: DocumentDraftCreate,

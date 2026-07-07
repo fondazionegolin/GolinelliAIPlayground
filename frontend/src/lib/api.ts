@@ -486,6 +486,8 @@ export const teacherApi = {
   deleteConversationDocument: (conversationId: string) =>
     api.delete(`/teacher/conversations/${conversationId}/document`),
   listDocumentDrafts: (sessionId?: string) => api.get('/teacher/documents/drafts', { params: { session_id: sessionId } }),
+  listSharedDocuments: (params?: { class_id?: string; session_id?: string }) =>
+    api.get('/teacher/documents/shared', { params }),
   createDocumentDraft: (data: { title: string; doc_type: string; content_json: string; session_id?: string }) =>
     api.post('/teacher/documents/drafts', data),
   updateDocumentDraft: (draftId: string, data: { title?: string; doc_type?: string; content_json?: string; session_id?: string }) =>
