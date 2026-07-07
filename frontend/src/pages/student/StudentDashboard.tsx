@@ -512,6 +512,7 @@ export default function StudentDashboard() {
                       privateChatEnabled={privateChatEnabled}
                       collaborationEnabled={collaborationEnabled}
                       sharedCodingProject={sharedCodingProject}
+                      onModuleBack={() => setActiveModule(null)}
                     />
                   </Suspense>
                 </div>
@@ -796,6 +797,7 @@ function StudentMobileShell({
                       teacherTarget={sessionInfo.teacher ?? undefined}
                       privateChatEnabled={privateChatEnabled}
                       collaborationEnabled={collaborationEnabled}
+                      onModuleBack={() => handleNavigate(null)}
                     />
                   </Suspense>
                 </div>
@@ -1018,7 +1020,7 @@ function HomeView({
   )
 }
 
-function ModuleView({ moduleKey, sessionId, sessionName, openTaskId, studentId, studentName, onTeacherbotNotificationClick, selectedTeacherbotId, oggiImparoLesson, onOggiImparoLessonConsumed, studentAccent, openDocumentTaskId, onOpenDocument, teacherTarget, privateChatEnabled, collaborationEnabled, sharedCodingProject }: {
+function ModuleView({ moduleKey, sessionId, sessionName, openTaskId, studentId, studentName, onTeacherbotNotificationClick, selectedTeacherbotId, oggiImparoLesson, onOggiImparoLessonConsumed, studentAccent, openDocumentTaskId, onOpenDocument, teacherTarget, privateChatEnabled, collaborationEnabled, sharedCodingProject, onModuleBack }: {
   moduleKey: string;
   sessionId: string;
   sessionName?: string;
@@ -1036,6 +1038,7 @@ function ModuleView({ moduleKey, sessionId, sessionName, openTaskId, studentId, 
   privateChatEnabled?: boolean;
   collaborationEnabled?: boolean;
   sharedCodingProject?: { projectId: string; nonce: number } | null;
+  onModuleBack?: () => void;
 }) {
   const { t } = useTranslation()
   // Class chat module - full screen ChatSidebar
@@ -1106,7 +1109,7 @@ function ModuleView({ moduleKey, sessionId, sessionName, openTaskId, studentId, 
   if (moduleKey === 'notebook') {
     return (
       <div className="h-full min-h-0 flex flex-col overflow-hidden">
-        <StudentNotebookModule />
+        <StudentNotebookModule onBack={onModuleBack} />
       </div>
     )
   }

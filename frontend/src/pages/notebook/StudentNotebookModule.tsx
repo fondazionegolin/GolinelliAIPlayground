@@ -14,8 +14,19 @@ const fallback = (
  * Self-contained notebook module for the student dashboard.
  * Manages list ↔ detail navigation via local state (no React Router needed).
  */
-export default function StudentNotebookModule() {
+interface Props {
+  onBack?: () => void
+}
+
+export default function StudentNotebookModule({ onBack }: Props = {}) {
   const [notebookId, setNotebookId] = useState<string | null>(null)
+  const handleBack = () => {
+    if (notebookId) {
+      setNotebookId(null)
+      return
+    }
+    onBack?.()
+  }
 
   return (
     <div className="h-full flex flex-col overflow-hidden">
@@ -23,9 +34,10 @@ export default function StudentNotebookModule() {
         {notebookId ? (
           <NotebookPage
             notebookIdOverride={notebookId}
+            onBack={handleBack}
           />
         ) : (
-          <NotebookListPage onOpen={(id) => setNotebookId(id)} />
+          <NotebookListPage onOpen={(id) => setNotebookId(id)} onBack={onBack} />
         )}
       </Suspense>
     </div>

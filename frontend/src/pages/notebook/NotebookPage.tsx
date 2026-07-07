@@ -2,7 +2,7 @@ import { lazy, Suspense, useCallback, useEffect, useRef, useState, type PointerE
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useParams } from 'react-router-dom'
 import {
-  AlertCircle, BookOpen, Bot, CheckCircle, ChevronDown, ChevronUp, Cpu, FilePlus, Gamepad2, History, Loader2,
+  AlertCircle, ArrowLeft, BookOpen, Bot, CheckCircle, ChevronDown, ChevronUp, Cpu, FilePlus, Gamepad2, History, Loader2,
   Monitor, Music2, PackagePlus, Pause, PanelRight, Play, Plus, RotateCcw, Save, Square, Terminal, Trash2, Wrench, Zap,
 } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
@@ -100,6 +100,7 @@ function normalizeCells(projectType: NotebookProjectType, nextCells: Cell[]) {
 
 interface Props {
   notebookIdOverride?: string
+  onBack?: () => void
 }
 
 const STRUDEL_TEMPLATES = [
@@ -173,7 +174,7 @@ const previewFallback = (
   </div>
 )
 
-export default function NotebookPage({ notebookIdOverride }: Props = {}) {
+export default function NotebookPage({ notebookIdOverride, onBack }: Props = {}) {
   const { i18n } = useTranslation()
   const isEnglish = i18n.resolvedLanguage?.startsWith('en') ?? false
   const { notebookId: notebookIdParam } = useParams<{ notebookId: string }>()
@@ -908,6 +909,19 @@ export default function NotebookPage({ notebookIdOverride }: Props = {}) {
       <div className={`flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl text-slate-900 shadow-[0_18px_60px_rgba(15,23,42,0.10)] ${PASTEL_SURFACES[projectTone]}`}>
         {/* Unified toolbar */}
         <div className="flex flex-wrap items-center gap-2 border-b border-slate-200/70 bg-white/70 px-4 py-2 backdrop-blur-sm">
+          {onBack && (
+            <Button
+              type="button"
+              surface="soft"
+              tone="neutral"
+              density="compact"
+              onClick={onBack}
+              title={isEnglish ? 'Back to notebooks' : 'Torna ai notebook'}
+            >
+              <ArrowLeft className="h-4 w-4" />
+              <span>{isEnglish ? 'Back' : 'Indietro'}</span>
+            </Button>
+          )}
           {editingTitle ? (
             <input
               ref={titleRef}

@@ -485,6 +485,8 @@ export default function SessionLivePage() {
                             </button>
                             <div className="relative">
                               <button
+                                type="button"
+                                onMouseDown={(e) => e.stopPropagation()}
                                 onClick={() => setPushBotStudentId(pushBotStudentId === student.id ? null : student.id)}
                                 title="Invia bot"
                                 className="h-5 w-5 flex items-center justify-center rounded-md text-slate-300 hover:text-[var(--logo-violet)] hover:bg-violet-50 transition-colors"
@@ -494,7 +496,8 @@ export default function SessionLivePage() {
                               {pushBotStudentId === student.id && (
                                 <div
                                   ref={pushPopoverRef}
-                                  className="absolute left-0 top-6 z-50 w-52 bg-white border border-slate-200 rounded-xl shadow-xl overflow-hidden"
+                                  onMouseDown={(e) => e.stopPropagation()}
+                                  className="absolute right-0 top-6 z-50 w-56 max-w-[calc(100vw-2rem)] bg-white border border-slate-200 rounded-xl shadow-xl overflow-hidden"
                                 >
                                   <div className="px-3 py-2 border-b border-slate-100 text-xs font-semibold text-slate-600 flex items-center gap-1.5">
                                     <Send className="h-3 w-3" />

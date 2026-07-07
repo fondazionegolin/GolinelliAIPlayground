@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
-  BookOpen, Cpu, FileCode2, Gamepad2, Layers3, Loader2, Music2, Plus, Search, Sparkles, Trash2, X,
+  ArrowLeft, BookOpen, Cpu, FileCode2, Gamepad2, Layers3, Loader2, Music2, Plus, Search, Sparkles, Trash2, X,
 } from 'lucide-react'
 import { notebooksApi } from '@/lib/api'
 import { formatDistanceToNow } from 'date-fns'
@@ -24,6 +24,7 @@ interface NotebookMeta {
 interface Props {
   /** If provided, called instead of navigate() — used in non-router contexts (student dashboard) */
   onOpen?: (notebookId: string) => void
+  onBack?: () => void
 }
 
 const NOTEBOOK_STYLES: Record<NotebookProjectType, {
@@ -181,7 +182,7 @@ function NotebookCard({
   )
 }
 
-export default function NotebookListPage({ onOpen }: Props = {}) {
+export default function NotebookListPage({ onOpen, onBack }: Props = {}) {
   const { i18n } = useTranslation()
   const isEnglish = i18n.resolvedLanguage?.startsWith('en') ?? false
   const navigate = useNavigate()
@@ -275,7 +276,8 @@ export default function NotebookListPage({ onOpen }: Props = {}) {
 
   if (!notebooks || totalCount === 0) {
     return (
-      <div className="flex h-full flex-col overflow-y-auto bg-slate-50">
+      <div className="relative flex h-full flex-col overflow-y-auto bg-slate-50">
+        {onBack && <NotebookBackButton isEnglish={isEnglish} onBack={onBack} className="absolute left-4 top-4 z-10" />}
         <section className="flex min-h-full items-center justify-center px-4 py-10 text-center md:px-6">
           <div className="w-full max-w-4xl">
             <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-lg bg-white shadow-sm ring-1 ring-slate-200">
@@ -334,6 +336,7 @@ export default function NotebookListPage({ onOpen }: Props = {}) {
       <div className="flex-1 overflow-y-auto">
         <section className="border-b border-slate-200 bg-white">
           <div className="mx-auto max-w-6xl px-4 py-7 md:px-6 md:py-8">
+            {onBack && <NotebookBackButton isEnglish={isEnglish} onBack={onBack} className="mb-4" />}
             <div className="mx-auto max-w-3xl text-center">
               <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">Notebook</p>
               <h2 className="mt-2 text-3xl font-black tracking-tight text-slate-950">
@@ -493,6 +496,31 @@ export default function NotebookListPage({ onOpen }: Props = {}) {
         )}
       </AnimatePresence>
     </div>
+  )
+}
+
+function NotebookBackButton({
+  isEnglish,
+  onBack,
+  className = '',
+}: {
+  isEnglish: boolean
+  onBack: () => void
+  className?: string
+}) {
+  return (
+    <Button
+      type="button"
+      tone="neutral"
+      surface="soft"
+      density="compact"
+      onClick={onBack}
+      className={className}
+      title={isEnglish ? 'Back' : 'Indietro'}
+    >
+      <ArrowLeft className="h-4 w-4" />
+      <span>{isEnglish ? 'Back' : 'Indietro'}</span>
+    </Button>
   )
 }
 
