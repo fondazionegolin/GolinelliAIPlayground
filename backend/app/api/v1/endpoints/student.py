@@ -835,6 +835,7 @@ async def submit_document(
 
     # Create a task for this submission
     task = Task(
+        tenant_id=student.tenant_id,
         session_id=student.session_id,
         title=f"[Studente] {request.title}",
         description=f"Documento inviato da {student.nickname}",

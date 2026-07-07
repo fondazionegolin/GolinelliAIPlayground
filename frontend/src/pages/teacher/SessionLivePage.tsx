@@ -857,7 +857,7 @@ interface SubmissionData {
   id: string
   student_id: string
   student_nickname: string
-  content: string
+  content: string | null
   content_json?: string | null
   submitted_at: string
   score: string | null
@@ -875,6 +875,146 @@ interface QuizWrongAnswerDetail {
   question: string
   selectedAnswer: string
   correctAnswer: string
+}
+
+function parseTaskContent(raw?: string | null): Record<string, any> | null {
+  if (!raw) return null
+  try {
+    const parsed = JSON.parse(raw)
+    return parsed && typeof parsed === 'object' ? parsed : null
+  } catch {
+    return null
+  }
+}
+
+function TaskContentPreview({ task }: { task: TaskData }) {
+  const content = parseTaskContent(task.content_json)
+  if (!task.content_json) return null
+
+  if (content) {
+    const html = content.html || content.htmlContent || content.content
+    if (typeof html === 'string' && /<\/?[a-z][\s\S]*>/i.test(html)) {
+      return (
+        <div className="overflow-hidden rounded-lg border bg-white">
+          <iframe
+            srcDoc={html}
+            sandbox="allow-same-origin"
+            className="h-80 w-full border-0"
+            title={`Contenuto ${task.title}`}
+          />
+        </div>
+      )
+    }
+
+    const slides = Array.isArray(content.slides) ? content.slides : null
+    if (slides) {
+      return (
+        <div className="rounded-lg border bg-white p-3">
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+            Presentazione · {slides.length} slide
+          </p>
+          <div className="space-y-2">
+            {slides.map((slide: any, index: number) => (
+              <div key={slide.id || index} className="rounded-md border border-slate-200 bg-slate-50 p-2">
+                <p className="text-sm font-semibold text-slate-800">{index + 1}. {slide.title || `Slide ${index + 1}`}</p>
+                {Array.isArray(slide.blocks) && slide.blocks.length > 0 && (
+                  <p className="mt-1 text-xs text-slate-500">{slide.blocks.length} elementi</p>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )
+    }
+
+    if (Array.isArray(content.questions)) {
+      return (
+        <div className="rounded-lg border bg-white p-3">
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+            Quiz · {content.questions.length} domande
+          </p>
+          <ol className="list-decimal space-y-2 pl-5 text-sm text-slate-700">
+            {content.questions.map((question: any, index: number) => (
+              <li key={index}>{question.question || question.text || `Domanda ${index + 1}`}</li>
+            ))}
+          </ol>
+        </div>
+      )
+    }
+
+    const exerciseText = content.instructions || content.text || content.description
+    if (typeof exerciseText === 'string' && exerciseText.trim()) {
+      return (
+        <div className="rounded-lg border bg-white p-3 text-sm leading-6 text-slate-700">
+          {content.title && <p className="mb-2 font-semibold text-slate-900">{content.title}</p>}
+          <p className="whitespace-pre-wrap">{exerciseText}</p>
+        </div>
+      )
+    }
+  }
+
+  return (
+    <details className="border rounded-lg bg-slate-50">
+      <summary className="cursor-pointer px-3 py-2 text-sm font-medium text-slate-700">Mostra dati tecnici</summary>
+      <pre className="text-xs p-3 overflow-x-auto whitespace-pre-wrap break-all">{task.content_json}</pre>
+    </details>
+  )
+}
+
+function SubmissionContentPreview({ submission, task }: { submission: SubmissionData; task: TaskData }) {
+  const text = submission.content?.trim()
+  const submissionContent = parseTaskContent(submission.content_json)
+  const taskContent = parseTaskContent(task.content_json)
+
+  if (task.task_type === 'quiz' && Array.isArray(submissionContent?.answers)) {
+    const questions = Array.isArray(taskContent?.questions) ? taskContent.questions : []
+    return (
+      <div className="space-y-2">
+        {text && <p className="text-sm text-slate-700">{text}</p>}
+        <div className="rounded-lg border border-slate-200 bg-white p-2">
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+            Risposte quiz
+          </p>
+          <ol className="list-decimal space-y-2 pl-5 text-sm text-slate-700">
+            {submissionContent.answers.map((answer: any, index: number) => {
+              const questionIndex = Number(answer.questionIndex ?? index)
+              const selectedIndex = Number(answer.selectedIndex)
+              const question = questions[questionIndex]
+              const selectedAnswer = Array.isArray(question?.options)
+                ? question.options[selectedIndex]
+                : `Opzione ${Number.isFinite(selectedIndex) ? selectedIndex + 1 : '-'}`
+              return (
+                <li key={`${submission.id}-answer-${index}`}>
+                  <span className="font-medium">{question?.question || `Domanda ${questionIndex + 1}`}</span>
+                  <span className="block text-slate-600">Risposta: {selectedAnswer || 'Non disponibile'}</span>
+                </li>
+              )
+            })}
+          </ol>
+        </div>
+      </div>
+    )
+  }
+
+  const structuredText = submissionContent?.text || submissionContent?.content || submissionContent?.description
+  if (typeof structuredText === 'string' && structuredText.trim()) {
+    return <p className="whitespace-pre-wrap text-sm text-slate-700">{structuredText}</p>
+  }
+
+  if (text) {
+    return <p className="whitespace-pre-wrap text-sm text-slate-700">{text}</p>
+  }
+
+  if (submission.content_json) {
+    return (
+      <details className="rounded-lg border border-slate-200 bg-white">
+        <summary className="cursor-pointer px-3 py-2 text-sm font-medium text-slate-700">Mostra dati consegna</summary>
+        <pre className="overflow-x-auto whitespace-pre-wrap break-all p-3 text-xs">{submission.content_json}</pre>
+      </details>
+    )
+  }
+
+  return <p className="text-sm text-muted-foreground">Risposta vuota.</p>
 }
 
 function TaskCard({ task, sessionId, isExpanded, onToggle, onPublish, onDelete }: TaskCardProps) {
@@ -1039,12 +1179,7 @@ function TaskCard({ task, sessionId, isExpanded, onToggle, onPublish, onDelete }
               {task.description && (
                 <p className="text-sm text-slate-700"><span className="font-medium">Descrizione:</span> {task.description}</p>
               )}
-              {task.content_json && (
-                <details className="border rounded-lg bg-slate-50">
-                  <summary className="cursor-pointer px-3 py-2 text-sm font-medium text-slate-700">Apri contenuto del compito</summary>
-                  <pre className="text-xs p-3 overflow-x-auto whitespace-pre-wrap break-all">{task.content_json}</pre>
-                </details>
-              )}
+              {task.content_json && <TaskContentPreview task={task} />}
             </div>
           )}
 
@@ -1065,7 +1200,9 @@ function TaskCard({ task, sessionId, isExpanded, onToggle, onPublish, onDelete }
                           {new Date(sub.submitted_at).toLocaleString('it-IT')}
                         </span>
                       </div>
-                      <p className="text-sm mb-2">{sub.content}</p>
+                      <div className="mb-2">
+                        <SubmissionContentPreview submission={sub} task={task} />
+                      </div>
                       {sub.score && (
                         <div className="flex items-center gap-2">
                           <span className="text-xs font-medium bg-emerald-100 text-emerald-700 px-2 py-1 rounded">
