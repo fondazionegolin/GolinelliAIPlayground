@@ -1090,6 +1090,13 @@ function ImageClassification({ onBack, sessionId }: { onBack: () => void; sessio
       alert(t('classification.min_samples_image'))
       return
     }
+    const underSampledClasses = classes.filter(c => c.samples.length < 3)
+    if (underSampledClasses.length > 0) {
+      alert(isEnglish
+        ? `Add at least 3 samples for each class before training. Missing: ${underSampledClasses.map(c => c.name).join(', ')}`
+        : `Aggiungi almeno 3 esempi per ogni classe prima dell'addestramento. Mancano: ${underSampledClasses.map(c => c.name).join(', ')}`)
+      return
+    }
 
     setIsTraining(true)
 

@@ -12,7 +12,7 @@ import {
   Plus, Trash2, Play, ChevronDown, ChevronUp,
   ListChecks, CloudLightning, MessageSquare, ThumbsUp, GripVertical, Pencil,
   Radio, FileBarChart2, HelpCircle, X, SkipForward, BarChart2, Smartphone,
-  ArrowRight, CheckCircle2, Zap,
+  ArrowRight, CheckCircle2, Zap, Pause,
 } from 'lucide-react'
 
 // ── Types ──
@@ -276,18 +276,26 @@ const TUTORIAL_STEPS = [
 
 function HowItWorks({ onDismiss }: { onDismiss: () => void }) {
   const [active, setActive] = useState(0)
+  const [paused, setPaused] = useState(false)
 
   useEffect(() => {
+    if (paused) return
     const id = setInterval(() => setActive(prev => (prev + 1) % TUTORIAL_STEPS.length), 3000)
     return () => clearInterval(id)
-  }, [])
+  }, [paused])
 
   const step = TUTORIAL_STEPS[active]
   const StepIcon = step.icon
   const Visual = step.visual
 
   return (
-    <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-900 via-slate-800 to-indigo-950 p-6 md:p-8 shadow-2xl mb-8">
+    <div
+      className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-900 via-slate-800 to-indigo-950 p-6 md:p-8 shadow-2xl mb-8"
+      onMouseEnter={() => setPaused(true)}
+      onMouseLeave={() => setPaused(false)}
+      onFocus={() => setPaused(true)}
+      onBlur={() => setPaused(false)}
+    >
       {/* Background decoration */}
       <div className="absolute top-0 right-0 w-72 h-72 bg-white/[0.02] rounded-full -translate-y-24 translate-x-20 pointer-events-none" />
       <div className="absolute bottom-0 left-0 w-48 h-48 bg-white/[0.02] rounded-full translate-y-16 -translate-x-10 pointer-events-none" />
@@ -299,6 +307,13 @@ function HowItWorks({ onDismiss }: { onDismiss: () => void }) {
         title="Chiudi tutorial"
       >
         <X className="h-4 w-4" />
+      </button>
+      <button
+        onClick={() => setPaused(prev => !prev)}
+        className="absolute top-4 right-14 w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white/60 hover:text-white transition-colors"
+        title={paused ? 'Riprendi tutorial' : 'Ferma tutorial'}
+      >
+        {paused ? <Play className="h-4 w-4" /> : <Pause className="h-4 w-4" />}
       </button>
 
       {/* Header */}
@@ -726,6 +741,7 @@ function InteractionEditor({
         ))}
       </div>
 
+      <div className="sticky bottom-0 z-30 space-y-3 border-t border-slate-100 bg-white/95 py-3 backdrop-blur">
       <div className="relative">
         <Button
           variant="outline"
@@ -735,7 +751,7 @@ function InteractionEditor({
           <Plus className="h-4 w-4 mr-2" /> Aggiungi slide
         </Button>
         {showTypeMenu && (
-          <div className="absolute top-full mt-1 left-0 right-0 bg-white rounded-xl shadow-lg border border-slate-200 z-20 p-2 grid grid-cols-2 gap-1">
+          <div className="absolute bottom-full mb-1 left-0 right-0 bg-white rounded-xl shadow-lg border border-slate-200 z-20 p-2 grid grid-cols-2 gap-1">
             {(Object.keys(SLIDE_LABELS) as SlideType[]).map(type => {
               const Icon = SLIDE_ICONS[type]
               return (
@@ -752,7 +768,7 @@ function InteractionEditor({
         )}
       </div>
 
-      <div className="flex justify-end gap-3 pt-2 border-t border-slate-100">
+      <div className="flex justify-end gap-3">
         <Button tone="neutral" surface="ghost" onClick={onCancel}>Annulla</Button>
         <Button
           tone="accent" surface="solid"
@@ -761,6 +777,7 @@ function InteractionEditor({
         >
           {saveMutation.isPending ? 'Salvataggio...' : interactionId ? 'Salva modifiche' : 'Salva e vai al pannello →'}
         </Button>
+      </div>
       </div>
     </div>
   )
