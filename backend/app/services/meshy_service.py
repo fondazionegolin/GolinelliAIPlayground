@@ -10,6 +10,7 @@ logger = logging.getLogger(__name__)
 
 MESHY_V1_URL = "https://api.meshy.ai/openapi/v1"
 MESHY_V2_URL = "https://api.meshy.ai/openapi/v2"
+OPENAI_IMAGE_MODEL = "gpt-image-2"
 
 
 class MeshyService:
@@ -66,7 +67,7 @@ class MeshyService:
         quality: str = "standard",
         style: str = "natural",
     ) -> dict:
-        """Generate an image with DALL-E 3. Returns {image_data (base64), image_mime, revised_prompt}."""
+        """Generate an image with OpenAI Images. Returns {image_data (base64), image_mime, revised_prompt}."""
         if not settings.OPENAI_API_KEY:
             raise ValueError("OPENAI_API_KEY not configured")
 
@@ -74,10 +75,9 @@ class MeshyService:
         client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
 
         response = await client.images.generate(
-            model="dall-e-3",
+            model=OPENAI_IMAGE_MODEL,
             prompt=prompt,
             size=size,  # type: ignore[arg-type]
-            quality=quality,  # type: ignore[arg-type]
             n=1,
         )
         image_data = response.data[0]

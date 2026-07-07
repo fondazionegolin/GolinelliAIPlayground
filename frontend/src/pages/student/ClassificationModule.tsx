@@ -26,6 +26,16 @@ interface ImageClass {
   color: string
 }
 
+interface ImageClassifierSample {
+  classIndex: number
+  pixels: Float32Array
+}
+
+interface ImageClassifierSnapshot {
+  classNames: string[]
+  samples: ImageClassifierSample[]
+}
+
 interface TextSample {
   text: string
   label: string
@@ -505,6 +515,66 @@ function uid(): string {
   return String(Date.now()) + String(Math.random()).slice(2, 8)
 }
 
+function normalizedPixelsFromImageData(imageData: ImageData): Float32Array {
+  const pixels = new Float32Array(imageData.width * imageData.height * 3)
+  let sum = 0
+  let idx = 0
+  for (let i = 0; i < imageData.data.length; i += 4) {
+    const r = imageData.data[i] / 255
+    const g = imageData.data[i + 1] / 255
+    const b = imageData.data[i + 2] / 255
+    pixels[idx++] = r
+    pixels[idx++] = g
+    pixels[idx++] = b
+    sum += r + g + b
+  }
+
+  const mean = sum / pixels.length
+  let variance = 0
+  for (let i = 0; i < pixels.length; i++) {
+    const delta = pixels[i] - mean
+    variance += delta * delta
+  }
+  const std = Math.sqrt(variance / pixels.length) || 1
+  for (let i = 0; i < pixels.length; i++) {
+    pixels[i] = (pixels[i] - mean) / std
+  }
+  return pixels
+}
+
+function squaredDistance(a: Float32Array, b: Float32Array): number {
+  let distance = 0
+  for (let i = 0; i < a.length; i++) {
+    const delta = a[i] - b[i]
+    distance += delta * delta
+  }
+  return distance / a.length
+}
+
+function predictImageByNearestClass(
+  pixels: Float32Array,
+  classifier: ImageClassifierSnapshot
+): { className: string; confidence: number }[] {
+  const nearestDistances = classifier.classNames.map(() => Number.POSITIVE_INFINITY)
+
+  for (const sample of classifier.samples) {
+    const distance = squaredDistance(pixels, sample.pixels)
+    if (distance < nearestDistances[sample.classIndex]) {
+      nearestDistances[sample.classIndex] = distance
+    }
+  }
+
+  const scores = nearestDistances.map(distance =>
+    Number.isFinite(distance) ? 1 / (Math.sqrt(distance) + 1e-4) : 0
+  )
+  const total = scores.reduce((sum, score) => sum + score, 0) || 1
+
+  return classifier.classNames.map((className, i) => ({
+    className,
+    confidence: (scores[i] / total) * 100,
+  }))
+}
+
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export default function ClassificationModule({ sessionId }: { sessionId?: string } = {}) {
@@ -883,6 +953,22 @@ function ImageClassification({ onBack, sessionId }: { onBack: () => void; sessio
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const captureIntervalRef = useRef<NodeJS.Timeout | null>(null)
   const predictionIntervalRef = useRef<NodeJS.Timeout | null>(null)
+  const classifierRef = useRef<ImageClassifierSnapshot | null>(null)
+  const isPredictionFrameRunningRef = useRef(false)
+
+  const extractCurrentFramePixels = useCallback(() => {
+    if (!videoRef.current || !canvasRef.current || videoRef.current.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
+      return null
+    }
+
+    const ctx = canvasRef.current.getContext('2d')
+    if (!ctx) return null
+
+    canvasRef.current.width = 64
+    canvasRef.current.height = 64
+    ctx.drawImage(videoRef.current, 0, 0, 64, 64)
+    return normalizedPixelsFromImageData(ctx.getImageData(0, 0, 64, 64))
+  }, [])
 
   useEffect(() => {
     const initWebcam = async () => {
@@ -1076,6 +1162,7 @@ function ImageClassification({ onBack, sessionId }: { onBack: () => void; sessio
         weightSpecs: data.weightSpecs,
         weightData: bytes.buffer,
       }))
+      classifierRef.current = null
       setModel(loadedModel)
       setClasses((data.classNames as string[]).map((name, i) => ({
         id: String(i + 1), name, samples: [], color: CLASS_COLORS[i % CLASS_COLORS.length],
@@ -1103,6 +1190,8 @@ function ImageClassification({ onBack, sessionId }: { onBack: () => void; sessio
     try {
       const xs: number[][] = []
       const ys: number[] = []
+      const classifierSamples: ImageClassifierSample[] = []
+      const classNames = classes.map(c => c.name)
 
       for (let classIdx = 0; classIdx < classes.length; classIdx++) {
         const cls = classes[classIdx]
@@ -1118,13 +1207,9 @@ function ImageClassification({ onBack, sessionId }: { onBack: () => void; sessio
           ctx.drawImage(img, 0, 0, 64, 64)
 
           const imageData = ctx.getImageData(0, 0, 64, 64)
-          const pixels: number[] = []
-          for (let i = 0; i < imageData.data.length; i += 4) {
-            pixels.push(imageData.data[i] / 255)
-            pixels.push(imageData.data[i + 1] / 255)
-            pixels.push(imageData.data[i + 2] / 255)
-          }
-          xs.push(pixels)
+          const pixels = normalizedPixelsFromImageData(imageData)
+          classifierSamples.push({ classIndex: classIdx, pixels })
+          xs.push(Array.from(pixels))
           ys.push(classIdx)
         }
       }
@@ -1146,7 +1231,7 @@ function ImageClassification({ onBack, sessionId }: { onBack: () => void; sessio
       })
 
       const xTensor = tf.tensor2d(xs)
-      const yTensor = tf.tensor1d(ys, 'float32')
+      const yTensor = tf.tensor1d(ys, 'int32')
 
       await newModel.fit(xTensor, yTensor, {
         epochs: 20,
@@ -1156,6 +1241,8 @@ function ImageClassification({ onBack, sessionId }: { onBack: () => void; sessio
       })
 
       setModel(newModel)
+      classifierRef.current = { classNames, samples: classifierSamples }
+      setPredictions([])
       xTensor.dispose()
       yTensor.dispose()
 
@@ -1169,37 +1256,37 @@ function ImageClassification({ onBack, sessionId }: { onBack: () => void; sessio
 
   const startPrediction = () => {
     if (!model) return
+    if (predictionIntervalRef.current) clearInterval(predictionIntervalRef.current)
     setIsPredicting(true)
 
     predictionIntervalRef.current = setInterval(async () => {
-      if (!videoRef.current || !canvasRef.current || !model) return
+      if (!model || isPredictionFrameRunningRef.current) return
 
-      const ctx = canvasRef.current.getContext('2d')
-      if (!ctx) return
+      const pixels = extractCurrentFramePixels()
+      if (!pixels) return
 
-      canvasRef.current.width = 64
-      canvasRef.current.height = 64
-      ctx.drawImage(videoRef.current, 0, 0, 64, 64)
-
-      const imageData = ctx.getImageData(0, 0, 64, 64)
-      const pixels: number[] = []
-      for (let i = 0; i < imageData.data.length; i += 4) {
-        pixels.push(imageData.data[i] / 255)
-        pixels.push(imageData.data[i + 1] / 255)
-        pixels.push(imageData.data[i + 2] / 255)
+      const classifier = classifierRef.current
+      if (classifier) {
+        setPredictions(predictImageByNearestClass(pixels, classifier))
+        return
       }
 
-      const input = tf.tensor2d([pixels])
-      const prediction = model.predict(input) as tf.Tensor
-      const probs = await prediction.data()
+      isPredictionFrameRunningRef.current = true
+      try {
+        const input = tf.tensor2d([Array.from(pixels)])
+        const prediction = model.predict(input) as tf.Tensor
+        const probs = await prediction.data()
 
-      const results = classes.map((c, i) => ({
-        className: c.name,
-        confidence: probs[i] * 100
-      }))
-      setPredictions(results)
-      input.dispose()
-      prediction.dispose()
+        const results = classes.map((c, i) => ({
+          className: c.name,
+          confidence: probs[i] * 100
+        }))
+        setPredictions(results)
+        input.dispose()
+        prediction.dispose()
+      } finally {
+        isPredictionFrameRunningRef.current = false
+      }
     }, 200)
   }
 
@@ -1209,6 +1296,7 @@ function ImageClassification({ onBack, sessionId }: { onBack: () => void; sessio
       clearInterval(predictionIntervalRef.current)
       predictionIntervalRef.current = null
     }
+    isPredictionFrameRunningRef.current = false
     setPredictions([])
   }
 
@@ -1298,7 +1386,7 @@ function ImageClassification({ onBack, sessionId }: { onBack: () => void; sessio
                   <Button
                     variant="outline"
                     className="w-full"
-                    onClick={() => { setModel(null); stopPrediction() }}
+                    onClick={() => { classifierRef.current = null; setModel(null); stopPrediction() }}
                   >
                     {t('classification.reset_model')}
                   </Button>
