@@ -78,7 +78,6 @@ class MeshyService:
             prompt=prompt,
             size=size,  # type: ignore[arg-type]
             quality=quality,  # type: ignore[arg-type]
-            style=style,  # type: ignore[arg-type]
             n=1,
         )
         image_data = response.data[0]
