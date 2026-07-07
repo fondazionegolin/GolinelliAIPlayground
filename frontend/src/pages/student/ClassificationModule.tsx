@@ -1231,7 +1231,7 @@ function ImageClassification({ onBack, sessionId }: { onBack: () => void; sessio
       })
 
       const xTensor = tf.tensor2d(xs)
-      const yTensor = tf.tensor1d(ys, 'int32')
+      const yTensor = tf.tensor1d(ys, 'float32')
 
       await newModel.fit(xTensor, yTensor, {
         epochs: 20,
