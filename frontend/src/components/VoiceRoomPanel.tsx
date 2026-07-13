@@ -812,7 +812,13 @@ export function VoiceRoomPanel({ sessionId, userType, currentUserId, socket }: V
         <div className="min-w-0">
           <div className="flex items-center gap-2">
             <span className={`h-2 w-2 rounded-full ${isActive ? 'animate-pulse bg-emerald-500 ring-2 ring-emerald-200' : 'bg-sky-300'}`} />
-            <p className="text-xs font-bold uppercase tracking-wide text-[var(--logo-blue-strong)]">Voce classe</p>
+            <p
+              className="inline-flex rounded-full text-xs font-bold uppercase tracking-wide text-[var(--logo-blue-strong)]"
+              title="Parla e condividi lo schermo con la tua classe."
+              aria-label="Chiamata: parla e condividi lo schermo con la tua classe."
+            >
+              Chiamata
+            </p>
           </div>
           <p className="truncate text-[10px] text-[var(--logo-blue-strong)]/70">
             {isActive && activeSpeaker ? `${activeSpeaker.nickname || 'Studente'} in parola` : isActive ? statusText : 'Non attiva'}

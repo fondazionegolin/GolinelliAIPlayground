@@ -18,6 +18,7 @@ interface TaskBuilderProps {
     title: string
     description: string
     task_type: string
+    due_at?: string | null
     content_json?: string
   }) => void
   onCancel: () => void
@@ -28,6 +29,7 @@ export default function TaskBuilder({ onSubmit, onCancel, isLoading }: TaskBuild
   const [taskType, setTaskType] = useState<'quiz' | 'exercise' | 'discussion' | 'lesson'>('quiz')
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
+  const [dueAt, setDueAt] = useState('')
   
   // Quiz state
   const [questions, setQuestions] = useState<QuizQuestion[]>([
@@ -118,6 +120,7 @@ export default function TaskBuilder({ onSubmit, onCancel, isLoading }: TaskBuild
       title,
       description,
       task_type: taskType,
+      due_at: dueAt ? new Date(dueAt).toISOString() : null,
       content_json,
     })
   }
@@ -187,6 +190,19 @@ export default function TaskBuilder({ onSubmit, onCancel, isLoading }: TaskBuild
             placeholder="Istruzioni per gli studenti..."
             className="w-full p-2 border rounded-md text-sm min-h-[60px]"
           />
+        </div>
+
+        <div>
+          <label className="text-sm font-medium mb-1 block">Scadenza (opzionale)</label>
+          <Input
+            type="datetime-local"
+            value={dueAt}
+            onChange={(e) => setDueAt(e.target.value)}
+            className="h-11"
+          />
+          <p className="mt-1 text-xs text-gray-500">
+            La scadenza viene mostrata agli studenti e resta modificabile dal docente.
+          </p>
         </div>
 
         {/* Quiz Builder */}

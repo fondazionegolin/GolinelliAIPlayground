@@ -51,6 +51,9 @@ class SessionResponse(BaseModel):
     default_llm_provider: Optional[str]
     default_llm_model: Optional[str]
     created_at: datetime
+    deleted_at: Optional[datetime] = None
+    deleted_by_id: Optional[UUID] = None
+    purge_after: Optional[datetime] = None
 
     class Config:
         from_attributes = True

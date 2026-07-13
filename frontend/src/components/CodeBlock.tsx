@@ -89,5 +89,8 @@ export function markdownCodeComponents(darkMode?: boolean): Partial<Components> 
         <InlineCode darkMode={darkMode}>{children}</InlineCode>
       )
     },
+    table: ({ children }) => (
+      <div className="overflow-x-auto"><table>{children}</table></div>
+    ),
   }
 }

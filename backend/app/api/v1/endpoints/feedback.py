@@ -239,7 +239,7 @@ def _normalize_board_columns(columns: list[dict] | None) -> list[dict]:
             col_id = f"col_{idx + 1}"
         seen.add(col_id)
         normalized.append({
-            "id": col_id[:48],
+            "id": col_id[:20],
             "label": label[:80] or f"Colonna {idx + 1}",
             "hint": str(col.get("hint") or "")[:180],
             "color": str(col.get("color") or "#64748b")[:24],
@@ -289,6 +289,9 @@ async def submit_feedback(
     if body.screenshot_base64:
         browser_info_dict['screenshot_base64'] = body.screenshot_base64
 
+    config = await _get_board_config(db)
+    board_status = _normalize_board_columns(config.columns_json)[0]["id"]
+
     report = FeedbackReport(
         user_type=user_type,
         user_id_ref=user_id_ref,
@@ -298,6 +301,10 @@ async def submit_feedback(
         page_url=body.page_url,
         browser_info=browser_info_dict,
         console_errors=body.console_errors or [],
+        source="feedback",
+        created_by_display_name=user_display_name,
+        last_actor_display_name=user_display_name,
+        board_status=board_status,
     )
     db.add(report)
     await db.commit()

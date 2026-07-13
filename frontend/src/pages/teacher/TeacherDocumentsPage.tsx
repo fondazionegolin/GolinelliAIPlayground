@@ -8,7 +8,8 @@ import {
 import { teacherApi } from '@/lib/api'
 import { useToast } from '@/components/ui/use-toast'
 import { useQuery } from '@tanstack/react-query'
-import { SlideEditor, SlideBlock } from '@/components/SlideEditor'
+import { SlideEditor, SlideBlock, SlideBlockType, SlideSnapOptions, DEFAULT_SLIDE_SNAP_OPTIONS } from '@/components/SlideEditor'
+import { createShapeBlock } from '@/lib/slideBlocks'
 import { RichTextEditor } from '@/components/RichTextEditor'
 import { UnifiedToolbar } from '@/components/UnifiedToolbar'
 import { SheetChartConfig, SpreadsheetEditor } from '@/components/SpreadsheetEditor'
@@ -137,6 +138,10 @@ export default function TeacherDocumentsPage() {
   const draftIdRef = useRef<string | null>(null)
   const pendingDraftPayloadRef = useRef<{ title: string; doc_type: string; content_json: string } | null>(null)
   const isSavingDraftRef = useRef(false)
+  const suppressNextDraftSaveRef = useRef(false)
+  const lastDraftPayloadKeyRef = useRef<string | null>(null)
+  const publishingDocumentRef = useRef(false)
+  const activePublishedTaskIdRef = useRef<string | null>(null)
   
   // State
   const [mode, setMode] = useState<EditorMode>('document') 
@@ -160,6 +165,7 @@ export default function TeacherDocumentsPage() {
   const [storedDocuments, setStoredDocuments] = useState<StoredDocument[]>([])
   const [draftDocuments, setDraftDocuments] = useState<DraftDocument[]>([])
   const [docSearch, setDocSearch] = useState('')
+  const [activePublishedTaskId, setActivePublishedTaskId] = useState<string | null>(null)
 
   // Editor State
   const [editor, setEditor] = useState<Editor | null>(null)
@@ -171,7 +177,8 @@ export default function TeacherDocumentsPage() {
   const [docMargins, setDocMargins] = useState({ vertical: 56, horizontal: 56 })
   const [showRuledLines, setShowRuledLines] = useState(false)
   const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null)
-  
+  const [snapOptions, setSnapOptions] = useState<SlideSnapOptions>(DEFAULT_SLIDE_SNAP_OPTIONS)
+
   // Refs
   const canvasRef = useRef<HTMLDivElement>(null)
   const documentPageRef = useRef<HTMLDivElement>(null)
@@ -219,6 +226,10 @@ export default function TeacherDocumentsPage() {
     setSelectedBlockId(null)
     setDraftId(null)
     draftIdRef.current = null
+    activePublishedTaskIdRef.current = null
+    setActivePublishedTaskId(null)
+    suppressNextDraftSaveRef.current = true
+    setDraftSaveState('idle')
     setViewMode('editor')
   }
 
@@ -240,6 +251,10 @@ export default function TeacherDocumentsPage() {
     setSelectedBlockId(null)
     setDraftId(null)
     draftIdRef.current = null
+    activePublishedTaskIdRef.current = null
+    setActivePublishedTaskId(null)
+    suppressNextDraftSaveRef.current = true
+    setDraftSaveState('idle')
     setViewMode('editor')
   }
 
@@ -261,6 +276,10 @@ export default function TeacherDocumentsPage() {
     setSelectedBlockId(null)
     setDraftId(null)
     draftIdRef.current = null
+    activePublishedTaskIdRef.current = null
+    setActivePublishedTaskId(null)
+    suppressNextDraftSaveRef.current = true
+    setDraftSaveState('idle')
     setViewMode('editor')
   }
 
@@ -285,6 +304,10 @@ export default function TeacherDocumentsPage() {
   const flushDraftSaveQueue = async () => {
     if (isSavingDraftRef.current) return
     if (!pendingDraftPayloadRef.current) return
+    if (publishingDocumentRef.current || activePublishedTaskIdRef.current) {
+      pendingDraftPayloadRef.current = null
+      return
+    }
 
     const payload = pendingDraftPayloadRef.current
     pendingDraftPayloadRef.current = null
@@ -292,8 +315,14 @@ export default function TeacherDocumentsPage() {
     setDraftSaveState('saving')
 
     try {
+      let savedDraftId: string
       if (draftIdRef.current) {
         const res = await teacherApi.updateDocumentDraft(draftIdRef.current, payload)
+        savedDraftId = res.data.id
+        if (publishingDocumentRef.current || activePublishedTaskIdRef.current) {
+          await teacherApi.deleteDocumentDraft(savedDraftId).catch(() => undefined)
+          return
+        }
         const updated: DraftDocument = {
           id: res.data.id,
           title: res.data.title,
@@ -304,8 +333,13 @@ export default function TeacherDocumentsPage() {
         setDraftDocuments(prev => [updated, ...prev.filter(d => d.id !== updated.id)])
       } else {
         const res = await teacherApi.createDocumentDraft(payload)
-        draftIdRef.current = res.data.id
-        setDraftId(res.data.id)
+        savedDraftId = res.data.id
+        if (publishingDocumentRef.current || activePublishedTaskIdRef.current) {
+          await teacherApi.deleteDocumentDraft(savedDraftId).catch(() => undefined)
+          return
+        }
+        draftIdRef.current = savedDraftId
+        setDraftId(savedDraftId)
         const created: DraftDocument = {
           id: res.data.id,
           title: res.data.title,
@@ -315,21 +349,19 @@ export default function TeacherDocumentsPage() {
         }
         setDraftDocuments(prev => [created, ...prev.filter(d => d.id !== created.id)])
       }
+      lastDraftPayloadKeyRef.current = JSON.stringify(payload)
       setDraftSaveState('saved')
     } catch (e) {
       console.error('Draft save failed', e)
       setDraftSaveState('error')
     } finally {
       isSavingDraftRef.current = false
-      if (pendingDraftPayloadRef.current) {
+      if (pendingDraftPayloadRef.current && !publishingDocumentRef.current && !activePublishedTaskIdRef.current) {
         void flushDraftSaveQueue()
+      } else if (publishingDocumentRef.current || activePublishedTaskIdRef.current) {
+        pendingDraftPayloadRef.current = null
       }
     }
-  }
-
-  const queueDraftSave = () => {
-    pendingDraftPayloadRef.current = buildDraftPayload()
-    void flushDraftSaveQueue()
   }
 
   const handleTitleChange = (value: string) => {
@@ -445,7 +477,15 @@ export default function TeacherDocumentsPage() {
   }, [draftId])
 
   useEffect(() => {
-    if (viewMode !== 'editor') return
+    if (viewMode !== 'editor' || activePublishedTaskId) return
+    const payload = buildDraftPayload()
+    const payloadKey = JSON.stringify(payload)
+    if (suppressNextDraftSaveRef.current) {
+      suppressNextDraftSaveRef.current = false
+      lastDraftPayloadKeyRef.current = payloadKey
+      return
+    }
+    if (lastDraftPayloadKeyRef.current === payloadKey) return
     // Don't create a new draft for empty documents
     if (!draftIdRef.current) {
       const html = document.textContent || ''
@@ -458,16 +498,22 @@ export default function TeacherDocumentsPage() {
       if (isEmpty) return
     }
     const timer = setTimeout(() => {
-      queueDraftSave()
+      if (publishingDocumentRef.current || activePublishedTaskIdRef.current) return
+      pendingDraftPayloadRef.current = payload
+      void flushDraftSaveQueue()
     }, 600)
     return () => clearTimeout(timer)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [document, mode, docMargins, viewMode])
+  }, [document, mode, docMargins, viewMode, activePublishedTaskId])
 
   // Load document
   const loadDocument = (doc: StoredDocument) => {
     try {
       const content = JSON.parse(doc.contentJson)
+      activePublishedTaskIdRef.current = doc.taskId
+      setActivePublishedTaskId(doc.taskId)
+      suppressNextDraftSaveRef.current = true
+      setDraftSaveState('idle')
       
       if (isFullHtmlDocument(content.htmlContent) || isFullHtmlDocument(content.content)) {
         setMode('web')
@@ -580,6 +626,10 @@ export default function TeacherDocumentsPage() {
   const loadDraft = (doc: DraftDocument) => {
     try {
       const content = JSON.parse(doc.contentJson)
+      activePublishedTaskIdRef.current = null
+      setActivePublishedTaskId(null)
+      suppressNextDraftSaveRef.current = true
+      setDraftSaveState('saved')
       if (isFullHtmlDocument(content.htmlContent) || isFullHtmlDocument(content.content)) {
         setMode('web')
         setDraftId(doc.id)
@@ -721,25 +771,39 @@ export default function TeacherDocumentsPage() {
     setDocument(prev => ({ ...prev, slides: newSlides }))
   }
 
-  const addSlideBlock = (type: 'text' | 'image') => {
+  const addSlideBlock = (type: SlideBlockType) => {
     const dims = FORMAT_DIMENSIONS[document.format]
-    const newBlock: Block = {
-      id: crypto.randomUUID(),
-      type,
-      content: type === 'text'
-        ? (isEnglish ? 'New Text' : 'Nuovo Testo')
-        : `https://placehold.co/400x300?text=${encodeURIComponent(isEnglish ? 'Image' : 'Immagine')}`,
-      x: dims.width / 2 - 100,
-      y: dims.height / 2 - (type === 'text' ? 50 : 150),
-      width: 200,
-      height: type === 'text' ? 100 : 300,
-      style: {
-        fontSize: 24,
-        color: '#000000',
-        backgroundColor: 'transparent',
-        textAlign: 'center',
-        padding: 10
+    let newBlock: Block
+    if (type === 'text') {
+      newBlock = {
+        id: crypto.randomUUID(),
+        type: 'text',
+        content: isEnglish ? 'New Text' : 'Nuovo Testo',
+        x: dims.width / 2 - 100,
+        y: dims.height / 2 - 50,
+        width: 200,
+        height: 100,
+        style: {
+          fontSize: 24,
+          color: '#000000',
+          backgroundColor: 'transparent',
+          textAlign: 'center',
+          padding: 10
+        }
       }
+    } else if (type === 'image') {
+      newBlock = {
+        id: crypto.randomUUID(),
+        type: 'image',
+        content: `https://placehold.co/400x300?text=${encodeURIComponent(isEnglish ? 'Image' : 'Immagine')}`,
+        x: dims.width / 2 - 100,
+        y: dims.height / 2 - 150,
+        width: 200,
+        height: 300,
+        style: {}
+      }
+    } else {
+      newBlock = createShapeBlock(type, dims)
     }
     updateSlideBlocks([...currentSlide.blocks, newBlock])
     setSelectedBlockId(newBlock.id)
@@ -763,16 +827,23 @@ export default function TeacherDocumentsPage() {
 
   const updateBlockStyle = (key: string, value: any) => {
     if (!selectedBlockId) return
-    const newBlocks = currentSlide.blocks.map(b => 
-      b.id === selectedBlockId 
-        ? { ...b, style: { ...b.style, [key]: value } }
-        : b
-    )
+    const newBlocks = currentSlide.blocks.map(b => {
+      if (b.id !== selectedBlockId) return b
+      if (key === 'rotation') return { ...b, rotation: value }
+      // `key` is a dynamic string (toolbar only ever passes a key valid for the selected block's
+      // own type), so TS can't narrow the resulting style shape back to the union member — safe cast.
+      return { ...b, style: { ...b.style, [key]: value } } as Block
+    })
     updateSlideBlocks(newBlocks)
   }
 
   const handlePublish = async () => {
     if (!selectedSessionId) return
+    const isPublishingNow = publishMode === 'published'
+    if (isPublishingNow) {
+      publishingDocumentRef.current = true
+      pendingDraftPayloadRef.current = null
+    }
     try {
       let contentJson = ""
       let taskType = ""
@@ -833,12 +904,49 @@ export default function TeacherDocumentsPage() {
         })
       }
 
+      if (publishMode === 'published' && taskId) {
+        activePublishedTaskIdRef.current = taskId
+        setActivePublishedTaskId(taskId)
+        const publishedAt = response.data?.created_at || new Date().toISOString()
+        const selectedSession = (classesData || []).find((session: any) => session.id === selectedSessionId)
+        const publishedDocument: StoredDocument = {
+          id: taskId,
+          taskId,
+          submissionId: null,
+          source: 'teacher',
+          title: document.title,
+          type: mode === 'slides' ? 'presentation' : mode === 'sheet' ? 'sheet' : mode === 'canvas' ? 'canvas' : 'document',
+          updatedAt: publishedAt,
+          sessionId: selectedSessionId,
+          sessionName: selectedSession?.name || selectedSessionId,
+          className: selectedSession?.class_name || '',
+          contentJson,
+          authorName: isEnglish ? 'Teacher' : 'Docente',
+        }
+        setStoredDocuments(prev => [publishedDocument, ...prev.filter(doc => doc.taskId !== taskId)])
+
+        const publishedDraftId = draftIdRef.current
+        if (publishedDraftId) {
+          try {
+            await teacherApi.deleteDocumentDraft(publishedDraftId)
+          } catch (deleteError) {
+            console.error('Failed to delete published draft', deleteError)
+          }
+          setDraftDocuments(prev => prev.filter(doc => doc.id !== publishedDraftId))
+          setDraftId(null)
+          draftIdRef.current = null
+        }
+        setDraftSaveState('idle')
+      }
+
+      publishingDocumentRef.current = false
       setShowPublishModal(false)
       toast({
         title: publishMode === 'published' ? "Documento pubblicato!" : "Documento salvato in bozza",
         className: publishMode === 'published' ? "bg-green-500 text-white" : undefined,
       })
     } catch (e) {
+      publishingDocumentRef.current = false
       console.error('Publish error:', e)
       toast({ title: "Errore pubblicazione", variant: "destructive" })
     }
@@ -1018,9 +1126,15 @@ export default function TeacherDocumentsPage() {
                           type="button"
                           onClick={() => loadDocument(doc)}
                           title={`${doc.title} · ${doc.authorName}`}
-                          className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg shadow-sm transition-transform hover:-translate-y-0.5 ${docColor(doc.type)}`}
+                          className={`flex max-w-[260px] shrink-0 items-center gap-2 rounded-xl px-2.5 py-2 text-left shadow-sm transition-transform hover:-translate-y-0.5 ${docColor(doc.type)}`}
                         >
-                          {docIcon(doc.type)}
+                          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white/55">
+                            {docIcon(doc.type)}
+                          </span>
+                          <span className="min-w-0">
+                            <span className="block truncate text-[11px] font-bold leading-tight text-slate-800">{doc.authorName}</span>
+                            <span className="block truncate text-[11px] leading-tight text-slate-600">{doc.title}</span>
+                          </span>
                         </button>
                       ))}
                     </div>
@@ -1255,6 +1369,8 @@ export default function TeacherDocumentsPage() {
             onAddSlideImage={addSlideImage}
             selectedBlock={selectedBlock}
             onUpdateBlockStyle={updateBlockStyle}
+            snapOptions={snapOptions}
+            onChangeSnapOptions={setSnapOptions}
             onOpenAIAssist={() => {
               if (!toolbarHostRef.current) return
               const rect = toolbarHostRef.current.getBoundingClientRect()
@@ -1576,12 +1692,15 @@ export default function TeacherDocumentsPage() {
                   </div>
 
                   <div className="flex-1 relative">
-                    <SlideEditor 
-                      blocks={currentSlide.blocks} 
+                    <SlideEditor
+                      blocks={currentSlide.blocks}
                       onChange={updateSlideBlocks}
                       selectedBlockId={selectedBlockId}
                       onSelectBlock={setSelectedBlockId}
                       scale={scale}
+                      slideWidth={FORMAT_DIMENSIONS[document.format].width}
+                      slideHeight={FORMAT_DIMENSIONS[document.format].height}
+                      snapOptions={snapOptions}
                     />
                   </div>
                </div>

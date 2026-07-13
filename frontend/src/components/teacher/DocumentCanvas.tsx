@@ -406,6 +406,24 @@ function buildBrochureHtml(sections: string, docTitle: string): string {
     a{color:inherit;text-decoration:none}
     @media(max-width:640px){section{padding:48px 0}.hero{padding:56px 0 48px;min-height:auto}.hero-title{font-size:2rem}}
   `
+  const linkGuardScript = `
+<script>
+document.addEventListener('click', function(event) {
+  var link = event.target && event.target.closest ? event.target.closest('a[href]') : null;
+  if (!link) return;
+  var href = link.getAttribute('href') || '';
+  if (href.charAt(0) === '#') {
+    event.preventDefault();
+    var target = document.getElementById(href.slice(1));
+    if (target && target.scrollIntoView) target.scrollIntoView({ behavior: 'smooth' });
+    try { history.replaceState(null, '', href); } catch (e) {}
+    return;
+  }
+  if (!/^(https?:|mailto:|tel:)/i.test(href)) {
+    event.preventDefault();
+  }
+}, true);
+</script>`
 
   return `<!DOCTYPE html>
 <html lang="it">
@@ -421,6 +439,7 @@ ${cleanSections}
 <footer style="background:${primary};color:rgba(255,255,255,.7);padding:32px 0;text-align:center;font-size:13px">
   <div class="container">Generato con Claude AI · Fondazione Golinelli · 2026</div>
 </footer>
+${linkGuardScript}
 </body>
 </html>`
 }

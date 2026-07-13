@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback, memo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Send, Paperclip, X, File, Bot, User, ArrowLeft, Copy, Check } from 'lucide-react'
+import { Send, Paperclip, X, File, Bot, User, ArrowLeft, Copy, Check, Minimize2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { triggerHaptic } from '@/lib/haptics'
 import { useKeyboard } from '@/hooks/useMobile'
@@ -40,6 +40,7 @@ interface ChatConversationViewProps {
   isLoading: boolean
   suggestedPrompts?: string[]
   isTeacherbot?: boolean
+  onMinimize?: () => void
 }
 
 export function ChatConversationView({
@@ -54,6 +55,7 @@ export function ChatConversationView({
   isLoading,
   suggestedPrompts = [],
   isTeacherbot: _isTeacherbot = false,
+  onMinimize,
 }: ChatConversationViewProps) {
   // Get the appropriate color class for avatars
   const avatarColorClass = profileColor.startsWith('bg-')
@@ -155,6 +157,20 @@ export function ChatConversationView({
             <p className="text-[11px] text-slate-500">Sta scrivendo...</p>
           )}
         </div>
+        {onMinimize && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              triggerHaptic('light')
+              onMinimize()
+            }}
+            className="h-8 w-8 p-0 rounded-xl"
+            title="Riduci a icona"
+          >
+            <Minimize2 className="h-4 w-4 text-slate-700" />
+          </Button>
+        )}
       </div>
 
       {/* Messages area */}

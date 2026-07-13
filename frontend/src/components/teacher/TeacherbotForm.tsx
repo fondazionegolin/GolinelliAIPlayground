@@ -5,6 +5,8 @@ import { ArrowLeft, Save, Loader2, Globe, Check, X, Upload, Trash2, FileText, Da
 import { useToast } from '@/components/ui/use-toast'
 import { teacherbotsApi, teacherApi } from '@/lib/api'
 import { TeacherbotPromptOptimizer } from './TeacherbotPromptOptimizer'
+import TeacherbotIconPicker from './TeacherbotIconPicker'
+import { resolveTeacherbotIcon } from '@/lib/teacherbotIcons'
 import { useTranslation } from 'react-i18next'
 
 interface TeacherbotFormProps {
@@ -406,6 +408,13 @@ function ToggleRow({
   )
 }
 
+function TeacherbotPreviewIcon({ iconValue, className }: { iconValue: string; className: string }) {
+  const resolved = resolveTeacherbotIcon(iconValue)
+  if (resolved.kind === 'lucide') return <resolved.Icon className={className} />
+  if (resolved.kind === 'emoji') return <span className="text-base leading-none">{resolved.emoji}</span>
+  return <Sparkles className={className} />
+}
+
 function TeacherbotPreview({ formData }: { formData: FormData }) {
   const meta = colorMeta(formData.color)
   const previewName = formData.name.trim() || 'Teacherbot'
@@ -429,7 +438,7 @@ function TeacherbotPreview({ formData }: { formData: FormData }) {
             className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-white shadow-sm"
             style={{ backgroundColor: meta.hex }}
           >
-            <Sparkles className="h-4 w-4" />
+            <TeacherbotPreviewIcon iconValue={formData.icon} className="h-4 w-4" />
           </div>
           <div className="min-w-0">
             <div className="truncate text-sm font-bold text-slate-950">{previewName}</div>
@@ -752,6 +761,15 @@ export default function TeacherbotForm({ teacherbotId, onBack, onSaved }: Teache
                       )
                     })}
                   </div>
+                </div>
+
+                <div className="mt-4">
+                  <FieldLabel>Icona</FieldLabel>
+                  <TeacherbotIconPicker
+                    value={formData.icon}
+                    onChange={(icon) => setFormData({ ...formData, icon })}
+                    swatchHex={selectedColor.hex}
+                  />
                 </div>
               </section>
 

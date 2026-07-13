@@ -2,11 +2,12 @@ import { useState, useRef, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
-  Plus, Trash2, Monitor, FileText, ChevronLeft, ChevronRight, Send, CheckCircle, FileSpreadsheet, BookOpen, PenTool, Share2, User, Clock, MonitorPlay, Search, X
+  Bot, Copy, Layers, MessageSquare, Plus, Save, Sparkles, Trash2, Monitor, FileText, ChevronLeft, ChevronRight, Send, CheckCircle, FileSpreadsheet, BookOpen, PenTool, Share2, User, Clock, MonitorPlay, Search, X
 } from 'lucide-react'
-import { studentApi, filesApi } from '@/lib/api'
+import { studentApi, filesApi, llmApi } from '@/lib/api'
 import { useToast } from '@/components/ui/use-toast'
-import { SlideEditor, SlideBlock } from '@/components/SlideEditor'
+import { SlideEditor, SlideBlock, SlideBlockType, SlideSnapOptions, DEFAULT_SLIDE_SNAP_OPTIONS } from '@/components/SlideEditor'
+import { createShapeBlock } from '@/lib/slideBlocks'
 import { RichTextEditor } from '@/components/RichTextEditor'
 import { UnifiedToolbar } from '@/components/UnifiedToolbar'
 import { SheetChartConfig, SpreadsheetEditor } from '@/components/SpreadsheetEditor'
@@ -76,6 +77,13 @@ interface StudentTask {
   uda_folder?: string
 }
 
+interface PresentationTemplate {
+  id: string
+  name: string
+  format: Format
+  slides: Slide[]
+}
+
 // Format dimensions
 const FORMAT_DIMENSIONS = {
   '16:9': { width: 960, height: 540, label: '16:9 (Presentazione)' },
@@ -94,11 +102,23 @@ const DEFAULT_SHEET_CHART: SheetChartConfig = {
   showRegression: true,
 }
 const DEFAULT_CANVAS_CONTENT = JSON.stringify({ type: 'canvas_v1', items: [] })
+const PRESENTATION_TEMPLATE_STORAGE_KEY = 'student-presentation-templates:v1'
 const isFullHtmlDocument = (value?: string | null) => {
   if (!value) return false
   const trimmed = value.trim().toLowerCase()
   return trimmed.startsWith('<!doctype html') || trimmed.startsWith('<html')
 }
+
+const cloneBlocks = (blocks: Block[]) =>
+  blocks.map(block => ({ ...block, id: crypto.randomUUID(), style: { ...block.style } } as Block))
+
+const cloneSlides = (slides: Slide[]) =>
+  slides.map((slide, index) => ({
+    ...slide,
+    id: crypto.randomUUID(),
+    title: slide.title || `Slide ${index + 1}`,
+    blocks: cloneBlocks(slide.blocks || []),
+  }))
 
 interface StudentDocumentsModuleProps {
   sessionId: string
@@ -152,6 +172,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId }: 
   const [docMargins, setDocMargins] = useState({ vertical: 56, horizontal: 56 })
   const [showRuledLines, setShowRuledLines] = useState(false)
   const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null)
+  const [snapOptions, setSnapOptions] = useState<SlideSnapOptions>(DEFAULT_SLIDE_SNAP_OPTIONS)
 
   // Refs
   const canvasRef = useRef<HTMLDivElement>(null)
@@ -165,9 +186,30 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId }: 
   const [aiPanelAnchor, setAiPanelAnchor] = useState<{ x: number; y: number } | null>(null)
   const [aiOpenRequestId, setAiOpenRequestId] = useState(0)
   const [viewMode, setViewMode] = useState<'list' | 'editor'>('list')
+  const [presentationTemplates, setPresentationTemplates] = useState<PresentationTemplate[]>([])
+  const [presentationChatOpen, setPresentationChatOpen] = useState(false)
+  const [presentationChatInput, setPresentationChatInput] = useState('')
+  const [presentationChatMessages, setPresentationChatMessages] = useState<{ role: 'user' | 'assistant'; content: string }[]>([])
+  const [isPresentationAgentRunning, setIsPresentationAgentRunning] = useState(false)
 
   const currentSlide = document.slides?.[currentSlideIndex] || { id: 'fallback', title: 'Slide', blocks: [] }
   const selectedBlock = currentSlide.blocks.find(b => b.id === selectedBlockId)
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(PRESENTATION_TEMPLATE_STORAGE_KEY)
+      if (!raw) return
+      const parsed = JSON.parse(raw)
+      if (Array.isArray(parsed)) setPresentationTemplates(parsed)
+    } catch {
+      setPresentationTemplates([])
+    }
+  }, [])
+
+  const persistPresentationTemplates = (templates: PresentationTemplate[]) => {
+    setPresentationTemplates(templates)
+    localStorage.setItem(PRESENTATION_TEMPLATE_STORAGE_KEY, JSON.stringify(templates))
+  }
 
   const createNewDocument = () => {
     const newDocId = crypto.randomUUID()
@@ -568,34 +610,197 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId }: 
     }
   }
 
+  const duplicateSlide = (index: number) => {
+    const source = document.slides[index]
+    if (!source) return
+    const copy: Slide = {
+      id: crypto.randomUUID(),
+      title: `${source.title || `Slide ${index + 1}`} copia`,
+      blocks: cloneBlocks(source.blocks || []),
+      backgroundColor: source.backgroundColor,
+    }
+    const nextSlides = [...document.slides]
+    nextSlides.splice(index + 1, 0, copy)
+    setDocument(prev => ({ ...prev, slides: nextSlides }))
+    setCurrentSlideIndex(index + 1)
+    setSelectedBlockId(null)
+  }
+
   const updateSlideBlocks = (blocks: Block[]) => {
     const newSlides = [...document.slides]
     newSlides[currentSlideIndex] = { ...newSlides[currentSlideIndex], blocks }
     setDocument(prev => ({ ...prev, slides: newSlides }))
   }
 
-  const addSlideBlock = (type: 'text' | 'image') => {
+  const addSlideBlock = (type: SlideBlockType, position?: { x: number; y: number }) => {
     const dims = FORMAT_DIMENSIONS[document.format]
-    const newBlock: Block = {
-      id: crypto.randomUUID(),
-      type,
-      content: type === 'text'
-        ? (isEnglishUi ? 'New Text' : 'Nuovo Testo')
-        : `https://placehold.co/400x300?text=${encodeURIComponent(isEnglishUi ? 'Image' : 'Immagine')}`,
-      x: dims.width / 2 - 100,
-      y: dims.height / 2 - (type === 'text' ? 50 : 150),
-      width: 200,
-      height: type === 'text' ? 100 : 300,
-      style: {
-        fontSize: 24,
-        color: '#000000',
-        backgroundColor: 'transparent',
-        textAlign: 'center',
-        padding: 10
+    let newBlock: Block
+    if (type === 'text') {
+      newBlock = {
+        id: crypto.randomUUID(),
+        type: 'text',
+        content: isEnglishUi ? 'New Text' : 'Nuovo Testo',
+        x: position ? Math.min(position.x, dims.width - 220) : dims.width / 2 - 100,
+        y: position ? Math.min(position.y, dims.height - 120) : dims.height / 2 - 50,
+        width: 200,
+        height: 100,
+        style: {
+          fontSize: 24,
+          color: '#000000',
+          backgroundColor: 'transparent',
+          textAlign: 'center',
+          padding: 10
+        }
+      }
+    } else if (type === 'image') {
+      newBlock = {
+        id: crypto.randomUUID(),
+        type: 'image',
+        content: `https://placehold.co/400x300?text=${encodeURIComponent(isEnglishUi ? 'Image' : 'Immagine')}`,
+        x: position ? Math.min(position.x, dims.width - 220) : dims.width / 2 - 100,
+        y: position ? Math.min(position.y, dims.height - 320) : dims.height / 2 - 150,
+        width: 200,
+        height: 300,
+        style: {}
+      }
+    } else {
+      newBlock = createShapeBlock(type, dims)
+      if (position) {
+        newBlock = {
+          ...newBlock,
+          x: Math.min(position.x, dims.width - newBlock.width),
+          y: Math.min(position.y, dims.height - newBlock.height),
+        }
       }
     }
-    updateSlideBlocks([...currentSlide.blocks, newBlock])
+    updateSlideBlocks([...currentSlide.blocks, { ...newBlock, zIndex: currentSlide.blocks.length }])
     setSelectedBlockId(newBlock.id)
+  }
+
+  const moveSelectedBlockLayer = (action: 'front' | 'back' | 'forward' | 'backward') => {
+    if (!selectedBlockId) return
+    const ordered = currentSlide.blocks
+      .map((block, index) => ({ block, index }))
+      .sort((a, b) => (a.block.zIndex ?? a.index) - (b.block.zIndex ?? b.index))
+      .map(({ block }) => block)
+    const index = ordered.findIndex(block => block.id === selectedBlockId)
+    if (index < 0) return
+    const [block] = ordered.splice(index, 1)
+    const targetIndex =
+      action === 'front' ? ordered.length :
+      action === 'back' ? 0 :
+      action === 'forward' ? Math.min(ordered.length, index + 1) :
+      Math.max(0, index - 1)
+    ordered.splice(targetIndex, 0, block)
+    updateSlideBlocks(ordered.map((block, layerIndex) => ({ ...block, zIndex: layerIndex })))
+  }
+
+  const saveCurrentPresentationAsTemplate = () => {
+    if (mode !== 'slides' || isReadOnlyLesson) return
+    const name = window.prompt(isEnglishUi ? 'Template name' : 'Nome template', document.title || defaultPresentationTitle)
+    if (!name?.trim()) return
+    const template: PresentationTemplate = {
+      id: crypto.randomUUID(),
+      name: name.trim(),
+      format: document.format,
+      slides: cloneSlides(document.slides || []),
+    }
+    persistPresentationTemplates([template, ...presentationTemplates])
+    toast({ title: isEnglishUi ? 'Template saved' : 'Template salvato' })
+  }
+
+  const applyPresentationTemplate = (templateId: string) => {
+    const template = presentationTemplates.find(item => item.id === templateId)
+    if (!template) return
+    setDocument(prev => ({
+      ...prev,
+      format: template.format,
+      slides: cloneSlides(template.slides),
+    }))
+    setMode('slides')
+    setCurrentSlideIndex(0)
+    setSelectedBlockId(null)
+  }
+
+  const handlePresentationChatSubmit = async () => {
+    const prompt = presentationChatInput.trim()
+    if (!prompt || mode !== 'slides' || isReadOnlyLesson || isPresentationAgentRunning) return
+    const dims = FORMAT_DIMENSIONS[document.format]
+    const lower = prompt.toLowerCase()
+    setPresentationChatMessages(prev => [...prev, { role: 'user', content: prompt }])
+    setPresentationChatInput('')
+
+    if (lower.includes('template') && (lower.includes('salva') || lower.includes('save'))) {
+      saveCurrentPresentationAsTemplate()
+      setPresentationChatMessages(prev => [...prev, { role: 'assistant', content: isEnglishUi ? 'I saved the current deck as a reusable template.' : 'Ho salvato questa presentazione come template riutilizzabile.' }])
+      return
+    }
+
+    setIsPresentationAgentRunning(true)
+    setPresentationChatMessages(prev => [
+      ...prev,
+      {
+        role: 'assistant',
+        content: isEnglishUi
+          ? 'Strategist is reading the brief. Art director and composer will build structure, style and editable slides.'
+          : 'Lo strategist sta leggendo il brief. Art director e composer costruiranno struttura, stile e slide editabili.'
+      }
+    ])
+
+    try {
+      const response = await llmApi.presentationAgent({
+        prompt,
+        mode: lower.includes('modifica') || lower.includes('cambia') || lower.includes('aggiungi') || lower.includes('add') || lower.includes('change') || lower.includes('refine') ? 'edit' : 'create',
+        format: document.format,
+        dims: { width: dims.width, height: dims.height },
+        current_presentation: {
+          title: document.title,
+          format: document.format,
+          currentSlideIndex,
+          slides: document.slides,
+        },
+      })
+      const data = response.data as {
+        title?: string
+        format?: Format
+        slides?: Slide[]
+        agent_steps?: { agent?: string; summary?: string }[]
+      }
+      if (!Array.isArray(data.slides) || data.slides.length === 0) {
+        throw new Error(isEnglishUi ? 'The agent did not return renderable slides.' : 'L’agente non ha restituito slide renderizzabili.')
+      }
+      setDocument(prev => ({
+        ...prev,
+        title: data.title || prev.title,
+        format: data.format || prev.format,
+        slides: data.slides!,
+      }))
+      setCurrentSlideIndex(0)
+      setSelectedBlockId(null)
+      const steps = (data.agent_steps || [])
+        .map(step => `${step.agent || 'Agent'}: ${step.summary || ''}`.trim())
+        .filter(Boolean)
+        .join('\n')
+      setPresentationChatMessages(prev => [
+        ...prev,
+        {
+          role: 'assistant',
+          content: steps
+            ? `${steps}\n\n${isEnglishUi ? 'Done: I applied the generated editable deck to the canvas.' : 'Fatto: ho applicato al canvas la presentazione editabile generata.'}`
+            : (isEnglishUi ? 'Done: I applied the generated editable deck to the canvas.' : 'Fatto: ho applicato al canvas la presentazione editabile generata.')
+        }
+      ])
+    } catch (error: any) {
+      setPresentationChatMessages(prev => [
+        ...prev,
+        {
+          role: 'assistant',
+          content: error?.response?.data?.detail || error?.message || (isEnglishUi ? 'Presentation agent failed.' : 'Agente presentazione non riuscito.')
+        }
+      ])
+    } finally {
+      setIsPresentationAgentRunning(false)
+    }
   }
 
   const addSlideImage = (imageUrl: string) => {
@@ -616,11 +821,13 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId }: 
 
   const updateBlockStyle = (key: string, value: unknown) => {
     if (!selectedBlockId) return
-    const newBlocks = currentSlide.blocks.map(b =>
-      b.id === selectedBlockId
-        ? { ...b, style: { ...b.style, [key]: value } }
-        : b
-    )
+    const newBlocks = currentSlide.blocks.map(b => {
+      if (b.id !== selectedBlockId) return b
+      if (key === 'rotation') return { ...b, rotation: value as number }
+      // `key` is a dynamic string (toolbar only ever passes a key valid for the selected block's
+      // own type), so TS can't narrow the resulting style shape back to the union member — safe cast.
+      return { ...b, style: { ...b.style, [key]: value } } as Block
+    })
     updateSlideBlocks(newBlocks)
   }
 
@@ -782,38 +989,38 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId }: 
     return (
       <>
         <div className="h-full flex flex-col bg-slate-100 overflow-hidden">
-          <div className="border-b border-slate-200/80 bg-white/85 px-4 py-3 shadow-sm shrink-0">
-            <div className="mx-auto flex max-w-6xl items-center justify-between gap-3">
-            <div className="flex items-center gap-3 shrink-0">
-              <div className="flex h-9 w-9 items-center justify-center rounded-lg border border-emerald-200 bg-emerald-100 text-emerald-800 shadow-sm">
-                <FileText className="h-4 w-4" />
+          <section className="relative shrink-0 border-b border-slate-200/80 bg-white/90 backdrop-blur-sm shadow-sm">
+            <div className="mx-auto max-w-6xl px-4 py-7 md:px-6">
+              <div className="mx-auto max-w-3xl text-center">
+                <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-emerald-700">Documenti</p>
+                <h1 className="mt-2 text-3xl font-black tracking-tight text-slate-950">{t('documents.title_my_documents')}</h1>
+                <p className="mx-auto mt-3 max-w-2xl text-sm leading-6 text-slate-600">
+                  {isEnglishUi ? 'Drafts, teacher materials, and deliverables' : 'Bozze, materiali del docente e consegne'}
+                </p>
+                <label className="mx-auto mt-6 flex max-w-xl items-center gap-2 rounded-2xl border border-slate-300 bg-white px-4 py-2.5 shadow-sm">
+                  <Search className="h-4 w-4 shrink-0 text-slate-400" />
+                  <input
+                    type="text"
+                    value={docSearch}
+                    onChange={e => setDocSearch(e.target.value)}
+                    placeholder={isEnglishUi ? 'Search documents...' : 'Cerca documenti...'}
+                    className="min-w-0 flex-1 bg-transparent text-sm font-medium text-slate-700 placeholder:text-slate-400 focus:outline-none"
+                  />
+                  {docSearch && (
+                    <button onClick={() => setDocSearch('')} className="rounded-full p-1 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600">
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                </label>
+                <div className="mt-5 flex justify-center">
+                  <Button tone="neutral" surface="solid" onClick={() => setShowNewModal(true)} className="px-4">
+                    <Plus className="h-4 w-4 mr-2" />
+                    {t('documents.new')}
+                  </Button>
+                </div>
               </div>
-              <div>
-                <h1 className="text-base font-black text-slate-950">{t('documents.title_my_documents')}</h1>
-                <p className="text-xs font-medium text-slate-500">{isEnglishUi ? 'Drafts, teacher materials, and deliverables' : 'Bozze, materiali del docente e consegne'}</p>
-              </div>
             </div>
-            <div className="relative flex-1 max-w-xs">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400 pointer-events-none" />
-              <input
-                type="text"
-                value={docSearch}
-                onChange={e => setDocSearch(e.target.value)}
-                placeholder={isEnglishUi ? 'Search documents...' : 'Cerca documenti...'}
-                className="w-full pl-9 pr-8 py-2 text-sm bg-white border border-slate-300 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-slate-400 placeholder:text-slate-400"
-              />
-              {docSearch && (
-                <button onClick={() => setDocSearch('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
-                  <X className="h-3.5 w-3.5" />
-                </button>
-              )}
-            </div>
-            <Button tone="neutral" surface="solid" onClick={() => setShowNewModal(true)} className="shrink-0 px-4">
-              <Plus className="h-4 w-4 mr-2" />
-              {t('documents.new')}
-            </Button>
-            </div>
-          </div>
+          </section>
 
           <div className="flex-1 overflow-y-auto px-4 pb-8 pt-5 md:px-6">
             <div className="mx-auto w-full max-w-6xl space-y-8">
@@ -1003,6 +1210,26 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId }: 
           </div>
 
           <div className="flex shrink-0 gap-2">
+             {mode === 'slides' && !isReadOnlyLesson && (
+               <>
+                 <Button
+                   variant="outline"
+                   onClick={() => setPresentationChatOpen(v => !v)}
+                   className="rounded-lg border-slate-200 bg-white font-bold text-slate-700"
+                 >
+                   <Bot className="h-4 w-4 mr-2" />
+                   {isEnglishUi ? 'Presentation AI' : 'AI presentazione'}
+                 </Button>
+                 <Button
+                   variant="outline"
+                   onClick={saveCurrentPresentationAsTemplate}
+                   className="rounded-lg border-slate-200 bg-white font-bold text-slate-700"
+                 >
+                   <Save className="h-4 w-4 mr-2" />
+                   Template
+                 </Button>
+               </>
+             )}
              {isReadOnlyLesson ? (
                <Button variant="outline" disabled>
                  <BookOpen className="h-4 w-4 mr-2" />
@@ -1044,6 +1271,8 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId }: 
             onAddSlideImage={addSlideImage}
             selectedBlock={selectedBlock}
             onUpdateBlockStyle={updateBlockStyle}
+            snapOptions={snapOptions}
+            onChangeSnapOptions={setSnapOptions}
             onOpenAIAssist={() => {
               if (!toolbarHostRef.current) return
               const rect = toolbarHostRef.current.getBoundingClientRect()
@@ -1063,6 +1292,27 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId }: 
             }}
           />
         </div>
+        )}
+
+        {mode === 'slides' && selectedBlock && !isReadOnlyLesson && (
+          <div className="flex h-10 shrink-0 items-center gap-2 border-b border-slate-200 bg-white px-4 text-xs text-slate-700">
+            <span className="font-black uppercase tracking-wide text-slate-500">{isEnglishUi ? 'Layer' : 'Livello'}</span>
+            <Button variant="ghost" size="sm" className="h-7 px-2" onClick={() => moveSelectedBlockLayer('back')}>
+              {isEnglishUi ? 'Back' : 'Dietro'}
+            </Button>
+            <Button variant="ghost" size="sm" className="h-7 px-2" onClick={() => moveSelectedBlockLayer('backward')}>
+              {isEnglishUi ? 'Down' : 'Giù'}
+            </Button>
+            <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-1 font-bold">
+              {(selectedBlock.zIndex ?? currentSlide.blocks.findIndex(block => block.id === selectedBlock.id)) + 1} / {currentSlide.blocks.length}
+            </span>
+            <Button variant="ghost" size="sm" className="h-7 px-2" onClick={() => moveSelectedBlockLayer('forward')}>
+              {isEnglishUi ? 'Up' : 'Su'}
+            </Button>
+            <Button variant="ghost" size="sm" className="h-7 px-2" onClick={() => moveSelectedBlockLayer('front')}>
+              {isEnglishUi ? 'Front' : 'Davanti'}
+            </Button>
+          </div>
         )}
 
         <div className="flex-1 flex overflow-hidden">
@@ -1093,8 +1343,16 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId }: 
                        <button
                          onClick={(e) => { e.stopPropagation(); deleteSlide(idx); }}
                          className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-500 transition-opacity"
+                         title={isEnglishUi ? 'Delete slide' : 'Elimina slide'}
                        >
                          <Trash2 className="h-3.5 w-3.5" />
+                       </button>
+                       <button
+                         onClick={(e) => { e.stopPropagation(); duplicateSlide(idx); }}
+                         className="absolute bottom-2 right-2 opacity-0 group-hover:opacity-100 text-slate-400 hover:text-emerald-600 transition-opacity"
+                         title={isEnglishUi ? 'Duplicate slide' : 'Duplica slide'}
+                       >
+                         <Copy className="h-3.5 w-3.5" />
                        </button>
                      </div>
                    ))}
@@ -1103,6 +1361,32 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId }: 
             )}
 
             <div className="flex-1 overflow-y-auto p-3 space-y-6">
+              {mode === 'slides' && !isReadOnlyLesson && (
+                <section>
+                  <div className="mb-3 flex items-center justify-between px-1">
+                    <h3 className="font-black text-[10px] uppercase tracking-widest text-slate-600">Template</h3>
+                    <span className="text-[10px] font-bold bg-indigo-700 text-white px-1.5 py-0.5 rounded-full">{presentationTemplates.length}</span>
+                  </div>
+                  <div className="space-y-2">
+                    {presentationTemplates.length === 0 ? (
+                      <div className="rounded-lg border border-dashed border-slate-200 bg-white p-3 text-[11px] font-medium text-slate-400">
+                        {isEnglishUi ? 'No templates saved' : 'Nessun template salvato'}
+                      </div>
+                    ) : presentationTemplates.map(template => (
+                      <button
+                        key={template.id}
+                        type="button"
+                        onClick={() => applyPresentationTemplate(template.id)}
+                        className="flex w-full items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-left text-sm font-bold text-slate-800 hover:border-indigo-200 hover:bg-indigo-50"
+                      >
+                        <Layers className="h-4 w-4 text-indigo-600" />
+                        <span className="min-w-0 flex-1 truncate">{template.name}</span>
+                      </button>
+                    ))}
+                  </div>
+                </section>
+              )}
+
               {/* Drafts Section */}
               <section>
                 <div className="flex items-center justify-between mb-3 px-1">
@@ -1413,6 +1697,10 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId }: 
                       onSelectBlock={setSelectedBlockId}
                       scale={scale}
                       readOnly={isReadOnlyLesson}
+                      slideWidth={FORMAT_DIMENSIONS[document.format].width}
+                      slideHeight={FORMAT_DIMENSIONS[document.format].height}
+                      snapOptions={snapOptions}
+                      onContextAddBlock={addSlideBlock}
                     />
                   </div>
                </div>
@@ -1445,6 +1733,82 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId }: 
              )}
 
           </div>
+          {mode === 'slides' && presentationChatOpen && !isReadOnlyLesson && (
+            <aside className="flex w-[340px] shrink-0 flex-col border-l border-slate-200 bg-white shadow-sm">
+              <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
+                <div className="min-w-0">
+                  <h3 className="flex items-center gap-2 text-sm font-black text-slate-950">
+                    <MessageSquare className="h-4 w-4 text-emerald-700" />
+                    {isEnglishUi ? 'Presentation agent' : 'Agente presentazione'}
+                  </h3>
+                  <p className="mt-0.5 text-[11px] font-medium text-slate-500">
+                    {isEnglishUi ? 'Create slides, layouts and edits.' : 'Crea slide, impaginati e modifiche.'}
+                  </p>
+                </div>
+                <button className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700" onClick={() => setPresentationChatOpen(false)}>
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+              <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3">
+                {presentationChatMessages.length === 0 && (
+                  <div className="rounded-lg border border-emerald-100 bg-emerald-50 p-3 text-xs leading-5 text-emerald-900">
+                    {isEnglishUi
+                      ? 'Describe what you want to represent. Example: create an elegant presentation about photosynthesis with diagrams and a final summary.'
+                      : 'Descrivi cosa vuoi rappresentare. Esempio: crea una presentazione elegante sulla fotosintesi con schemi e sintesi finale.'}
+                  </div>
+                )}
+                {presentationChatMessages.map((message, index) => (
+                  <div
+                    key={`${message.role}-${index}`}
+                    className={`whitespace-pre-line rounded-lg px-3 py-2 text-sm leading-5 ${
+                      message.role === 'user'
+                        ? 'ml-8 bg-slate-950 text-white'
+                        : 'mr-8 border border-slate-200 bg-slate-50 text-slate-800'
+                    }`}
+                  >
+                    {message.content}
+                  </div>
+                ))}
+              </div>
+              <div className="border-t border-slate-200 p-3">
+                <div className="mb-2 flex flex-wrap gap-1.5">
+                  {[
+                    isEnglishUi ? 'Create a complete deck' : 'Crea presentazione completa',
+                    isEnglishUi ? 'Add a summary slide' : 'Aggiungi slide sintesi',
+                    isEnglishUi ? 'Refine current slide' : 'Modifica slide corrente',
+                    isEnglishUi ? 'Save as template' : 'Salva come template',
+                  ].map(sample => (
+                    <button
+                      key={sample}
+                      type="button"
+                      className="rounded-full border border-slate-200 bg-white px-2 py-1 text-[11px] font-bold text-slate-600 hover:bg-slate-50"
+                      onClick={() => setPresentationChatInput(sample)}
+                    >
+                      {sample}
+                    </button>
+                  ))}
+                </div>
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault()
+                    handlePresentationChatSubmit()
+                  }}
+                  className="flex gap-2"
+                >
+                  <textarea
+                    value={presentationChatInput}
+                    onChange={(e) => setPresentationChatInput(e.target.value)}
+                    placeholder={isEnglishUi ? 'Describe the presentation...' : 'Descrivi la presentazione...'}
+                    disabled={isPresentationAgentRunning}
+                    className="min-h-[76px] flex-1 resize-none rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-emerald-200"
+                  />
+                  <Button type="submit" size="icon" disabled={isPresentationAgentRunning || !presentationChatInput.trim()} className="h-[76px] w-10 rounded-lg bg-emerald-700 text-white hover:bg-emerald-800 disabled:opacity-60">
+                    <Sparkles className="h-4 w-4" />
+                  </Button>
+                </form>
+              </div>
+            </aside>
+          )}
         </div>
 
         {/* New Document Modal */}

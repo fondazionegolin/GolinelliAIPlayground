@@ -8,9 +8,9 @@ import { Button } from '@/components/ui/button'
 import { useToast } from '@/components/ui/use-toast'
 import {
   Check, X, Clock, Key, UserPlus, Mail, Trash2,
-  GraduationCap, Search, ChevronDown, ChevronUp,
+  GraduationCap, Search, ChevronDown, ChevronUp, ChevronsUpDown,
   Users, BookOpen, Euro, LogIn, Pencil, ShieldCheck,
-  Upload, Tag, MessageSquare, Send, AlertCircle, CheckCircle2, Loader2,
+  Upload, Tag, MessageSquare, Send, AlertCircle, CheckCircle2, Loader2, Download,
 } from 'lucide-react'
 
 /* ─── types ──────────────────────────────────────────── */
@@ -73,6 +73,18 @@ const formatDateTime = (raw?: string | null) => {
   if (Number.isNaN(d.getTime())) return '—'
   return d.toLocaleString('it-IT', { day: '2-digit', month: 'short', year: '2-digit', hour: '2-digit', minute: '2-digit' })
 }
+const escapeCsv = (value: string | number) => {
+  const raw = String(value ?? '')
+  if (!/[",\n]/.test(raw)) return raw
+  return `"${raw.replace(/"/g, '""')}"`
+}
+
+type TeacherSortField = 'name' | 'institution' | 'last_login_at' | 'session_count' | 'total_student_count'
+
+function SortIcon({ field, sortField, sortDirection }: { field: TeacherSortField; sortField: TeacherSortField; sortDirection: 'asc' | 'desc' }) {
+  if (sortField !== field) return <ChevronsUpDown className="h-3 w-3 opacity-40" />
+  return sortDirection === 'asc' ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />
+}
 
 /* ─── main component ──────────────────────────────────── */
 export default function TeachersPage() {
@@ -101,6 +113,17 @@ export default function TeachersPage() {
   const [editingCapValue, setEditingCapValue] = useState('')
   const [hardDeleteId, setHardDeleteId] = useState<string | null>(null)
   const [hardDeleteEmail, setHardDeleteEmail] = useState('')
+  const [sortField, setSortField] = useState<TeacherSortField>('name')
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc')
+
+  const toggleSort = (field: TeacherSortField) => {
+    if (sortField === field) {
+      setSortDirection((d) => (d === 'asc' ? 'desc' : 'asc'))
+    } else {
+      setSortField(field)
+      setSortDirection('asc')
+    }
+  }
 
   /* ── queries ── */
   const { data: requests, isLoading: loadingRequests } = useQuery<TeacherRequest[]>({
@@ -336,11 +359,65 @@ export default function TeachersPage() {
 
   /* ── derived ── */
   const pending = requests?.filter((r) => r.status === 'pending') || []
-  const teachers = (teachersStatus?.items || []).filter((t) => {
-    if (!search.trim()) return true
-    const q = search.toLowerCase()
-    return [t.first_name, t.last_name, t.email, t.institution].join(' ').toLowerCase().includes(q)
-  })
+  const teachers = (teachersStatus?.items || [])
+    .filter((t) => {
+      if (!search.trim()) return true
+      const q = search.toLowerCase()
+      return [t.first_name, t.last_name, t.email, t.institution].join(' ').toLowerCase().includes(q)
+    })
+    .sort((a, b) => {
+      const dir = sortDirection === 'asc' ? 1 : -1
+      switch (sortField) {
+        case 'institution':
+          return dir * (a.institution || '').localeCompare(b.institution || '')
+        case 'last_login_at':
+          return dir * ((a.last_login_at ? new Date(a.last_login_at).getTime() : 0) - (b.last_login_at ? new Date(b.last_login_at).getTime() : 0))
+        case 'session_count':
+          return dir * (a.session_count - b.session_count)
+        case 'total_student_count':
+          return dir * (a.total_student_count - b.total_student_count)
+        case 'name':
+        default: {
+          const nameA = [a.first_name, a.last_name].filter(Boolean).join(' ') || a.email
+          const nameB = [b.first_name, b.last_name].filter(Boolean).join(' ') || b.email
+          return dir * nameA.localeCompare(nameB)
+        }
+      }
+    })
+
+  const exportTeachersCsv = () => {
+    if (teachers.length === 0) return
+    const header = [
+      'nome', 'cognome', 'email', 'ruolo', 'verificato', 'scuola',
+      'ultimo_accesso', 'data_registrazione', 'sessioni', 'studenti',
+      'limite_mensile_eur', 'utilizzo_mensile_eur', 'spesa_periodo_eur', 'chiamate_periodo',
+    ]
+    const body = teachers.map((t) => [
+      t.first_name || '',
+      t.last_name || '',
+      t.email,
+      t.role || 'teacher',
+      t.is_verified ? 'si' : 'no',
+      t.institution || '',
+      t.last_login_at || '',
+      t.created_at || '',
+      t.session_count,
+      t.total_student_count,
+      t.monthly_cap.toFixed(2),
+      t.monthly_usage.toFixed(2),
+      t.period_cost.toFixed(2),
+      t.period_calls,
+    ].map(escapeCsv).join(','))
+    const blob = new Blob(['﻿' + [header.join(','), ...body].join('\n')], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `docenti-${new Date().toISOString().slice(0, 10)}.csv`
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    URL.revokeObjectURL(url)
+  }
 
   const selectedCount = csvRows.filter(r => r.selected && r.status === 'idle').length
   const sentCount = csvRows.filter(r => r.status === 'sent').length
@@ -382,14 +459,25 @@ export default function TeachersPage() {
             )}
           </p>
         </div>
-        <Button
-          onClick={() => setShowInvite((v) => !v)}
-          className="gap-2 flex-shrink-0 bg-slate-800 hover:bg-slate-900 text-white"
-        >
-          <UserPlus className="h-4 w-4" />
-          Invita docente
-          {showInvite ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
-        </Button>
+        <div className="flex flex-shrink-0 items-center gap-2">
+          <Button
+            onClick={exportTeachersCsv}
+            disabled={teachers.length === 0}
+            variant="outline"
+            className="gap-2"
+          >
+            <Download className="h-4 w-4" />
+            Esporta CSV
+          </Button>
+          <Button
+            onClick={() => setShowInvite((v) => !v)}
+            className="gap-2 bg-slate-800 hover:bg-slate-900 text-white"
+          >
+            <UserPlus className="h-4 w-4" />
+            Invita docente
+            {showInvite ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+          </Button>
+        </div>
       </div>
 
       <div className="relative max-w-xs">
@@ -835,25 +923,38 @@ export default function TeachersPage() {
                 <table className="w-full min-w-[860px] text-sm">
                   <thead>
                     <tr className="border-b border-slate-100 text-[11px] uppercase text-slate-400">
-                      <th className="px-4 py-3 text-left font-medium">Docente</th>
-                      <th className="px-3 py-3 text-left font-medium">Scuola</th>
+                      <th className="px-4 py-3 text-left font-medium">
+                        <button type="button" onClick={() => toggleSort('name')} className="flex items-center gap-1 hover:text-slate-600">
+                          Docente
+                          <SortIcon field="name" sortField={sortField} sortDirection={sortDirection} />
+                        </button>
+                      </th>
                       <th className="px-3 py-3 text-left font-medium">
-                        <span className="flex items-center gap-1">
+                        <button type="button" onClick={() => toggleSort('institution')} className="flex items-center gap-1 hover:text-slate-600">
+                          Scuola
+                          <SortIcon field="institution" sortField={sortField} sortDirection={sortDirection} />
+                        </button>
+                      </th>
+                      <th className="px-3 py-3 text-left font-medium">
+                        <button type="button" onClick={() => toggleSort('last_login_at')} className="flex items-center gap-1 hover:text-slate-600">
                           <LogIn className="h-3.5 w-3.5" />
                           Ultimo accesso
-                        </span>
+                          <SortIcon field="last_login_at" sortField={sortField} sortDirection={sortDirection} />
+                        </button>
                       </th>
                       <th className="px-3 py-3 text-center font-medium">
-                        <span className="flex items-center justify-center gap-1">
+                        <button type="button" onClick={() => toggleSort('session_count')} className="flex items-center justify-center gap-1 hover:text-slate-600 w-full">
                           <BookOpen className="h-3.5 w-3.5" />
                           Sessioni
-                        </span>
+                          <SortIcon field="session_count" sortField={sortField} sortDirection={sortDirection} />
+                        </button>
                       </th>
                       <th className="px-3 py-3 text-center font-medium">
-                        <span className="flex items-center justify-center gap-1">
+                        <button type="button" onClick={() => toggleSort('total_student_count')} className="flex items-center justify-center gap-1 hover:text-slate-600 w-full">
                           <Users className="h-3.5 w-3.5" />
                           Studenti
-                        </span>
+                          <SortIcon field="total_student_count" sortField={sortField} sortDirection={sortDirection} />
+                        </button>
                       </th>
                       <th className="px-3 py-3 text-left font-medium">
                         <span className="flex items-center gap-1">

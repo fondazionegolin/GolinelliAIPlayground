@@ -16,7 +16,7 @@ import {
   Tooltip, ResponsiveContainer,
 } from 'recharts'
 import {
-  Upload, Play, Pause, Square, Brain, FileText,
+  Upload, Play, Pause, Square, Network, FileText,
   Zap, RefreshCw, FlaskConical,
   Trash2, Plus, Pencil, X, Share2,
 } from 'lucide-react'
@@ -547,7 +547,7 @@ export default function ToyLMPage() {
       <aside className="flex w-64 shrink-0 flex-col border-r border-[var(--border-subtle)] bg-white/55 backdrop-blur-sm">
         <div className="flex items-center gap-2.5 border-b border-[var(--border-subtle)] px-4 py-3">
           <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-[var(--logo-violet-10)] ring-1 ring-[var(--logo-violet-22)]">
-            <Brain className="h-4.5 w-4.5 text-[var(--logo-violet)]" style={{ width: 18, height: 18 }} />
+            <Network className="h-4.5 w-4.5 text-[var(--logo-violet)]" style={{ width: 18, height: 18 }} />
           </span>
           <div className="min-w-0">
             <p className="truncate text-sm font-black leading-tight">Toy LM Lab</p>

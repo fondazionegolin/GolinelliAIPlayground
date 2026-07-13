@@ -144,20 +144,9 @@ type UpstreamStatus = {
 type PreviewApiRequest = {
   source?: 'golinelli-coding-preview'
   id?: string
-  action?: 'chat' | 'generateImage' | 'askAgent' | 'openExternalLink'
+  action?: 'chat' | 'generateImage' | 'saveData' | 'loadData' | 'deleteData' | 'askAgent' | 'openExternalLink'
   payload?: Record<string, unknown>
 }
-
-const DESCRIPTION_TEMPLATE = `# Nuovo progetto
-
-## Istruzioni di progetto
-Queste istruzioni vengono passate all'AI a ogni generazione. Modificale liberamente
-e aggiungi file di contesto con il pulsante "+ File".
-
-Descrivi qui l'obiettivo del progetto e le regole da rispettare sempre.
-
-## Richieste
-`
 
 type InterviewQuestion = { question: string; suggestions: string[] }
 
@@ -197,6 +186,10 @@ function composeDescription(title: string, prompt: string, answersText: string) 
 export default function StudentCodingLabModule({ sessionId, sharedProject, isTeacher = false }: { sessionId: string; sharedProject?: { projectId: string; nonce: number } | null; isTeacher?: boolean }) {
   const [projects, setProjects] = useState<CodingProject[]>([])
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null)
+  // Kept in sync below so the message-bridge handler (mounted once, deps []) always reads the
+  // currently active project instead of a stale closure value.
+  const selectedProjectIdRef = useRef<string | null>(null)
+  useEffect(() => { selectedProjectIdRef.current = selectedProjectId }, [selectedProjectId])
   const [projectDetail, setProjectDetail] = useState<CodingProjectDetail | null>(null)
   const [title, setTitle] = useState('Mini app di prova')
   const [prompt, setPrompt] = useState('Crea una piccola pagina interattiva con un titolo, una descrizione e un pulsante.')
@@ -254,6 +247,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
   const [liveFiles, setLiveFiles] = useState<{ path: string; lines: number; status: 'writing' | 'done' }[]>([])
   const [showDesignStudio, setShowDesignStudio] = useState(false)
   const [designNotice, setDesignNotice] = useState<string | null>(null)
+  const [imageJobStatus, setImageJobStatus] = useState<{ status: 'generating' | 'optimizing' | 'ready' | 'error'; message: string } | null>(null)
   const [showTutorial, setShowTutorial] = useState(false)
   const conversationEndRef = useRef<HTMLDivElement>(null)
   const draftSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -284,6 +278,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
     [projects, selectedProjectId],
   )
   const selectedFile = files.find((file) => file.path === selectedPath) ?? files[0] ?? null
+  const selectedFileIsGeneratedDescription = selectedFile?.path === 'description.md'
   const isReactPreview = useMemo(() => isReactProject(files), [files])
   const previewHtml = useMemo(() => (isReactPreview ? '' : buildPreviewHtml(files, { enableInspector: true })), [files, isReactPreview])
   const fullscreenPreviewHtml = useMemo(() => (isReactPreview ? '' : buildPreviewHtml(files, { enableInspector: false })), [files, isReactPreview])
@@ -296,6 +291,12 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
     [files],
   )
   const previewKey = `${selectedProjectId || 'new'}:${latestVersion?.id || selectedProject?.current_version_id || 'draft'}:${previewingCommitId || ''}:${previewingVersionId || ''}:${filesSignature}`
+  // Identity key for the live Sandpack bundler: deliberately excludes filesSignature. Sandpack already
+  // applies file-content changes reactively (see CodingSandpackPreview's `files` prop + recompileMode:
+  // 'delayed'), so keying on content would force a full bundler/iframe remount on every keystroke —
+  // wiping in-memory state and any data the generated app persisted. Only remount for a genuinely
+  // different project/version/commit.
+  const previewIdentityKey = `${selectedProjectId || 'new'}:${latestVersion?.id || selectedProject?.current_version_id || 'draft'}:${previewingCommitId || ''}:${previewingVersionId || ''}`
 
   // New preview content (or forced remount) resets the per-mount load counters.
   useEffect(() => { previewLoads.current = 0 }, [previewNonce])
@@ -345,8 +346,8 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
     detailLoadSeq.current += 1
     setSelectedProjectId(null)
     setProjectDetail(null)
-    setFiles([{ path: 'description.md', content: DESCRIPTION_TEMPLATE, language: 'markdown' }])
-    setSelectedPath('description.md')
+    setFiles([])
+    setSelectedPath('')
     setMessage('')
     setTitle('Mini app di prova')
     setPrompt('Crea una piccola pagina interattiva con un titolo, una descrizione e un pulsante.')
@@ -636,10 +637,52 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
 
         if (data.action === 'generateImage') {
           const payload = data.payload || {}
-          // Coding Lab always uses the OpenAI gpt-image model (same as the platform chatbots),
+          // Vibe Lab always uses the OpenAI gpt-image model (same as the platform chatbots),
           // ignoring any provider the generated mini-app may pass.
+          setImageJobStatus({ status: 'generating', message: 'Genero l’immagine sul server…' })
           const response = await llmApi.generateImage(String(payload.prompt || ''), 'gpt-image-1')
-          reply({ ok: true, result: response.data })
+          const result = response.data
+          // The backend returns a path relative to the platform's own origin (e.g.
+          // /uploads/generated/xxx.png). That resolves fine in the main app, but the sandboxed
+          // preview iframe runs on a different origin (Sandpack's external bundler domain, or a
+          // null origin for the legacy srcDoc preview) — a relative <img src> there 404s silently.
+          // Resolve it against the platform's origin before handing it back to the sandbox.
+          const imageUrl = typeof result?.image_url === 'string' && result.image_url.startsWith('/')
+            ? `${window.location.origin}${result.image_url}`
+            : result?.image_url
+          setImageJobStatus({ status: 'optimizing', message: 'Ottimizzo e preparo il file…' })
+          if (typeof imageUrl === 'string') {
+            await waitForImageUrl(imageUrl)
+          }
+          setImageJobStatus({ status: 'ready', message: 'Immagine pronta.' })
+          window.setTimeout(() => setImageJobStatus(null), 1800)
+          reply({ ok: true, result: { ...result, image_url: imageUrl } })
+          return
+        }
+
+        if (data.action === 'saveData' || data.action === 'loadData' || data.action === 'deleteData') {
+          const projectId = selectedProjectIdRef.current
+          if (!projectId) { reply({ ok: false, error: 'Nessun progetto attivo.' }); return }
+          const key = String(data.payload?.key || '').trim()
+          if (!key) { reply({ ok: false, error: 'Chiave dati mancante.' }); return }
+
+          if (data.action === 'saveData') {
+            const response = await codingApi.putProjectData(projectId, key, data.payload?.value ?? null)
+            reply({ ok: true, result: response.data })
+            return
+          }
+          if (data.action === 'deleteData') {
+            await codingApi.deleteProjectData(projectId, key)
+            reply({ ok: true, result: {} })
+            return
+          }
+          try {
+            const response = await codingApi.getProjectData(projectId, key)
+            reply({ ok: true, result: response.data })
+          } catch (err: any) {
+            if (err?.response?.status === 404) { reply({ ok: true, result: { key, value: null } }); return }
+            throw err
+          }
           return
         }
 
@@ -664,6 +707,10 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
           return
         }
       } catch (err: any) {
+        if (data.action === 'generateImage') {
+          setImageJobStatus({ status: 'error', message: err?.response?.data?.detail || err?.message || 'Generazione immagine non riuscita.' })
+          window.setTimeout(() => setImageJobStatus(null), 5000)
+        }
         reply({
           ok: false,
           error: err?.response?.data?.detail || err?.message || 'Chiamata AI non riuscita.',
@@ -915,7 +962,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
     try {
       await saveCurrentFilesVersion('Versione salvata prima della condivisione in classe.')
       await codingApi.shareToClass(selectedProjectId)
-      setShareUrl('Progetto condiviso nella chat di classe. I compagni lo aprono nel Coding Lab e lavorano su una copia.')
+      setShareUrl('Progetto condiviso nella chat di classe. I compagni lo aprono nel Vibe Lab e lavorano su una copia.')
       await loadProjects()
     } catch (err: any) {
       setError(err?.response?.data?.detail || 'Condivisione non riuscita.')
@@ -1026,6 +1073,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
 
   const updateSelectedFile = (content: string) => {
     if (!selectedFile) return
+    if (selectedFile.path === 'description.md') return
     setFiles((prev) => prev.map((file) => file.path === selectedFile.path ? { ...file, content } : file))
     if (selectedProjectId && !previewingCommitId && !previewingVersionId) markDraftDirty()
   }
@@ -1061,7 +1109,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
     } else {
       // No project context yet: start a fresh project pre-loaded with this design system.
       startNewProject()
-      setFiles([{ path: 'description.md', content: DESCRIPTION_TEMPLATE, language: 'markdown' }, file])
+      setFiles([file])
     }
     setSelectedPath(file.path)
     setActiveWorkbench('code')
@@ -1127,7 +1175,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
               <Code2 className="h-4 w-4" />
             </span>
             <div className="min-w-0">
-              <h2 className="truncate text-sm font-black text-[var(--text-primary)]">Coding Lab</h2>
+              <h2 className="truncate text-sm font-black text-[var(--text-primary)]">Vibe Lab</h2>
               <p className="truncate text-[10px] font-semibold text-[var(--text-muted)]">{projects.length} progetti</p>
             </div>
           </div>
@@ -1182,7 +1230,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
               variant="outline"
               density="compact"
               className="px-3"
-              title="Tutorial Coding Lab"
+              title="Tutorial Vibe Lab"
             >
               <HelpCircle className="h-3.5 w-3.5" />
             </Button>
@@ -1384,8 +1432,8 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
                     disabled={interviewing || creating || !title.trim() || !prompt.trim()}
                     className="mt-3 inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-slate-950 px-4 text-sm font-bold text-white transition disabled:opacity-40"
                   >
-                    {interviewing ? <Loader2 className="h-4 w-4 animate-spin" /> : <MessageSquare className="h-4 w-4" />}
-                    {interviewing ? 'Preparo le domande...' : 'Avanti: qualche domanda'}
+                    {interviewing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+                    {interviewing ? 'Creo...' : 'Crea'}
                   </button>
                 ) : (
                   <div className="mt-3 space-y-3 rounded-xl border border-indigo-200 bg-indigo-50/60 p-3">
@@ -1622,8 +1670,9 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
                 Stai visualizzando una versione storica. Usa Rollback per renderla la versione corrente.
               </div>
             )}
-            {activeWorkbench === 'code' ? (
-            <div className="flex min-h-0 flex-1 flex-col">
+            {/* Both panels stay mounted and are toggled via CSS (not conditional rendering) so
+                switching Code <-> Preview never tears down the live Sandpack bundler/iframe. */}
+            <div className={activeWorkbench === 'code' ? 'flex min-h-0 flex-1 flex-col' : 'hidden'}>
               <div className="flex items-center gap-1 overflow-x-auto border-b border-white/10 bg-slate-900 p-2">
                 {files.length === 0 && (
                   <span className="px-2 py-1 text-xs text-slate-500">Nessun file — aggiungi contesto o genera</span>
@@ -1637,7 +1686,14 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
                       selectedFile?.path === file.path ? 'bg-white text-slate-950' : 'bg-white/5 text-slate-300 hover:bg-white/10'
                     }`}
                   >
-                    {file.path}
+                    <span>{file.path}</span>
+                    {file.path === 'description.md' && (
+                      <span className={`ml-2 rounded-full px-1.5 py-0.5 text-[9px] font-black uppercase ${
+                        selectedFile?.path === file.path ? 'bg-slate-200 text-slate-700' : 'bg-white/10 text-slate-400'
+                      }`}>
+                        auto
+                      </span>
+                    )}
                   </button>
                 ))}
                 <button
@@ -1652,7 +1708,11 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
               </div>
               <div className="min-h-0 flex-1 p-3">
                 {selectedFile ? (
-                  <HighlightedCodeEditor file={selectedFile} onChange={updateSelectedFile} />
+                  selectedFileIsGeneratedDescription ? (
+                    <GeneratedDescriptionPreview file={selectedFile} />
+                  ) : (
+                    <HighlightedCodeEditor file={selectedFile} onChange={updateSelectedFile} />
+                  )
                 ) : (
                   <div className="flex h-full items-center justify-center rounded-xl border border-dashed border-white/10 text-sm text-slate-500">
                     Crea un progetto per vedere il codice.
@@ -1660,12 +1720,11 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
                 )}
               </div>
             </div>
-            ) : (
-            <div className={`flex min-h-0 flex-1 bg-slate-100 ${previewDevice === 'mobile' ? 'items-start justify-center overflow-auto p-4' : ''}`}>
+            <div className={activeWorkbench === 'preview' ? `flex min-h-0 flex-1 bg-slate-100 ${previewDevice === 'mobile' ? 'items-start justify-center overflow-auto p-4' : ''}` : 'hidden'}>
             {isReactPreview && files.length > 0 ? (
               <div className={`relative flex min-h-0 ${previewDevice === 'mobile' ? 'h-[844px] max-h-full w-[390px] max-w-full shrink-0 overflow-hidden rounded-[32px] border-[10px] border-slate-950 bg-white shadow-2xl ring-1 ring-slate-900/20' : 'flex-1'}`}>
                 <CodingSandpackPreview
-                  key={previewKey}
+                  key={previewIdentityKey}
                   files={files}
                   enableInspector
                   className="h-full w-full"
@@ -1689,19 +1748,21 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
                     </div>
                   </div>
                 )}
+                {imageJobStatus && <ImageJobStatusOverlay status={imageJobStatus.status} message={imageJobStatus.message} />}
                 {previewLoading && <PreviewLoadingSplash />}
               </div>
             ) : previewHtml ? (
               <div className={`relative flex min-h-0 ${previewDevice === 'mobile' ? 'h-[844px] max-h-full w-[390px] max-w-full shrink-0 overflow-hidden rounded-[32px] border-[10px] border-slate-950 bg-white shadow-2xl ring-1 ring-slate-900/20' : 'flex-1'}`}>
                 <iframe
                   key={`${previewKey}:${previewNonce}`}
-                  title="Anteprima Coding Lab"
+                  title="Anteprima Vibe Lab"
                   srcDoc={previewHtml}
                   sandbox="allow-scripts allow-forms"
                   referrerPolicy="no-referrer"
                   onLoad={handlePreviewLoad}
                   className="min-h-0 flex-1 border-0 bg-white"
                 />
+                {imageJobStatus && <ImageJobStatusOverlay status={imageJobStatus.status} message={imageJobStatus.message} />}
                 {previewLoading && <PreviewLoadingSplash />}
               </div>
             ) : (
@@ -1721,7 +1782,6 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
             </div>
             )}
             </div>
-            )}
           </section>
         </div>
       </main>
@@ -1742,11 +1802,11 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
             </button>
           </div>
           {isReactPreview ? (
-            <CodingSandpackPreview key={`fullscreen:${previewKey}`} files={files} enableInspector={false} className="min-h-0 flex-1" />
+            <CodingSandpackPreview key={`fullscreen:${previewIdentityKey}`} files={files} enableInspector={false} className="min-h-0 flex-1" />
           ) : (
             <iframe
               key={`fullscreen:${previewKey}:${fullscreenNonce}`}
-              title="Anteprima Coding Lab a pagina intera"
+              title="Anteprima Vibe Lab a pagina intera"
               srcDoc={fullscreenPreviewHtml}
               sandbox="allow-scripts allow-forms"
               referrerPolicy="no-referrer"
@@ -1781,7 +1841,7 @@ const CODING_TUTORIAL_STEPS = [
     ring: 'ring-sky-300/40',
     glow: 'shadow-sky-500/25',
     label: 'Panoramica',
-    title: 'Benvenuto nel Coding Lab',
+    title: 'Benvenuto nel Vibe Lab',
     desc: 'Qui trasformi un’idea in una mini app: descrivi il progetto, scegli uno stile, guarda l’anteprima e chiedi modifiche al chatbot finché il risultato funziona.',
     tips: ['Prompt e cronologia stanno al centro', 'I progetti e le versioni restano nella sidebar', 'Codice e anteprima si alternano a destra'],
     visual: () => (
@@ -1975,7 +2035,7 @@ function CodingLabTutorialModal({
       <motion.div
         role="dialog"
         aria-modal="true"
-        aria-label="Tutorial Coding Lab"
+        aria-label="Tutorial Vibe Lab"
         initial={{ opacity: 0, y: 18, scale: 0.97 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
         exit={{ opacity: 0, y: 18, scale: 0.97 }}
@@ -1999,7 +2059,7 @@ function CodingLabTutorialModal({
             <div className="mb-6">
               <div className="mb-2 flex items-center gap-2">
                 <Sparkles className="h-4 w-4 text-sky-300" />
-                <span className="text-xs font-black uppercase tracking-widest text-sky-300">Tutorial Coding Lab</span>
+                <span className="text-xs font-black uppercase tracking-widest text-sky-300">Tutorial Vibe Lab</span>
               </div>
               <h2 className="text-3xl font-black leading-tight text-white">
                 Costruisci mini app con metodo
@@ -2155,6 +2215,31 @@ function PreviewLoadingSplash() {
           <p className="text-sm font-black text-[var(--text-primary)]">Caricamento anteprima</p>
           <p className="mt-1 text-xs font-semibold text-[var(--text-muted)]">Preparo il sandbox del progetto</p>
         </div>
+      </div>
+    </div>
+  )
+}
+
+function ImageJobStatusOverlay({ status, message }: { status: 'generating' | 'optimizing' | 'ready' | 'error'; message: string }) {
+  const done = status === 'ready'
+  const failed = status === 'error'
+  return (
+    <div className="pointer-events-none absolute inset-x-0 top-3 z-30 flex justify-center px-3">
+      <div className={`pointer-events-auto flex max-w-[min(92%,420px)] items-center gap-2 rounded-full border px-3 py-2 text-xs font-semibold shadow-lg backdrop-blur-xl ${
+        failed
+          ? 'border-rose-200 bg-rose-50/95 text-rose-700'
+          : done
+            ? 'border-emerald-200 bg-emerald-50/95 text-emerald-700'
+            : 'border-sky-200 bg-white/95 text-sky-700'
+      }`}>
+        {failed ? (
+          <X className="h-3.5 w-3.5 shrink-0" />
+        ) : done ? (
+          <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
+        ) : (
+          <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" />
+        )}
+        <span className="truncate">{message}</span>
       </div>
     </div>
   )
@@ -2504,6 +2589,26 @@ function isReactProject(files: GeneratedFile[]): boolean {
   return false
 }
 
+async function waitForImageUrl(url: string, timeoutMs = 12000): Promise<void> {
+  if (!/^https?:\/\//i.test(url) && !url.startsWith('/')) return
+  const started = Date.now()
+  let delay = 250
+  while (Date.now() - started < timeoutMs) {
+    try {
+      let response = await fetch(url, { method: 'HEAD', cache: 'no-store' })
+      if (response.status === 405 || response.status === 501) {
+        response = await fetch(url, { method: 'GET', cache: 'no-store' })
+      }
+      const contentType = response.headers.get('content-type') || ''
+      if (response.ok && contentType.startsWith('image/')) return
+    } catch {
+      // Static files can lag behind the API response briefly; retry below.
+    }
+    await new Promise((resolve) => window.setTimeout(resolve, delay))
+    delay = Math.min(delay + 250, 1500)
+  }
+}
+
 function buildPreviewHtml(files: GeneratedFile[], options: { enableInspector?: boolean } = {}) {
   if (!files.length) return ''
   const clean = (file: GeneratedFile) => {
@@ -2551,7 +2656,7 @@ function injectPreviewRuntime(html: string, htmlFiles: Record<string, string>, c
     pending.delete(data.id);
     data.ok ? resolve(data.result) : reject(new Error(data.error || 'Chiamata AI non riuscita.'));
   });
-  function callHost(action, payload) {
+  function callHost(action, payload, timeoutMs = 60000) {
     return new Promise((resolve, reject) => {
       const id = 'coding_' + Date.now() + '_' + Math.random().toString(36).slice(2);
       pending.set(id, { resolve, reject });
@@ -2560,14 +2665,34 @@ function injectPreviewRuntime(html: string, htmlFiles: Record<string, string>, c
         if (!pending.has(id)) return;
         pending.delete(id);
         reject(new Error('La chiamata AI ha impiegato troppo tempo.'));
-      }, 45000);
+      }, timeoutMs);
     });
   }
   window.GolinelliAI = {
     chat: ({ content, history = [], profileKey = 'tutor', provider, model } = {}) =>
       callHost('chat', { content, history, profileKey, provider, model }),
-    generateImage: ({ prompt, provider = 'gpt-image-1' } = {}) =>
-      callHost('generateImage', { prompt, provider })
+    generateImage: (args = {}) => {
+      const payload = typeof args === 'string'
+        ? { prompt: args, provider: 'gpt-image-1' }
+        : { prompt: args.prompt, provider: args.provider || 'gpt-image-1' };
+      const notify = (status, message, result) => {
+        if (typeof args === 'object' && typeof args.onStatus === 'function') args.onStatus({ status, message, result });
+        window.dispatchEvent(new CustomEvent('golinelli:image-status', { detail: { status, message, result } }));
+      };
+      notify('generating', 'Genero l’immagine…');
+      return callHost('generateImage', payload, 180000)
+        .then((result) => {
+          notify('ready', 'Immagine pronta.', result);
+          return result;
+        })
+        .catch((error) => {
+          notify('error', error && error.message ? error.message : 'Generazione immagine non riuscita.');
+          throw error;
+        });
+    },
+    saveData: ({ key, value } = {}) => callHost('saveData', { key, value }),
+    loadData: ({ key } = {}) => callHost('loadData', { key }),
+    deleteData: ({ key } = {}) => callHost('deleteData', { key }),
   };
   function cssPathFor(node) {
     if (!node || node.nodeType !== 1) return '';
@@ -2790,6 +2915,30 @@ function injectPreviewRuntime(html: string, htmlFiles: Record<string, string>, c
     return html.replace(/<\/head>/i, `${runtime}</head>`)
   }
   return `${runtime}${html}`
+}
+
+function GeneratedDescriptionPreview({ file }: { file: GeneratedFile }) {
+  const lineCount = file.content.split('\n').length
+  return (
+    <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-xl border border-white/10 bg-[#0f172a]">
+      <div className="flex shrink-0 items-center justify-between gap-3 border-b border-white/10 bg-slate-900 px-3 py-2">
+        <span className="rounded-full border border-emerald-400/30 bg-emerald-400/10 px-2 py-0.5 font-mono text-[10px] font-bold text-emerald-100">
+          markdown generato · {lineCount} ln
+        </span>
+        <span className="truncate text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+          Compilato dal prompt
+        </span>
+      </div>
+      <div className="min-h-0 flex-1 overflow-auto p-4">
+        <div className="mb-3 rounded-lg border border-emerald-400/20 bg-emerald-400/10 px-3 py-2 text-xs font-semibold leading-relaxed text-emerald-50">
+          Questo documento si aggiorna automaticamente dal prompt e dalle risposte alle domande. Per cambiare il progetto, usa il prompt a sinistra.
+        </div>
+        <div className="rounded-lg border border-white/10 bg-slate-950/70 px-4 py-3 text-slate-100">
+          <ReasoningMarkdown dark>{file.content}</ReasoningMarkdown>
+        </div>
+      </div>
+    </div>
+  )
 }
 
 function HighlightedCodeEditor({ file, onChange }: { file: GeneratedFile; onChange: (content: string) => void }) {

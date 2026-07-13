@@ -147,9 +147,9 @@
     "nav_tasks": "Tasks",
     "nav_wiki": "Wiki",
     "nav_ml_lab": "ML Lab",
-    "nav_notebook": "Notebook",
+    "nav_notebook": "Coding Lab",
     "nav_desktop": "Desktop",
-    "nav_coding_lab": "Coding Lab",
+    "nav_coding_lab": "Vibe Lab",
     "nav_studentbot": "Studentbot",
     "nav_admin": "Admin panel",
     "no_session": "No session",
@@ -339,7 +339,7 @@
     "desktop_desc": "Your personal workspace with widgets.",
     "wiki_label": "Wiki",
     "wiki_desc": "A complete guide to the platform features.",
-    "notebook_label": "Notebook",
+    "notebook_label": "Coding Lab",
     "coding_desc": "Create web mini apps with prompt, code, and preview."
   },
 

@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
-import { Bot, Check, GitCompare, History, Loader2, Send, Sparkles, Wrench, X } from 'lucide-react'
+import { Bot, Check, GitCompare, History, Loader2, Send, X } from 'lucide-react'
+import axios from 'axios'
 import { notebooksApi } from '@/lib/api'
 import type { NotebookCodeProposal, NotebookTutorMessage } from './types'
 
 interface Props {
   notebookId: string
-  device?: 'microbit' | 'circuitplayground'
+  device?: 'microbit' | 'circuitplayground' | 'python' | 'p5js'
   currentCellSource: string
   lastOutput?: string
   initialMessages?: NotebookTutorMessage[]
@@ -16,8 +17,63 @@ interface Props {
   onOpenVersions?: () => void
 }
 
+const CREDIT_EXHAUSTED_MESSAGE = 'Crediti AI esauriti. Attendi il rinnovo del plafond o contatta il docente/amministratore.'
+
 function getRangeText(source: string, lineStart: number, lineEnd: number) {
   return source.split('\n').slice(Math.max(0, lineStart - 1), lineEnd).join('\n')
+}
+
+// Stesse bolle a stadi di Coding Lab (Prompt Analyst / Architetto / File Writer /
+// Reviewer / Coding Builder), stessi toni per kind, adattati alla palette chiara di
+// questo componente invece delle CSS var di Coding Lab.
+function AgentMessageBubble({ message }: { message: NotebookTutorMessage }) {
+  const isUser = message.role === 'user'
+  const kind = message.metadata?.kind
+  const isFeedback = kind === 'agent_progress' || kind === 'agent_reasoning' || kind === 'file_write_summary' || kind === 'agent_feedback'
+  const label = isUser ? 'Tu' : message.agent_name || 'Agente'
+
+  if (isFeedback) {
+    const tone = kind === 'file_write_summary'
+      ? { border: 'border-sky-200 bg-sky-50', label: 'text-sky-700' }
+      : kind === 'agent_reasoning'
+        ? { border: 'border-amber-200 bg-amber-50', label: 'text-amber-800' }
+        : { border: 'border-slate-200 bg-slate-50', label: 'text-slate-500' }
+    return (
+      <div className={`rounded-xl border px-3 py-2.5 ${tone.border}`}>
+        <div className={`mb-1 text-[10px] font-bold uppercase tracking-wide ${tone.label}`}>{label}</div>
+        <p className="max-h-40 overflow-y-auto whitespace-pre-wrap text-xs leading-relaxed text-slate-700">
+          {message.content}
+        </p>
+        {kind === 'file_write_summary' && (message.metadata?.files?.length ?? 0) > 0 && (
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {message.metadata!.files!.map((file) => (
+              <span
+                key={file.path}
+                className="rounded-full border border-sky-200 bg-white px-2 py-1 text-[11px] font-semibold text-sky-700"
+              >
+                {file.path} · {file.lines} righe
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  return (
+    <div className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
+      <div className={`max-w-[88%] rounded-xl px-3 py-2 text-sm ${
+        isUser
+          ? 'rounded-tr-sm bg-slate-900 text-white'
+          : 'rounded-tl-sm border border-slate-200 bg-slate-50 text-slate-700'
+      }`}>
+        <div className={`mb-0.5 text-[10px] font-bold uppercase tracking-wide ${isUser ? 'text-slate-300' : 'text-slate-500'}`}>
+          {label}
+        </div>
+        <p className="whitespace-pre-wrap leading-6">{message.content}</p>
+      </div>
+    </div>
+  )
 }
 
 function DiffBlock({ source, proposal }: { source: string; proposal: NotebookCodeProposal }) {
@@ -50,6 +106,7 @@ const DEVICE_COPY = {
     subtitle: 'Trasforma intenzioni creative in codice commentato',
     intro: 'Il tutor propone codice Python o JavaScript per micro:bit, aggiunge commenti in italiano e mostra il diff prima di applicare.',
     placeholder: 'Esempio: voglio accendere i LED quando inclino la scheda e mandare la temperatura al browser',
+    emptyTitle: 'Descrivi cosa vuoi far fare alla scheda.',
   },
   circuitplayground: {
     label: 'Circuit Playground Express',
@@ -57,6 +114,23 @@ const DEVICE_COPY = {
     subtitle: 'Trasforma intenzioni creative in MakeCode TypeScript',
     intro: 'Il tutor propone codice MakeCode TypeScript per Circuit Playground Express, aggiunge commenti in italiano e mostra il diff prima di applicare.',
     placeholder: 'Esempio: voglio cambiare i NeoPixel con la luce e mandare temperatura e movimento al browser',
+    emptyTitle: 'Descrivi cosa vuoi far fare alla scheda.',
+  },
+  python: {
+    label: 'Python',
+    title: 'Tutor agentico Python',
+    subtitle: 'Trasforma richieste in codice Python commentato',
+    intro: 'Il tutor propone modifiche al codice Python della cella, aggiunge commenti in italiano e mostra il diff prima di applicare.',
+    placeholder: 'Esempio: voglio leggere un file CSV e stampare la media di una colonna',
+    emptyTitle: 'Descrivi cosa vuoi che faccia il tuo codice.',
+  },
+  p5js: {
+    label: 'p5.js',
+    title: 'Tutor agentico p5.js',
+    subtitle: 'Trasforma idee creative in sketch p5.js',
+    intro: 'Il tutor propone codice p5.js per il tuo sketch, aggiunge commenti in italiano e mostra il diff prima di applicare.',
+    placeholder: 'Esempio: voglio che i cerchi cambino colore quando muovo il mouse',
+    emptyTitle: 'Descrivi cosa vuoi che faccia il tuo sketch.',
   },
 } as const
 
@@ -76,8 +150,6 @@ export default function NotebookMicrobitAgentChat({
   const [messages, setMessages] = useState<NotebookTutorMessage[]>(initialMessages)
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
-  const [agentSteps, setAgentSteps] = useState<string[]>([])
-  const [finalBrief, setFinalBrief] = useState('')
   const bottomRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -86,7 +158,71 @@ export default function NotebookMicrobitAgentChat({
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages, loading, pendingProposals, agentSteps])
+  }, [messages, loading, pendingProposals])
+
+  // python/p5js usano la pipeline agentica a due chiamate Sonnet (~140s totali): troppo
+  // lunga per una POST JSON sincrona dietro Cloudflare (524). Per questi si usa lo stream
+  // SSE, che manda subito il primo byte e fa comparire le bolle d'agente dal vivo. I device
+  // (microbit/circuitplayground) restano sulla POST JSON: una sola chiamata veloce.
+  const useStreaming = device === 'python' || device === 'p5js'
+
+  const sendStreaming = async (text: string) => {
+    // Auth: cookie per i docenti (credentials include), student-token per gli studenti —
+    // stessa logica dell'interceptor axios (niente student-token se c'è auth docente).
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+    let hasTeacherAuth = false
+    try {
+      const raw = localStorage.getItem('eduai-auth')
+      if (raw) {
+        const parsed = JSON.parse(raw)
+        hasTeacherAuth = Boolean(parsed?.state?.user && parsed?.state?.accessToken)
+      }
+    } catch { hasTeacherAuth = false }
+    const studentToken = localStorage.getItem('student_token')
+    if (studentToken && !hasTeacherAuth) headers['student-token'] = studentToken
+
+    const response = await fetch(notebooksApi.assistStreamUrl(notebookId), {
+      method: 'POST',
+      headers,
+      credentials: 'include',
+      body: JSON.stringify({ message: text, current_cell_source: currentCellSource, last_output: lastOutput }),
+    })
+    if (response.status === 402) throw new Error('CREDIT_LIMIT_EXCEEDED')
+    if (!response.ok || !response.body) throw new Error('stream non partito')
+
+    const reader = response.body.getReader()
+    const decoder = new TextDecoder()
+    let buffer = ''
+    let finished = false
+    while (!finished) {
+      const { done, value } = await reader.read()
+      if (done) break
+      buffer += decoder.decode(value, { stream: true })
+      let sep: number
+      while ((sep = buffer.indexOf('\n\n')) >= 0) {
+        const frame = buffer.slice(0, sep)
+        buffer = buffer.slice(sep + 2)
+        const dataLine = frame.split('\n').find((l) => l.startsWith('data: '))
+        if (!dataLine) continue
+        let event: any
+        try { event = JSON.parse(dataLine.slice(6)) } catch { continue }
+        if (event.type === 'stage' && event.message) {
+          // Ogni bolla d'agente compare appena lo stadio finisce.
+          setMessages((prev) => [...prev, event.message as NotebookTutorMessage])
+        } else if (event.type === 'done') {
+          const summary = event.summary || 'Modifica pronta.'
+          const proposals = (event.proposals || []) as NotebookCodeProposal[]
+          onProposals(summary, proposals)
+          if (Array.isArray(event.history)) setMessages(event.history as NotebookTutorMessage[])
+          finished = true
+        } else if (event.type === 'error') {
+          throw new Error(event.message || 'Generazione non riuscita.')
+        }
+        // 'ping' (heartbeat) ignorato.
+      }
+    }
+    if (!finished) throw new Error('stream interrotto')
+  }
 
   const send = async () => {
     const text = input.trim()
@@ -94,32 +230,35 @@ export default function NotebookMicrobitAgentChat({
 
     setInput('')
     setLoading(true)
-    setFinalBrief('')
-    setAgentSteps([
-      'Leggo l intenzione creativa dello studente.',
-      'Controllo il codice attuale e la comunicazione seriale.',
-      'Preparo una modifica minima con commenti in italiano.',
-    ])
 
     const nextMessages: NotebookTutorMessage[] = [...messages, { role: 'user', content: text }]
     setMessages(nextMessages)
 
     try {
-      const response = await notebooksApi.assist(notebookId, {
-        message: text,
-        current_cell_source: currentCellSource,
-        last_output: lastOutput,
-      })
-      const summary = response.data.summary || 'Ho preparato una proposta di modifica.'
-      const proposals = (response.data.proposals || []) as NotebookCodeProposal[]
-      onProposals(summary, proposals)
-      const history = Array.isArray(response.data.history) ? response.data.history as NotebookTutorMessage[] : null
-      setMessages(history ?? [...nextMessages, { role: 'assistant', content: summary }])
-      setFinalBrief(proposals.length
-        ? `${proposals.length} modifica/e pronte da applicare. Controlla il diff prima di approvare.`
-        : 'Nessuna modifica necessaria: posso guidarti con una domanda o un esempio piu piccolo.')
-    } catch {
-      setMessages([...nextMessages, { role: 'assistant', content: 'Non riesco a generare una proposta in questo momento.' }])
+      if (useStreaming) {
+        await sendStreaming(text)
+      } else {
+        const response = await notebooksApi.assist(notebookId, {
+          message: text,
+          current_cell_source: currentCellSource,
+          last_output: lastOutput,
+        })
+        const summary = response.data.summary || 'Ho preparato una proposta di modifica.'
+        const proposals = (response.data.proposals || []) as NotebookCodeProposal[]
+        onProposals(summary, proposals)
+        const history = Array.isArray(response.data.history) ? response.data.history as NotebookTutorMessage[] : null
+        setMessages(history ?? [...nextMessages, { role: 'assistant', content: summary }])
+      }
+    } catch (error) {
+      const creditLimitExceeded =
+        (axios.isAxiosError(error) && error.response?.status === 402)
+        || (error instanceof Error && error.message === 'CREDIT_LIMIT_EXCEEDED')
+      setMessages([...nextMessages, {
+        role: 'assistant',
+        content: creditLimitExceeded
+          ? CREDIT_EXHAUSTED_MESSAGE
+          : 'Non riesco a generare una proposta in questo momento.',
+      }])
     } finally {
       setLoading(false)
     }
@@ -149,7 +288,7 @@ export default function NotebookMicrobitAgentChat({
       <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
         {messages.length === 0 && (
           <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-4 text-sm text-slate-600">
-            <p className="font-semibold text-slate-800">Descrivi cosa vuoi far fare alla scheda.</p>
+            <p className="font-semibold text-slate-800">{copy.emptyTitle}</p>
             <p className="mt-2 text-xs leading-5">
               {copy.intro}
             </p>
@@ -158,35 +297,13 @@ export default function NotebookMicrobitAgentChat({
 
         <div className="space-y-3">
           {messages.map((message, index) => (
-            <div key={index} className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-              <div className={`max-w-[88%] rounded-xl px-3 py-2 text-sm ${
-                message.role === 'user'
-                  ? 'rounded-tr-sm bg-slate-900 text-white'
-                  : 'rounded-tl-sm border border-slate-200 bg-slate-50 text-slate-700'
-              }`}>
-                <p className="whitespace-pre-wrap leading-6">{message.content}</p>
-              </div>
-            </div>
+            <AgentMessageBubble key={index} message={message} />
           ))}
 
-          {(loading || agentSteps.length > 0) && (
-            <div className="rounded-xl border border-sky-200 bg-sky-50 px-3 py-3">
-              <div className="mb-2 flex items-center gap-2 text-[11px] font-bold uppercase tracking-wide text-sky-700">
-                {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
-                Azioni dell agente
-              </div>
-              <div className="space-y-1.5">
-                {agentSteps.map((step, index) => (
-                  <div key={step} className="flex items-center gap-2 text-xs text-slate-700">
-                    <span className={`flex h-4 w-4 items-center justify-center rounded-full text-[9px] font-bold ${
-                      !loading || index < agentSteps.length - 1 ? 'bg-emerald-100 text-emerald-700' : 'bg-sky-100 text-sky-700'
-                    }`}>
-                      {!loading || index < agentSteps.length - 1 ? <Check className="h-2.5 w-2.5" /> : index + 1}
-                    </span>
-                    {step}
-                  </div>
-                ))}
-              </div>
+          {loading && (
+            <div className="flex items-center gap-2 rounded-xl border border-sky-200 bg-sky-50 px-3 py-2.5 text-xs font-medium text-sky-700">
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              Prompt Analyst → Architetto → File Writer → Reviewer → Coding Builder…
             </div>
           )}
 
@@ -201,14 +318,16 @@ export default function NotebookMicrobitAgentChat({
                   <div className="mb-2">
                     <p className="text-sm font-semibold text-slate-900">{proposal.message}</p>
                     {proposal.explanation && <p className="mt-1 text-xs leading-5 text-slate-600">{proposal.explanation}</p>}
+                    {proposal.required_libraries && proposal.required_libraries.length > 0 && (
+                      <p className="mt-1.5 text-[11px] text-indigo-600">
+                        Richiede librerie: {proposal.required_libraries.join(', ')} (abilitate automaticamente all&apos;applicazione)
+                      </p>
+                    )}
                   </div>
                   <DiffBlock source={currentCellSource} proposal={proposal} />
                   <div className="mt-3 flex gap-2">
                     <button
-                      onClick={() => {
-                        onApplyProposal(proposal.id)
-                        setFinalBrief('Modifica applicata al codice. Rileggi i commenti: spiegano cosa fa ogni blocco e a cosa serve.')
-                      }}
+                      onClick={() => onApplyProposal(proposal.id)}
                       className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-500"
                     >
                       <Check className="h-3.5 w-3.5" />
@@ -227,15 +346,6 @@ export default function NotebookMicrobitAgentChat({
             </div>
           )}
 
-          {finalBrief && (
-            <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-3">
-              <div className="mb-1 flex items-center gap-2 text-[11px] font-bold uppercase tracking-wide text-emerald-700">
-                <Wrench className="h-3.5 w-3.5" />
-                Brief finale
-              </div>
-              <p className="text-xs leading-5 text-emerald-900">{finalBrief}</p>
-            </div>
-          )}
           <div ref={bottomRef} />
         </div>
       </div>

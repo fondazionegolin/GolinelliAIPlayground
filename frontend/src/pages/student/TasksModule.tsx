@@ -164,20 +164,35 @@ export default function TasksModule({ openTaskId, onOpenDocument }: TasksModuleP
 
   return (
     <div className="h-full flex flex-col relative overflow-hidden bg-slate-100">
-      {/* Grid View */}
-      <div className="flex-1 overflow-y-auto px-4 pb-24 pt-5 md:px-6 md:pb-8">
-        <div className="mx-auto w-full max-w-6xl">
-          <div className="mb-4 flex items-center justify-between rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
-            <div className="flex items-center gap-3">
-              <div className="flex h-9 w-9 items-center justify-center rounded-lg border border-emerald-200 bg-emerald-100 text-emerald-800 shadow-sm">
-                <ClipboardList className="h-4 w-4" />
-              </div>
-              <div>
-                <h2 className="text-base font-black text-slate-950">{t('tasks.title')}</h2>
-                <p className="text-xs font-medium text-slate-500">{t('tasks.subtitle')}</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
+      <section className="relative shrink-0 border-b border-slate-200 bg-white/70 backdrop-blur-sm">
+        <div className="mx-auto max-w-6xl px-4 py-7 md:px-6">
+          <div className="mx-auto max-w-3xl text-center">
+            <p className="text-[11px] font-bold uppercase tracking-[0.18em]" style={{ color: accentTheme.text }}>Compiti</p>
+            <h2 className="mt-2 text-3xl font-black tracking-tight text-slate-950">{t('tasks.title')}</h2>
+            <p className="mx-auto mt-3 max-w-2xl text-sm leading-6 text-slate-600">
+              {t('tasks.subtitle')}
+            </p>
+            <label className="mx-auto mt-6 flex max-w-xl items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2.5 shadow-sm">
+              <Search className="h-4 w-4 shrink-0 text-slate-400" />
+              <input
+                type="text"
+                value={taskSearch}
+                onChange={e => setTaskSearch(e.target.value)}
+                placeholder="Cerca compiti..."
+                className="min-w-0 flex-1 bg-transparent text-sm font-medium text-slate-700 placeholder:text-slate-400 focus:outline-none"
+              />
+              {taskSearch && (
+                <button
+                  type="button"
+                  onClick={() => setTaskSearch('')}
+                  className="rounded-full p-1 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
+                  aria-label="Cancella ricerca"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </label>
+            <div className="mt-5 flex items-center justify-center gap-2">
               <div className="flex items-center gap-0.5 rounded-lg border border-slate-200 bg-slate-50 p-0.5 shadow-sm">
                 <button
                   type="button"
@@ -206,24 +221,11 @@ export default function TasksModule({ openTaskId, onOpenDocument }: TasksModuleP
               </div>
             </div>
           </div>
+        </div>
+      </section>
 
-          {/* Search */}
-          <div className="relative mb-5">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400 pointer-events-none" />
-            <input
-              type="text"
-              value={taskSearch}
-              onChange={e => setTaskSearch(e.target.value)}
-              placeholder="Cerca compiti..."
-              className="w-full rounded-xl border border-slate-300 bg-white py-2.5 pl-9 pr-8 text-sm shadow-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-400"
-            />
-            {taskSearch && (
-              <button onClick={() => setTaskSearch('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
-                <X className="h-3.5 w-3.5" />
-              </button>
-            )}
-          </div>
-
+      <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-24 pt-5 md:px-6 md:pb-8">
+        <div className="mx-auto w-full max-w-6xl">
           {/* UDA Folders */}
           {Object.keys(udaFolderMap).length > 0 && (
             <div className="mb-6 space-y-3">
@@ -431,7 +433,7 @@ function TaskCard({ task, onClick }: { task: TaskData; onClick: () => void; acce
         {task.due_at && !isCompleted && (
           <div className={`flex items-center gap-1 ${s.time}`}>
             <Clock className="h-3 w-3" />
-            <span className="text-[10px]">{new Date(task.due_at).toLocaleDateString('it-IT')}</span>
+            <span className="text-[10px]">{new Date(task.due_at).toLocaleString('it-IT', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>
           </div>
         )}
         {isCompleted && (
@@ -487,7 +489,7 @@ function TaskRow({ task, onClick }: { task: TaskData; onClick: () => void }) {
       {task.due_at && !isCompleted && (
         <div className={`hidden shrink-0 items-center gap-1 md:flex ${s.time}`}>
           <Clock className="h-3 w-3" />
-          <span className="text-[10px]">{new Date(task.due_at).toLocaleDateString('it-IT')}</span>
+          <span className="text-[10px]">{new Date(task.due_at).toLocaleString('it-IT', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>
         </div>
       )}
       {isCompleted && <Check className="h-4 w-4 shrink-0 text-emerald-600" />}
@@ -566,7 +568,7 @@ function TaskViewerOverlay({ task, onClose, accentTheme, onSuccess }: { task: Ta
               </span>
               {task.due_at && !isCompleted && (
                 <span className="text-[10px] text-slate-400 flex items-center gap-1">
-                  <Clock className="h-3 w-3" /> {new Date(task.due_at).toLocaleDateString()}
+                  <Clock className="h-3 w-3" /> {new Date(task.due_at).toLocaleString('it-IT', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
                 </span>
               )}
             </div>

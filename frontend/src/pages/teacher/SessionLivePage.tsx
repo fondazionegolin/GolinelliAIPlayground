@@ -20,7 +20,7 @@ import {
   ArrowLeft, Users, Copy, Play, Square,
   Snowflake, Sun, Bot, Brain, MessageSquare,
   ClipboardList, Plus, Trash2, Check, Eye, ChevronDown, ChevronUp, History, User, BookOpen, Search, X,
-  MonitorPlay, Send, ChevronRight, LayoutGrid, List, FileCode2, Code2, FileText
+  MonitorPlay, ChevronRight, LayoutGrid, List, FileCode2, Code2, FileText
 } from 'lucide-react'
 import { llmApi } from '@/lib/api'
 import { PASTEL_SURFACES, type PastelTone } from '@/design/themes/pastelSurfaces'
@@ -50,6 +50,8 @@ interface TaskData {
   points: string | null
   content_json?: string | null
   created_at: string
+  submission_count?: number
+  submission_scores?: Array<{ student_id: string; score: string }>
 }
 
 interface SharedDocumentData {
@@ -110,20 +112,6 @@ export default function SessionLivePage() {
 
   // Demo mode: teacherbot slide-over
   const [demoBotId, setDemoBotId] = useState<string | null>(null)
-
-  // Per-student push: which student has the bot picker open
-  const [pushBotStudentId, setPushBotStudentId] = useState<string | null>(null)
-  const pushPopoverRef = useRef<HTMLDivElement>(null)
-
-  // Fetch teacher's teacherbots for demo mode and push
-  const { data: teacherbots } = useQuery({
-    queryKey: ['teacherbots'],
-    queryFn: async () => {
-      const res = await teacherbotsApi.list()
-      return res.data as { id: string; name: string; color: string; icon: string | null; synopsis: string | null; status: string }[]
-    },
-    staleTime: 1000 * 60 * 5,
-  })
 
   // Fetch available LLM models
   const { data: modelsData } = useQuery({
@@ -247,7 +235,7 @@ export default function SessionLivePage() {
   })
 
   const createTaskMutation = useMutation({
-    mutationFn: (data: { title: string; description: string; task_type: string; content_json?: string }) =>
+    mutationFn: (data: { title: string; description: string; task_type: string; content_json?: string; due_at?: string | null }) =>
       teacherApi.createTask(sessionId!, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['session-tasks', sessionId] })
@@ -272,37 +260,12 @@ export default function SessionLivePage() {
     },
   })
 
-  const pushTeacherbotMutation = useMutation({
-    mutationFn: ({ studentId, teacherbotId }: { studentId: string; teacherbotId: string }) =>
-      teacherApi.pushTeacherbotToStudent(sessionId!, studentId, teacherbotId),
-    onSuccess: (_, { studentId }) => {
-      const student = data?.students.find(s => s.id === studentId)
-      toast({ title: `Bot inviato a ${student?.nickname ?? 'studente'}` })
-      setPushBotStudentId(null)
-    },
-    onError: () => {
-      toast({ title: 'Errore invio bot', variant: 'destructive' })
-    },
-  })
-
   const copyCode = (code: string) => {
     navigator.clipboard.writeText(code)
     toast({ title: 'Codice copiato!' })
   }
 
 
-
-  // Close bot popover when clicking outside
-  useEffect(() => {
-    if (!pushBotStudentId) return
-    const handler = (e: MouseEvent) => {
-      if (pushPopoverRef.current && !pushPopoverRef.current.contains(e.target as Node)) {
-        setPushBotStudentId(null)
-      }
-    }
-    document.addEventListener('mousedown', handler)
-    return () => document.removeEventListener('mousedown', handler)
-  }, [pushBotStudentId])
 
   // All hooks must be before any conditional returns (Rules of Hooks)
   const onlineStudentIds = useMemo(() => new Set(onlineUsers.map(u => u.student_id)), [onlineUsers])
@@ -515,47 +478,6 @@ export default function SessionLivePage() {
                             >
                               <MessageSquare className="h-3 w-3" />
                             </button>
-                            <div className="relative">
-                              <button
-                                type="button"
-                                onMouseDown={(e) => e.stopPropagation()}
-                                onClick={() => setPushBotStudentId(pushBotStudentId === student.id ? null : student.id)}
-                                title="Invia bot"
-                                className="h-5 w-5 flex items-center justify-center rounded-md text-slate-300 hover:text-[var(--logo-violet)] hover:bg-violet-50 transition-colors"
-                              >
-                                <Bot className="h-3 w-3" />
-                              </button>
-                              {pushBotStudentId === student.id && (
-                                <div
-                                  ref={pushPopoverRef}
-                                  onMouseDown={(e) => e.stopPropagation()}
-                                  className="absolute right-0 top-6 z-50 w-56 max-w-[calc(100vw-2rem)] bg-white border border-slate-200 rounded-xl shadow-xl overflow-hidden"
-                                >
-                                  <div className="px-3 py-2 border-b border-slate-100 text-xs font-semibold text-slate-600 flex items-center gap-1.5">
-                                    <Send className="h-3 w-3" />
-                                    Invia bot a {student.nickname}
-                                  </div>
-                                  {!teacherbots || teacherbots.length === 0 ? (
-                                    <div className="px-3 py-3 text-xs text-slate-400 text-center">Nessun bot disponibile</div>
-                                  ) : (
-                                    <div className="max-h-48 overflow-y-auto">
-                                      {teacherbots.map(bot => (
-                                        <button
-                                          key={bot.id}
-                                          className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-slate-50 transition-colors text-left"
-                                          onClick={() => pushTeacherbotMutation.mutate({ studentId: student.id, teacherbotId: bot.id })}
-                                          disabled={pushTeacherbotMutation.isPending}
-                                        >
-                                          <BotColorDot color={bot.color} />
-                                          <span className="truncate flex-1 text-slate-800">{bot.name}</span>
-                                          <ChevronRight className="h-3 w-3 text-slate-300 shrink-0" />
-                                        </button>
-                                      ))}
-                                    </div>
-                                  )}
-                                </div>
-                              )}
-                            </div>
                             <button
                               onClick={() => student.is_frozen ? unfreezeMutation.mutate(student.id) : freezeMutation.mutate(student.id)}
                               title={student.is_frozen ? 'Sblocca' : 'Blocca'}
@@ -634,8 +556,8 @@ export default function SessionLivePage() {
                           classification:  { tone: 'sky',     iconTone: 'bg-[var(--logo-blue)]',   icon: Brain,         label: 'Classificazione ML',  desc: 'Immagini, testo, dati' },
                           self_assessment: { tone: 'amber',   iconTone: 'bg-[var(--logo-violet)]', icon: ClipboardList, label: 'Autovalutazione',     desc: 'Quiz e autovalutazione' },
                           chat:            { tone: 'slate',   iconTone: 'bg-[var(--logo-ink)]',    icon: MessageSquare, label: 'Chat privata',         desc: 'Solo docente e singolo studente' },
-                          notebook:        { tone: 'violet',  iconTone: 'bg-[var(--logo-violet)]', icon: FileCode2,     label: 'Notebook',             desc: 'Notebook di coding e attività guidate' },
-                          coding:          { tone: 'cyan',    iconTone: 'bg-[var(--logo-blue)]',   icon: Code2,         label: 'Coding Lab',           desc: 'Mini app web con prompt, codice e anteprima' },
+                          notebook:        { tone: 'violet',  iconTone: 'bg-[var(--logo-violet)]', icon: FileCode2,     label: 'Coding Lab',           desc: 'Notebook di coding e attività guidate' },
+                          coding:          { tone: 'cyan',    iconTone: 'bg-[var(--logo-blue)]',   icon: Code2,         label: 'Vibe Lab',             desc: 'Mini app web con prompt, codice e anteprima' },
                           chat_collaboration: { tone: 'teal', iconTone: 'bg-[var(--logo-blue)]',   icon: Users,         label: 'Collaborazione chat',  desc: 'Gli studenti condividono una chat con il bot e i compagni' },
                         }
                         const c = cfg[mod.module_key] ?? { tone: 'slate' as PastelTone, iconTone: 'bg-slate-500', icon: Bot, label: mod.module_key, desc: '' }
@@ -1008,21 +930,6 @@ function SessionDocumentsPanel({ documents }: { documents: SharedDocumentData[] 
   )
 }
 
-function BotColorDot({ color, large }: { color: string; large?: boolean }) {
-  const colorMap: Record<string, string> = {
-    indigo: 'bg-[#181b1e]', blue: 'bg-blue-500', green: 'bg-green-500',
-    red: 'bg-red-500', purple: 'bg-purple-500', pink: 'bg-pink-500',
-    orange: 'bg-orange-500', teal: 'bg-teal-500', cyan: 'bg-cyan-500',
-  }
-  const bg = colorMap[color] || 'bg-[#181b1e]'
-  const size = large ? 'w-8 h-8 rounded-lg' : 'w-5 h-5 rounded-md'
-  return (
-    <div className={`${size} ${bg} flex items-center justify-center shrink-0`}>
-      <Bot className={`${large ? 'h-4 w-4' : 'h-3 w-3'} text-white`} />
-    </div>
-  )
-}
-
 // ─── TaskCard ────────────────────────────────────────────────────────────────
 
 interface TaskCardProps {
@@ -1198,12 +1105,21 @@ function SubmissionContentPreview({ submission, task }: { submission: Submission
   return <p className="text-sm text-muted-foreground">Risposta vuota.</p>
 }
 
+function toDateTimeLocalValue(value: string | null): string {
+  if (!value) return ''
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return ''
+  const pad = (part: number) => String(part).padStart(2, '0')
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`
+}
+
 function TaskCard({ task, sessionId, isExpanded, onToggle, onPublish, onDelete }: TaskCardProps) {
   const queryClient = useQueryClient()
   const { toast } = useToast()
   const [isEditingDraft, setIsEditingDraft] = useState(false)
   const [editTitle, setEditTitle] = useState(task.title)
   const [editDescription, setEditDescription] = useState(task.description || '')
+  const [editDueAt, setEditDueAt] = useState(() => toDateTimeLocalValue(task.due_at))
   const [editContentJson, setEditContentJson] = useState(task.content_json || '')
 
   const getWrongQuizAnswers = (submission: SubmissionData): QuizWrongAnswerDetail[] => {
@@ -1246,56 +1162,103 @@ function TaskCard({ task, sessionId, isExpanded, onToggle, onPublish, onDelete }
   })
 
   const updateTaskMutation = useMutation({
-    mutationFn: (payload: { title?: string; description?: string; content_json?: string }) =>
+    mutationFn: (payload: { title?: string; description?: string; due_at?: string | null; content_json?: string }) =>
       teacherApi.updateTask(sessionId, task.id, payload),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['session-tasks', sessionId] })
       setIsEditingDraft(false)
-      toast({ title: 'Bozza aggiornata' })
+      toast({ title: 'Compito aggiornato' })
     },
     onError: () => {
-      toast({ title: 'Errore aggiornamento bozza', variant: 'destructive' })
+      toast({ title: 'Errore aggiornamento compito', variant: 'destructive' })
     },
   })
 
+  const statusLabel = task.status === 'published' ? 'Pubblicato' : 'Bozza'
+  const typeLabel = task.task_type
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, (letter) => letter.toUpperCase())
+  const dueLabel = task.due_at
+    ? new Intl.DateTimeFormat('it-IT', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }).format(new Date(task.due_at))
+    : 'Senza scadenza'
+  const submissionCount = task.submission_count ?? 0
+  const scoreValues = (task.submission_scores || [])
+    .map(item => item.score)
+    .filter(Boolean)
+  const pointsLabel = submissionCount > 0
+    ? scoreValues.length > 0
+      ? `${scoreValues.slice(0, 3).join(', ')}${scoreValues.length > 3 ? ` +${scoreValues.length - 3}` : ''}`
+      : 'Da valutare'
+    : task.points
+      ? `Max ${task.points} pt`
+      : 'Nessuna consegna'
+
   return (
-    <div className={`rounded-xl border transition-colors ${
+    <div className={`overflow-hidden rounded-2xl border transition-colors ${
       task.status === 'published'
-        ? 'bg-emerald-50/50 border-emerald-200'
-        : 'bg-white border-slate-200'
+        ? 'border-emerald-200 bg-emerald-50/50'
+        : 'border-slate-200 bg-white'
     }`}>
-      <div className="flex items-center justify-between px-4 py-3 gap-3">
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-sm font-semibold text-slate-800 truncate">{task.title}</span>
-            <span className={`text-[11px] px-2 py-0.5 rounded-full font-medium flex-shrink-0 ${
+      <div className="grid min-h-[176px] grid-rows-[1fr_auto] gap-4 p-4">
+        <div className="min-w-0 space-y-3">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <h3 className="line-clamp-2 text-sm font-bold leading-snug text-slate-900">{task.title}</h3>
+              {task.description && (
+                <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-slate-500">{task.description}</p>
+              )}
+            </div>
+            <span className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold ${
               task.status === 'published'
                 ? 'bg-emerald-100 text-emerald-700'
                 : 'bg-slate-100 text-slate-600'
             }`}>
-              {task.status === 'published' ? 'Pubblicato' : 'Bozza'}
-            </span>
-            <span className="text-[11px] px-2 py-0.5 rounded-full bg-sky-100 text-sky-700 font-medium capitalize flex-shrink-0">
-              {task.task_type}
+              {statusLabel}
             </span>
           </div>
-          {task.description && (
-            <p className="text-xs text-slate-500 mt-0.5 truncate">{task.description}</p>
-          )}
+
+          <div className="grid grid-cols-1 gap-2 text-xs text-slate-600 sm:grid-cols-2">
+            <div className="min-w-0 rounded-lg border border-slate-200/70 bg-white/70 px-3 py-2">
+              <span className="block text-[10px] font-semibold uppercase text-slate-400">Tipo</span>
+              <span className="block truncate font-medium text-slate-700">{typeLabel}</span>
+            </div>
+            <div className="min-w-0 rounded-lg border border-slate-200/70 bg-white/70 px-3 py-2">
+              <span className="block text-[10px] font-semibold uppercase text-slate-400">Scadenza</span>
+              <span className="block truncate font-medium text-slate-700">{dueLabel}</span>
+            </div>
+            <div className="min-w-0 rounded-lg border border-slate-200/70 bg-white/70 px-3 py-2">
+              <span className="block text-[10px] font-semibold uppercase text-slate-400">Punteggio</span>
+              <span className="block truncate font-medium text-slate-700">{pointsLabel}</span>
+            </div>
+            <div className="min-w-0 rounded-lg border border-slate-200/70 bg-white/70 px-3 py-2">
+              <span className="block text-[10px] font-semibold uppercase text-slate-400">Stato</span>
+              <span className="block truncate font-medium text-slate-700">{statusLabel}</span>
+            </div>
+          </div>
         </div>
-        <div className="flex gap-1.5 shrink-0">
-          <Button size="sm" variant="outline" onClick={onToggle} className="text-xs">
-            {isExpanded ? <ChevronUp className="h-3.5 w-3.5 mr-1" /> : <ChevronDown className="h-3.5 w-3.5 mr-1" />}
+
+        <div className="flex items-end justify-between gap-3">
+          <div className="flex min-w-0 flex-wrap gap-2">
+          <Button size="sm" variant="outline" onClick={onToggle} className="h-9 min-w-[112px] rounded-full px-4 text-xs font-semibold">
+            {isExpanded ? <ChevronUp className="mr-1.5 h-3.5 w-3.5" /> : <ChevronDown className="mr-1.5 h-3.5 w-3.5" />}
             {isExpanded ? 'Chiudi' : 'Dettagli'}
           </Button>
           {task.status === 'draft' && (
-            <Button size="sm" variant="outline" onClick={onPublish} className="text-xs">
-              <Check className="h-3.5 w-3.5 mr-1" />
+            <Button size="sm" variant="outline" onClick={onPublish} className="h-9 min-w-[112px] rounded-full px-4 text-xs font-semibold">
+              <Check className="mr-1.5 h-3.5 w-3.5" />
               Pubblica
             </Button>
           )}
-          <Button size="sm" variant="ghost" onClick={onDelete} className="h-8 w-8 p-0">
-            <Trash2 className="h-3.5 w-3.5 text-red-400" />
+          </div>
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={onDelete}
+            className="h-9 w-9 shrink-0 rounded-full p-0 text-red-500 hover:bg-red-50 hover:text-red-600"
+            title="Elimina compito"
+            aria-label={`Elimina compito ${task.title}`}
+          >
+            <Trash2 className="h-4 w-4" />
           </Button>
         </div>
       </div>
@@ -1306,52 +1269,72 @@ function TaskCard({ task, sessionId, isExpanded, onToggle, onPublish, onDelete }
             <Eye className="h-4 w-4" />
             Dettagli Compito
           </h4>
-          {task.status === 'draft' && (
-            <div className="mb-4 flex items-center justify-between">
-              <p className="text-sm text-slate-600">Questa attività è in bozza: puoi modificarla prima della pubblicazione.</p>
-              <Button size="sm" variant="outline" onClick={() => setIsEditingDraft(v => !v)}>
-                {isEditingDraft ? 'Annulla Modifica' : 'Modifica Bozza'}
-              </Button>
-            </div>
-          )}
+          <div className="mb-4 flex items-center justify-between">
+            <p className="text-sm text-slate-600">
+              {task.status === 'draft'
+                ? 'Questa attività è in bozza: puoi modificarla prima della pubblicazione.'
+                : 'Puoi aggiornare la scadenza anche dopo la pubblicazione.'}
+            </p>
+            <Button size="sm" variant="outline" onClick={() => setIsEditingDraft(v => !v)}>
+              {isEditingDraft ? 'Annulla Modifica' : task.status === 'draft' ? 'Modifica Bozza' : 'Modifica Scadenza'}
+            </Button>
+          </div>
 
           {isEditingDraft ? (
             <div className="space-y-3 border rounded-lg p-3 bg-slate-50">
+              {task.status === 'draft' && (
+                <>
+                  <div>
+                    <label className="text-xs font-medium text-slate-600">Titolo</label>
+                    <input
+                      value={editTitle}
+                      onChange={(e) => setEditTitle(e.target.value)}
+                      className="mt-1 w-full rounded border border-slate-300 px-2 py-1.5 text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-slate-600">Descrizione</label>
+                    <textarea
+                      value={editDescription}
+                      onChange={(e) => setEditDescription(e.target.value)}
+                      className="mt-1 w-full rounded border border-slate-300 px-2 py-1.5 text-sm min-h-[70px]"
+                    />
+                  </div>
+                </>
+              )}
               <div>
-                <label className="text-xs font-medium text-slate-600">Titolo</label>
+                <label className="text-xs font-medium text-slate-600">Scadenza</label>
                 <input
-                  value={editTitle}
-                  onChange={(e) => setEditTitle(e.target.value)}
-                  className="mt-1 w-full rounded border border-slate-300 px-2 py-1.5 text-sm"
+                  type="datetime-local"
+                  value={editDueAt}
+                  onChange={(e) => setEditDueAt(e.target.value)}
+                  className="mt-1 h-10 w-full rounded border border-slate-300 px-2 py-1.5 text-sm"
                 />
               </div>
-              <div>
-                <label className="text-xs font-medium text-slate-600">Descrizione</label>
-                <textarea
-                  value={editDescription}
-                  onChange={(e) => setEditDescription(e.target.value)}
-                  className="mt-1 w-full rounded border border-slate-300 px-2 py-1.5 text-sm min-h-[70px]"
-                />
-              </div>
-              <div>
-                <label className="text-xs font-medium text-slate-600">Contenuto (JSON)</label>
-                <textarea
-                  value={editContentJson}
-                  onChange={(e) => setEditContentJson(e.target.value)}
-                  className="mt-1 w-full rounded border border-slate-300 px-2 py-1.5 text-xs font-mono min-h-[180px]"
-                />
-              </div>
+              {task.status === 'draft' && (
+                <div>
+                  <label className="text-xs font-medium text-slate-600">Contenuto (JSON)</label>
+                  <textarea
+                    value={editContentJson}
+                    onChange={(e) => setEditContentJson(e.target.value)}
+                    className="mt-1 w-full rounded border border-slate-300 px-2 py-1.5 text-xs font-mono min-h-[180px]"
+                  />
+                </div>
+              )}
               <div className="flex justify-end">
                 <Button
                   size="sm"
                   onClick={() => updateTaskMutation.mutate({
-                    title: editTitle,
-                    description: editDescription,
-                    content_json: editContentJson,
+                    ...(task.status === 'draft' ? {
+                      title: editTitle,
+                      description: editDescription,
+                      content_json: editContentJson,
+                    } : {}),
+                    due_at: editDueAt ? new Date(editDueAt).toISOString() : null,
                   })}
                   disabled={updateTaskMutation.isPending}
                 >
-                  Salva Bozza
+                  Salva modifiche
                 </Button>
               </div>
             </div>
@@ -1384,13 +1367,15 @@ function TaskCard({ task, sessionId, isExpanded, onToggle, onPublish, onDelete }
                       <div className="mb-2">
                         <SubmissionContentPreview submission={sub} task={task} />
                       </div>
-                      {sub.score && (
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs font-medium bg-emerald-100 text-emerald-700 px-2 py-1 rounded">
-                            Punteggio: {sub.score}
-                          </span>
-                        </div>
-                      )}
+                      <div className="flex items-center gap-2">
+                        <span className={`rounded px-2 py-1 text-xs font-medium ${
+                          sub.score
+                            ? 'bg-emerald-100 text-emerald-700'
+                            : 'bg-amber-100 text-amber-700'
+                        }`}>
+                          {sub.score ? `Punteggio: ${sub.score}` : 'Da valutare'}
+                        </span>
+                      </div>
                       {task.task_type === 'quiz' && (() => {
                         const wrongAnswers = getWrongQuizAnswers(sub)
                         if (wrongAnswers.length === 0) return null

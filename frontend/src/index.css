@@ -466,16 +466,17 @@
     font-size: var(--font-size-sm);
   }
 
-  /* Mini pills (e.g. BETA) → brand orange */
+  /* Mini pills (e.g. BETA) */
   .brand-beta-badge {
     display: inline-flex;
     min-height: 18px;
     align-items: center;
+    transform: translateY(1px);
     border-radius: 999px;
-    border: 1px solid color-mix(in srgb, var(--brand-orange) 45%, transparent);
-    background: var(--brand-orange-soft);
+    border: 1px solid #ffd51a;
+    background: #fff200;
     padding: 0 0.45rem;
-    color: var(--brand-orange-text);
+    color: #9a6a00;
     font-size: 9px;
     font-weight: 700;
     line-height: 1;
@@ -556,6 +557,14 @@
 .animate-gradient {
   background-size: 300%;
   animation: gradient-shift 5s ease infinite;
+}
+
+/* Slow gradient pulse used to signal an "armed" state (e.g. dock-on-next-navigation)
+   without the abrupt opacity blink of Tailwind's animate-pulse. */
+.dock-armed-glow {
+  background-image: linear-gradient(90deg, #34d399, #6ee7b7, #10b981, #6ee7b7, #34d399);
+  background-size: 300% 100%;
+  animation: gradient-shift 3.6s ease-in-out infinite;
 }
 
 @keyframes gradient-shift {

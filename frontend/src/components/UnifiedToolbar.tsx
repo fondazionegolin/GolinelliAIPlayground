@@ -3,11 +3,12 @@ import {
   Bold, Italic, Underline, Strikethrough,
   AlignLeft, AlignCenter, AlignRight, AlignJustify,
   List, ListOrdered, Undo, Redo, Image as ImageIcon, Link as LinkIcon,
-  Heading1, Heading2, Pilcrow, Type, Plus, Minus, ZoomIn, ZoomOut, Sparkles, Rows3, MoreHorizontal
+  Heading1, Heading2, Pilcrow, Type, Plus, Minus, ZoomIn, ZoomOut, Sparkles, Rows3, MoreHorizontal,
+  Square, Circle, RotateCw, Magnet, Grid3x3
 } from 'lucide-react'
 import { Button } from './ui/button'
 import { Editor } from '@tiptap/react'
-import { SlideBlock } from './SlideEditor'
+import { SlideBlock, SlideBlockType, SlideSnapOptions } from './SlideEditor'
 import { AIImageGeneratorModal } from './AIImageGeneratorModal'
 
 interface UnifiedToolbarProps {
@@ -19,7 +20,7 @@ interface UnifiedToolbarProps {
   // Slide Mode Props
   scale?: number
   setScale?: (s: number) => void
-  onAddSlideBlock?: (type: 'text' | 'image') => void
+  onAddSlideBlock?: (type: SlideBlockType) => void
   onAddSlideImage?: (imageUrl: string) => void
   selectedBlock?: SlideBlock
   onUpdateBlockStyle?: (key: string, value: any) => void
@@ -27,6 +28,8 @@ interface UnifiedToolbarProps {
   onAIAssistAnchorChange?: (position: { x: number; y: number }) => void
   showRuledLines?: boolean
   onToggleRuledLines?: () => void
+  snapOptions?: SlideSnapOptions
+  onChangeSnapOptions?: (options: SlideSnapOptions) => void
 }
 
 const FONTS = [
@@ -48,7 +51,9 @@ export function UnifiedToolbar({
   onOpenAIAssist,
   onAIAssistAnchorChange,
   showRuledLines = false,
-  onToggleRuledLines
+  onToggleRuledLines,
+  snapOptions,
+  onChangeSnapOptions
 }: UnifiedToolbarProps) {
   const [showImageModal, setShowImageModal] = useState(false)
   const [showOverflowMenu, setShowOverflowMenu] = useState(false)
@@ -429,6 +434,26 @@ export function UnifiedToolbar({
             </Button>
           </div>
 
+          {/* Snap Group */}
+          {snapOptions && onChangeSnapOptions && (
+            <div className="flex items-center gap-0.5 border-r pr-2 mr-1 border-slate-300">
+              <Button
+                size="icon" variant="ghost" className={`h-8 w-8 ${snapOptions.gridEnabled ? 'bg-slate-200' : ''}`}
+                title="Snap alla griglia"
+                onClick={() => onChangeSnapOptions({ ...snapOptions, gridEnabled: !snapOptions.gridEnabled })}
+              >
+                <Grid3x3 className="h-4 w-4" />
+              </Button>
+              <Button
+                size="icon" variant="ghost" className={`h-8 w-8 ${snapOptions.guidesEnabled ? 'bg-slate-200' : ''}`}
+                title="Guide intelligenti (allineamento)"
+                onClick={() => onChangeSnapOptions({ ...snapOptions, guidesEnabled: !snapOptions.guidesEnabled })}
+              >
+                <Magnet className="h-4 w-4" />
+              </Button>
+            </div>
+          )}
+
           {/* Insert Group */}
           <div className="flex items-center gap-0.5 border-r pr-2 mr-1 border-slate-300">
             <Button variant="ghost" size="sm" onClick={() => onAddSlideBlock?.('text')} className="h-8 px-2">
@@ -439,7 +464,84 @@ export function UnifiedToolbar({
               <ImageIcon className="h-4 w-4 mr-1" />
               <span className="text-xs">Immagine</span>
             </Button>
+            <Button variant="ghost" size="sm" onClick={() => onAddSlideBlock?.('rectangle')} className="h-8 px-2">
+              <Square className="h-4 w-4 mr-1" />
+              <span className="text-xs">Rettangolo</span>
+            </Button>
+            <Button variant="ghost" size="sm" onClick={() => onAddSlideBlock?.('ellipse')} className="h-8 px-2">
+              <Circle className="h-4 w-4 mr-1" />
+              <span className="text-xs">Ellisse</span>
+            </Button>
+            <Button variant="ghost" size="sm" onClick={() => onAddSlideBlock?.('line')} className="h-8 px-2">
+              <Minus className="h-4 w-4 mr-1" />
+              <span className="text-xs">Linea</span>
+            </Button>
           </div>
+
+          {/* Contextual Properties (Shapes) */}
+          {selectedBlock && (selectedBlock.type === 'rectangle' || selectedBlock.type === 'ellipse' || selectedBlock.type === 'line') && onUpdateBlockStyle && (
+            <div className="flex items-center gap-1 animate-in fade-in slide-in-from-top-1 duration-200">
+              {selectedBlock.type !== 'line' && (
+                <input
+                  type="color"
+                  value={selectedBlock.style?.fill || '#e2e8f0'}
+                  onChange={(e) => onUpdateBlockStyle('fill', e.target.value)}
+                  className="h-8 w-8 p-0 border-0 rounded cursor-pointer"
+                  title="Riempimento"
+                />
+              )}
+              <input
+                type="color"
+                value={selectedBlock.style?.stroke || '#1e293b'}
+                onChange={(e) => onUpdateBlockStyle('stroke', e.target.value)}
+                className="h-8 w-8 p-0 border-0 rounded cursor-pointer ml-1"
+                title="Bordo"
+              />
+              <div className="flex items-center border rounded h-8 px-1 ml-1" title="Spessore bordo">
+                <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => onUpdateBlockStyle('strokeWidth', Math.max(0, (selectedBlock.style?.strokeWidth ?? 2) - 1))}>
+                  <Minus className="h-3 w-3" />
+                </Button>
+                <input
+                  type="number"
+                  className="h-6 w-8 text-xs border-0 text-center focus:ring-0 p-0"
+                  value={selectedBlock.style?.strokeWidth ?? 2}
+                  onChange={(e) => onUpdateBlockStyle('strokeWidth', parseInt(e.target.value) || 0)}
+                />
+                <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => onUpdateBlockStyle('strokeWidth', (selectedBlock.style?.strokeWidth ?? 2) + 1)}>
+                  <Plus className="h-3 w-3" />
+                </Button>
+              </div>
+              {selectedBlock.type === 'rectangle' && (
+                <div className="flex items-center border rounded h-8 px-1 ml-1" title="Raggio angoli">
+                  <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => onUpdateBlockStyle('cornerRadius', Math.max(0, (selectedBlock.style?.cornerRadius ?? 0) - 4))}>
+                    <Minus className="h-3 w-3" />
+                  </Button>
+                  <input
+                    type="number"
+                    className="h-6 w-8 text-xs border-0 text-center focus:ring-0 p-0"
+                    value={selectedBlock.style?.cornerRadius ?? 0}
+                    onChange={(e) => onUpdateBlockStyle('cornerRadius', parseInt(e.target.value) || 0)}
+                  />
+                  <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => onUpdateBlockStyle('cornerRadius', (selectedBlock.style?.cornerRadius ?? 0) + 4)}>
+                    <Plus className="h-3 w-3" />
+                  </Button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Rotation (any block type) */}
+          {selectedBlock && onUpdateBlockStyle && (
+            <div className="flex items-center gap-1 border-l pl-2 ml-1 border-slate-300" title="Rotazione (gradi)">
+              <RotateCw className="h-3.5 w-3.5 text-slate-400" />
+              <input
+                type="number"
+                className="h-8 w-14 text-xs border rounded px-1"
+                value={Math.round(selectedBlock.rotation || 0)}
+                onChange={(e) => onUpdateBlockStyle('rotation', parseInt(e.target.value) || 0)}
+              />
+            </div>
+          )}
 
           {/* Contextual Properties (Text) */}
           {selectedBlock?.type === 'text' && onUpdateBlockStyle && (

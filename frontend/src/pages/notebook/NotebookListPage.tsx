@@ -21,6 +21,16 @@ interface NotebookMeta {
   updated_at: string
 }
 
+type NotebookTemplate = {
+  key: string
+  projectType: NotebookProjectType
+  title: string
+  titleEn: string
+  description: string
+  descriptionEn: string
+  chips: string[]
+}
+
 interface Props {
   /** If provided, called instead of navigate() — used in non-router contexts (student dashboard) */
   onOpen?: (notebookId: string) => void
@@ -86,6 +96,45 @@ const NOTEBOOK_STYLES: Record<NotebookProjectType, {
 }
 
 const PROJECT_ORDER: NotebookProjectType[] = ['python', 'microbit', 'circuitplayground', 'p5js']
+
+const READY_TEMPLATES: NotebookTemplate[] = [
+  {
+    key: 'python-data-detective',
+    projectType: 'python',
+    title: 'Detective dei dati',
+    titleEn: 'Data detective',
+    description: 'Dashboard testuale con dataset generato, barre, correlazione e previsione.',
+    descriptionEn: 'Text dashboard with generated data, bars, correlation, and prediction.',
+    chips: ['dati', 'grafici testuali', 'previsione'],
+  },
+  {
+    key: 'microbit-mission-control',
+    projectType: 'microbit',
+    title: 'Mission Control micro:bit',
+    titleEn: 'micro:bit Mission Control',
+    description: 'Sensori, display LED, musica e cruscotto seriale in un solo esempio.',
+    descriptionEn: 'Sensors, LED display, music, and serial dashboard in one example.',
+    chips: ['sensori', 'LED', 'musica'],
+  },
+  {
+    key: 'circuitplayground-sensor-party',
+    projectType: 'circuitplayground',
+    title: 'Sensor Party',
+    titleEn: 'Sensor Party',
+    description: 'NeoPixel animati da luce, suono, temperatura, accelerazione e gesture.',
+    descriptionEn: 'NeoPixels driven by light, sound, temperature, acceleration, and gestures.',
+    chips: ['NeoPixel', 'suono', 'gesture'],
+  },
+  {
+    key: 'p5js-galaxy',
+    projectType: 'p5js',
+    title: 'Galassia interattiva',
+    titleEn: 'Interactive galaxy',
+    description: 'Animazione p5.js con stelle, orbite e parametri controllati dal mouse.',
+    descriptionEn: 'p5.js animation with stars, orbits, and mouse-controlled parameters.',
+    chips: ['animazione', 'mouse', 'visual'],
+  },
+]
 
 function ProjectIcon({ type, className }: { type: NotebookProjectType; className: string }) {
   if (type === 'python') return <FileCode2 className={className} />
@@ -203,8 +252,8 @@ export default function NotebookListPage({ onOpen, onBack }: Props = {}) {
   })
 
   const createMutation = useMutation({
-    mutationFn: ({ title, projectType }: { title: string; projectType: NotebookProjectType }) =>
-      notebooksApi.create(title, projectType),
+    mutationFn: ({ title, projectType, templateKey }: { title: string; projectType: NotebookProjectType; templateKey?: string }) =>
+      notebooksApi.create(title, projectType, templateKey),
     onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ['notebooks'] })
       openNotebook(res.data.id)
@@ -237,6 +286,14 @@ export default function NotebookListPage({ onOpen, onBack }: Props = {}) {
     setShowCreate(false)
   }
 
+  const handleCreateFromTemplate = (template: NotebookTemplate) => {
+    createMutation.mutate({
+      title: isEnglish ? template.titleEn : template.title,
+      projectType: template.projectType,
+      templateKey: template.key,
+    })
+  }
+
   const filtered = useMemo(() => {
     if (!notebooks) return { python: [], microbit: [], circuitplayground: [], p5js: [], game2d: [], strudel: [] }
     const q = search.toLowerCase()
@@ -255,14 +312,6 @@ export default function NotebookListPage({ onOpen, onBack }: Props = {}) {
     ? notebooks.filter(n => PROJECT_ORDER.includes(n.project_type)).length
     : 0
   const visibleCount = filtered.python.length + filtered.microbit.length + filtered.circuitplayground.length + filtered.p5js.length
-  const projectCounts: Record<NotebookProjectType, number> = {
-    python: notebooks?.filter(n => n.project_type === 'python').length ?? 0,
-    microbit: notebooks?.filter(n => n.project_type === 'microbit').length ?? 0,
-    circuitplayground: notebooks?.filter(n => n.project_type === 'circuitplayground').length ?? 0,
-    p5js: notebooks?.filter(n => n.project_type === 'p5js').length ?? 0,
-    game2d: notebooks?.filter(n => n.project_type === 'game2d').length ?? 0,
-    strudel: notebooks?.filter(n => n.project_type === 'strudel').length ?? 0,
-  }
 
   if (isLoading) {
     return (
@@ -283,7 +332,7 @@ export default function NotebookListPage({ onOpen, onBack }: Props = {}) {
             <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-lg bg-white shadow-sm ring-1 ring-slate-200">
               <BookOpen className="h-9 w-9 text-indigo-500" />
             </div>
-            <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">Notebook</p>
+            <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">Coding Lab</p>
             <h3 className="mt-2 text-3xl font-black tracking-tight text-slate-950">
               {isEnglish ? 'Start with a clear workspace' : 'Parti da uno spazio di lavoro chiaro'}
             </h3>
@@ -297,6 +346,14 @@ export default function NotebookListPage({ onOpen, onBack }: Props = {}) {
               isEnglish={isEnglish}
               onClick={() => setShowCreate(true)}
               className="mt-7"
+            />
+
+            <ReadyTemplateGallery
+              templates={READY_TEMPLATES}
+              isEnglish={isEnglish}
+              onCreate={handleCreateFromTemplate}
+              isPending={createMutation.isPending}
+              className="mt-8"
             />
 
             <div className="mt-8 grid gap-3 md:grid-cols-4">
@@ -338,7 +395,7 @@ export default function NotebookListPage({ onOpen, onBack }: Props = {}) {
           <div className="mx-auto max-w-6xl px-4 py-7 md:px-6 md:py-8">
             {onBack && <NotebookBackButton isEnglish={isEnglish} onBack={onBack} className="mb-4" />}
             <div className="mx-auto max-w-3xl text-center">
-              <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">Notebook</p>
+              <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">Coding Lab</p>
               <h2 className="mt-2 text-3xl font-black tracking-tight text-slate-950">
                 {isEnglish ? 'Build, run, understand' : 'Scrivi, esegui, capisci'}
               </h2>
@@ -354,16 +411,13 @@ export default function NotebookListPage({ onOpen, onBack }: Props = {}) {
               />
             </div>
 
-            <div className="mt-7 grid gap-3 md:grid-cols-4">
-              {PROJECT_ORDER.map(type => (
-                <ProjectSummary
-                  key={type}
-                  type={type}
-                  count={projectCounts[type]}
-                  isEnglish={isEnglish}
-                />
-              ))}
-            </div>
+            <ReadyTemplateGallery
+              templates={READY_TEMPLATES}
+              isEnglish={isEnglish}
+              onCreate={handleCreateFromTemplate}
+              isPending={createMutation.isPending}
+              className="mt-7"
+            />
           </div>
         </section>
 
@@ -521,6 +575,80 @@ function NotebookBackButton({
       <ArrowLeft className="h-4 w-4" />
       <span>{isEnglish ? 'Back' : 'Indietro'}</span>
     </Button>
+  )
+}
+
+function ReadyTemplateGallery({
+  templates,
+  isEnglish,
+  onCreate,
+  isPending,
+  className = '',
+}: {
+  templates: NotebookTemplate[]
+  isEnglish: boolean
+  onCreate: (template: NotebookTemplate) => void
+  isPending: boolean
+  className?: string
+}) {
+  return (
+    <section className={className}>
+      <div className="mb-3 flex flex-col items-center gap-1 text-center">
+        <div className="inline-flex items-center gap-2 rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-extrabold text-amber-800">
+          <Sparkles className="h-3.5 w-3.5" />
+          <span>{isEnglish ? 'Ready-made examples' : 'Modelli pronti'}</span>
+        </div>
+        <p className="max-w-2xl text-xs leading-5 text-slate-500">
+          {isEnglish
+            ? 'Start from a working, editable example that already shows the main features.'
+            : 'Parti da un esempio funzionante e modificabile che mostra subito le funzionalita principali.'}
+        </p>
+      </div>
+
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        {templates.map(template => {
+          const s = NOTEBOOK_STYLES[template.projectType]
+          return (
+            <button
+              key={template.key}
+              type="button"
+              disabled={isPending}
+              onClick={() => onCreate(template)}
+              className={`group flex min-h-[188px] flex-col justify-between rounded-lg border p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg disabled:cursor-wait disabled:opacity-70 ${s.card}`}
+            >
+              <div>
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <span className={`flex h-10 w-10 items-center justify-center rounded-lg ${s.iconBg} ${s.icon}`}>
+                    <ProjectIcon type={template.projectType} className="h-5 w-5" />
+                  </span>
+                  <span className={`rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide ${s.badge}`}>
+                    {getProjectLabel(template.projectType)}
+                  </span>
+                </div>
+                <h3 className="text-sm font-black leading-tight text-slate-950">
+                  {isEnglish ? template.titleEn : template.title}
+                </h3>
+                <p className="mt-2 text-xs leading-5 text-slate-600">
+                  {isEnglish ? template.descriptionEn : template.description}
+                </p>
+              </div>
+              <div className="mt-4">
+                <div className="mb-3 flex flex-wrap gap-1.5">
+                  {template.chips.map(chip => (
+                    <span key={chip} className="rounded-full bg-white/75 px-2 py-1 text-[10px] font-bold text-slate-600 ring-1 ring-slate-200/70">
+                      {chip}
+                    </span>
+                  ))}
+                </div>
+                <span className="inline-flex h-9 w-full items-center justify-center rounded-full bg-slate-950 px-3 text-xs font-extrabold text-white transition group-hover:bg-slate-800">
+                  {isEnglish ? 'Use this model' : 'Usa questo modello'}
+                </span>
+              </div>
+            </button>
+          )
+        })}
+      </div>
+    </section>
   )
 }
 

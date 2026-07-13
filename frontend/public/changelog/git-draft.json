@@ -1,14 +1,14 @@
 {
-  "generated_at": "2026-06-27T18:42:18.718350+00:00",
-  "version_label": "2026.06.27-5749905c",
-  "title": "Aggiornamenti branch testing",
+  "generated_at": "2026-07-07T15:32:06.519914+00:00",
+  "version_label": "2026.07.07-f464e1df",
+  "title": "Aggiornamenti branch bugfix/feedback-board-bugs",
   "summary": "Bozza generata automaticamente da 1 commit nuovi.",
-  "git_ref": "5749905c2653921927c498802d43ad07452083da",
+  "git_ref": "f464e1dfcc91db9f7d49ddd3ec220d45e861325d",
   "items": [
     {
-      "category": "improved",
-      "title": "Finalize changelog draft",
-      "description": "Finalize changelog draft"
+      "category": "new",
+      "title": "Improve shared documents access",
+      "description": "Improve shared documents access"
     }
   ]
 }

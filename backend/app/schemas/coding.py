@@ -200,3 +200,19 @@ class CodingBriefResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class CodingProjectDataPut(BaseModel):
+    value: Any = None
+
+
+class CodingProjectDataResponse(BaseModel):
+    key: str
+    value: Any = None
+    updated_at: datetime
+
+
+class CodingProjectDataListResponse(BaseModel):
+    items: list[CodingProjectDataResponse]
+    total_size_bytes: int
+    max_size_bytes: int

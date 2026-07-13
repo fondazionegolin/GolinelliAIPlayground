@@ -3,7 +3,7 @@ import io
 import json
 import logging
 import zipfile
-from typing import Annotated, Optional
+from typing import Annotated, Any, Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
@@ -16,7 +16,7 @@ from app.api.v1.endpoints.chat import get_or_create_public_room
 from app.core.config import settings
 from app.core.database import get_db
 from app.models.chat import ChatMessage
-from app.models.coding import CodingBrief, CodingDesignSystem, CodingMessage, CodingProject, CodingPublication, CodingVersion
+from app.models.coding import CodingBrief, CodingDesignSystem, CodingMessage, CodingProject, CodingProjectData, CodingPublication, CodingVersion
 from app.models.enums import SenderType
 from app.models.session import Class, Session, SessionStudent
 from app.models.user import User
@@ -29,6 +29,9 @@ from app.schemas.coding import (
     CodingGenerateResponse,
     CodingGeneratedFile,
     CodingProjectCreate,
+    CodingProjectDataListResponse,
+    CodingProjectDataPut,
+    CodingProjectDataResponse,
     CodingProjectDetail,
     CodingProjectResponse,
     CodingVersionCreate,
@@ -93,12 +96,35 @@ Formato obbligatorio:
 Vincoli tecnici:
 - Non usare script remoti, iframe, tracking, cookie o localStorage.
 - Non usare fetch verso internet o API esterne.
-- Se la richiesta include chatbot, modello LLM, assistente AI o generazione immagini, usa il runtime interno gia` disponibile nella preview:
+- Se la richiesta include chatbot, modello LLM, assistente AI o generazione immagini (anche "crea un
+  generatore di immagini", "aggiungi la possibilita` di creare immagini", ecc.), usa SEMPRE ed
+  ESCLUSIVAMENTE il runtime interno gia` disponibile nella preview, che passa dal backend della
+  piattaforma (credenziali reali, es. GPT Image, gia` configurate lato server):
   - await window.GolinelliAI.chat({ content, history, profileKey, provider, model })
   - await window.GolinelliAI.generateImage({ prompt })
-- window.GolinelliAI.chat restituisce un oggetto con "response"; window.GolinelliAI.generateImage restituisce un oggetto con "image_url".
+- window.GolinelliAI.chat restituisce un oggetto con "response"; window.GolinelliAI.generateImage
+  restituisce un oggetto con "image_url" (URL gia` pronto per un tag <img src="...">).
+- ESEMPIO CORRETTO per generazione immagini:
+  async function generaImmagine(prompt) {
+    try {
+      mostraStato('Genero l immagine...')
+      const { image_url } = await window.GolinelliAI.generateImage({ prompt })
+      img.src = image_url
+      mostraStato('Immagine pronta')
+    } catch (err) { mostraErrore('Generazione immagine non riuscita: ' + err.message) }
+  }
+- VIETATO: non scrivere MAI fetch/XHR verso api.openai.com, endpoint DALL-E/Stable Diffusion/altri
+  servizi esterni, chiavi o token hardcoded, o URL immagine placeholder/finti. Anche se il modello che
+  genera questo codice e` DeepSeek o un altro provider, le immagini generate DENTRO l'app dello
+  studente devono SEMPRE passare da window.GolinelliAI.generateImage: e` la piattaforma, non il codice
+  generato, a scegliere il provider immagini reale lato server.
 - Non inventare chiavi API, token o URL esterni. Le chiamate AI devono passare solo da window.GolinelliAI.
+- Se l'app deve ricordare dati creati dall'utente (liste, note, punteggi...) usa
+  window.GolinelliAI.saveData({key, value}) / loadData({key}) (persistono sul backend, sopravvivono a
+  refresh e riapertura del progetto) — MAI localStorage, che qui e` vietato.
 - Gestisci sempre loading, errori e risposta vuota in modo comprensibile per uno studente.
+- Per generazione immagini mostra sempre feedback visibile mentre attendi il server: bottone disabilitato,
+  spinner/testo "Genero l'immagine..." e messaggio di completamento/errore. Non lasciare mai la UI muta.
 - Il progetto deve funzionare come pagina statica in iframe sandboxato.
 - Usa HTML, CSS e JavaScript vanilla. Puoi creare piu` file, ma index.html, styles.css e script.js devono esistere.
 - index.html deve linkare styles.css e script.js. Tutti i colori e stili vivono in styles.css con variabili in :root.
@@ -238,7 +264,13 @@ Tecnica:
 - index.html linka styles.css e script.js (e i moduli .js/.css del piano) con percorsi relativi;
 - TUTTI i colori e gli stili vivono in styles.css con variabili in :root, riusate ovunque;
 - per AI usa il runtime interno: await window.GolinelliAI.chat({content, history, profileKey}) che
-  restituisce {response}, e await window.GolinelliAI.generateImage({prompt}) che restituisce {image_url};
+  restituisce {response}, e await window.GolinelliAI.generateImage({prompt}) che restituisce {image_url}
+  (URL pronto per <img src>). Per generazione immagini usa SEMPRE ed ESCLUSIVAMENTE questa funzione:
+  MAI fetch/XHR verso api.openai.com o altri servizi esterni, MAI chiavi/token hardcoded;
+- quando usi generateImage mostra sempre feedback visibile fino al risultato: pulsante disabilitato,
+  spinner/testo di attesa, messaggio di immagine pronta ed errore se fallisce;
+- se l'app deve ricordare dati creati dall'utente usa window.GolinelliAI.saveData({key, value}) /
+  loadData({key}) (persistono sul backend) — MAI localStorage, qui vietato;
 - gestisci sempre stati di caricamento, errore e vuoto in modo comprensibile per studenti;
 - contenuto adatto a studenti."""
 
@@ -287,15 +319,28 @@ sue variabili :root e le sue regole sono VINCOLANTI e PREVALGONO su ogni tua sce
 - segui le ricette di bottoni/card/superfici del design-system.md. Coerenza visiva totale col contratto.
 
 PERSISTENZA DATI: se l'app gestisce dati creati dall'utente (liste, bot, note, documenti, punteggi...),
-PERSISTILI in localStorage così sopravvivono al refresh. Usa una chiave con prefisso del progetto
-(es. `golinelli:<nome-app>:<entità>`), carica all'avvio (lazy initializer di useState) e salva a ogni
-modifica (useEffect). Gestisci JSON corrotto/assente senza crashare. localStorage è permesso e consigliato.
+PERSISTILI usando window.GolinelliAI.saveData({key, value}) e window.GolinelliAI.loadData({key}) —
+salvano sul backend della piattaforma (non nel browser), quindi i dati sopravvivono a refresh, a
+riapertura del progetto in un altro momento/dispositivo e a modifiche successive del codice. Usa una
+chiave per entità con prefisso del progetto (es. `<entità>`, gestita come un'unica lista/oggetto JSON:
+carica all'avvio con loadData, salva ad ogni modifica con saveData), window.GolinelliAI.deleteData({key})
+per svuotare. Gestisci sempre il caso "nessun dato ancora" (value null) senza crashare. In alternativa
+localStorage resta permesso solo per preferenze UI effimere (es. tema chiaro/scuro), MAI per i dati che
+lo studente considera il contenuto/il "database" della sua app.
 
 RISORSE ESTERNE: l'ambiente HA rete, quindi font (Google Fonts), immagini da URL e CDN funzionano. Preferisci
-comunque SVG inline/gradienti per la grafica decorativa. Per immagini generate usa
-await window.GolinelliAI.generateImage({prompt}) -> {image_url}. Per l'AI testuale usa
-await window.GolinelliAI.chat({content, history, profileKey}) -> {response}. NON inventare chiavi API o
-endpoint backend: le chiamate AI passano SOLO da window.GolinelliAI.
+comunque SVG inline/gradienti per la grafica decorativa. Per immagini generate (anche se lo studente
+chiede "generatore di immagini" o simili) usa SEMPRE ed ESCLUSIVAMENTE
+await window.GolinelliAI.generateImage({prompt}) -> {image_url} — passa dal backend della piattaforma,
+che usa credenziali reali (GPT Image) gia` configurate lato server, qualunque sia il modello che sta
+generando questo codice. Per l'AI testuale usa
+await window.GolinelliAI.chat({content, history, profileKey}) -> {response}. NON inventare chiavi API,
+non chiamare mai fetch/XHR verso api.openai.com o altri servizi immagine esterni, non usare endpoint
+backend inventati: le chiamate AI passano SOLO da window.GolinelliAI.
+Quando generi immagini, la UI DEVE dare feedback immediato e persistente fino al completamento:
+disabilita il comando, mostra spinner/testo di stato, aggiorna l'anteprima appena arriva image_url,
+e mostra un errore chiaro se la promessa fallisce. Puoi anche passare onStatus a generateImage oppure
+ascoltare window.addEventListener('golinelli:image-status', ...) per stati globali.
 
 FORMATO DI OUTPUT — rispettalo ALLA LETTERA:
 1) Prima un breve RAGIONAMENTO in italiano (markdown, elenchi ok): piano, viste, componenti, scelte di design.
@@ -1482,7 +1527,10 @@ createRoot(document.getElementById('root')!).render(
   interface Window {
     GolinelliAI?: {
       chat: (args?: { content?: string; history?: unknown[]; profileKey?: string }) => Promise<{ response: string }>
-      generateImage: (args?: { prompt?: string }) => Promise<{ image_url: string }>
+      generateImage: (args?: { prompt?: string; onStatus?: (event: { status: string; message: string; result?: unknown }) => void }) => Promise<{ image_url: string }>
+      saveData: (args?: { key?: string; value?: unknown }) => Promise<{ key: string; value: unknown }>
+      loadData: (args?: { key?: string }) => Promise<{ key: string; value: unknown }>
+      deleteData: (args?: { key?: string }) => Promise<{}>
     }
   }
 }
@@ -1493,6 +1541,15 @@ window.GolinelliAI = window.GolinelliAI || {
   },
   async generateImage() {
     throw new Error('Generazione immagini non configurata in questa distribuzione standalone.')
+  },
+  async saveData() {
+    throw new Error('Persistenza dati non configurata in questa distribuzione standalone.')
+  },
+  async loadData() {
+    throw new Error('Persistenza dati non configurata in questa distribuzione standalone.')
+  },
+  async deleteData() {
+    throw new Error('Persistenza dati non configurata in questa distribuzione standalone.')
   },
 }
 
@@ -2311,6 +2368,126 @@ async def save_project_draft(
     await db.commit()
     await db.refresh(version)
     return version
+
+
+# --- Project data store: backend-persisted "database" for generated apps -----------------------
+# Backs window.GolinelliAI.saveData/loadData (see coding sandbox bridge). Unlike localStorage inside
+# the Sandpack iframe, this survives version switches, device changes and browser data clearing —
+# it's stored the same way project files are (in the platform DB), scoped to the project.
+PROJECT_DATA_MAX_KEY_BYTES = 200_000
+PROJECT_DATA_MAX_TOTAL_BYTES = 2_000_000
+PROJECT_DATA_MAX_KEYS = 200
+
+
+def _json_size_bytes(value: Any) -> int:
+    return len(json.dumps(value, ensure_ascii=False).encode("utf-8"))
+
+
+@router.get("/projects/{project_id}/data", response_model=CodingProjectDataListResponse)
+async def list_project_data(
+    project_id: UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    actor: Annotated[StudentOrTeacher, Depends(get_student_or_teacher)],
+):
+    await _get_accessible_project(db, actor, project_id)
+    result = await db.execute(
+        select(CodingProjectData).where(CodingProjectData.project_id == project_id)
+    )
+    rows = list(result.scalars().all())
+    return CodingProjectDataListResponse(
+        items=[
+            CodingProjectDataResponse(key=row.key, value=row.value_json, updated_at=row.updated_at)
+            for row in rows
+        ],
+        total_size_bytes=sum(row.size_bytes for row in rows),
+        max_size_bytes=PROJECT_DATA_MAX_TOTAL_BYTES,
+    )
+
+
+@router.get("/projects/{project_id}/data/{key}", response_model=CodingProjectDataResponse)
+async def get_project_data(
+    project_id: UUID,
+    key: str,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    actor: Annotated[StudentOrTeacher, Depends(get_student_or_teacher)],
+):
+    await _get_accessible_project(db, actor, project_id)
+    result = await db.execute(
+        select(CodingProjectData).where(
+            CodingProjectData.project_id == project_id,
+            CodingProjectData.key == key,
+        )
+    )
+    row = result.scalar_one_or_none()
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Key not found")
+    return CodingProjectDataResponse(key=row.key, value=row.value_json, updated_at=row.updated_at)
+
+
+@router.put("/projects/{project_id}/data/{key}", response_model=CodingProjectDataResponse)
+async def put_project_data(
+    project_id: UUID,
+    key: str,
+    body: CodingProjectDataPut,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    actor: Annotated[StudentOrTeacher, Depends(get_student_or_teacher)],
+):
+    await _get_accessible_project(db, actor, project_id)
+    if len(key) > 200:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Key too long")
+
+    new_size = _json_size_bytes(body.value)
+    if new_size > PROJECT_DATA_MAX_KEY_BYTES:
+        raise HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail="Value too large")
+
+    result = await db.execute(
+        select(CodingProjectData).where(
+            CodingProjectData.project_id == project_id,
+            CodingProjectData.key == key,
+        )
+    )
+    row = result.scalar_one_or_none()
+
+    totals_result = await db.execute(
+        select(func.count(CodingProjectData.id), func.coalesce(func.sum(CodingProjectData.size_bytes), 0))
+        .where(CodingProjectData.project_id == project_id, CodingProjectData.key != key)
+    )
+    other_keys_count, other_keys_bytes = totals_result.one()
+    if row is None and other_keys_count >= PROJECT_DATA_MAX_KEYS:
+        raise HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail="Too many keys for this project")
+    if other_keys_bytes + new_size > PROJECT_DATA_MAX_TOTAL_BYTES:
+        raise HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail="Project data quota exceeded")
+
+    if row is None:
+        row = CodingProjectData(project_id=project_id, key=key, value_json=body.value, size_bytes=new_size)
+        db.add(row)
+    else:
+        row.value_json = body.value
+        row.size_bytes = new_size
+        row.updated_at = func.now()
+    await db.commit()
+    await db.refresh(row)
+    return CodingProjectDataResponse(key=row.key, value=row.value_json, updated_at=row.updated_at)
+
+
+@router.delete("/projects/{project_id}/data/{key}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_project_data(
+    project_id: UUID,
+    key: str,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    actor: Annotated[StudentOrTeacher, Depends(get_student_or_teacher)],
+):
+    await _get_accessible_project(db, actor, project_id)
+    result = await db.execute(
+        select(CodingProjectData).where(
+            CodingProjectData.project_id == project_id,
+            CodingProjectData.key == key,
+        )
+    )
+    row = result.scalar_one_or_none()
+    if row is not None:
+        await db.delete(row)
+        await db.commit()
 
 
 @router.post("/projects/{project_id}/generate", response_model=CodingGenerateResponse)

@@ -6,7 +6,6 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { io } from 'socket.io-client'
 import { useAuthStore } from '@/stores/auth'
 import { studentApi } from '@/lib/api'
-import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import {
   Bot, Brain, Award, MessageSquare, FileEdit,
@@ -161,7 +160,6 @@ const pageVariants = {
 }
 
 export default function StudentDashboard() {
-  const { t } = useTranslation()
   const { studentSession, logout } = useAuthStore()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
@@ -179,6 +177,7 @@ export default function StudentDashboard() {
   const [showSidebar, setShowSidebar] = useState(false)
   const [studentAccent, setStudentAccent] = useState<StudentAccentId>(loadStudentAccent())
   const [sharedCodingProject, setSharedCodingProject] = useState<{ projectId: string; nonce: number } | null>(null)
+  const [studentChatSidebarOpen, setStudentChatSidebarOpen] = useState(false)
 
   const exitStudentSession = useCallback(() => {
     localStorage.removeItem('student_token')
@@ -347,6 +346,12 @@ export default function StudentDashboard() {
     })
 
     socket.on('session_access_revoked', () => exitStudentSession())
+    socket.on('document_uploaded', (data: { document_id: string; filename: string }) => {
+      window.dispatchEvent(new CustomEvent('student-document-uploaded', { detail: data }))
+    })
+    socket.on('task_published', (data: { task_id: string; title: string; task_type: string }) => {
+      window.dispatchEvent(new CustomEvent('student-task-published', { detail: data }))
+    })
     socket.on('module_toggled', (data: { module_key: string; is_enabled: boolean }) => {
       if (data.module_key === 'chat' && !data.is_enabled) {
         window.dispatchEvent(new CustomEvent('studentPrivateChatDisabled', { detail: data }))
@@ -384,6 +389,19 @@ export default function StudentDashboard() {
   const collaborationEnabled = sessionInfo?.enabled_modules?.some((m) => m.key === 'chat_collaboration') ?? false
   const sessionModules = sessionInfo?.enabled_modules?.map(m => m.key).filter(k => k !== 'chat' && k !== 'chat_collaboration') ?? []
   const enabledModules = [...new Set([...sessionModules, 'classe', 'documents'])]
+  const chatbotEnabled = enabledModules.includes('chatbot')
+
+  const dockStudentChat = () => {
+    setStudentChatSidebarOpen(true)
+    if (activeModule === 'chatbot') {
+      setActiveModule(null)
+    }
+  }
+
+  const expandStudentChat = () => {
+    setStudentChatSidebarOpen(false)
+    setActiveModule('chatbot')
+  }
 
   if (loading) {
     return (
@@ -453,7 +471,7 @@ export default function StudentDashboard() {
       {/* Main Layout with Chat Sidebar */}
       <div className="flex flex-1 overflow-hidden md:pl-16 xl:pl-0">
         {/* Main Content Area */}
-        <main className={`flex-1 min-h-0 relative ${activeModule ? 'overflow-hidden flex flex-col' : 'overflow-y-auto'}`}>
+        <main className={`min-h-0 relative ${activeModule === 'chatbot' ? 'hidden' : 'flex-1'} ${activeModule ? 'overflow-hidden flex flex-col' : 'overflow-y-auto'}`}>
           <AnimatePresence mode="wait">
             <motion.div
               key={activeModule || 'home'}
@@ -476,16 +494,6 @@ export default function StudentDashboard() {
                 />
               ) : (
                 <div className="h-full min-h-0 flex flex-col">
-                  <div className="absolute left-4 top-4 z-40 hidden md:block">
-                    <Button
-                      variant="ghost"
-                      className="h-9 gap-2 rounded-full border border-slate-200 bg-white/90 px-3 text-xs font-semibold text-slate-700 shadow-sm backdrop-blur hover:bg-white"
-                      onClick={() => setActiveModule(null)}
-                    >
-                      ← {t('student_dashboard.back_home')}
-                    </Button>
-                  </div>
-
                   <Suspense fallback={
                     <div className="flex items-center justify-center h-full min-h-[40vh]">
                       <Loader2 className="h-6 w-6 animate-spin text-slate-400" />
@@ -521,6 +529,41 @@ export default function StudentDashboard() {
           </AnimatePresence>
         </main>
 
+        {chatbotEnabled && sessionInfo && (
+          <motion.div
+            layout
+            transition={{ type: 'spring', stiffness: 420, damping: 38, mass: 0.9 }}
+            className={`overflow-hidden bg-white ${
+              activeModule === 'chatbot'
+                ? 'relative flex-1 h-full border-l-0 opacity-100'
+                : studentChatSidebarOpen
+                  ? 'relative flex-shrink-0 h-full border-l border-slate-200 opacity-100'
+                  : 'pointer-events-none flex-shrink-0 h-full border-l-0 opacity-0'
+            }`}
+            style={{
+              width: activeModule === 'chatbot' ? 'auto' : studentChatSidebarOpen ? 460 : 0,
+              transformOrigin: 'right bottom',
+            }}
+            aria-hidden={activeModule !== 'chatbot' && !studentChatSidebarOpen}
+          >
+            <Suspense fallback={<div className="flex h-full items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-slate-400" /></div>}>
+              <ChatbotModule
+                sessionId={sessionInfo.session.id}
+                studentId={sessionInfo.student.id}
+                initialTeacherbotId={selectedTeacherbotId}
+                oggiImparoContext={oggiImparoLesson ?? undefined}
+                onOggiImparoContextConsumed={() => setOggiImparoLesson(null)}
+                studentAccent={studentAccent}
+                collaborationEnabled={collaborationEnabled}
+                onMinimize={dockStudentChat}
+                onExpand={expandStudentChat}
+                onClose={() => setStudentChatSidebarOpen(false)}
+                sidebarMode={activeModule !== 'chatbot' && studentChatSidebarOpen}
+                dockArmed={studentChatSidebarOpen}
+              />
+            </Suspense>
+          </motion.div>
+        )}
         {sessionInfo ? (
           <div
             className={`hidden h-full flex-shrink-0 overflow-hidden bg-white transition-[width,opacity] duration-200 lg:block ${
@@ -597,6 +640,7 @@ function StudentMobileShell({
 }) {
   const { t } = useTranslation()
   const [menuOpen, setMenuOpen] = useState(false)
+  const [studentChatSidebarOpen, setStudentChatSidebarOpen] = useState(false)
   const studentTheme = getStudentAccentTheme(studentAccent)
   const bgGradient = getAppBackgroundGradient(studentTheme)
   const moduleConfig = getModuleConfig(t)
@@ -628,6 +672,18 @@ function StudentMobileShell({
   const handleNavigate = (module: string | null) => {
     onNavigate(module)
     setMenuOpen(false)
+  }
+
+  const dockStudentChat = () => {
+    setStudentChatSidebarOpen(true)
+    if (activeModule === 'chatbot') {
+      onNavigate(null)
+    }
+  }
+
+  const expandStudentChat = () => {
+    setStudentChatSidebarOpen(false)
+    onNavigate('chatbot')
   }
 
   return (
@@ -807,7 +863,34 @@ function StudentMobileShell({
         </AnimatePresence>
       </main>
 
-      {activeModule !== 'chatbot' && (
+      <div
+        className={
+          activeModule === 'chatbot'
+            ? 'fixed inset-x-0 bottom-0 top-[calc(env(safe-area-inset-top)+4.1rem)] z-40 overflow-hidden bg-white'
+            : studentChatSidebarOpen
+              ? 'fixed inset-y-0 right-0 z-40 w-[min(92vw,420px)] overflow-hidden border-l border-slate-200 bg-white shadow-2xl'
+              : 'pointer-events-none fixed bottom-0 right-0 h-px w-px overflow-hidden opacity-0'
+        }
+        aria-hidden={activeModule !== 'chatbot' && !studentChatSidebarOpen}
+      >
+        <Suspense fallback={<div className="flex h-full items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-slate-400" /></div>}>
+          <ChatbotModule
+            sessionId={sessionInfo.session.id}
+            studentId={sessionInfo.student.id}
+            initialTeacherbotId={selectedTeacherbotId}
+            oggiImparoContext={oggiImparoLesson ?? undefined}
+            onOggiImparoContextConsumed={onOggiImparoLessonConsumed}
+            studentAccent={studentAccent}
+            collaborationEnabled={collaborationEnabled}
+            onMinimize={dockStudentChat}
+            onExpand={expandStudentChat}
+            onClose={() => setStudentChatSidebarOpen(false)}
+            sidebarMode={activeModule !== 'chatbot' && studentChatSidebarOpen}
+          />
+        </Suspense>
+      </div>
+
+      {activeModule !== 'chatbot' && !studentChatSidebarOpen && (
         <button
           onClick={() => handleNavigate('chatbot')}
           className="fixed bottom-4 right-3 z-50 flex h-12 w-12 items-center justify-center rounded-full bg-slate-950 text-white shadow-[0_18px_40px_rgba(15,23,42,0.28)]"
@@ -1020,7 +1103,7 @@ function HomeView({
   )
 }
 
-function ModuleView({ moduleKey, sessionId, sessionName, openTaskId, studentId, studentName, onTeacherbotNotificationClick, selectedTeacherbotId, oggiImparoLesson, onOggiImparoLessonConsumed, studentAccent, openDocumentTaskId, onOpenDocument, teacherTarget, privateChatEnabled, collaborationEnabled, sharedCodingProject, onModuleBack }: {
+function ModuleView({ moduleKey, sessionId, sessionName, openTaskId, studentId, studentName, onTeacherbotNotificationClick, studentAccent, openDocumentTaskId, onOpenDocument, teacherTarget, privateChatEnabled, sharedCodingProject, onModuleBack }: {
   moduleKey: string;
   sessionId: string;
   sessionName?: string;
@@ -1063,16 +1146,10 @@ function ModuleView({ moduleKey, sessionId, sessionName, openTaskId, studentId, 
 
   if (moduleKey === 'chatbot') {
     return (
-      <div className="h-[calc(100dvh-7rem)] md:h-full md:min-h-0 flex flex-col overflow-hidden">
-        <ChatbotModule
-          sessionId={sessionId}
-          studentId={studentId}
-          initialTeacherbotId={selectedTeacherbotId}
-          oggiImparoContext={oggiImparoLesson ?? undefined}
-          onOggiImparoContextConsumed={onOggiImparoLessonConsumed}
-          studentAccent={studentAccent}
-          collaborationEnabled={collaborationEnabled}
-        />
+      <div className="h-[calc(100dvh-7rem)] md:h-full md:min-h-0 flex flex-col overflow-hidden bg-neutral-100">
+        <div className="flex h-full items-center justify-center text-sm text-slate-400">
+          {t('common.loading')}
+        </div>
       </div>
     )
   }

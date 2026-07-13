@@ -11,7 +11,7 @@ import {
   Lightbulb, ClipboardCheck, Sparkles,
   Paperclip, X, File, Database, Download, Loader2,
   Trash2, ChevronLeft, ChevronRight, Wand2, Palette, ChevronDown, Check, ImageIcon,
-  FlaskConical, ScrollText, Languages, Landmark, Sigma, Microscope, BookText, Search, Mic, Users, AtSign, type LucideIcon
+  FlaskConical, ScrollText, Languages, Landmark, Sigma, Microscope, BookText, Search, Mic, Users, AtSign, PanelRightClose, PanelRightOpen, MessageSquare, Square, type LucideIcon
 } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -26,8 +26,6 @@ import ChatConversationView from '@/components/student/ChatConversationView'
 import { VoiceRecorder } from '@/components/VoiceRecorder'
 import { DEFAULT_STUDENT_ACCENT, getStudentAccentTheme, loadStudentAccent, type StudentAccentId } from '@/lib/studentAccent'
 import {
-  PASTEL_ICON_BACKGROUNDS,
-  PASTEL_ICON_TEXT,
   PASTEL_SURFACES,
   type PastelTone,
 } from '@/design/themes/pastelSurfaces'
@@ -41,6 +39,7 @@ const ShareWithModal = lazy(() => import('@/components/student/ShareWithModal'))
 import type { SharedRoom } from '@/components/student/SharedChatPanel'
 import type { ShareTarget } from '@/components/student/ShareWithModal'
 import { collaborationApi } from '@/lib/api'
+import { resolveTeacherbotIcon } from '@/lib/teacherbotIcons'
 
 // Deterministic colour per nickname so each collaborator is visually distinct.
 const COLLAB_NAME_COLORS = ['#e3004a', '#7b69c9', '#1278bd', '#0d9488', '#d97706', '#9333ea', '#0891b2']
@@ -114,7 +113,37 @@ interface ChatbotModuleProps {
   isTeacherPreview?: boolean
   studentAccent?: StudentAccentId
   collaborationEnabled?: boolean
+  onMinimize?: () => void
+  onClose?: () => void
+  onExpand?: () => void
+  sidebarMode?: boolean
+  dockArmed?: boolean
 }
+
+// Card visual language for the "Spazio AI" library — same tinted-surface/pill pattern as the
+// "Materiali del docente" document cards, one fixed hue per chatbot category.
+const CHATBOT_CARD_STYLES = {
+  violet: {
+    card: 'border-[rgba(123,105,201,0.18)] bg-[rgba(123,105,201,0.075)] hover:border-[rgba(123,105,201,0.30)] hover:bg-[rgba(123,105,201,0.11)]',
+    icon: 'bg-violet-100 text-violet-800',
+    badge: 'border-violet-200 bg-violet-100 text-violet-800',
+  },
+  amber: {
+    card: 'border-[rgba(180,131,13,0.18)] bg-[rgba(180,131,13,0.075)] hover:border-[rgba(180,131,13,0.30)] hover:bg-[rgba(180,131,13,0.11)]',
+    icon: 'bg-amber-100 text-amber-800',
+    badge: 'border-amber-200 bg-amber-100 text-amber-800',
+  },
+  emerald: {
+    card: 'border-[rgba(16,150,105,0.18)] bg-[rgba(16,150,105,0.075)] hover:border-[rgba(16,150,105,0.30)] hover:bg-[rgba(16,150,105,0.11)]',
+    icon: 'bg-emerald-100 text-emerald-800',
+    badge: 'border-emerald-200 bg-emerald-100 text-emerald-800',
+  },
+  rose: {
+    card: 'border-[rgba(225,29,72,0.18)] bg-[rgba(225,29,72,0.075)] hover:border-[rgba(225,29,72,0.30)] hover:bg-[rgba(225,29,72,0.11)]',
+    icon: 'bg-rose-100 text-rose-800',
+    badge: 'border-rose-200 bg-rose-100 text-rose-800',
+  },
+} as const
 
 const PROFILE_ICONS: Record<string, React.ReactNode> = {
   'tutor': <GraduationCap className="h-6 w-6" />,
@@ -123,19 +152,6 @@ const PROFILE_ICONS: Record<string, React.ReactNode> = {
   'oral_exam': <User className="h-6 w-6" />,
   'dataset_generator': <Database className="h-6 w-6" />,
   'math_coach': <Lightbulb className="h-6 w-6" />,
-}
-
-const PROFILE_TONES: Record<string, PastelTone> = {
-  tutor: 'sky',
-  quiz: 'rose',
-  interview: 'violet',
-  oral_exam: 'orange',
-  dataset_generator: 'cyan',
-  math_coach: 'indigo',
-}
-
-function getProfileTone(profileKey?: string | null): PastelTone {
-  return profileKey ? PROFILE_TONES[profileKey] || 'slate' : 'slate'
 }
 
 // Macro-area containers carry the four logo colours, but as translucent tinted
@@ -191,22 +207,6 @@ function NavTreeConnector({ tint, isLast }: { tint: string; isLast: boolean }) {
       )}
     </>
   )
-}
-
-function getTeacherbotTone(color: string): PastelTone {
-  const toneMap: Record<string, PastelTone> = {
-    indigo: 'indigo',
-    blue: 'blue',
-    green: 'teal',
-    red: 'rose',
-    purple: 'violet',
-    pink: 'rose',
-    orange: 'orange',
-    teal: 'teal',
-    cyan: 'cyan',
-  }
-
-  return toneMap[color] || 'indigo'
 }
 
 
@@ -306,6 +306,12 @@ interface AttachedFile {
 }
 
 const LEARNING_IMAGE_PREFIX = '__GENERATE_LEARNING_IMAGE__::'
+
+function isAbortLikeError(err: unknown): boolean {
+  if (!err || typeof err !== 'object') return false
+  const error = err as { name?: string; code?: string; message?: string }
+  return error.name === 'AbortError' || error.code === 'ERR_CANCELED' || error.message === 'canceled'
+}
 
 function normalizeLearningUnits(units: LearningUnit[] | undefined, topic: string, lesson: string): LearningUnit[] {
   if (units && units.length > 0) return units
@@ -446,22 +452,30 @@ function getTeacherbotVisual(bot: Teacherbot, uiLanguage: 'it' | 'en'): Teacherb
     : { Icon: Wand2, label: 'Assistente personalizzato', detail: 'Supporto dedicato creato dal docente' }
 }
 
-function getTeacherbotSurface(color: string) {
-  const tone = getTeacherbotTone(color)
-
-  return {
-    tone,
-    surface: PASTEL_SURFACES[tone],
-    icon: `${PASTEL_ICON_BACKGROUNDS[tone]} ${PASTEL_ICON_TEXT[tone]}`,
-    badge: `${PASTEL_ICON_BACKGROUNDS[tone]} ${PASTEL_ICON_TEXT[tone]}`,
+/** Renders a teacherbot's avatar icon — a custom lucide/emoji pick if the teacher set one,
+ * otherwise the existing subject-keyword auto-detected icon. */
+function TeacherbotAvatarIcon({ bot, uiLanguage, className }: { bot: Teacherbot; uiLanguage: 'it' | 'en'; className: string }) {
+  const resolved = resolveTeacherbotIcon(bot.icon)
+  if (resolved.kind === 'lucide') return <resolved.Icon className={className} />
+  if (resolved.kind === 'emoji') {
+    // Emoji glyphs don't respect h-*/w-* box classes like lucide icons do — approximate a
+    // matching font-size from the Tailwind h-N unit (N * 0.25rem, the default spacing scale).
+    const sizeMatch = className.match(/\bh-(\d+(?:\.\d+)?)\b/)
+    const remSize = sizeMatch ? Number(sizeMatch[1]) * 0.25 : 1.25
+    return <span className={className} style={{ fontSize: `${remSize}rem`, lineHeight: 1 }}>{resolved.emoji}</span>
   }
+  const AutoIcon = getTeacherbotVisual(bot, uiLanguage).Icon
+  return <AutoIcon className={className} />
 }
 
 // Mobile navigation state
 type MobileViewState = 'profiles' | 'conversations' | 'chat'
 
-export default function ChatbotModule({ sessionId, studentId, initialTeacherbotId, oggiImparoContext, onOggiImparoContextConsumed, onInputFocusChange, isTeacherPreview, studentAccent: accentProp, collaborationEnabled }: ChatbotModuleProps) {
+export default function ChatbotModule({ sessionId, studentId, initialTeacherbotId, oggiImparoContext, onOggiImparoContextConsumed, onInputFocusChange, isTeacherPreview, studentAccent: accentProp, collaborationEnabled, onMinimize, onClose, onExpand, sidebarMode = false, dockArmed = false }: ChatbotModuleProps) {
   const { t, i18n } = useTranslation()
+  // True once "Apri in sidebar" has been clicked but the panel is still full-page — the dock only
+  // takes effect on the next navigation, so the button pulses green to confirm the click registered.
+  const isDockArmed = dockArmed && !sidebarMode
   const uiLanguage: 'it' | 'en' = i18n.resolvedLanguage?.startsWith('en') ? 'en' : 'it'
   const queryClient = useQueryClient()
   const FALLBACK_PROFILES = getFallbackProfiles(t)
@@ -480,6 +494,7 @@ export default function ChatbotModule({ sessionId, studentId, initialTeacherbotI
   const [imageSize, setImageSize] = useState<string>('1024x1024')
   const [chatMode, setChatMode] = useState<'normal' | 'image' | 'quiz' | 'dataset'>('normal')
   const [showChatModeMenu, setShowChatModeMenu] = useState(false)
+  const [showActionMenu, setShowActionMenu] = useState(false)
   const [showVoiceInterrogation, setShowVoiceInterrogation] = useState(false)
   const [voiceSource, setVoiceSource] = useState<VoiceSessionSource | undefined>(undefined)
   // Collaboration ("Condividi con") shared chat
@@ -529,6 +544,8 @@ export default function ChatbotModule({ sessionId, studentId, initialTeacherbotI
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const modelMenuRef = useRef<HTMLDivElement>(null)
   const isGeneratingRef = useRef(false)
+  const activeGenerationAbortRef = useRef<AbortController | null>(null)
+  const lastEscapeKeyAtRef = useRef(0)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [isInputFocused, setIsInputFocused] = useState(false)
@@ -1030,8 +1047,20 @@ export default function ChatbotModule({ sessionId, studentId, initialTeacherbotI
     ))
   }
 
+  const stopActiveGeneration = useCallback(() => {
+    activeGenerationAbortRef.current?.abort()
+    activeGenerationAbortRef.current = null
+    setIsStreaming(false)
+    setStreamingStatus(null)
+    setImageGenerationProgress(null)
+    setTimeout(() => inputRef.current?.focus(), 0)
+  }, [])
+
   const runStudentStreamRequest = useCallback(async (convId: string, content: string) => {
     const studentToken = localStorage.getItem('student_token')
+    const abortController = new AbortController()
+    activeGenerationAbortRef.current?.abort()
+    activeGenerationAbortRef.current = abortController
     setIsStreaming(true)
     const assistantId = `stream-${Date.now()}`
     setMessages(prev => [...prev, { id: assistantId, role: 'assistant' as const, content: '', timestamp: new Date() }])
@@ -1044,6 +1073,7 @@ export default function ChatbotModule({ sessionId, studentId, initialTeacherbotI
           ...(studentToken ? { 'student-token': studentToken } : {}),
         },
         credentials: 'include',
+        signal: abortController.signal,
         body: JSON.stringify({ content, chat_mode: chatMode }),
       })
 
@@ -1086,6 +1116,10 @@ export default function ChatbotModule({ sessionId, studentId, initialTeacherbotI
         }
       }
     } catch (err) {
+      if (isAbortLikeError(err)) {
+        setMessages(prev => prev.filter(m => m.id !== assistantId || m.content.trim().length > 0))
+        return
+      }
       console.error('Student stream error:', err)
       setMessages(prev => prev.map(m =>
         m.id === assistantId
@@ -1093,14 +1127,22 @@ export default function ChatbotModule({ sessionId, studentId, initialTeacherbotI
           : m
       ))
     } finally {
+      if (activeGenerationAbortRef.current === abortController) {
+        activeGenerationAbortRef.current = null
+      }
       setIsStreaming(false)
       setStreamingStatus(null)
       refetchConversations()
       setTimeout(() => inputRef.current?.focus(), 0)
     }
-  }, [queryClient, refetchConversations, inputRef])
+  }, [queryClient, refetchConversations, inputRef, chatMode])
 
   const currentProfile = profiles.find(p => p.key === selectedProfile)
+
+  const handleDockOrClose = useCallback(() => {
+    if (sidebarMode) onClose?.()
+    else onMinimize?.()
+  }, [onClose, onMinimize, sidebarMode])
   const buildMasterPrompt = useCallback((profileKey: ProactiveProfileKey, answers: Record<string, string>) => {
     const payload = Object.entries(answers)
       .map(([k, v]) => `- ${k}: ${v}`)
@@ -1283,28 +1325,33 @@ export default function ChatbotModule({ sessionId, studentId, initialTeacherbotI
 
   const sendMessageMutation = useMutation({
     mutationFn: async ({ content, files, existingHistory }: { content: string; files: globalThis.File[]; existingHistory?: Message[] }) => {
+      const abortController = new AbortController()
+      activeGenerationAbortRef.current?.abort()
+      activeGenerationAbortRef.current = abortController
+      const { signal } = abortController
+
       // TEACHERBOT MODE
       if (selectedTeacherbot) {
         // Teacher preview: use the test endpoint (no student session needed)
         if (isTeacherPreview) {
           const history = messages.map(m => ({ role: m.role, content: m.content }))
-          const res = await teacherbotsApi.test(selectedTeacherbot.id, content, history)
+          const res = await teacherbotsApi.test(selectedTeacherbot.id, content, history, signal)
           return { content: res.data.content, id: Date.now().toString() }
         }
 
         let convId = teacherbotConversationId
         if (!convId) {
-          const convRes = await teacherbotsApi.startConversation(selectedTeacherbot.id, sessionId)
+          const convRes = await teacherbotsApi.startConversation(selectedTeacherbot.id, sessionId, signal)
           convId = convRes.data.id
           setTeacherbotConversationId(convId)
         }
 
         if (files.length > 0) {
-          const res = await teacherbotsApi.sendMessageWithFiles(convId!, content, files)
+          const res = await teacherbotsApi.sendMessageWithFiles(convId!, content, files, signal)
           return res.data
         }
 
-        const res = await teacherbotsApi.sendMessage(convId!, content)
+        const res = await teacherbotsApi.sendMessage(convId!, content, signal)
         return res.data
       }
 
@@ -1318,7 +1365,8 @@ export default function ChatbotModule({ sessionId, studentId, initialTeacherbotI
           selectedProfile || 'tutor',
           undefined,
           modelProvider,
-          modelName
+          modelName,
+          signal
         )
         convId = convRes.data.id
         setConversationId(convId)
@@ -1334,17 +1382,17 @@ export default function ChatbotModule({ sessionId, studentId, initialTeacherbotI
         if (existingHistory && existingHistory.length > 0) {
           const actualHistory = existingHistory.filter(m => m.content !== content);
           for (const msg of actualHistory) {
-            await llmApi.sendMessage(convId!, msg.content, undefined, undefined, undefined)
+            await llmApi.sendMessage(convId!, msg.content, undefined, undefined, undefined, signal)
           }
         }
       }
 
       if (files.length > 0) {
-        const res = await llmApi.sendMessageWithFiles(convId!, content, files)
+        const res = await llmApi.sendMessageWithFiles(convId!, content, files, signal)
         return res.data
       }
 
-      const res = await llmApi.sendMessage(convId!, content, imageProvider, imageSize, verboseMode)
+      const res = await llmApi.sendMessage(convId!, content, imageProvider, imageSize, verboseMode, signal)
       return res.data
     },
     onSuccess: (data) => {
@@ -1381,6 +1429,7 @@ export default function ChatbotModule({ sessionId, studentId, initialTeacherbotI
       }, 0)
     },
     onError: (e: any) => {
+      if (isAbortLikeError(e)) return
       console.error("Student chat error:", e)
       if (e.response) {
         console.error("Server Error Data:", e.response.data)
@@ -1394,7 +1443,31 @@ export default function ChatbotModule({ sessionId, studentId, initialTeacherbotI
       }
       setMessages((prev) => [...prev, errorMessage])
     },
+    onSettled: () => {
+      activeGenerationAbortRef.current = null
+    },
   })
+
+  const isGeneratingResponse = sendMessageMutation.isPending || isStreaming || Boolean(imageGenerationProgress)
+
+  useEffect(() => {
+    if (!isGeneratingResponse) return
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return
+      const now = Date.now()
+      if (now - lastEscapeKeyAtRef.current <= 500) {
+        event.preventDefault()
+        stopActiveGeneration()
+        lastEscapeKeyAtRef.current = 0
+      } else {
+        lastEscapeKeyAtRef.current = now
+      }
+    }
+
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [isGeneratingResponse, stopActiveGeneration])
 
   const handleImageGeneration = useCallback(async (messageContent: string) => {
     const userMessage: Message = {
@@ -1405,6 +1478,10 @@ export default function ChatbotModule({ sessionId, studentId, initialTeacherbotI
     }
     setMessages(prev => [...prev, userMessage])
     setInput('')
+
+    const abortController = new AbortController()
+    activeGenerationAbortRef.current?.abort()
+    activeGenerationAbortRef.current = abortController
 
     try {
       setImageGenerationProgress({ status: 'Ottimizzazione del prompt con il contesto della chat...', step: 'enhancing' })
@@ -1421,12 +1498,12 @@ REGOLE IMPORTANTI:
 - Rispondi SOLO con il prompt ottimizzato.`
 
       const history = messages.map(m => ({ role: m.role, content: m.content }))
-      const expansionRes = await llmApi.studentChat(expansionPrompt, history, 'tutor', 'openai', 'gpt-5.4-mini')
+      const expansionRes = await llmApi.studentChat(expansionPrompt, history, 'tutor', 'openai', 'gpt-5.4-mini', abortController.signal)
       const enhancedPrompt = expansionRes.data?.response?.trim() || messageContent
 
       setImageGenerationProgress({ status: 'Generazione immagine in corso...', step: 'generating', enhancedPrompt })
 
-      const genRes = await llmApi.generateImage(enhancedPrompt, imageProvider)
+      const genRes = await llmApi.generateImage(enhancedPrompt, imageProvider, abortController.signal)
       const imageUrl = genRes.data?.image_url
 
       setImageGenerationProgress(null)
@@ -1447,6 +1524,7 @@ REGOLE IMPORTANTI:
         throw new Error('Nessuna immagine ricevuta dal server')
       }
     } catch (err: any) {
+      if (isAbortLikeError(err)) return
       setImageGenerationProgress(null)
       const errMessage: Message = {
         id: `err-${Date.now()}`,
@@ -1455,6 +1533,12 @@ REGOLE IMPORTANTI:
         timestamp: new Date(),
       }
       setMessages(prev => [...prev, errMessage])
+    } finally {
+      if (activeGenerationAbortRef.current === abortController) {
+        activeGenerationAbortRef.current = null
+      }
+      setImageGenerationProgress(null)
+      setTimeout(() => inputRef.current?.focus(), 0)
     }
   }, [messages, imageProvider, queryClient])
 
@@ -1462,7 +1546,7 @@ REGOLE IMPORTANTI:
     const messageContent = content ?? input
     const messageFiles = files ?? attachedFiles.map(af => af.file)
 
-    if ((!messageContent.trim() && messageFiles.length === 0) || sendMessageMutation.isPending || isStreaming) return
+    if ((!messageContent.trim() && messageFiles.length === 0) || isGeneratingResponse) return
 
     // COLLABORATION MODE — send to the shared room; the socket echoes the message
     // (and the bot reply) back to every participant. Voice transcribes into the
@@ -1620,6 +1704,7 @@ REGOLE IMPORTANTI:
     input,
     attachedFiles,
     sendMessageMutation,
+    isGeneratingResponse,
     conversationId,
     messages,
     profileInterview,
@@ -1627,7 +1712,6 @@ REGOLE IMPORTANTI:
     selectedTeacherbot,
     activeMasterPrompt,
     isMasterPromptApplied,
-    isStreaming,
     isTeacherPreview,
     runStudentStreamRequest,
     chatMode,
@@ -1802,6 +1886,17 @@ REGOLE IMPORTANTI:
 
   const handleStartNewConversation = useCallback(() => {
     triggerHaptic('light')
+    if (mainTab === 'rag') {
+      const nextSession = createRagSession()
+      saveRagSession(nextSession)
+      setRagSessions(getRagSessions())
+      setActiveRagSessionId(nextSession.id)
+      setSelectedProfile(null)
+      setSelectedTeacherbot(null)
+      setLearningMode(false)
+      setActiveLearningSession(null)
+      return
+    }
     setMessages([])
     setConversationId(null)
     setTeacherbotConversationId(null)
@@ -1811,7 +1906,7 @@ REGOLE IMPORTANTI:
     if (isMobile) {
       setMobileView('chat')
     }
-  }, [isMobile, resetProfileInterview])
+  }, [isMobile, mainTab, resetProfileInterview])
 
   const handleGenerateLesson = async () => {
     if (!newLessonTopic.trim() || generatingLesson) return
@@ -1905,6 +2000,35 @@ REGOLE IMPORTANTI:
       setMobileView('conversations')
     }
   }, [isMobile, teacherbotConversationId, resetProfileInterview, teacherbotConversationsData, loadConversation])
+
+  useEffect(() => {
+    const onRestore = (event: Event) => {
+      const detail = (event as CustomEvent<{ id?: string; kind?: 'assistant' | 'teacherbot'; conversationId?: string | null }>).detail
+      if (!detail?.id) return
+
+      if (detail.kind === 'teacherbot') {
+        const teacherbotId = detail.id.replace(/^teacherbot-/, '')
+        const bot = (teacherbotsData || []).find((item) => item.id === teacherbotId)
+        if (bot) {
+          void handleSelectTeacherbot(bot)
+          if (detail.conversationId) {
+            setTeacherbotConversationId(detail.conversationId)
+            loadConversation(detail.conversationId, true)
+          }
+        }
+        return
+      }
+
+      const profileKey = detail.id.replace(/^assistant-/, '')
+      handleSelectProfile(profileKey)
+      if (detail.conversationId) {
+        loadConversation(detail.conversationId)
+      }
+    }
+
+    window.addEventListener('golinelli:restore-student-chatbot', onRestore as EventListener)
+    return () => window.removeEventListener('golinelli:restore-student-chatbot', onRestore as EventListener)
+  }, [handleSelectProfile, handleSelectTeacherbot, loadConversation, teacherbotsData])
 
   const conversations = [
     ...(conversationsData || []),
@@ -2052,7 +2176,6 @@ REGOLE IMPORTANTI:
           {([
             { key: 'assistants' as const, label: 'Assistenti AI', icon: <Bot className="h-3 w-3" /> },
             { key: 'teacherbots' as const, label: 'Teacherbots', icon: <Wand2 className="h-3 w-3" />, badge: availableTeacherbots.length },
-            { key: 'learning' as const, label: 'Oggi Imparo', icon: <BookOpen className="h-3 w-3" />, badge: learningSessions.length },
             { key: 'rag' as const, label: 'RAG', icon: <Database className="h-3 w-3" /> },
           ]).map(({ key, label, icon, badge }) => (
             <button key={key} onClick={() => setMainTab(key)}
@@ -2131,8 +2254,8 @@ REGOLE IMPORTANTI:
             )
           )}
 
-          {/* Mobile: Oggi Imparo */}
-          {mainTab === 'learning' && (
+          {/* Mobile: Oggi Imparo is retained only for legacy deep links, not exposed in navigation. */}
+          {false && mainTab === 'learning' && (
             <div className="space-y-2">
               <motion.button whileTap={{ scale: 0.98 }} onClick={() => setShowNewLessonDialog(true)}
                 className="w-full relative overflow-hidden rounded-xl border p-4 text-left shadow-sm"
@@ -2262,9 +2385,10 @@ REGOLE IMPORTANTI:
           triggerHaptic('light')
           setMobileView('conversations')
         }}
-        isLoading={sendMessageMutation.isPending || isStreaming}
+        isLoading={isGeneratingResponse}
         suggestedPrompts={[]}
         isTeacherbot={true}
+        onMinimize={(onMinimize || onClose) ? handleDockOrClose : undefined}
       />
     )
   }
@@ -2283,19 +2407,125 @@ REGOLE IMPORTANTI:
           triggerHaptic('light')
           setMobileView('conversations')
         }}
-        isLoading={sendMessageMutation.isPending || isStreaming}
+        isLoading={isGeneratingResponse}
         suggestedPrompts={currentProfile?.suggested_prompts}
+        onMinimize={(onMinimize || onClose) ? handleDockOrClose : undefined}
       />
     )
   }
 
-  const isDesktopSelection = !selectedProfile && !selectedTeacherbot && !learningMode && !activeSharedRoom && mainTab !== 'rag'
+  const isDesktopSelection = !selectedProfile && !selectedTeacherbot && !activeSharedRoom && mainTab !== 'rag'
   const profileUsageCounts = (conversationsData || []).reduce<Record<string, number>>((acc, c) => {
     acc[c.profile_key] = (acc[c.profile_key] || 0) + 1
     return acc
   }, {})
   const topProfiles = Object.entries(profileUsageCounts).sort((a, b) => b[1] - a[1]).slice(0, 4)
-const learningTopics = [...new Set(learningSessions.map((session) => session.topic).filter(Boolean))]
+  type FavoriteChatbotItem = {
+    profileKey: string
+    conversationId: string | null
+    kind: 'assistant' | 'teacherbot'
+    title: string
+    description: string
+    tone: PastelTone
+    icon: React.ReactNode
+  }
+  const recentFavoriteChatbotItems = conversations.reduce<FavoriteChatbotItem[]>((items, conversation) => {
+      if (items.some((item) => item.profileKey === conversation.profile_key)) return items
+
+      if (conversation.profile_key.startsWith('teacherbot-')) {
+        const teacherbotId = conversation.profile_key.replace('teacherbot-', '')
+        const bot = availableTeacherbots.find((item) => item.id === teacherbotId)
+        if (!bot) return items
+        items.push({
+          profileKey: conversation.profile_key,
+          conversationId: conversation.id,
+          kind: 'teacherbot',
+          title: bot.name,
+          description: conversation.title || bot.synopsis || bot.description || 'Teacherbot recente',
+          tone: 'amber',
+          icon: <Wand2 className="h-4 w-4" />,
+        })
+        return items
+      }
+
+      const profile = profiles.find((item) => item.key === conversation.profile_key)
+      if (!profile) return items
+      items.push({
+        profileKey: profile.key,
+        conversationId: conversation.id,
+        kind: 'assistant',
+        title: profile.name,
+        description: conversation.title || profile.description,
+        tone: 'violet',
+        icon: PROFILE_ICONS[profile.key] || <Bot className="h-4 w-4" />,
+      })
+      return items
+    }, [])
+  const topFavoriteChatbotItems = topProfiles.reduce<FavoriteChatbotItem[]>((items, [key]) => {
+    if (conversations.some((conversation) => conversation.profile_key === key)) return items
+    const profile = profiles.find((item) => item.key === key)
+    if (!profile) return items
+    items.push({
+      profileKey: profile.key,
+      conversationId: null,
+      kind: 'assistant',
+      title: profile.name,
+      description: profile.description,
+      tone: 'violet',
+      icon: PROFILE_ICONS[profile.key] || <Bot className="h-4 w-4" />,
+    })
+    return items
+  }, [])
+  const favoriteChatbotItems = [...recentFavoriteChatbotItems, ...topFavoriteChatbotItems].slice(0, 8)
+  const filteredFavoriteChatbotItems = normalizedChatbotSearch
+    ? favoriteChatbotItems.filter((item) => [item.title, item.description, item.kind].some((value) => value.toLowerCase().includes(normalizedChatbotSearch)))
+    : favoriteChatbotItems
+  const filteredRagSessions = normalizedChatbotSearch
+    ? ragSessions.filter((session) =>
+        [session.name, ...session.messages.map((message) => message.content)]
+          .filter(Boolean)
+          .some((value) => value.toLowerCase().includes(normalizedChatbotSearch))
+      )
+    : ragSessions
+  const visibleMessages = normalizedChatbotSearch
+    ? messages.filter((message) => message.content.toLowerCase().includes(normalizedChatbotSearch))
+    : messages
+
+  const openRagSession = (session?: RagSession | null) => {
+    let nextSession = session ?? activeRagSession ?? ragSessions[0] ?? null
+    if (!nextSession) {
+      nextSession = createRagSession()
+      saveRagSession(nextSession)
+      setRagSessions(getRagSessions())
+    }
+    setSelectedProfile(null)
+    setSelectedTeacherbot(null)
+    setLearningMode(false)
+    setActiveLearningSession(null)
+    setActiveRagSessionId(nextSession.id)
+    setMainTab('rag')
+  }
+
+  const createAndOpenRagSession = () => {
+    const nextSession = createRagSession()
+    saveRagSession(nextSession)
+    setRagSessions(getRagSessions())
+    openRagSession(nextSession)
+  }
+
+  const returnToChatbotLibrary = () => {
+    setSelectedProfile(null)
+    setSelectedTeacherbot(null)
+    setTeacherbotConversationId(null)
+    setConversationId(null)
+    setLearningMode(false)
+    setActiveLearningSession(null)
+    setActiveMasterPrompt(null)
+    setIsMasterPromptApplied(false)
+    resetProfileInterview()
+    setMessages([])
+    setMainTab('assistants')
+  }
 
   // @mention autocomplete (collaboration): match a trailing "@partial" in the composer.
   const mentionMatch = activeSharedRoom ? /(^|\s)@([^\s@]*)$/.exec(input) : null
@@ -2361,7 +2591,7 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
 
       <div className="bg-white p-2 md:bg-transparent md:p-3">
         <div
-          className="relative flex items-end gap-1.5 rounded-[24px] border border-slate-200 bg-white p-1.5 shadow-sm transition-all focus-within:border-slate-300 focus-within:ring-2 focus-within:ring-slate-200"
+          className="relative flex items-center gap-1.5 rounded-[24px] border border-slate-200 bg-white p-1.5 shadow-sm transition-all focus-within:border-slate-300 focus-within:ring-2 focus-within:ring-slate-200"
         >
           {mentionCandidates.length > 0 && (
             <div className="absolute bottom-full left-2 z-30 mb-2 w-60 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl">
@@ -2392,24 +2622,101 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
             }}
           />
 
-          <VoiceRecorder
-            onInsertText={(text) => {
-              setInput(text)
-              setTimeout(() => inputRef.current?.focus(), 50)
-            }}
-          />
+          {sidebarMode && (
+            <div className="relative flex-shrink-0">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-9 w-9 rounded-full bg-slate-950 text-white hover:bg-slate-800"
+                onClick={() => setShowActionMenu((prev) => !prev)}
+                title="Strumenti chatbot"
+              >
+                <Plus className="h-4 w-4" />
+              </Button>
+              {showActionMenu && (
+                <div className="absolute bottom-full left-0 z-40 mb-2 w-56 rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl">
+                  <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-slate-400">Strumenti</div>
+                  <div className="flex items-center gap-1 rounded-lg px-2 py-1.5">
+                    <VoiceRecorder
+                      onInsertText={(text) => {
+                        setInput(text)
+                        setShowActionMenu(false)
+                        setTimeout(() => inputRef.current?.focus(), 50)
+                      }}
+                    />
+                    <span className="text-xs font-medium text-slate-600">Dettatura vocale</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowActionMenu(false)
+                      fileInputRef.current?.click()
+                    }}
+                    className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-xs font-medium text-slate-600 hover:bg-slate-100"
+                  >
+                    <Paperclip className="h-3.5 w-3.5" />
+                    Allegati
+                  </button>
+                  {activeSharedRoom && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setInput((prev) => (prev === '' || prev.endsWith(' ') ? prev + '@' : prev + ' @'))
+                        setShowActionMenu(false)
+                        setTimeout(() => inputRef.current?.focus(), 0)
+                      }}
+                      className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-xs font-medium text-slate-600 hover:bg-slate-100"
+                    >
+                      <AtSign className="h-3.5 w-3.5" />
+                      Menzione privata
+                    </button>
+                  )}
+                  <div className="my-1 h-px bg-slate-100" />
+                  {([
+                    { mode: 'normal' as const, label: 'Chat', icon: <MessageSquare className="h-3.5 w-3.5" /> },
+                    { mode: 'image' as const, label: 'Immagine', icon: <ImageIcon className="h-3.5 w-3.5" /> },
+                    { mode: 'quiz' as const, label: 'Quiz', icon: <ClipboardCheck className="h-3.5 w-3.5" /> },
+                    { mode: 'dataset' as const, label: 'Dataset', icon: <Database className="h-3.5 w-3.5" /> },
+                  ] as const).map(({ mode, label, icon }) => (
+                    <button
+                      key={mode}
+                      type="button"
+                      onClick={() => {
+                        setChatMode(mode)
+                        setShowActionMenu(false)
+                      }}
+                      className={`flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-xs font-medium transition-colors ${chatMode === mode ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'}`}
+                    >
+                      {icon}
+                      <span className="flex-1">{label}</span>
+                      {chatMode === mode && <Check className="h-3.5 w-3.5" />}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
 
-          <Button
-            variant="ghost" size="icon" className="h-8 w-8 flex-shrink-0 rounded-full text-slate-400 hover:bg-slate-100"
+          {!sidebarMode && (
+            <VoiceRecorder
+              onInsertText={(text) => {
+                setInput(text)
+                setTimeout(() => inputRef.current?.focus(), 50)
+              }}
+            />
+          )}
+
+          {!sidebarMode && <Button
+            variant="ghost" size="icon" className="h-9 w-9 flex-shrink-0 rounded-full text-slate-400 hover:bg-slate-100"
             style={{ color: 'inherit' }}
             onClick={() => fileInputRef.current?.click()}
           >
             <Paperclip className="h-4 w-4" />
-          </Button>
+          </Button>}
 
-          {activeSharedRoom && (
+          {activeSharedRoom && !sidebarMode && (
             <Button
-              variant="ghost" size="icon" className="h-8 w-8 flex-shrink-0 rounded-full text-slate-400 hover:bg-slate-100"
+              variant="ghost" size="icon" className="h-9 w-9 flex-shrink-0 rounded-full text-slate-400 hover:bg-slate-100"
               style={{ color: 'inherit' }}
               onClick={() => {
                 setInput((prev) => (prev === '' || prev.endsWith(' ') ? prev + '@' : prev + ' @'))
@@ -2421,16 +2728,15 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
             </Button>
           )}
 
-          <div className="relative hidden md:block flex-shrink-0">
+          <div className={`relative hidden md:block flex-shrink-0 ${sidebarMode ? 'md:hidden' : ''}`}>
             <button
               type="button"
               onClick={() => setShowChatModeMenu((prev) => !prev)}
-              className="inline-flex h-8 items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 text-[11px] font-semibold text-slate-900 shadow-sm transition-all hover:bg-slate-100"
+              className="inline-flex h-9 items-center gap-2 rounded-full border border-slate-200 bg-slate-50 pl-1 pr-3 text-xs font-semibold text-slate-900 shadow-sm transition-all hover:bg-slate-100"
               title="Cambia modalità"
             >
-              <span className="px-1.5">Modalita</span>
               <span
-                className={`rounded-full px-2.5 py-1 text-[10px] font-bold ${
+                className={`rounded-full px-3 py-1.5 text-xs font-bold ${
                   chatMode === 'normal'
                     ? 'bg-slate-900 text-white'
                     : chatMode === 'image'
@@ -2442,7 +2748,7 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
               >
                 {chatMode === 'normal' ? 'Chat' : chatMode === 'image' ? 'Immagine' : chatMode === 'quiz' ? 'Quiz' : 'Dataset'}
               </span>
-              <ChevronDown className={`h-3 w-3 text-slate-700 transition-transform ${showChatModeMenu ? 'rotate-180' : ''}`} />
+              <ChevronDown className={`h-3.5 w-3.5 text-slate-700 transition-transform ${showChatModeMenu ? 'rotate-180' : ''}`} />
             </button>
             {showChatModeMenu && (
 	              <div className="absolute bottom-full left-0 mb-2 w-44 rounded-xl border border-slate-200 bg-white/96 p-1.5 shadow-xl backdrop-blur-xl">
@@ -2503,20 +2809,31 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
               }}
               onPaste={handleInputPaste}
               placeholder={profileInterview.active ? t('chatbot.guided_placeholder') : (chatMode === 'image' ? 'Descrivi l\'immagine da generare...' : chatMode === 'quiz' ? 'Di cosa vuoi un quiz?' : chatMode === 'dataset' ? 'Descrivi il dataset da generare...' : (attachedFiles.length > 0 ? t('chatbot.describe_placeholder') : 'Scrivi un messaggio...'))}
-              disabled={sendMessageMutation.isPending || isStreaming}
+              disabled={isGeneratingResponse}
               className="w-full resize-none bg-transparent px-1 py-2 text-sm leading-6 text-slate-800 outline-none placeholder:text-slate-400 focus:outline-none focus:ring-0"
             />
           </div>
 
-          <Button
-            onClick={() => handleSend()}
-            disabled={(!input.trim() && attachedFiles.length === 0) || sendMessageMutation.isPending || isStreaming}
-            size="icon"
-            className={`h-9 w-9 flex-shrink-0 rounded-full transition-all ${(!input.trim() && attachedFiles.length === 0) ? 'bg-slate-100 text-slate-300' : 'text-white shadow-md hover:-translate-y-0.5'}`}
-            style={(!input.trim() && attachedFiles.length === 0) ? undefined : selectedSolidStyle}
-          >
-            <Send className="h-4 w-4 ml-0.5" />
-          </Button>
+          {isGeneratingResponse ? (
+            <Button
+              onClick={stopActiveGeneration}
+              size="icon"
+              title={uiLanguage === 'en' ? 'Stop generation' : 'Interrompi generazione'}
+              className="h-9 w-9 flex-shrink-0 rounded-full bg-red-50 text-red-600 shadow-sm ring-1 ring-red-200 transition-all hover:bg-red-100 hover:text-red-700"
+            >
+              <Square className="h-3.5 w-3.5 fill-current" />
+            </Button>
+          ) : (
+            <Button
+              onClick={() => handleSend()}
+              disabled={(!input.trim() && attachedFiles.length === 0)}
+              size="icon"
+              className={`h-9 w-9 flex-shrink-0 rounded-full transition-all ${(!input.trim() && attachedFiles.length === 0) ? 'bg-slate-100 text-slate-300' : 'text-white shadow-md hover:-translate-y-0.5'}`}
+              style={(!input.trim() && attachedFiles.length === 0) ? undefined : selectedSolidStyle}
+            >
+              <Send className="h-4 w-4 ml-0.5" />
+            </Button>
+          )}
         </div>
       </div>
 
@@ -2561,13 +2878,13 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
   // Desktop Chat interface
   return (
     <div
-      className="relative flex h-full min-h-0 w-full gap-3 overflow-hidden bg-neutral-100 p-4 text-slate-900"
+      className="relative flex h-full min-h-0 w-full gap-3 overflow-hidden bg-slate-100 p-4 text-slate-900"
       style={{
         ...accentVars,
       }}
     >
       <aside
-        className={`hidden shrink-0 overflow-hidden rounded-xl text-slate-900 shadow-[0_18px_60px_rgba(15,23,42,0.10)] transition-all duration-300 md:flex md:flex-col ${PASTEL_SURFACES.slate} ${navCollapsed && mainTab === 'rag' ? 'w-12' : 'w-[24.5rem]'}`}
+        className="hidden"
       >
         {navCollapsed && mainTab === 'rag' ? (
           /* Collapsed strip */
@@ -2806,8 +3123,8 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
         )}
       </aside>
 
-      <div className={`flex min-h-0 min-w-0 flex-1 overflow-hidden rounded-xl text-slate-900 shadow-[0_18px_60px_rgba(15,23,42,0.10)] ${PASTEL_SURFACES.sky}`}>
-        {(selectedProfile || selectedTeacherbot) && (
+      <div className={`flex min-h-0 min-w-0 flex-1 overflow-hidden text-slate-900 ${sidebarMode ? 'rounded-none bg-white shadow-none' : `rounded-xl shadow-[0_18px_60px_rgba(15,23,42,0.10)] ${PASTEL_SURFACES.slate}`}`}>
+        {!sidebarMode && (selectedProfile || selectedTeacherbot || mainTab === 'rag') && (
 	          <div className={`${showHistory ? 'w-64' : 'w-10'} hidden md:flex min-h-0 shrink-0 flex-col border-r border-slate-200/70 bg-white/60 transition-all duration-200 backdrop-blur-sm`}>
             {showHistory ? (
               <>
@@ -2836,7 +3153,37 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
                     <Sparkles className="h-4 w-4" />
                     Nuova chat
                   </button>
-                  {conversations
+                  {mainTab === 'rag' ? (
+                    ragSessions.map((ragSession) => (
+                      <div
+                        key={ragSession.id}
+                        onClick={() => {
+                          setActiveRagSessionId(ragSession.id)
+                          setMainTab('rag')
+                        }}
+                        className={`group relative cursor-pointer rounded-lg px-3 py-2 pr-8 text-sm transition-colors ${
+                          ragSession.id === activeRagSessionId ? 'bg-white shadow-sm' : 'hover:bg-white/70'
+                        }`}
+                      >
+                        <div className="truncate font-medium text-slate-800">{ragSession.name}</div>
+                        <div className="mt-0.5 truncate text-[11px] text-slate-400">
+                          {ragSession.messages.filter((message) => message.role === 'user').pop()?.content || 'Sessione RAG'}
+                        </div>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            if (confirm('Eliminare questa sessione RAG?')) {
+                              handleDeleteRagSession(ragSession.id)
+                            }
+                          }}
+                          className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded hover:bg-red-100 opacity-0 group-hover:opacity-100 transition-opacity"
+                          title="Elimina sessione RAG"
+                        >
+                          <Trash2 className="h-3 w-3 text-red-500" />
+                        </button>
+                      </div>
+                    ))
+                  ) : conversations
                     .filter(c => selectedTeacherbot
                       ? c.profile_key === `teacherbot-${selectedTeacherbot.id}`
                       : c.profile_key === selectedProfile)
@@ -2888,9 +3235,9 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
                         </button>
                       </div>
                     ))}
-                  {conversations.filter(c => selectedTeacherbot
+                  {(mainTab === 'rag' ? ragSessions.length === 0 : conversations.filter(c => selectedTeacherbot
                     ? c.profile_key === `teacherbot-${selectedTeacherbot.id}`
-                    : c.profile_key === selectedProfile).length === 0 && (
+                    : c.profile_key === selectedProfile).length === 0) && (
                       <p className="text-xs text-slate-400 text-center py-4">Nessuna conversazione precedente</p>
                     )}
                 </div>
@@ -2931,7 +3278,7 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
 
         <div
           className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
-        style={chatBg ? { backgroundColor: chatBg } : undefined}
+        style={chatBg && !sidebarMode ? { backgroundColor: chatBg } : undefined}
         onDragOver={(e) => {
           e.preventDefault()
           e.currentTarget.classList.add('ring-2', 'ring-inset')
@@ -3032,230 +3379,225 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
                 )}
             </Suspense>
           ) : isDesktopSelection ? (
-            <>
-	              <div
-	                className="shrink-0 border-b border-slate-200/70 bg-white/60 px-5 py-3 backdrop-blur-sm"
-	              >
-                <div className="flex items-center justify-between gap-4">
-                  <div className="flex items-center gap-2">
-                    <p className="text-[10px] font-semibold uppercase tracking-[0.18em]" style={{ color: accentTheme.text }}>
-                      {mainTab === 'assistants' ? 'Assistenti AI' : mainTab === 'teacherbots' ? 'Teacherbot' : 'Oggi Imparo'}
+            <div className="flex min-h-0 flex-1 flex-col">
+              <section className="relative shrink-0 border-b border-slate-200 bg-white/70 backdrop-blur-sm">
+                {(onMinimize || onClose) && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleDockOrClose}
+                    className={isDockArmed
+                      ? 'dock-armed-glow absolute right-4 top-4 rounded-xl border border-emerald-300 text-white shadow-sm'
+                      : 'absolute right-4 top-4 rounded-xl border border-slate-200 bg-white text-slate-500 shadow-sm hover:bg-slate-50 hover:text-slate-700'}
+                    title={sidebarMode ? 'Chiudi chatbot' : isDockArmed ? 'Andrà in sidebar al prossimo cambio pagina' : 'Apri in sidebar'}
+                  >
+                    {sidebarMode ? <X className="h-4 w-4" /> : <PanelRightClose className={`h-4 w-4 ${isDockArmed ? 'text-white' : ''}`} />}
+                  </Button>
+                )}
+                <div className="mx-auto max-w-6xl px-4 py-7 md:px-6">
+                  <div className="mx-auto max-w-3xl text-center">
+                    <p className="text-[11px] font-bold uppercase tracking-[0.18em]" style={{ color: accentTheme.text }}>Chatbot</p>
+                    <h2 className="mt-2 text-3xl font-black tracking-tight text-slate-950">Spazio AI</h2>
+                    <p className="mx-auto mt-3 max-w-2xl text-sm leading-6 text-slate-600">
+                      Assistenti per studio e quiz, teacherbot pubblicati dal docente e sessioni RAG sui tuoi documenti.
                     </p>
-	                    {mainTab === 'teacherbots' && (
-	                      <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-bold" style={{ color: accentTheme.text }}>
-	                        {filteredTeacherbots.length}
-	                      </span>
-	                    )}
-                    {mainTab === 'assistants' && topProfiles.length > 0 && (
-                      <div className="hidden xl:flex gap-2 ml-4">
-                        {topProfiles.slice(0, 3).map(([key, count]) => (
-	                          <span key={key} className="rounded-full border bg-white px-2 py-0.5 text-[10px] font-medium" style={{ borderColor: '#e2e8f0', color: accentTheme.text }}>
-                            {profiles.find(p => p.key === key)?.name || key} · {count}
-                          </span>
-                        ))}
+                    <label className="mx-auto mt-6 flex max-w-xl items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2.5 shadow-sm">
+                      <Search className="h-4 w-4 shrink-0 text-slate-400" />
+                      <input
+                        value={chatbotSearch}
+                        onChange={(event) => setChatbotSearch(event.target.value)}
+                        placeholder="Cerca chatbot o messaggi..."
+                        className="min-w-0 flex-1 bg-transparent text-sm font-medium text-slate-700 placeholder:text-slate-400 focus:outline-none"
+                      />
+                      {chatbotSearch && (
+                        <button
+                          type="button"
+                          onClick={() => setChatbotSearch('')}
+                          className="rounded-full p-1 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
+                          aria-label="Cancella ricerca"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                    </label>
+                  </div>
+                </div>
+              </section>
+
+              <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-8 pt-5 md:px-6">
+                <div className="mx-auto w-full max-w-6xl">
+                  <section className="mb-7">
+                    <div className="mb-3 flex items-center justify-between gap-3">
+                      <div className="inline-flex items-center gap-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-rose-700">
+                        <Sparkles className="h-4 w-4" />
+                        <h3 className="text-xs font-extrabold uppercase tracking-wide">Preferiti</h3>
+                        <span className="text-xs font-bold opacity-75">{filteredFavoriteChatbotItems.length}</span>
+                      </div>
+                      <span className="hidden text-xs text-slate-400 sm:inline">Chatbot usati di recente</span>
+                    </div>
+                    {filteredFavoriteChatbotItems.length === 0 ? (
+                      <div className="rounded-lg border border-dashed border-slate-300 bg-white/70 px-4 py-5 text-sm text-slate-500">
+                        {normalizedChatbotSearch ? 'Nessun preferito corrisponde alla ricerca.' : 'I chatbot usati di recente appariranno qui.'}
+                      </div>
+                    ) : (
+                      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                        {filteredFavoriteChatbotItems.map((item) => {
+                          const style = item.kind === 'teacherbot' ? CHATBOT_CARD_STYLES.amber : CHATBOT_CARD_STYLES.violet
+                          return (
+                            <motion.button
+                              key={`${item.kind}-${item.profileKey}`}
+                              whileTap={{ scale: 0.98 }}
+                              onClick={() => {
+                                if (item.conversationId) {
+                                  loadConversation(item.conversationId, item.kind === 'teacherbot')
+                                } else if (item.kind === 'assistant') {
+                                  handleSelectProfile(item.profileKey)
+                                }
+                              }}
+                              className={`group relative min-h-[132px] overflow-hidden rounded-[24px] border p-4 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-lg ${style.card}`}
+                            >
+                              <div className={`flex h-11 w-11 items-center justify-center rounded-lg shadow-sm ${style.icon}`}>
+                                {item.icon}
+                              </div>
+                              <span className={`absolute right-4 top-4 rounded-full border px-2.5 py-1 text-[10px] font-black ${style.badge}`}>
+                                {item.kind === 'teacherbot' ? 'Teacherbot' : 'Didattico'}
+                              </span>
+                              <p className="mt-3 truncate text-sm font-black text-slate-950">{item.title}</p>
+                              <p className="mt-1 line-clamp-2 text-[11px] font-medium text-slate-500">{item.description}</p>
+                            </motion.button>
+                          )
+                        })}
                       </div>
                     )}
-                  </div>
-                  {mainTab === 'learning' && (
-	                    <Button size="sm" onClick={() => setShowNewLessonDialog(true)} className="rounded-xl text-white shadow-sm transition-transform hover:-translate-y-0.5" style={selectedSolidStyle}>
-                      <Plus className="mr-1.5 h-3.5 w-3.5" />
-                      Nuova lezione
-                    </Button>
-                  )}
-                </div>
-                <div className={`mt-3 flex max-w-md items-center gap-2 rounded-[24px] px-4 py-2.5 shadow-sm ${PASTEL_SURFACES.slate}`}>
-                  <Search className="h-4 w-4 shrink-0 text-slate-400" />
-                  <input
-                    value={chatbotSearch}
-                    onChange={(event) => setChatbotSearch(event.target.value)}
-                    placeholder={mainTab === 'teacherbots' ? 'Cerca teacherbot...' : mainTab === 'learning' ? 'Cerca lezioni...' : 'Cerca chatbot...'}
-                    className="min-w-0 flex-1 bg-transparent text-sm font-medium text-slate-700 placeholder:text-slate-400 focus:outline-none"
-                  />
-                  {chatbotSearch && (
-                    <button
-                      type="button"
-                      onClick={() => setChatbotSearch('')}
-                      className="rounded-full p-1 text-slate-400 transition hover:bg-white/80 hover:text-slate-600"
-                      aria-label="Cancella ricerca"
-                    >
-                      <X className="h-3.5 w-3.5" />
-                    </button>
-                  )}
-                </div>
-              </div>
+                  </section>
 
-              <div className="flex-1 overflow-y-auto p-4">
-                {mainTab === 'assistants' && (
-                  filteredProfiles.length === 0 ? (
-                    <div className={`flex h-full min-h-[360px] items-center justify-center rounded-xl border border-dashed text-center shadow-sm ${PASTEL_SURFACES.slate}`}>
-                      <div className="text-center">
-                        <Bot className="mx-auto h-10 w-10 text-slate-300" />
-                        <p className="mt-4 text-sm font-medium text-slate-500">Nessun risultato</p>
-                        <p className="mt-1 text-sm text-slate-400">Prova con un altro termine di ricerca.</p>
+                  <section className="mb-7">
+                    <div className="mb-3 flex items-center justify-between gap-3">
+                      <div className="inline-flex items-center gap-2 rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 text-violet-700">
+                        <GraduationCap className="h-4 w-4" />
+                        <h3 className="text-xs font-extrabold uppercase tracking-wide">Chatbot Didattici</h3>
+                        <span className="text-xs font-bold opacity-75">{filteredProfiles.length}</span>
                       </div>
+                      <span className="hidden text-xs text-slate-400 sm:inline">Assistenti AI per studio, quiz e strumenti</span>
                     </div>
-                  ) : (
-                  <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                    {filteredProfiles.map((profile) => {
-                      const usage = profileUsageCounts[profile.key] || 0
-                      const tone = getProfileTone(profile.key)
-
-                      return (
-                        <motion.button
-                          key={profile.key}
-                          whileTap={{ scale: 0.99 }}
-                          onClick={() => handleSelectProfile(profile.key)}
-	                          className={`group relative flex min-h-[156px] flex-col overflow-hidden rounded-[24px] p-4 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-lg ${PASTEL_SURFACES[tone]}`}
-                        >
-                          <div className="relative flex flex-col">
-                            <div className="flex items-center justify-between gap-2">
-	                              <div className={`flex h-10 w-10 items-center justify-center rounded-lg shadow-sm ${PASTEL_ICON_BACKGROUNDS[tone]} ${PASTEL_ICON_TEXT[tone]}`}>
-                                <div className="scale-75">{PROFILE_ICONS[profile.key] || <Bot className="h-5 w-5" />}</div>
+                    {filteredProfiles.length === 0 ? (
+                      <div className="rounded-lg border border-dashed border-slate-300 bg-white/70 px-4 py-5 text-sm text-slate-500">Nessun chatbot didattico trovato.</div>
+                    ) : (
+                      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                        {filteredProfiles.map((profile) => {
+                          const style = CHATBOT_CARD_STYLES.violet
+                          const usage = profileUsageCounts[profile.key] || 0
+                          return (
+                            <motion.button
+                              key={profile.key}
+                              whileTap={{ scale: 0.98 }}
+                              onClick={() => handleSelectProfile(profile.key)}
+                              className={`group relative min-h-[132px] overflow-hidden rounded-[24px] border p-4 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-lg ${style.card}`}
+                            >
+                              <div className={`flex h-11 w-11 items-center justify-center rounded-lg shadow-sm ${style.icon}`}>
+                                {PROFILE_ICONS[profile.key] || <Bot className="h-5 w-5" />}
                               </div>
-                              <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${PASTEL_ICON_BACKGROUNDS[tone]} ${PASTEL_ICON_TEXT[tone]}`}>
-                                {usage > 0 ? `${usage} chat` : 'Nuovo'}
+                              <span className={`absolute right-4 top-4 rounded-full border px-2.5 py-1 text-[10px] font-black ${style.badge}`}>
+                                {usage > 0 ? usage : 'Nuovo'}
                               </span>
-                            </div>
-                            <div className="mt-3">
-                              <h4 className="text-sm font-semibold text-slate-900">{profile.name}</h4>
-                              <p className="mt-1 line-clamp-2 text-xs leading-5 text-slate-500">{profile.description}</p>
-                            </div>
-                            <div className="mt-3 flex flex-wrap gap-1">
-                              {(profile.suggested_prompts || []).slice(0, 1).map((prompt) => (
-	                                <span key={prompt} className={`line-clamp-1 rounded-full px-2 py-0.5 text-[10px] ${PASTEL_ICON_BACKGROUNDS[tone]} ${PASTEL_ICON_TEXT[tone]}`}>
-                                  {prompt}
-                                </span>
-                              ))}
-                            </div>
-                          </div>
-                        </motion.button>
-                      )
-                    })}
-                  </div>
-                  )
-                )}
-
-                {mainTab === 'teacherbots' && (
-                  filteredTeacherbots.length === 0 ? (
-	                    <div className={`flex h-full min-h-[360px] items-center justify-center rounded-xl border border-dashed text-center shadow-sm ${PASTEL_SURFACES.slate}`}>
-                      <div className="text-center">
-                        <Wand2 className="mx-auto h-10 w-10 text-slate-300" />
-                        <p className="mt-4 text-sm font-medium text-slate-500">{normalizedChatbotSearch ? 'Nessun risultato' : 'Nessun teacherbot disponibile'}</p>
-                        <p className="mt-1 text-sm text-slate-400">{normalizedChatbotSearch ? 'Prova con un altro termine di ricerca.' : 'Quando il docente ne pubblica uno, comparirà qui.'}</p>
+                              <p className="mt-3 truncate text-sm font-black text-slate-950">{profile.name}</p>
+                              <p className="mt-1 line-clamp-2 text-[11px] font-medium text-slate-500">{profile.description}</p>
+                            </motion.button>
+                          )
+                        })}
                       </div>
-                    </div>
-                  ) : (
-                    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                      {filteredTeacherbots.map((bot) => {
-                        const visual = getTeacherbotVisual(bot, uiLanguage)
-                        const surface = getTeacherbotSurface(bot.color)
-                        return (
-                          <motion.button
-                            key={bot.id}
-                            whileTap={{ scale: 0.99 }}
-                            onClick={() => handleSelectTeacherbot(bot)}
-	                            className={`group relative flex min-h-[156px] flex-col overflow-hidden rounded-[24px] p-4 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-lg ${surface.surface}`}
-                          >
-                            <div className="relative overflow-hidden">
-                              <div className="absolute right-3 bottom-2 opacity-[0.08]">
-                                <visual.Icon className="h-12 w-12 text-slate-900" />
-                              </div>
-                              <div className="flex items-center gap-2.5">
-                                <div className={`relative flex h-10 w-10 items-center justify-center rounded-lg ${surface.icon}`}>
-                                  <visual.Icon className="h-4 w-4" />
-                                </div>
-                                <div>
-                                  <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">{visual.label}</p>
-                                  <p className="text-[11px] text-slate-500">{visual.detail}</p>
-                                </div>
-                              </div>
-                            </div>
-                            <div className="flex flex-1 flex-col pt-3">
-                              <div className="flex items-start justify-between gap-2">
-                                <h4 className="text-sm font-semibold text-slate-900">{bot.name}</h4>
-                                <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${surface.badge}`}>Dal docente</span>
-                              </div>
-                              <p className="mt-1.5 line-clamp-2 text-xs leading-5 text-slate-500">{bot.synopsis || bot.description || 'Assistente personalizzato per la sessione.'}</p>
-                            </div>
-                          </motion.button>
-                        )
-                      })}
-                    </div>
-                  )
-                )}
+                    )}
+                  </section>
 
-                {mainTab === 'learning' && (
-                  <div className="space-y-3">
-                    <div className="grid gap-2 grid-cols-3">
-                      {[
-                        { label: 'Microlezioni', value: learningSessions.length, icon: BookOpen },
-                        { label: 'Chat attiva', value: learningSessions.filter((session) => session.conversationId).length, icon: ClipboardCheck },
-                        { label: 'Argomenti', value: learningTopics.length, icon: Sparkles },
-                      ].map(({ label, value, icon: Icon }) => (
-	                        <div key={label} className={`rounded-lg px-3 py-2.5 shadow-sm ${PASTEL_SURFACES.slate}`}>
-                          <div className="flex items-center justify-between gap-1">
-                            <p className="text-[10px] uppercase tracking-wide text-slate-400">{label}</p>
-	                            <div className={`flex h-6 w-6 items-center justify-center rounded-lg ${PASTEL_ICON_BACKGROUNDS.violet} ${PASTEL_ICON_TEXT.violet}`}>
-                              <Icon className="h-3 w-3" />
-                            </div>
-                          </div>
-                          <div className="mt-1 text-xl font-semibold text-slate-900">{value}</div>
+                  <section className="mb-7">
+                    <div className="mb-3 flex items-center justify-between gap-3">
+                      <div className="inline-flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-amber-700">
+                        <Wand2 className="h-4 w-4" />
+                        <h3 className="text-xs font-extrabold uppercase tracking-wide">Teacherbot</h3>
+                        <span className="text-xs font-bold opacity-75">{filteredTeacherbots.length}</span>
+                      </div>
+                      <span className="hidden text-xs text-slate-400 sm:inline">Assistenti pubblicati dal docente</span>
+                    </div>
+                    {filteredTeacherbots.length === 0 ? (
+                      <div className="rounded-lg border border-dashed border-slate-300 bg-white/70 px-4 py-5 text-sm text-slate-500">
+                        {normalizedChatbotSearch ? 'Nessun teacherbot trovato.' : 'Quando il docente pubblica un teacherbot, comparirà qui.'}
+                      </div>
+                    ) : (
+                      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                        {filteredTeacherbots.map((bot) => {
+                          const style = CHATBOT_CARD_STYLES.amber
+                          return (
+                            <motion.button
+                              key={bot.id}
+                              whileTap={{ scale: 0.98 }}
+                              onClick={() => handleSelectTeacherbot(bot)}
+                              className={`group relative min-h-[132px] overflow-hidden rounded-[24px] border p-4 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-lg ${style.card}`}
+                            >
+                              <div className={`flex h-11 w-11 items-center justify-center rounded-lg shadow-sm ${style.icon}`}>
+                                <TeacherbotAvatarIcon bot={bot} uiLanguage={uiLanguage} className="h-5 w-5" />
+                              </div>
+                              <span className={`absolute right-4 top-4 rounded-full border px-2.5 py-1 text-[10px] font-black ${style.badge}`}>Docente</span>
+                              <p className="mt-3 truncate text-sm font-black text-slate-950">{bot.name}</p>
+                              <p className="mt-1 line-clamp-2 text-[11px] font-medium text-slate-500">{bot.synopsis || bot.description || 'Assistente personalizzato per la sessione.'}</p>
+                            </motion.button>
+                          )
+                        })}
+                      </div>
+                    )}
+                  </section>
+
+                  <section className="mb-2">
+                    <div className="mb-3 flex items-center justify-between gap-3">
+                      <div className="inline-flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-emerald-700">
+                        <Database className="h-4 w-4" />
+                        <h3 className="text-xs font-extrabold uppercase tracking-wide">RAG</h3>
+                        <span className="text-xs font-bold opacity-75">{filteredRagSessions.length}</span>
+                      </div>
+                      <span className="hidden text-xs text-slate-400 sm:inline">Documenti, citazioni e sessioni salvate</span>
+                    </div>
+                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                      <motion.button
+                        whileTap={{ scale: 0.98 }}
+                        onClick={createAndOpenRagSession}
+                        className={`group relative min-h-[132px] overflow-hidden rounded-[24px] border p-4 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-lg ${CHATBOT_CARD_STYLES.emerald.card}`}
+                      >
+                        <div className={`flex h-11 w-11 items-center justify-center rounded-lg shadow-sm ${CHATBOT_CARD_STYLES.emerald.icon}`}>
+                          <Plus className="h-5 w-5" />
                         </div>
+                        <p className="mt-3 truncate text-sm font-black text-slate-950">Nuova sessione RAG</p>
+                        <p className="mt-1 line-clamp-2 text-[11px] font-medium text-slate-500">Interroga documenti e fonti caricate.</p>
+                      </motion.button>
+                      {filteredRagSessions.slice(0, 7).map((ragSession) => (
+                        <motion.button
+                          key={ragSession.id}
+                          whileTap={{ scale: 0.98 }}
+                          onClick={() => openRagSession(ragSession)}
+                          className={`group relative min-h-[132px] overflow-hidden rounded-[24px] border p-4 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-lg ${CHATBOT_CARD_STYLES.emerald.card}`}
+                        >
+                          <div className={`flex h-11 w-11 items-center justify-center rounded-lg shadow-sm ${CHATBOT_CARD_STYLES.emerald.icon}`}>
+                            <Database className="h-5 w-5" />
+                          </div>
+                          <span className={`absolute right-4 top-4 rounded-full border px-2.5 py-1 text-[10px] font-black ${CHATBOT_CARD_STYLES.emerald.badge}`}>
+                            {ragSession.messages.length > 0 ? `${ragSession.messages.length} msg` : 'Pronta'}
+                          </span>
+                          <p className="mt-3 truncate text-sm font-black text-slate-950">{ragSession.name}</p>
+                          <p className="mt-1 line-clamp-2 text-[11px] font-medium text-slate-500">
+                            {ragSession.messages.length > 0 ? `${ragSession.messages.length} messaggi` : 'Sessione pronta'}
+                          </p>
+                        </motion.button>
                       ))}
                     </div>
-
-	                    <div className={`overflow-hidden rounded-xl shadow-sm ${PASTEL_SURFACES.slate}`}>
-                      <div
-                        className="grid grid-cols-[minmax(0,1.2fr)_minmax(0,2fr)_110px_100px] gap-3 border-b px-4 py-2 text-[10px] font-semibold uppercase tracking-[0.16em]"
-	                        style={{ borderBottomColor: '#e2e8f0', color: accentTheme.text }}
-                      >
-                        <div>Argomento</div>
-                        <div>Sintesi</div>
-                        <div>Data</div>
-                        <div>Stato</div>
-                      </div>
-                      {filteredLearningSessions.length === 0 ? (
-                        <div className="px-5 py-10 text-center">
-                          <BookOpen className="mx-auto h-8 w-8 text-slate-300" />
-                          <p className="mt-3 text-sm font-medium text-slate-500">{normalizedChatbotSearch ? 'Nessun risultato' : 'Nessuna microlezione'}</p>
-                        </div>
-                      ) : (
-                        filteredLearningSessions.map((session) => (
-                          <button
-                            key={session.id}
-                            onClick={() => expandingLearningSessionId !== session.id && openLearningSession(session)}
-                            className="grid w-full grid-cols-[minmax(0,1.2fr)_minmax(0,2fr)_110px_100px] gap-3 border-b px-4 py-3 text-left transition-colors hover:bg-slate-50 last:border-b-0"
-	                            style={{ borderBottomColor: '#e2e8f0' }}
-                          >
-                            <div className="min-w-0">
-                              <div className="truncate text-sm font-semibold text-slate-900">{session.topic}</div>
-                            </div>
-                            <div className="min-w-0">
-                              <p className="line-clamp-2 text-xs leading-5 text-slate-500">{session.lesson}</p>
-                            </div>
-                            <div className="text-xs text-slate-400">
-                              {new Date(session.createdAt).toLocaleDateString('it-IT', { day: '2-digit', month: 'short', year: '2-digit' })}
-                            </div>
-                            <div>
-                              <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${expandingLearningSessionId === session.id ? 'bg-amber-100 text-amber-700' : session.conversationId ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}>
-                                {expandingLearningSessionId === session.id ? 'Espansione...' : session.conversationId ? 'Chat attiva' : 'Solo lezione'}
-                              </span>
-                            </div>
-                          </button>
-                        ))
-                      )}
-                    </div>
-                  </div>
-                )}
+                  </section>
+                </div>
               </div>
-            </>
+            </div>
           ) : (
             <>
-	              <div className="hidden shrink-0 items-center gap-3 border-b border-slate-200/70 bg-white/60 px-4 py-3 backdrop-blur-sm md:flex">
+	              <div className="relative z-20 hidden shrink-0 items-center gap-3 border-b border-slate-200/70 bg-white/70 px-4 py-2 backdrop-blur-sm md:flex">
                 <div className="w-10 h-10 rounded-xl flex items-center justify-center shadow-md" style={selectedSolidStyle}>
                   {selectedTeacherbot ? (
                     <div className="text-white scale-90 w-full h-full flex items-center justify-center">
-                      <Wand2 className="h-5 w-5" />
+                      <TeacherbotAvatarIcon bot={selectedTeacherbot} uiLanguage={uiLanguage} className="h-5 w-5" />
                     </div>
                   ) : selectedProfile && PROFILE_ICONS[selectedProfile] ? (
                     <div className="text-white scale-90">{PROFILE_ICONS[selectedProfile]}</div>
@@ -3273,9 +3615,75 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
                       : (selectedTeacherbot ? 'Assistente pubblicato dal docente' : (effectiveSelectedModel?.name || 'Modello AI'))}
                   </p>
                 </div>
+                {!sidebarMode && (
+                  <label className="hidden w-56 shrink-0 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 shadow-sm xl:flex">
+                    <Search className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+                    <input
+                      value={chatbotSearch}
+                      onChange={(event) => setChatbotSearch(event.target.value)}
+                      placeholder="Cerca nella chat..."
+                      className="min-w-0 flex-1 bg-transparent text-xs font-medium text-slate-700 placeholder:text-slate-400 focus:outline-none"
+                    />
+                    {chatbotSearch && (
+                      <button
+                        type="button"
+                        onClick={() => setChatbotSearch('')}
+                        className="rounded-full p-0.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                        aria-label="Cancella ricerca chat"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    )}
+                  </label>
+                )}
 
                 <div className="hidden lg:flex items-center gap-2 relative">
-                  {selectedProfile === 'oral_exam' && !selectedTeacherbot && !isTeacherPreview && (
+                  {!sidebarMode && (
+                    <button
+                      type="button"
+                      onClick={returnToChatbotLibrary}
+                      className="app-button-chrome app-button-chrome-quiet flex h-9 w-9 items-center justify-center rounded-lg text-[var(--text-secondary)]"
+                      title="Torna ai chatbot"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  )}
+                  {sidebarMode ? (
+                    <>
+                      {onExpand && (
+                        <button
+                          type="button"
+                          onClick={onExpand}
+                          className="app-button-chrome app-button-chrome-quiet flex h-9 w-9 items-center justify-center rounded-lg text-[var(--text-secondary)]"
+                          title="Espandi a schermo intero"
+                        >
+                          <PanelRightOpen className="h-4 w-4" />
+                        </button>
+                      )}
+                      {onClose && (
+                        <button
+                          type="button"
+                          onClick={onClose}
+                          className="app-button-chrome app-button-chrome-quiet flex h-9 w-9 items-center justify-center rounded-lg text-[var(--text-secondary)]"
+                          title="Chiudi chatbot"
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
+                      )}
+                    </>
+                  ) : onMinimize && (
+                    <button
+                      type="button"
+                      onClick={handleDockOrClose}
+                      className={isDockArmed
+                        ? 'dock-armed-glow flex h-9 w-9 items-center justify-center rounded-lg border border-emerald-300 text-white shadow-sm'
+                        : 'app-button-chrome app-button-chrome-quiet flex h-9 w-9 items-center justify-center rounded-lg text-[var(--text-secondary)]'}
+                      title={isDockArmed ? 'Andrà in sidebar al prossimo cambio pagina' : 'Apri in sidebar'}
+                    >
+                      <PanelRightClose className={`h-4 w-4 ${isDockArmed ? 'text-white' : ''}`} />
+                    </button>
+                  )}
+                  {!sidebarMode && selectedProfile === 'oral_exam' && !selectedTeacherbot && !isTeacherPreview && (
                     <button
                       type="button"
                       onClick={() => { setVoiceSource(undefined); setShowVoiceInterrogation(true) }}
@@ -3287,7 +3695,7 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
                       {uiLanguage === 'en' ? 'Voice exam' : 'Interrogazione vocale'}
                     </button>
                   )}
-                  {selectedTeacherbot?.enable_live_voice && (
+                  {!sidebarMode && selectedTeacherbot?.enable_live_voice && (
                     <button
                       type="button"
                       onClick={() => {
@@ -3310,15 +3718,14 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
                           ? { kind: 'teacherbot', teacherbotId: selectedTeacherbot.id, title: selectedTeacherbot.name }
                           : { kind: 'assistant', profileKey: selectedProfile!, title: currentProfile?.name || selectedProfile! }
                       )}
-                      className="inline-flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-xs font-bold shadow-sm transition-transform hover:-translate-y-0.5"
-                      style={{ borderColor: accentTheme.border, color: accentTheme.text, backgroundColor: accentTheme.soft }}
+                      className="app-button-chrome flex items-center gap-1.5 rounded-full px-3 py-2 text-xs font-bold text-[var(--text-primary)] transition-all"
                       title={uiLanguage === 'en' ? 'Share with classmates' : 'Condividi con i compagni'}
                     >
                       <Users className="h-3.5 w-3.5" />
-                      {uiLanguage === 'en' ? 'Share with' : 'Condividi con'}
+                      <span className={sidebarMode ? 'sr-only' : ''}>{uiLanguage === 'en' ? 'Share with' : 'Condividi con'}</span>
                     </button>
                   )}
-                  <div className="relative">
+                  {false && !sidebarMode && <div className="relative">
                     <Button
                       variant="ghost"
                       size="sm"
@@ -3385,15 +3792,17 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
                         </div>
                       </div>
                     )}
-                  </div>
+                  </div>}
                 </div>
 
                 {!selectedTeacherbot && (
                   <div className="hidden lg:block relative" ref={modelMenuRef}>
                     <button
                       onClick={() => setShowModelMenu(!showModelMenu)}
-                      className="flex h-[var(--selection-height)] items-center gap-2 rounded-[var(--selection-radius)] border px-[var(--selection-padding-x)] text-xs font-bold transition-all hover:opacity-90"
-                      style={selectedSoftStyle}
+                      className={sidebarMode
+                        ? "app-button-chrome app-button-chrome-quiet flex h-9 w-9 items-center justify-center rounded-lg text-[var(--text-secondary)]"
+                        : "app-button-chrome app-button-chrome-active flex items-center gap-2 rounded-full px-3 py-2 text-xs font-bold text-[var(--text-primary)] transition-all"}
+                      title="Seleziona modello"
                     >
                       {effectiveSelectedModel?.provider === 'openai' ? (
                         <img src="/icone_ai/OpenAI_logo_2025_(symbol).svg.png" alt="OpenAI" className="h-3.5 w-3.5 object-contain" />
@@ -3404,8 +3813,8 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
                       ) : (
                         <Bot className="h-3.5 w-3.5" />
                       )}
-                      <span>{effectiveSelectedModel?.name || 'Modello AI'}</span>
-                      <ChevronDown className={`h-3 w-3 transition-transform ${showModelMenu ? 'rotate-180' : ''}`} />
+                      <span className={sidebarMode ? 'sr-only' : ''}>{effectiveSelectedModel?.name || 'Modello AI'}</span>
+                      <ChevronDown className={`${sidebarMode ? 'hidden' : 'h-3 w-3'} transition-transform ${showModelMenu ? 'rotate-180' : ''}`} />
                     </button>
                     {showModelMenu && (
                       <div className="absolute right-0 top-full mt-2 w-72 rounded-xl border border-slate-200 bg-white shadow-xl z-40 py-1">
@@ -3505,11 +3914,12 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
                 className={`min-h-0 flex-1 space-y-3 overflow-y-auto overflow-x-hidden px-6 py-4 md:space-y-6 md:px-10 md:py-6 ${chatBg ? '' : 'bg-neutral-50'} ${chatBgIsDark ? 'text-white' : ''}`}
                 style={{ WebkitOverflowScrolling: 'touch', scrollBehavior: 'smooth' }}
               >
+          <div className="mx-auto w-full max-w-3xl">
           {messages.length === 0 ? (
             <div className="text-center py-12">
 	              <div className={`mb-6 inline-flex h-20 w-20 items-center justify-center rounded-lg shadow-lg ${selectedTeacherbot ? getTeacherbotColorClass(selectedTeacherbot.color) : ''}`} style={selectedTeacherbot ? undefined : selectedSolidStyle}>
                 {selectedTeacherbot ? (
-                  <Wand2 className="h-10 w-10 text-white" />
+                  <TeacherbotAvatarIcon bot={selectedTeacherbot} uiLanguage={uiLanguage} className="h-10 w-10 text-white" />
                 ) : selectedProfile && PROFILE_ICONS[selectedProfile] ? (
                   <div className="text-white scale-125">{PROFILE_ICONS[selectedProfile]}</div>
                 ) : (
@@ -3541,74 +3951,86 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
                 </button>
               )}
             </div>
+          ) : visibleMessages.length === 0 ? (
+            <div className="flex h-full min-h-[280px] items-center justify-center text-center">
+              <div>
+                <Search className="mx-auto h-8 w-8 text-slate-300" />
+                <p className={`mt-3 text-sm font-semibold ${chatBgIsDark ? 'text-white' : 'text-slate-700'}`}>Nessun messaggio trovato</p>
+                <p className={`mt-1 text-xs ${chatBgIsDark ? 'text-white/60' : 'text-slate-400'}`}>Cancella la ricerca per tornare alla chat completa.</p>
+              </div>
+            </div>
           ) : (
-            messages.map((message) => {
+            visibleMessages.map((message) => {
               const isPeerUser = !!activeSharedRoom && message.role === 'user' && message.senderStudentId != null && message.senderStudentId !== studentId
               const isOwnUser = message.role === 'user' && !isPeerUser
               const nameColor = collabNameColor(message.senderNickname || '')
+              const senderLabel = message.role === 'assistant'
+                ? (selectedTeacherbot ? selectedTeacherbot.name : currentProfile?.name || 'Assistente')
+                : isPeerUser ? (message.senderNickname || 'Compagno') : (uiLanguage === 'en' ? 'You' : 'Tu')
               return (
-              <div key={message.id} className={`flex gap-3 ${isOwnUser ? 'justify-end' : 'justify-start'}`}>
-                {message.role === 'assistant' && (
-	                  <div className={`w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 shadow-md ${selectedTeacherbot ? getTeacherbotColorClass(selectedTeacherbot.color) : ''}`} style={selectedTeacherbot ? undefined : selectedSolidStyle}>
-                    {selectedTeacherbot ? (
-                      <Wand2 className="h-5 w-5 text-white" />
-                    ) : selectedProfile && PROFILE_ICONS[selectedProfile] ? (
-                      <div className="text-white scale-75">{PROFILE_ICONS[selectedProfile]}</div>
-                    ) : (
-                      <Bot className="h-5 w-5 text-white" />
-                    )}
-                  </div>
-                )}
-                {isPeerUser && (
-                  <div className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 shadow-sm text-white text-xs font-bold" style={{ backgroundColor: nameColor }}>
-                    {(message.senderNickname || '?').slice(0, 1).toUpperCase()}
-                  </div>
-                )}
-	                <div className={`max-w-[92%] md:max-w-[80%] rounded-2xl border px-4 py-3 text-[15px] leading-7 shadow-sm ${isOwnUser
-                  ? 'rounded-br-md'
-                  : 'rounded-bl-md border-slate-200 bg-white text-slate-700'
-                  } ${message.isPeer ? 'ring-1 ring-amber-200' : ''}`}
-                  style={isOwnUser ? selectedSoftStyle : undefined}
-                >
-                  {isPeerUser && (
-                    <div className="mb-0.5 flex items-center gap-1 text-[11px] font-bold" style={{ color: nameColor }}>
-                      {message.senderNickname}
-                      {message.isPeer && (
-                        <span className="ml-1 inline-flex items-center gap-0.5 text-amber-600">@ {uiLanguage === 'en' ? 'private' : 'privato'}</span>
+              <div key={message.id} className={`flex gap-3 ${isOwnUser ? 'flex-row-reverse' : ''}`}>
+                <div className="flex w-8 shrink-0 flex-col items-center">
+                  {message.role === 'assistant' ? (
+                    <div className={`flex h-8 w-8 items-center justify-center rounded-full shadow-sm ${selectedTeacherbot ? getTeacherbotColorClass(selectedTeacherbot.color) : ''}`} style={selectedTeacherbot ? undefined : selectedSolidStyle}>
+                      {selectedTeacherbot ? (
+                        <TeacherbotAvatarIcon bot={selectedTeacherbot} uiLanguage={uiLanguage} className="h-4 w-4 text-white" />
+                      ) : selectedProfile && PROFILE_ICONS[selectedProfile] ? (
+                        <div className="scale-75 text-white">{PROFILE_ICONS[selectedProfile]}</div>
+                      ) : (
+                        <Bot className="h-4 w-4 text-white" />
                       )}
                     </div>
-                  )}
-                  {message.role === 'assistant' ? (
-                    <MessageContent
-                      content={message.content}
-                      onQuizSubmit={(answers) => setInput(answers)}
-                      onInput={(text) => {
-                        setInput(text);
-                        setTimeout(() => handleSend(text), 100);
-                      }}
-                      darkMode={false}
-                    />
+                  ) : isPeerUser ? (
+                    <div className="flex h-8 w-8 items-center justify-center rounded-full text-[10px] font-black text-white shadow-sm" style={{ backgroundColor: nameColor }}>
+                      {(message.senderNickname || '?').slice(0, 2).toUpperCase()}
+                    </div>
                   ) : (
-                    <p className="whitespace-pre-wrap">{message.content}</p>
-                  )}
-                  {isOwnUser && message.isPeer && (
-                    <div className="mt-1 inline-flex items-center gap-0.5 text-[11px] font-semibold text-amber-600">@ {uiLanguage === 'en' ? 'private' : 'privato'}</div>
-                  )}
-                  {message.role === 'assistant' && (
-                    <EnvironmentalImpactPill
-                      darkMode={false}
-                      className="mt-3"
-                      provider={message.provider}
-                      model={message.model}
-                      tokenUsage={message.token_usage_json}
-                    />
+                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-700 text-[10px] font-black text-white shadow-sm">
+                      {uiLanguage === 'en' ? 'YOU' : 'TU'}
+                    </div>
                   )}
                 </div>
-                {isOwnUser && (
-	              <div className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 shadow-sm border border-white/10 bg-slate-800/92">
-                    <User className="h-5 w-5 text-white" />
+                <div className={`flex max-w-[85%] flex-col ${isOwnUser ? 'items-end' : 'items-start'}`}>
+                  <span className="mx-1 mb-1 truncate text-[10px] font-bold uppercase tracking-tighter text-slate-400">
+                    {senderLabel}
+                    {message.isPeer && (
+                      <span className="ml-1.5 normal-case text-amber-600">@ {uiLanguage === 'en' ? 'private' : 'privato'}</span>
+                    )}
+                  </span>
+                  <div
+                    className={`chat-markdown px-3.5 py-2.5 shadow-sm transition-all ${isOwnUser
+                      ? 'rounded-2xl rounded-tr-none border'
+                      : 'rounded-2xl rounded-tl-none border border-slate-200 bg-white text-slate-700'
+                      } ${message.isPeer ? 'ring-1 ring-amber-200' : ''}`}
+                    style={isOwnUser ? selectedSoftStyle : undefined}
+                  >
+                    {message.role === 'assistant' ? (
+                      <MessageContent
+                        content={message.content}
+                        onQuizSubmit={(answers) => setInput(answers)}
+                        onInput={(text) => {
+                          setInput(text);
+                          setTimeout(() => handleSend(text), 100);
+                        }}
+                        darkMode={false}
+                      />
+                    ) : (
+                      <p className="whitespace-pre-wrap">{message.content}</p>
+                    )}
+                    {message.role === 'assistant' && (
+                      <EnvironmentalImpactPill
+                        darkMode={false}
+                        className="mt-3"
+                        provider={message.provider}
+                        model={message.model}
+                        tokenUsage={message.token_usage_json}
+                      />
+                    )}
                   </div>
-                )}
+                  <span className="mx-1 mt-1 text-[9px] font-medium text-slate-300">
+                    {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  </span>
+                </div>
               </div>
               )
             })
@@ -3617,7 +4039,7 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
             <div className="flex gap-3">
 	              <div className={`w-9 h-9 rounded-lg flex items-center justify-center shadow-md ${selectedTeacherbot ? getTeacherbotColorClass(selectedTeacherbot.color) : ''}`} style={selectedTeacherbot ? undefined : selectedSolidStyle}>
                 {selectedTeacherbot ? (
-                  <Wand2 className="h-5 w-5 text-white" />
+                  <TeacherbotAvatarIcon bot={selectedTeacherbot} uiLanguage={uiLanguage} className="h-5 w-5 text-white" />
                 ) : selectedProfile && PROFILE_ICONS[selectedProfile] ? (
                   <div className="text-white scale-75">{PROFILE_ICONS[selectedProfile]}</div>
                 ) : (
@@ -3666,6 +4088,7 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
           )}
           <div className="h-16 md:hidden" />
           <div ref={messagesEndRef} />
+          </div>
               </div>
 
               {isMobile ? (
@@ -3674,7 +4097,9 @@ const learningTopics = [...new Set(learningSessions.map((session) => session.top
                 </div>
               ) : (
                 <div className="hidden shrink-0 border-t border-slate-200/70 bg-white/60 backdrop-blur-sm md:block">
-                  {composerContent}
+                  <div className="mx-auto w-full max-w-3xl">
+                    {composerContent}
+                  </div>
                 </div>
               )}
             </>

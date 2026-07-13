@@ -5,7 +5,7 @@ import {
   Send, Bot, Paperclip, X, Trash2, Plus, File, Image as ImageIcon, Loader2,
   Database, Download, ChevronDown, ChevronRight, Edit3, Check, MessageCircle, Sparkles,
   Palette, FileText, CheckSquare, MessageSquare, Settings, RotateCcw, BarChart2, Layout,
-  Video, ScanText, Youtube
+  Video, ScanText, Youtube, PanelRightClose, Square
 } from 'lucide-react'
 import DocumentCanvas, { type GeneratedDoc } from '@/components/teacher/DocumentCanvas'
 import { llmApi, teacherApi } from '@/lib/api'
@@ -230,6 +230,12 @@ function isAgentMode(value: string | null | undefined): value is AgentMode {
   return AGENT_MODES.some((mode) => mode.id === value) || value === 'web_search'
 }
 
+function isAbortLikeError(err: unknown): boolean {
+  if (!err || typeof err !== 'object') return false
+  const error = err as { name?: string; code?: string; message?: string }
+  return error.name === 'AbortError' || error.code === 'ERR_CANCELED' || error.message === 'canceled'
+}
+
 function OcrImageOverlay({ overlay }: { overlay: OcrOverlayData }) {
   const boxes = overlay.lines.filter((line) => line.bbox && line.text)
   if (boxes.length === 0) return null
@@ -441,11 +447,15 @@ const REPORT_TYPE_OPTIONS = [
 
 
 
-export default function TeacherSupportChat() {
+export default function TeacherSupportChat({ onMinimize, onClose, sidebarMode = false, dockArmed = false }: { onMinimize?: () => void; onClose?: () => void; sidebarMode?: boolean; dockArmed?: boolean }) {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
   const { toast } = useToast()
   const { isMobile } = useMobile()
+  // True once "Apri in sidebar" has been clicked but the panel is still full-page (route hasn't
+  // changed yet) — the dock only takes effect on the next navigation, so the button pulses green
+  // to confirm the click registered instead of appearing to do nothing.
+  const isDockArmed = dockArmed && !sidebarMode
   const [activeTab, setActiveTab] = useState<'chat' | 'teacherbots'>('chat')
   const [botPanelTarget, setBotPanelTarget] = useState<'create' | string | null>(null)
   const [mobileHistoryOpen, setMobileHistoryOpen] = useState(false)
@@ -453,10 +463,13 @@ export default function TeacherSupportChat() {
   const messagesRef = useRef<Message[]>([])
   const [inputText, setInputText] = useState('')
   const [isLoading, setIsLoading] = useState(false)
+  const activeGenerationAbortRef = useRef<AbortController | null>(null)
+  const lastEscapeKeyAtRef = useRef(0)
   const [defaultModel, setDefaultModel] = useState(localStorage.getItem('default_model') || FALLBACK_MODELS[0].id)
   const [selectedModel, setSelectedModel] = useState(localStorage.getItem('default_model') || FALLBACK_MODELS[0].id)
   const [showModelMenu, setShowModelMenu] = useState(false)
   const [showModeMenu, setShowModeMenu] = useState(false)
+  const [showActionMenu, setShowActionMenu] = useState(false)
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [loadingConversations, setLoadingConversations] = useState(true)
   const [loadingMessages, setLoadingMessages] = useState(false)
@@ -722,6 +735,34 @@ export default function TeacherSupportChat() {
     }
   }
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  const stopActiveGeneration = () => {
+    activeGenerationAbortRef.current?.abort()
+    activeGenerationAbortRef.current = null
+    setIsLoading(false)
+    setIsGeneratingDoc(false)
+    setImageGenerationProgress(null)
+    setStreamingStatus(null)
+  }
+
+  useEffect(() => {
+    if (!isLoading) return
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return
+      const now = Date.now()
+      if (now - lastEscapeKeyAtRef.current <= 500) {
+        event.preventDefault()
+        stopActiveGeneration()
+        lastEscapeKeyAtRef.current = 0
+      } else {
+        lastEscapeKeyAtRef.current = now
+      }
+    }
+
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [isLoading])
 
   // Publish Modal State
   const [publishModal, setPublishModal] = useState<{ isOpen: boolean, type: PublishContentType, data: any }>({
@@ -1148,6 +1189,28 @@ export default function TeacherSupportChat() {
     }
   }
 
+  useEffect(() => {
+    const onRestore = (event: Event) => {
+      const detail = (event as CustomEvent<{ conversationId?: string | null }>).detail
+      if (!detail?.conversationId) return
+      const conversation = conversations.find((item) => item.id === detail.conversationId)
+      if (conversation) {
+        openConversation(conversation)
+      } else {
+        setCurrentConversationId(detail.conversationId)
+      }
+      setActiveTab('chat')
+    }
+
+    window.addEventListener('golinelli:restore-teacher-support-chat', onRestore as EventListener)
+    return () => window.removeEventListener('golinelli:restore-teacher-support-chat', onRestore as EventListener)
+  }, [conversations])
+
+  const handleDockOrClose = () => {
+    if (sidebarMode) onClose?.()
+    else onMinimize?.()
+  }
+
   const syncConversationMode = async (conversationId: string, mode: AgentMode) => {
     setConversations((prev) => prev.map((conversation) => (
       conversation.id === conversationId
@@ -1226,6 +1289,7 @@ export default function TeacherSupportChat() {
       model?: string
       mode?: AgentMode
       sessionId?: string
+      signal?: AbortSignal
       onChunk?: (chunk: string) => void
       onStatus?: (status: string) => void
       onCalendarEvent?: (event: { id: string; title: string; event_date: string; event_time?: string; color: string }) => void
@@ -1237,6 +1301,7 @@ export default function TeacherSupportChat() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
+        signal: opts?.signal,
         body: JSON.stringify({
           content,
           history: history.map(m => ({ role: m.role, content: m.content })),
@@ -1293,7 +1358,8 @@ export default function TeacherSupportChat() {
     filesContext: string,
     isEdit: boolean,
     currentDoc?: GeneratedDoc | null,
-    approvedPlan?: DispensaPlan | null
+    approvedPlan?: DispensaPlan | null,
+    signal?: AbortSignal
   ): Promise<string> => {
     const historyContext = chatHistory
       .filter(m => m.role !== 'system')
@@ -1476,6 +1542,7 @@ export default function TeacherSupportChat() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
+        signal,
         body: JSON.stringify({
           content: promptText,
           history: [],
@@ -1637,7 +1704,7 @@ export default function TeacherSupportChat() {
 
       // EDIT MODE: backend tool-calling agent — no free-text parsing, fully deterministic
       if (isEdit && currentHtml) {
-        const response = await llmApi.editHtmlPage(currentHtml, userRequest)
+        const response = await llmApi.editHtmlPage(currentHtml, userRequest, signal)
         return response.data.html
       }
 
@@ -1695,7 +1762,7 @@ export default function TeacherSupportChat() {
       if (isEdit && currentDoc) {
         const currentPayload = parseBrochurePayload(currentDoc.content)
         if (currentPayload) {
-          const response = await llmApi.editBrochure(currentPayload, userRequest)
+          const response = await llmApi.editBrochure(currentPayload, userRequest, signal)
           return `\`\`\`brochure_data\n${JSON.stringify(response.data.payload, null, 2)}\n\`\`\``
         }
       }
@@ -1715,7 +1782,8 @@ export default function TeacherSupportChat() {
   const generateDispensaPlan = async (
     userRequest: string,
     chatHistory: Message[],
-    filesContext: string
+    filesContext: string,
+    signal?: AbortSignal
   ): Promise<DispensaPlan | null> => {
     const historyContext = chatHistory
       .filter(m => m.role !== 'system')
@@ -1757,6 +1825,7 @@ export default function TeacherSupportChat() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
+      signal,
       body: JSON.stringify({
         content: prompt,
         history: [],
@@ -1833,6 +1902,10 @@ export default function TeacherSupportChat() {
     const currentYoutube = attachedYoutube
     setAttachedYoutube(null)
     setIsLoading(true)
+    const abortController = new AbortController()
+    activeGenerationAbortRef.current?.abort()
+    activeGenerationAbortRef.current = abortController
+    const { signal } = abortController
 
     // Build LLM content: append transcript if available
     let llmContent = messageContent
@@ -1933,7 +2006,10 @@ REGOLE IMPORTANTI:
           expansionHistory,
           'tutor',  // NON usare 'teacher_support' - ha uses_agent:true che attiva intent classification
           'openai',
-          'gpt-5.4-mini'
+          'gpt-5.4-mini',
+          undefined,
+          undefined,
+          signal
         )
 
         const enhancedPrompt = expansionResponse.data?.response?.trim() || llmContent
@@ -1947,7 +2023,7 @@ REGOLE IMPORTANTI:
         })
 
         console.log("Generating image with prompt:", enhancedPrompt, "Provider:", imageProvider)
-        const genResponse = await llmApi.generateImage(enhancedPrompt, imageProvider)
+        const genResponse = await llmApi.generateImage(enhancedPrompt, imageProvider, signal)
         const imageUrl = genResponse.data?.image_url
         console.log("Image URL received:", imageUrl ? imageUrl.substring(0, 50) + "..." : "None")
 
@@ -1986,7 +2062,7 @@ REGOLE IMPORTANTI:
         setMessages(prev => [...prev, { id: assistantId, role: 'assistant' as const, content: '', timestamp: new Date() }])
         setStreamingStatus(`Caricamento risposte per «${taskTitle}»...`)
 
-        const res = await teacherApi.analyzeTask(analysisSessionId, analysisTaskId, userInput || undefined)
+        const res = await teacherApi.analyzeTask(analysisSessionId, analysisTaskId, userInput || undefined, signal)
         const data = res.data
         const submissionSummary = `📋 *${data.submission_count} su ${data.total_students} studenti hanno consegnato «${data.task_title}» (sessione: ${sessionTitle})*\n\n`
         const fullContent = submissionSummary + (data.analysis || 'Nessuna analisi disponibile.')
@@ -2022,6 +2098,8 @@ REGOLE IMPORTANTI:
             filesContext,
             isEdit,
             activeDoc,
+            null,
+            signal
           )
           clearInterval(progressTimer)
 
@@ -2065,7 +2143,7 @@ REGOLE IMPORTANTI:
           && (!pendingDispensaPlan || !/^approva/i.test(userInput))
 
         if (shouldPlanDispensa) {
-          const plan = await generateDispensaPlan(llmContent, messages, filesContext)
+          const plan = await generateDispensaPlan(llmContent, messages, filesContext, signal)
           setIsGeneratingDoc(false)
           if (!plan) {
             throw new Error('Planning dispensa non valido.')
@@ -2121,7 +2199,8 @@ REGOLE IMPORTANTI:
             pendingDispensaPlan && agentMode === 'dispensa' && !isEdit ? pendingDispensaFilesContext : filesContext,
             isEdit,
             activeDoc,
-            pendingDispensaPlan && agentMode === 'dispensa' && !isEdit ? pendingDispensaPlan : null
+            pendingDispensaPlan && agentMode === 'dispensa' && !isEdit ? pendingDispensaPlan : null,
+            signal
           )
 
           clearInterval(progressTimer)
@@ -2167,7 +2246,7 @@ REGOLE IMPORTANTI:
           setIsGeneratingDoc(false)
         }
       } else if (agentMode === 'web_search' || agentMode === 'quiz' || agentMode === 'exercise' || agentMode === 'dataset' || agentMode === 'report') {
-        const streamResult = await runStreamingRequest(llmContent, [...messages, userMessage])
+        const streamResult = await runStreamingRequest(llmContent, [...messages, userMessage], { signal })
         let assistantContent = streamResult.content
         const shouldBuildReportArtifact = agentMode === 'report'
           && !/```session_selector[\s\S]*?```/.test(streamResult.content)
@@ -2184,7 +2263,9 @@ REGOLE IMPORTANTI:
               [...messages, userMessage],
               '',
               false,
-              null
+              null,
+              null,
+              signal
             )
             const parsedPayload = parseReportPayload(reportPayloadRaw)
             const reportDoc: GeneratedDoc = {
@@ -2237,7 +2318,8 @@ REGOLE IMPORTANTI:
             selectedModel,
             currentFiles.map(f => f.file),
             imageProvider,
-            imageSize
+            imageSize,
+            signal
           )
           const assistantMessage: Message = {
             id: `resp-${Date.now()}`,
@@ -2267,6 +2349,7 @@ REGOLE IMPORTANTI:
           // history already excludes the current user message — backend appends it via `content`
           const streamResult = await runStreamingRequest(llmContent, messages, {
             sessionId: _sessionId,
+            signal,
             onChunk: (chunk) => {
               setMessages(prev => prev.map(m =>
                 m.id === assistantId ? { ...m, content: m.content + chunk } : m
@@ -2310,6 +2393,12 @@ REGOLE IMPORTANTI:
         }
       }
     } catch (e: any) {
+      if (isAbortLikeError(e)) {
+        setImageGenerationProgress(null)
+        setStreamingStatus(null)
+        setIsGeneratingDoc(false)
+        return
+      }
       console.error("Teacher support chat error:", e)
       if (e.response) {
         console.error("Server Error Data:", e.response.data)
@@ -2332,8 +2421,11 @@ REGOLE IMPORTANTI:
       }
       setMessages(prev => [...prev, errorMsg])
     } finally {
-      setIsLoading(false)
-      setImageGenerationProgress(null)
+      if (activeGenerationAbortRef.current === abortController) {
+        activeGenerationAbortRef.current = null
+        setIsLoading(false)
+        setImageGenerationProgress(null)
+      }
     }
   }
 
@@ -2568,7 +2660,7 @@ REGOLE IMPORTANTI:
 
 
         {/* Mobile history slide-over */}
-        {isMobile && mobileHistoryOpen && (
+        {!sidebarMode && isMobile && mobileHistoryOpen && (
           <div className="fixed inset-0 z-50 flex" onClick={() => setMobileHistoryOpen(false)}>
             <div className="w-72 h-full shadow-[var(--shadow-xl)] flex flex-col border-r border-slate-200 bg-white/92 backdrop-blur-sm" onClick={e => e.stopPropagation()}>
               <div className="p-4 border-b border-slate-200/70 flex items-center justify-between bg-slate-50/80 backdrop-blur-sm">
@@ -2604,12 +2696,12 @@ REGOLE IMPORTANTI:
         )}
 
         {/* Main Content Area */}
-        <div className={`flex-1 overflow-hidden ${isMobile ? 'px-0 pb-0' : 'px-4 pt-4 pb-4'}`}>
-              <div className={`flex h-full ${isMobile ? '' : 'max-w-[1800px] mx-auto w-full'}`}>
+        <div className={`flex-1 overflow-hidden ${sidebarMode ? 'p-0' : isMobile ? 'px-0 pb-0' : 'px-4 pt-4 pb-4'}`}>
+              <div className={`flex h-full ${sidebarMode ? 'w-full' : isMobile ? '' : 'max-w-[1800px] mx-auto w-full'}`}>
                 {/* Unified card: sidebar + chat together */}
-                <div className={`flex-1 flex h-full overflow-hidden ${isMobile ? '' : 'bg-white rounded-2xl border border-slate-200 shadow-[var(--shadow-md)]'}`}>
+                <div className={`flex-1 flex h-full overflow-hidden ${sidebarMode ? 'bg-white' : isMobile ? '' : 'bg-white rounded-2xl border border-slate-200 shadow-[var(--shadow-md)]'}`}>
                  {/* Sidebar — desktop only */}
-                 <aside className={`${isMobile ? 'hidden' : ''} ${isSidebarCollapsed ? 'w-12' : 'w-80'} flex flex-col transition-all duration-300 flex-shrink-0 overflow-hidden border-r border-slate-200/70 bg-slate-50/90 backdrop-blur-sm`}>
+                 <aside className={`${isMobile || sidebarMode ? 'hidden' : ''} ${isSidebarCollapsed ? 'w-12' : 'w-80'} flex flex-col transition-all duration-300 flex-shrink-0 overflow-hidden border-r border-slate-200/70 bg-slate-50/90 backdrop-blur-sm`}>
                   {isSidebarCollapsed ? (
                     /* Collapsed: just expand button */
                     <div className="p-2 flex flex-col items-center gap-3 pt-3">
@@ -2739,7 +2831,7 @@ REGOLE IMPORTANTI:
 
                  {/* Chat Main + Canvas split */}
                  <div className="flex-1 flex overflow-hidden min-w-0">
-                 <main className={`flex-1 flex flex-col relative overflow-hidden min-w-0`} style={chatBg ? { backgroundColor: chatBg } : undefined}>
+                 <main className={`flex-1 flex flex-col relative overflow-hidden min-w-0`} style={chatBg && !sidebarMode ? { backgroundColor: chatBg } : undefined}>
 
                   {/* Support Chat Prompt Editor Modal */}
                   {showPromptEditor && (
@@ -2817,11 +2909,11 @@ REGOLE IMPORTANTI:
                       /* Mobile header — essential only */
                       <>
                         <button
-                          onClick={() => setMobileHistoryOpen(true)}
+                          onClick={() => !sidebarMode && setMobileHistoryOpen(true)}
                           className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg hover:bg-slate-100 transition-colors"
                         >
-                          <MessageCircle className="h-4 w-4 text-slate-500" />
-                          <span className="text-xs text-slate-500 font-medium">Storico</span>
+                          <Bot className="h-4 w-4 text-slate-500" />
+                          <span className="text-xs text-slate-500 font-medium">Chat</span>
                         </button>
 
                         <div className="flex items-center gap-2">
@@ -2838,14 +2930,23 @@ REGOLE IMPORTANTI:
                           <Plus className="h-4 w-4 text-slate-500" />
                           <span className="text-xs text-slate-500 font-medium">Nuova</span>
                         </button>
+                        {(onMinimize || onClose) && (
+                          <button
+                            onClick={handleDockOrClose}
+                            className={`flex items-center gap-1 px-2 py-1.5 rounded-lg transition-colors ${isDockArmed ? 'dock-armed-glow' : 'hover:bg-slate-100'}`}
+                            title={sidebarMode ? 'Chiudi chatbot' : isDockArmed ? 'Andrà in sidebar al prossimo cambio pagina' : 'Apri in sidebar'}
+                          >
+                            {sidebarMode ? <X className="h-4 w-4 text-slate-500" /> : <PanelRightClose className={`h-4 w-4 ${isDockArmed ? 'text-white' : 'text-slate-500'}`} />}
+                          </button>
+                        )}
                       </>
                     ) : (
                       /* Desktop header — full controls */
                       <>
-                    <div className="flex items-center gap-3">
-                      <div>
-                        <h1 className="text-sm font-bold text-slate-800">Supporto Docente AI</h1>
-                        <p className="text-xs text-slate-500">
+                    <div className="flex min-w-0 items-center gap-3">
+                      <div className="min-w-0">
+                        <h1 className="truncate text-sm font-bold text-slate-800">Supporto Docente AI</h1>
+                        <p className="truncate text-xs text-slate-500">
                           {(agentMode === 'brochure' || agentMode === 'dispensa' || agentMode === 'html_page')
                             ? 'Claude Sonnet 4.6'
                             : agentMode === 'ocr'
@@ -2856,7 +2957,7 @@ REGOLE IMPORTANTI:
                         </p>
                       </div>
                       {/* Reopen canvas button — shown when a doc exists for this conversation but canvas is closed */}
-                      {currentConversationId && convsWithDocs.has(currentConversationId) && !showCanvas && (
+                      {!sidebarMode && currentConversationId && convsWithDocs.has(currentConversationId) && !showCanvas && (
                         <button
                           onClick={() => {
                             const doc = docCacheRef.current[currentConversationId]
@@ -2872,8 +2973,21 @@ REGOLE IMPORTANTI:
 
                       <div className="flex items-center gap-4">
                         <div className="flex items-center gap-3 animate-in fade-in slide-in-from-right-4 duration-300">
+                        {(onMinimize || onClose) && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={handleDockOrClose}
+                            className={isDockArmed
+                              ? 'dock-armed-glow rounded-xl border border-emerald-300 text-white shadow-sm'
+                              : `rounded-xl text-slate-500 shadow-sm hover:text-slate-700 ${PASTEL_SURFACES.slate}`}
+                            title={sidebarMode ? 'Chiudi chatbot' : isDockArmed ? 'Andrà in sidebar al prossimo cambio pagina' : 'Apri in sidebar'}
+                          >
+                            {sidebarMode ? <X className="h-4 w-4" /> : <PanelRightClose className={`h-4 w-4 ${isDockArmed ? 'text-white' : ''}`} />}
+                          </Button>
+                        )}
                         {/* Generatore */}
-                        {agentMode === 'image' && (
+                        {!sidebarMode && agentMode === 'image' && (
                           <>
                             <div className="flex items-center bg-slate-100/80 rounded-full p-1 border border-slate-200">
                               {([
@@ -2914,28 +3028,31 @@ REGOLE IMPORTANTI:
                         )}
 
 
-                        {(agentMode === 'brochure' || agentMode === 'dispensa' || agentMode === 'html_page') ? (
+                        {!sidebarMode && (agentMode === 'brochure' || agentMode === 'dispensa' || agentMode === 'html_page') ? (
                           <span className="text-[10px] bg-violet-50 text-violet-700 px-2.5 py-1 rounded-lg font-medium flex items-center gap-1 border border-violet-100">
                             <img src="/icone_ai/anthropic.svg" className="h-3 w-3 object-contain" alt="Anthropic" />
                             Claude Sonnet 4.6
                           </span>
-                        ) : (agentMode === 'quiz' || agentMode === 'exercise' || agentMode === 'dataset' || agentMode === 'web_search' || agentMode === 'report') ? (
+                        ) : !sidebarMode && (agentMode === 'quiz' || agentMode === 'exercise' || agentMode === 'dataset' || agentMode === 'web_search' || agentMode === 'report') ? (
                           <div className="text-xs rounded-lg px-3 py-1.5 font-medium border bg-slate-100 text-slate-700 border-slate-200">
                             Claude Haiku (fisso)
                           </div>
                         ) : (
-                          agentMode !== 'image' && (
+                          (sidebarMode || agentMode !== 'image') && (
                             <div className="relative" ref={modelMenuRef}>
                               <button
                                 onClick={() => setShowModelMenu(!showModelMenu)}
-                                className="flex h-[var(--selection-height)] items-center gap-2 rounded-[var(--selection-radius)] border px-[var(--selection-padding-x)] text-xs font-bold transition-all group hover:opacity-90"
+                                className={sidebarMode
+                                  ? "flex h-9 w-9 items-center justify-center rounded-xl border text-slate-600 shadow-sm transition-all hover:bg-slate-50"
+                                  : "flex h-[var(--selection-height)] items-center gap-2 rounded-[var(--selection-radius)] border px-[var(--selection-padding-x)] text-xs font-bold transition-all group hover:opacity-90"}
                                 style={selectedSoftStyle}
+                                title="Seleziona modello"
                               >
                                 <div className="p-0.5 bg-white/20 rounded-md">
                                   <ModelIcon provider={availableModels.find(m => m.id === selectedModel)?.provider || ''} modelId={selectedModel} className="h-3 w-3" />
                                 </div>
-                                <span>{availableModels.find(m => m.id === selectedModel)?.name}</span>
-                                <ChevronDown className={`h-3 w-3 transition-transform ${showModelMenu ? 'rotate-180' : ''}`} />
+                                <span className={sidebarMode ? 'sr-only' : ''}>{availableModels.find(m => m.id === selectedModel)?.name}</span>
+                                <ChevronDown className={`${sidebarMode ? 'hidden' : 'h-3 w-3'} transition-transform ${showModelMenu ? 'rotate-180' : ''}`} />
                               </button>
 
                               {/* Dropdown */}
@@ -2997,7 +3114,7 @@ REGOLE IMPORTANTI:
                         )}
                       </div>
 
-                      <div className="hidden lg:flex items-center gap-2 relative">
+                      {!sidebarMode && <div className="hidden lg:flex items-center gap-2 relative">
                         <Button
                           variant="ghost"
                           size="sm"
@@ -3075,7 +3192,7 @@ REGOLE IMPORTANTI:
                             </div>
                           )}
                         </div>
-                      </div>
+                      </div>}
                     </div>
                       </>
                     )}
@@ -3202,7 +3319,10 @@ REGOLE IMPORTANTI:
                                   darkMode={chatBgIsDark}
                                 />
                               ) : (
-                                <ReactMarkdown className={`chat-markdown prose max-w-none prose-p:leading-relaxed prose-pre:bg-slate-800 prose-pre:text-slate-100 ${msg.role === 'user' ? '[&_*]:!text-white' : ''} [&_strong]:font-bold`}>
+                                <ReactMarkdown
+                                  className={`chat-markdown prose max-w-none prose-p:leading-relaxed prose-pre:bg-slate-800 prose-pre:text-slate-100 ${msg.role === 'user' ? '[&_*]:!text-white' : ''} [&_strong]:font-bold`}
+                                  components={markdownCodeComponents()}
+                                >
                                   {convertEmoticons(msg.content)}
                                 </ReactMarkdown>
                               )}
@@ -3437,7 +3557,7 @@ REGOLE IMPORTANTI:
                                   <button onClick={() => removeFile(i)} className="text-slate-400 hover:text-red-500"><X className="h-3 w-3" /></button>
                                 </div>
                               ) : f.type === 'data' ? (
-                                <div className="w-64 md:w-80">
+                                <div className={sidebarMode ? 'w-64' : 'w-64 md:w-80'}>
                                   {f.dataPreview
                                     ? <DataFileCard preview={f.dataPreview} compact />
                                     : <div className="flex items-center gap-2 bg-emerald-50 border border-emerald-200 rounded-full px-3 py-1.5 text-xs text-emerald-700">
@@ -3525,7 +3645,115 @@ REGOLE IMPORTANTI:
                           onChange={handleFileSelect} />
 
                         {/* Mode Selector — desktop only (mobile uses pills above) */}
-                        {!isMobile && (
+                        {sidebarMode && (
+                          <div className="relative flex-shrink-0">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-9 w-9 rounded-full bg-slate-950 text-white hover:bg-slate-800"
+                              onClick={() => setShowActionMenu((prev) => !prev)}
+                              title="Strumenti chatbot"
+                            >
+                              <Plus className="h-4 w-4" />
+                            </Button>
+                            {showActionMenu && (
+                              <div className="absolute bottom-full left-0 z-50 mb-2 w-64 rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl">
+                                <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-slate-400">Strumenti</div>
+                                <div className="flex items-center gap-1 rounded-lg px-2 py-1.5">
+                                  <VoiceRecorder onInsertText={(text) => setInputText((prev) => prev ? prev + ' ' + text : text)} />
+                                  <span className="text-xs font-medium text-slate-600">Dettatura vocale</span>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setShowActionMenu(false)
+                                    fileInputRef.current?.click()
+                                  }}
+                                  className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-xs font-medium text-slate-600 hover:bg-slate-100"
+                                >
+                                  <Paperclip className="h-3.5 w-3.5" />
+                                  Allegati
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setShowLinkModal((prev) => !prev)}
+                                  className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-xs font-medium text-slate-600 hover:bg-slate-100"
+                                >
+                                  <Youtube className="h-3.5 w-3.5" />
+                                  Video YouTube
+                                </button>
+                                {showLinkModal && (
+                                  <div className="mx-1 my-2 rounded-lg border border-slate-200 bg-slate-50 p-2">
+                                    <input
+                                      type="url"
+                                      value={linkInputValue}
+                                      onChange={e => setLinkInputValue(e.target.value)}
+                                      onKeyDown={e => {
+                                        if (e.key === 'Enter' && linkInputValue.trim()) {
+                                          handleConfirmLink(linkInputValue.trim())
+                                          setShowActionMenu(false)
+                                        }
+                                      }}
+                                      placeholder="Incolla link..."
+                                      className="w-full rounded-md border border-slate-200 px-2 py-1.5 text-xs focus:outline-none"
+                                    />
+                                    <Button
+                                      size="sm"
+                                      className="mt-2 h-7 w-full text-xs bg-slate-900 text-white"
+                                      disabled={!linkInputValue.trim()}
+                                      onClick={() => {
+                                        if (!linkInputValue.trim()) return
+                                        handleConfirmLink(linkInputValue.trim())
+                                        setShowActionMenu(false)
+                                      }}
+                                    >
+                                      Aggiungi
+                                    </Button>
+                                  </div>
+                                )}
+                                <div className="my-1 h-px bg-slate-100" />
+                                {AGENT_MODES.map(m => {
+                                  const icon = m.id === 'default'
+                                    ? <MessageSquare className="h-3.5 w-3.5" />
+                                    : m.id === 'report'
+                                      ? <FileText className="h-3.5 w-3.5" />
+                                      : m.id === 'quiz'
+                                        ? <CheckSquare className="h-3.5 w-3.5" />
+                                        : m.id === 'exercise'
+                                          ? <Edit3 className="h-3.5 w-3.5" />
+                                          : m.id === 'image'
+                                            ? <ImageIcon className="h-3.5 w-3.5" />
+                                            : m.id === 'ocr'
+                                              ? <ScanText className="h-3.5 w-3.5" />
+                                              : m.id === 'analysis'
+                                                ? <BarChart2 className="h-3.5 w-3.5" />
+                                                : m.id === 'brochure'
+                                                  ? <Layout className="h-3.5 w-3.5" />
+                                                  : m.id === 'dispensa'
+                                                    ? <FileText className="h-3.5 w-3.5" />
+                                                    : <Database className="h-3.5 w-3.5" />
+                                  const isSelected = agentMode === m.id
+                                  return (
+                                    <button
+                                      key={m.id}
+                                      onClick={() => {
+                                        handleChangeAgentMode(m.id)
+                                        setShowActionMenu(false)
+                                      }}
+                                      className={`flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-xs font-medium transition-colors ${isSelected ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'}`}
+                                    >
+                                      {icon}
+                                      <span className="flex-1">{m.id === 'image' ? t('teacher_chat.mode_image') : m.label}</span>
+                                      {isSelected && <Check className="h-3.5 w-3.5" />}
+                                    </button>
+                                  )
+                                })}
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        {!isMobile && !sidebarMode && (
                           <div className="relative flex-shrink-0 mb-0.5" ref={modeMenuRef}>
                             <Button
                               variant="ghost"
@@ -3600,12 +3828,12 @@ REGOLE IMPORTANTI:
                           </div>
                         )}
 
-                        <VoiceRecorder
+                        {!sidebarMode && <VoiceRecorder
                           onInsertText={(text) => setInputText((prev) => prev ? prev + ' ' + text : text)}
-                        />
+                        />}
 
                         {/* Link button + popover */}
-                        <div className="relative flex-shrink-0" ref={linkModalRef}>
+                        {!sidebarMode && <div className="relative flex-shrink-0" ref={linkModalRef}>
                           <Button
                             variant="ghost"
                             size="icon"
@@ -3668,9 +3896,9 @@ REGOLE IMPORTANTI:
                               </div>
                             </div>
                           )}
-                        </div>
+                        </div>}
 
-                        <Button
+                        {!sidebarMode && <Button
                           variant="ghost"
                           size="icon"
                           className="h-8 w-8 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg flex-shrink-0"
@@ -3678,7 +3906,7 @@ REGOLE IMPORTANTI:
                           title="Allega"
                         >
                           <Paperclip className="h-4 w-4" />
-                        </Button>
+                        </Button>}
 
                         <textarea
                           value={inputText}
@@ -3700,23 +3928,33 @@ REGOLE IMPORTANTI:
                           }}
                         />
 
-                        {/* Mode tag — desktop only */}
-                        <Button
-                          onClick={() => { void handleSend() }}
-                          disabled={((!inputText.trim() && attachedFiles.length === 0) && !(agentMode === 'analysis' && analysisTaskId)) || isLoading}
-                          className={`h-9 w-9 rounded-full transition-all flex-shrink-0 ${((!inputText.trim() && attachedFiles.length === 0) && !(agentMode === 'analysis' && analysisTaskId))
-                            ? 'bg-slate-100 text-slate-300'
-                            : 'bg-slate-900 hover:bg-slate-800 text-white shadow-md'
-                            }`}
-                          size="icon"
-                        >
-                          <Send className="h-4 w-4 ml-0.5" />
-                        </Button>
+                        {isLoading ? (
+                          <Button
+                            onClick={stopActiveGeneration}
+                            className="h-9 w-9 flex-shrink-0 rounded-full bg-red-50 text-red-600 shadow-sm ring-1 ring-red-200 transition-all hover:bg-red-100 hover:text-red-700"
+                            size="icon"
+                            title="Interrompi generazione"
+                          >
+                            <Square className="h-3.5 w-3.5 fill-current" />
+                          </Button>
+                        ) : (
+                          <Button
+                            onClick={() => { void handleSend() }}
+                            disabled={((!inputText.trim() && attachedFiles.length === 0) && !(agentMode === 'analysis' && analysisTaskId))}
+                            className={`h-9 w-9 rounded-full transition-all flex-shrink-0 ${((!inputText.trim() && attachedFiles.length === 0) && !(agentMode === 'analysis' && analysisTaskId))
+                              ? 'bg-slate-100 text-slate-300'
+                              : 'bg-slate-900 hover:bg-slate-800 text-white shadow-md'
+                              }`}
+                            size="icon"
+                          >
+                            <Send className="h-4 w-4 ml-0.5" />
+                          </Button>
+                        )}
                       </div>
                     </div>
                   </div>
                 </main>
-                {showCanvas && activeDoc && !isMobile && (
+                {showCanvas && activeDoc && !isMobile && !sidebarMode && (
                   <div className="w-[55%] shrink-0 border-l border-slate-200 overflow-hidden">
                     <DocumentCanvas
                       doc={activeDoc}

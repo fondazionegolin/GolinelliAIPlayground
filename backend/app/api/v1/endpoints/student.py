@@ -23,6 +23,7 @@ from app.models.tenant import Tenant
 from app.schemas.document_draft import DocumentDraftCreate, DocumentDraftUpdate
 from app.models.enums import SessionStatus
 from app.services.credit_service import credit_service
+from app.core.task_dates import task_due_at_iso
 from app.schemas.auth import (
     StudentAccessCheckRequest,
     StudentAccessCheckResponse,
@@ -34,6 +35,15 @@ from app.schemas.credits import CreditUsageHistoryItem
 from app.realtime.gateway import sio
 
 router = APIRouter()
+
+
+def _quiz_score_from_submission(content: str | None) -> str | None:
+    if not content:
+        return None
+    parts = content.strip().split("/")
+    if len(parts) == 2 and all(part.strip().isdigit() for part in parts):
+        return f"{parts[0].strip()}/{parts[1].strip()}"
+    return None
 
 STUDENT_ACCENTS = {"cyan", "orange", "black", "red"}
 
@@ -700,7 +710,7 @@ async def get_student_tasks(
             "title": t.title,
             "description": t.description,
             "task_type": task_type,
-            "due_at": t.due_at.isoformat() if t.due_at else None,
+            "due_at": task_due_at_iso(t.due_at),
             "points": t.points,
             "content_json": content_json,
             "created_at": t.created_at.isoformat(),
@@ -762,6 +772,8 @@ async def submit_task(
         # Update existing submission
         existing.content = content
         existing.content_json = content_json
+        if task.task_type == TaskType.QUIZ:
+            existing.score = _quiz_score_from_submission(content)
         existing.submitted_at = datetime.utcnow()
         await db.commit()
         await db.refresh(existing)
@@ -778,6 +790,7 @@ async def submit_task(
         student_id=student.id,
         content=content,
         content_json=content_json,
+        score=_quiz_score_from_submission(content) if task.task_type == TaskType.QUIZ else None,
     )
     db.add(submission)
     await db.commit()

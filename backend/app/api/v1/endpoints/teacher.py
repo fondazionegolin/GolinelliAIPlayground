@@ -3,7 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, or_
 from sqlalchemy.orm import selectinload
 from typing import Annotated, Optional
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from uuid import UUID
 from pydantic import BaseModel, EmailStr
 
@@ -47,6 +47,7 @@ from app.schemas.invitation import (
     TeacherBasicInfo,
 )
 from app.services.education_level import SCHOOL_GRADE_OPTIONS
+from app.core.task_dates import task_due_at_for_storage, task_due_at_iso
 from app.services.storage_service import storage_service
 from app.services.llm_service import llm_service
 from app.services.credit_service import credit_service
@@ -56,6 +57,16 @@ from app.core.config import settings
 router = APIRouter()
 TEACHER_ACCENTS = {"cyan", "orange", "black", "red"}
 SCHOOL_GRADES = set(SCHOOL_GRADE_OPTIONS)
+
+
+def _display_submission_score(task_type: TaskType | None, content: str | None, score: str | None) -> str | None:
+    if score:
+        return score
+    if task_type == TaskType.QUIZ and content:
+        parts = content.strip().split("/")
+        if len(parts) == 2 and all(part.strip().isdigit() for part in parts):
+            return f"{parts[0].strip()}/{parts[1].strip()}"
+    return None
 
 
 # Profile schemas
@@ -345,17 +356,17 @@ async def list_sessions(
     class_id: UUID,
     db: Annotated[AsyncSession, Depends(get_db)],
     teacher: Annotated[User, Depends(get_current_teacher)],
+    include_deleted: bool = False,
 ):
     # Verify class access (owner or invited)
     class_ = await get_class_with_access_check(db, teacher, class_id)
     if not class_:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Class not found")
 
-    result = await db.execute(
-        select(Session)
-        .where(Session.class_id == class_id)
-        .order_by(Session.created_at.desc())
-    )
+    query = select(Session).where(Session.class_id == class_id)
+    if not include_deleted:
+        query = query.where(Session.deleted_at.is_(None))
+    result = await db.execute(query.order_by(Session.created_at.desc()))
     return result.scalars().all()
 
 
@@ -846,6 +857,67 @@ async def remove_student(
     return {"message": "Student removed", "student_id": str(student_id), "nickname": student_nickname}
 
 
+async def _hard_delete_session(db: AsyncSession, session: Session) -> None:
+    session_id = session.id
+
+    # Delete all related records that don't have DB-level cascade.
+    # Order matters: delete leaf tables first, then tables with FKs pointing at them.
+    from app.models.task import Task, TaskSubmission
+    from app.models.chat import ChatMessage
+    from app.models.rag import RAGCitation, RAGEmbedding, RAGChunk, RAGDocument
+    from app.models.llm import ConversationMessage, Conversation, AuditEvent
+    from app.models.ml import MLDataset, MLExperiment, MLResult
+    from app.models.assessment import QuizAttempt, BadgeAward
+    from app.models.alert import ContentAlert
+    from app.models.credits import CreditLimit, CreditTransaction
+    from app.models.session_canvas import SessionCanvas
+    from app.models.document_draft import DocumentDraft
+    from app.models.file import File
+    from app.models.teacherbot import TeacherbotConversation, TeacherbotMessage
+
+    conv_ids = select(Conversation.id).where(Conversation.session_id == session_id)
+    task_ids = select(Task.id).where(Task.session_id == session_id)
+    doc_ids = select(RAGDocument.id).where(RAGDocument.session_id == session_id)
+    chunk_ids = select(RAGChunk.id).where(RAGChunk.document_id.in_(doc_ids))
+    tc_ids = select(TeacherbotConversation.id).where(TeacherbotConversation.session_id == session_id)
+    ml_exp_ids = select(MLExperiment.id).where(MLExperiment.session_id == session_id)
+
+    await db.execute(RAGCitation.__table__.delete().where(
+        RAGCitation.conversation_message_id.in_(
+            select(ConversationMessage.id).where(ConversationMessage.conversation_id.in_(conv_ids))
+        )
+    ))
+    await db.execute(ConversationMessage.__table__.delete().where(
+        ConversationMessage.conversation_id.in_(conv_ids)
+    ))
+    await db.execute(MLResult.__table__.delete().where(MLResult.experiment_id.in_(ml_exp_ids)))
+    await db.execute(MLExperiment.__table__.delete().where(MLExperiment.session_id == session_id))
+    await db.execute(MLDataset.__table__.delete().where(MLDataset.session_id == session_id))
+    await db.execute(RAGEmbedding.__table__.delete().where(RAGEmbedding.chunk_id.in_(chunk_ids)))
+    await db.execute(RAGChunk.__table__.delete().where(RAGChunk.document_id.in_(doc_ids)))
+    await db.execute(RAGDocument.__table__.delete().where(RAGDocument.session_id == session_id))
+    await db.execute(AuditEvent.__table__.delete().where(AuditEvent.session_id == session_id))
+    await db.execute(TeacherbotMessage.__table__.delete().where(
+        TeacherbotMessage.conversation_id.in_(tc_ids)
+    ))
+    await db.execute(TeacherbotConversation.__table__.delete().where(
+        TeacherbotConversation.session_id == session_id
+    ))
+    await db.execute(ContentAlert.__table__.delete().where(ContentAlert.session_id == session_id))
+    await db.execute(QuizAttempt.__table__.delete().where(QuizAttempt.session_id == session_id))
+    await db.execute(BadgeAward.__table__.delete().where(BadgeAward.session_id == session_id))
+    await db.execute(CreditTransaction.__table__.delete().where(CreditTransaction.session_id == session_id))
+    await db.execute(CreditLimit.__table__.delete().where(CreditLimit.session_id == session_id))
+    await db.execute(SessionCanvas.__table__.delete().where(SessionCanvas.session_id == session_id))
+    await db.execute(DocumentDraft.__table__.delete().where(DocumentDraft.session_id == session_id))
+    await db.execute(File.__table__.delete().where(File.session_id == session_id))
+    await db.execute(ChatMessage.__table__.delete().where(ChatMessage.session_id == session_id))
+    await db.execute(TaskSubmission.__table__.delete().where(TaskSubmission.task_id.in_(task_ids)))
+    await db.execute(Task.__table__.delete().where(Task.session_id == session_id))
+
+    await db.delete(session)
+
+
 @router.delete("/sessions/{session_id}")
 async def delete_session(
     session_id: UUID,
@@ -863,97 +935,94 @@ async def delete_session(
     if not await teacher_is_session_owner(db, teacher, session_id):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only the class owner can delete sessions")
 
-    result = await db.execute(
-        select(Session).where(Session.id == session_id)
-    )
+    result = await db.execute(select(Session).where(Session.id == session_id))
     session = result.scalar_one_or_none()
     if not session:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
-    
-    # Delete all related records that don't have DB-level cascade.
-    # Order matters: delete leaf tables first, then tables with FKs pointing at them.
-    from app.models.task import Task, TaskSubmission
-    from app.models.chat import ChatMessage
-    from app.models.rag import RAGCitation, RAGEmbedding, RAGChunk, RAGDocument
-    from app.models.llm import ConversationMessage, Conversation, AuditEvent
-    from app.models.ml import MLDataset, MLExperiment, MLResult
-    from app.models.assessment import QuizAttempt, BadgeAward
-    from app.models.alert import ContentAlert
-    from app.models.credits import CreditLimit, CreditTransaction
-    from app.models.session_canvas import SessionCanvas
-    from app.models.document_draft import DocumentDraft
-    from app.models.file import File
-    from app.models.teacherbot import TeacherbotConversation, TeacherbotMessage
 
-    # Subquery helpers
-    conv_ids = select(Conversation.id).where(Conversation.session_id == session_id)
-    task_ids = select(Task.id).where(Task.session_id == session_id)
-    doc_ids = select(RAGDocument.id).where(RAGDocument.session_id == session_id)
-    chunk_ids = select(RAGChunk.id).where(RAGChunk.document_id.in_(doc_ids))
-    tc_ids = select(TeacherbotConversation.id).where(TeacherbotConversation.session_id == session_id)
-    ml_exp_ids = select(MLExperiment.id).where(MLExperiment.session_id == session_id)
-
-    # 1. rag_citations (→ conversation_messages, rag_chunks)
-    await db.execute(RAGCitation.__table__.delete().where(
-        RAGCitation.conversation_message_id.in_(
-            select(ConversationMessage.id).where(ConversationMessage.conversation_id.in_(conv_ids))
-        )
-    ))
-    # 2. conversation_messages (→ conversations)
-    await db.execute(ConversationMessage.__table__.delete().where(
-        ConversationMessage.conversation_id.in_(conv_ids)
-    ))
-    # 3. ml_results (→ ml_experiments)
-    await db.execute(MLResult.__table__.delete().where(MLResult.experiment_id.in_(ml_exp_ids)))
-    # 4. ml_experiments (→ sessions)
-    await db.execute(MLExperiment.__table__.delete().where(MLExperiment.session_id == session_id))
-    # 5. ml_datasets (→ sessions)
-    await db.execute(MLDataset.__table__.delete().where(MLDataset.session_id == session_id))
-    # 6. rag_embeddings (→ rag_chunks)
-    await db.execute(RAGEmbedding.__table__.delete().where(RAGEmbedding.chunk_id.in_(chunk_ids)))
-    # 7. rag_chunks (→ rag_documents)
-    await db.execute(RAGChunk.__table__.delete().where(RAGChunk.document_id.in_(doc_ids)))
-    # 8. rag_documents (→ sessions, session_students)
-    await db.execute(RAGDocument.__table__.delete().where(RAGDocument.session_id == session_id))
-    # 9. audit_events (→ sessions, session_students)
-    await db.execute(AuditEvent.__table__.delete().where(AuditEvent.session_id == session_id))
-    # 10. teacherbot_messages (→ teacherbot_conversations)
-    await db.execute(TeacherbotMessage.__table__.delete().where(
-        TeacherbotMessage.conversation_id.in_(tc_ids)
-    ))
-    # 11. teacherbot_conversations (→ sessions)
-    await db.execute(TeacherbotConversation.__table__.delete().where(
-        TeacherbotConversation.session_id == session_id
-    ))
-    # 12. content_alerts
-    await db.execute(ContentAlert.__table__.delete().where(ContentAlert.session_id == session_id))
-    # 13. quiz_attempts
-    await db.execute(QuizAttempt.__table__.delete().where(QuizAttempt.session_id == session_id))
-    # 14. badge_awards
-    await db.execute(BadgeAward.__table__.delete().where(BadgeAward.session_id == session_id))
-    # 15. credit_transactions
-    await db.execute(CreditTransaction.__table__.delete().where(CreditTransaction.session_id == session_id))
-    # 16. credit_limits
-    await db.execute(CreditLimit.__table__.delete().where(CreditLimit.session_id == session_id))
-    # 17. session_canvas
-    await db.execute(SessionCanvas.__table__.delete().where(SessionCanvas.session_id == session_id))
-    # 18. document_drafts
-    await db.execute(DocumentDraft.__table__.delete().where(DocumentDraft.session_id == session_id))
-    # 19. files (ml_datasets already deleted)
-    await db.execute(File.__table__.delete().where(File.session_id == session_id))
-    # 20. chat_messages (→ chat_rooms, sessions)
-    await db.execute(ChatMessage.__table__.delete().where(ChatMessage.session_id == session_id))
-    # 21. task_submissions (→ tasks)
-    await db.execute(TaskSubmission.__table__.delete().where(TaskSubmission.task_id.in_(task_ids)))
-    # 22. tasks (→ sessions)
-    await db.execute(Task.__table__.delete().where(Task.session_id == session_id))
-
-    # Now delete the session — ORM cascade handles:
-    # session_modules, session_students, chat_rooms, conversations, session_teachers, invitations
-    await db.delete(session)
+    now = datetime.now(timezone.utc)
+    session.status = SessionStatus.ENDED
+    session.deleted_at = now
+    session.deleted_by_id = teacher.id
+    session.purge_after = now + timedelta(days=30)
     await db.commit()
 
-    return {"message": "Session deleted", "session_id": str(session_id)}
+    return {
+        "message": "Session moved to trash",
+        "session_id": str(session_id),
+        "deleted_at": session.deleted_at,
+        "purge_after": session.purge_after,
+    }
+
+
+@router.post("/sessions/{session_id}/restore", response_model=SessionResponse)
+async def restore_session(
+    session_id: UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    teacher: Annotated[User, Depends(get_current_teacher)],
+):
+    if not await teacher_is_session_owner(db, teacher, session_id):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only the class owner can restore sessions")
+
+    result = await db.execute(select(Session).where(Session.id == session_id))
+    session = result.scalar_one_or_none()
+    if not session:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
+
+    session.deleted_at = None
+    session.deleted_by_id = None
+    session.purge_after = None
+    if session.status == SessionStatus.ENDED:
+        session.status = SessionStatus.DRAFT
+    await db.commit()
+    await db.refresh(session)
+    return session
+
+
+@router.delete("/sessions/{session_id}/permanent")
+async def permanently_delete_session(
+    session_id: UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    teacher: Annotated[User, Depends(get_current_teacher)],
+    confirm: bool = False,
+):
+    if not confirm:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Confirmation required. Set confirm=true to permanently delete.",
+        )
+
+    if not await teacher_is_session_owner(db, teacher, session_id):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only the class owner can permanently delete sessions")
+
+    result = await db.execute(select(Session).where(Session.id == session_id))
+    session = result.scalar_one_or_none()
+    if not session:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
+
+    await _hard_delete_session(db, session)
+    await db.commit()
+    return {"message": "Session permanently deleted", "session_id": str(session_id)}
+
+
+@router.post("/sessions/trash/purge-expired")
+async def purge_expired_sessions(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    teacher: Annotated[User, Depends(get_current_teacher)],
+):
+    now = datetime.now(timezone.utc)
+    result = await db.execute(
+        select(Session)
+        .join(Class, Session.class_id == Class.id)
+        .where(Class.teacher_id == teacher.id)
+        .where(Session.deleted_at.is_not(None))
+        .where(Session.purge_after <= now)
+    )
+    sessions = result.scalars().all()
+    for session in sessions:
+        await _hard_delete_session(db, session)
+    await db.commit()
+    return {"message": "Expired sessions purged", "count": len(sessions)}
 
 
 @router.post("/sessions/{session_id}/export")
@@ -1341,6 +1410,14 @@ async def list_tasks(
         .order_by(Task.created_at.desc())
     )
     rows = result.all()
+    task_ids = [t.id for t, _, _ in rows]
+    submissions_by_task: dict[UUID, list[TaskSubmission]] = {}
+    if task_ids:
+        submissions_result = await db.execute(
+            select(TaskSubmission).where(TaskSubmission.task_id.in_(task_ids))
+        )
+        for submission in submissions_result.scalars().all():
+            submissions_by_task.setdefault(submission.task_id, []).append(submission)
     
     return [
         {
@@ -1349,11 +1426,20 @@ async def list_tasks(
             "description": t.description,
             "task_type": t.task_type.value if t.task_type else "exercise",
             "status": t.status.value if t.status else "draft",
-            "due_at": t.due_at.isoformat() if t.due_at else None,
+            "due_at": task_due_at_iso(t.due_at),
             "points": t.points,
             "content_json": t.content_json,
             "created_at": t.created_at.isoformat(),
             "author_name": f"{fn} {ln}".strip() or "Docente",
+            "submission_count": len(submissions_by_task.get(t.id, [])),
+            "submission_scores": [
+                {
+                    "student_id": str(sub.student_id),
+                    "score": display_score,
+                }
+                for sub in submissions_by_task.get(t.id, [])
+                if (display_score := _display_submission_score(t.task_type, sub.content, sub.score))
+            ],
         }
         for t, fn, ln in rows
     ]
@@ -1384,7 +1470,7 @@ async def create_task(
         description=request.description,
         task_type=task_type,
         status=TaskStatus.PUBLISHED if auto_publish else TaskStatus.DRAFT,
-        due_at=request.due_at,
+        due_at=task_due_at_for_storage(request.due_at),
         points=request.points,
         content_json=request.content_json,
     )
@@ -1470,7 +1556,7 @@ async def create_task(
         "description": task.description,
         "task_type": task.task_type.value,
         "status": task.status.value,
-        "due_at": task.due_at.isoformat() if task.due_at else None,
+        "due_at": task_due_at_iso(task.due_at),
         "points": task.points,
         "content_json": task.content_json,
         "created_at": task.created_at.isoformat(),
@@ -1487,6 +1573,7 @@ async def update_task(
     description: str = None,
     new_status: str = None,
     due_at: datetime = None,
+    clear_due_at: bool = False,
     points: str = None,
     content_json: str = None,
 ):
@@ -1514,8 +1601,10 @@ async def update_task(
         task.description = description
     if new_status is not None and new_status in [s.value for s in TaskStatus]:
         task.status = TaskStatus(new_status)
-    if due_at is not None:
-        task.due_at = due_at
+    if clear_due_at:
+        task.due_at = None
+    elif due_at is not None:
+        task.due_at = task_due_at_for_storage(due_at)
     if points is not None:
         task.points = points
     if content_json is not None:
@@ -1583,7 +1672,7 @@ async def update_task(
         "description": task.description,
         "task_type": task.task_type.value,
         "status": task.status.value,
-        "due_at": task.due_at.isoformat() if task.due_at else None,
+        "due_at": task_due_at_iso(task.due_at),
         "points": task.points,
         "content_json": task.content_json,
     }
@@ -1644,7 +1733,7 @@ async def get_task_submissions(
             "content": sub.content,
             "content_json": sub.content_json,
             "submitted_at": sub.submitted_at.isoformat(),
-            "score": sub.score,
+            "score": _display_submission_score(task.task_type, sub.content, sub.score),
             "feedback": sub.feedback,
         }
         for sub, student in rows

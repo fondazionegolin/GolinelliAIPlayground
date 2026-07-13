@@ -195,7 +195,7 @@ function DocumentPanel({
   const busy = isUploading || isAddingSource
 
   return (
-    <div className="flex flex-col h-full gap-3">
+    <div className="flex flex-col h-full min-h-0 gap-3">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
@@ -310,7 +310,7 @@ function DocumentPanel({
 
       {/* Upload result */}
       {uploadResult && !isUploading && (
-        <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 space-y-2">
+        <div className="max-h-56 overflow-y-auto rounded-xl border border-emerald-200 bg-emerald-50 p-3 space-y-2">
           <div className="flex items-center gap-2 text-emerald-700">
             <CheckCircle2 className="h-4 w-4" />
             <span className="text-xs font-semibold">Documento pronto per le domande</span>

@@ -1305,6 +1305,7 @@ async def run_teacher_agent(
                 provider=provider or "openai",
                 model=model or "gpt-4o-mini",
                 max_iterations=5,
+                school_grade=school_grade,
             )
 
         # Extract last user message for intent classification

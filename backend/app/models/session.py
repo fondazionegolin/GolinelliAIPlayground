@@ -40,6 +40,9 @@ class Session(Base):
     default_llm_provider = Column(String, nullable=True)  # Default LLM provider for this session
     default_llm_model = Column(String, nullable=True)  # Default LLM model for this session
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    deleted_at = Column(DateTime(timezone=True), nullable=True, index=True)
+    deleted_by_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True, index=True)
+    purge_after = Column(DateTime(timezone=True), nullable=True, index=True)
 
     # Relationships
     tenant = relationship("Tenant", back_populates="sessions")

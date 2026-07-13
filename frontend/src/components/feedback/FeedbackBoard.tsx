@@ -6,7 +6,7 @@ import { ZoomableImage } from '@/components/ui/ZoomableImage'
 import {
   Bug, Sparkles, Palette, MousePointerClick, AlertTriangle, Wand2, Wrench,
   CheckCircle, Mail, Globe, Monitor, ImageIcon, X, Share2, Trash2, Plus, Loader2,
-  Send, Columns3,
+  Send, Columns3, Search,
 } from 'lucide-react'
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -89,6 +89,46 @@ function timeAgo(isoString: string): string {
   if (hrs < 24) return `${hrs}h fa`
   const days = Math.floor(hrs / 24)
   return `${days}g fa`
+}
+
+function matchesSearch(card: BoardCard, query: string, columns: BoardColumn[]): boolean {
+  const terms = query.trim().toLowerCase().split(/\s+/).filter(Boolean)
+  if (terms.length === 0) return true
+
+  const categoryLabel = card.category ? CATEGORY_META[card.category]?.label : ''
+  const urgencyLabel = card.urgency ? URGENCY_META[card.urgency]?.label : ''
+  const columnLabel = columns.find((col) => col.id === card.board_status)?.label || card.board_status
+  const browserInfo = card.browser_info
+    ? Object.entries(card.browser_info)
+        .filter(([key]) => key !== 'screenshot_base64')
+        .map(([key, value]) => `${key} ${String(value ?? '')}`)
+        .join(' ')
+    : ''
+
+  const target = [
+    card.id,
+    card.user_type,
+    card.user_display_name,
+    card.user_email,
+    card.message,
+    card.page_url,
+    browserInfo,
+    ...(card.console_errors || []),
+    card.status,
+    card.source,
+    card.created_by_display_name,
+    card.last_actor_display_name,
+    card.board_status,
+    columnLabel,
+    card.category,
+    categoryLabel,
+    card.urgency,
+    urgencyLabel,
+    card.internal_note,
+    card.created_at,
+  ].filter(Boolean).join(' ').toLowerCase()
+
+  return terms.every((term) => target.includes(term))
 }
 
 // ── Small presentational helpers ──────────────────────────────────────────────
@@ -510,6 +550,7 @@ export default function FeedbackBoard({ isAdmin = false }: { isAdmin?: boolean }
   const [showCollaborators, setShowCollaborators] = useState(false)
   const [newTaskText, setNewTaskText] = useState('')
   const [newColumnName, setNewColumnName] = useState('')
+  const [searchQuery, setSearchQuery] = useState('')
 
   const { data: cards = [], isLoading } = useQuery({
     queryKey: ['feedback-board'],
@@ -590,11 +631,15 @@ export default function FeedbackBoard({ isAdmin = false }: { isAdmin?: boolean }
   })
 
   const unclassifiedCount = useMemo(() => cards.filter((c) => !c.category || !c.urgency).length, [cards])
+  const filteredCards = useMemo(
+    () => cards.filter((card) => matchesSearch(card, searchQuery, columns)),
+    [cards, columns, searchQuery],
+  )
 
   const grouped = useMemo(() => {
     const map: Record<string, BoardCard[]> = {}
     for (const col of columns) map[col.id] = []
-    for (const card of cards) {
+    for (const card of filteredCards) {
       const key = map[card.board_status] ? card.board_status : (columns[0]?.id || 'inbox')
       map[key].push(card)
     }
@@ -607,7 +652,7 @@ export default function FeedbackBoard({ isAdmin = false }: { isAdmin?: boolean }
       })
     }
     return map
-  }, [cards, columns])
+  }, [filteredCards, columns])
 
   const moveCard = (id: string, target: string) => {
     const card = cards.find((c) => c.id === id)
@@ -642,7 +687,7 @@ export default function FeedbackBoard({ isAdmin = false }: { isAdmin?: boolean }
   const addColumn = () => {
     const label = newColumnName.trim()
     if (!label) return
-    const id = label.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '') || `col_${columns.length + 1}`
+    const id = (label.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '') || `col_${columns.length + 1}`).slice(0, 20)
     updateConfigMutation.mutate({
       columns: [...columns, { id, label, hint: 'Colonna personalizzata', color: '#64748b' }],
     })
@@ -651,7 +696,7 @@ export default function FeedbackBoard({ isAdmin = false }: { isAdmin?: boolean }
 
   return (
     <div className="space-y-4">
-      <div className="grid gap-2 rounded-xl border border-slate-200 bg-white p-3 shadow-sm lg:grid-cols-[1fr_auto_auto_auto_auto]">
+      <div className="grid gap-2 rounded-xl border border-slate-200 bg-white p-3 shadow-sm lg:grid-cols-[1fr_minmax(220px,320px)_auto_auto_auto_auto]">
         <form
           onSubmit={(e) => {
             e.preventDefault()
@@ -674,6 +719,25 @@ export default function FeedbackBoard({ isAdmin = false }: { isAdmin?: boolean }
             Task
           </button>
         </form>
+        <div className="relative min-w-0">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+          <input
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Cerca in feedback, etichette, persone..."
+            className="h-10 w-full rounded-lg border border-slate-200 bg-slate-50 px-9 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-300"
+          />
+          {searchQuery && (
+            <button
+              type="button"
+              onClick={() => setSearchQuery('')}
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+              title="Pulisci ricerca"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          )}
+        </div>
         <form
           onSubmit={(e) => {
             e.preventDefault()
@@ -774,6 +838,12 @@ export default function FeedbackBoard({ isAdmin = false }: { isAdmin?: boolean }
               </div>
             )
           })}
+        </div>
+      )}
+
+      {!isLoading && searchQuery.trim() && filteredCards.length === 0 && (
+        <div className="rounded-xl border border-dashed border-slate-200 bg-white px-4 py-8 text-center text-sm text-slate-400">
+          Nessun feedback corrisponde a "{searchQuery.trim()}".
         </div>
       )}
 

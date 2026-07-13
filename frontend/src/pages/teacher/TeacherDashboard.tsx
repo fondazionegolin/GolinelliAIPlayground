@@ -1,6 +1,7 @@
 import { useState, useEffect, lazy, Suspense, type CSSProperties } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Routes, Route, useLocation, Link, useNavigate } from 'react-router-dom'
+import { motion } from 'framer-motion'
 import { MessageSquare, Users, PlayCircle, Bot, ClipboardList, History, Monitor, BookOpen, UserRound, Code2, KanbanSquare } from 'lucide-react'
 // Heavy pages loaded lazily — only parsed when first visited
 const ClassesPage        = lazy(() => import('./ClassesPage'))
@@ -49,6 +50,7 @@ export default function TeacherDashboard() {
   const [sidebarWidth, setSidebarWidth] = useState(380)
   const [showSidebar, setShowSidebar] = useState(true)
   const [showOnlineMenu, setShowOnlineMenu] = useState(false)
+  const [teacherChatSidebarOpen, setTeacherChatSidebarOpen] = useState(false)
 
   const getPersistedSession = (): { id: string, name: string, className: string } | null => {
     try {
@@ -123,6 +125,11 @@ export default function TeacherDashboard() {
 
   const teacherTheme = getTeacherAccentTheme(teacherProfile?.uiAccent)
   const bgGradient = getAppBackgroundGradient(teacherTheme)
+  const isTeacherSupportRoute = location.pathname === '/teacher' || location.pathname === '/teacher/'
+
+  const dockTeacherChat = () => {
+    setTeacherChatSidebarOpen(true)
+  }
   const railButtonStyle = { '--btn-tone': teacherTheme.accent } as CSSProperties
   const mobileNav = [
     { path: '/teacher', label: t('navbar.nav_support'), icon: MessageSquare, exact: true },
@@ -261,10 +268,10 @@ export default function TeacherDashboard() {
           </div>
         )}
 
-        <main className={`flex-1 relative ${location.pathname.includes('/notebooks/notebook/') || location.pathname.includes('/teacher/coding') ? 'overflow-hidden flex flex-col' : 'overflow-y-auto'}`}>
+        <main className={`relative ${isTeacherSupportRoute ? 'hidden' : 'flex-1'} ${location.pathname.includes('/notebooks/notebook/') || location.pathname.includes('/teacher/coding') ? 'overflow-hidden flex flex-col' : 'overflow-y-auto'}`}>
           <Suspense fallback={<div className="flex items-center justify-center h-full min-h-[40vh] text-sm text-slate-400">{t('common.loading')}</div>}>
             <Routes>
-              <Route index element={<TeacherSupportChat />} />
+              <Route index element={<div className="h-full bg-neutral-100" />} />
               <Route path="documents" element={<TeacherDocumentsPage />} />
               <Route path="wiki" element={<TeacherWikiPage accentId={teacherProfile?.uiAccent} />} />
               <Route path="ml-lab" element={<TeacherMLLabPage />} />
@@ -293,7 +300,7 @@ export default function TeacherDashboard() {
                       <Code2 className="mx-auto h-8 w-8 text-slate-400" />
                       <h2 className="mt-3 text-sm font-bold text-slate-900">Seleziona una sessione</h2>
                       <p className="mt-2 text-xs leading-relaxed text-slate-500">
-                        Il Coding Lab docente usa la sessione corrente per condividere app, versioni e commit con la classe.
+                        Il Vibe Lab docente usa la sessione corrente per condividere app, versioni e commit con la classe.
                       </p>
                     </div>
                   </div>
@@ -311,6 +318,29 @@ export default function TeacherDashboard() {
           </Suspense>
         </main>
 
+        <motion.div
+          layout
+          transition={{ type: 'spring', stiffness: 420, damping: 38, mass: 0.9 }}
+          className={`h-full overflow-hidden bg-white ${
+            isTeacherSupportRoute
+              ? 'relative flex-1 border-l-0 opacity-100'
+              : teacherChatSidebarOpen
+                ? 'relative flex-shrink-0 border-l border-slate-200 opacity-100'
+                : 'pointer-events-none flex-shrink-0 border-l-0 opacity-0'
+          }`}
+          style={{
+            width: isTeacherSupportRoute ? 'auto' : teacherChatSidebarOpen ? 480 : 0,
+            transformOrigin: 'right bottom',
+          }}
+          aria-hidden={!isTeacherSupportRoute && !teacherChatSidebarOpen}
+        >
+          <TeacherSupportChat
+            onMinimize={dockTeacherChat}
+            onClose={() => setTeacherChatSidebarOpen(false)}
+            sidebarMode={!isTeacherSupportRoute && teacherChatSidebarOpen}
+            dockArmed={teacherChatSidebarOpen}
+          />
+        </motion.div>
         {/* Right chat sidebar — kept mounted so voice stays connected when hidden */}
         {!isMobile && (
           <div

@@ -13,10 +13,11 @@ import {
   MonitorPlay,
   Pause,
   Plus,
+  RotateCcw,
   School,
   Search,
   Share2,
-  Square,
+  Trash2,
   UserPlus,
   Users,
   X,
@@ -63,6 +64,9 @@ interface SessionData {
   status: 'draft' | 'active' | 'paused' | 'finished' | 'ended'
   created_at: string
   active_students_count?: number
+  deleted_at?: string | null
+  deleted_by_id?: string | null
+  purge_after?: string | null
 }
 
 export default function TeacherClassesSessionsManager({
@@ -87,13 +91,13 @@ export default function TeacherClassesSessionsManager({
   const [classSearch, setClassSearch] = useState('')
   const [sessionSearch, setSessionSearch] = useState('')
   const [newClassName, setNewClassName] = useState('')
-  const schoolGradeOptions = [
+  const schoolGradeOptions = useMemo(() => [
     t('classes.grade_primary2'),
     t('classes.grade_middle'),
     t('classes.grade_high1'),
     t('classes.grade_high2'),
     t('classes.grade_university'),
-  ] as const
+  ], [t])
   const statusMeta: Record<string, { label: string; tone: string; dot: string }> = {
     draft: { label: t('sessions.status_draft'), tone: 'logo-ink', dot: 'bg-[var(--logo-ink)]' },
     active: { label: t('sessions.status_active'), tone: 'logo-blue', dot: 'bg-[var(--logo-blue)]' },
@@ -107,6 +111,8 @@ export default function TeacherClassesSessionsManager({
   const [editClassGrade, setEditClassGrade] = useState<string>(schoolGradeOptions[1])
   const [showNewSessionDialog, setShowNewSessionDialog] = useState(false)
   const [newSessionTitle, setNewSessionTitle] = useState('')
+  const [sessionToTrash, setSessionToTrash] = useState<SessionData | null>(null)
+  const [sessionToPermanentlyDelete, setSessionToPermanentlyDelete] = useState<SessionData | null>(null)
   const [editingTitleId, setEditingTitleId] = useState<string | null>(null)
   const [editingTitleValue, setEditingTitleValue] = useState('')
 
@@ -132,16 +138,16 @@ export default function TeacherClassesSessionsManager({
   const selectedClass = classes.find((cls) => cls.id === selectedClassId) || null
 
   useEffect(() => {
-    if (!selectedClass) return
+    if (!selectedClass || isEditingClass) return
     setEditClassName(selectedClass.name)
     setEditClassGrade(selectedClass.school_grade || schoolGradeOptions[1])
-  }, [selectedClass, schoolGradeOptions])
+  }, [isEditingClass, selectedClass, schoolGradeOptions])
 
   const { data: sessions = [], isLoading: isSessionsLoading } = useQuery<SessionData[]>({
     queryKey: ['sessions', selectedClassId],
     queryFn: async () => {
       if (!selectedClassId) return []
-      return (await teacherApi.getSessions(selectedClassId)).data
+      return (await teacherApi.getSessions(selectedClassId, { include_deleted: true })).data
     },
     enabled: !!selectedClassId,
     refetchInterval: 10000,
@@ -196,6 +202,35 @@ export default function TeacherClassesSessionsManager({
     },
   })
 
+  const trashSessionMutation = useMutation({
+    mutationFn: (sessionId: string) => teacherApi.deleteSession(sessionId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['sessions', selectedClassId] })
+      queryClient.invalidateQueries({ queryKey: ['classes'] })
+      setSessionToTrash(null)
+      toast({ title: isEnglish ? 'Session moved to trash' : 'Sessione spostata nel cestino' })
+    },
+  })
+
+  const restoreSessionMutation = useMutation({
+    mutationFn: (sessionId: string) => teacherApi.restoreSession(sessionId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['sessions', selectedClassId] })
+      queryClient.invalidateQueries({ queryKey: ['classes'] })
+      toast({ title: isEnglish ? 'Session restored' : 'Sessione recuperata' })
+    },
+  })
+
+  const permanentlyDeleteSessionMutation = useMutation({
+    mutationFn: (sessionId: string) => teacherApi.permanentlyDeleteSession(sessionId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['sessions', selectedClassId] })
+      queryClient.invalidateQueries({ queryKey: ['classes'] })
+      setSessionToPermanentlyDelete(null)
+      toast({ title: isEnglish ? 'Session permanently deleted' : 'Sessione eliminata definitivamente' })
+    },
+  })
+
   const renameSessionMutation = useMutation({
     mutationFn: ({ id, title }: { id: string; title: string }) => teacherApi.updateSession(id, { title }),
     onSuccess: () => {
@@ -207,11 +242,23 @@ export default function TeacherClassesSessionsManager({
   })
 
   const orderedSessions = useMemo(() => {
-    const sorted = [...sessions].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+    const sorted = sessions
+      .filter((session) => !session.deleted_at && session.status !== 'ended' && session.status !== 'finished')
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
     return [
       ...sorted.filter((session) => session.status === 'active'),
       ...sorted.filter((session) => session.status !== 'active'),
     ]
+  }, [sessions])
+
+  const trashedSessions = useMemo(() => {
+    return sessions
+      .filter((session) => session.deleted_at || session.status === 'ended' || session.status === 'finished')
+      .sort((a, b) => {
+        const aTime = new Date(a.deleted_at || a.created_at).getTime()
+        const bTime = new Date(b.deleted_at || b.created_at).getTime()
+        return bTime - aTime
+      })
   }, [sessions])
 
   const filteredClasses = useMemo(() => {
@@ -362,13 +409,27 @@ export default function TeacherClassesSessionsManager({
           {showNewClassForm && (
             <div className="border-b px-5 py-4" style={{ borderBottomColor: accentTheme.id === 'black' ? hexToRgba('#0f172a', 0.08) : hexToRgba(accentTheme.accent, 0.14) }}>
               <form onSubmit={handleCreateClass} className="space-y-3">
-                <Input
-                  placeholder={t('classes.class_name_placeholder')}
-                  value={newClassName}
-                  onChange={(e) => setNewClassName(e.target.value)}
-                  surface="base"
-                  className="border-white/0 bg-white"
-                />
+                <div className="space-y-1.5">
+                  <label htmlFor="new-class-name" className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+                    {isEnglish ? 'Class name' : 'Nome della classe'}
+                  </label>
+                  <div className="relative">
+                    <School className="pointer-events-none absolute left-3.5 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
+                    <Input
+                      id="new-class-name"
+                      placeholder={t('classes.class_name_placeholder')}
+                      value={newClassName}
+                      onChange={(e) => setNewClassName(e.target.value)}
+                      surface="base"
+                      className="h-12 border-slate-300 bg-white pl-11 text-base font-medium shadow-sm placeholder:text-slate-400 focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
+                    />
+                  </div>
+                  <p className="text-xs leading-5 text-slate-500">
+                    {isEnglish
+                      ? 'Enter the name students and teachers will see in the class list.'
+                      : "Inserisci il nome che studenti e docenti vedranno nell'elenco classi."}
+                  </p>
+                </div>
                 <Select
                   value={newClassGrade}
                   onChange={(e) => setNewClassGrade(e.target.value)}
@@ -622,7 +683,7 @@ export default function TeacherClassesSessionsManager({
                         {filteredOrderedSessions.length} {isEnglish ? 'sessions' : 'sessioni'}
                       </p>
                     </div>
-                    {filteredOrderedSessions.length === 0 ? (
+                    {filteredOrderedSessions.length === 0 && trashedSessions.length === 0 ? (
                       <div className="flex flex-col items-center justify-center py-16 text-center">
                         <Search className="mb-3 h-8 w-8 text-slate-200" />
                         <p className="text-sm text-slate-400">
@@ -630,21 +691,34 @@ export default function TeacherClassesSessionsManager({
                         </p>
                       </div>
                     ) : (
-                      <SessionList
-                        isEnglish={isEnglish}
-                        statusMeta={statusMeta}
-                        accentTheme={accentTheme}
-                        sessions={filteredOrderedSessions}
-                        editingTitleId={editingTitleId}
-                        editingTitleValue={editingTitleValue}
-                        setEditingTitleId={setEditingTitleId}
-                        setEditingTitleValue={setEditingTitleValue}
-                        onRename={handleRenameSession}
-                        onCopyCode={copyCode}
-                        renamePending={renameSessionMutation.isPending}
-                        updatePending={updateSessionMutation.isPending}
-                        onStatusChange={(id, status) => updateSessionMutation.mutate({ id, status })}
-                      />
+                      <>
+                        <SessionList
+                          isEnglish={isEnglish}
+                          statusMeta={statusMeta}
+                          accentTheme={accentTheme}
+                          sessions={filteredOrderedSessions}
+                          editingTitleId={editingTitleId}
+                          editingTitleValue={editingTitleValue}
+                          setEditingTitleId={setEditingTitleId}
+                          setEditingTitleValue={setEditingTitleValue}
+                          onRename={handleRenameSession}
+                          onCopyCode={copyCode}
+                          renamePending={renameSessionMutation.isPending}
+                          updatePending={updateSessionMutation.isPending}
+                          onStatusChange={(id, status) => updateSessionMutation.mutate({ id, status })}
+                          onTrashSession={(session) => setSessionToTrash(session)}
+                        />
+                        {trashedSessions.length > 0 && (
+                          <SessionTrash
+                            isEnglish={isEnglish}
+                            sessions={trashedSessions}
+                            onRestore={(sessionId) => restoreSessionMutation.mutate(sessionId)}
+                            onPermanentDelete={(session) => setSessionToPermanentlyDelete(session)}
+                            restorePending={restoreSessionMutation.isPending}
+                            permanentDeletePending={permanentlyDeleteSessionMutation.isPending}
+                          />
+                        )}
+                      </>
                     )}
                   </div>
                 )}
@@ -704,6 +778,67 @@ export default function TeacherClassesSessionsManager({
           </DialogContent>
         </Dialog>
       )}
+
+      <Dialog open={!!sessionToTrash} onOpenChange={(open) => { if (!open) setSessionToTrash(null) }}>
+        <DialogContent size="sm" surface="elevated" className="rounded-xl">
+          <DialogHeader>
+            <DialogTitle>{isEnglish ? 'Delete session?' : 'Eliminare la sessione?'}</DialogTitle>
+            <DialogDescription>
+              {isEnglish
+                ? <>The session <strong>{sessionToTrash?.title}</strong> will disappear from the session cards and move to the trash.</>
+                : <>La sessione <strong>{sessionToTrash?.title}</strong> scomparira dalle card sessione e verra spostata nel cestino.</>}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogBody>
+            <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-3 text-sm leading-6 text-amber-900">
+              {isEnglish
+                ? 'Session data remains recoverable for 30 days. After that, the session is permanently removed and related database records are cleaned.'
+                : 'I dati della sessione restano recuperabili per 30 giorni. Dopo questo periodo, la sessione viene rimossa definitivamente e i dati collegati vengono puliti dal database.'}
+            </div>
+          </DialogBody>
+          <DialogFooter>
+            <Button surface="ghost" tone="neutral" onClick={() => setSessionToTrash(null)}>
+              {t('classes.cancel')}
+            </Button>
+            <Button
+              tone="danger"
+              surface="solid"
+              disabled={!sessionToTrash || trashSessionMutation.isPending}
+              onClick={() => sessionToTrash && trashSessionMutation.mutate(sessionToTrash.id)}
+            >
+              {trashSessionMutation.isPending ? <Spinner className="mr-2" size="sm" tone="inverse" /> : <Trash2 className="mr-2 h-4 w-4" />}
+              {isEnglish ? 'Move to trash' : 'Sposta nel cestino'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!sessionToPermanentlyDelete} onOpenChange={(open) => { if (!open) setSessionToPermanentlyDelete(null) }}>
+        <DialogContent size="sm" surface="elevated" className="rounded-xl">
+          <DialogHeader>
+            <DialogTitle>{isEnglish ? 'Permanently delete?' : 'Eliminare definitivamente?'}</DialogTitle>
+            <DialogDescription>
+              {isEnglish
+                ? <>This will permanently delete <strong>{sessionToPermanentlyDelete?.title}</strong> and clean its related data.</>
+                : <>Questa azione eliminera definitivamente <strong>{sessionToPermanentlyDelete?.title}</strong> e pulira i dati collegati.</>}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button surface="ghost" tone="neutral" onClick={() => setSessionToPermanentlyDelete(null)}>
+              {t('classes.cancel')}
+            </Button>
+            <Button
+              tone="danger"
+              surface="solid"
+              disabled={!sessionToPermanentlyDelete || permanentlyDeleteSessionMutation.isPending}
+              onClick={() => sessionToPermanentlyDelete && permanentlyDeleteSessionMutation.mutate(sessionToPermanentlyDelete.id)}
+            >
+              {permanentlyDeleteSessionMutation.isPending ? <Spinner className="mr-2" size="sm" tone="inverse" /> : <Trash2 className="mr-2 h-4 w-4" />}
+              {isEnglish ? 'Delete forever' : 'Elimina per sempre'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
@@ -757,6 +892,7 @@ function SessionList({
   renamePending,
   updatePending,
   onStatusChange,
+  onTrashSession,
 }: {
   isEnglish: boolean
   statusMeta: Record<string, { label: string; tone: string; dot: string }>
@@ -771,6 +907,7 @@ function SessionList({
   renamePending: boolean
   updatePending: boolean
   onStatusChange: (id: string, status: string) => void
+  onTrashSession: (session: SessionData) => void
 }) {
   if (sessions.length === 0) return null
   const activeCount = sessions.filter((session) => session.status === 'active').length
@@ -803,6 +940,7 @@ function SessionList({
             renamePending={renamePending}
             updatePending={updatePending}
             onStatusChange={onStatusChange}
+            onTrashSession={onTrashSession}
             statusMeta={statusMeta}
             isEnglish={isEnglish}
           />
@@ -824,6 +962,7 @@ function SessionRow({
   renamePending,
   updatePending,
   onStatusChange,
+  onTrashSession,
   statusMeta,
   isEnglish,
 }: {
@@ -838,6 +977,7 @@ function SessionRow({
   renamePending: boolean
   updatePending: boolean
   onStatusChange: (id: string, status: string) => void
+  onTrashSession: (session: SessionData) => void
   statusMeta: Record<string, { label: string; tone: string; dot: string }>
   isEnglish: boolean
 }) {
@@ -845,7 +985,6 @@ function SessionRow({
   const isActive = session.status === 'active'
   const isPaused = session.status === 'paused'
   const isDraft = session.status === 'draft'
-  const isEnded = session.status === 'finished' || session.status === 'ended'
   const tone: PastelTone = isActive ? 'rose' : isPaused ? 'violet' : 'slate'
   const iconTone = isActive ? 'rose' : isPaused ? 'violet' : 'slate'
 
@@ -958,21 +1097,103 @@ function SessionRow({
             {isPaused ? (isEnglish ? 'Resume' : 'Riprendi') : (isEnglish ? 'Activate' : 'Attiva')}
           </Button>
         )}
-        {!isEnded && (
-          <Button
-            onClick={() => onStatusChange(session.id, 'ended')}
-            disabled={updatePending}
-            tone="danger"
-            surface="ghost"
-            density="compact"
-            className="rounded-full"
-          >
-            <Square className="mr-1.5 h-3.5 w-3.5" />
-            {isEnglish ? 'Close' : 'Chiudi'}
-          </Button>
-        )}
+        <Button
+          onClick={() => onTrashSession(session)}
+          disabled={updatePending}
+          tone="danger"
+          surface="ghost"
+          density="compact"
+          className="rounded-full"
+        >
+          <Trash2 className="mr-1.5 h-3.5 w-3.5" />
+          {isEnglish ? 'Delete session' : 'Elimina sessione'}
+        </Button>
       </div>
     </Card>
+  )
+}
+
+function SessionTrash({
+  isEnglish,
+  sessions,
+  onRestore,
+  onPermanentDelete,
+  restorePending,
+  permanentDeletePending,
+}: {
+  isEnglish: boolean
+  sessions: SessionData[]
+  onRestore: (sessionId: string) => void
+  onPermanentDelete: (session: SessionData) => void
+  restorePending: boolean
+  permanentDeletePending: boolean
+}) {
+  return (
+    <section className="rounded-2xl border border-slate-200 bg-slate-50/80 p-4">
+      <div className="mb-3 flex items-start justify-between gap-3">
+        <div>
+          <h3 className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-slate-500">
+            <Trash2 className="h-3.5 w-3.5" />
+            {isEnglish ? 'Trash' : 'Cestino'}
+          </h3>
+          <p className="mt-1 text-xs leading-5 text-slate-500">
+            {isEnglish
+              ? 'Deleted or closed sessions remain recoverable for 30 days, then they are permanently cleaned.'
+              : 'Le sessioni eliminate o terminate restano recuperabili per 30 giorni, poi vengono pulite definitivamente.'}
+          </p>
+        </div>
+        <Badge tone="neutral" surface="soft" density="compact">
+          {sessions.length}
+        </Badge>
+      </div>
+      <div className="space-y-2">
+        {sessions.map((session) => {
+          const deletedAt = session.deleted_at ? new Date(session.deleted_at) : null
+          const purgeAfter = session.purge_after ? new Date(session.purge_after) : null
+          const deletedText = deletedAt
+            ? deletedAt.toLocaleDateString(isEnglish ? 'en-GB' : 'it-IT', { day: '2-digit', month: '2-digit', year: 'numeric' })
+            : (isEnglish ? 'closed session' : 'sessione terminata')
+          const purgeText = purgeAfter
+            ? purgeAfter.toLocaleDateString(isEnglish ? 'en-GB' : 'it-IT', { day: '2-digit', month: '2-digit', year: 'numeric' })
+            : (isEnglish ? '30 days after deletion' : "30 giorni dall'eliminazione")
+
+          return (
+            <div key={session.id} className="flex flex-col gap-3 rounded-xl bg-white px-3 py-3 shadow-sm ring-1 ring-slate-200/70 md:flex-row md:items-center md:justify-between">
+              <div className="min-w-0">
+                <p className="truncate text-sm font-semibold text-slate-800">{session.title}</p>
+                <p className="mt-1 text-xs text-slate-500">
+                  {isEnglish ? 'Moved to trash' : 'Nel cestino'}: {deletedText} · {isEnglish ? 'Permanent cleanup' : 'Pulizia definitiva'}: {purgeText}
+                </p>
+              </div>
+              <div className="flex shrink-0 flex-wrap items-center gap-2">
+                <Button
+                  tone="neutral"
+                  surface="soft"
+                  density="compact"
+                  className="rounded-full"
+                  disabled={restorePending}
+                  onClick={() => onRestore(session.id)}
+                >
+                  {restorePending ? <Spinner className="mr-2" size="sm" tone="neutral" /> : <RotateCcw className="mr-1.5 h-3.5 w-3.5" />}
+                  {isEnglish ? 'Restore' : 'Recupera'}
+                </Button>
+                <Button
+                  tone="danger"
+                  surface="ghost"
+                  density="compact"
+                  className="rounded-full"
+                  disabled={permanentDeletePending}
+                  onClick={() => onPermanentDelete(session)}
+                >
+                  <Trash2 className="mr-1.5 h-3.5 w-3.5" />
+                  {isEnglish ? 'Delete forever' : 'Elimina per sempre'}
+                </Button>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </section>
   )
 }
 

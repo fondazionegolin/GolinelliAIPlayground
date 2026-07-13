@@ -76,33 +76,54 @@ export function StudentNavbar({
   const [showWhatsNew, setShowWhatsNew] = useState(false)
   const [voiceActive, setVoiceActive] = useState(false)
   const [chatBadge, setChatBadge] = useState(0)
+  const [documentsBadge, setDocumentsBadge] = useState(0)
   const dropdownRef = useRef<HTMLDivElement>(null)
   const mobileMenuRef = useRef<HTMLDivElement>(null)
+  const activeModuleRef = useRef<string | null | undefined>(activeModule)
 
-  // Chat-related updates (e.g. a teacher sharing new documents) bump a counter on
-  // the class-chat icon. Cleared when the student opens the chat.
+  useEffect(() => {
+    activeModuleRef.current = activeModule
+  }, [activeModule])
+
+  // Chat/task updates bump the class-chat icon. Teacher-shared documents are
+  // surfaced on the Documents nav item so students know where to act.
   useEffect(() => {
     let socket: any = null
-    const bump = () => setChatBadge((n) => n + 1)
+    const bumpChat = () => setChatBadge((n) => n + 1)
+    const bumpDocuments = () => {
+      if (activeModuleRef.current === 'documents') return
+      setDocumentsBadge((n) => n + 1)
+    }
     const attach = () => {
       const s = (window as any).socket
       if (s && s !== socket) {
         socket = s
-        s.on('document_uploaded', bump)
-        s.on('task_published', bump)
+        s.on('document_uploaded', bumpDocuments)
+        s.on('task_published', bumpChat)
       }
     }
     attach()
     const iv = setInterval(attach, 1500)
+    window.addEventListener('student-document-uploaded', bumpDocuments)
+    window.addEventListener('student-task-published', bumpChat)
     return () => {
       clearInterval(iv)
-      if (socket) { socket.off('document_uploaded', bump); socket.off('task_published', bump) }
+      window.removeEventListener('student-document-uploaded', bumpDocuments)
+      window.removeEventListener('student-task-published', bumpChat)
+      if (socket) {
+        socket.off('document_uploaded', bumpDocuments)
+        socket.off('task_published', bumpChat)
+      }
     }
   }, [])
 
   useEffect(() => {
     if (chatSidebarOpen) setChatBadge(0)
   }, [chatSidebarOpen])
+
+  useEffect(() => {
+    if (activeModule === 'documents') setDocumentsBadge(0)
+  }, [activeModule])
 
   const { t } = useTranslation()
   const [profile, setProfile] = useState<StudentProfile>({
@@ -221,6 +242,11 @@ export function StudentNavbar({
   const navItems = enabledModules
     ? ALL_NAV_ITEMS.filter(item => ALWAYS_SHOWN.has(item.key) || enabledModules.includes(item.key))
     : ALL_NAV_ITEMS
+  const getNavBadge = (key: string) => key === 'documents' ? documentsBadge : 0
+  const handleNavigate = (key: string) => {
+    if (key === 'documents') setDocumentsBadge(0)
+    onNavigate?.(key)
+  }
 
   return (
     <>
@@ -246,7 +272,7 @@ export function StudentNavbar({
             {/* Logo/Brand */}
             <div className="flex items-center gap-3 cursor-pointer" onClick={() => onNavigate?.(null)}>
               <LogoMark className="h-9 w-9" />
-              <div className="flex items-center gap-1.5">
+              <div className="flex items-center gap-1.5 pt-0.5">
                 <span className="brand-wordmark">
                   Golinelli<span className="brand-wordmark-ai">.ai</span>
                 </span>
@@ -289,8 +315,9 @@ export function StudentNavbar({
                       label={item.label}
                       isActive={activeModule === item.key}
                       isAdjacent={Math.abs(idx - activeIdx) === 1}
-                      onClick={() => onNavigate(item.key)}
+                      onClick={() => handleNavigate(item.key)}
                       accentTextClass="text-[var(--student-accent-text)]"
+                      badgeCount={getNavBadge(item.key)}
                     />
                   ))
                 })()}
@@ -316,7 +343,7 @@ export function StudentNavbar({
                   >
                     <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse shadow-sm shadow-green-300" />
                     <div className="text-left min-w-0">
-                      <span className="block max-w-[150px] truncate text-[13px] font-black leading-tight text-[var(--student-accent-text)]">{sessionTitle}</span>
+                      <span className="block max-w-[150px] truncate text-[11px] font-bold leading-tight text-[var(--student-accent-text)]">{sessionTitle}</span>
                       {joinCode && (
                         <span className="block text-[10px] font-mono font-black leading-tight tracking-widest" style={{ color: accentTheme.accent }}>{joinCode}</span>
                       )}
@@ -451,7 +478,7 @@ export function StudentNavbar({
                   <button
                     key={item.label}
                     onClick={() => {
-                      onNavigate?.(item.key)
+                      handleNavigate(item.key)
                       setShowMobileMenu(false)
                     }}
                     className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors ${activeModule === item.key
@@ -459,7 +486,14 @@ export function StudentNavbar({
                         : 'text-slate-600 hover:bg-[var(--student-accent-soft)] hover:text-[var(--student-accent-text)]'
                       }`}
                   >
-                    <item.icon className="h-4 w-4" />
+                    <span className="relative">
+                      <item.icon className="h-4 w-4" />
+                      {getNavBadge(item.key) > 0 && (
+                        <span className="absolute -right-2 -top-2 flex h-4 min-w-4 items-center justify-center rounded-full bg-[#fe004d] px-1 text-[10px] font-black leading-none text-white ring-2 ring-white">
+                          {getNavBadge(item.key) > 9 ? '9+' : getNavBadge(item.key)}
+                        </span>
+                      )}
+                    </span>
                     {item.label}
                   </button>
                 ))}
@@ -482,9 +516,9 @@ export function StudentNavbar({
               return (
                 <button
                   key={item.key}
-                  onClick={() => onNavigate(item.key)}
+                  onClick={() => handleNavigate(item.key)}
                   aria-label={item.label}
-                  className="flex h-11 w-11 items-center justify-center rounded-xl border text-slate-600 transition-colors hover:bg-white/70 hover:text-[var(--student-accent-text)]"
+                  className="relative flex h-11 w-11 items-center justify-center rounded-xl border text-slate-600 transition-colors hover:bg-white/70 hover:text-[var(--student-accent-text)]"
                   style={isActiveItem
                     ? {
                         backgroundColor: accentTheme.accent,
@@ -497,6 +531,11 @@ export function StudentNavbar({
                       }}
                 >
                   <Icon className="h-5 w-5" />
+                  {getNavBadge(item.key) > 0 && (
+                    <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-[#fe004d] px-1 text-[10px] font-black leading-none text-white ring-2 ring-white">
+                      {getNavBadge(item.key) > 9 ? '9+' : getNavBadge(item.key)}
+                    </span>
+                  )}
                 </button>
               )
             })}

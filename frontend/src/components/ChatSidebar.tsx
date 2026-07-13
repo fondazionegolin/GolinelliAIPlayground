@@ -1057,7 +1057,7 @@ export default function ChatSidebar({
                         <File className="h-4.5 w-4.5" style={{ width: 18, height: 18 }} />
                       </span>
                       <div className="min-w-0 flex-1">
-                        <p className="truncate text-[10px] font-black uppercase tracking-wide text-sky-700">Progetto Coding Lab</p>
+                        <p className="truncate text-[10px] font-black uppercase tracking-wide text-sky-700">Progetto Vibe Lab</p>
                         <p className="truncate text-xs font-semibold text-slate-800">{att.title || 'Mini app condivisa'}</p>
                         <p className="mt-0.5 truncate text-[10px] text-slate-500">
                           {att.file_count ?? 0} file · {att.total_lines ?? 0} righe
@@ -1065,7 +1065,7 @@ export default function ChatSidebar({
                       </div>
                     </div>
                     <span className="mt-2 inline-flex w-full items-center justify-center rounded-lg bg-sky-600 px-2 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-sky-700">
-                      Apri nel Coding Lab
+                      Apri nel Vibe Lab
                     </span>
                   </button>
                 ))}
@@ -1092,7 +1092,7 @@ export default function ChatSidebar({
                         <CornerUpLeft className="h-4.5 w-4.5" style={{ width: 18, height: 18 }} />
                       </span>
                       <div className="min-w-0 flex-1">
-                        <p className="truncate text-[10px] font-black uppercase tracking-wide text-[#55449c]">Commit Coding Lab</p>
+                        <p className="truncate text-[10px] font-black uppercase tracking-wide text-[#55449c]">Commit Vibe Lab</p>
                         <p className="truncate text-xs font-semibold text-slate-800">
                           {att.contributor_name || 'Studente'} ha inviato una proposta
                         </p>

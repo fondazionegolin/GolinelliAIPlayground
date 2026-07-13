@@ -1,11 +1,12 @@
 import { lazy, Suspense, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Button } from '@/components/ui/button'
-import { Plus, Settings, Eye, Trash2, FileText, Loader2 } from 'lucide-react'
+import { Plus, Settings, Eye, Trash2, FileText, Loader2, Wand2 } from 'lucide-react'
 import { useToast } from '@/components/ui/use-toast'
 import { teacherbotsApi } from '@/lib/api'
 import TeacherbotForm from './TeacherbotForm'
 import TeacherbotReportsPanel from './TeacherbotReportsPanel'
+import { resolveTeacherbotIcon } from '@/lib/teacherbotIcons'
 const ChatbotModule = lazy(() => import('@/pages/student/ChatbotModule'))
 
 interface Teacherbot {
@@ -141,6 +142,13 @@ export default function TeacherbotsPanel({ onOpenSettings, onCreateNew }: Teache
     return colorMap[color] || 'text-slate-400 hover:text-slate-700 hover:bg-slate-100'
   }
 
+  const renderBotIcon = (icon: string) => {
+    const resolved = resolveTeacherbotIcon(icon)
+    if (resolved.kind === 'lucide') return <resolved.Icon className="h-3.5 w-3.5" />
+    if (resolved.kind === 'emoji') return <span className="text-sm leading-none">{resolved.emoji}</span>
+    return <Wand2 className="h-3.5 w-3.5" />
+  }
+
   if (viewMode === 'create') {
     return <TeacherbotForm onBack={handleBack} onSaved={handleSaved} />
   }
@@ -199,6 +207,9 @@ export default function TeacherbotsPanel({ onOpenSettings, onCreateNew }: Teache
               className={`rounded-[18px] border px-3.5 py-3 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md ${getCardBg(bot.color)}`}
             >
               <div className="mb-1.5 flex items-center gap-2">
+                <span className={`flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-lg ${getIconColor(bot.color)}`}>
+                  {renderBotIcon(bot.icon)}
+                </span>
                 {renderStatusDot(bot.status)}
                 <p className="min-w-0 flex-1 truncate text-sm font-black leading-tight text-slate-900">{bot.name}</p>
               </div>

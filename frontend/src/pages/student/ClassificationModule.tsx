@@ -93,6 +93,40 @@ const DOT_COLORS = [
   'bg-teal-500',
 ]
 
+const TEXT_CLASSIFICATION_EXAMPLE_CSV = `testo,etichetta
+"Mi piace molto questa lezione",positivo
+"L'attivita e chiara e utile",positivo
+"Non ho capito la consegna",negativo
+"Il testo e troppo difficile",negativo
+"Vorrei un esempio in piu",neutro
+"La spiegazione e abbastanza chiara",neutro
+"Il laboratorio e interessante",positivo
+"Mi sento bloccato",negativo
+"Serve piu tempo per provare",neutro
+"Ho completato il compito senza problemi",positivo`
+
+const DATA_CLASSIFICATION_EXAMPLE_CSV = `ore_studio,quiz_completati,partecipazione,esito
+2,1,bassa,da_rinforzare
+5,3,media,in_crescita
+8,5,alta,autonomo
+1,0,bassa,da_rinforzare
+6,4,media,in_crescita
+9,6,alta,autonomo
+3,2,media,in_crescita
+7,5,alta,autonomo
+2,1,bassa,da_rinforzare
+6,3,media,in_crescita`
+
+function downloadCsv(filename: string, csv: string) {
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
 // ─── Dataset generation algorithm ─────────────────────────────────────────────
 
 function generateDataset(cols: ColumnDef[], rowCount: number, correlations: CorrelationDef[]): string {
@@ -802,23 +836,21 @@ function MLLabHome({
           initial={{ opacity: 0, y: -16 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.45 }}
-          className="border-b border-slate-200 py-6 md:py-7"
+          className="border-b border-slate-200 py-7"
         >
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-            <div className="max-w-3xl">
-              <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5">
-                <Sparkles className="h-3.5 w-3.5 text-violet-600" />
-                <span className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-600">Machine Learning Lab</span>
-              </div>
-              <h1 className="mt-4 text-3xl font-extrabold tracking-tight text-slate-950 md:text-4xl">
-                {t('classification.title')}
-              </h1>
-              <p className="mt-3 max-w-2xl text-base leading-7 text-slate-600">
-                {t('classification.subtitle')}
-              </p>
+          <div className="mx-auto max-w-3xl text-center">
+            <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5">
+              <Sparkles className="h-3.5 w-3.5 text-violet-600" />
+              <span className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-600">Machine Learning Lab</span>
             </div>
+            <h1 className="mt-4 text-3xl font-extrabold tracking-tight text-slate-950 md:text-4xl">
+              {t('classification.title')}
+            </h1>
+            <p className="mx-auto mt-3 max-w-2xl text-base leading-7 text-slate-600">
+              {t('classification.subtitle')}
+            </p>
 
-            <div className="max-w-md rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
+            <div className="mx-auto mt-6 max-w-xl rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-left">
               <div className="flex items-start gap-3">
                 <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white text-slate-700">
                   <Lightbulb className="h-4 w-4" />
@@ -836,7 +868,7 @@ function MLLabHome({
           </div>
         </motion.div>
 
-        <div className="grid grid-cols-1 gap-4 py-5 md:grid-cols-3">
+        <div className="mx-auto grid max-w-6xl grid-cols-1 gap-4 py-5 md:grid-cols-3">
           {modes.map((m, i) => {
             const Illustration = m.illustration
             return (
@@ -946,8 +978,8 @@ function ImageClassification({ onBack, sessionId }: { onBack: () => void; sessio
   const isEnglish = i18n.resolvedLanguage?.startsWith('en') ?? false
   const { toast } = useToast()
   const [classes, setClasses] = useState<ImageClass[]>([
-    { id: '1', name: isEnglish ? 'Class 1' : 'Classe 1', samples: [], color: CLASS_COLORS[0] },
-    { id: '2', name: isEnglish ? 'Class 2' : 'Classe 2', samples: [], color: CLASS_COLORS[1] },
+    { id: '1', name: isEnglish ? 'Pens' : 'Penne', samples: [], color: CLASS_COLORS[0] },
+    { id: '2', name: isEnglish ? 'Notebooks' : 'Quaderni', samples: [], color: CLASS_COLORS[1] },
   ])
   const [isCapturing, setIsCapturing] = useState<string | null>(null)
   const [isTraining, setIsTraining] = useState(false)
@@ -1326,6 +1358,22 @@ function ImageClassification({ onBack, sessionId }: { onBack: () => void; sessio
           iconColor="text-rose-600"
         />
 
+        <div className="mb-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3">
+          <div className="flex items-start gap-3">
+            <Info className="mt-0.5 h-4 w-4 shrink-0 text-rose-600" />
+            <div>
+              <p className="text-sm font-semibold text-rose-900">
+                {isEnglish ? 'How this activity works' : 'Come funziona questa attivita'}
+              </p>
+              <p className="mt-1 text-xs leading-5 text-rose-800">
+                {isEnglish
+                  ? 'Choose what each class represents, then collect many examples for every class. While you hold the capture button, the webcam saves repeated frames that become the training examples.'
+                  : 'Scegli cosa rappresenta ogni classe, poi raccogli molti esempi per ciascuna. Quando tieni premuto il pulsante di acquisizione, la webcam salva piu fotogrammi che diventano esempi di addestramento.'}
+              </p>
+            </div>
+          </div>
+        </div>
+
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 pb-20 lg:pb-0">
           {/* Webcam Panel */}
           <Card className="lg:col-span-1 rounded-xl border-slate-200">
@@ -1454,6 +1502,7 @@ function ImageClassification({ onBack, sessionId }: { onBack: () => void; sessio
                     <Input
                       value={cls.name}
                       onChange={(e) => updateClassName(cls.id, e.target.value)}
+                      placeholder={isEnglish ? 'e.g. pens, notebooks, hands' : 'es. penne, quaderni, mani'}
                       className="h-8 flex-1"
                     />
                     <span className="text-sm text-muted-foreground">
@@ -1477,6 +1526,11 @@ function ImageClassification({ onBack, sessionId }: { onBack: () => void; sessio
                       </Button>
                     )}
                   </div>
+                  <p className="mb-2 text-xs leading-5 text-slate-500">
+                    {isEnglish
+                      ? 'Rename the class with the object or situation you are showing to the webcam.'
+                      : "Rinomina la classe con l'oggetto o la situazione che mostri alla webcam."}
+                  </p>
 
                   <div className="flex items-center gap-2 mb-2">
                     <Button
@@ -1516,6 +1570,11 @@ function ImageClassification({ onBack, sessionId }: { onBack: () => void; sessio
                       </Button>
                     </div>
                   </div>
+                  <p className="mb-2 text-xs leading-5 text-slate-500">
+                    {isEnglish
+                      ? 'Hold to capture repeated frames. Aim for at least 10 varied examples per class.'
+                      : 'Tieni premuto per registrare piu fotogrammi. Punta ad almeno 10 esempi vari per classe.'}
+                  </p>
 
                   <div className="flex flex-wrap gap-1 max-h-24 overflow-y-auto">
                     {cls.samples.map((sample, idx) => (
@@ -1869,10 +1928,30 @@ function TextClassification({
                   onChange={handleFileUpload}
                   className="hidden"
                 />
-                <Button onClick={() => fileInputRef.current?.click()}>
-                  <Upload className="h-4 w-4 mr-2" />
-                  {t('classification.select_csv')}
-                </Button>
+                <div className="mb-4 rounded-lg bg-blue-50 px-3 py-2 text-left">
+                  <p className="text-xs font-semibold text-blue-900">
+                    {isEnglish ? 'CSV structure' : 'Struttura del CSV'}
+                  </p>
+                  <p className="mt-1 text-xs leading-5 text-blue-800">
+                    {isEnglish
+                      ? 'Each row contains the text to learn from and the final label. Example: "This lesson is clear,positive".'
+                      : 'Ogni riga contiene il testo da cui imparare e l etichetta finale. Esempio: "Questa lezione e chiara,positivo".'}
+                  </p>
+                </div>
+                <div className="flex flex-col gap-2 sm:flex-row sm:justify-center">
+                  <Button onClick={() => fileInputRef.current?.click()}>
+                    <Upload className="h-4 w-4 mr-2" />
+                    {t('classification.select_csv')}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => downloadCsv(isEnglish ? 'text-classification-example.csv' : 'esempio-classificazione-testo.csv', TEXT_CLASSIFICATION_EXAMPLE_CSV)}
+                  >
+                    <Download className="h-4 w-4 mr-2" />
+                    {isEnglish ? 'Download example' : 'Scarica esempio'}
+                  </Button>
+                </div>
                 <p className="text-xs text-muted-foreground mt-2">
                   {t('classification.format_hint')}
                 </p>
@@ -1974,9 +2053,23 @@ function TextClassification({
                   )}
                 </>
               ) : (
-                <p className="text-center text-muted-foreground py-8">
-                  {t('classification.no_model_hint')}
-                </p>
+                <div className="space-y-3 py-2">
+                  <textarea
+                    disabled
+                    placeholder={isEnglish
+                      ? 'After training, write a new sentence here to see which label the model assigns.'
+                      : 'Dopo l addestramento, scrivi qui una nuova frase per vedere quale etichetta assegna il modello.'}
+                    className="h-32 w-full resize-none rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-400"
+                  />
+                  <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-500">
+                    <p className="font-semibold text-slate-700">{t('classification.no_model_hint')}</p>
+                    <p className="mt-1 text-xs leading-5">
+                      {isEnglish
+                        ? 'This area becomes active after the model is trained. It will classify text you write, based only on the labels found in the CSV.'
+                        : "Questa area si attiva dopo l'addestramento. Classifichera il testo che scrivi usando solo le etichette trovate nel CSV."}
+                    </p>
+                  </div>
+                </div>
               )}
             </CardContent>
           </Card>
@@ -2299,6 +2392,22 @@ function DataClassification({
           iconColor="text-emerald-600"
         />
 
+        <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3">
+          <div className="flex items-start gap-3">
+            <Info className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
+            <div>
+              <p className="text-sm font-semibold text-emerald-900">
+                {isEnglish ? 'What happens after upload' : 'Cosa succede dopo il caricamento'}
+              </p>
+              <p className="mt-1 text-xs leading-5 text-emerald-800">
+                {isEnglish
+                  ? 'ML Lab reads the CSV columns, helps you choose the target to predict, suggests classification or regression, then enables a test form with the remaining columns.'
+                  : 'ML Lab legge le colonne del CSV, ti aiuta a scegliere la colonna da predire, suggerisce classificazione o regressione e poi abilita un form di test con le altre colonne.'}
+              </p>
+            </div>
+          </div>
+        </div>
+
         <div className="space-y-4">
           {/* Upload Panel */}
           <Card className="rounded-xl border-slate-200">
@@ -2378,10 +2487,31 @@ function DataClassification({
                   onChange={handleFileUpload}
                   className="hidden"
                 />
-                <Button onClick={() => fileInputRef.current?.click()} className="w-full">
-                  <Upload className="h-4 w-4 mr-2" />
-                  {t('classification.select_csv')}
-                </Button>
+                <div className="mb-4 rounded-lg bg-emerald-50 px-3 py-2 text-left">
+                  <p className="text-xs font-semibold text-emerald-900">
+                    {isEnglish ? 'CSV file expected' : 'File CSV richiesto'}
+                  </p>
+                  <p className="mt-1 text-xs leading-5 text-emerald-800">
+                    {isEnglish
+                      ? 'Use one header row and at least 10 data rows. One column should be the value or category you want the model to predict.'
+                      : 'Usa una riga di intestazione e almeno 10 righe di dati. Una colonna deve essere il valore o la categoria che vuoi far predire al modello.'}
+                  </p>
+                </div>
+                <div className="flex flex-col gap-2 sm:flex-row">
+                  <Button onClick={() => fileInputRef.current?.click()} className="flex-1">
+                    <Upload className="h-4 w-4 mr-2" />
+                    {t('classification.select_csv')}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="flex-1"
+                    onClick={() => downloadCsv(isEnglish ? 'tabular-classification-example.csv' : 'esempio-dati-tabellari.csv', DATA_CLASSIFICATION_EXAMPLE_CSV)}
+                  >
+                    <Download className="h-4 w-4 mr-2" />
+                    {isEnglish ? 'Download example' : 'Scarica esempio'}
+                  </Button>
+                </div>
                 <p className="text-xs text-emerald-500 mt-2">
                   {isEnglish ? 'You can also drag a CSV here' : 'Puoi anche trascinare un CSV qui'}
                 </p>
@@ -2473,6 +2603,26 @@ function DataClassification({
             </Card>
           )}
 
+          {data.length > 0 && !targetColumn && (
+            <Card className="rounded-xl border-dashed border-slate-200 bg-slate-50">
+              <CardContent className="py-4">
+                <div className="flex items-start gap-3 text-sm text-slate-600">
+                  <ChevronRight className="mt-0.5 h-4 w-4 text-slate-400" />
+                  <div>
+                    <p className="font-semibold text-slate-800">
+                      {isEnglish ? 'Next step: choose the target column' : 'Prossimo passaggio: scegli la colonna target'}
+                    </p>
+                    <p className="mt-1 text-xs leading-5">
+                      {isEnglish
+                        ? 'The target is what the model will try to predict. All other columns become the input clues.'
+                        : 'La target e cio che il modello provera a predire. Tutte le altre colonne diventano gli indizi di input.'}
+                    </p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
           {/* Training */}
           {targetColumn && (
             <Card className="rounded-xl border-slate-200">
@@ -2509,6 +2659,32 @@ function DataClassification({
                     </p>
                   </div>
                 )}
+              </CardContent>
+            </Card>
+          )}
+
+          {targetColumn && !model && (
+            <Card className="rounded-xl border-dashed border-slate-200 bg-slate-50">
+              <CardHeader>
+                <CardTitle className="text-base flex items-center gap-2 text-slate-700">
+                  <AlertCircle className="h-5 w-5" />
+                  {t('classification.prediction_title')}
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-4 opacity-60">
+                  {columns.filter(c => c.name !== targetColumn).slice(0, 3).map(col => (
+                    <div key={col.name}>
+                      <label className="text-xs font-medium text-gray-600">{col.name}</label>
+                      <Input disabled value={String(col.sampleValues[0] || '')} className="mt-1 bg-white" />
+                    </div>
+                  ))}
+                </div>
+                <p className="text-sm text-slate-500">
+                  {isEnglish
+                    ? 'After training, this test area will let you enter new values and see the predicted result.'
+                    : 'Dopo l addestramento, questa area di test ti permettera di inserire nuovi valori e vedere il risultato predetto.'}
+                </p>
               </CardContent>
             </Card>
           )}
