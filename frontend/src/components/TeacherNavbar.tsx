@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, type CSSProperties } from 'react'
 import { Link, useNavigate, useLocation } from 'react-router-dom'
-import { User, Settings, LogOut, ChevronDown, Users, MessageSquare, Mic, FileText, Check, Brain, FileCode2, KeyRound, Loader2, ShieldCheck, BookOpen, Zap, Box, Code2, KanbanSquare, Network } from 'lucide-react'
+import { User, Settings, LogOut, ChevronDown, Users, MessageSquare, Mic, FileText, Check, Brain, FileCode2, KeyRound, Loader2, ShieldCheck, BookOpen, Zap, Box, Code2, KanbanSquare, Network, Bot } from 'lucide-react'
+import { AcademicAiIcon } from '@/components/icons/AcademicAiIcon'
 import { Button } from './ui/button'
 import { useToast } from '@/components/ui/use-toast'
 import { LogoMark } from './LogoMark'
@@ -18,6 +19,7 @@ import { NavbarCalendarClock } from './NavbarCalendarClock'
 import WhatsNewModal from './WhatsNewModal'
 import { buildAccentNavbarStyle, buildAccentNavClusterStyle } from '@/lib/navbarGlass'
 import { CreditBalancePill } from './CreditBalancePill'
+import { ServerHealthIndicator } from './ServerHealthIndicator'
 
 interface TeacherProfile {
   firstName: string
@@ -325,17 +327,18 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
   })
 
   const navItems = [
-    { path: '/teacher', label: t('navbar.nav_support'), icon: MessageSquare },
+    { path: '/teacher', label: t('navbar.nav_support'), icon: AcademicAiIcon },
     { path: '/teacher/classes', label: t('navbar.nav_classes'), icon: Users },
     { path: '/teacher/documents', label: t('navbar.nav_documents'), icon: FileText },
+    { path: '/teacher/teacherbots', label: t('navbar.nav_teacherbots'), icon: Bot },
     { path: '/teacher/ml-lab', label: t('navbar.nav_ml_lab'), icon: Brain },
     { path: '/teacher/notebooks', label: t('navbar.nav_notebook'), icon: FileCode2 },
     { path: '/teacher/coding', label: t('navbar.nav_coding_lab'), icon: Code2 },
     { path: '/teacher/boards', label: 'Board', icon: KanbanSquare },
     { path: '/teacher/live-interaction', label: 'Live', icon: Zap },
     { path: '/teacher/3d-lab', label: '3D Lab', icon: Box },
-    { path: '/teacher/toy-lm', label: 'Toy LM', icon: Network },
-    ...(boardAccess?.has_access ? [{ path: '/teacher/feedback-board', label: 'Board sviluppo', icon: ShieldCheck }] : []),
+    { path: '/teacher/toy-lm', label: 'ToyGPT', icon: Network },
+    ...(boardAccess?.has_access ? [{ path: '/teacher/feedback-board', label: 'Backlog', icon: ShieldCheck }] : []),
   ]
 
   const handleNotificationClick = (notification: TeacherNotification) => {
@@ -375,6 +378,7 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
                 <span className="brand-wordmark">
                   Golinelli<span className="brand-wordmark-ai">.ai</span>
                 </span>
+                <ServerHealthIndicator />
                 <button
                   type="button"
                   onClick={(e) => {

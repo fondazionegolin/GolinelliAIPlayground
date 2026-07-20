@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { motion, AnimatePresence } from 'framer-motion'
+import { motion, AnimatePresence, Reorder, useDragControls } from 'framer-motion'
 import { liveInteractionApi } from '@/lib/api'
 import { useToast } from '@/components/ui/use-toast'
 import { Button } from '@/components/ui/button'
@@ -9,7 +9,7 @@ import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import {
-  Plus, Trash2, Play, ChevronDown, ChevronUp,
+  Plus, Minus, Trash2, Play, ChevronDown, ChevronUp,
   ListChecks, CloudLightning, MessageSquare, ThumbsUp, GripVertical, Pencil,
   Radio, FileBarChart2, HelpCircle, X, SkipForward, BarChart2, Smartphone,
   ArrowRight, CheckCircle2, Zap, Pause,
@@ -29,6 +29,18 @@ interface Slide {
   show_ranking?: boolean
   max_words?: number
 }
+
+interface EditableSlide {
+  key: string
+  slide: Slide
+}
+
+const editableSlide = (slide: Slide): EditableSlide => ({
+  key: typeof crypto !== 'undefined' && 'randomUUID' in crypto
+    ? crypto.randomUUID()
+    : `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+  slide,
+})
 
 interface LiveInteractionItem {
   id: string
@@ -554,23 +566,46 @@ function FeedbackEditor({ slide, onChange }: { slide: Slide; onChange: (s: Slide
 }
 
 function SlideCard({
-  slide, index, total, expanded, onToggle, onChange, onDelete, onMoveUp, onMoveDown,
+  item, index, expanded, onToggle, onChange, onDelete, onDragStart,
 }: {
-  slide: Slide; index: number; total: number; expanded: boolean
+  item: EditableSlide; index: number; expanded: boolean
   onToggle: () => void; onChange: (s: Slide) => void; onDelete: () => void
-  onMoveUp: () => void; onMoveDown: () => void
+  onDragStart: () => void
 }) {
+  const slide = item.slide
+  const dragControls = useDragControls()
   const Icon = SLIDE_ICONS[slide.type]
   const colorCls = SLIDE_COLORS[slide.type]
   const title = slide.question || slide.prompt || `Slide ${index + 1}`
 
   return (
-    <div className="border border-slate-200 rounded-xl overflow-hidden bg-white shadow-sm">
+    <Reorder.Item
+      value={item}
+      dragListener={false}
+      dragControls={dragControls}
+      onDragStart={onDragStart}
+      whileDrag={{ scale: 1.015, boxShadow: '0 18px 45px rgba(15, 23, 42, 0.16)' }}
+      className="relative z-0 list-none rounded-xl data-[dragging=true]:z-20"
+    >
+    <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
       <div
         className="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-slate-50 transition-colors"
         onClick={onToggle}
       >
-        <GripVertical className="h-4 w-4 text-slate-300 flex-shrink-0" />
+        <button
+          type="button"
+          aria-label={`Trascina per riordinare la slide ${index + 1}`}
+          title="Trascina per cambiare posizione"
+          onPointerDown={(event) => {
+            event.stopPropagation()
+            dragControls.start(event)
+          }}
+          onClick={event => event.stopPropagation()}
+          className="-ml-1 flex h-8 w-7 flex-shrink-0 touch-none items-center justify-center rounded-lg text-slate-300 transition hover:bg-slate-100 hover:text-slate-600 active:cursor-grabbing"
+          style={{ cursor: 'grab' }}
+        >
+          <GripVertical className="h-4 w-4" />
+        </button>
         <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium border ${colorCls}`}>
           <Icon className="h-3 w-3" />
           {SLIDE_LABELS[slide.type]}
@@ -578,12 +613,6 @@ function SlideCard({
         <span className="flex-1 text-sm text-slate-700 truncate">{title}</span>
         <span className="text-xs text-slate-400">{slide.max_seconds}s</span>
         <div className="flex items-center gap-1 ml-2" onClick={e => e.stopPropagation()}>
-          <button disabled={index === 0} onClick={onMoveUp} className="p-1 text-slate-400 hover:text-slate-700 disabled:opacity-30">
-            <ChevronUp className="h-4 w-4" />
-          </button>
-          <button disabled={index === total - 1} onClick={onMoveDown} className="p-1 text-slate-400 hover:text-slate-700 disabled:opacity-30">
-            <ChevronDown className="h-4 w-4" />
-          </button>
           <button onClick={onDelete} className="p-1 text-slate-400 hover:text-red-500">
             <Trash2 className="h-4 w-4" />
           </button>
@@ -600,17 +629,49 @@ function SlideCard({
             {slide.type === 'feedback' && <FeedbackEditor slide={slide} onChange={onChange} />}
             <div>
               <label className="text-xs font-medium text-slate-600 mb-1 block">Tempo massimo (secondi)</label>
-              <Input
-                type="number" min={10} max={600}
-                value={slide.max_seconds}
-                onChange={e => onChange({ ...slide, max_seconds: parseInt(e.target.value) || 60 })}
-                className="w-28 h-8 text-sm"
-              />
+              <div className="inline-flex h-9 items-stretch overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+                <button
+                  type="button"
+                  onClick={() => onChange({ ...slide, max_seconds: Math.max(10, slide.max_seconds - 5) })}
+                  disabled={slide.max_seconds <= 10}
+                  className="flex w-9 items-center justify-center border-r border-slate-200 text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-35"
+                  aria-label="Riduci il tempo massimo di 5 secondi"
+                  title="Riduci di 5 secondi"
+                >
+                  <Minus className="h-3.5 w-3.5" />
+                </button>
+                <Input
+                  type="number"
+                  min={10}
+                  max={600}
+                  step={5}
+                  value={slide.max_seconds}
+                  onChange={event => {
+                    const nextValue = Number.parseInt(event.target.value, 10)
+                    if (Number.isFinite(nextValue)) {
+                      onChange({ ...slide, max_seconds: Math.min(600, Math.max(10, nextValue)) })
+                    }
+                  }}
+                  className="h-full w-16 rounded-none border-0 px-2 text-center text-sm shadow-none focus-visible:ring-0"
+                  aria-label="Tempo massimo in secondi"
+                />
+                <button
+                  type="button"
+                  onClick={() => onChange({ ...slide, max_seconds: Math.min(600, slide.max_seconds + 5) })}
+                  disabled={slide.max_seconds >= 600}
+                  className="flex w-9 items-center justify-center border-l border-slate-200 text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-35"
+                  aria-label="Aumenta il tempo massimo di 5 secondi"
+                  title="Aumenta di 5 secondi"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                </button>
+              </div>
             </div>
           </div>
         </div>
       )}
     </div>
+    </Reorder.Item>
   )
 }
 
@@ -669,7 +730,7 @@ function InteractionEditor({
   const navigate = useNavigate()
 
   const [title, setTitle] = useState('')
-  const [slides, setSlides] = useState<Slide[]>([])
+  const [slides, setSlides] = useState<EditableSlide[]>([])
   const [expandedIdx, setExpandedIdx] = useState<number | null>(0)
   const [showTypeMenu, setShowTypeMenu] = useState(false)
 
@@ -680,13 +741,17 @@ function InteractionEditor({
   })
 
   useEffect(() => {
-    if (existing) { setTitle(existing.title); setSlides(existing.slides_json || []) }
+    if (existing) {
+      setTitle(existing.title)
+      setSlides(((existing.slides_json || []) as Slide[]).map(editableSlide))
+    }
   }, [existing])
 
   const saveMutation = useMutation({
     mutationFn: async () => {
-      if (interactionId) return liveInteractionApi.update(interactionId, { title, slides_json: slides })
-      return liveInteractionApi.create({ session_id: sessionId, title, slides_json: slides })
+      const slidesJson = slides.map(item => item.slide)
+      if (interactionId) return liveInteractionApi.update(interactionId, { title, slides_json: slidesJson })
+      return liveInteractionApi.create({ session_id: sessionId, title, slides_json: slidesJson })
     },
     onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ['live-interactions', sessionId] })
@@ -698,19 +763,12 @@ function InteractionEditor({
   })
 
   const addSlide = (type: SlideType) => {
-    setSlides(prev => [...prev, defaultSlide(type)])
+    setSlides(prev => [...prev, editableSlide(defaultSlide(type))])
     setExpandedIdx(slides.length)
     setShowTypeMenu(false)
   }
-  const updateSlide = (i: number, s: Slide) => setSlides(prev => prev.map((x, j) => j === i ? s : x))
+  const updateSlide = (i: number, s: Slide) => setSlides(prev => prev.map((item, j) => j === i ? { ...item, slide: s } : item))
   const deleteSlide = (i: number) => setSlides(prev => prev.filter((_, j) => j !== i))
-  const moveSlide = (i: number, dir: -1 | 1) => {
-    setSlides(prev => {
-      const next = [...prev]; const j = i + dir
-      ;[next[i], next[j]] = [next[j], next[i]]
-      return next
-    })
-  }
 
   if (isLoading) return <div className="p-8 text-center text-slate-400">Caricamento...</div>
 
@@ -726,20 +784,19 @@ function InteractionEditor({
         />
       </div>
 
-      <div className="space-y-2">
-        {slides.map((slide, i) => (
+      <Reorder.Group axis="y" values={slides} onReorder={setSlides} className="space-y-2">
+        {slides.map((item, i) => (
           <SlideCard
-            key={i}
-            slide={slide} index={i} total={slides.length}
+            key={item.key}
+            item={item} index={i}
             expanded={expandedIdx === i}
             onToggle={() => setExpandedIdx(expandedIdx === i ? null : i)}
             onChange={s => updateSlide(i, s)}
             onDelete={() => deleteSlide(i)}
-            onMoveUp={() => moveSlide(i, -1)}
-            onMoveDown={() => moveSlide(i, 1)}
+            onDragStart={() => setExpandedIdx(null)}
           />
         ))}
-      </div>
+      </Reorder.Group>
 
       <div className="sticky bottom-0 z-30 space-y-3 border-t border-slate-100 bg-white/95 py-3 backdrop-blur">
       <div className="relative">

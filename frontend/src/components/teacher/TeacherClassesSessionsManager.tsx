@@ -3,13 +3,15 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import {
-  BookOpen,
   Check,
+  Archive,
   ChevronRight,
   Clock,
   Copy,
   Edit2,
   FileText,
+  LayoutGrid,
+  List,
   MonitorPlay,
   Pause,
   Plus,
@@ -17,6 +19,7 @@ import {
   School,
   Search,
   Share2,
+  Square,
   Trash2,
   UserPlus,
   Users,
@@ -54,6 +57,7 @@ interface ClassData {
   session_count?: number
   role?: 'owner' | 'invited'
   owner_name?: string
+  archived_at?: string | null
 }
 
 interface SessionData {
@@ -69,10 +73,31 @@ interface SessionData {
   purge_after?: string | null
 }
 
+export interface TeacherCurrentSession {
+  id: string
+  name: string
+  className: string
+  joinCode?: string
+}
+
+interface CurrentSessionLiveData {
+  session: {
+    id: string
+    class_id: string
+    title: string
+    join_code?: string
+    status: SessionData['status']
+    class_name: string
+  }
+  students?: unknown[]
+}
+
 export default function TeacherClassesSessionsManager({
   entryMode,
+  currentSession,
 }: {
   entryMode: 'classes' | 'sessions'
+  currentSession?: TeacherCurrentSession | null
 }) {
   const { t, i18n } = useTranslation()
   const isEnglish = i18n.resolvedLanguage?.startsWith('en') ?? false
@@ -81,8 +106,7 @@ export default function TeacherClassesSessionsManager({
   const { toast } = useToast()
   const [searchParams, setSearchParams] = useSearchParams()
   const { data: teacherProfile } = useTeacherProfile()
-  // Highlights/evidenze on this screen use a slightly darker grey (no colour):
-  // selected class + active session read as "evidenza" via grey, like the buttons.
+  // The selected class keeps a neutral accent; session status colours are handled separately.
   const accentTheme = { ...getTeacherAccentTheme(teacherProfile?.uiAccent), accent: '#64748b', text: '#334155' }
 
   const [selectedClassId, setSelectedClassId] = useState(searchParams.get('class') || '')
@@ -100,8 +124,8 @@ export default function TeacherClassesSessionsManager({
   ], [t])
   const statusMeta: Record<string, { label: string; tone: string; dot: string }> = {
     draft: { label: t('sessions.status_draft'), tone: 'logo-ink', dot: 'bg-[var(--logo-ink)]' },
-    active: { label: t('sessions.status_active'), tone: 'logo-blue', dot: 'bg-[var(--logo-blue)]' },
-    paused: { label: t('sessions.status_paused'), tone: 'logo-violet', dot: 'bg-[var(--logo-violet)]' },
+    active: { label: t('sessions.status_active'), tone: 'logo-violet', dot: 'bg-[var(--logo-violet)]' },
+    paused: { label: t('sessions.status_paused'), tone: 'logo-pink', dot: 'bg-[var(--logo-pink)]' },
     finished: { label: t('sessions.status_ended'), tone: 'logo-pink', dot: 'bg-[var(--logo-pink)]' },
     ended: { label: t('sessions.status_ended'), tone: 'logo-pink', dot: 'bg-[var(--logo-pink)]' },
   }
@@ -113,13 +137,23 @@ export default function TeacherClassesSessionsManager({
   const [newSessionTitle, setNewSessionTitle] = useState('')
   const [sessionToTrash, setSessionToTrash] = useState<SessionData | null>(null)
   const [sessionToPermanentlyDelete, setSessionToPermanentlyDelete] = useState<SessionData | null>(null)
+  const [showArchivedClasses, setShowArchivedClasses] = useState(false)
   const [editingTitleId, setEditingTitleId] = useState<string | null>(null)
   const [editingTitleValue, setEditingTitleValue] = useState('')
+  const [sessionViewMode, setSessionViewMode] = useState<'grid' | 'list'>(() =>
+    window.localStorage.getItem('teacher-session-view-mode') === 'list' ? 'list' : 'grid'
+  )
 
-  const { data: classes = [], isLoading: isClassesLoading } = useQuery<ClassData[]>({
+  useEffect(() => {
+    window.localStorage.setItem('teacher-session-view-mode', sessionViewMode)
+  }, [sessionViewMode])
+
+  const { data: allClasses = [], isLoading: isClassesLoading } = useQuery<ClassData[]>({
     queryKey: ['classes'],
-    queryFn: async () => (await teacherApi.getClasses()).data,
+    queryFn: async () => (await teacherApi.getClasses({ include_archived: true })).data,
   })
+  const classes = useMemo(() => allClasses.filter(cls => !cls.archived_at), [allClasses])
+  const archivedClasses = useMemo(() => allClasses.filter(cls => cls.archived_at && cls.role === 'owner'), [allClasses])
 
   useEffect(() => {
     if (!classes.length) return
@@ -154,6 +188,14 @@ export default function TeacherClassesSessionsManager({
     refetchOnWindowFocus: false,
   })
 
+  const { data: currentSessionLive } = useQuery<CurrentSessionLiveData>({
+    queryKey: ['session-live', currentSession?.id],
+    queryFn: async () => (await teacherApi.getSessionLive(currentSession!.id)).data,
+    enabled: !!currentSession?.id,
+    refetchInterval: 10000,
+    refetchOnWindowFocus: false,
+  })
+
   const createClassMutation = useMutation({
     mutationFn: (data: { name: string; school_grade?: string }) => teacherApi.createClass(data),
     onSuccess: (res) => {
@@ -181,6 +223,34 @@ export default function TeacherClassesSessionsManager({
     },
   })
 
+  const archiveClassMutation = useMutation({
+    mutationFn: (classId: string) => teacherApi.archiveClass(classId),
+    onSuccess: () => {
+      setSelectedClassId('')
+      setSearchParams({}, { replace: true })
+      queryClient.invalidateQueries({ queryKey: ['classes'] })
+      toast({ title: isEnglish ? 'Class archived' : 'Classe archiviata' })
+    },
+    onError: (error: any) => toast({ title: error?.response?.data?.detail || 'Termina tutte le sessioni prima di archiviare la classe', variant: 'destructive' }),
+  })
+
+  const restoreClassMutation = useMutation({
+    mutationFn: (classId: string) => teacherApi.restoreClass(classId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['classes'] })
+      toast({ title: isEnglish ? 'Class restored' : 'Classe ripristinata' })
+    },
+  })
+
+  const permanentlyDeleteClassMutation = useMutation({
+    mutationFn: (classId: string) => teacherApi.permanentlyDeleteClass(classId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['classes'] })
+      toast({ title: isEnglish ? 'Class permanently deleted' : 'Classe eliminata definitivamente' })
+    },
+    onError: (error: any) => toast({ title: error?.response?.data?.detail || 'Impossibile eliminare la classe', variant: 'destructive' }),
+  })
+
   const createSessionMutation = useMutation({
     mutationFn: (data: { classId: string; title: string }) => teacherApi.createSession(data.classId, { title: data.title }),
     onSuccess: (res) => {
@@ -198,6 +268,7 @@ export default function TeacherClassesSessionsManager({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['sessions', selectedClassId] })
       queryClient.invalidateQueries({ queryKey: ['classes'] })
+      queryClient.invalidateQueries({ queryKey: ['session-live'] })
       toast({ title: t('sessions.status_updated') })
     },
   })
@@ -243,7 +314,7 @@ export default function TeacherClassesSessionsManager({
 
   const orderedSessions = useMemo(() => {
     const sorted = sessions
-      .filter((session) => !session.deleted_at && session.status !== 'ended' && session.status !== 'finished')
+      .filter((session) => !session.deleted_at)
       .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
     return [
       ...sorted.filter((session) => session.status === 'active'),
@@ -253,7 +324,7 @@ export default function TeacherClassesSessionsManager({
 
   const trashedSessions = useMemo(() => {
     return sessions
-      .filter((session) => session.deleted_at || session.status === 'ended' || session.status === 'finished')
+      .filter((session) => session.deleted_at)
       .sort((a, b) => {
         const aTime = new Date(a.deleted_at || a.created_at).getTime()
         const bTime = new Date(b.deleted_at || b.created_at).getTime()
@@ -275,15 +346,16 @@ export default function TeacherClassesSessionsManager({
 
   const filteredOrderedSessions = useMemo(() => {
     const query = sessionSearch.trim().toLowerCase()
-    if (!query) return orderedSessions
-    return orderedSessions.filter((session) =>
+    const sessionsWithoutCurrent = orderedSessions.filter((session) => session.id !== currentSession?.id)
+    if (!query) return sessionsWithoutCurrent
+    return sessionsWithoutCurrent.filter((session) =>
       [session.title, session.join_code, statusMeta[session.status]?.label]
-        .filter(Boolean)
-        .join(' ')
-        .toLowerCase()
-        .includes(query)
+          .filter(Boolean)
+          .join(' ')
+          .toLowerCase()
+          .includes(query)
     )
-  }, [orderedSessions, sessionSearch, statusMeta])
+  }, [currentSession?.id, orderedSessions, sessionSearch, statusMeta])
 
   const handleSelectClass = (classId: string) => {
     setSelectedClassId(classId)
@@ -349,7 +421,7 @@ export default function TeacherClassesSessionsManager({
         }}
       >
         <aside
-          className="w-full shrink-0 border-b bg-white/80 lg:w-[22rem] lg:border-b-0 lg:border-r"
+          className="w-full shrink-0 border-b bg-white/80 lg:w-[19rem] lg:border-b-0 lg:border-r"
           style={{
             borderColor: accentTheme.id === 'black' ? hexToRgba('#94a3b8', 0.28) : hexToRgba(accentTheme.accent, 0.2),
           }}
@@ -361,7 +433,7 @@ export default function TeacherClassesSessionsManager({
               backgroundColor: 'rgba(255,255,255,0.88)',
             }}
           >
-            <div className="flex items-start justify-between gap-3">
+            <div className="flex items-start justify-between gap-2">
               <div className="max-w-[14rem]">
                 <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
                   {isEnglish ? 'Teacher panel' : 'Pannello docente'}
@@ -378,10 +450,11 @@ export default function TeacherClassesSessionsManager({
                 density="compact"
                 tone="accent"
                 surface="solid"
-                className="shrink-0 rounded-full"
+                className="h-9 w-9 shrink-0 rounded-full p-0"
+                title={t('classes.new_class')}
+                aria-label={t('classes.new_class')}
               >
-                <Plus className="mr-1.5 h-3.5 w-3.5" />
-                {t('classes.new_class')}
+                <Plus className="h-3.5 w-3.5" />
               </Button>
             </div>
             <div className={`relative mt-4 rounded-2xl px-3 py-2 shadow-sm ${PASTEL_SURFACES.slate}`}>
@@ -456,7 +529,7 @@ export default function TeacherClassesSessionsManager({
             {isClassesLoading ? (
               <div className="space-y-3">
                 {[1, 2, 3].map((item) => (
-                  <div key={item} className={`h-28 animate-pulse rounded-[24px] shadow-sm ${PASTEL_SURFACES.slate}`} />
+                  <div key={item} className={`h-20 animate-pulse rounded-[18px] shadow-sm ${PASTEL_SURFACES.slate}`} />
                 ))}
               </div>
             ) : classes.length === 0 ? (
@@ -474,7 +547,7 @@ export default function TeacherClassesSessionsManager({
                 </p>
               </div>
             ) : (
-              <div className="space-y-3">
+              <div className="space-y-2">
                 {filteredClasses.map((cls) => {
                   const isSelected = cls.id === selectedClassId
                   const isShared = cls.role === 'invited'
@@ -483,11 +556,11 @@ export default function TeacherClassesSessionsManager({
                     <button
                       key={cls.id}
                       onClick={() => handleSelectClass(cls.id)}
-                      className={`group relative w-full overflow-hidden rounded-[24px] p-4 text-left shadow-sm transition-all ${PASTEL_SURFACES[cardTone]} ${isSelected ? 'ring-1 ring-[rgba(123,105,201,0.32)]' : ''}`}
+                      className={`group relative w-full overflow-hidden rounded-[18px] p-3 text-left shadow-sm transition-all ${PASTEL_SURFACES[cardTone]} ${isSelected ? 'ring-1 ring-[rgba(123,105,201,0.32)]' : ''}`}
                     >
                       <div className="flex items-start gap-3">
                         <div
-                          className={`mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${PASTEL_ICON_BACKGROUNDS[cardTone]} ${PASTEL_ICON_TEXT[cardTone]}`}
+                          className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${PASTEL_ICON_BACKGROUNDS[cardTone]} ${PASTEL_ICON_TEXT[cardTone]}`}
                         >
                           <School className="h-4 w-4" />
                         </div>
@@ -495,11 +568,11 @@ export default function TeacherClassesSessionsManager({
                           <div className="flex items-start justify-between gap-2">
                             <div className="min-w-0">
                               <span className="block truncate text-sm font-bold text-slate-800">{cls.name}</span>
-                              <span className="mt-1 block text-xs text-slate-500">{cls.school_grade || t('classes.not_set')}</span>
+                              <span className="mt-0.5 block text-[11px] text-slate-500">{cls.school_grade || t('classes.not_set')}</span>
                             </div>
                             <ChevronRight className={`mt-1 h-4 w-4 shrink-0 text-slate-300 transition-transform ${isSelected ? 'translate-x-0.5' : 'group-hover:translate-x-0.5'}`} />
                           </div>
-                          <div className="mt-3 flex flex-wrap items-center gap-1.5 text-[11px]">
+                          <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[10px]">
                             <span className="rounded-full bg-white/55 px-2 py-0.5 font-bold text-slate-500 ring-1 ring-white/70">
                               {cls.session_count || 0} {isEnglish ? 'sessions' : 'sessioni'}
                             </span>
@@ -508,14 +581,6 @@ export default function TeacherClassesSessionsManager({
                                 {cls.owner_name ? (isEnglish ? `by ${cls.owner_name}` : `di ${cls.owner_name}`) : (isEnglish ? 'Shared' : 'Condivisa')}
                               </span>
                             )}
-                            <button
-                              onClick={(e) => { e.stopPropagation(); navigate(`/teacher/classes/${cls.id}/uda`) }}
-                              title={isEnglish ? 'Teaching Units (UDA)' : 'Unità Didattiche (UDA)'}
-                              className="ml-auto flex items-center gap-1 rounded-full bg-white/45 px-2 py-0.5 font-bold text-slate-400 opacity-0 transition-colors hover:bg-white/80 hover:text-slate-700 group-hover:opacity-100"
-                            >
-                              <BookOpen className="h-3 w-3" />
-                              <span>UDA</span>
-                            </button>
                           </div>
                         </div>
                       </div>
@@ -525,6 +590,12 @@ export default function TeacherClassesSessionsManager({
               </div>
             )}
           </div>
+          {archivedClasses.length > 0 && (
+            <button type="button" onClick={() => setShowArchivedClasses(true)} className="mx-3 mb-3 flex w-[calc(100%-1.5rem)] items-center justify-between rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50">
+              <span className="flex items-center gap-2"><Archive className="h-3.5 w-3.5" />{isEnglish ? 'Class archive' : 'Archivio classi'}</span>
+              <span className="rounded-full bg-slate-100 px-2 py-0.5">{archivedClasses.length}</span>
+            </button>
+          )}
         </aside>
 
         <section className="min-w-0 flex-1 bg-slate-100">
@@ -541,14 +612,14 @@ export default function TeacherClassesSessionsManager({
           ) : (
             <div className="flex h-full flex-col">
               <div
-                className="border-b px-5 py-4"
+                className="border-b px-5 py-3"
                 style={{
                   borderBottomColor: accentTheme.id === 'black' ? hexToRgba('#0f172a', 0.08) : hexToRgba(accentTheme.accent, 0.14),
                   backgroundColor: 'rgba(255,255,255,0.88)',
                 }}
               >
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                  <div className="min-w-0">
+                <div className="flex min-w-0 items-center justify-between gap-3">
+                  <div className="min-w-0 flex-1">
                     <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
                       {isEnglish ? 'Selected class' : 'Classe selezionata'}
                     </p>
@@ -583,9 +654,21 @@ export default function TeacherClassesSessionsManager({
                       </div>
                     ) : (
                       <div className="mt-1">
-                        <h2 className="truncate text-[20px] font-semibold leading-[1.1] tracking-[var(--letter-spacing-tight)] text-slate-950">
-                          {selectedClass.name}
-                        </h2>
+                        <div className="flex min-w-0 items-center gap-1.5">
+                          <h2 className="truncate text-[20px] font-semibold leading-[1.1] tracking-[var(--letter-spacing-tight)] text-slate-950">
+                            {selectedClass.name}
+                          </h2>
+                          <IconButton
+                            onClick={() => setIsEditingClass(true)}
+                            title={isEnglish ? 'Rename class' : 'Rinomina classe'}
+                            tone="neutral"
+                            surface="ghost"
+                            size="sm"
+                            className="shrink-0 rounded-full"
+                          >
+                            <Edit2 className="h-3.5 w-3.5" />
+                          </IconButton>
+                        </div>
                         <div className="mt-2.5 flex flex-wrap items-center gap-1.5 text-[11px]">
                           <span className="rounded-full bg-white/80 px-2 py-0.5 font-bold text-slate-600 ring-1 ring-slate-200/80">
                             {selectedClass.school_grade || '—'}
@@ -613,16 +696,25 @@ export default function TeacherClassesSessionsManager({
                   </div>
 
                   {!isEditingClass && (
-                    <div className="flex shrink-0 items-center gap-2 self-start sm:pt-0.5">
-                      <IconButton onClick={() => setIsEditingClass(true)} title={isEnglish ? 'Rename class' : 'Rinomina classe'} tone="neutral" surface="soft" size="default" className="rounded-full">
-                        <Edit2 className="h-3.5 w-3.5" />
-                      </IconButton>
+                    <div className="flex shrink-0 items-center gap-1.5">
                       <IconButton onClick={() => setShowTeachersModal(true)} title={isEnglish ? 'Manage teachers' : 'Gestisci docenti'} tone="neutral" surface="soft" size="default" className="rounded-full">
                         <UserPlus className="h-3.5 w-3.5" />
                       </IconButton>
-                      <IconButton onClick={() => navigate(`/teacher/classes/${selectedClass.id}/uda`)} title="UDA" tone="neutral" surface="soft" size="default" className="rounded-full">
-                        <BookOpen className="h-3.5 w-3.5" />
-                      </IconButton>
+                      {selectedClass.role === 'owner' && (
+                        <IconButton
+                          onClick={() => {
+                            if (window.confirm(`Archiviare la classe "${selectedClass.name}"? Scomparirà dalla sidebar e resterà recuperabile.`)) archiveClassMutation.mutate(selectedClass.id)
+                          }}
+                          disabled={archiveClassMutation.isPending}
+                          title={isEnglish ? 'Archive class' : 'Archivia classe'}
+                          tone="danger"
+                          surface="soft"
+                          size="default"
+                          className="rounded-full"
+                        >
+                          <Archive className="h-3.5 w-3.5" />
+                        </IconButton>
+                      )}
                       <Button
                         density="compact"
                         tone="accent"
@@ -631,16 +723,26 @@ export default function TeacherClassesSessionsManager({
                           setNewSessionTitle(`${isEnglish ? 'Lesson of' : 'Lezione del'} ${new Date().toLocaleDateString(isEnglish ? 'en-GB' : 'it-IT')}`)
                           setShowNewSessionDialog(true)
                         }}
-                        className="rounded-full"
+                        className="h-9 w-9 rounded-full p-0"
+                        title={t('sessions.new_session')}
+                        aria-label={t('sessions.new_session')}
                       >
-                        <Plus className="mr-1.5 h-3.5 w-3.5" />
-                        {t('sessions.new_session')}
+                        <Plus className="h-3.5 w-3.5" />
                       </Button>
                     </div>
                   )}
                 </div>
 
               </div>
+
+              <CurrentSessionToolbarCard
+                currentSession={currentSession}
+                liveData={currentSessionLive}
+                isEnglish={isEnglish}
+                updatePending={updateSessionMutation.isPending}
+                onCopyCode={copyCode}
+                onStatusChange={(id, status) => updateSessionMutation.mutate({ id, status })}
+              />
 
               <div className="flex-1 overflow-y-auto px-5 py-5">
                 {isSessionsLoading ? (
@@ -658,7 +760,7 @@ export default function TeacherClassesSessionsManager({
                   />
                 ) : (
                   <div className="space-y-5">
-                    <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                       <div className={`relative w-full max-w-sm rounded-2xl px-3 py-2 shadow-sm ${PASTEL_SURFACES.slate}`}>
                         <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                         <input
@@ -679,23 +781,55 @@ export default function TeacherClassesSessionsManager({
                           </button>
                         )}
                       </div>
-                      <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
-                        {filteredOrderedSessions.length} {isEnglish ? 'sessions' : 'sessioni'}
-                      </p>
+                      <div className="flex items-center justify-between gap-3 sm:justify-end">
+                        <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                          {filteredOrderedSessions.length} {isEnglish ? 'sessions' : 'sessioni'}
+                        </p>
+                        <div className="flex items-center rounded-xl border border-slate-200 bg-white p-0.5 shadow-sm" role="group" aria-label={isEnglish ? 'Session view' : 'Vista sessioni'}>
+                          <button
+                            type="button"
+                            onClick={() => setSessionViewMode('grid')}
+                            className={`flex h-8 w-8 items-center justify-center rounded-lg transition-colors ${sessionViewMode === 'grid' ? 'bg-violet-100 text-violet-700' : 'text-slate-400 hover:bg-slate-50 hover:text-slate-700'}`}
+                            title={isEnglish ? 'Grid view' : 'Vista griglia'}
+                            aria-pressed={sessionViewMode === 'grid'}
+                          >
+                            <LayoutGrid className="h-4 w-4" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setSessionViewMode('list')}
+                            className={`flex h-8 w-8 items-center justify-center rounded-lg transition-colors ${sessionViewMode === 'list' ? 'bg-violet-100 text-violet-700' : 'text-slate-400 hover:bg-slate-50 hover:text-slate-700'}`}
+                            title={isEnglish ? 'List view' : 'Vista elenco'}
+                            aria-pressed={sessionViewMode === 'list'}
+                          >
+                            <List className="h-4 w-4" />
+                          </button>
+                        </div>
+                      </div>
                     </div>
                     {filteredOrderedSessions.length === 0 && trashedSessions.length === 0 ? (
                       <div className="flex flex-col items-center justify-center py-16 text-center">
-                        <Search className="mb-3 h-8 w-8 text-slate-200" />
-                        <p className="text-sm text-slate-400">
-                          {isEnglish ? 'No session matches ' : 'Nessuna sessione corrisponde a '}<strong>"{sessionSearch}"</strong>
-                        </p>
+                        {sessionSearch ? (
+                          <>
+                            <Search className="mb-3 h-8 w-8 text-slate-200" />
+                            <p className="text-sm text-slate-400">
+                              {isEnglish ? 'No session matches ' : 'Nessuna sessione corrisponde a '}<strong>"{sessionSearch}"</strong>
+                            </p>
+                          </>
+                        ) : (
+                          <>
+                            <MonitorPlay className="mb-3 h-8 w-8 text-slate-200" />
+                            <p className="text-sm text-slate-400">
+                              {isEnglish ? 'There are no other sessions in this class.' : 'Non ci sono altre sessioni in questa classe.'}
+                            </p>
+                          </>
+                        )}
                       </div>
                     ) : (
                       <>
                         <SessionList
                           isEnglish={isEnglish}
                           statusMeta={statusMeta}
-                          accentTheme={accentTheme}
                           sessions={filteredOrderedSessions}
                           editingTitleId={editingTitleId}
                           editingTitleValue={editingTitleValue}
@@ -707,6 +841,7 @@ export default function TeacherClassesSessionsManager({
                           updatePending={updateSessionMutation.isPending}
                           onStatusChange={(id, status) => updateSessionMutation.mutate({ id, status })}
                           onTrashSession={(session) => setSessionToTrash(session)}
+                          viewMode={sessionViewMode}
                         />
                         {trashedSessions.length > 0 && (
                           <SessionTrash
@@ -736,6 +871,34 @@ export default function TeacherClassesSessionsManager({
           onClose={() => setShowTeachersModal(false)}
         />
       )}
+
+      <Dialog open={showArchivedClasses} onOpenChange={setShowArchivedClasses}>
+        <DialogContent size="md" surface="elevated" className="rounded-xl">
+          <DialogHeader>
+            <DialogTitle>{isEnglish ? 'Class archive' : 'Archivio classi'}</DialogTitle>
+            <DialogDescription>{isEnglish ? 'Restore a class or permanently delete all of its sessions and related data.' : 'Ripristina una classe oppure elimina definitivamente tutte le sessioni e i dati collegati.'}</DialogDescription>
+          </DialogHeader>
+          <DialogBody>
+            <div className="space-y-2">
+              {archivedClasses.map(cls => (
+                <div key={cls.id} className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-bold text-slate-800">{cls.name}</p>
+                    <p className="text-xs text-slate-500">{cls.archived_at ? new Date(cls.archived_at).toLocaleDateString(isEnglish ? 'en-GB' : 'it-IT') : ''}</p>
+                  </div>
+                  <div className="flex shrink-0 gap-2">
+                    <Button density="compact" tone="neutral" surface="soft" onClick={() => restoreClassMutation.mutate(cls.id)} disabled={restoreClassMutation.isPending}><RotateCcw className="mr-1.5 h-3.5 w-3.5" />{isEnglish ? 'Restore' : 'Ripristina'}</Button>
+                    <Button density="compact" tone="danger" surface="ghost" onClick={() => {
+                      if (window.confirm(`ATTENZIONE: eliminare definitivamente "${cls.name}" con tutte le sessioni, consegne, chat e documenti? L’azione non è annullabile.`)) permanentlyDeleteClassMutation.mutate(cls.id)
+                    }} disabled={permanentlyDeleteClassMutation.isPending}><Trash2 className="mr-1.5 h-3.5 w-3.5" />{isEnglish ? 'Delete forever' : 'Elimina tutto'}</Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </DialogBody>
+          <DialogFooter><Button surface="ghost" tone="neutral" onClick={() => setShowArchivedClasses(false)}>{isEnglish ? 'Close' : 'Chiudi'}</Button></DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {showNewSessionDialog && selectedClass && (
         <Dialog open={showNewSessionDialog} onOpenChange={setShowNewSessionDialog}>
@@ -782,18 +945,20 @@ export default function TeacherClassesSessionsManager({
       <Dialog open={!!sessionToTrash} onOpenChange={(open) => { if (!open) setSessionToTrash(null) }}>
         <DialogContent size="sm" surface="elevated" className="rounded-xl">
           <DialogHeader>
-            <DialogTitle>{isEnglish ? 'Delete session?' : 'Eliminare la sessione?'}</DialogTitle>
+            <DialogTitle>{isEnglish ? 'Archive session?' : 'Archiviare la sessione?'}</DialogTitle>
             <DialogDescription>
               {isEnglish
                 ? <>The session <strong>{sessionToTrash?.title}</strong> will disappear from the session cards and move to the trash.</>
-                : <>La sessione <strong>{sessionToTrash?.title}</strong> scomparira dalle card sessione e verra spostata nel cestino.</>}
+                : <>La sessione <strong>{sessionToTrash?.title}</strong> scomparirà dall’elenco e verrà spostata nell’archivio.</>}
             </DialogDescription>
           </DialogHeader>
           <DialogBody>
             <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-3 text-sm leading-6 text-amber-900">
               {isEnglish
                 ? 'Session data remains recoverable for 30 days. After that, the session is permanently removed and related database records are cleaned.'
-                : 'I dati della sessione restano recuperabili per 30 giorni. Dopo questo periodo, la sessione viene rimossa definitivamente e i dati collegati vengono puliti dal database.'}
+                : sessionToTrash?.status === 'ended' || sessionToTrash?.status === 'finished'
+                  ? 'I dati restano recuperabili per 30 giorni. La cancellazione definitiva richiederà una seconda conferma.'
+                  : 'Prima di archiviarla devi terminare la sessione. Una sessione attiva o in pausa non può essere archiviata.'}
             </div>
           </DialogBody>
           <DialogFooter>
@@ -803,11 +968,11 @@ export default function TeacherClassesSessionsManager({
             <Button
               tone="danger"
               surface="solid"
-              disabled={!sessionToTrash || trashSessionMutation.isPending}
+              disabled={!sessionToTrash || trashSessionMutation.isPending || !['ended', 'finished'].includes(sessionToTrash.status)}
               onClick={() => sessionToTrash && trashSessionMutation.mutate(sessionToTrash.id)}
             >
               {trashSessionMutation.isPending ? <Spinner className="mr-2" size="sm" tone="inverse" /> : <Trash2 className="mr-2 h-4 w-4" />}
-              {isEnglish ? 'Move to trash' : 'Sposta nel cestino'}
+              {isEnglish ? 'Archive' : 'Archivia'}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -839,6 +1004,117 @@ export default function TeacherClassesSessionsManager({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+    </div>
+  )
+}
+
+function CurrentSessionToolbarCard({
+  currentSession,
+  liveData,
+  isEnglish,
+  updatePending,
+  onCopyCode,
+  onStatusChange,
+}: {
+  currentSession?: TeacherCurrentSession | null
+  liveData?: CurrentSessionLiveData
+  isEnglish: boolean
+  updatePending: boolean
+  onCopyCode: (code?: string) => void
+  onStatusChange: (id: string, status: string) => void
+}) {
+  const navigate = useNavigate()
+
+  if (!currentSession) {
+    return null
+  }
+
+  const session = liveData?.session
+  const sessionId = session?.id || currentSession.id
+  const title = session?.title || currentSession.name
+  const className = session?.class_name || currentSession.className
+  const joinCode = session?.join_code || currentSession.joinCode
+  const status = session?.status || 'active'
+  const iconButtonClass = 'inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white/75 text-amber-900 ring-1 ring-amber-200 transition-all hover:bg-white hover:text-amber-950 hover:shadow-sm disabled:cursor-not-allowed disabled:opacity-50'
+
+  return (
+    <div className="z-10 w-full border-b border-amber-300/80 bg-amber-100/95 px-5 py-2 shadow-sm backdrop-blur">
+      <div className="mx-auto flex min-w-0 max-w-6xl items-center gap-2">
+        <button
+          type="button"
+          onClick={() => navigate(`/teacher/sessions/${sessionId}`)}
+          className="flex min-w-0 flex-1 items-center gap-2 text-left"
+        >
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-amber-300/70 text-amber-900">
+            <MonitorPlay className="h-4 w-4" />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="flex items-center gap-1 text-[8px] font-black uppercase tracking-widest text-amber-800">
+              <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+              {isEnglish ? 'Current session' : 'Sessione corrente'}
+            </span>
+            <span className="block truncate text-[13px] font-bold leading-4 text-slate-900">{title}</span>
+            <span className="hidden truncate text-[9px] leading-3 text-slate-500 min-[440px]:block">
+              {className}
+            </span>
+          </span>
+        </button>
+
+        <div className="flex shrink-0 items-center gap-1" onClick={(event) => event.stopPropagation()}>
+          {joinCode && (
+            <button
+              type="button"
+              onClick={() => onCopyCode(joinCode)}
+              className="hidden h-8 items-center gap-1 rounded-full bg-white/75 px-2 font-mono text-[9px] font-bold text-amber-900 ring-1 ring-amber-200 transition-colors hover:bg-white sm:inline-flex"
+              title={isEnglish ? 'Copy access code' : 'Copia codice di accesso'}
+            >
+              {joinCode}
+              <Copy className="h-3 w-3" />
+            </button>
+          )}
+          <button
+            type="button"
+            className={iconButtonClass}
+            onClick={() => navigate(`/teacher/sessions/${sessionId}`)}
+            title={isEnglish ? 'Open session' : 'Apri sessione'}
+            aria-label={isEnglish ? 'Open session' : 'Apri sessione'}
+          >
+            <ChevronRight className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            className={iconButtonClass}
+            onClick={() => navigate(`/teacher/sessions/${sessionId}?tab=documents`)}
+            title={isEnglish ? 'Session documents' : 'Documenti della sessione'}
+            aria-label={isEnglish ? 'Session documents' : 'Documenti della sessione'}
+          >
+            <FileText className="h-3.5 w-3.5" />
+          </button>
+          {status === 'active' ? (
+            <button
+              type="button"
+              className={iconButtonClass}
+              disabled={updatePending}
+              onClick={() => onStatusChange(sessionId, 'paused')}
+              title={isEnglish ? 'Pause session' : 'Metti in pausa'}
+              aria-label={isEnglish ? 'Pause session' : 'Metti in pausa'}
+            >
+              <Pause className="h-3.5 w-3.5" />
+            </button>
+          ) : (status === 'paused' || status === 'draft') ? (
+            <button
+              type="button"
+              className={iconButtonClass}
+              disabled={updatePending}
+              onClick={() => onStatusChange(sessionId, 'active')}
+              title={status === 'paused' ? (isEnglish ? 'Resume session' : 'Riprendi sessione') : (isEnglish ? 'Activate session' : 'Attiva sessione')}
+              aria-label={status === 'paused' ? (isEnglish ? 'Resume session' : 'Riprendi sessione') : (isEnglish ? 'Activate session' : 'Attiva sessione')}
+            >
+              <MonitorPlay className="h-3.5 w-3.5" />
+            </button>
+          ) : null}
+        </div>
+      </div>
     </div>
   )
 }
@@ -881,7 +1157,6 @@ function EmptyStateCard({
 function SessionList({
   isEnglish,
   statusMeta,
-  accentTheme,
   sessions,
   editingTitleId,
   editingTitleValue,
@@ -893,10 +1168,10 @@ function SessionList({
   updatePending,
   onStatusChange,
   onTrashSession,
+  viewMode,
 }: {
   isEnglish: boolean
   statusMeta: Record<string, { label: string; tone: string; dot: string }>
-  accentTheme: ReturnType<typeof getTeacherAccentTheme>
   sessions: SessionData[]
   editingTitleId: string | null
   editingTitleValue: string
@@ -908,29 +1183,29 @@ function SessionList({
   updatePending: boolean
   onStatusChange: (id: string, status: string) => void
   onTrashSession: (session: SessionData) => void
+  viewMode: 'grid' | 'list'
 }) {
   if (sessions.length === 0) return null
   const activeCount = sessions.filter((session) => session.status === 'active').length
 
   return (
-    <div className="space-y-3">
+    <section className="space-y-3">
       <div>
         <h3 className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
-          {isEnglish ? 'Session cards' : 'Card sessione'}
+          {isEnglish ? 'Class sessions' : 'Sessioni della classe'}
         </h3>
         <p className="mt-1 text-xs text-slate-500">
           {activeCount > 0
-            ? (isEnglish ? `${activeCount} active session highlighted` : `${activeCount} sessione attiva in evidenza`)
-            : (isEnglish ? 'No active sessions right now' : 'Nessuna sessione attiva al momento')}
+            ? (isEnglish ? `${activeCount} active sessions` : `${activeCount} sessioni attive`)
+            : (isEnglish ? 'Compact overview by status' : 'Panoramica compatta differenziata per stato')}
         </p>
       </div>
 
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+      <div className={viewMode === 'grid' ? 'grid gap-3 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4' : 'flex flex-col gap-2'}>
         {sessions.map((session) => (
           <SessionRow
             key={session.id}
             session={session}
-            accentTheme={accentTheme}
             editingTitleId={editingTitleId}
             editingTitleValue={editingTitleValue}
             setEditingTitleId={setEditingTitleId}
@@ -943,16 +1218,16 @@ function SessionList({
             onTrashSession={onTrashSession}
             statusMeta={statusMeta}
             isEnglish={isEnglish}
+            viewMode={viewMode}
           />
         ))}
       </div>
-    </div>
+    </section>
   )
 }
 
 function SessionRow({
   session,
-  accentTheme,
   editingTitleId,
   editingTitleValue,
   setEditingTitleId,
@@ -965,9 +1240,9 @@ function SessionRow({
   onTrashSession,
   statusMeta,
   isEnglish,
+  viewMode,
 }: {
   session: SessionData
-  accentTheme: ReturnType<typeof getTeacherAccentTheme>
   editingTitleId: string | null
   editingTitleValue: string
   setEditingTitleId: (value: string | null) => void
@@ -980,13 +1255,15 @@ function SessionRow({
   onTrashSession: (session: SessionData) => void
   statusMeta: Record<string, { label: string; tone: string; dot: string }>
   isEnglish: boolean
+  viewMode: 'grid' | 'list'
 }) {
   const meta = statusMeta[session.status] || statusMeta.draft
   const isActive = session.status === 'active'
   const isPaused = session.status === 'paused'
   const isDraft = session.status === 'draft'
-  const tone: PastelTone = isActive ? 'rose' : isPaused ? 'violet' : 'slate'
-  const iconTone = isActive ? 'rose' : isPaused ? 'violet' : 'slate'
+  const iconTone: PastelTone = isPaused ? 'rose' : isActive ? 'violet' : 'slate'
+  const cardColor = isActive ? '#7b69c9' : isPaused ? '#fe004d' : '#64748b'
+  const cardOpacity = isActive ? 0.09 : isPaused ? 0.05 : 0.045
 
   const navigate = useNavigate()
   const createdAt = new Date(session.created_at).toLocaleDateString(isEnglish ? 'en-GB' : 'it-IT', { day: '2-digit', month: '2-digit', year: '2-digit' })
@@ -994,19 +1271,25 @@ function SessionRow({
   return (
     <Card
       surface="base"
-      className={`group flex min-h-[180px] cursor-pointer flex-col justify-between rounded-[24px] p-4 shadow-sm transition-all ${PASTEL_SURFACES[tone]} ${isActive ? 'ring-1 ring-[rgba(254,0,77,0.20)]' : ''}`}
-      style={isActive ? { boxShadow: `0 0 0 1px ${hexToRgba(accentTheme.accent, 0.08)}` } : undefined}
+      className={viewMode === 'list'
+        ? 'group flex min-h-0 cursor-pointer flex-col gap-3 rounded-xl border p-3 transition-all hover:shadow-md sm:flex-row sm:items-center'
+        : 'group flex min-h-[128px] cursor-pointer flex-col justify-between rounded-[18px] border p-3 transition-all hover:-translate-y-0.5 hover:shadow-md'}
+      style={{
+        backgroundColor: hexToRgba(cardColor, cardOpacity),
+        borderColor: hexToRgba(cardColor, 0.13),
+        boxShadow: `0 2px 8px ${hexToRgba(cardColor, 0.035)}`,
+      }}
       onClick={() => navigate(`/teacher/sessions/${session.id}`)}
     >
-      <div>
-        <div className="mb-3 flex items-start justify-between gap-3">
-          <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${PASTEL_ICON_BACKGROUNDS[iconTone]} ${PASTEL_ICON_TEXT[iconTone]}`}>
-            <MonitorPlay className="h-5 w-5" />
+      <div className={viewMode === 'list' ? 'flex min-w-0 flex-1 items-center gap-3' : ''}>
+        <div className={viewMode === 'list' ? 'flex shrink-0 items-center gap-2' : 'mb-2 flex items-start justify-between gap-3'}>
+          <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${PASTEL_ICON_BACKGROUNDS[iconTone]} ${PASTEL_ICON_TEXT[iconTone]}`}>
+            <MonitorPlay className="h-4 w-4" />
           </div>
           <StatusBadge meta={meta} active={isActive} />
         </div>
 
-        <div className="min-w-0" onClick={(e) => e.stopPropagation()}>
+        <div className="min-w-0 flex-1" onClick={(e) => e.stopPropagation()}>
           {editingTitleId === session.id ? (
             <form className="flex min-w-0 items-center gap-1.5" onSubmit={(e) => { e.preventDefault(); onRename(session.id) }}>
               <Input
@@ -1039,7 +1322,7 @@ function SessionRow({
           )}
         </div>
 
-        <div className="mt-3 flex flex-wrap items-center gap-1.5 text-[11px] text-slate-500">
+        <div className={`${viewMode === 'list' ? 'ml-auto hidden shrink-0 lg:flex' : 'mt-2 flex'} flex-wrap items-center gap-1.5 text-[10px] text-slate-500`}>
           <span className="rounded-full bg-white/55 px-2 py-0.5 font-bold ring-1 ring-white/70">{createdAt}</span>
           <span className="rounded-full bg-white/55 px-2 py-0.5 font-bold ring-1 ring-white/70">
             {session.active_students_count ?? 0} {isActive ? (isEnglish ? 'active' : 'attivi') : (isEnglish ? 'students' : 'studenti')}
@@ -1057,31 +1340,37 @@ function SessionRow({
         </div>
       </div>
 
-      <div className="mt-4 flex flex-wrap items-center gap-2" onClick={(e) => e.stopPropagation()}>
+      <div className={`${viewMode === 'list' ? 'mt-0 shrink-0' : 'mt-2.5'} flex flex-wrap items-center gap-1.5`} onClick={(e) => e.stopPropagation()}>
         <Button
           tone={isActive ? 'danger' : 'accent'}
           surface={isActive ? 'soft' : 'solid'}
           density="compact"
-          className="rounded-full"
+          className="h-8 w-8 rounded-full p-0"
           onClick={() => navigate(`/teacher/sessions/${session.id}`)}
+          title={isEnglish ? 'Configure session' : 'Configura sessione'}
+          aria-label={isEnglish ? 'Configure session' : 'Configura sessione'}
         >
-          <ChevronRight className="mr-1.5 h-3.5 w-3.5" />
-          {isEnglish ? 'Configure' : 'Configura'}
+          <ChevronRight className="h-3.5 w-3.5" />
         </Button>
         <Button
           tone="neutral"
           surface="soft"
           density="compact"
-          className="rounded-full bg-white/70"
+          className="h-8 w-8 rounded-full bg-white/70 p-0"
           onClick={() => navigate(`/teacher/sessions/${session.id}?tab=documents`)}
+          title={isEnglish ? 'Session documents' : 'Documenti della sessione'}
+          aria-label={isEnglish ? 'Session documents' : 'Documenti della sessione'}
         >
-          <FileText className="mr-1.5 h-3.5 w-3.5" />
-          Documenti
+          <FileText className="h-3.5 w-3.5" />
         </Button>
         {isActive && (
-          <Button onClick={() => onStatusChange(session.id, 'paused')} disabled={updatePending} tone="neutral" surface="soft" density="compact" className="rounded-full bg-white/70">
-            <Pause className="mr-1.5 h-3.5 w-3.5" />
-            {isEnglish ? 'Pause' : 'Pausa'}
+          <Button onClick={() => onStatusChange(session.id, 'paused')} disabled={updatePending} tone="neutral" surface="soft" density="compact" className="h-8 w-8 rounded-full bg-white/70 p-0" title={isEnglish ? 'Pause session' : 'Metti in pausa'} aria-label={isEnglish ? 'Pause session' : 'Metti in pausa'}>
+            <Pause className="h-3.5 w-3.5" />
+          </Button>
+        )}
+        {(isActive || isPaused) && (
+          <Button onClick={() => onStatusChange(session.id, 'ended')} disabled={updatePending} tone="danger" surface="soft" density="compact" className="h-8 w-8 rounded-full bg-white/70 p-0" title={isEnglish ? 'Stop session' : 'Termina sessione'} aria-label={isEnglish ? 'Stop session' : 'Termina sessione'}>
+            <Square className="h-3.5 w-3.5" />
           </Button>
         )}
         {(isPaused || isDraft) && (
@@ -1091,22 +1380,24 @@ function SessionRow({
             tone="accent"
             surface="soft"
             density="compact"
-            className="rounded-full bg-white/65"
+            className="h-8 w-8 rounded-full bg-white/65 p-0"
+            title={isPaused ? (isEnglish ? 'Resume session' : 'Riprendi sessione') : (isEnglish ? 'Activate session' : 'Attiva sessione')}
+            aria-label={isPaused ? (isEnglish ? 'Resume session' : 'Riprendi sessione') : (isEnglish ? 'Activate session' : 'Attiva sessione')}
           >
-            <MonitorPlay className="mr-1.5 h-3.5 w-3.5" />
-            {isPaused ? (isEnglish ? 'Resume' : 'Riprendi') : (isEnglish ? 'Activate' : 'Attiva')}
+            <MonitorPlay className="h-3.5 w-3.5" />
           </Button>
         )}
         <Button
           onClick={() => onTrashSession(session)}
-          disabled={updatePending}
+          disabled={updatePending || (!['ended', 'finished'].includes(session.status))}
           tone="danger"
           surface="ghost"
           density="compact"
-          className="rounded-full"
+          className="h-8 w-8 rounded-full p-0"
+          title={isEnglish ? 'Archive session' : 'Archivia sessione'}
+          aria-label={isEnglish ? 'Archive session' : 'Archivia sessione'}
         >
-          <Trash2 className="mr-1.5 h-3.5 w-3.5" />
-          {isEnglish ? 'Delete session' : 'Elimina sessione'}
+          <Trash2 className="h-3.5 w-3.5" />
         </Button>
       </div>
     </Card>
@@ -1200,8 +1491,8 @@ function SessionTrash({
 function StatusBadge({ meta, active = false }: { meta: { label: string; tone: string }; active?: boolean }) {
   if (active) {
     return (
-      <span className="inline-flex items-center gap-1 rounded-full bg-white/60 px-2 py-0.5 text-[11px] font-bold text-[#b51f5f] ring-1 ring-white/70">
-        <span className="h-1.5 w-1.5 rounded-full bg-[#fe004d]" />
+      <span className="inline-flex items-center gap-1 rounded-full bg-white/60 px-2 py-0.5 text-[11px] font-bold text-[#6753b7] ring-1 ring-white/70">
+        <span className="h-1.5 w-1.5 rounded-full bg-[#7b69c9]" />
         {meta.label}
       </span>
     )

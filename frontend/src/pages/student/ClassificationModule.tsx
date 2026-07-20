@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
-import { motion } from 'framer-motion'
+import { AnimatePresence, motion } from 'framer-motion'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -8,7 +8,7 @@ import {
   Camera, Type, Database, Play, Square, Trash2, Plus,
   Upload, Loader2, CheckCircle, XCircle, BarChart3, Info,
   TrendingUp, Tags, AlertCircle, Lightbulb, ArrowLeft,
-  Sparkles, Download, Clipboard, ChevronRight, Paperclip, Share2, FolderOpen
+  Sparkles, Download, Clipboard, ChevronDown, ChevronRight, ChevronUp, Paperclip, Share2, FolderOpen
 } from 'lucide-react'
 import * as tf from '@tensorflow/tfjs'
 import { DataVisualizationPanel } from '@/components/DataVisualizationPanel'
@@ -95,14 +95,14 @@ const DOT_COLORS = [
 
 const TEXT_CLASSIFICATION_EXAMPLE_CSV = `testo,etichetta
 "Mi piace molto questa lezione",positivo
-"L'attivita e chiara e utile",positivo
+"L'attività è chiara e utile",positivo
 "Non ho capito la consegna",negativo
-"Il testo e troppo difficile",negativo
-"Vorrei un esempio in piu",neutro
-"La spiegazione e abbastanza chiara",neutro
-"Il laboratorio e interessante",positivo
+"Il testo è troppo difficile",negativo
+"Vorrei un esempio in più",neutro
+"La spiegazione è abbastanza chiara",neutro
+"Il laboratorio è interessante",positivo
 "Mi sento bloccato",negativo
-"Serve piu tempo per provare",neutro
+"Serve più tempo per provare",neutro
 "Ho completato il compito senza problemi",positivo`
 
 const DATA_CLASSIFICATION_EXAMPLE_CSV = `ore_studio,quiz_completati,partecipazione,esito
@@ -682,7 +682,7 @@ export default function ClassificationModule({ sessionId }: { sessionId?: string
 // Inline SVG illustrations for each mode
 function ImagesIllustration() {
   return (
-    <svg viewBox="0 0 200 130" className="w-full h-full" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <svg viewBox="0 0 200 130" className="h-full w-full drop-shadow-[0_14px_22px_rgba(244,63,94,0.16)]" fill="none" xmlns="http://www.w3.org/2000/svg">
       {/* Background */}
       <rect width="200" height="130" rx="12" fill="#fff1f2" />
       {/* Camera body */}
@@ -713,7 +713,7 @@ function ImagesIllustration() {
 
 function TextIllustration() {
   return (
-    <svg viewBox="0 0 200 130" className="w-full h-full" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <svg viewBox="0 0 200 130" className="h-full w-full drop-shadow-[0_14px_22px_rgba(59,130,246,0.16)]" fill="none" xmlns="http://www.w3.org/2000/svg">
       <rect width="200" height="130" rx="12" fill="#eff6ff" />
       {/* Document */}
       <rect x="30" y="20" width="100" height="90" rx="8" fill="white" />
@@ -744,7 +744,7 @@ function TextIllustration() {
 
 function DataIllustration() {
   return (
-    <svg viewBox="0 0 200 130" className="w-full h-full" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <svg viewBox="0 0 200 130" className="h-full w-full drop-shadow-[0_14px_22px_rgba(16,185,129,0.18)]" fill="none" xmlns="http://www.w3.org/2000/svg">
       <rect width="200" height="130" rx="12" fill="#f0fdf4" />
       {/* Bar chart */}
       <rect x="25" y="90" width="20" height="30" rx="3" fill="#34d399" opacity="0.8" />
@@ -790,6 +790,7 @@ function MLLabHome({
   t: (key: string) => string
   isEnglish: boolean
 }) {
+  const [tutorialOpen, setTutorialOpen] = useState(true)
   const modes = [
     {
       key: 'images' as const,
@@ -828,6 +829,29 @@ function MLLabHome({
       illustration: DataIllustration,
     },
   ]
+  const tutorialSteps = [
+    {
+      icon: Database,
+      number: '01',
+      title: isEnglish ? 'Collect examples' : 'Raccogli esempi',
+      body: isEnglish ? 'Give the model images, text, or rows of data to learn from.' : 'Fornisci al modello immagini, testi o righe di dati da cui imparare.',
+      style: 'border-sky-200 bg-sky-50 text-sky-800',
+    },
+    {
+      icon: Sparkles,
+      number: '02',
+      title: isEnglish ? 'Train the model' : 'Addestra il modello',
+      body: isEnglish ? 'The model searches for recurring patterns in your examples.' : 'Il modello cerca schemi ricorrenti negli esempi che hai preparato.',
+      style: 'border-violet-200 bg-violet-50 text-violet-800',
+    },
+    {
+      icon: CheckCircle,
+      number: '03',
+      title: isEnglish ? 'Test a prediction' : 'Verifica la previsione',
+      body: isEnglish ? 'Try a new example and compare the prediction with what you expected.' : 'Prova un nuovo esempio e confronta la previsione con ciò che ti aspettavi.',
+      style: 'border-emerald-200 bg-emerald-50 text-emerald-800',
+    },
+  ]
 
   return (
     <div className="min-h-full bg-white px-4 pb-24 pt-0 md:px-6 md:pb-8 md:pt-0">
@@ -850,20 +874,65 @@ function MLLabHome({
               {t('classification.subtitle')}
             </p>
 
-            <div className="mx-auto mt-6 max-w-xl rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-left">
-              <div className="flex items-start gap-3">
-                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white text-slate-700">
-                  <Lightbulb className="h-4 w-4" />
-                </div>
-                <div>
-                  <p className="text-sm font-semibold text-slate-900">{isEnglish ? 'Recommended flow' : 'Flusso consigliato'}</p>
-                  <p className="mt-1 text-xs leading-5 text-slate-600">
-                    {isEnglish
-                      ? 'Prepare data or examples, choose the right mode, and validate the results directly in the browser. You can also generate datasets in the chatbot and import them here.'
-                      : 'Prepara dati o esempi, scegli la modalita giusta e verifica i risultati direttamente nel browser. Puoi anche generare dataset dal chatbot e importarli qui.'}
-                  </p>
-                </div>
-              </div>
+            <div className="mx-auto mt-6 max-w-3xl text-left">
+              <button
+                type="button"
+                onClick={() => setTutorialOpen((open) => !open)}
+                className="mx-auto flex items-center gap-2 rounded-full border border-violet-200 bg-violet-50 px-4 py-2 text-xs font-bold text-violet-800 transition hover:border-violet-300 hover:bg-violet-100"
+                aria-expanded={tutorialOpen}
+              >
+                <Lightbulb className="h-4 w-4" />
+                {isEnglish ? 'How the lab works' : 'Come funziona il laboratorio'}
+                {tutorialOpen ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+              </button>
+              <AnimatePresence initial={false}>
+                {tutorialOpen && (
+                  <motion.div
+                    initial={{ opacity: 0, height: 0, y: -8 }}
+                    animate={{ opacity: 1, height: 'auto', y: 0 }}
+                    exit={{ opacity: 0, height: 0, y: -8 }}
+                    transition={{ duration: 0.28, ease: 'easeOut' }}
+                    className="overflow-hidden"
+                  >
+                    <div className="relative mt-3 grid gap-2 rounded-2xl border border-slate-200 bg-slate-50/80 p-3 shadow-sm md:grid-cols-3">
+                      <motion.div
+                        aria-hidden="true"
+                        initial={{ scaleX: 0 }}
+                        animate={{ scaleX: 1 }}
+                        transition={{ duration: 0.8, delay: 0.25 }}
+                        className="absolute left-[18%] right-[18%] top-9 hidden h-px origin-left bg-gradient-to-r from-sky-300 via-violet-300 to-emerald-300 md:block"
+                      />
+                      {tutorialSteps.map((step, index) => {
+                        const StepIcon = step.icon
+                        return (
+                          <motion.div
+                            key={step.number}
+                            initial={{ opacity: 0, y: 14 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ delay: 0.12 + index * 0.12 }}
+                            className="relative rounded-xl border border-white bg-white/90 p-3 shadow-sm"
+                          >
+                            <div className="flex items-center gap-2.5">
+                              <motion.div
+                                animate={{ y: [0, -3, 0] }}
+                                transition={{ duration: 2.2, delay: index * 0.35, repeat: Infinity, ease: 'easeInOut' }}
+                                className={`relative z-10 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border ${step.style}`}
+                              >
+                                <StepIcon className="h-5 w-5" />
+                              </motion.div>
+                              <div>
+                                <span className="text-[9px] font-black tracking-[0.18em] text-slate-400">{step.number}</span>
+                                <p className="text-xs font-black text-slate-900">{step.title}</p>
+                              </div>
+                            </div>
+                            <p className="mt-2 text-[11px] leading-5 text-slate-600">{step.body}</p>
+                          </motion.div>
+                        )
+                      })}
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
           </div>
         </motion.div>
@@ -880,10 +949,20 @@ function MLLabHome({
                 whileHover={{ y: -3 }}
                 whileTap={{ scale: 0.97 }}
                 onClick={() => onSelect(m.key)}
-                className={`group relative cursor-pointer overflow-hidden rounded-xl border border-slate-200 bg-white transition-all duration-250 ${m.cardBorder}`}
+                className={`group relative cursor-pointer overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_12px_36px_rgba(15,23,42,0.07)] transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_20px_46px_rgba(15,23,42,0.13)] ${m.cardBorder}`}
               >
-                <div className={`relative h-40 overflow-hidden border-b border-slate-200 p-4 ${m.panelBg}`}>
-                  <Illustration />
+                <div className={`relative h-48 overflow-hidden border-b border-slate-200 p-3 ${m.panelBg}`}>
+                  <div className="absolute -right-10 -top-12 h-32 w-32 rounded-full bg-white/70 blur-2xl" />
+                  <motion.div
+                    className="relative h-full rounded-xl border border-white/80 bg-white/35 p-1.5 shadow-inner transition-transform duration-500 group-hover:scale-[1.035]"
+                    animate={{ y: [0, -3, 0] }}
+                    transition={{ duration: 3.4, delay: i * 0.45, repeat: Infinity, ease: 'easeInOut' }}
+                  >
+                    <Illustration />
+                  </motion.div>
+                  <span className={`absolute bottom-4 left-4 rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-wide backdrop-blur-sm ${m.badgeBg}`}>
+                    {isEnglish ? 'Interactive lab' : 'Laboratorio interattivo'}
+                  </span>
                 </div>
 
                 <div className="p-5">
@@ -1368,7 +1447,7 @@ function ImageClassification({ onBack, sessionId }: { onBack: () => void; sessio
               <p className="mt-1 text-xs leading-5 text-rose-800">
                 {isEnglish
                   ? 'Choose what each class represents, then collect many examples for every class. While you hold the capture button, the webcam saves repeated frames that become the training examples.'
-                  : 'Scegli cosa rappresenta ogni classe, poi raccogli molti esempi per ciascuna. Quando tieni premuto il pulsante di acquisizione, la webcam salva piu fotogrammi che diventano esempi di addestramento.'}
+                  : 'Scegli cosa rappresenta ogni classe, poi raccogli molti esempi per ciascuna. Quando tieni premuto il pulsante di acquisizione, la webcam salva più fotogrammi che diventano esempi di addestramento.'}
               </p>
             </div>
           </div>
@@ -1573,7 +1652,7 @@ function ImageClassification({ onBack, sessionId }: { onBack: () => void; sessio
                   <p className="mb-2 text-xs leading-5 text-slate-500">
                     {isEnglish
                       ? 'Hold to capture repeated frames. Aim for at least 10 varied examples per class.'
-                      : 'Tieni premuto per registrare piu fotogrammi. Punta ad almeno 10 esempi vari per classe.'}
+                      : 'Tieni premuto per registrare più fotogrammi. Punta ad almeno 10 esempi vari per classe.'}
                   </p>
 
                   <div className="flex flex-wrap gap-1 max-h-24 overflow-y-auto">
@@ -1630,7 +1709,7 @@ function ImageClassification({ onBack, sessionId }: { onBack: () => void; sessio
                     <div className="text-xs text-amber-800">
                       <strong>{isEnglish ? 'Explanation:' : 'Spiegazione:'}</strong> {isEnglish
                         ? `The model analyzes image pixels (64x64, ${64*64*3} normalized RGB values) through a neural network with 2 dense layers. The class "${topPrediction?.className}" has the highest confidence (${topPrediction?.confidence.toFixed(1)}%) because the captured visual patterns are more similar to the ${classes.find(c => c.name === topPrediction?.className)?.samples.length || 0} training samples of that class.`
-                        : `Il modello analizza i pixel dell'immagine (64x64, ${64*64*3} valori RGB normalizzati) attraverso una rete neurale con 2 layer densi. La classe "${topPrediction?.className}" ha la confidenza più alta (${topPrediction?.confidence.toFixed(1)}%) perché i pattern visivi catturati sono più simili ai ${classes.find(c => c.name === topPrediction?.className)?.samples.length || 0} samples di training di quella classe.`}
+                        : `Il modello analizza i pixel dell'immagine (64 × 64, ${64*64*3} valori RGB normalizzati) attraverso una rete neurale con due livelli densi. La classe "${topPrediction?.className}" ha la confidenza più alta (${topPrediction?.confidence.toFixed(1)}%) perché le caratteristiche visive rilevate sono più simili ai ${classes.find(c => c.name === topPrediction?.className)?.samples.length || 0} esempi di addestramento di quella classe.`}
                     </div>
                   </div>
                 </div>
@@ -1935,7 +2014,7 @@ function TextClassification({
                   <p className="mt-1 text-xs leading-5 text-blue-800">
                     {isEnglish
                       ? 'Each row contains the text to learn from and the final label. Example: "This lesson is clear,positive".'
-                      : 'Ogni riga contiene il testo da cui imparare e l etichetta finale. Esempio: "Questa lezione e chiara,positivo".'}
+                      : 'Ogni riga contiene il testo da cui imparare e l’etichetta finale. Esempio: "Questa lezione è chiara,positivo".'}
                   </p>
                 </div>
                 <div className="flex flex-col gap-2 sm:flex-row sm:justify-center">
@@ -2045,7 +2124,7 @@ function TextClassification({
                           <div className="text-xs text-amber-800">
                             <strong>{isEnglish ? 'Explanation:' : 'Spiegazione:'}</strong> {isEnglish
                               ? `The model uses a Bag-of-Words approach with ${vocabulary.size} words in the vocabulary. The input text is converted into a normalized frequency vector and then processed by a neural network with 2 dense layers. The class "${prediction.label}" is selected because the words in the text are statistically more associated with that label in the ${samples.filter(s => s.label === prediction.label).length} training examples of that category.`
-                              : `Il modello usa un approccio Bag-of-Words con ${vocabulary.size} parole nel vocabolario. Il testo inserito è stato convertito in un vettore di frequenze normalizzate, poi elaborato da una rete neurale con 2 layer densi. La classe "${prediction.label}" è stata scelta perché le parole nel testo sono statisticamente più associate a questa etichetta nei ${samples.filter(s => s.label === prediction.label).length} esempi di training di quella categoria.`}
+                              : `Il modello usa un approccio Bag-of-Words con ${vocabulary.size} parole nel vocabolario. Il testo inserito è stato convertito in un vettore di frequenze normalizzate, poi elaborato da una rete neurale con due livelli densi. La classe "${prediction.label}" è stata scelta perché le parole nel testo sono statisticamente più associate a questa etichetta nei ${samples.filter(s => s.label === prediction.label).length} esempi di addestramento di quella categoria.`}
                           </div>
                         </div>
                       </div>
@@ -2058,7 +2137,7 @@ function TextClassification({
                     disabled
                     placeholder={isEnglish
                       ? 'After training, write a new sentence here to see which label the model assigns.'
-                      : 'Dopo l addestramento, scrivi qui una nuova frase per vedere quale etichetta assegna il modello.'}
+                      : 'Dopo l’addestramento, scrivi qui una nuova frase per vedere quale etichetta assegna il modello.'}
                     className="h-32 w-full resize-none rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-400"
                   />
                   <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-500">
@@ -2066,7 +2145,7 @@ function TextClassification({
                     <p className="mt-1 text-xs leading-5">
                       {isEnglish
                         ? 'This area becomes active after the model is trained. It will classify text you write, based only on the labels found in the CSV.'
-                        : "Questa area si attiva dopo l'addestramento. Classifichera il testo che scrivi usando solo le etichette trovate nel CSV."}
+                        : "Questa area si attiva dopo l'addestramento. Classificherà il testo che scrivi usando solo le etichette trovate nel CSV."}
                     </p>
                   </div>
                 </div>
@@ -2402,7 +2481,7 @@ function DataClassification({
               <p className="mt-1 text-xs leading-5 text-emerald-800">
                 {isEnglish
                   ? 'ML Lab reads the CSV columns, helps you choose the target to predict, suggests classification or regression, then enables a test form with the remaining columns.'
-                  : 'ML Lab legge le colonne del CSV, ti aiuta a scegliere la colonna da predire, suggerisce classificazione o regressione e poi abilita un form di test con le altre colonne.'}
+                  : 'ML Lab legge le colonne del CSV, ti aiuta a scegliere la colonna da predire, suggerisce classificazione o regressione e poi abilita un modulo di test con le altre colonne.'}
               </p>
             </div>
           </div>
@@ -2615,7 +2694,7 @@ function DataClassification({
                     <p className="mt-1 text-xs leading-5">
                       {isEnglish
                         ? 'The target is what the model will try to predict. All other columns become the input clues.'
-                        : 'La target e cio che il modello provera a predire. Tutte le altre colonne diventano gli indizi di input.'}
+                        : 'La variabile target è ciò che il modello proverà a predire. Tutte le altre colonne diventano gli indizi di input.'}
                     </p>
                   </div>
                 </div>
@@ -2683,7 +2762,7 @@ function DataClassification({
                 <p className="text-sm text-slate-500">
                   {isEnglish
                     ? 'After training, this test area will let you enter new values and see the predicted result.'
-                    : 'Dopo l addestramento, questa area di test ti permettera di inserire nuovi valori e vedere il risultato predetto.'}
+                    : 'Dopo l’addestramento, questa area di test ti permetterà di inserire nuovi valori e vedere il risultato predetto.'}
                 </p>
               </CardContent>
             </Card>

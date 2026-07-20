@@ -20,7 +20,9 @@ from app.core.config import settings
 from app.api.deps import get_student_or_teacher, StudentOrTeacher
 from app.models.notebook import Notebook
 from app.models.notebook_version import NotebookVersion
+from app.models.notebook_assignment import NotebookAssignment, NotebookFork
 from app.models.session import Class, Session, SessionStudent
+from app.models.task import Task, TaskSubmission, TaskStatus, TaskType
 from app.services.llm_service import llm_service
 from app.services.credit_service import credit_service
 from app.api.v1.endpoints.coding import _resolve_coding_model
@@ -998,6 +1000,226 @@ async def create_notebook(
     return _notebook_detail(nb)
 
 
+# ── Versioned assignments / student forks ──────────────────────────────────
+
+def _assignment_summary(assignment: NotebookAssignment, **extra) -> dict:
+    return {
+        "id": str(assignment.id),
+        "task_id": str(assignment.task_id),
+        "session_id": str(assignment.session_id),
+        "source_notebook_id": str(assignment.source_notebook_id),
+        "source_version_id": str(assignment.source_version_id),
+        "title": assignment.title,
+        "project_type": assignment.project_type,
+        "is_active": assignment.is_active,
+        "created_at": assignment.created_at.isoformat(),
+        **extra,
+    }
+
+
+@router.post("/notebooks/{notebook_id}/assign", response_model=dict, status_code=201)
+async def assign_notebook(
+    notebook_id: UUID,
+    request: dict,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    actor: Annotated[StudentOrTeacher, Depends(get_student_or_teacher)],
+):
+    if not actor.is_teacher:
+        raise HTTPException(status_code=403, detail="Solo un docente può assegnare un notebook")
+    nb = await _get_owned_notebook(db, notebook_id, actor)
+    try:
+        session_id = UUID(str(request.get("session_id")))
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=422, detail="Sessione non valida")
+
+    session_result = await db.execute(
+        select(Session)
+        .join(Class, Session.class_id == Class.id)
+        .where(Session.id == session_id, Class.teacher_id == actor.teacher.id, Session.deleted_at.is_(None))
+    )
+    if session_result.scalar_one_or_none() is None:
+        raise HTTPException(status_code=404, detail="Sessione non trovata")
+
+    version = await _snapshot_notebook(db, nb, "Versione assegnata", "manual")
+    task = Task(
+        tenant_id=actor.teacher.tenant_id,
+        session_id=session_id,
+        title=nb.title,
+        description=request.get("description") or "Notebook assegnato dal docente",
+        task_type=TaskType.PROJECT,
+        status=TaskStatus.PUBLISHED,
+        content_json=json.dumps({
+            "kind": "notebook_assignment",
+            "notebook_title": nb.title,
+            "project_type": nb.project_type,
+            "source_notebook_id": str(nb.id),
+            "source_version_id": str(version.id),
+        }, ensure_ascii=False),
+    )
+    db.add(task)
+    await db.flush()
+    assignment = NotebookAssignment(
+        tenant_id=actor.teacher.tenant_id,
+        teacher_id=actor.teacher.id,
+        session_id=session_id,
+        task_id=task.id,
+        source_notebook_id=nb.id,
+        source_version_id=version.id,
+        title=nb.title,
+        project_type=nb.project_type or "python",
+        cells=nb.cells or [],
+        editor_settings=nb.editor_settings or {},
+    )
+    db.add(assignment)
+    await db.commit()
+    await db.refresh(assignment)
+    return _assignment_summary(assignment)
+
+
+@router.get("/notebooks/assignments", response_model=List[dict])
+async def list_notebook_assignments(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    actor: Annotated[StudentOrTeacher, Depends(get_student_or_teacher)],
+):
+    if actor.is_teacher:
+        result = await db.execute(
+            select(NotebookAssignment, Session.title)
+            .join(Session, NotebookAssignment.session_id == Session.id)
+            .where(NotebookAssignment.teacher_id == actor.teacher.id)
+            .order_by(NotebookAssignment.created_at.desc())
+        )
+        rows = []
+        for assignment, session_title in result.all():
+            count_result = await db.execute(
+                select(TaskSubmission.id).where(TaskSubmission.task_id == assignment.task_id)
+            )
+            rows.append(_assignment_summary(
+                assignment,
+                session_title=session_title,
+                submission_count=len(count_result.all()),
+            ))
+        return rows
+
+    result = await db.execute(
+        select(NotebookAssignment, NotebookFork)
+        .outerjoin(
+            NotebookFork,
+            (NotebookFork.assignment_id == NotebookAssignment.id)
+            & (NotebookFork.student_id == actor.student.id),
+        )
+        .where(
+            NotebookAssignment.session_id == actor.student.session_id,
+            NotebookAssignment.is_active.is_(True),
+        )
+        .order_by(NotebookAssignment.created_at.desc())
+    )
+    rows = []
+    for assignment, fork in result.all():
+        submitted = await db.execute(
+            select(TaskSubmission.submitted_at)
+            .where(TaskSubmission.task_id == assignment.task_id, TaskSubmission.student_id == actor.student.id)
+            .order_by(TaskSubmission.submitted_at.desc())
+            .limit(1)
+        )
+        submitted_at = submitted.scalar_one_or_none()
+        rows.append(_assignment_summary(
+            assignment,
+            fork_notebook_id=str(fork.notebook_id) if fork else None,
+            submitted_at=submitted_at.isoformat() if submitted_at else None,
+        ))
+    return rows
+
+
+@router.post("/notebooks/assignments/{assignment_id}/fork", response_model=dict, status_code=201)
+async def fork_notebook_assignment(
+    assignment_id: UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    actor: Annotated[StudentOrTeacher, Depends(get_student_or_teacher)],
+):
+    if actor.is_teacher:
+        raise HTTPException(status_code=403, detail="Questa azione è riservata agli studenti")
+    result = await db.execute(
+        select(NotebookAssignment).where(
+            NotebookAssignment.id == assignment_id,
+            NotebookAssignment.session_id == actor.student.session_id,
+            NotebookAssignment.is_active.is_(True),
+        )
+    )
+    assignment = result.scalar_one_or_none()
+    if assignment is None:
+        raise HTTPException(status_code=404, detail="Notebook assegnato non trovato")
+    existing = await db.execute(
+        select(NotebookFork).where(
+            NotebookFork.assignment_id == assignment.id,
+            NotebookFork.student_id == actor.student.id,
+        )
+    )
+    fork = existing.scalar_one_or_none()
+    if fork:
+        return {"notebook_id": str(fork.notebook_id), "created": False}
+
+    nb = Notebook(
+        tenant_id=actor.student.tenant_id,
+        owner_id=actor.student.id,
+        title=assignment.title,
+        project_type=assignment.project_type,
+        cells=assignment.cells or [],
+        editor_settings=assignment.editor_settings or {},
+    )
+    db.add(nb)
+    await db.flush()
+    fork = NotebookFork(assignment_id=assignment.id, student_id=actor.student.id, notebook_id=nb.id)
+    db.add(fork)
+    await db.commit()
+    return {"notebook_id": str(nb.id), "created": True}
+
+
+@router.post("/notebooks/{notebook_id}/submit", response_model=dict, status_code=201)
+async def submit_notebook(
+    notebook_id: UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    actor: Annotated[StudentOrTeacher, Depends(get_student_or_teacher)],
+):
+    if actor.is_teacher:
+        raise HTTPException(status_code=403, detail="Questa azione è riservata agli studenti")
+    nb = await _get_owned_notebook(db, notebook_id, actor)
+    result = await db.execute(
+        select(NotebookFork, NotebookAssignment)
+        .join(NotebookAssignment, NotebookFork.assignment_id == NotebookAssignment.id)
+        .where(NotebookFork.notebook_id == nb.id, NotebookFork.student_id == actor.student.id)
+    )
+    row = result.first()
+    if row is None:
+        raise HTTPException(status_code=409, detail="Questo notebook non deriva da un compito assegnato")
+    fork, assignment = row
+    version = await _snapshot_notebook(db, nb, "Versione consegnata", "manual")
+    payload = {
+        "kind": "notebook_submission",
+        "assignment_id": str(assignment.id),
+        "source_version_id": str(assignment.source_version_id),
+        "student_notebook_id": str(nb.id),
+        "student_version_id": str(version.id),
+        "title": nb.title,
+        "project_type": nb.project_type,
+        "cells": nb.cells or [],
+        "editor_settings": nb.editor_settings or {},
+    }
+    submission = TaskSubmission(
+        task_id=assignment.task_id,
+        student_id=actor.student.id,
+        content=f"notebook: {nb.title}",
+        content_json=json.dumps(payload, ensure_ascii=False),
+    )
+    db.add(submission)
+    await db.commit()
+    await db.refresh(submission)
+    return {
+        "id": str(submission.id),
+        "version_id": str(version.id),
+        "submitted_at": submission.submitted_at.isoformat(),
+    }
+
+
 # ── Get notebook ─────────────────────────────────────────────────────────────
 
 @router.get("/notebooks/{notebook_id}", response_model=dict)
@@ -1112,7 +1334,18 @@ async def _snapshot_notebook(
         .offset(MAX_VERSIONS_PER_NOTEBOOK)
     )
     stale_ids = [row[0] for row in stale.all()]
+    protected_result = await db.execute(
+        select(NotebookAssignment.source_version_id).where(
+            NotebookAssignment.source_notebook_id == nb.id,
+            NotebookAssignment.source_version_id.in_(stale_ids),
+        )
+    ) if stale_ids else None
+    protected_ids = {row[0] for row in protected_result.all()} if protected_result else set()
     for sid in stale_ids:
+        # Published template versions are immutable references and must remain
+        # available even after the notebook exceeds the normal history limit.
+        if sid in protected_ids:
+            continue
         old = await db.get(NotebookVersion, sid)
         if old is not None:
             await db.delete(old)

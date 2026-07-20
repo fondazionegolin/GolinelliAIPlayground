@@ -16,10 +16,12 @@ class Class(Base):
     name = Column(String, nullable=False)
     school_grade = Column(String(64), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    archived_at = Column(DateTime(timezone=True), nullable=True, index=True)
+    archived_by_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
 
     # Relationships
     tenant = relationship("Tenant", back_populates="classes")
-    teacher = relationship("User", back_populates="classes")
+    teacher = relationship("User", back_populates="classes", foreign_keys=[teacher_id])
     sessions = relationship("Session", back_populates="class_", lazy="dynamic")
     teachers = relationship("ClassTeacher", back_populates="class_", lazy="dynamic", cascade="all, delete-orphan")
     invitations = relationship("ClassInvitation", back_populates="class_", lazy="dynamic", cascade="all, delete-orphan")

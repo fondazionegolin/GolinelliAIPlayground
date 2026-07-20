@@ -814,12 +814,14 @@ export function VoiceRoomPanel({ sessionId, userType, currentUserId, socket }: V
             <span className={`h-2 w-2 rounded-full ${isActive ? 'animate-pulse bg-emerald-500 ring-2 ring-emerald-200' : 'bg-sky-300'}`} />
             <p
               className="inline-flex rounded-full text-xs font-bold uppercase tracking-wide text-[var(--logo-blue-strong)]"
-              title="Parla e condividi lo schermo con la tua classe."
               aria-label="Chiamata: parla e condividi lo schermo con la tua classe."
             >
               Chiamata
             </p>
           </div>
+          <p className="mt-0.5 text-[10px] leading-tight text-[var(--logo-blue-strong)]/80">
+            Parla e condividi lo schermo con la tua classe
+          </p>
           <p className="truncate text-[10px] text-[var(--logo-blue-strong)]/70">
             {isActive && activeSpeaker ? `${activeSpeaker.nickname || 'Studente'} in parola` : isActive ? statusText : 'Non attiva'}
           </p>
@@ -991,21 +993,27 @@ export function VoiceRoomPanel({ sessionId, userType, currentUserId, socket }: V
                     Schermo
                   </button>
 
-                  <div className="ml-auto inline-flex h-8 overflow-hidden rounded-full border border-slate-200 bg-white p-0.5">
-                    {(['low', 'hi'] as const).map((quality) => (
-                      <button
-                        key={quality}
-                        type="button"
-                        onClick={() => void updateVideoQuality(quality)}
-                        className={`rounded-full px-2.5 text-[10px] font-black uppercase transition-colors ${
-                          videoQuality === quality
-                            ? 'bg-slate-900 text-white'
-                            : 'text-slate-500 hover:bg-slate-100'
-                        }`}
-                      >
-                        {quality}
-                      </button>
-                    ))}
+                  <div className="ml-auto flex items-center gap-1.5">
+                    <span className="text-[10px] font-bold text-slate-500">Qualità</span>
+                    <div className="inline-flex h-8 overflow-hidden rounded-full border border-slate-200 bg-white p-0.5">
+                      {(['low', 'hi'] as const).map((quality) => (
+                        <button
+                          key={quality}
+                          type="button"
+                          onClick={() => void updateVideoQuality(quality)}
+                          aria-pressed={videoQuality === quality}
+                          aria-label={quality === 'low' ? 'Qualità video ridotta' : 'Qualità video alta'}
+                          title={quality === 'low' ? 'Qualità video ridotta' : 'Qualità video alta'}
+                          className={`rounded-full px-2.5 text-[10px] font-black uppercase transition-colors ${
+                            videoQuality === quality
+                              ? 'bg-slate-900 text-white'
+                              : 'text-slate-500 hover:bg-slate-100'
+                          }`}
+                        >
+                          {quality}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 </div>
               )}

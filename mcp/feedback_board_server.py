@@ -70,6 +70,7 @@ class McpError(Exception):
 class ApiConfig:
     base_url: str
     token: str
+    token_file: pathlib.Path | None
     timeout_sec: float
     cache_ttl_sec: float
 
@@ -86,13 +87,16 @@ class FeedbackBoardClient:
         return f"{base}/api/v1{path}"
 
     def _request_json(self, path: str, *, method: str = "GET", body: dict[str, Any] | None = None) -> Any:
-        if not self.config.token:
+        token = self.config.token
+        if self.config.token_file and self.config.token_file.exists():
+            token = self.config.token_file.read_text(encoding="utf-8").strip()
+        if not token:
             raise McpError(
                 "GOLINELLI_API_TOKEN non configurato. Esporta un access token docente/admin prima di avviare il server MCP.",
                 code=-32001,
             )
         headers = {
-            "Authorization": f"Bearer {self.config.token}",
+            "Authorization": f"Bearer {token}",
             "Accept": "application/json",
             "User-Agent": f"{SERVER_NAME}/{SERVER_VERSION}",
         }
@@ -154,13 +158,14 @@ class FeedbackBoardClient:
 def configured_client() -> FeedbackBoardClient:
     base_url = os.getenv("GOLINELLI_API_BASE_URL", "http://localhost:8000/api/v1")
     token = os.getenv("GOLINELLI_API_TOKEN", "").strip()
+    token_file: pathlib.Path | None = None
     if not token:
         token_file = pathlib.Path(os.getenv("GOLINELLI_API_TOKEN_FILE", DEFAULT_TOKEN_FILE)).expanduser()
         if token_file.exists():
             token = token_file.read_text(encoding="utf-8").strip()
     timeout_sec = float(os.getenv("GOLINELLI_MCP_TIMEOUT_SEC", "20"))
     cache_ttl_sec = float(os.getenv("GOLINELLI_MCP_CACHE_TTL_SEC", "15"))
-    return FeedbackBoardClient(ApiConfig(base_url=base_url, token=token, timeout_sec=timeout_sec, cache_ttl_sec=cache_ttl_sec))
+    return FeedbackBoardClient(ApiConfig(base_url=base_url, token=token, token_file=token_file, timeout_sec=timeout_sec, cache_ttl_sec=cache_ttl_sec))
 
 
 CLIENT = configured_client()

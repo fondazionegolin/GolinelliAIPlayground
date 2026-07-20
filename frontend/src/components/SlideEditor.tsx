@@ -47,6 +47,7 @@ export interface TextSlideBlock extends BaseSlideBlock {
     fontStyle?: string
     textDecoration?: string
     textAlign?: 'left' | 'center' | 'right' | 'justify'
+    lineHeight?: number
     borderRadius?: number
     padding?: number
   }
@@ -453,6 +454,7 @@ export function SlideEditor({
                 else textareaRefs.current.delete(block.id)
               }}
               value={block.content}
+              readOnly={readOnly}
               onChange={(e) => {
                 const newBlocks = blocks.map(b => b.id === block.id ? { ...b, content: e.target.value } : b)
                 onChange(newBlocks)
@@ -466,8 +468,15 @@ export function SlideEditor({
                 fontStyle: block.style.fontStyle,
                 textDecoration: block.style.textDecoration,
                 textAlign: block.style.textAlign,
+                lineHeight: block.style.lineHeight,
               }}
-              onMouseDown={(e) => e.stopPropagation()} // Allow selecting text
+              onMouseDown={(e) => {
+                e.stopPropagation()
+                if (!readOnly) onSelectBlock(block.id)
+              }}
+              onFocus={() => {
+                if (!readOnly) onSelectBlock(block.id)
+              }}
               onMouseUp={(e) => {
                 e.stopPropagation()
                 handleTextSelection(block.id, e.currentTarget)

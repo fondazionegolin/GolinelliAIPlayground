@@ -1021,8 +1021,8 @@ export default function ChatSidebar({
                         <Brain className="h-4.5 w-4.5" style={{ width: 18, height: 18 }} />
                       </span>
                       <div className="min-w-0 flex-1">
-                        <p className="truncate text-[10px] font-black uppercase tracking-wide text-violet-700">Toy LM condiviso</p>
-                        <p className="truncate text-xs font-semibold text-slate-800">{att.name || 'Modello Toy LM'}</p>
+                        <p className="truncate text-[10px] font-black uppercase tracking-wide text-violet-700">ToyGPT condiviso</p>
+                        <p className="truncate text-xs font-semibold text-slate-800">{att.name || 'Modello ToyGPT'}</p>
                         <p className="mt-0.5 truncate text-[10px] text-slate-500">
                           {att.saved_epoch ?? 0} epoch · {Number(att.param_count || 0).toLocaleString()} parametri · vocab {att.vocab_size ?? 0}
                         </p>
@@ -1679,7 +1679,8 @@ export default function ChatSidebar({
             <div className="relative group">
               <Button
                 size="icon"
-                variant="outline"
+                tone="accent"
+                surface="solid"
                 onClick={() => libraryFileInputRef.current?.click()}
                 className="h-8 w-8"
                 title={sidebarLabels.uploadFiles}
@@ -1693,7 +1694,8 @@ export default function ChatSidebar({
             <div className="relative group">
               <Button
                 size="icon"
-                variant="outline"
+                tone="accent"
+                surface="soft"
                 onClick={createFolderWithKeep}
                 className="h-8 w-8"
                 title={sidebarLabels.newFolder}
@@ -2090,7 +2092,7 @@ export default function ChatSidebar({
                   <Brain className="h-5 w-5" />
                 </span>
                 <div className="min-w-0">
-                  <p className="truncate text-base font-black text-slate-900">{activeToyLMModel.name || 'Modello Toy LM'}</p>
+                  <p className="truncate text-base font-black text-slate-900">{activeToyLMModel.name || 'Modello ToyGPT'}</p>
                   <p className="text-xs text-slate-500">
                     {activeToyLMModel.saved_epoch ?? 0} epoch · {Number(activeToyLMModel.param_count || 0).toLocaleString()} parametri
                   </p>

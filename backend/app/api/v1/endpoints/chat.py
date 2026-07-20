@@ -147,6 +147,10 @@ async def get_session_messages(
     formatted_messages = []
     for m in reversed(messages):
         is_notif, notif_type, notif_data = extract_notification_info(m.attachments)
+        if auth.is_student and isinstance(notif_data, dict):
+            recipient_id = notif_data.get("student_id")
+            if recipient_id and str(recipient_id) != str(auth.student.id):
+                continue
         compact_text, text_truncated, text_length = _compact_session_message_text(m.message_text)
         formatted_messages.append({
             "id": str(m.id),

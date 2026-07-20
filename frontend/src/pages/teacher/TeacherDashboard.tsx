@@ -2,12 +2,13 @@ import { useState, useEffect, lazy, Suspense, type CSSProperties } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Routes, Route, useLocation, Link, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { MessageSquare, Users, PlayCircle, Bot, ClipboardList, History, Monitor, BookOpen, UserRound, Code2, KanbanSquare } from 'lucide-react'
+import { MessageSquare, Users, PlayCircle, ClipboardList, History, Monitor, BookOpen, UserRound, Code2, KanbanSquare } from 'lucide-react'
 // Heavy pages loaded lazily — only parsed when first visited
 const ClassesPage        = lazy(() => import('./ClassesPage'))
 const SessionsPage       = lazy(() => import('./SessionsPage'))
 const SessionLivePage    = lazy(() => import('./SessionLivePage'))
 const TeacherDocumentsPage = lazy(() => import('./TeacherDocumentsPage'))
+const TeacherbotsPage     = lazy(() => import('./TeacherbotsPage'))
 const TeacherMLLabPage   = lazy(() => import('./TeacherMLLabPage'))
 const Teacher3DLabPage   = lazy(() => import('./Teacher3DLabPage'))
 const UDAListPage        = lazy(() => import('./UDAListPage'))
@@ -36,6 +37,7 @@ import { useMobile } from '@/hooks/useMobile'
 import { useTeacherProfile } from '@/hooks/useTeacherProfile'
 import { FloatingHelper } from '@/components/FloatingHelper'
 import { useSocket } from '@/hooks/useSocket'
+import { AcademicAiIcon } from '@/components/icons/AcademicAiIcon'
 
 const CHATBAR_AUTO_HIDE_BREAKPOINT = 1280
 
@@ -132,7 +134,7 @@ export default function TeacherDashboard() {
   }
   const railButtonStyle = { '--btn-tone': teacherTheme.accent } as CSSProperties
   const mobileNav = [
-    { path: '/teacher', label: t('navbar.nav_support'), icon: MessageSquare, exact: true },
+    { path: '/teacher', label: t('navbar.nav_support'), icon: AcademicAiIcon, exact: true },
     { path: '/teacher/classes', label: t('navbar.nav_classes'), icon: Users },
     { path: '/teacher/sessions', label: t('navbar.sessions_title'), icon: PlayCircle },
     { path: '/teacher/wiki', label: t('navbar.nav_wiki'), icon: BookOpen },
@@ -164,7 +166,7 @@ export default function TeacherDashboard() {
           style={{ backgroundColor: `${teacherTheme.soft}ee` }}
         >
           <div className="w-7 h-7 rounded-full flex items-center justify-center mr-2.5 shadow-sm" style={{ backgroundColor: teacherTheme.accent }}>
-            <Bot className="h-4 w-4 text-white" />
+            <AcademicAiIcon className="h-4 w-4 text-white" />
           </div>
           <span className="text-sm font-bold flex-1" style={{ color: teacherTheme.text }}>
             {teacherProfile?.name || t('teacher_dashboard.mobile_teacher_default')}
@@ -273,11 +275,12 @@ export default function TeacherDashboard() {
             <Routes>
               <Route index element={<div className="h-full bg-neutral-100" />} />
               <Route path="documents" element={<TeacherDocumentsPage />} />
+              <Route path="teacherbots" element={<TeacherbotsPage />} />
               <Route path="wiki" element={<TeacherWikiPage accentId={teacherProfile?.uiAccent} />} />
               <Route path="ml-lab" element={<TeacherMLLabPage />} />
               <Route path="3d-lab" element={<Teacher3DLabPage sessionId={activeSessionId ?? undefined} />} />
-              <Route path="classes" element={<ClassesPage />} />
-              <Route path="sessions" element={<SessionsPage />} />
+              <Route path="classes" element={<ClassesPage currentSession={currentSession} />} />
+              <Route path="sessions" element={<SessionsPage currentSession={currentSession} />} />
               <Route path="sessions/:sessionId" element={<SessionLivePage />} />
               <Route path="classes/:classId/uda" element={<UDAListPage />} />
               <Route path="classes/:classId/uda/:udaId" element={<UDACreatorPage />} />

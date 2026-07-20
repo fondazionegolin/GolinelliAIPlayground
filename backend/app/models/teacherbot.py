@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Enum, DateTime, Boolean, ForeignKey, Text, Float, func, Index
+from sqlalchemy import Column, String, Enum, DateTime, Boolean, ForeignKey, Text, Float, func, Index, CheckConstraint
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
 import uuid
@@ -55,13 +55,14 @@ class Teacherbot(Base):
 
 
 class TeacherbotPublication(Base):
-    """Publication of a teacherbot to a class"""
+    """Publication of a teacherbot to a class, or to a single student"""
     __tablename__ = "teacherbot_publications"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     tenant_id = Column(UUID(as_uuid=True), ForeignKey("tenants.id"), nullable=False, index=True)
     teacherbot_id = Column(UUID(as_uuid=True), ForeignKey("teacherbots.id"), nullable=False, index=True)
-    class_id = Column(UUID(as_uuid=True), ForeignKey("classes.id"), nullable=False, index=True)
+    class_id = Column(UUID(as_uuid=True), ForeignKey("classes.id"), nullable=True, index=True)
+    student_id = Column(UUID(as_uuid=True), ForeignKey("session_students.id", ondelete="CASCADE"), nullable=True, index=True)
     is_active = Column(Boolean, default=True, nullable=False)
     published_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     published_by_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
@@ -69,10 +70,16 @@ class TeacherbotPublication(Base):
     # Relationships
     teacherbot = relationship("Teacherbot", back_populates="publications")
     class_ = relationship("Class", backref="teacherbot_publications")
+    student = relationship("SessionStudent", backref="teacherbot_publications")
     published_by = relationship("User", foreign_keys=[published_by_id])
 
     __table_args__ = (
         Index("ix_teacherbot_publications_class_active", "class_id", "is_active"),
+        Index("ix_teacherbot_publications_student_active", "student_id", "is_active"),
+        CheckConstraint(
+            "(class_id IS NOT NULL) != (student_id IS NOT NULL)",
+            name="ck_teacherbot_publications_one_target",
+        ),
     )
 
 

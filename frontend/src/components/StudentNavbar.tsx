@@ -14,6 +14,7 @@ import WhatsNewModal from './WhatsNewModal'
 import { buildAccentNavbarStyle, buildAccentNavClusterStyle } from '@/lib/navbarGlass'
 import { CreditBalancePill } from './CreditBalancePill'
 import { StudentNotificationBell } from './StudentNotificationBell'
+import { ServerHealthIndicator } from './ServerHealthIndicator'
 
 interface StudentProfile {
   id?: string
@@ -34,6 +35,7 @@ interface StudentNavbarProps {
   onAccentChange?: (accent: StudentAccentId) => void
   enabledModules?: string[]
   chatAvailable?: boolean
+  pendingTasksCount?: number
 }
 
 export function StudentNavbar({
@@ -48,6 +50,7 @@ export function StudentNavbar({
   onAccentChange,
   enabledModules,
   chatAvailable = true,
+  pendingTasksCount = 0,
 }: StudentNavbarProps) {
   const navigate = useNavigate()
   const logout = useAuthStore((s) => s.logout)
@@ -80,16 +83,21 @@ export function StudentNavbar({
   const dropdownRef = useRef<HTMLDivElement>(null)
   const mobileMenuRef = useRef<HTMLDivElement>(null)
   const activeModuleRef = useRef<string | null | undefined>(activeModule)
+  const chatSidebarOpenRef = useRef(chatSidebarOpen)
+  const profileIdRef = useRef<string | undefined>(undefined)
 
   useEffect(() => {
     activeModuleRef.current = activeModule
   }, [activeModule])
 
-  // Chat/task updates bump the class-chat icon. Teacher-shared documents are
-  // surfaced on the Documents nav item so students know where to act.
+  useEffect(() => {
+    chatSidebarOpenRef.current = chatSidebarOpen
+  }, [chatSidebarOpen])
+
+  // Teacher-shared documents are surfaced on the Documents nav item. Published
+  // tasks use the authoritative pending-submission count passed by the dashboard.
   useEffect(() => {
     let socket: any = null
-    const bumpChat = () => setChatBadge((n) => n + 1)
     const bumpDocuments = () => {
       if (activeModuleRef.current === 'documents') return
       setDocumentsBadge((n) => n + 1)
@@ -99,20 +107,16 @@ export function StudentNavbar({
       if (s && s !== socket) {
         socket = s
         s.on('document_uploaded', bumpDocuments)
-        s.on('task_published', bumpChat)
       }
     }
     attach()
     const iv = setInterval(attach, 1500)
     window.addEventListener('student-document-uploaded', bumpDocuments)
-    window.addEventListener('student-task-published', bumpChat)
     return () => {
       clearInterval(iv)
       window.removeEventListener('student-document-uploaded', bumpDocuments)
-      window.removeEventListener('student-task-published', bumpChat)
       if (socket) {
         socket.off('document_uploaded', bumpDocuments)
-        socket.off('task_published', bumpChat)
       }
     }
   }, [])
@@ -120,6 +124,28 @@ export function StudentNavbar({
   useEffect(() => {
     if (chatSidebarOpen) setChatBadge(0)
   }, [chatSidebarOpen])
+
+  useEffect(() => {
+    let socket: any = null
+    const handleChatMessage = (data: { room_type?: string; message?: { sender_id?: string } }) => {
+      if (data?.room_type !== 'PUBLIC' || chatSidebarOpenRef.current) return
+      if (data.message?.sender_id && data.message.sender_id === profileIdRef.current) return
+      setChatBadge((count) => count + 1)
+    }
+    const attach = () => {
+      const nextSocket = (window as any).socket
+      if (!nextSocket || nextSocket === socket) return
+      if (socket) socket.off('chat_message', handleChatMessage)
+      socket = nextSocket
+      socket.on('chat_message', handleChatMessage)
+    }
+    attach()
+    const interval = window.setInterval(attach, 1500)
+    return () => {
+      window.clearInterval(interval)
+      if (socket) socket.off('chat_message', handleChatMessage)
+    }
+  }, [])
 
   useEffect(() => {
     if (activeModule === 'documents') setDocumentsBadge(0)
@@ -176,6 +202,7 @@ export function StudentNavbar({
           avatarUrl: data.avatar_url || undefined,
           uiAccent: data.ui_accent || undefined,
         })
+        profileIdRef.current = data.id
         if (data.ui_accent && onAccentChange) {
           const serverAccent = data.ui_accent as StudentAccentId
           onAccentChange(serverAccent)
@@ -242,7 +269,11 @@ export function StudentNavbar({
   const navItems = enabledModules
     ? ALL_NAV_ITEMS.filter(item => ALWAYS_SHOWN.has(item.key) || enabledModules.includes(item.key))
     : ALL_NAV_ITEMS
-  const getNavBadge = (key: string) => key === 'documents' ? documentsBadge : 0
+  const getNavBadge = (key: string) => {
+    if (key === 'self_assessment') return pendingTasksCount
+    if (key === 'documents') return documentsBadge
+    return 0
+  }
   const handleNavigate = (key: string) => {
     if (key === 'documents') setDocumentsBadge(0)
     onNavigate?.(key)
@@ -276,6 +307,7 @@ export function StudentNavbar({
                 <span className="brand-wordmark">
                   Golinelli<span className="brand-wordmark-ai">.ai</span>
                 </span>
+                <ServerHealthIndicator />
                 <button
                   type="button"
                   onClick={(e) => {

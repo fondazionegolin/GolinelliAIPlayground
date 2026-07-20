@@ -18,7 +18,7 @@ import {
 import {
   Upload, Play, Pause, Square, Network, FileText,
   Zap, RefreshCw, FlaskConical,
-  Trash2, Plus, Pencil, X, Share2,
+  Trash2, Plus, Pencil, X, Share2, HelpCircle, ArrowRight,
 } from 'lucide-react'
 import { Card } from '@/design/primitives/Card'
 import { Button } from '@/components/ui/button'
@@ -91,7 +91,52 @@ const DEFAULT_PARAMS: HyperParams = {
   metricEvery: 20,
 }
 
+const PARAM_HELP: Record<string, { title: string; explanation: string; effect: string }> = {
+  'Seq len': {
+    title: 'Lunghezza della sequenza',
+    explanation: 'Indica quante parole o caratteri il modello osserva insieme per provare a prevedere quello successivo.',
+    effect: 'Un valore più alto offre più contesto, ma richiede più memoria e rende il training più lento.',
+  },
+  'Batch size': {
+    title: 'Dimensione del gruppo',
+    explanation: 'È il numero di esempi che il modello studia prima di aggiornare ciò che ha imparato.',
+    effect: 'Gruppi grandi rendono gli aggiornamenti più regolari, ma consumano più memoria. Per iniziare, il valore predefinito va bene.',
+  },
+  'Embed dim': {
+    title: 'Dimensione delle rappresentazioni',
+    explanation: 'Ogni parola o carattere viene trasformato in una lista di numeri. Questo valore decide quanto è ricca quella rappresentazione.',
+    effect: 'Valori più alti possono cogliere più sfumature, ma aumentano dimensione e tempo di allenamento del modello.',
+  },
+  'Hidden size': {
+    title: 'Capacità della memoria interna',
+    explanation: 'Indica quanto spazio ha il modello per ricordare schemi e collegamenti incontrati nel testo.',
+    effect: 'Più capacità può aiutare con testi complessi, ma rallenta il training e può far memorizzare troppo un corpus piccolo.',
+  },
+  'Num layers': {
+    title: 'Numero di livelli',
+    explanation: 'I livelli elaborano il testo uno dopo l’altro, costruendo rappresentazioni progressivamente più complesse.',
+    effect: 'Più livelli aumentano la capacità del modello, ma anche tempi, memoria richiesta e rischio di imparare il testo a memoria.',
+  },
+  'Epoche': {
+    title: 'Passaggi sul testo',
+    explanation: 'Un’epoca è un giro completo su tutto il materiale caricato. Il modello rilegge il corpus una volta per ogni epoca.',
+    effect: 'Con poche epoche può imparare poco; con troppe può memorizzare il testo invece di generalizzare.',
+  },
+  'Learning rate': {
+    title: 'Velocità di apprendimento',
+    explanation: 'Determina quanto il modello modifica le proprie regole interne dopo ogni errore.',
+    effect: 'Un valore alto impara rapidamente ma può essere instabile; uno basso è più prudente ma richiede più tempo.',
+  },
+}
+
 const MAX_CORPUS_CHARS = 200_000
+
+const SAMPLE_CORPORA = [
+  { name: 'Divina Commedia', language: 'Italiano', file: 'divina-commedia.txt' },
+  { name: 'Decameron', language: 'Italiano', file: 'decameron.txt' },
+  { name: "Alice's Adventures in Wonderland", language: 'English', file: 'alice-in-wonderland.txt' },
+  { name: 'De bello Gallico', language: 'Latino', file: 'de-bello-gallico.txt' },
+]
 
 // Lab accent — violet, applied via CSS vars so the design-system Button/Card pick it up.
 const LAB_ACCENT: CSSProperties = {
@@ -168,6 +213,23 @@ export default function ToyLMPage() {
   const [shareStatus, setShareStatus] = useState('')
 
   const selectedJob = jobs.find(j => j.id === selectedJobId) ?? null
+
+  const loadSampleCorpus = async (sample: (typeof SAMPLE_CORPORA)[number]) => {
+    setIsWorking(true)
+    try {
+      const response = await fetch(`/toy-lm-corpora/${sample.file}`)
+      if (!response.ok) throw new Error('Documento non disponibile')
+      const text = (await response.text()).slice(0, MAX_CORPUS_CHARS)
+      setNewCorpus(text)
+      setFileNames([sample.file])
+      setNewJobName(`${sample.name} LM`)
+      setStatusMsg(`${sample.name} caricato come corpus di esempio.`)
+    } catch (error) {
+      setStatusMsg(`Impossibile caricare il corpus: ${(error as Error).message}`)
+    } finally {
+      setIsWorking(false)
+    }
+  }
 
   // ── Load jobs on mount ────────────────────────────────────────────────────
 
@@ -550,8 +612,8 @@ export default function ToyLMPage() {
             <Network className="h-4.5 w-4.5 text-[var(--logo-violet)]" style={{ width: 18, height: 18 }} />
           </span>
           <div className="min-w-0">
-            <p className="truncate text-sm font-black leading-tight">Toy LM Lab</p>
-            <p className="text-[10px] text-[var(--text-muted)]">LSTM token lab</p>
+            <p className="truncate text-sm font-black leading-tight">ToyGPT</p>
+            <p className="text-[10px] text-[var(--text-muted)]">Crea un modello linguistico da zero</p>
           </div>
         </div>
 
@@ -563,16 +625,16 @@ export default function ToyLMPage() {
 
         <div className="flex items-center justify-between px-4 pb-1 pt-3">
           <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Modelli</span>
-          <button onClick={loadJobs} className="rounded-md p-1 text-[var(--text-muted)] transition-colors hover:bg-[var(--surface-elevated)] hover:text-[var(--logo-violet)]" title="Aggiorna">
-            <RefreshCw className="h-3.5 w-3.5" />
-          </button>
+          <span className="text-[10px] font-semibold text-[var(--text-muted)]" aria-live="polite">
+            {isLoadingJobs ? 'Caricamento…' : jobs.length}
+          </span>
         </div>
 
         <div className="flex-1 space-y-1 overflow-y-auto px-2 pb-3">
           {isLoadingJobs && jobs.length === 0 ? (
             <p className="px-2 py-6 text-center text-xs text-[var(--text-muted)]">Caricamento…</p>
           ) : jobs.length === 0 ? (
-            <p className="px-3 py-6 text-center text-xs leading-5 text-[var(--text-muted)]">Nessun modello.<br />Creane uno con <strong>Nuovo modello</strong>.</p>
+            <p className="px-3 py-3 text-center text-xs leading-5 text-[var(--text-muted)]">Nessun modello creato.</p>
           ) : (
             jobs.map(job => {
               const selected = selectedJobId === job.id
@@ -636,7 +698,7 @@ export default function ToyLMPage() {
         {/* Top bar */}
         <header className="flex shrink-0 items-center gap-3 border-b border-[var(--border-subtle)] bg-[var(--surface-header)] px-5 py-2.5 backdrop-blur-md">
           <h1 className="truncate text-sm font-black tracking-tight">
-            {showCreate ? 'Nuovo modello' : selectedJob ? selectedJob.name : 'Toy Language Model Lab'}
+            {showCreate ? 'Nuovo modello' : selectedJob ? selectedJob.name : 'ToyGPT'}
           </h1>
           {deviceInfo && <span className="font-mono text-[11px] text-[var(--logo-violet-strong)]">{deviceInfo}</span>}
           <div className="ml-auto flex items-center gap-2">
@@ -704,6 +766,24 @@ export default function ToyLMPage() {
                       <FileText className="h-3 w-3 text-[var(--logo-violet)]" />{n}
                     </span>
                   ))}
+                </div>
+              )}
+
+              {!newCorpus.trim() && fileNames.length === 0 && (
+                <div className="rounded-2xl border border-[var(--logo-violet-22)] bg-[var(--logo-violet-06)] p-4">
+                  <div className="flex items-center gap-2">
+                    <FileText className="h-4 w-4 text-[var(--logo-violet)]" />
+                    <SubLabel>Non hai un testo? Usa un documento pronto</SubLabel>
+                  </div>
+                  <p className="mt-1 text-[11px] text-[var(--text-muted)]">Estratti di opere in pubblico dominio, già formattati come file TXT per il training.</p>
+                  <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                    {SAMPLE_CORPORA.map(sample => (
+                      <button key={sample.file} type="button" disabled={isWorking} onClick={() => void loadSampleCorpus(sample)} className="rounded-xl border border-[var(--border-subtle)] bg-white px-3 py-2.5 text-left transition hover:border-[var(--logo-violet)] disabled:opacity-50">
+                        <span className="block text-xs font-black text-[var(--text-primary)]">{sample.name}</span>
+                        <span className="mt-0.5 block text-[10px] text-[var(--text-muted)]">TXT · {sample.language}</span>
+                      </button>
+                    ))}
+                  </div>
                 </div>
               )}
 
@@ -886,8 +966,48 @@ export default function ToyLMPage() {
             </div>
 
           ) : (
-            <Card className="p-10 text-center text-sm text-[var(--text-secondary)]">
-              Seleziona un modello dalla barra a sinistra, oppure creane uno nuovo.
+            <Card className={`mx-auto w-full max-w-4xl rounded-[24px] p-5 shadow-sm sm:p-6 ${PASTEL_SURFACES.violet}`}>
+              <div className="flex flex-col gap-5">
+                <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
+                  <div className="flex items-center gap-3">
+                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/80 text-[var(--logo-violet)] ring-1 ring-[var(--logo-violet-22)]">
+                      <Network className="h-5 w-5" />
+                    </span>
+                    <div>
+                      <h2 className="text-base font-black text-[var(--text-primary)]">Costruisci il tuo piccolo modello linguistico</h2>
+                      <p className="mt-0.5 text-xs leading-5 text-[var(--text-secondary)]">Addestra una rete LSTM su un testo e osserva come impara a prevedere il token successivo.</p>
+                    </div>
+                  </div>
+                  <Button tone="accent" surface="solid" density="compact" onClick={openCreate}>
+                    <Plus className="h-3.5 w-3.5" /> Crea modello
+                  </Button>
+                </div>
+
+                <div className="grid gap-2 sm:grid-cols-[1fr_auto_1fr_auto_1fr_auto_1fr] sm:items-center" aria-label="Flusso di funzionamento di una rete LSTM">
+                  {[
+                    ['1', 'Testo', 'Il corpus di partenza'],
+                    ['2', 'Token', 'Parole o caratteri'],
+                    ['3', 'Memoria LSTM', 'Conserva il contesto'],
+                    ['4', 'Previsione', 'Propone il token seguente'],
+                  ].map(([step, title, detail], index) => (
+                    <div key={title} className="contents">
+                      {index > 0 && <ArrowRight className="hidden h-4 w-4 text-[var(--logo-violet)] sm:block" aria-hidden="true" />}
+                      <div className="flex items-center gap-2.5 rounded-xl border border-white/80 bg-white/65 p-3">
+                        <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[var(--logo-violet)] text-[10px] font-black text-white">{step}</span>
+                        <div>
+                          <p className="text-xs font-black text-[var(--text-primary)]">{title}</p>
+                          <p className="text-[10px] leading-4 text-[var(--text-muted)]">{detail}</p>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="grid gap-3 border-t border-[var(--border-subtle)] pt-4 text-xs leading-5 text-[var(--text-secondary)] sm:grid-cols-2">
+                  <p><strong className="text-[var(--text-primary)]">A cosa serve:</strong> capire in modo concreto tokenizzazione, addestramento e generazione del testo.</p>
+                  <p><strong className="text-[var(--text-primary)]">Cosa puoi osservare:</strong> loss, perplexity, architettura e qualità delle previsioni durante le epoche.</p>
+                </div>
+              </div>
             </Card>
           )}
         </main>
@@ -1056,10 +1176,49 @@ function ParamSlider({
   label: string; value: number; min: number; max: number; step: number
   onChange: (v: number) => void; disabled?: boolean; description?: string; displayFn?: (v: number) => string
 }) {
+  const [helpOpen, setHelpOpen] = useState(false)
+  const help = PARAM_HELP[label]
+
   return (
     <div className={disabled ? 'opacity-50' : ''}>
-      <div className="mb-1 flex items-center justify-between">
-        <label className="text-xs font-medium text-[var(--text-secondary)]">{label}</label>
+      <div className="relative mb-1 flex items-center justify-between">
+        <div className="flex items-center gap-1">
+          <label className="text-xs font-medium text-[var(--text-secondary)]">{label}</label>
+          {help && (
+            <button
+              type="button"
+              onClick={() => setHelpOpen((open) => !open)}
+              className="inline-flex h-5 w-5 items-center justify-center rounded-full text-[var(--logo-violet)] transition hover:bg-[var(--logo-violet-10)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--logo-violet-22)]"
+              aria-label={`Spiega ${label}`}
+              aria-expanded={helpOpen}
+            >
+              <HelpCircle className="h-3.5 w-3.5" />
+            </button>
+          )}
+          {helpOpen && help && (
+            <div
+              role="dialog"
+              aria-label={`Spiegazione: ${help.title}`}
+              className="absolute left-0 top-6 z-40 w-[min(300px,calc(100vw-3rem))] rounded-2xl border border-[var(--logo-violet-22)] bg-[var(--surface-base)] p-3 text-left shadow-[var(--shadow-xl)]"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <p className="text-xs font-black text-[var(--text-primary)]">{help.title}</p>
+                <button
+                  type="button"
+                  onClick={() => setHelpOpen(false)}
+                  className="-mr-1 -mt-1 rounded-md p-1 text-[var(--text-muted)] hover:bg-[var(--surface-elevated)] hover:text-[var(--text-primary)]"
+                  aria-label="Chiudi spiegazione"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
+              <p className="mt-1.5 text-[11px] leading-5 text-[var(--text-secondary)]">{help.explanation}</p>
+              <p className="mt-2 rounded-xl bg-[var(--logo-violet-10)] px-2.5 py-2 text-[11px] leading-4 text-[var(--logo-violet-strong)]">
+                <strong>In pratica:</strong> {help.effect}
+              </p>
+            </div>
+          )}
+        </div>
         <span className="font-mono text-xs font-bold text-[var(--logo-violet)]">{displayFn ? displayFn(value) : value}</span>
       </div>
       <input type="range" min={min} max={max} step={step} value={value} disabled={disabled}

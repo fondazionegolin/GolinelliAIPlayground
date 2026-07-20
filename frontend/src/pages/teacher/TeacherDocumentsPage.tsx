@@ -3,7 +3,8 @@ import { useMobile } from '@/hooks/useMobile'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
-  Plus, Trash2, Upload, Monitor, FileText, ChevronLeft, ChevronRight, FileSpreadsheet, PenTool, Share2, User, Clock, MonitorPlay, Calendar, BookOpen, Search, X
+  Plus, Trash2, Upload, Monitor, FileText, ChevronLeft, FileSpreadsheet, PenTool, Share2, User, Clock, MonitorPlay, Calendar, BookOpen, Search, X,
+  History, ArrowUp, ArrowDown, GripVertical, CheckSquare, Save
 } from 'lucide-react'
 import { teacherApi } from '@/lib/api'
 import { useToast } from '@/components/ui/use-toast'
@@ -12,6 +13,7 @@ import { SlideEditor, SlideBlock, SlideBlockType, SlideSnapOptions, DEFAULT_SLID
 import { createShapeBlock } from '@/lib/slideBlocks'
 import { RichTextEditor } from '@/components/RichTextEditor'
 import { UnifiedToolbar } from '@/components/UnifiedToolbar'
+import DocumentAgentChat, { type DocumentAssistContext } from '@/components/documents/DocumentAgentChat'
 import { SheetChartConfig, SpreadsheetEditor } from '@/components/SpreadsheetEditor'
 import { CollaborativeCanvas } from '@/components/CollaborativeCanvas'
 import { Editor } from '@tiptap/react'
@@ -71,6 +73,15 @@ interface StoredDocument {
   className: string
   contentJson: string
   authorName: string
+  correction?: DocumentCorrection | null
+}
+
+interface DocumentCorrection {
+  status: 'pending' | 'accepted'
+  original_content_json: string
+  suggested_content_json: string
+  teacher_name?: string
+  updated_at?: string
 }
 
 interface DraftDocument {
@@ -79,6 +90,16 @@ interface DraftDocument {
   type: 'presentation' | 'document' | 'sheet' | 'canvas'
   updatedAt: string
   contentJson: string
+}
+
+interface DocumentDraftVersion {
+  id: string
+  draftId: string
+  title: string
+  type: string
+  contentJson: string
+  label?: string | null
+  createdAt: string
 }
 
 // Format dimensions
@@ -142,6 +163,7 @@ export default function TeacherDocumentsPage() {
   const lastDraftPayloadKeyRef = useRef<string | null>(null)
   const publishingDocumentRef = useRef(false)
   const activePublishedTaskIdRef = useRef<string | null>(null)
+  const lastCorrectionPayloadRef = useRef<string | null>(null)
   
   // State
   const [mode, setMode] = useState<EditorMode>('document') 
@@ -161,11 +183,12 @@ export default function TeacherDocumentsPage() {
   })
   
   // Sidebar State
-  const [showSidebar, setShowSidebar] = useState(true)
   const [storedDocuments, setStoredDocuments] = useState<StoredDocument[]>([])
   const [draftDocuments, setDraftDocuments] = useState<DraftDocument[]>([])
   const [docSearch, setDocSearch] = useState('')
   const [activePublishedTaskId, setActivePublishedTaskId] = useState<string | null>(null)
+  const [activeStudentSubmissionId, setActiveStudentSubmissionId] = useState<string | null>(null)
+  const [correctionSaveState, setCorrectionSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
 
   // Editor State
   const [editor, setEditor] = useState<Editor | null>(null)
@@ -175,6 +198,7 @@ export default function TeacherDocumentsPage() {
   const [scale, setScale] = useState(1)
   const [docScale, setDocScale] = useState(1)
   const [docMargins, setDocMargins] = useState({ vertical: 56, horizontal: 56 })
+  const [documentPageCount, setDocumentPageCount] = useState(1)
   const [showRuledLines, setShowRuledLines] = useState(false)
   const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null)
   const [snapOptions, setSnapOptions] = useState<SlideSnapOptions>(DEFAULT_SLIDE_SNAP_OPTIONS)
@@ -193,11 +217,128 @@ export default function TeacherDocumentsPage() {
   const [viewMode, setViewMode] = useState<'list' | 'editor'>('list')
   const [studentDocsCollapsed, setStudentDocsCollapsed] = useState(false)
   const [aiPanelAnchor, setAiPanelAnchor] = useState<{ x: number; y: number } | null>(null)
-  const [aiOpenRequestId, setAiOpenRequestId] = useState(0)
+  const [documentAgentOpen, setDocumentAgentOpen] = useState(false)
+  const [documentSelection, setDocumentSelection] = useState<{ from: number; to: number; text: string } | null>(null)
   const [draggingMargin, setDraggingMargin] = useState<'left' | 'right' | null>(null)
+  const [selectedSlideIds, setSelectedSlideIds] = useState<string[]>([])
+  const [draggedSlideIds, setDraggedSlideIds] = useState<string[]>([])
+  const [showVersionPanel, setShowVersionPanel] = useState(false)
+  const [documentVersions, setDocumentVersions] = useState<DocumentDraftVersion[]>([])
+  const [versionsLoading, setVersionsLoading] = useState(false)
+  const [versionActionLoading, setVersionActionLoading] = useState(false)
 
   const currentSlide = document.slides?.[currentSlideIndex] || { id: 'fallback', title: 'Slide', blocks: [] }
   const selectedBlock = currentSlide.blocks.find(b => b.id === selectedBlockId)
+  const documentAssistContext: DocumentAssistContext | null = (() => {
+    if (mode === 'document' && documentSelection) {
+      return {
+        id: `text-${documentSelection.from}-${documentSelection.to}-${documentSelection.text}`,
+        kind: 'selected_text',
+        label: isEnglish ? 'Selected text' : 'Testo selezionato',
+        detail: documentSelection.text,
+        target: { text: documentSelection.text, from: documentSelection.from, to: documentSelection.to },
+        beforePreview: documentSelection.text,
+      }
+    }
+    if (mode === 'slides' && selectedBlock) {
+      const detail = selectedBlock.type === 'text'
+        ? selectedBlock.content
+        : selectedBlock.type === 'image'
+          ? (isEnglish ? 'Selected image' : 'Immagine selezionata')
+          : `${isEnglish ? 'Selected shape' : 'Forma selezionata'} (${selectedBlock.type})`
+      return {
+        id: `block-${currentSlideIndex}-${selectedBlock.id}`,
+        kind: 'slide_block',
+        label: isEnglish ? 'Slide object' : 'Oggetto della slide',
+        detail,
+        target: { block: selectedBlock, block_id: selectedBlock.id, slide_index: currentSlideIndex, slide_title: currentSlide.title },
+        beforePreview: selectedBlock.content || selectedBlock.type,
+      }
+    }
+    if (mode === 'slides') {
+      return {
+        id: `slide-${currentSlideIndex}-${currentSlide.id}`,
+        kind: 'slide',
+        label: isEnglish ? 'Current slide' : 'Slide corrente',
+        detail: `${currentSlideIndex + 1}. ${currentSlide.title}`,
+        target: { slide: currentSlide, slide_index: currentSlideIndex },
+        beforePreview: `${currentSlide.title}\n${currentSlide.blocks.length} ${isEnglish ? 'objects' : 'oggetti'}`,
+      }
+    }
+    return null
+  })()
+  const presentationAssistContext: DocumentAssistContext | null = mode === 'slides' ? {
+    id: `presentation-${document.id}-${document.slides.length}`,
+    kind: 'presentation',
+    label: isEnglish ? 'Whole presentation' : 'Intera presentazione',
+    detail: `${document.title} · ${document.slides.length} slide`,
+    target: { title: document.title, format: document.format, slides: document.slides },
+    beforePreview: `${document.title}\n${document.slides.length} slide`,
+  } : null
+
+  useEffect(() => {
+    if (!editor) return
+    const trackSelection = () => {
+      const { from, to } = editor.state.selection
+      const text = editor.state.doc.textBetween(from, to, ' ').trim()
+      if (text) setDocumentSelection({ from, to, text })
+      else if (editor.isFocused) setDocumentSelection(null)
+    }
+    editor.on('selectionUpdate', trackSelection)
+    return () => {
+      editor.off('selectionUpdate', trackSelection)
+    }
+  }, [editor])
+
+  const applyDocumentAgentProposal = (proposal: Record<string, unknown>) => {
+    const clientContext = proposal.client_context && typeof proposal.client_context === 'object'
+      ? proposal.client_context as Record<string, unknown>
+      : {}
+    if (proposal.kind === 'selected_text' && editor && typeof proposal.replacement_text === 'string') {
+      const from = typeof clientContext.from === 'number' ? clientContext.from : documentSelection?.from
+      const to = typeof clientContext.to === 'number' ? clientContext.to : documentSelection?.to
+      if (from === undefined || to === undefined) return
+      editor.chain().focus().deleteRange({ from, to }).insertContent(proposal.replacement_text).run()
+      setDocumentSelection(null)
+      return
+    }
+    if (proposal.kind === 'slide_block' && proposal.replacement_block && typeof proposal.replacement_block === 'object') {
+      const replacement = proposal.replacement_block as Block
+      const targetBlockId = typeof clientContext.block_id === 'string' ? clientContext.block_id : selectedBlockId
+      const targetSlideIndex = typeof clientContext.slide_index === 'number' ? clientContext.slide_index : currentSlideIndex
+      if (!targetBlockId) return
+      setDocument((current) => ({
+        ...current,
+        slides: current.slides.map((slide, slideIndex) => slideIndex === targetSlideIndex
+          ? { ...slide, blocks: slide.blocks.map((block) => block.id === targetBlockId ? { ...replacement, id: block.id, zIndex: block.zIndex } : block) }
+          : slide),
+      }))
+      return
+    }
+    if (proposal.kind === 'slide' && proposal.replacement_slide && typeof proposal.replacement_slide === 'object') {
+      const replacement = proposal.replacement_slide as Slide
+      const targetSlideIndex = typeof clientContext.slide_index === 'number' ? clientContext.slide_index : currentSlideIndex
+      setDocument((current) => ({
+        ...current,
+        slides: current.slides.map((slide, index) => index === targetSlideIndex ? { ...replacement, id: slide.id } : slide),
+      }))
+      setSelectedBlockId(null)
+      return
+    }
+    if (proposal.kind === 'presentation' && proposal.replacement_presentation && typeof proposal.replacement_presentation === 'object') {
+      const replacement = proposal.replacement_presentation as Partial<Document>
+      if (!Array.isArray(replacement.slides) || replacement.slides.length === 0) return
+      setDocument((current) => ({
+        ...current,
+        title: typeof replacement.title === 'string' && replacement.title.trim() ? replacement.title : current.title,
+        format: replacement.format === '16:9' || replacement.format === '4:3' ? replacement.format : current.format,
+        slides: replacement.slides as Slide[],
+      }))
+      setCurrentSlideIndex(0)
+      setSelectedBlockId(null)
+      setSelectedSlideIds([])
+    }
+  }
   const formatDocumentDateTime = (value: string) =>
     new Date(value).toLocaleString(dateLocale, {
       day: 'numeric',
@@ -228,6 +369,7 @@ export default function TeacherDocumentsPage() {
     draftIdRef.current = null
     activePublishedTaskIdRef.current = null
     setActivePublishedTaskId(null)
+    setActiveStudentSubmissionId(null)
     suppressNextDraftSaveRef.current = true
     setDraftSaveState('idle')
     setViewMode('editor')
@@ -253,6 +395,7 @@ export default function TeacherDocumentsPage() {
     draftIdRef.current = null
     activePublishedTaskIdRef.current = null
     setActivePublishedTaskId(null)
+    setActiveStudentSubmissionId(null)
     suppressNextDraftSaveRef.current = true
     setDraftSaveState('idle')
     setViewMode('editor')
@@ -278,6 +421,7 @@ export default function TeacherDocumentsPage() {
     draftIdRef.current = null
     activePublishedTaskIdRef.current = null
     setActivePublishedTaskId(null)
+    setActiveStudentSubmissionId(null)
     suppressNextDraftSaveRef.current = true
     setDraftSaveState('idle')
     setViewMode('editor')
@@ -461,6 +605,7 @@ export default function TeacherDocumentsPage() {
             className: d.class_name,
             contentJson: d.content_json,
             authorName: d.author_name || (d.source === 'student' ? 'Studente' : 'Docente'),
+            correction: d.correction || null,
           }
         })
         setStoredDocuments(docs)
@@ -506,12 +651,42 @@ export default function TeacherDocumentsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [document, mode, docMargins, viewMode, activePublishedTaskId])
 
+  useEffect(() => {
+    if (viewMode !== 'editor' || !activeStudentSubmissionId) return
+    const contentJson = buildDraftPayload().content_json
+    if (lastCorrectionPayloadRef.current === contentJson) return
+    const timer = setTimeout(async () => {
+      setCorrectionSaveState('saving')
+      try {
+        const response = await teacherApi.updateDocumentCorrection(activeStudentSubmissionId, contentJson)
+        lastCorrectionPayloadRef.current = contentJson
+        setCorrectionSaveState('saved')
+        setStoredDocuments((previous) => previous.map((item) => (
+          item.submissionId === activeStudentSubmissionId
+            ? { ...item, correction: response.data }
+            : item
+        )))
+      } catch (error) {
+        console.error('Correction save failed', error)
+        setCorrectionSaveState('error')
+      }
+    }, 700)
+    return () => clearTimeout(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [document, mode, docMargins, viewMode, activeStudentSubmissionId])
+
   // Load document
   const loadDocument = (doc: StoredDocument) => {
     try {
-      const content = JSON.parse(doc.contentJson)
+      const correctionContent = doc.source === 'student' && doc.correction?.status === 'pending'
+        ? doc.correction.suggested_content_json
+        : doc.contentJson
+      const content = JSON.parse(correctionContent)
       activePublishedTaskIdRef.current = doc.taskId
       setActivePublishedTaskId(doc.taskId)
+      setActiveStudentSubmissionId(doc.source === 'student' ? doc.submissionId || null : null)
+      lastCorrectionPayloadRef.current = doc.source === 'student' ? correctionContent : null
+      setCorrectionSaveState(doc.correction?.status === 'pending' ? 'saved' : 'idle')
       suppressNextDraftSaveRef.current = true
       setDraftSaveState('idle')
       
@@ -616,18 +791,32 @@ export default function TeacherDocumentsPage() {
 
   useEffect(() => {
     const openDocumentId = searchParams.get('open')
-    if (!openDocumentId || storedDocuments.length === 0) return
+    if (!openDocumentId) return
     if (viewMode === 'editor' && document.id === openDocumentId) return
+    const draft = draftDocuments.find((item) => item.id === openDocumentId)
+    if (draft) {
+      loadDraft(draft)
+      if (searchParams.get('publish') === '1') {
+        window.setTimeout(() => setShowPublishModal(true), 0)
+      }
+      return
+    }
     const doc = storedDocuments.find((item) => item.id === openDocumentId || item.taskId === openDocumentId)
-    if (doc) loadDocument(doc)
+    if (doc) {
+      loadDocument(doc)
+      if (searchParams.get('publish') === '1') {
+        window.setTimeout(() => setShowPublishModal(true), 0)
+      }
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchParams, storedDocuments])
+  }, [searchParams, storedDocuments, draftDocuments])
 
   const loadDraft = (doc: DraftDocument) => {
     try {
       const content = JSON.parse(doc.contentJson)
       activePublishedTaskIdRef.current = null
       setActivePublishedTaskId(null)
+      setActiveStudentSubmissionId(null)
       suppressNextDraftSaveRef.current = true
       setDraftSaveState('saved')
       if (isFullHtmlDocument(content.htmlContent) || isFullHtmlDocument(content.content)) {
@@ -727,6 +916,95 @@ export default function TeacherDocumentsPage() {
     }
   }
 
+  const loadDocumentVersions = async () => {
+    if (!draftIdRef.current) {
+      setDocumentVersions([])
+      return
+    }
+    setVersionsLoading(true)
+    try {
+      const response = await teacherApi.listDocumentDraftVersions(draftIdRef.current)
+      setDocumentVersions((response.data || []).map((version: any) => ({
+        id: version.id,
+        draftId: version.draft_id,
+        title: version.title,
+        type: version.doc_type,
+        contentJson: version.content_json,
+        label: version.label,
+        createdAt: version.created_at,
+      })))
+    } catch (error) {
+      console.error('Version history load failed', error)
+      toast({ title: isEnglish ? 'Unable to load version history' : 'Impossibile caricare la cronologia', variant: 'destructive' })
+    } finally {
+      setVersionsLoading(false)
+    }
+  }
+
+  const createVersionCheckpoint = async () => {
+    if (!draftIdRef.current) return
+    setVersionActionLoading(true)
+    try {
+      const currentPayload = buildDraftPayload()
+      pendingDraftPayloadRef.current = currentPayload
+      await flushDraftSaveQueue()
+      while (isSavingDraftRef.current) {
+        await new Promise(resolve => window.setTimeout(resolve, 25))
+      }
+      if (pendingDraftPayloadRef.current) {
+        await flushDraftSaveQueue()
+      }
+      if (lastDraftPayloadKeyRef.current !== JSON.stringify(currentPayload)) {
+        throw new Error('Current document could not be saved before creating a version')
+      }
+      await teacherApi.createDocumentDraftVersion(draftIdRef.current, isEnglish ? 'Manual checkpoint' : 'Versione manuale')
+      await loadDocumentVersions()
+      toast({ title: isEnglish ? 'Version saved' : 'Versione salvata' })
+    } catch (error) {
+      console.error('Version checkpoint failed', error)
+      toast({ title: isEnglish ? 'Unable to save version' : 'Impossibile salvare la versione', variant: 'destructive' })
+    } finally {
+      setVersionActionLoading(false)
+    }
+  }
+
+  const restoreVersion = async (version: DocumentDraftVersion) => {
+    if (!draftIdRef.current) return
+    if (!window.confirm(isEnglish ? 'Restore this version? The current state will remain in history.' : 'Ripristinare questa versione? Lo stato corrente resterà nella cronologia.')) return
+    setVersionActionLoading(true)
+    try {
+      const response = await teacherApi.restoreDocumentDraftVersion(draftIdRef.current, version.id)
+      const restored: DraftDocument = {
+        id: response.data.id,
+        title: response.data.title,
+        type: response.data.doc_type,
+        updatedAt: response.data.updated_at,
+        contentJson: response.data.content_json,
+      }
+      lastDraftPayloadKeyRef.current = null
+      loadDraft(restored)
+      setDraftDocuments(previous => [restored, ...previous.filter(item => item.id !== restored.id)])
+      await loadDocumentVersions()
+      toast({ title: isEnglish ? 'Version restored' : 'Versione ripristinata' })
+    } catch (error) {
+      console.error('Version restore failed', error)
+      toast({ title: isEnglish ? 'Unable to restore version' : 'Impossibile ripristinare la versione', variant: 'destructive' })
+    } finally {
+      setVersionActionLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    if (!showVersionPanel) return
+    void loadDocumentVersions()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showVersionPanel, draftId])
+
+  useEffect(() => {
+    if (mode !== 'slides' || !currentSlide.id || selectedSlideIds.length > 0) return
+    setSelectedSlideIds([currentSlide.id])
+  }, [mode, currentSlide.id, selectedSlideIds.length])
+
   // Fit canvas
   useEffect(() => {
     const handleResize = () => {
@@ -743,7 +1021,7 @@ export default function TeacherDocumentsPage() {
     window.addEventListener('resize', handleResize)
     handleResize()
     return () => window.removeEventListener('resize', handleResize)
-  }, [document.format, mode, showSidebar])
+  }, [document.format, mode])
 
   // Actions
   const addSlide = () => {
@@ -754,15 +1032,79 @@ export default function TeacherDocumentsPage() {
     }
     setDocument(prev => ({ ...prev, slides: [...prev.slides, newSlide] }))
     setCurrentSlideIndex(document.slides.length)
+    setSelectedSlideIds([newSlide.id])
   }
 
-  const deleteSlide = (index: number) => {
-    if (document.slides.length <= 1) return
-    const newSlides = document.slides.filter((_, i) => i !== index)
-    setDocument(prev => ({ ...prev, slides: newSlides }))
-    if (currentSlideIndex >= index && currentSlideIndex > 0) {
-      setCurrentSlideIndex(currentSlideIndex - 1)
+  const selectSlide = (index: number, event: React.MouseEvent) => {
+    const slide = document.slides[index]
+    if (!slide) return
+    if (event.shiftKey && document.slides[currentSlideIndex]) {
+      const start = Math.min(currentSlideIndex, index)
+      const end = Math.max(currentSlideIndex, index)
+      setSelectedSlideIds(document.slides.slice(start, end + 1).map(item => item.id))
+    } else if (event.metaKey || event.ctrlKey) {
+      setSelectedSlideIds(previous => (
+        previous.includes(slide.id)
+          ? previous.filter(id => id !== slide.id)
+          : [...previous, slide.id]
+      ))
+    } else {
+      setSelectedSlideIds([slide.id])
     }
+    setCurrentSlideIndex(index)
+    setSelectedBlockId(null)
+  }
+
+  const deleteSelectedSlides = () => {
+    if (selectedSlideIds.length === 0) return
+    if (document.slides.length - selectedSlideIds.length < 1) {
+      toast({ title: isEnglish ? 'Keep at least one slide' : 'Mantieni almeno una slide', variant: 'destructive' })
+      return
+    }
+    if (!window.confirm(isEnglish ? `Delete ${selectedSlideIds.length} selected slides?` : `Eliminare ${selectedSlideIds.length} slide selezionate?`)) return
+    const currentId = currentSlide.id
+    const remaining = document.slides.filter(slide => !selectedSlideIds.includes(slide.id))
+    const nextIndex = Math.max(0, remaining.findIndex(slide => slide.id === currentId))
+    setDocument(previous => ({ ...previous, slides: remaining }))
+    setCurrentSlideIndex(nextIndex)
+    setSelectedSlideIds([remaining[nextIndex].id])
+    setSelectedBlockId(null)
+  }
+
+  const moveSelectedSlides = (direction: -1 | 1) => {
+    if (selectedSlideIds.length === 0) return
+    const selectedSet = new Set(selectedSlideIds)
+    const slides = [...document.slides]
+    if (direction < 0) {
+      for (let index = 1; index < slides.length; index += 1) {
+        if (selectedSet.has(slides[index].id) && !selectedSet.has(slides[index - 1].id)) {
+          ;[slides[index - 1], slides[index]] = [slides[index], slides[index - 1]]
+        }
+      }
+    } else {
+      for (let index = slides.length - 2; index >= 0; index -= 1) {
+        if (selectedSet.has(slides[index].id) && !selectedSet.has(slides[index + 1].id)) {
+          ;[slides[index], slides[index + 1]] = [slides[index + 1], slides[index]]
+        }
+      }
+    }
+    const currentId = currentSlide.id
+    setDocument(previous => ({ ...previous, slides }))
+    setCurrentSlideIndex(Math.max(0, slides.findIndex(slide => slide.id === currentId)))
+  }
+
+  const dropSelectedSlidesAt = (targetIndex: number) => {
+    if (draggedSlideIds.length === 0) return
+    const draggedSet = new Set(draggedSlideIds)
+    const moving = document.slides.filter(slide => draggedSet.has(slide.id))
+    const remaining = document.slides.filter(slide => !draggedSet.has(slide.id))
+    const targetId = document.slides[targetIndex]?.id
+    const insertionIndex = targetId ? Math.max(0, remaining.findIndex(slide => slide.id === targetId)) : remaining.length
+    const slides = [...remaining.slice(0, insertionIndex), ...moving, ...remaining.slice(insertionIndex)]
+    const currentId = currentSlide.id
+    setDocument(previous => ({ ...previous, slides }))
+    setCurrentSlideIndex(Math.max(0, slides.findIndex(slide => slide.id === currentId)))
+    setDraggedSlideIds([])
   }
 
   const updateSlideBlocks = (blocks: Block[]) => {
@@ -994,7 +1336,7 @@ export default function TeacherDocumentsPage() {
     updateAnchor()
     window.addEventListener('resize', updateAnchor)
     return () => window.removeEventListener('resize', updateAnchor)
-  }, [mode, showSidebar])
+  }, [mode])
 
   // ── Fuzzy search helper ───────────────────────────────────────────────────
   const fuzzyMatch = (query: string, ...fields: string[]) => {
@@ -1026,14 +1368,31 @@ export default function TeacherDocumentsPage() {
               <FileText className="h-4 w-4 text-slate-500" />
               <h1 className="text-base font-bold text-slate-800">{isEnglish ? 'Documents' : 'Documenti'}</h1>
             </div>
-            <Button onClick={() => setShowNewModal(true)}>
-              <Plus className="h-4 w-4 mr-2" />
-              {isEnglish ? 'New' : 'Nuovo'}
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button variant="outline" onClick={createNewDocument}>
+                <FileText className="h-4 w-4 mr-2" />
+                {isEnglish ? 'New document' : 'Nuovo documento'}
+              </Button>
+              <Button onClick={createNewPresentation}>
+                <MonitorPlay className="h-4 w-4 mr-2" />
+                {isEnglish ? 'New presentation' : 'Nuova presentazione'}
+              </Button>
+            </div>
           </div>
 
           <div className="flex-1 overflow-y-auto p-6">
             <div className="max-w-5xl mx-auto space-y-8">
+
+              <section className="grid gap-3 sm:grid-cols-2">
+                <button type="button" onClick={createNewDocument} className="flex min-h-[92px] items-center gap-4 rounded-2xl border border-emerald-200 bg-emerald-50/80 p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:bg-emerald-100/80 hover:shadow-md">
+                  <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-white text-emerald-700 shadow-sm"><FileText className="h-6 w-6" /></span>
+                  <span><span className="block text-sm font-black text-slate-950">{isEnglish ? 'New document' : 'Nuovo documento'}</span><span className="mt-1 block text-xs leading-5 text-slate-600">{isEnglish ? 'Write pages, reports and teaching materials.' : 'Scrivi pagine, relazioni e materiali didattici.'}</span></span>
+                </button>
+                <button type="button" onClick={createNewPresentation} className="flex min-h-[92px] items-center gap-4 rounded-2xl border border-indigo-200 bg-indigo-50/80 p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:bg-indigo-100/80 hover:shadow-md">
+                  <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-white text-indigo-700 shadow-sm"><MonitorPlay className="h-6 w-6" /></span>
+                  <span><span className="block text-sm font-black text-slate-950">{isEnglish ? 'New presentation' : 'Nuova presentazione'}</span><span className="mt-1 block text-xs leading-5 text-slate-600">{isEnglish ? 'Create editable slides directly on the platform.' : 'Crea slide modificabili direttamente sulla piattaforma.'}</span></span>
+                </button>
+              </section>
 
               {/* Search */}
               {(draftDocuments.length > 0 || storedDocuments.length > 0) && (
@@ -1060,10 +1419,10 @@ export default function TeacherDocumentsPage() {
                     <FileText className="h-10 w-10 text-slate-500" />
                   </div>
                   <h3 className="text-lg font-bold text-slate-700 mb-1">{isEnglish ? 'No documents yet' : 'Nessun documento'}</h3>
-                  <p className="text-sm text-slate-400 mb-6">{isEnglish ? 'Create your first document to get started' : 'Crea il tuo primo documento per iniziare'}</p>
-                  <Button onClick={() => setShowNewModal(true)}>
+                  <p className="text-sm text-slate-400 mb-6">{isEnglish ? 'Create a document or a presentation to get started' : 'Crea un documento oppure una presentazione per iniziare'}</p>
+                  <Button onClick={createNewPresentation}>
                     <Plus className="h-4 w-4 mr-2" />
-                    {isEnglish ? 'Create document' : 'Crea documento'}
+                    {isEnglish ? 'Create presentation' : 'Crea presentazione'}
                   </Button>
                 </div>
               )}
@@ -1292,64 +1651,76 @@ export default function TeacherDocumentsPage() {
       <div className="h-full flex flex-col bg-slate-100 overflow-hidden">
 
         {/* Header / Meta-Toolbar */}
-        <div className="h-14 bg-white/90 border-b border-slate-200/80 flex items-center justify-between px-4 z-20 shadow-sm shrink-0 backdrop-blur-sm">
-          <div className="flex items-center gap-4">
+        <div className="relative h-16 bg-white border-b border-slate-200 flex items-center justify-between px-4 z-30 shrink-0">
+          <div className="flex min-w-0 items-center gap-2">
              <Button
                variant="ghost"
                size="sm"
                onClick={() => setViewMode('list')}
-               className="text-slate-500 gap-1"
+               className="shrink-0 text-slate-600 gap-1 font-semibold"
              >
                <ChevronLeft className="h-4 w-4" />
-               {isEnglish ? 'Documents' : 'Documenti'}
+               {isEnglish ? 'All documents' : 'Tutti i documenti'}
              </Button>
-
-             <Button
-               variant="ghost"
-               size="sm"
-               onClick={() => setShowSidebar(!showSidebar)}
-               className="mr-2 text-slate-500"
-             >
-               {showSidebar ? <ChevronLeft className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-             </Button>
-
+             <div className="h-7 w-px bg-slate-200" />
+             <Input
+               value={document.title}
+               onChange={(e) => handleTitleChange(e.target.value)}
+               disabled={Boolean(activeStudentSubmissionId)}
+               className="h-10 w-[min(28vw,360px)] border-indigo-200 bg-indigo-50/60 px-3 font-bold text-slate-900 shadow-none focus-visible:ring-indigo-200"
+               placeholder={isEnglish ? 'Document title' : 'Titolo documento'}
+             />
              <Button
                onClick={() => setShowNewModal(true)}
-               className="px-4"
+               tone="accent"
+               surface="soft"
+               density="default"
+               className="shrink-0"
              >
                <Plus className="h-4 w-4 mr-2" />
                {isEnglish ? 'New' : 'Nuovo'}
              </Button>
-             <span className={`text-xs font-medium ${
-               draftSaveState === 'saving'
-                 ? 'text-slate-500'
-                 : draftSaveState === 'saved'
-                   ? 'text-emerald-600'
-                   : draftSaveState === 'error'
-                     ? 'text-red-600'
-                     : 'text-slate-400'
-             }`}>
-               {draftSaveState === 'saving' && (isEnglish ? 'Saving...' : 'Salvataggio...')}
-               {draftSaveState === 'saved' && (isEnglish ? 'Draft saved' : 'Bozza salvata')}
-               {draftSaveState === 'error' && (isEnglish ? 'Save error' : 'Errore salvataggio')}
-               {draftSaveState === 'idle' && (isEnglish ? 'Auto draft' : 'Bozza automatica')}
-             </span>
-
-             <div className="h-6 w-px bg-slate-200" />
-
-             <Input 
-               value={document.title}
-               onChange={(e) => handleTitleChange(e.target.value)}
-               className="font-bold border-transparent hover:border-slate-200 focus:border-violet-500 w-64 text-lg"
-               placeholder={isEnglish ? 'File name...' : 'Nome file...'}
-             />
           </div>
-          
-          <div className="flex gap-2">
-             <Button variant="outline" onClick={() => setShowPublishModal(true)}>
-               <Upload className="h-4 w-4 mr-2" />
-               {isEnglish ? 'Publish' : 'Pubblica'}
+
+          <div className="flex items-center gap-2">
+             <span className={`hidden text-xs font-semibold xl:inline ${draftSaveState === 'error' ? 'text-red-600' : draftSaveState === 'saved' ? 'text-emerald-600' : 'text-slate-400'}`}>
+               {activeStudentSubmissionId
+                 ? (correctionSaveState === 'saving' ? (isEnglish ? 'Saving correction…' : 'Salvataggio correzione…') : (isEnglish ? 'Tracked correction' : 'Correzione tracciata'))
+                 : draftSaveState === 'saving' ? (isEnglish ? 'Saving…' : 'Salvataggio…')
+                   : draftSaveState === 'saved' ? (isEnglish ? 'Saved' : 'Salvato')
+                     : draftSaveState === 'error' ? (isEnglish ? 'Save error' : 'Errore salvataggio')
+                       : ''}
+             </span>
+             <Button
+               variant="ghost"
+               size="icon"
+               className="h-10 w-10 rounded-xl text-slate-600"
+               disabled={!draftId}
+               onClick={() => setShowVersionPanel(true)}
+               title={isEnglish ? 'Version history' : 'Cronologia versioni'}
+             >
+               <History className="h-4 w-4" />
              </Button>
+             {(mode === 'document' || mode === 'slides') && (
+               <Button
+                 variant={documentAgentOpen ? 'default' : 'outline'}
+                 className="rounded-xl"
+                 onClick={() => setDocumentAgentOpen(value => !value)}
+               >
+                 <MonitorPlay className="mr-2 h-4 w-4" />
+                 {isEnglish ? 'Document assistant' : 'Assistente documento'}
+               </Button>
+             )}
+             {activeStudentSubmissionId ? (
+               <span className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-800">
+                 {isEnglish ? 'Changes are sent to the student' : 'Le modifiche vengono inviate allo studente'}
+               </span>
+             ) : (
+               <Button tone="accent" surface="solid" density="default" onClick={() => setShowPublishModal(true)}>
+                 <Upload className="h-4 w-4 mr-2" />
+                 {isEnglish ? 'Publish' : 'Pubblica'}
+               </Button>
+             )}
           </div>
         </div>
 
@@ -1371,23 +1742,8 @@ export default function TeacherDocumentsPage() {
             onUpdateBlockStyle={updateBlockStyle}
             snapOptions={snapOptions}
             onChangeSnapOptions={setSnapOptions}
-            onOpenAIAssist={() => {
-              if (!toolbarHostRef.current) return
-              const rect = toolbarHostRef.current.getBoundingClientRect()
-              setAiPanelAnchor({
-                x: Math.max(20, rect.right - 360),
-                y: rect.bottom + 8
-              })
-              setAiOpenRequestId(v => v + 1)
-            }}
-            onAIAssistAnchorChange={() => {
-              if (!toolbarHostRef.current) return
-              const rect = toolbarHostRef.current.getBoundingClientRect()
-              setAiPanelAnchor({
-                x: Math.max(20, rect.right - 360),
-                y: rect.bottom + 8
-              })
-            }}
+            onOpenAIAssist={() => setDocumentAgentOpen(true)}
+            onAIAssistAnchorChange={setAiPanelAnchor}
           />
         </div>
         )}
@@ -1395,34 +1751,67 @@ export default function TeacherDocumentsPage() {
         <div className="flex-1 flex overflow-hidden"> 
           
           {/* LEFT SIDEBAR: Documents & Slides */}
-          <div className={`${showSidebar ? 'w-72' : 'w-0'} bg-slate-100 border-r border-slate-200/80 flex flex-col transition-all duration-300 overflow-hidden shrink-0`}>
+          <div className={`${mode === 'slides' ? 'w-64' : 'w-0'} bg-white border-r border-slate-200 flex flex-col transition-all duration-200 overflow-hidden shrink-0`}>
             
             {/* Slide Navigation (Only in Slide Mode) */}
             {mode === 'slides' && (
-              <div className="flex-shrink-0 flex flex-col overflow-hidden max-h-64 border-b border-slate-200/80 bg-white/70 backdrop-blur-sm">
-                 <div className="p-3 border-b border-slate-200/70 flex justify-between items-center">
-                   <span className="font-bold text-[10px] uppercase tracking-widest text-slate-400">{isEnglish ? 'Pages / Slides' : 'Pagine / Slide'}</span>
-                   <Button size="icon" variant="ghost" className="h-6 w-6" onClick={addSlide}>
-                     <Plus className="h-4 w-4" />
-                   </Button>
+              <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-white">
+                 <div className="flex min-h-12 items-center justify-between border-b border-slate-100 px-3">
+                   <div className="flex items-center gap-2">
+                     <span className="font-bold text-[10px] uppercase tracking-widest text-slate-400">{isEnglish ? 'Slides' : 'Slide'}</span>
+                     {selectedSlideIds.length > 1 && <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-[10px] font-bold text-indigo-600">{selectedSlideIds.length}</span>}
+                   </div>
+                   <div className="flex items-center gap-0.5">
+                     <Button size="icon" variant="ghost" className="h-7 w-7" disabled={selectedSlideIds.length === 0} onClick={() => moveSelectedSlides(-1)} title={isEnglish ? 'Move up' : 'Sposta su'}><ArrowUp className="h-3.5 w-3.5" /></Button>
+                     <Button size="icon" variant="ghost" className="h-7 w-7" disabled={selectedSlideIds.length === 0} onClick={() => moveSelectedSlides(1)} title={isEnglish ? 'Move down' : 'Sposta giù'}><ArrowDown className="h-3.5 w-3.5" /></Button>
+                     <Button size="icon" variant="ghost" className="h-7 w-7 text-slate-500 hover:text-red-600" disabled={selectedSlideIds.length === 0} onClick={deleteSelectedSlides} title={isEnglish ? 'Delete selected' : 'Elimina selezionate'}><Trash2 className="h-3.5 w-3.5" /></Button>
+                     <Button size="icon" variant="ghost" className="h-7 w-7 text-indigo-600" onClick={addSlide} title={isEnglish ? 'Add slide' : 'Aggiungi slide'}><Plus className="h-4 w-4" /></Button>
+                   </div>
                  </div>
-                 <div className="flex-1 overflow-y-auto p-2 space-y-2 scrollbar-hide">
+                 <div className="flex-1 overflow-y-auto p-3 space-y-3 scrollbar-hide">
                    {document.slides.map((slide, idx) => (
                      <div 
                        key={slide.id}
-                       onClick={() => { setCurrentSlideIndex(idx); setSelectedBlockId(null); }}
-                       className={`p-3 rounded-2xl transition-all group relative shadow-sm ${currentSlideIndex === idx
-                         ? PASTEL_SURFACES.indigo
-                         : PASTEL_SURFACES.slate}`}
+                       draggable
+                       onDragStart={() => {
+                         const ids = selectedSlideIds.includes(slide.id) ? selectedSlideIds : [slide.id]
+                         setSelectedSlideIds(ids)
+                         setDraggedSlideIds(ids)
+                       }}
+                       onDragOver={(event) => event.preventDefault()}
+                       onDrop={(event) => { event.preventDefault(); dropSelectedSlidesAt(idx) }}
+                       onClick={(event) => selectSlide(idx, event)}
+                       className={`group relative cursor-pointer rounded-xl border p-2 transition-all ${selectedSlideIds.includes(slide.id)
+                         ? 'border-indigo-300 bg-indigo-50/70 shadow-sm ring-1 ring-indigo-100'
+                         : 'border-slate-200 bg-white hover:border-slate-300 hover:shadow-sm'}`}
                      >
-                       <div className="text-[10px] font-bold text-slate-400 uppercase mb-1">Slide {idx + 1}</div>
-                       <div className={`text-sm truncate font-bold ${currentSlideIndex === idx ? 'text-indigo-700' : 'text-slate-700'}`}>{slide.title}</div>
-                       <button 
-                         onClick={(e) => { e.stopPropagation(); deleteSlide(idx); }}
-                         className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-500 transition-opacity"
-                       >
-                         <Trash2 className="h-3.5 w-3.5" />
-                       </button>
+                       <div className="mb-2 flex items-center gap-2 px-0.5">
+                         <GripVertical className="h-3.5 w-3.5 text-slate-300" />
+                         <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">{idx + 1}</span>
+                         <span className="min-w-0 flex-1 truncate text-xs font-semibold text-slate-700">{slide.title}</span>
+                         <CheckSquare className={`h-3.5 w-3.5 ${selectedSlideIds.includes(slide.id) ? 'text-indigo-600' : 'text-slate-200'}`} />
+                       </div>
+                       <div className="relative aspect-video w-full overflow-hidden rounded-lg border border-slate-200 bg-white shadow-inner pointer-events-none">
+                         <div
+                           className="absolute left-0 top-0 origin-top-left"
+                           style={{
+                             width: FORMAT_DIMENSIONS[document.format].width,
+                             height: FORMAT_DIMENSIONS[document.format].height,
+                             transform: `scale(${216 / FORMAT_DIMENSIONS[document.format].width})`,
+                           }}
+                         >
+                           <SlideEditor
+                             blocks={slide.blocks}
+                             onChange={() => undefined}
+                             selectedBlockId={null}
+                             onSelectBlock={() => undefined}
+                             readOnly
+                             slideWidth={FORMAT_DIMENSIONS[document.format].width}
+                             slideHeight={FORMAT_DIMENSIONS[document.format].height}
+                             snapOptions={snapOptions}
+                           />
+                         </div>
+                       </div>
                      </div>
                    ))}
                  </div>
@@ -1430,7 +1819,7 @@ export default function TeacherDocumentsPage() {
             )}
 
             {/* Document Lists */}
-            <div className="flex-1 overflow-y-auto p-3 space-y-6">
+            <div className="hidden">
               {/* Drafts Section */}
               <section>
                 <div className="flex items-center justify-between mb-3 px-1">
@@ -1544,7 +1933,7 @@ export default function TeacherDocumentsPage() {
           </div>
 
           {/* Main Area */}
-          <div className="flex-1 bg-slate-100 flex items-start justify-center p-2 md:p-3 relative overflow-y-auto" 
+          <div className={`flex-1 flex items-start justify-center p-2 md:p-3 relative overflow-y-auto ${activeStudentSubmissionId ? 'bg-amber-50/70' : 'bg-slate-100'}`}
                onClick={() => setSelectedBlockId(null)} // Deselect block when clicking background
           > 
 
@@ -1574,7 +1963,7 @@ export default function TeacherDocumentsPage() {
                  className="mb-6 print:shadow-none flex flex-col relative transition-all overflow-hidden"
                  style={{
                    width: FORMAT_DIMENSIONS.a4.width,
-                   minHeight: FORMAT_DIMENSIONS.a4.height,
+                   minHeight: FORMAT_DIMENSIONS.a4.height * documentPageCount + DOC_PAGE_GAP * Math.max(0, documentPageCount - 1),
                    transform: `scale(${docScale})`,
                    transformOrigin: 'top center',
                    backgroundImage: `repeating-linear-gradient(to bottom, #ffffff 0, #ffffff ${FORMAT_DIMENSIONS.a4.height}px, #e5e7eb ${FORMAT_DIMENSIONS.a4.height}px, #e5e7eb ${FORMAT_DIMENSIONS.a4.height + DOC_PAGE_GAP}px)`,
@@ -1653,7 +2042,14 @@ export default function TeacherDocumentsPage() {
                       onEditorReady={(e) => { setEditor(e); setTimeout(() => e.commands.focus('start'), 80) }}
                       contentClassName="h-full min-h-full max-w-none focus:outline-none p-0 cursor-text [&_.ProseMirror]:min-h-full [&_.ProseMirror]:h-full [&_.ProseMirror]:text-[16px] [&_.ProseMirror]:leading-7 [&_.ProseMirror_p]:m-0 [&_.ProseMirror_h1]:m-0 [&_.ProseMirror_h2]:m-0 [&_.ProseMirror_h3]:m-0 [&_.ProseMirror_ul]:my-0 [&_.ProseMirror_ol]:my-0"
                       aiPanelAnchor={aiPanelAnchor}
-                      aiOpenRequestId={aiOpenRequestId}
+                      enableSelectionAssist={false}
+                      pagination={{
+                        pageHeight: FORMAT_DIMENSIONS.a4.height,
+                        pageGap: DOC_PAGE_GAP,
+                        marginTop: docMargins.vertical,
+                        marginBottom: docMargins.vertical,
+                        onPageCountChange: setDocumentPageCount,
+                      }}
                       onMissingSelectionForAI={() => {
                         toast({
                           title: isEnglish ? 'Select text first' : 'Seleziona prima un testo',
@@ -1678,7 +2074,11 @@ export default function TeacherDocumentsPage() {
                  }}
                  onClick={(e) => e.stopPropagation()} // Prevent deselection when clicking slide background
                >
-                  <div className="absolute top-0 left-0 right-0 p-8 z-10 pointer-events-none">
+                  {!currentSlide.blocks.some(block => (
+                    block.type === 'text'
+                    && block.y < 130
+                    && (block.style.fontSize || 0) >= 26
+                  )) && <div className="absolute top-0 left-0 right-0 p-8 z-10 pointer-events-none">
                      <input
                        value={currentSlide.title}
                        onChange={(e) => {
@@ -1689,7 +2089,7 @@ export default function TeacherDocumentsPage() {
                        className="text-4xl font-bold bg-transparent border-none focus:outline-none w-full placeholder-slate-300 pointer-events-auto"
                        placeholder={isEnglish ? 'Slide Title' : 'Titolo Slide'}
                      />
-                  </div>
+                  </div>}
 
                   <div className="flex-1 relative">
                     <SlideEditor
@@ -1730,7 +2130,64 @@ export default function TeacherDocumentsPage() {
              )}
 
           </div>
+          {documentAgentOpen && (mode === 'slides' || mode === 'document') && (
+            <DocumentAgentChat
+              context={documentAssistContext}
+              presentationContext={presentationAssistContext}
+              documentContext={{
+                title: document.title,
+                mode,
+                format: document.format,
+                current_slide_index: currentSlideIndex,
+              }}
+              dims={mode === 'slides' ? FORMAT_DIMENSIONS[document.format] : undefined}
+              onApply={applyDocumentAgentProposal}
+              onClose={() => setDocumentAgentOpen(false)}
+            />
+          )}
         </div>
+
+        {showVersionPanel && (
+          <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/35 p-4 backdrop-blur-sm" onClick={() => setShowVersionPanel(false)}>
+            <div className="flex max-h-[78vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl" onClick={(event) => event.stopPropagation()}>
+              <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
+                <div>
+                  <p className="m-0 text-xs font-bold uppercase tracking-widest text-indigo-500">{isEnglish ? 'Version control' : 'Controllo versioni'}</p>
+                  <h3 className="m-0 mt-1 text-lg font-bold text-slate-900">{document.title}</h3>
+                </div>
+                <Button variant="ghost" size="icon" className="rounded-full" onClick={() => setShowVersionPanel(false)}><X className="h-4 w-4" /></Button>
+              </div>
+              <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50 px-5 py-3">
+                <p className="m-0 text-xs text-slate-500">{isEnglish ? 'Automatic snapshots every 5 minutes.' : 'Snapshot automatici ogni 5 minuti.'}</p>
+                <Button size="sm" variant="outline" className="rounded-xl" disabled={versionActionLoading} onClick={createVersionCheckpoint}>
+                  <Save className="mr-2 h-3.5 w-3.5" />{isEnglish ? 'Save version' : 'Salva versione'}
+                </Button>
+              </div>
+              <div className="min-h-0 flex-1 overflow-y-auto p-3">
+                {versionsLoading ? (
+                  <div className="py-10 text-center text-sm text-slate-400">{isEnglish ? 'Loading history…' : 'Caricamento cronologia…'}</div>
+                ) : documentVersions.length === 0 ? (
+                  <div className="rounded-xl border border-dashed border-slate-200 py-10 text-center text-sm text-slate-400">{isEnglish ? 'No versions saved yet.' : 'Nessuna versione salvata.'}</div>
+                ) : (
+                  <div className="space-y-2">
+                    {documentVersions.map((version, index) => (
+                      <div key={version.id} className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 hover:border-indigo-200 hover:bg-indigo-50/30">
+                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-100 text-xs font-bold text-slate-600">v{documentVersions.length - index}</div>
+                        <div className="min-w-0 flex-1">
+                          <p className="m-0 truncate text-sm font-semibold text-slate-800">{version.label || (isEnglish ? 'Saved version' : 'Versione salvata')}</p>
+                          <p className="m-0 mt-0.5 text-xs text-slate-400">{formatDocumentDateTime(version.createdAt)}</p>
+                        </div>
+                        <Button size="sm" variant="ghost" className="rounded-lg text-indigo-600 hover:bg-indigo-50 hover:text-indigo-700" disabled={versionActionLoading} onClick={() => restoreVersion(version)}>
+                          <History className="mr-1.5 h-3.5 w-3.5" />{isEnglish ? 'Restore' : 'Ripristina'}
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* New Document Modal */}
         {showNewModal && (

@@ -9,8 +9,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import StudentOrTeacher, get_student_or_teacher
 from app.core.database import get_db
+from app.core.permissions import teacher_can_access_session
 from app.models.board import Board, BoardCard
-from app.models.session import Session, SessionModule
+from app.models.session import SessionModule
+from app.realtime.gateway import sio
 from app.services.llm_service import LLMService
 
 router = APIRouter()
@@ -71,6 +73,8 @@ class BoardUpdate(BaseModel):
     visibility: Optional[str] = None
     students_can_edit: Optional[bool] = None
     coding_project_id: Optional[str] = None
+    move_cards_from_column_id: Optional[str] = None
+    move_cards_to_column_id: Optional[str] = None
 
 
 class CardCreate(BaseModel):
@@ -164,6 +168,7 @@ def _serialize_board(board: Board, cards: list[BoardCard] | None = None, actor: 
         "students_can_edit": bool(board.students_can_edit),
         "created_by_display_name": board.created_by_display_name,
         "can_manage": _can_manage_board(board, actor) if actor is not None else False,
+        "can_edit": _can_edit_board(board, actor) if actor is not None else False,
         "created_at": board.created_at.isoformat(),
         "updated_at": board.updated_at.isoformat(),
         "cards": [_serialize_card(c) for c in cards] if cards is not None else None,
@@ -196,14 +201,18 @@ async def _get_board_for_actor(db: AsyncSession, board_id: str, actor: StudentOr
     if actor.is_teacher:
         if board.tenant_id != actor.teacher.tenant_id:
             raise HTTPException(status_code=403, detail="Accesso alla board non consentito")
+        if board.session_id is None or not await teacher_can_access_session(db, actor.teacher, board.session_id):
+            raise HTTPException(status_code=403, detail="Accesso alla board non consentito")
         if board.owner_user_id == actor.teacher.id or board.visibility == "session_shared":
             return board
     else:
-        if not await _student_boards_enabled(db, actor):
-            raise HTTPException(status_code=403, detail="Modulo board non abilitato")
         if board.tenant_id != actor.student.tenant_id:
             raise HTTPException(status_code=403, detail="Accesso alla board non consentito")
+        if board.session_id != actor.student.session_id:
+            raise HTTPException(status_code=403, detail="Accesso alla board non consentito")
         if board.owner_student_id == actor.student.id:
+            if not await _student_boards_enabled(db, actor):
+                raise HTTPException(status_code=403, detail="Modulo board non abilitato")
             return board
         if board.session_id == actor.student.session_id and board.visibility == "session_shared":
             return board
@@ -212,7 +221,7 @@ async def _get_board_for_actor(db: AsyncSession, board_id: str, actor: StudentOr
 
 def _can_edit_board(board: Board, actor: StudentOrTeacher) -> bool:
     if actor.is_teacher:
-        return board.owner_user_id == actor.teacher.id
+        return bool(board.owner_user_id == actor.teacher.id or board.visibility == "session_shared")
     if board.owner_student_id == actor.student.id:
         return True
     return bool(board.students_can_edit and board.session_id == actor.student.session_id and board.visibility == "session_shared")
@@ -227,24 +236,34 @@ async def templates():
 async def list_boards(
     db: Annotated[AsyncSession, Depends(get_db)],
     actor: Annotated[StudentOrTeacher, Depends(get_student_or_teacher)],
+    session_id: Optional[str] = None,
 ):
-    if actor.is_student and not await _student_boards_enabled(db, actor):
-        return []
     if actor.is_teacher:
+        if not session_id:
+            return []
+        try:
+            requested_session_id = uuid.UUID(session_id)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Sessione non valida")
+        if not await teacher_can_access_session(db, actor.teacher, requested_session_id):
+            raise HTTPException(status_code=403, detail="Sessione non consentita")
         result = await db.execute(
             select(Board).where(
                 Board.tenant_id == actor.teacher.tenant_id,
+                Board.session_id == requested_session_id,
                 or_(Board.owner_user_id == actor.teacher.id, Board.visibility == "session_shared"),
             ).order_by(Board.updated_at.desc())
         )
     else:
+        boards_enabled = await _student_boards_enabled(db, actor)
         result = await db.execute(
             select(Board).where(
                 Board.tenant_id == actor.student.tenant_id,
+                Board.session_id == actor.student.session_id,
                 or_(
                     Board.owner_student_id == actor.student.id,
                     (Board.session_id == actor.student.session_id) & (Board.visibility == "session_shared"),
-                ),
+                ) if boards_enabled else (Board.visibility == "session_shared"),
             ).order_by(Board.updated_at.desc())
         )
     return [_serialize_board(board, actor=actor) for board in result.scalars().all()]
@@ -261,11 +280,16 @@ async def create_board(
     if not body.title.strip():
         raise HTTPException(status_code=400, detail="Titolo obbligatorio")
     cols = _normalize_columns([c.dict() for c in body.columns] if body.columns else _template_columns(body.template_key))
-    session_id = uuid.UUID(body.session_id) if body.session_id else (actor.student.session_id if actor.is_student else None)
+    if not actor.is_student and not body.session_id:
+        raise HTTPException(status_code=400, detail="Seleziona una sessione prima di creare una board")
+    try:
+        session_id = uuid.UUID(body.session_id) if body.session_id else actor.student.session_id
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Sessione non valida")
     if session_id is not None:
-        tenant_id = actor.student.tenant_id if actor.is_student else actor.teacher.tenant_id
-        session_result = await db.execute(select(Session.id).where(Session.id == session_id, Session.tenant_id == tenant_id))
-        if session_result.scalar_one_or_none() is None:
+        if not actor.is_student and not await teacher_can_access_session(db, actor.teacher, session_id):
+            raise HTTPException(status_code=403, detail="Sessione non consentita")
+        if actor.is_student and session_id != actor.student.session_id:
             raise HTTPException(status_code=403, detail="Sessione non consentita")
     board = Board(
         tenant_id=actor.student.tenant_id if actor.is_student else actor.teacher.tenant_id,
@@ -283,6 +307,8 @@ async def create_board(
     db.add(board)
     await db.commit()
     await db.refresh(board)
+    if actor.is_teacher and board.visibility == "session_shared":
+        await sio.emit("board_shared", {"board_id": str(board.id), "title": board.title}, room=f"session:{board.session_id}")
     return _serialize_board(board, [], actor)
 
 
@@ -312,7 +338,28 @@ async def update_board(
     if body.description is not None:
         board.description = body.description
     if body.columns is not None:
-        board.columns_json = _normalize_columns([c.dict() for c in body.columns])
+        normalized_columns = _normalize_columns([c.dict() for c in body.columns])
+        previous_column_ids = {column["id"] for column in _normalize_columns(board.columns_json)}
+        valid_column_ids = {column["id"] for column in normalized_columns}
+        removed_column_ids = previous_column_ids - valid_column_ids
+        if removed_column_ids:
+            if len(removed_column_ids) != 1 or body.move_cards_from_column_id not in removed_column_ids:
+                raise HTTPException(status_code=400, detail="Indica dove spostare i task della colonna eliminata")
+            if not body.move_cards_to_column_id or body.move_cards_to_column_id not in valid_column_ids:
+                raise HTTPException(status_code=400, detail="Colonna di destinazione non valida")
+            result = await db.execute(
+                select(BoardCard).where(
+                    BoardCard.board_id == board.id,
+                    BoardCard.column_id == body.move_cards_from_column_id,
+                )
+            )
+            for card in result.scalars().all():
+                card.column_id = body.move_cards_to_column_id
+                card.last_actor_display_name = _actor_name(actor)
+        elif body.move_cards_from_column_id is not None or body.move_cards_to_column_id is not None:
+            raise HTTPException(status_code=400, detail="Nessuna colonna da eliminare")
+        board.columns_json = normalized_columns
+    previous_visibility = board.visibility
     if body.visibility is not None:
         board.visibility = body.visibility if body.visibility in ("private", "session_shared") else board.visibility
     if body.students_can_edit is not None:
@@ -321,6 +368,8 @@ async def update_board(
         board.coding_project_id = uuid.UUID(body.coding_project_id) if body.coding_project_id else None
     await db.commit()
     await db.refresh(board)
+    if actor.is_teacher and previous_visibility != "session_shared" and board.visibility == "session_shared":
+        await sio.emit("board_shared", {"board_id": str(board.id), "title": board.title}, room=f"session:{board.session_id}")
     return _serialize_board(board, actor=actor)
 
 
@@ -405,6 +454,25 @@ async def update_card(
     await db.commit()
     await db.refresh(card)
     return _serialize_card(card)
+
+
+@router.delete("/{board_id}/cards/{card_id}", status_code=204)
+async def delete_card(
+    board_id: str,
+    card_id: str,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    actor: Annotated[StudentOrTeacher, Depends(get_student_or_teacher)],
+):
+    board = await _get_board_for_actor(db, board_id, actor)
+    if not _can_edit_board(board, actor):
+        raise HTTPException(status_code=403, detail="Eliminazione non consentita")
+    result = await db.execute(select(BoardCard).where(BoardCard.id == uuid.UUID(card_id), BoardCard.board_id == board.id))
+    card = result.scalar_one_or_none()
+    if not card:
+        raise HTTPException(status_code=404, detail="Card non trovata")
+    await db.delete(card)
+    await db.commit()
+    return None
 
 
 @router.post("/{board_id}/cards/bulk", status_code=201)

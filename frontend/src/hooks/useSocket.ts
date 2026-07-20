@@ -17,7 +17,7 @@ export interface ChatMessage {
   is_private?: boolean
   target_id?: string
   is_notification?: boolean
-  notification_type?: 'task' | 'document' | 'quiz' | 'system' | 'teacherbot_published'
+  notification_type?: 'task' | 'document' | 'quiz' | 'system' | 'teacherbot_published' | 'task_feedback' | 'task_correction' | 'board_shared'
   notification_data?: Record<string, unknown>
   reply_to_id?: string
   reply_preview?: string
@@ -128,8 +128,11 @@ export function useSocket(sessionId?: string): UseSocketReturn {
     if (authToken) {
       try {
         const payload = JSON.parse(atob(authToken.split('.')[1]))
-        setCurrentUserId(payload.sub || null)
+        const subject = payload.sub || null
+        currentUserIdRef.current = subject
+        setCurrentUserId(subject)
       } catch {
+        currentUserIdRef.current = null
         setCurrentUserId(null)
       }
     }
@@ -430,6 +433,42 @@ export function useSocket(sessionId?: string): UseSocketReturn {
       }
       setMessages(prev => [...prev, notification])
       setNotifications(prev => [...prev, notification])
+    })
+
+    socket.on('task_correction', (data: { task_id: string; submission_id: string; student_id: string }) => {
+      if (!studentToken || data.student_id !== currentUserIdRef.current) return
+      const notification: ChatMessage = {
+        id: `correction-${data.submission_id}-${Date.now()}`,
+        sender_type: 'TEACHER',
+        sender_id: 'system',
+        sender_name: 'Docente',
+        text: '📝 Hai ricevuto una correzione dal docente',
+        created_at: new Date().toISOString(),
+        is_notification: true,
+        notification_type: 'task',
+        notification_data: data,
+      }
+      setMessages(prev => [...prev, notification])
+      setNotifications(prev => [...prev, notification])
+      window.dispatchEvent(new CustomEvent('student-task-correction', { detail: data }))
+    })
+
+    socket.on('task_feedback_published', (data: { task_id: string; submission_id: string; student_id: string }) => {
+      if (!studentToken || data.student_id !== currentUserIdRef.current) return
+      const notification: ChatMessage = {
+        id: `feedback-${data.submission_id}-${Date.now()}`,
+        sender_type: 'TEACHER',
+        sender_id: 'system',
+        sender_name: 'Docente',
+        text: '💬 Il docente ha pubblicato un feedback sul tuo compito',
+        created_at: new Date().toISOString(),
+        is_notification: true,
+        notification_type: 'task_feedback',
+        notification_data: data,
+      }
+      setMessages(prev => [...prev, notification])
+      setNotifications(prev => [...prev, notification])
+      window.dispatchEvent(new CustomEvent('student-task-feedback', { detail: data }))
     })
 
     socket.on('document_uploaded', (data: { document_id: string; filename: string }) => {

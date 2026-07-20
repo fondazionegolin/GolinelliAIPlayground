@@ -1,13 +1,34 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Button } from '@/components/ui/button'
-import { ArrowLeft, Save, Loader2, Globe, Check, X, Upload, Trash2, FileText, Database, AlertCircle, CheckCircle2, ChevronDown, ChevronUp, Sparkles, Layers } from 'lucide-react'
+import {
+  ArrowLeft, Save, Loader2, Check, Upload, Trash2, FileText, Database, AlertCircle, CheckCircle2,
+  ChevronDown, ChevronUp, Sparkles, Layers, Info, Palette, SlidersHorizontal, Terminal, Share2, Link2,
+  Send, RefreshCw, Bot, Users, User,
+} from 'lucide-react'
 import { useToast } from '@/components/ui/use-toast'
-import { teacherbotsApi, teacherApi } from '@/lib/api'
+import { teacherbotsApi } from '@/lib/api'
 import { TeacherbotPromptOptimizer } from './TeacherbotPromptOptimizer'
 import TeacherbotIconPicker from './TeacherbotIconPicker'
+import TeacherbotShareModal from './TeacherbotShareModal'
+import TeacherbotShareLinksModal from './TeacherbotShareLinksModal'
 import { resolveTeacherbotIcon } from '@/lib/teacherbotIcons'
+import { buildAccentNavClusterStyle } from '@/lib/navbarGlass'
+import { getTeacherAccentTheme } from '@/lib/teacherAccent'
 import { useTranslation } from 'react-i18next'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
+import { markdownCodeComponents } from '@/components/CodeBlock'
+
+type TabKey = 'info' | 'style' | 'options' | 'prompt' | 'kb'
+
+const TABS: { key: TabKey; label: string; icon: typeof Info }[] = [
+  { key: 'info', label: 'Informazioni base', icon: Info },
+  { key: 'style', label: 'Stile', icon: Palette },
+  { key: 'options', label: 'Opzioni', icon: SlidersHorizontal },
+  { key: 'prompt', label: 'System prompt', icon: Terminal },
+  { key: 'kb', label: 'Allegati', icon: Database },
+]
 
 interface TeacherbotFormProps {
   teacherbotId?: string
@@ -18,7 +39,7 @@ interface TeacherbotFormProps {
 interface FormData {
   name: string
   synopsis: string
-  // description removed
+  description: string
   icon: string
   color: string
   system_prompt: string
@@ -164,12 +185,13 @@ function KnowledgeBaseSection({ teacherbotId, pendingFiles, onPendingFilesChange
         <div>
           <h3 className="flex items-center gap-2 text-base font-bold text-slate-900">
             <Database className="h-4 w-4 text-indigo-600" />
-            Knowledge Base RAG
+            Allegati
           </h3>
           <p className="mt-1 max-w-2xl text-sm leading-5 text-slate-500">
-            {teacherbotId
-              ? 'Carica documenti — il bot userà queste fonti per rispondere con citazioni accurate'
-              : 'Aggiungi documenti ora — verranno caricati automaticamente al salvataggio'}
+            I documenti caricati qui condizionano fortemente il comportamento del bot: le sue risposte saranno vincolate
+            a questi contenuti, non solo ispirate. {teacherbotId
+              ? 'Vengono indicizzati subito e restano prioritari rispetto alla conoscenza generale del modello.'
+              : 'Verranno caricati e indicizzati automaticamente al salvataggio.'}
           </p>
         </div>
         <div>
@@ -415,57 +437,156 @@ function TeacherbotPreviewIcon({ iconValue, className }: { iconValue: string; cl
   return <Sparkles className={className} />
 }
 
-function TeacherbotPreview({ formData }: { formData: FormData }) {
+interface LivePreviewMessage {
+  id: string
+  role: 'user' | 'assistant'
+  content: string
+}
+
+function TeacherbotLivePreview({ teacherbotId, formData }: { teacherbotId?: string; formData: FormData }) {
+  const { toast } = useToast()
   const meta = colorMeta(formData.color)
-  const previewName = formData.name.trim() || 'Teacherbot'
-  const previewSynopsis = formData.synopsis.trim() || 'Assistente configurato dal docente'
-  const openingMessage = formData.is_proactive && formData.proactive_message.trim()
-    ? formData.proactive_message.trim()
-    : 'Ciao, sono qui per aiutarti a ragionare sul materiale della lezione.'
+  const endRef = useRef<HTMLDivElement>(null)
+
+  const buildSeed = (): LivePreviewMessage[] =>
+    formData.is_proactive && formData.proactive_message.trim()
+      ? [{ id: 'proactive', role: 'assistant', content: formData.proactive_message.trim() }]
+      : []
+
+  const [messages, setMessages] = useState<LivePreviewMessage[]>(buildSeed)
+  const [input, setInput] = useState('')
+
+  useEffect(() => {
+    endRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [messages])
+
+  const testMutation = useMutation({
+    mutationFn: async (content: string) => {
+      const history = messages.map((m) => ({ role: m.role, content: m.content }))
+      return teacherbotsApi.test(teacherbotId!, content, history, undefined, {
+        system_prompt: formData.system_prompt,
+        temperature: formData.temperature,
+        llm_provider: formData.llm_provider || undefined,
+        llm_model: formData.llm_model || undefined,
+      })
+    },
+    onSuccess: (response) => {
+      setMessages((prev) => [...prev, { id: `a-${Date.now()}`, role: 'assistant', content: response.data.content }])
+    },
+    onError: () => {
+      toast({ title: 'Errore', description: 'Impossibile testare il teacherbot', variant: 'destructive' })
+    },
+  })
+
+  const handleSend = () => {
+    const text = input.trim()
+    if (!text || testMutation.isPending) return
+    setMessages((prev) => [...prev, { id: `u-${Date.now()}`, role: 'user', content: text }])
+    setInput('')
+    testMutation.mutate(text)
+  }
+
+  const handleReset = () => setMessages(buildSeed())
+
+  const header = (
+    <div className="flex items-center justify-between gap-3 border-b p-3" style={{ borderColor: meta.border, backgroundColor: meta.soft }}>
+      <div className="flex min-w-0 items-center gap-2">
+        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-white shadow-sm" style={{ backgroundColor: meta.hex }}>
+          <TeacherbotPreviewIcon iconValue={formData.icon} className="h-4 w-4" />
+        </div>
+        <div className="min-w-0">
+          <div className="truncate text-sm font-bold text-slate-950">{formData.name.trim() || 'Teacherbot'}</div>
+          <div className="text-[11px] text-slate-500">Anteprima studente</div>
+        </div>
+      </div>
+      {teacherbotId && (
+        <button
+          type="button"
+          onClick={handleReset}
+          title="Ricomincia la chat"
+          className="flex h-7 w-7 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-white/70"
+        >
+          <RefreshCw className="h-3.5 w-3.5" />
+        </button>
+      )}
+    </div>
+  )
+
+  if (!teacherbotId) {
+    return (
+      <section className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+        {header}
+        <div className="flex flex-1 flex-col items-center justify-center gap-2 p-6 text-center">
+          <Bot className="h-8 w-8 text-slate-300" />
+          <p className="text-sm font-medium text-slate-500">Salva il teacherbot per provarlo dal vivo</p>
+          <p className="max-w-[220px] text-xs text-slate-400">
+            Dopo il primo salvataggio potrai chattare qui con l'IA per testare le impostazioni.
+          </p>
+        </div>
+      </section>
+    )
+  }
 
   return (
-    <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-      <div className="mb-3 flex items-center justify-between gap-3">
-        <h3 className="text-sm font-bold text-slate-950">Anteprima studente</h3>
-        <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] font-semibold text-slate-500">
-          Live
-        </span>
+    <section className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+      {header}
+
+      <div className="flex-1 space-y-3 overflow-y-auto p-3">
+        {messages.length === 0 && (
+          <div className="flex h-full flex-col items-center justify-center gap-2 text-center text-slate-400">
+            <Bot className="h-8 w-8 text-slate-300" />
+            <p className="text-xs">Scrivi un messaggio per provare il bot</p>
+          </div>
+        )}
+        {messages.map((msg) => (
+          <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+            <div
+              className={`max-w-[85%] rounded-xl px-3 py-2 text-xs leading-5 ${msg.role === 'user' ? 'text-white' : 'text-slate-800'}`}
+              style={msg.role === 'user' ? { backgroundColor: meta.hex } : { backgroundColor: meta.soft, border: `1px solid ${meta.border}` }}
+            >
+              {msg.role === 'assistant' ? (
+                <ReactMarkdown
+                  remarkPlugins={[remarkGfm]}
+                  className="chat-markdown prose prose-sm max-w-none prose-p:my-1 prose-pre:my-1.5"
+                  components={markdownCodeComponents()}
+                >
+                  {msg.content}
+                </ReactMarkdown>
+              ) : (
+                <p className="whitespace-pre-wrap">{msg.content}</p>
+              )}
+            </div>
+          </div>
+        ))}
+        {testMutation.isPending && (
+          <div className="flex justify-start">
+            <div className="rounded-xl px-3 py-2" style={{ backgroundColor: meta.soft, border: `1px solid ${meta.border}` }}>
+              <Loader2 className="h-3.5 w-3.5 animate-spin text-slate-500" />
+            </div>
+          </div>
+        )}
+        <div ref={endRef} />
       </div>
 
-      <div className="rounded-lg border p-3" style={{ borderColor: meta.border, backgroundColor: meta.soft }}>
-        <div className="flex items-start gap-3">
-          <div
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-white shadow-sm"
-            style={{ backgroundColor: meta.hex }}
-          >
-            <TeacherbotPreviewIcon iconValue={formData.icon} className="h-4 w-4" />
-          </div>
-          <div className="min-w-0">
-            <div className="truncate text-sm font-bold text-slate-950">{previewName}</div>
-            <p className="mt-0.5 line-clamp-2 text-xs leading-5 text-slate-600">{previewSynopsis}</p>
-          </div>
-        </div>
-
-        <div className="mt-4 rounded-lg border border-white/80 bg-white/90 p-3 text-sm leading-6 text-slate-700 shadow-sm">
-          {openingMessage}
-        </div>
-
-        <div className="mt-3 flex flex-wrap gap-1.5">
-          {formData.is_proactive && <span className="rounded-full bg-white px-2 py-1 text-[11px] font-semibold text-slate-600">Proattivo</span>}
-          {formData.enable_live_voice && <span className="rounded-full bg-white px-2 py-1 text-[11px] font-semibold text-slate-600">Voce live</span>}
-          {formData.enable_reporting && <span className="rounded-full bg-white px-2 py-1 text-[11px] font-semibold text-slate-600">Report</span>}
-        </div>
-      </div>
-
-      <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
-        <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-          <div className="font-semibold text-slate-700">Temperatura</div>
-          <div className="text-slate-500">{formData.temperature.toFixed(1)}</div>
-        </div>
-        <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-          <div className="font-semibold text-slate-700">Prompt</div>
-          <div className="text-slate-500">{formData.system_prompt.trim().length} caratteri</div>
-        </div>
+      <div className="flex items-center gap-2 border-t border-slate-100 p-2.5">
+        <input
+          type="text"
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleSend() } }}
+          placeholder="Scrivi un messaggio di test..."
+          disabled={testMutation.isPending}
+          className="h-9 flex-1 rounded-full border border-slate-200 bg-white px-3 text-xs outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
+        />
+        <button
+          type="button"
+          onClick={handleSend}
+          disabled={!input.trim() || testMutation.isPending}
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-white transition disabled:opacity-40"
+          style={{ backgroundColor: meta.hex }}
+        >
+          <Send className="h-4 w-4" />
+        </button>
       </div>
     </section>
   )
@@ -480,6 +601,7 @@ export default function TeacherbotForm({ teacherbotId, onBack, onSaved }: Teache
   const [formData, setFormData] = useState<FormData>({
     name: '',
     synopsis: '',
+    description: '',
     icon: 'bot',
     color: 'indigo',
     system_prompt: '',
@@ -499,8 +621,9 @@ export default function TeacherbotForm({ teacherbotId, onBack, onSaved }: Teache
   const [selection, setSelection] = useState<{ text: string, position: { x: number, y: number } } | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
-  const [showPublishModal, setShowPublishModal] = useState(false)
-  const [selectedClassId, setSelectedClassId] = useState<string | null>(null)
+  const [activeTab, setActiveTab] = useState<TabKey>('info')
+  const [shareOpen, setShareOpen] = useState(false)
+  const [shareLinksOpen, setShareLinksOpen] = useState(false)
 
   // Load existing teacherbot data
   const { data: teacherbot, isLoading: isLoadingBot } = useQuery({
@@ -513,31 +636,32 @@ export default function TeacherbotForm({ teacherbotId, onBack, onSaved }: Teache
     enabled: !!teacherbotId,
   })
 
-  // Load classes for publishing
-  const { data: classes } = useQuery({
-    queryKey: ['teacher-classes'],
-    queryFn: async () => {
-      const res = await teacherApi.getClasses()
-      return res.data || []
-    },
-  })
-
-  // Load publications for this teacherbot
   const { data: publications } = useQuery({
     queryKey: ['teacherbot-publications', teacherbotId],
-    queryFn: async () => {
-      if (!teacherbotId) return []
-      const res = await teacherbotsApi.getPublications(teacherbotId)
-      return res.data || []
-    },
+    queryFn: async () => (await teacherbotsApi.getPublications(teacherbotId!)).data as Array<{
+      id: string; class_id: string | null; class_name: string | null; student_id: string | null;
+      student_nickname: string | null; is_active: boolean
+    }>,
     enabled: !!teacherbotId,
   })
+
+  const { data: shareLinks } = useQuery({
+    queryKey: ['teacherbot-share-links', teacherbotId],
+    queryFn: async () => (await teacherbotsApi.listShareLinks(teacherbotId!)).data as Array<{
+      id: string; is_active: boolean; expires_at: string
+    }>,
+    enabled: !!teacherbotId,
+  })
+
+  const activePublications = (publications || []).filter((p) => p.is_active)
+  const activeShareLinks = (shareLinks || []).filter((l) => l.is_active && new Date(l.expires_at).getTime() > Date.now())
 
   useEffect(() => {
     if (teacherbot) {
       setFormData({
         name: teacherbot.name || '',
         synopsis: teacherbot.synopsis || '',
+        description: teacherbot.description || '',
         icon: teacherbot.icon || 'bot',
         color: teacherbot.color || 'indigo',
         system_prompt: teacherbot.system_prompt || '',
@@ -555,13 +679,10 @@ export default function TeacherbotForm({ teacherbotId, onBack, onSaved }: Teache
 
   const saveMutation = useMutation({
     mutationFn: async (data: FormData) => {
-      // Map back to API expected format (including description as optional/empty)
-      // We send empty description as requested
-      const apiData = { ...data, description: '' }
       if (isEditing) {
-        return teacherbotsApi.update(teacherbotId, apiData)
+        return teacherbotsApi.update(teacherbotId, data)
       } else {
-        return teacherbotsApi.create(apiData)
+        return teacherbotsApi.create(data)
       }
     },
     onSuccess: async (res) => {
@@ -581,35 +702,6 @@ export default function TeacherbotForm({ teacherbotId, onBack, onSaved }: Teache
     },
   })
 
-  const publishMutation = useMutation({
-    mutationFn: async (classId: string) => {
-      return teacherbotsApi.publish(teacherbotId!, classId)
-    },
-    onSuccess: () => {
-      toast({ title: t('teacherbot.published'), description: t('teacherbot.published_body') })
-      queryClient.invalidateQueries({ queryKey: ['teacherbot-publications', teacherbotId] })
-      setShowPublishModal(false)
-      setSelectedClassId(null)
-    },
-    onError: (error: any) => {
-      const msg = error.response?.data?.detail || t('teacherbot.publish_error')
-      toast({ title: t('common.error'), description: msg, variant: 'destructive' })
-    },
-  })
-
-  const unpublishMutation = useMutation({
-    mutationFn: async (publicationId: string) => {
-      return teacherbotsApi.unpublish(teacherbotId!, publicationId)
-    },
-    onSuccess: () => {
-      toast({ title: t('teacherbot.unpublished') })
-      queryClient.invalidateQueries({ queryKey: ['teacherbot-publications', teacherbotId] })
-    },
-    onError: () => {
-      toast({ title: t('common.error'), description: t('teacherbot.unpublish_error'), variant: 'destructive' })
-    },
-  })
-
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     if (!formData.name.trim() || !formData.system_prompt.trim()) {
@@ -617,12 +709,6 @@ export default function TeacherbotForm({ teacherbotId, onBack, onSaved }: Teache
       return
     }
     saveMutation.mutate(formData)
-  }
-
-  const handlePublish = () => {
-    if (selectedClassId) {
-      publishMutation.mutate(selectedClassId)
-    }
   }
 
   const handleMouseUpWithEvent = useCallback((e: React.MouseEvent<HTMLTextAreaElement>) => {
@@ -665,8 +751,6 @@ export default function TeacherbotForm({ teacherbotId, onBack, onSaved }: Teache
     setSelection(null)
   }
 
-  // Get published class IDs
-  const publishedClassIds = new Set((publications || []).filter((p: any) => p.is_active).map((p: any) => p.class_id))
   const selectedColor = colorMeta(formData.color)
 
   if (isLoadingBot && isEditing) {
@@ -693,51 +777,123 @@ export default function TeacherbotForm({ teacherbotId, onBack, onSaved }: Teache
           </p>
         </div>
         {isEditing && (
-          <Button
-            variant="outline"
-            onClick={() => setShowPublishModal(true)}
-            className="shrink-0 whitespace-nowrap"
-          >
-            <Globe className="h-4 w-4 mr-2" />
-            {t('teacherbot.publish_btn')}
-          </Button>
+          <div className="flex shrink-0 items-center gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setShareOpen(true)}
+              className="whitespace-nowrap border-violet-200 bg-violet-50 text-violet-700 hover:border-violet-300 hover:bg-violet-100"
+            >
+              <Share2 className="h-4 w-4 mr-2" />
+              {activePublications.length > 0 ? `Condiviso · ${activePublications.length}` : 'Condividi'}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setShareLinksOpen(true)}
+              className="whitespace-nowrap border-sky-200 bg-sky-50 text-sky-700 hover:border-sky-300 hover:bg-sky-100"
+            >
+              <Link2 className="h-4 w-4 mr-2" />
+              {activeShareLinks.length > 0 ? `Link attivo · ${activeShareLinks.length}` : 'Link pubblico'}
+            </Button>
+          </div>
         )}
       </div>
 
+      {isEditing && activePublications.length > 0 && (
+        <div className="flex flex-shrink-0 flex-wrap items-center gap-1.5 border-b border-slate-200 bg-white px-4 py-2 md:px-5">
+          <span className="text-xs font-semibold text-slate-400">Condiviso con:</span>
+          {activePublications.map((pub) => (
+            <span
+              key={pub.id}
+              className="inline-flex items-center gap-1 rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 text-xs font-medium text-violet-700"
+            >
+              {pub.class_id ? <Users className="h-3 w-3" /> : <User className="h-3 w-3" />}
+              {pub.class_id ? pub.class_name : pub.student_nickname}
+            </span>
+          ))}
+        </div>
+      )}
+
+      <div className="flex flex-shrink-0 justify-start border-b border-slate-200 bg-white px-4 py-2.5 md:px-5">
+        <div
+          className="flex items-center gap-1.5 rounded-[var(--selection-radius)] border p-1.5"
+          style={buildAccentNavClusterStyle(getTeacherAccentTheme())}
+        >
+          {TABS.map((tab) => {
+            const TabIcon = tab.icon
+            const isTabActive = activeTab === tab.key
+            return (
+              <button
+                key={tab.key}
+                type="button"
+                onClick={() => setActiveTab(tab.key)}
+                className={[
+                  'ui-control-label group flex min-h-[2.75rem] items-center justify-center gap-2 whitespace-nowrap px-4 text-sm font-semibold rounded-[var(--selection-radius)]',
+                  'border transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--selection-border-hover)]',
+                  isTabActive
+                    ? 'bg-[image:var(--selection-active-bg)] text-[var(--selection-active-text)] border-[color:var(--selection-border-hover)] shadow-[var(--selection-shadow)]'
+                    : 'border-transparent text-slate-600 hover:border-[color:var(--selection-border)] hover:bg-[image:var(--selection-bg)] hover:text-[var(--selection-text)]',
+                ].join(' ')}
+              >
+                <TabIcon className="h-4 w-4 shrink-0" />
+                {tab.label}
+              </button>
+            )
+          })}
+        </div>
+      </div>
+
       <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
-        <div className="min-h-0 flex-1 overflow-y-auto">
-          <div className="grid gap-4 p-4 lg:grid-cols-[minmax(0,1fr)_340px] xl:grid-cols-[minmax(0,1fr)_380px]">
-            <div className="min-w-0 space-y-4">
+        <div className="flex min-h-0 flex-1 overflow-hidden">
+          <div className="min-w-0 flex-1 overflow-y-auto p-4">
+            <div className="space-y-4">
+              {activeTab === 'info' && (
               <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm md:p-5">
                 <h3 className="mb-4 text-base font-bold text-slate-950">{t('teacherbot.basic_info')}</h3>
 
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div>
-                    <FieldLabel required>Nome</FieldLabel>
-                    <input
-                      type="text"
-                      value={formData.name}
-                      onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                      className="h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-900 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
-                      placeholder="es. Tutor di Matematica"
-                      maxLength={100}
-                    />
-                  </div>
-
-                  <div>
-                    <FieldLabel>{t('teacherbot.synopsis_label')}</FieldLabel>
-                    <input
-                      type="text"
-                      value={formData.synopsis}
-                      onChange={(e) => setFormData({ ...formData, synopsis: e.target.value })}
-                      className="h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-900 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
-                      placeholder="es. Assistente per esercizi di algebra"
-                      maxLength={255}
-                    />
-                  </div>
+                <div>
+                  <FieldLabel required>Nome</FieldLabel>
+                  <input
+                    type="text"
+                    value={formData.name}
+                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                    className="h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-900 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
+                    placeholder="es. Tutor di Matematica"
+                    maxLength={100}
+                  />
                 </div>
 
                 <div className="mt-4">
+                  <FieldLabel>{t('teacherbot.description_label')}</FieldLabel>
+                  <textarea
+                    value={formData.description}
+                    onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                    className="min-h-[110px] w-full resize-y rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm leading-6 text-slate-800 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
+                    placeholder={t('teacherbot.description_placeholder')}
+                    maxLength={2000}
+                  />
+                </div>
+
+                <div className="mt-4">
+                  <FieldLabel>{t('teacherbot.synopsis_label')}</FieldLabel>
+                  <input
+                    type="text"
+                    value={formData.synopsis}
+                    onChange={(e) => setFormData({ ...formData, synopsis: e.target.value })}
+                    className="h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-900 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
+                    placeholder="es. Assistente per esercizi di algebra"
+                    maxLength={255}
+                  />
+                </div>
+              </section>
+              )}
+
+              {activeTab === 'style' && (
+              <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm md:p-5">
+                <h3 className="mb-4 text-base font-bold text-slate-950">Stile</h3>
+
+                <div>
                   <FieldLabel>{t('teacherbot.color_label')}</FieldLabel>
                   <div className="flex flex-wrap gap-2">
                     {COLORS.map((color) => {
@@ -772,9 +928,12 @@ export default function TeacherbotForm({ teacherbotId, onBack, onSaved }: Teache
                   />
                 </div>
               </section>
+              )}
 
+              {activeTab === 'options' && (
               <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm md:p-5">
-                <h3 className="mb-3 text-base font-bold text-slate-950">{t('teacherbot.options_section')}</h3>
+                <h3 className="text-base font-bold text-slate-950">{t('teacherbot.options_section')}</h3>
+                <p className="mb-3 mt-1 text-sm leading-5 text-slate-500">{t('teacherbot.options_hint')}</p>
 
                 <ToggleRow
                   title={t('teacherbot.proactive')}
@@ -844,9 +1003,12 @@ export default function TeacherbotForm({ teacherbotId, onBack, onSaved }: Teache
                     <span>{t('teacherbot.temp_precise')}</span>
                     <span>{t('teacherbot.temp_creative')}</span>
                   </div>
+                  <p className="mt-2 text-xs leading-5 text-slate-500">{t('teacherbot.temperature_hint')}</p>
                 </div>
               </section>
+              )}
 
+              {activeTab === 'prompt' && (
               <section className="relative flex min-h-[420px] flex-col rounded-xl border border-slate-200 bg-white p-4 shadow-sm md:p-5">
                 <div className="mb-3 flex items-start justify-between gap-4">
                   <div>
@@ -861,6 +1023,11 @@ export default function TeacherbotForm({ teacherbotId, onBack, onSaved }: Teache
                     {formData.system_prompt.trim().length}
                   </span>
                 </div>
+
+                <p className="mb-2 flex items-center gap-1.5 text-xs text-indigo-600">
+                  <Sparkles className="h-3.5 w-3.5 shrink-0" />
+                  {t('teacherbot.system_prompt_tip')}
+                </p>
 
                 <textarea
                   ref={textareaRef}
@@ -888,35 +1055,21 @@ Il tuo obiettivo è:
                   />
                 )}
               </section>
+              )}
 
-              <KnowledgeBaseSection
-                teacherbotId={teacherbotId}
-                pendingFiles={pendingKbFiles}
-                onPendingFilesChange={setPendingKbFiles}
-              />
+              {activeTab === 'kb' && (
+                <KnowledgeBaseSection
+                  teacherbotId={teacherbotId}
+                  pendingFiles={pendingKbFiles}
+                  onPendingFilesChange={setPendingKbFiles}
+                />
+              )}
             </div>
-
-            <aside className="min-w-0 space-y-4 lg:sticky lg:top-4 lg:self-start">
-              <TeacherbotPreview formData={formData} />
-              <section className="rounded-xl border border-slate-200 bg-white p-4 text-sm shadow-sm">
-                <h3 className="mb-3 text-sm font-bold text-slate-950">Stato configurazione</h3>
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between gap-3">
-                    <span className="text-slate-600">Nome</span>
-                    <Check className={`h-4 w-4 ${formData.name.trim() ? 'text-emerald-500' : 'text-slate-300'}`} />
-                  </div>
-                  <div className="flex items-center justify-between gap-3">
-                    <span className="text-slate-600">Prompt</span>
-                    <Check className={`h-4 w-4 ${formData.system_prompt.trim() ? 'text-emerald-500' : 'text-slate-300'}`} />
-                  </div>
-                  <div className="flex items-center justify-between gap-3">
-                    <span className="text-slate-600">Colore</span>
-                    <span className="h-4 w-4 rounded-full border border-slate-200" style={{ backgroundColor: selectedColor.hex }} />
-                  </div>
-                </div>
-              </section>
-            </aside>
           </div>
+
+          <aside className="hidden w-[380px] flex-shrink-0 flex-col border-l border-slate-200 bg-slate-50/60 p-4 lg:flex xl:w-[420px]">
+            <TeacherbotLivePreview teacherbotId={teacherbotId} formData={formData} />
+          </aside>
         </div>
 
         <div className="flex flex-shrink-0 flex-col-reverse gap-2 border-t border-slate-200 bg-white px-4 py-3 sm:flex-row sm:items-center sm:justify-end md:px-5">
@@ -938,90 +1091,20 @@ Il tuo obiettivo è:
         </div>
       </form>
 
-      {/* Publish Modal includes are kept same as before */}
-      {showPublishModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl p-8 w-full max-w-md shadow-2xl">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-lg font-bold text-slate-800">{t('teacherbot.publish_title')}</h3>
-              <Button variant="ghost" size="icon" onClick={() => setShowPublishModal(false)}>
-                <X className="h-5 w-5" />
-              </Button>
-            </div>
+      {isEditing && shareOpen && (
+        <TeacherbotShareModal
+          teacherbotId={teacherbotId!}
+          teacherbotName={formData.name.trim() || 'Teacherbot'}
+          onClose={() => setShareOpen(false)}
+        />
+      )}
 
-            <p className="text-sm text-slate-600 mb-4">
-              {t('teacherbot.publish_desc')}
-            </p>
-
-            {/* Current publications */}
-            {publications && publications.filter((p: any) => p.is_active).length > 0 && (
-              <div className="mb-4">
-                <label className="block text-sm font-medium text-slate-700 mb-2">{t('teacherbot.published_on')}</label>
-                <div className="space-y-2">
-                  {publications.filter((p: any) => p.is_active).map((pub: any) => (
-                    <div key={pub.id} className="flex items-center justify-between p-3 bg-green-50 rounded-xl border border-green-200">
-                      <span className="text-sm text-green-700 flex items-center gap-2">
-                        <Check className="h-4 w-4" />
-                        {pub.class_name}
-                      </span>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="text-red-600 hover:bg-red-50"
-                        onClick={() => unpublishMutation.mutate(pub.id)}
-                      >
-                        {t('teacherbot.remove_btn')}
-                      </Button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Available classes */}
-            <div className="space-y-2 max-h-60 overflow-y-auto mb-4">
-              {classes?.filter((c: any) => !publishedClassIds.has(c.id)).map((cls: any) => (
-                <button
-                  key={cls.id}
-                  type="button"
-                  onClick={() => setSelectedClassId(cls.id)}
-                  className={`w-full text-left p-3 rounded-xl border transition-all ${selectedClassId === cls.id
-                    ? 'border-[#181b1e]/40 bg-[#181b1e]/5'
-                    : 'border-slate-200 hover:border-[#181b1e]/20 hover:bg-slate-50'
-                    }`}
-                >
-                  <div className="font-medium text-slate-800">{cls.name}</div>
-                  <div className="text-xs text-slate-500">
-                    {cls.role === 'owner' ? t('teacherbot.owner') : t('teacherbot.shared_by', { name: cls.owner_name })}
-                  </div>
-                </button>
-              ))}
-              {classes?.filter((c: any) => !publishedClassIds.has(c.id)).length === 0 && (
-                <p className="text-center text-sm text-slate-400 py-4">
-                  {t('teacherbot.all_published')}
-                </p>
-              )}
-            </div>
-
-            <div className="flex justify-end gap-2">
-              <Button variant="ghost" onClick={() => setShowPublishModal(false)}>
-                {t('common.close')}
-              </Button>
-              <Button
-                onClick={handlePublish}
-                disabled={!selectedClassId || publishMutation.isPending}
-                className="bg-[#181b1e] hover:bg-[#0f1113]"
-              >
-                {publishMutation.isPending ? (
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                ) : (
-                  <Globe className="h-4 w-4 mr-2" />
-                )}
-                {t('teacherbot.publish_btn')}
-              </Button>
-            </div>
-          </div>
-        </div>
+      {isEditing && shareLinksOpen && (
+        <TeacherbotShareLinksModal
+          teacherbotId={teacherbotId!}
+          teacherbotName={formData.name.trim() || 'Teacherbot'}
+          onClose={() => setShareLinksOpen(false)}
+        />
       )}
     </div>
   )

@@ -4,6 +4,7 @@ import { Bell, Check, X, Users, MonitorPlay, Loader2 } from 'lucide-react'
 import { teacherApi } from '@/lib/api'
 import { useToast } from '@/components/ui/use-toast'
 import { Button } from '@/components/ui/button'
+import { useSearchParams } from 'react-router-dom'
 
 interface TeacherInfo {
   id: string
@@ -40,6 +41,7 @@ interface InvitationsData {
 
 export function InvitationsPanel() {
   const [isOpen, setIsOpen] = useState(false)
+  const [searchParams, setSearchParams] = useSearchParams()
   const panelRef = useRef<HTMLDivElement>(null)
   const queryClient = useQueryClient()
   const { toast } = useToast()
@@ -52,6 +54,14 @@ export function InvitationsPanel() {
     },
     refetchInterval: 30000, // Poll every 30 seconds
   })
+
+  useEffect(() => {
+    if (searchParams.get('invitations') !== 'open') return
+    setIsOpen(true)
+    const next = new URLSearchParams(searchParams)
+    next.delete('invitations')
+    setSearchParams(next, { replace: true })
+  }, [searchParams, setSearchParams])
 
   const respondToClassMutation = useMutation({
     mutationFn: ({ id, accept }: { id: string; accept: boolean }) =>

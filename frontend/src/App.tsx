@@ -18,6 +18,7 @@ const AdminDashboard = lazy(() => import('@/pages/admin/AdminDashboard'))
 const TeacherDashboard = lazy(() => import('@/pages/teacher/TeacherDashboard'))
 const StudentDashboard = lazy(() => import('@/pages/student/StudentDashboard'))
 const PublicCodingSitePage = lazy(() => import('@/pages/PublicCodingSitePage'))
+const PublicTeacherbotChatPage = lazy(() => import('@/pages/PublicTeacherbotChatPage'))
 
 function ProtectedRoute({ children, allowedRoles }: { children: React.ReactNode; allowedRoles: string[] }) {
   const { user, isAuthenticated } = useAuthStore()
@@ -53,6 +54,7 @@ function App() {
           <Route path="/privacy" element={<PrivacyPage />} />
           <Route path="/terms" element={<TermsPage />} />
           <Route path="/students/:slug" element={<PublicCodingSitePage />} />
+          <Route path="/bot/:token" element={<PublicTeacherbotChatPage />} />
           <Route path="/teacher-request" element={<TeacherRequestPage />} />
           <Route path="/activate/:token" element={<ActivatePage />} />
           <Route path="/reset-password/:token" element={<ResetPasswordPage />} />

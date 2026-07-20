@@ -20,7 +20,7 @@ Lo script ti guida passo passo:
 4. testa il server MCP locale;
 5. se vuoi, installa automaticamente la config in `~/.codex/config.toml`.
 
-Il token non viene scritto nel repository. Se scegli l'installazione automatica, viene scritto solo nella tua config locale di Codex (`~/.codex/config.toml`, permessi `600`).
+Il token non viene scritto nel repository. Il setup scambia il login breve con un token dedicato alla sola feedback board, valido 180 giorni e revocabile rimuovendo il collaboratore o disattivando l'account. Se scegli l'installazione automatica, viene scritto solo nella tua config locale di Codex (`~/.codex/config.toml`, permessi `600`).
 
 In pratica:
 
@@ -77,6 +77,8 @@ Esempio chiusura task:
 | `GOLINELLI_API_BASE_URL` | No | `http://localhost:8000/api/v1` | Base API. Per dev usa `https://dev.golinelli.ai/api/v1`. Accetta anche base senza `/api/v1`. |
 | `GOLINELLI_MCP_TIMEOUT_SEC` | No | `20` | Timeout chiamate API. |
 | `GOLINELLI_MCP_CACHE_TTL_SEC` | No | `15` | Cache breve dei task board. |
+
+Il backend espone `POST /api/v1/feedback/board/mcp-token` per creare il token scoped. La durata è configurabile con `FEEDBACK_MCP_TOKEN_EXPIRE_DAYS` (default: `180`) senza modificare la scadenza dei normali login.
 
 ## Recuperare il token
 

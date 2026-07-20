@@ -147,6 +147,11 @@ export default function NotebookMicrobitAgentChat({
   onOpenVersions,
 }: Props) {
   const copy = DEVICE_COPY[device]
+  const beginnerSuggestions = device === 'python' ? [
+    'Scrivi un esempio semplice che usa variabili, input e print, spiegandomi ogni riga.',
+    'Aiutami a leggere una lista di numeri e calcolarne media, minimo e massimo.',
+    'Controlla il mio codice, spiegami l’errore con parole semplici e proponi una correzione.',
+  ] : []
   const [messages, setMessages] = useState<NotebookTutorMessage[]>(initialMessages)
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
@@ -292,6 +297,20 @@ export default function NotebookMicrobitAgentChat({
             <p className="mt-2 text-xs leading-5">
               {copy.intro}
             </p>
+            {beginnerSuggestions.length > 0 && (
+              <div className="mt-3 space-y-2">
+                {beginnerSuggestions.map(suggestion => (
+                  <button
+                    key={suggestion}
+                    type="button"
+                    onClick={() => setInput(suggestion)}
+                    className="w-full rounded-lg border border-indigo-200 bg-white px-3 py-2 text-left text-xs leading-5 text-indigo-800 transition hover:border-indigo-300 hover:bg-indigo-50"
+                  >
+                    {suggestion}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         )}
 

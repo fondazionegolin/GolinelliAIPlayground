@@ -9,6 +9,7 @@ import {
   Brush,
   Check,
   CheckCircle2,
+  ChevronDown,
   ChevronRight,
   Code2,
   Download,
@@ -149,14 +150,16 @@ type PreviewApiRequest = {
 }
 
 type InterviewQuestion = { question: string; suggestions: string[] }
+type ModelProvider = 'anthropic' | 'openai' | 'deepseek'
+type ModelOption = { key: string; label: string; hint: string; provider: ModelProvider }
 
 // Selectable generation models. Keys must match CODING_MODEL_CHOICES on the backend.
-const MODEL_OPTIONS: { key: string; label: string; hint: string }[] = [
-  { key: 'sonnet', label: 'Sonnet 4.6', hint: 'Massima qualità' },
-  { key: 'haiku', label: 'Haiku 4.5', hint: 'Più veloce' },
-  { key: 'gpt-mini', label: 'GPT-5 mini', hint: 'OpenAI, economico' },
-  { key: 'deepseek-flash', label: 'DeepSeek V4 Flash', hint: 'Veloce ed economico' },
-  { key: 'deepseek-pro', label: 'DeepSeek V4 Pro', hint: 'Qualità elevata' },
+const MODEL_OPTIONS: ModelOption[] = [
+  { key: 'sonnet', label: 'Sonnet 4.6', hint: 'Massima qualità', provider: 'anthropic' },
+  { key: 'haiku', label: 'Haiku 4.5', hint: 'Più veloce', provider: 'anthropic' },
+  { key: 'gpt-mini', label: 'GPT-5 mini', hint: 'Economico', provider: 'openai' },
+  { key: 'deepseek-flash', label: 'DeepSeek V4 Flash', hint: 'Veloce ed economico', provider: 'deepseek' },
+  { key: 'deepseek-pro', label: 'DeepSeek V4 Pro', hint: 'Qualità elevata', provider: 'deepseek' },
 ]
 // Claude models are temporarily disabled for students: they may only generate with DeepSeek.
 // (Backend enforces the same restriction in CODING_MODEL_CHOICES / _resolve_coding_model.)
@@ -164,6 +167,7 @@ const STUDENT_MODEL_KEYS = new Set(['deepseek-flash', 'deepseek-pro'])
 const TEACHER_DEFAULT_MODEL_KEY = 'sonnet'
 const STUDENT_DEFAULT_MODEL_KEY = 'deepseek-flash'
 const STUDENT_FLASH_DEFAULT_MIGRATION_KEY = 'coding_student_flash_default_v1'
+const PROJECT_MODEL_DATA_KEY = '_golinelli_generation_model'
 function modelOptionsFor(isTeacher: boolean) {
   return isTeacher ? MODEL_OPTIONS : MODEL_OPTIONS.filter((option) => STUDENT_MODEL_KEYS.has(option.key))
 }
@@ -176,6 +180,101 @@ function initialModelKey(isTeacher: boolean): string {
     return STUDENT_DEFAULT_MODEL_KEY
   }
   return modelOptionsFor(isTeacher).some((option) => option.key === stored) ? stored : fallback
+}
+
+const MODEL_PROVIDER_ASSETS: Record<ModelProvider, { src: string; alt: string }> = {
+  anthropic: { src: '/icone_ai/anthropic.svg', alt: 'Anthropic' },
+  openai: { src: '/icone_ai/OpenAI_logo_2025_(symbol).svg.png', alt: 'OpenAI' },
+  deepseek: { src: '/icone_ai/deepseek-logo-icon.svg', alt: 'DeepSeek' },
+}
+
+function ModelProviderIcon({ provider, className = 'h-4 w-4' }: { provider: ModelProvider; className?: string }) {
+  const asset = MODEL_PROVIDER_ASSETS[provider]
+  return <img src={asset.src} alt={asset.alt} className={`${className} shrink-0 object-contain`} />
+}
+
+function CodingModelSelector({
+  value,
+  options,
+  onChange,
+  compact = false,
+}: {
+  value: string
+  options: ModelOption[]
+  onChange: (value: string) => void
+  compact?: boolean
+}) {
+  const [open, setOpen] = useState(false)
+  const rootRef = useRef<HTMLDivElement>(null)
+  const selected = options.find((option) => option.key === value) ?? options[0]
+
+  useEffect(() => {
+    if (!open) return
+    const closeOnOutsideClick = (event: MouseEvent) => {
+      if (!rootRef.current?.contains(event.target as Node)) setOpen(false)
+    }
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setOpen(false)
+    }
+    document.addEventListener('mousedown', closeOnOutsideClick)
+    document.addEventListener('keydown', closeOnEscape)
+    return () => {
+      document.removeEventListener('mousedown', closeOnOutsideClick)
+      document.removeEventListener('keydown', closeOnEscape)
+    }
+  }, [open])
+
+  if (!selected) return null
+
+  return (
+    <div ref={rootRef} className="relative min-w-0 flex-1">
+      <button
+        type="button"
+        onClick={() => setOpen((value) => !value)}
+        className={`${compact ? 'h-8 rounded-full px-2.5 text-xs' : 'h-11 rounded-xl px-3 text-sm'} flex w-full items-center gap-2 border border-[var(--logo-violet-22)] bg-[var(--logo-violet-10)] font-semibold text-[var(--logo-violet-strong)] outline-none transition hover:border-[var(--logo-violet)] focus-visible:ring-2 focus-visible:ring-[var(--logo-violet-22)]`}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        title="Modello usato per generare il codice"
+      >
+        <ModelProviderIcon provider={selected.provider} className={compact ? 'h-3.5 w-3.5' : 'h-4 w-4'} />
+        <span className="min-w-0 flex-1 truncate text-left">{selected.label} · {selected.hint}</span>
+        <ChevronDown className={`${compact ? 'h-3.5 w-3.5' : 'h-4 w-4'} shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open && (
+        <div
+          role="listbox"
+          aria-label="Seleziona il modello"
+          className={`${compact ? 'bottom-full mb-2' : 'top-full mt-2'} absolute left-0 z-50 w-full min-w-[17rem] overflow-hidden rounded-2xl border border-[color:var(--border-subtle)] bg-white p-1.5 shadow-[var(--shadow-lg)]`}
+        >
+          {options.map((option) => {
+            const active = option.key === selected.key
+            return (
+              <button
+                key={option.key}
+                type="button"
+                role="option"
+                aria-selected={active}
+                onClick={() => {
+                  onChange(option.key)
+                  setOpen(false)
+                }}
+                className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition ${active ? 'bg-[var(--logo-violet-10)] text-[var(--logo-violet-strong)]' : 'text-[var(--text-primary)] hover:bg-[var(--surface-subtle)]'}`}
+              >
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-[color:var(--border-subtle)] bg-white">
+                  <ModelProviderIcon provider={option.provider} />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-bold">{option.label}</span>
+                  <span className="block truncate text-xs text-[var(--text-muted)]">{MODEL_PROVIDER_ASSETS[option.provider].alt} · {option.hint}</span>
+                </span>
+                {active && <Check className="h-4 w-4 shrink-0" />}
+              </button>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
 }
 const CODING_TUTORIAL_STORAGE_KEY = 'coding_lab_tutorial_seen_v1'
 function composeDescription(title: string, prompt: string, answersText: string) {
@@ -191,8 +290,8 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
   const selectedProjectIdRef = useRef<string | null>(null)
   useEffect(() => { selectedProjectIdRef.current = selectedProjectId }, [selectedProjectId])
   const [projectDetail, setProjectDetail] = useState<CodingProjectDetail | null>(null)
-  const [title, setTitle] = useState('Mini app di prova')
-  const [prompt, setPrompt] = useState('Crea una piccola pagina interattiva con un titolo, una descrizione e un pulsante.')
+  const [title, setTitle] = useState('')
+  const [prompt, setPrompt] = useState('')
   const [message, setMessage] = useState('')
   const [files, setFiles] = useState<GeneratedFile[]>([])
   const [selectedPath, setSelectedPath] = useState('index.html')
@@ -349,8 +448,8 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
     setFiles([])
     setSelectedPath('')
     setMessage('')
-    setTitle('Mini app di prova')
-    setPrompt('Crea una piccola pagina interattiva con un titolo, una descrizione e un pulsante.')
+    setTitle('')
+    setPrompt('')
     setCreatePanelOpen(true)
     setPromptPanelOpen(true)
     setActiveWorkbench('code')
@@ -364,6 +463,42 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
     setDraftDirty(false)
     setDraftSaving(false)
     setDraftSavedAt(null)
+  }
+
+  const handleStartNewProject = async () => {
+    if (!selectedProjectId || creating || generating || draftSaving) return
+    if (draftDirty && files.length > 0 && !previewingCommitId && !previewingVersionId) {
+      if (draftSaveTimer.current) clearTimeout(draftSaveTimer.current)
+      setDraftSaving(true)
+      try {
+        const projectId = selectedProjectId
+        const collaboration = latestVersion?.source_manifest_json?.collaboration
+        const response = await codingApi.saveDraft(projectId, {
+          parent_version_id: selectedProject?.current_version_id || null,
+          source_manifest_json: {
+            files,
+            summary: 'Bozza salvata prima di creare un nuovo progetto.',
+            ...(collaboration ? { collaboration } : {}),
+          },
+          artifact_manifest_json: {},
+          build_status: 'ready',
+          review_status: 'pending',
+        })
+        const versionId = response.data?.id
+        const now = new Date().toISOString()
+        setProjects((prev) => prev.map((project) => (
+          project.id === projectId
+            ? { ...project, current_version_id: versionId || project.current_version_id, updated_at: now }
+            : project
+        )))
+      } catch (err: any) {
+        setError(err?.response?.data?.detail || 'Salvataggio del progetto non riuscito. Riprova prima di crearne uno nuovo.')
+        return
+      } finally {
+        setDraftSaving(false)
+      }
+    }
+    startNewProject()
   }
 
   const loadProjects = async () => {
@@ -400,9 +535,22 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
     setPreviewingVersionId(null)
     setPreviewErrors([])
     try {
-      const response = await codingApi.getProject(projectId)
+      const [response, savedModelResponse] = await Promise.all([
+        codingApi.getProject(projectId),
+        codingApi.getProjectData(projectId, PROJECT_MODEL_DATA_KEY).catch((err: any) => {
+          if (err?.response?.status !== 404) console.warn('Impossibile caricare il modello del progetto:', err)
+          return null
+        }),
+      ])
       if (seq !== detailLoadSeq.current) return
       const detail = response.data as CodingProjectDetail
+      const savedModelKey = savedModelResponse?.data?.value?.model_key
+      if (
+        typeof savedModelKey === 'string'
+        && modelOptions.some((option) => option.key === savedModelKey)
+      ) {
+        setModelKey(savedModelKey)
+      }
       setProjectDetail(detail)
       const latestFiles = [...(detail.versions || [])]
         .sort((a, b) => b.version_number - a.version_number)
@@ -756,6 +904,9 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
         initial_prompt: prompt.trim(),
       })
       const project = response.data as CodingProject
+      void codingApi.putProjectData(project.id, PROJECT_MODEL_DATA_KEY, { model_key: modelKey }).catch(() => {
+        setError('Progetto creato, ma non è stato possibile salvare la preferenza del modello.')
+      })
       setProjects((prev) => [project, ...prev.filter((item) => item.id !== project.id)])
       setSelectedProjectId(project.id)
       setCreatePanelOpen(false)
@@ -784,6 +935,16 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
       .map((entry) => `- ${entry.q}\n  → ${entry.a}`)
       .join('\n')
     await createAndGenerate(answersText)
+  }
+
+  const handleModelChange = (nextModelKey: string) => {
+    if (!modelOptions.some((option) => option.key === nextModelKey)) return
+    setModelKey(nextModelKey)
+    if (selectedProjectId) {
+      void codingApi.putProjectData(selectedProjectId, PROJECT_MODEL_DATA_KEY, { model_key: nextModelKey }).catch(() => {
+        setError('Non è stato possibile salvare il modello scelto per questo progetto.')
+      })
+    }
   }
 
   const generateCode = async (projectId: string, nextPrompt?: string, filesOverride?: GeneratedFile[], isAutoFix = false) => {
@@ -1192,10 +1353,11 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
         {projectsPanelOpen ? (
         <div className="flex min-h-0 flex-1 flex-col">
         <div className="min-h-0 flex-1 overflow-y-auto p-3">
-          <div className="grid grid-cols-[1fr_auto_auto_auto] gap-2">
-            <Button
+          <div className={`${selectedProjectId && !createPanelOpen ? 'grid grid-cols-[1fr_auto]' : 'flex justify-end'} gap-2`}>
+            {selectedProjectId && !createPanelOpen && <Button
               type="button"
-              onClick={startNewProject}
+              onClick={handleStartNewProject}
+              disabled={creating || generating || draftSaving}
               density="compact"
               tone="accent"
               surface="solid"
@@ -1203,36 +1365,17 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
             >
               <Plus className="h-3.5 w-3.5" />
               Nuovo
-            </Button>
-            <Button
-              type="button"
-              onClick={loadProjects}
-              variant="outline"
-              density="compact"
-              className="px-3"
-              title="Aggiorna progetti"
-            >
-              <RefreshCw className="h-3.5 w-3.5" />
-            </Button>
-            <Button
-              type="button"
-              onClick={() => setShowDesignStudio(true)}
-              variant="outline"
-              density="compact"
-              className="px-3"
-              title="Design System"
-            >
-              <Palette className="h-3.5 w-3.5" />
-            </Button>
+            </Button>}
             <Button
               type="button"
               onClick={() => setShowTutorial(true)}
               variant="outline"
               density="compact"
-              className="px-3"
+              className="gap-1.5 px-3 text-xs font-bold"
               title="Tutorial Vibe Lab"
             >
               <HelpCircle className="h-3.5 w-3.5" />
+              Tutorial
             </Button>
           </div>
           <div className="my-3 flex items-center justify-between px-1">
@@ -1322,30 +1465,15 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
         </div>
         ) : (
           <div className="flex flex-1 flex-col items-center gap-2 p-2">
-            <button
+            {selectedProjectId && !createPanelOpen && <button
               type="button"
-              onClick={startNewProject}
+              onClick={handleStartNewProject}
+              disabled={creating || generating || draftSaving}
               className="rounded-lg bg-slate-950 p-2 text-white hover:bg-slate-800"
               title="Nuovo progetto"
             >
               <Plus className="h-4 w-4" />
-            </button>
-            <button
-              type="button"
-              onClick={loadProjects}
-              className="rounded-lg p-2 text-slate-400 hover:bg-slate-50 hover:text-slate-700"
-              title="Aggiorna progetti"
-            >
-              <RefreshCw className="h-4 w-4" />
-            </button>
-            <button
-              type="button"
-              onClick={() => setShowDesignStudio(true)}
-              className="rounded-lg p-2 text-slate-400 hover:bg-slate-50 hover:text-slate-700"
-              title="Design System"
-            >
-              <Palette className="h-4 w-4" />
-            </button>
+            </button>}
             {projects.slice(0, 5).map((project) => (
               <button
                 key={project.id}
@@ -1374,9 +1502,15 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
           </div>
         )}
 
-        <div className={`${promptPanelOpen ? 'lg:grid-cols-[minmax(300px,0.7fr)_minmax(520px,1.3fr)]' : 'lg:grid-cols-[3.5rem_minmax(520px,1fr)]'} grid min-h-0 flex-1 grid-cols-1 overflow-hidden transition-[grid-template-columns]`}>
-          <section className="flex min-h-0 flex-col border-b border-slate-200 bg-white lg:border-b-0 lg:border-r">
-            <PanelHeader
+        <div className={createPanelOpen
+          ? 'flex min-h-0 flex-1 items-center justify-center overflow-y-auto bg-[var(--surface-subtle)] p-4 sm:p-8'
+          : `${promptPanelOpen ? 'lg:grid-cols-[minmax(300px,0.7fr)_minmax(520px,1.3fr)]' : 'lg:grid-cols-[3.5rem_minmax(520px,1fr)]'} grid min-h-0 flex-1 grid-cols-1 overflow-hidden transition-[grid-template-columns]`
+        }>
+          <section className={createPanelOpen
+            ? 'flex w-full max-w-2xl flex-col rounded-[28px] border border-[color:var(--border-subtle)] bg-white shadow-[var(--shadow-lg)]'
+            : 'flex min-h-0 flex-col border-b border-slate-200 bg-white lg:border-b-0 lg:border-r'
+          }>
+            {!createPanelOpen && <PanelHeader
               icon={MessageSquare}
               title="Prompt"
               action={(
@@ -1390,12 +1524,16 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
                 </button>
               )}
               compact={!promptPanelOpen}
-            />
+            />}
             {promptPanelOpen ? (
             <>
-            <div className="flex-1 space-y-3 overflow-y-auto p-3">
+            <div className={createPanelOpen ? 'space-y-3 p-5 sm:p-7' : 'flex-1 space-y-3 overflow-y-auto p-3'}>
               {createPanelOpen && (
-              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+              <div>
+                <div className="mb-6 text-center">
+                  <h2 className="text-xl font-black text-[var(--text-primary)]">Crea un nuovo progetto</h2>
+                  <p className="mt-1 text-sm text-[var(--text-muted)]">Descrivi cosa vuoi realizzare: Vibe Lab preparerà il progetto per te.</p>
+                </div>
                 {selectedProject && (
                   <div className="mb-3 flex items-center justify-between gap-3">
                     <div>
@@ -1416,6 +1554,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
                 <input
                   value={title}
                   onChange={(event) => setTitle(event.target.value)}
+                  placeholder="Dai un nome al progetto"
                   className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-slate-400"
                 />
                 <label className="mb-1 mt-3 block text-xs font-bold text-slate-600">Prompt iniziale</label>
@@ -1423,8 +1562,11 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
                   value={prompt}
                   onChange={(event) => setPrompt(event.target.value)}
                   rows={5}
+                  placeholder="Descrivi l'app che vuoi creare, cosa deve fare e per chi è pensata..."
                   className="w-full resize-none rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-slate-400"
                 />
+                <div className="mb-1 mt-3 text-xs font-bold text-slate-600">Modello</div>
+                <CodingModelSelector value={modelKey} options={modelOptions} onChange={handleModelChange} />
                 {!interviewQuestions ? (
                   <button
                     type="button"
@@ -1432,7 +1574,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
                     disabled={interviewing || creating || !title.trim() || !prompt.trim()}
                     className="mt-3 inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-slate-950 px-4 text-sm font-bold text-white transition disabled:opacity-40"
                   >
-                    {interviewing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+                    {interviewing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
                     {interviewing ? 'Creo...' : 'Crea'}
                   </button>
                 ) : (
@@ -1474,7 +1616,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
                         disabled={creating || generating}
                         className="inline-flex h-9 flex-1 items-center justify-center gap-2 rounded-xl bg-slate-950 px-3 text-xs font-bold text-white transition disabled:opacity-40"
                       >
-                        {creating || generating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+                        {creating || generating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
                         Genera progetto
                       </button>
                       <button
@@ -1514,21 +1656,10 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
                 </div>
               )}
             </div>
-            <div className="border-t border-slate-100 bg-white/90 p-3">
+            {!createPanelOpen && <div className="border-t border-slate-100 bg-white/90 p-3">
               <div className="mb-2 flex items-center gap-2">
-                <label className="text-[11px] font-bold uppercase tracking-wide text-slate-400">Modello</label>
-                <select
-                  value={modelKey}
-                  onChange={(event) => setModelKey(event.target.value)}
-                  className="flex-1 rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs font-semibold text-slate-700 outline-none focus:border-slate-400"
-                  title="Modello usato per generare il codice"
-                >
-                  {modelOptions.map((option) => (
-                    <option key={option.key} value={option.key}>
-                      {option.label} · {option.hint}
-                    </option>
-                  ))}
-                </select>
+                <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Modello</span>
+                <CodingModelSelector compact value={modelKey} options={modelOptions} onChange={handleModelChange} />
               </div>
               <div className="flex items-end gap-2 rounded-[24px] border border-slate-200 bg-white px-3 py-2 shadow-sm transition-colors focus-within:border-slate-300">
                 <textarea
@@ -1554,7 +1685,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
                   {sending || generating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
                 </button>
               </div>
-            </div>
+            </div>}
             </>
             ) : (
               <div className="hidden flex-1 items-center justify-center lg:flex">
@@ -1570,7 +1701,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
             )}
           </section>
 
-          <section className={`flex min-h-0 flex-col ${activeWorkbench === 'code' ? 'bg-slate-950 text-slate-100' : 'bg-white text-slate-900'}`}>
+          {!createPanelOpen && <section className={`flex min-h-0 flex-col ${activeWorkbench === 'code' ? 'bg-slate-950 text-slate-100' : 'bg-white text-slate-900'}`}>
             <div className={`flex min-h-12 items-center justify-between gap-3 border-b px-4 ${activeWorkbench === 'code' ? 'border-white/10 bg-slate-900' : 'border-slate-100 bg-white'}`}>
               <div className={`inline-flex shrink-0 rounded-[var(--selection-radius)] border p-1 ${activeWorkbench === 'code' ? 'border-white/10 bg-white/5' : 'border-slate-200 bg-slate-100'}`}>
                 <CodingToolbarIconButton
@@ -1782,7 +1913,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
             </div>
             )}
             </div>
-          </section>
+          </section>}
         </div>
       </main>
       {previewFullscreen && hasPreview && (

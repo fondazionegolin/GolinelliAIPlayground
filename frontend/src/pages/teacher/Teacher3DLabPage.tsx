@@ -97,6 +97,13 @@ const S = {
 
 const MODES: { id: Mode; label: string; sub: string; desc: string; Icon: React.FC<{ className?: string }> }[] = [
   {
+    id: 'txt23d',
+    label: 'Testo → 3D',
+    sub: 'Meshy AI',
+    desc: 'Descrivi l\'oggetto e ottieni direttamente un modello 3D realistico senza passaggi intermedi.',
+    Icon: Type,
+  },
+  {
     id: 'txt2img',
     label: 'Testo → Immagine',
     sub: 'DALL-E 3',
@@ -109,13 +116,6 @@ const MODES: { id: Mode; label: string; sub: string; desc: string; Icon: React.F
     sub: 'Meshy AI',
     desc: 'Carica una foto o usa un\'immagine generata. Meshy ricostruisce la geometria 3D automaticamente.',
     Icon: ImageIcon,
-  },
-  {
-    id: 'txt23d',
-    label: 'Testo → 3D',
-    sub: 'Meshy AI',
-    desc: 'Descrivi l\'oggetto e ottieni direttamente un modello 3D realistico senza passaggi intermedi.',
-    Icon: Type,
   },
 ]
 

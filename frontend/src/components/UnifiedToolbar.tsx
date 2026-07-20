@@ -57,11 +57,12 @@ export function UnifiedToolbar({
 }: UnifiedToolbarProps) {
   const [showImageModal, setShowImageModal] = useState(false)
   const [showOverflowMenu, setShowOverflowMenu] = useState(false)
+  const [hasTextSelection, setHasTextSelection] = useState(false)
   const aiAssistButtonRef = useRef<HTMLButtonElement | null>(null)
   const overflowMenuRef = useRef<HTMLDivElement | null>(null)
   const toolbarRef = useRef<HTMLDivElement | null>(null)
   const [isCompactLayout, setIsCompactLayout] = useState(false)
-  const groupClass = 'flex items-center gap-0.5 border-r pr-2 mr-1 border-slate-300'
+  const groupClass = 'flex items-center gap-0.5 border-r pr-2 mr-1 border-slate-200'
 
   const handleImageGenerated = (imageUrl: string) => {
     if (mode === 'document' && editor) {
@@ -101,6 +102,22 @@ export function UnifiedToolbar({
     window.addEventListener('resize', emitAnchor)
     return () => window.removeEventListener('resize', emitAnchor)
   }, [mode, onAIAssistAnchorChange])
+
+  useEffect(() => {
+    if (mode !== 'document' || !editor) {
+      setHasTextSelection(false)
+      return
+    }
+    const updateSelectionState = () => {
+      const { from, to } = editor.state.selection
+      setHasTextSelection(from !== to && editor.state.doc.textBetween(from, to, ' ').trim().length > 0)
+    }
+    updateSelectionState()
+    editor.on('selectionUpdate', updateSelectionState)
+    return () => {
+      editor.off('selectionUpdate', updateSelectionState)
+    }
+  }, [editor, mode])
 
   useEffect(() => {
     if (!toolbarRef.current) return
@@ -155,7 +172,7 @@ export function UnifiedToolbar({
   return (
     <div
       ref={toolbarRef}
-      className="flex items-center gap-1 p-2 border-b border-slate-200 bg-white sticky top-0 z-20 shadow-sm h-14 overflow-x-auto"
+      className="flex h-12 items-center gap-1 overflow-x-auto border-b border-slate-200 bg-white px-4 py-1.5"
       onMouseDown={(e) => {
         // Prevent editor from losing focus when clicking any toolbar button.
         // select/input/textarea elements are excluded so their native behaviour is preserved.
@@ -165,7 +182,7 @@ export function UnifiedToolbar({
     >
       
       {/* History Group */}
-      <div className={groupClass}>
+      {mode === 'document' && <div className={groupClass}>
         <Button size="icon" variant="ghost" className="h-8 w-8" 
           onClick={() => mode === 'document' ? editor?.chain().focus().undo().run() : null} 
           disabled={mode === 'document' ? !editor?.can().undo() : true} // TODO: Implement slide undo
@@ -178,7 +195,7 @@ export function UnifiedToolbar({
         >
           <Redo className="h-4 w-4" />
         </Button>
-      </div>
+      </div>}
 
       {/* DOCUMENT MODE TOOLBAR */}
       {mode === 'document' && editor && (
@@ -296,9 +313,11 @@ export function UnifiedToolbar({
             )}
             <Button
               ref={aiAssistButtonRef}
-              size="icon"
-              variant="ghost"
-              className="h-8 w-8 text-red-500 hover:text-red-600 hover:bg-red-50"
+              density="icon"
+              tone="warning"
+              surface={hasTextSelection ? 'soft' : 'ghost'}
+              disabled={!hasTextSelection}
+              className={`h-8 w-8 transition-all ${hasTextSelection ? 'scale-105 shadow-[var(--selection-shadow)]' : ''}`}
               onClick={(e) => {
                 if (!onOpenAIAssist) return
                 const rect = (e.currentTarget as HTMLButtonElement).getBoundingClientRect()
@@ -307,7 +326,7 @@ export function UnifiedToolbar({
                   y: rect.bottom + 8
                 })
               }}
-              title="Assistente AI (testo selezionato)"
+              title={hasTextSelection ? 'Espandi o trasforma il testo selezionato con AI' : 'Seleziona del testo per attivare l’assistente AI'}
             >
               <Sparkles className="h-4 w-4" />
             </Button>
@@ -456,25 +475,20 @@ export function UnifiedToolbar({
 
           {/* Insert Group */}
           <div className="flex items-center gap-0.5 border-r pr-2 mr-1 border-slate-300">
-            <Button variant="ghost" size="sm" onClick={() => onAddSlideBlock?.('text')} className="h-8 px-2">
-              <Type className="h-4 w-4 mr-1" />
-              <span className="text-xs">Testo</span>
+            <Button variant="ghost" size="icon" onClick={() => onAddSlideBlock?.('text')} className="h-8 w-8 rounded-lg" title="Testo">
+              <Type className="h-4 w-4" />
             </Button>
-            <Button variant="ghost" size="sm" onClick={() => setShowImageModal(true)} className="h-8 px-2">
-              <ImageIcon className="h-4 w-4 mr-1" />
-              <span className="text-xs">Immagine</span>
+            <Button variant="ghost" size="icon" onClick={() => setShowImageModal(true)} className="h-8 w-8 rounded-lg" title="Immagine">
+              <ImageIcon className="h-4 w-4" />
             </Button>
-            <Button variant="ghost" size="sm" onClick={() => onAddSlideBlock?.('rectangle')} className="h-8 px-2">
-              <Square className="h-4 w-4 mr-1" />
-              <span className="text-xs">Rettangolo</span>
+            <Button variant="ghost" size="icon" onClick={() => onAddSlideBlock?.('rectangle')} className="h-8 w-8 rounded-lg" title="Rettangolo">
+              <Square className="h-4 w-4" />
             </Button>
-            <Button variant="ghost" size="sm" onClick={() => onAddSlideBlock?.('ellipse')} className="h-8 px-2">
-              <Circle className="h-4 w-4 mr-1" />
-              <span className="text-xs">Ellisse</span>
+            <Button variant="ghost" size="icon" onClick={() => onAddSlideBlock?.('ellipse')} className="h-8 w-8 rounded-lg" title="Ellisse">
+              <Circle className="h-4 w-4" />
             </Button>
-            <Button variant="ghost" size="sm" onClick={() => onAddSlideBlock?.('line')} className="h-8 px-2">
-              <Minus className="h-4 w-4 mr-1" />
-              <span className="text-xs">Linea</span>
+            <Button variant="ghost" size="icon" onClick={() => onAddSlideBlock?.('line')} className="h-8 w-8 rounded-lg" title="Linea">
+              <Minus className="h-4 w-4" />
             </Button>
           </div>
 

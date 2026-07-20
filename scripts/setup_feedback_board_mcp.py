@@ -105,6 +105,28 @@ def get_token(api_base: str) -> str:
     return login_for_token(api_base)
 
 
+def exchange_for_mcp_token(api_base: str, token: str) -> str:
+    """Exchange a short login token for a board-scoped long-lived token."""
+    print("\nCreazione token MCP dedicato...")
+    status, data = request_json(
+        f"{api_base.rstrip('/')}/feedback/board/mcp-token",
+        token=token,
+        method="POST",
+    )
+    if status == 200 and isinstance(data, dict) and data.get("access_token"):
+        days = data.get("expires_in_days", "molti")
+        print(f"OK: token limitato alla feedback board, valido {days} giorni.")
+        return str(data["access_token"])
+
+    # A previously issued scoped token cannot mint another token, but remains
+    # valid for board calls. This makes rerunning setup harmless.
+    board_status, board_data = request_json(f"{api_base.rstrip('/')}/feedback/board", token=token)
+    if status == 401 and board_status == 200 and isinstance(board_data, list):
+        print("Il token fornito è già utilizzabile per la feedback board.")
+        return token
+    raise SystemExit(f"Creazione token MCP fallita ({status}): {data}")
+
+
 def test_board_api(api_base: str, token: str) -> list[dict]:
     print("\nTest API board...")
     status, data = request_json(f"{api_base.rstrip('/')}/feedback/board", token=token)
@@ -112,6 +134,14 @@ def test_board_api(api_base: str, token: str) -> list[dict]:
         raise SystemExit(f"Test API fallito ({status}): {data}")
     print(f"OK: letti {len(data)} task dalla board.")
     return data
+
+
+def test_mcp_token_scope(api_base: str, token: str) -> None:
+    """Ensure the board token is rejected by a regular teacher endpoint."""
+    status, _ = request_json(f"{api_base.rstrip('/')}/teacher/classes", token=token)
+    if status != 401:
+        raise SystemExit(f"Verifica scope fallita: endpoint docente ha risposto {status}, atteso 401.")
+    print("OK: il token MCP non può accedere alle API docente generali.")
 
 
 def parse_json_lines(output: str) -> list[dict]:
@@ -211,6 +241,21 @@ def install_codex_config(api_base: str) -> pathlib.Path:
 
 
 def main() -> int:
+    if "--upgrade-token-file" in sys.argv:
+        api_base = DEFAULT_API_BASE
+        for arg in sys.argv:
+            if arg.startswith("--api-base="):
+                api_base = arg.split("=", 1)[1].rstrip("/")
+        if not TOKEN_FILE.exists():
+            raise SystemExit(f"Token non trovato: {TOKEN_FILE}")
+        current_token = TOKEN_FILE.read_text(encoding="utf-8").strip()
+        token = exchange_for_mcp_token(api_base, current_token)
+        test_board_api(api_base, token)
+        test_mcp_token_scope(api_base, token)
+        path = save_token(token)
+        print(f"OK: token MCP aggiornato in {path}")
+        return 0
+
     if "--install-codex-only" in sys.argv:
         api_base = DEFAULT_API_BASE
         for arg in sys.argv:
@@ -229,7 +274,9 @@ def main() -> int:
 
     api_base = ask("API base", DEFAULT_API_BASE).rstrip("/")
     token = get_token(api_base)
+    token = exchange_for_mcp_token(api_base, token)
     cards = test_board_api(api_base, token)
+    test_mcp_token_scope(api_base, token)
     test_mcp_server(api_base, token)
     token_path = save_token(token)
     print(f"OK: token salvato in file locale privato: {token_path}")

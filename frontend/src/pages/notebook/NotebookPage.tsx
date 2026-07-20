@@ -2,8 +2,8 @@ import { lazy, Suspense, useCallback, useEffect, useRef, useState, type PointerE
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useParams, useNavigate } from 'react-router-dom'
 import {
-  AlertCircle, ArrowLeft, BookOpen, Bot, CheckCircle, ChevronDown, ChevronUp, Cpu, FilePlus, Gamepad2, History, Loader2,
-  Monitor, Music2, PackagePlus, Pause, PanelRight, Play, Plus, RotateCcw, Save, Square, Terminal, Trash2, Wrench, Zap,
+  AlertCircle, ArrowLeft, BookOpen, Bot, CheckCircle, ChevronDown, ChevronUp, Cpu, FilePlus, Gamepad2, HelpCircle, History, Loader2,
+  Monitor, Music2, PackagePlus, Pause, PanelRight, Play, Plus, RotateCcw, Save, Send, Square, Terminal, Trash2, Wrench, X, Zap,
 } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -231,6 +231,8 @@ export default function NotebookPage({ notebookIdOverride, onBack }: Props = {})
   const [renamingCellId, setRenamingCellId] = useState<string | null>(null)
   const [renameValue, setRenameValue] = useState('')
   const [libraryManagerOpen, setLibraryManagerOpen] = useState(false)
+  const [onboardingStep, setOnboardingStep] = useState<number | null>(null)
+  const [submitNotice, setSubmitNotice] = useState<string | null>(null)
   const p5IframeWindowRef = useRef<Window | null>(null)
   const gameIframeWindowRef = useRef<Window | null>(null)
   const strudelRef = useRef<StrudelPreviewHandle>(null)
@@ -243,6 +245,10 @@ export default function NotebookPage({ notebookIdOverride, onBack }: Props = {})
   const previewTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const strudelAutoEvalTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const strudelPreviewTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => {
+    if (!localStorage.getItem('notebook-onboarding-v1')) setOnboardingStep(0)
+  }, [])
   const titleRef = useRef<HTMLInputElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const renameRef = useRef<HTMLInputElement>(null)
@@ -265,6 +271,38 @@ export default function NotebookPage({ notebookIdOverride, onBack }: Props = {})
     refetchOnWindowFocus: false,
     refetchOnMount: true,
     staleTime: Infinity,
+  })
+
+  const { data: notebookAssignments = [] } = useQuery({
+    queryKey: ['notebook-assignments'],
+    queryFn: async () => (await notebooksApi.listAssignments()).data,
+    enabled: !!notebookId,
+  })
+  const assignedCopy = notebookAssignments.find(assignment => assignment.fork_notebook_id === notebookId)
+  const isResubmittingAssignedCopy = Boolean(assignedCopy?.submitted_at)
+
+  const submitMutation = useMutation({
+    mutationFn: async () => {
+      const pending = pendingSaveRef.current
+      if (pending && notebookId) {
+        await notebooksApi.update(notebookId, {
+          title: pending.title,
+          cells: pending.cells,
+          editor_settings: pending.editor_settings as unknown as Record<string, unknown>,
+        })
+        isDirtyRef.current = false
+        pendingSaveRef.current = null
+      }
+      return notebooksApi.submit(notebookId!)
+    },
+    onSuccess: () => {
+      setSubmitNotice(isResubmittingAssignedCopy
+        ? (isEnglish ? 'A new version was shared with your teacher.' : 'Una nuova versione è stata ricondivisa con il docente.')
+        : (isEnglish ? 'Notebook submitted to your teacher.' : 'Notebook consegnato al docente.'))
+      queryClient.invalidateQueries({ queryKey: ['notebook-assignments'] })
+      queryClient.invalidateQueries({ queryKey: ['notebook-versions', notebookId] })
+      window.setTimeout(() => setSubmitNotice(null), 3500)
+    },
   })
 
   useEffect(() => {
@@ -1138,19 +1176,6 @@ export default function NotebookPage({ notebookIdOverride, onBack }: Props = {})
           <div className="ml-auto shrink-0" />
 
           <div className="flex shrink-0 items-center gap-1">
-            {projectType === 'python' && (
-              <Button
-                type="button"
-                density="compact"
-                tone="neutral"
-                surface="soft"
-                onClick={() => insertCellBelow(activeCellId ?? cells[cells.length - 1]?.id)}
-                title={isEnglish ? 'Add cell' : 'Aggiungi cella'}
-              >
-                <Plus />
-                {isEnglish ? 'Cell' : 'Cella'}
-              </Button>
-            )}
             {projectType === 'strudel' && (
               <>
                 <div className="relative">
@@ -1294,6 +1319,37 @@ export default function NotebookPage({ notebookIdOverride, onBack }: Props = {})
             >
               <History />
             </IconButton>
+          )}
+
+          <IconButton
+            type="button"
+            size="sm"
+            tone="neutral"
+            surface="ghost"
+            className="shrink-0"
+            onClick={() => setOnboardingStep(0)}
+            title={isEnglish ? 'Review the tutorial' : 'Rivedi tutorial'}
+          >
+            <HelpCircle />
+          </IconButton>
+
+          {assignedCopy && (
+            <Button
+              type="button"
+              density="compact"
+              tone="accent"
+              surface="soft"
+              disabled={submitMutation.isPending}
+              onClick={() => submitMutation.mutate()}
+              title={isResubmittingAssignedCopy
+                ? (isEnglish ? 'Share a new version with your teacher' : 'Ricondividi una nuova versione con il docente')
+                : (isEnglish ? 'Submit this notebook to your teacher' : 'Consegna questo notebook al docente')}
+            >
+              {submitMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send />}
+              {isResubmittingAssignedCopy
+                ? (isEnglish ? 'Share again' : 'Ricondividi')
+                : (isEnglish ? 'Submit' : 'Consegna')}
+            </Button>
           )}
 
           {notebookId && (
@@ -2170,6 +2226,60 @@ while True:
         </DialogBody>
       </DialogContent>
     </Dialog>
+    {submitNotice && (
+      <div className="fixed bottom-5 left-1/2 z-[70] -translate-x-1/2 rounded-full bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-lg">
+        {submitNotice}
+      </div>
+    )}
+    {submitMutation.isError && (
+      <div className="fixed bottom-5 left-1/2 z-[70] -translate-x-1/2 rounded-full bg-red-600 px-4 py-2 text-sm font-semibold text-white shadow-lg">
+        {isResubmittingAssignedCopy
+          ? (isEnglish ? 'Sharing failed. Try again.' : 'Ricondivisione non riuscita. Riprova.')
+          : (isEnglish ? 'Submission failed. Try again.' : 'Consegna non riuscita. Riprova.')}
+      </div>
+    )}
+    {onboardingStep !== null && (() => {
+      const steps = isEnglish
+        ? [
+            ['Write your code', 'Use the central editor. Each block is an independent cell.'],
+            ['Run and inspect', 'Run one cell or the whole notebook and read the output directly below the code.'],
+            ['Add cells', 'Use “Add cell” at the bottom to extend the notebook in a clear order.'],
+            ['Ask the tutor', 'Open the tutor sidebar for explanations or a proposed change you can review before applying.'],
+          ]
+        : [
+            ['Scrivi il codice', 'Usa l’editor centrale. Ogni blocco è una cella indipendente.'],
+            ['Esegui e controlla', 'Esegui una cella o tutto il notebook e leggi il risultato direttamente sotto il codice.'],
+            ['Aggiungi celle', 'Usa “Aggiungi cella” in fondo per estendere il notebook in modo ordinato.'],
+            ['Chiedi al tutor', 'Apri la sidebar del tutor per ricevere spiegazioni o una modifica da controllare prima di applicarla.'],
+          ]
+      const step = steps[onboardingStep]
+      const finish = () => {
+        localStorage.setItem('notebook-onboarding-v1', 'done')
+        setOnboardingStep(null)
+      }
+      return (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/55 p-4">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
+            <div className="flex items-center justify-between gap-4">
+              <span className="text-xs font-extrabold uppercase tracking-[0.16em] text-indigo-500">
+                {onboardingStep + 1} / {steps.length}
+              </span>
+              <button onClick={finish} className="rounded-lg p-1 text-slate-400 hover:bg-slate-100"><X className="h-4 w-4" /></button>
+            </div>
+            <h3 className="mt-4 text-xl font-black text-slate-950">{step[0]}</h3>
+            <p className="mt-2 text-sm leading-6 text-slate-600">{step[1]}</p>
+            <div className="mt-6 flex items-center justify-between">
+              <Button type="button" tone="neutral" surface="ghost" disabled={onboardingStep === 0} onClick={() => setOnboardingStep(value => Math.max(0, (value ?? 1) - 1))}>
+                {isEnglish ? 'Back' : 'Indietro'}
+              </Button>
+              <Button type="button" tone="accent" surface="solid" onClick={() => onboardingStep === steps.length - 1 ? finish() : setOnboardingStep(onboardingStep + 1)}>
+                {onboardingStep === steps.length - 1 ? (isEnglish ? 'Start' : 'Inizia') : (isEnglish ? 'Next' : 'Avanti')}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )
+    })()}
     {notebookId && (
       <NotebookVersionHistoryModal
         notebookId={notebookId}

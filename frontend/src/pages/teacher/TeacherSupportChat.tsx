@@ -3,7 +3,7 @@ import { useMobile } from '@/hooks/useMobile'
 import { Button } from '@/components/ui/button'
 import {
   Send, Bot, Paperclip, X, Trash2, Plus, File, Image as ImageIcon, Loader2,
-  Database, Download, ChevronDown, ChevronRight, Edit3, Check, MessageCircle, Sparkles,
+  Database, Download, ChevronDown, ChevronRight, Edit3, Check, MessageCircle,
   Palette, FileText, CheckSquare, MessageSquare, Settings, RotateCcw, BarChart2, Layout,
   Video, ScanText, Youtube, PanelRightClose, Square
 } from 'lucide-react'
@@ -20,15 +20,13 @@ import 'katex/dist/katex.min.css'
 import { ContentEditorModal } from '@/components/ContentEditorModal'
 import DataFileCard from '@/components/DataFileCard'
 import { DataVisualizationPanel } from '@/components/DataVisualizationPanel'
-import TeacherbotsPanel from '@/components/teacher/TeacherbotsPanel'
-import TeacherbotForm from '@/components/teacher/TeacherbotForm'
 import { DEFAULT_TEACHER_ACCENT, getTeacherAccentTheme } from '@/lib/teacherAccent'
-import { buildAccentNavClusterStyle } from '@/lib/navbarGlass'
 import { useTeacherProfile } from '@/hooks/useTeacherProfile'
 import { VoiceRecorder } from '@/components/VoiceRecorder'
 import { useTranslation } from 'react-i18next'
 import EnvironmentalImpactPill from '@/components/chat/EnvironmentalImpactPill'
 import type { TokenUsageJson } from '@/lib/environmentalImpact'
+import { AcademicAiIcon } from '@/components/icons/AcademicAiIcon'
 import {
   parseBrochurePayload,
   parseDispensaPayload,
@@ -98,6 +96,12 @@ interface LessonData {
   title: string
   description?: string
   content: string
+}
+
+interface PresentationDocumentData {
+  draft_id: string
+  title: string
+  slide_count: number
 }
 
 interface ExerciseData {
@@ -236,6 +240,13 @@ function isAbortLikeError(err: unknown): boolean {
   return error.name === 'AbortError' || error.code === 'ERR_CANCELED' || error.message === 'canceled'
 }
 
+function isPresentationCreationRequest(value: string): boolean {
+  const normalized = value.toLocaleLowerCase('it-IT')
+  const asksForPresentation = /\b(presentazione|presentazioni|slide|diapositive|deck)\b/.test(normalized)
+  const asksToCreate = /\b(crea|creami|genera|generami|prepara|preparami|realizza|realizzami|costruisci|fammi|produce|build|create|generate)\b/.test(normalized)
+  return asksForPresentation && asksToCreate
+}
+
 function OcrImageOverlay({ overlay }: { overlay: OcrOverlayData }) {
   const boxes = overlay.lines.filter((line) => line.bbox && line.text)
   if (boxes.length === 0) return null
@@ -331,11 +342,13 @@ async function consumeSseStream(
         .trim()
 
       if (payload) {
+        let parsed: any = null
         try {
-          onEvent(JSON.parse(payload))
+          parsed = JSON.parse(payload)
         } catch {
           // Ignore malformed partial events
         }
+        if (parsed) onEvent(parsed)
       }
 
       normalized = buffer.replace(/\r\n/g, '\n')
@@ -352,11 +365,13 @@ async function consumeSseStream(
           .join('\n')
           .trim()
         if (payload) {
+          let parsed: any = null
           try {
-            onEvent(JSON.parse(payload))
+            parsed = JSON.parse(payload)
           } catch {
             // Ignore malformed trailing events
           }
+          if (parsed) onEvent(parsed)
         }
       }
       break
@@ -456,8 +471,6 @@ export default function TeacherSupportChat({ onMinimize, onClose, sidebarMode = 
   // changed yet) — the dock only takes effect on the next navigation, so the button pulses green
   // to confirm the click registered instead of appearing to do nothing.
   const isDockArmed = dockArmed && !sidebarMode
-  const [activeTab, setActiveTab] = useState<'chat' | 'teacherbots'>('chat')
-  const [botPanelTarget, setBotPanelTarget] = useState<'create' | string | null>(null)
   const [mobileHistoryOpen, setMobileHistoryOpen] = useState(false)
   const [messages, setMessages] = useState<Message[]>([])
   const messagesRef = useRef<Message[]>([])
@@ -554,6 +567,12 @@ export default function TeacherSupportChat({ onMinimize, onClose, sidebarMode = 
     backgroundColor: accentTheme.accent,
     color: '#ffffff',
   }) as CSSProperties, [accentTheme])
+  // Ghost bubble matching the violet used for buttons/badges elsewhere in this chat: transparent fill, thin violet border.
+  const userBubbleStyle = useMemo(() => ({
+    backgroundColor: 'transparent',
+    borderColor: '#c4b5fd', // violet-300
+    color: '#6d28d9', // violet-700
+  }) as CSSProperties, [])
   const accentButtonStyle = useMemo(() => ({
     backgroundColor: accentTheme.soft,
     color: accentTheme.text,
@@ -1199,7 +1218,6 @@ export default function TeacherSupportChat({ onMinimize, onClose, sidebarMode = 
       } else {
         setCurrentConversationId(detail.conversationId)
       }
-      setActiveTab('chat')
     }
 
     window.addEventListener('golinelli:restore-teacher-support-chat', onRestore as EventListener)
@@ -1293,10 +1311,16 @@ export default function TeacherSupportChat({ onMinimize, onClose, sidebarMode = 
       onChunk?: (chunk: string) => void
       onStatus?: (status: string) => void
       onCalendarEvent?: (event: { id: string; title: string; event_date: string; event_time?: string; color: string }) => void
+      onFallback?: () => void
     }
   ): Promise<{ content: string; provider?: string; model?: string; token_usage_json?: TokenUsageJson | null }> => {
     const modelInfo = availableModels.find(m => m.id === selectedModel)
-    try {
+    const primaryProvider = opts?.provider ?? modelInfo?.provider ?? 'openai'
+    const primaryModel = opts?.model ?? selectedModel
+    const fallbackProvider = 'anthropic'
+    const fallbackModel = 'claude-haiku-4-5-20251001'
+
+    const executeRequest = async (provider: string, model: string) => {
       const response = await fetch('/api/v1/llm/teacher/chat-stream', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1305,14 +1329,18 @@ export default function TeacherSupportChat({ onMinimize, onClose, sidebarMode = 
         body: JSON.stringify({
           content,
           history: history.map(m => ({ role: m.role, content: m.content })),
-          provider: opts?.provider ?? modelInfo?.provider ?? 'openai',
-          model: opts?.model ?? selectedModel,
+          provider,
+          model,
           agent_mode: opts?.mode ?? agentMode,
           session_id: opts?.sessionId ?? null,
         })
       })
 
-      if (!response.ok) throw new Error('Stream request failed')
+      if (!response.ok) {
+        const error = new Error(`Stream request failed (${response.status})`) as Error & { status?: number }
+        error.status = response.status
+        throw error
+      }
 
       const reader = response.body?.getReader()
       let finalContent = ''
@@ -1340,14 +1368,33 @@ export default function TeacherSupportChat({ onMinimize, onClose, sidebarMode = 
         })
       }
 
+      if (!finalContent.trim()) {
+        throw new Error('Il modello non ha restituito alcun contenuto')
+      }
+
       return {
-        content: finalContent || 'Nessun risultato dalla generazione.',
-        provider: finalProvider,
-        model: finalModel,
+        content: finalContent,
+        provider: finalProvider || provider,
+        model: finalModel || model,
         token_usage_json: finalTokenUsage,
       }
-    } catch (e) {
-      throw e
+    }
+
+    try {
+      return await executeRequest(primaryProvider, primaryModel)
+    } catch (error: any) {
+      if (isAbortLikeError(error)) throw error
+      const nonRetryableStatuses = new Set([400, 401, 402, 403, 413, 422])
+      const alreadyUsingFallback = primaryProvider === fallbackProvider && primaryModel === fallbackModel
+      if (alreadyUsingFallback || nonRetryableStatuses.has(error?.status)) throw error
+
+      opts?.onFallback?.()
+      opts?.onStatus?.('⚡ Modello temporaneamente non raggiungibile, passaggio a Claude Haiku…')
+      toast({
+        title: 'Modello temporaneamente non raggiungibile',
+        description: 'La richiesta viene completata automaticamente con Claude Haiku 4.5.',
+      })
+      return executeRequest(fallbackProvider, fallbackModel)
     }
   }
 
@@ -1915,7 +1962,78 @@ export default function TeacherSupportChat({ onMinimize, onClose, sidebarMode = 
     }
 
     try {
-      if (agentMode === 'ocr') {
+      if (agentMode === 'default' && isPresentationCreationRequest(messageContent)) {
+        const assistantId = `presentation-${Date.now()}`
+        setMessages(prev => [...prev, {
+          id: assistantId,
+          role: 'assistant' as const,
+          content: 'Sto creando una presentazione editabile e la salverò nei Documenti…',
+          timestamp: new Date(),
+        }])
+        setStreamingStatus('Creo una presentazione editabile…')
+
+        const attachmentContext = currentFiles.length > 0
+          ? `\n\nMateriali allegati dal docente: ${currentFiles.map(item => item.file.name).join(', ')}.`
+          : ''
+        const response = await llmApi.presentationAgent({
+          prompt: `${llmContent}${attachmentContext}`,
+          mode: 'create',
+          format: '16:9',
+          dims: { width: 960, height: 540 },
+        }, signal)
+        const presentation = response.data as {
+          title?: string
+          format?: string
+          slides?: Array<Record<string, unknown>>
+        }
+        if (!Array.isArray(presentation.slides) || presentation.slides.length === 0) {
+          throw new Error('La generazione non ha prodotto slide modificabili.')
+        }
+
+        const title = presentation.title?.trim() || 'Nuova presentazione'
+        const draftResponse = await teacherApi.createDocumentDraft({
+          title,
+          doc_type: 'presentation',
+          content_json: JSON.stringify({
+            type: 'presentation_v2',
+            format: presentation.format || '16:9',
+            title,
+            slides: presentation.slides,
+          }),
+        })
+        const draftId = String(draftResponse.data?.id || '')
+        if (!draftId) throw new Error('La presentazione è stata generata, ma non è stato possibile salvarla nei Documenti.')
+
+        const presentationReference: PresentationDocumentData = {
+          draft_id: draftId,
+          title,
+          slide_count: presentation.slides.length,
+        }
+        const assistantContent = [
+          'Presentazione editabile pronta nella sezione Documenti.',
+          '',
+          '```presentation_document',
+          JSON.stringify(presentationReference),
+          '```',
+        ].join('\n')
+        setStreamingStatus(null)
+        setMessages(prev => prev.map(message => (
+          message.id === assistantId
+            ? { ...message, content: assistantContent, provider: 'anthropic', model: 'presentation-agent' }
+            : message
+        )))
+        const assistantMessage: Message = {
+          id: assistantId,
+          role: 'assistant',
+          content: assistantContent,
+          timestamp: new Date(),
+          provider: 'anthropic',
+          model: 'presentation-agent',
+        }
+        await saveMessageToServer(convId, userMessage, assistantMessage, 'presentation-agent')
+        queryClient.invalidateQueries({ queryKey: ['teacher-document-drafts'] })
+
+      } else if (agentMode === 'ocr') {
         const imageFile = currentFiles.find(f => f.type === 'image')?.file
         const imageAttachment = currentFiles.find(f => f.type === 'image')
         if (!imageFile) {
@@ -2358,6 +2476,11 @@ REGOLE IMPORTANTI:
             onStatus: (status) => {
               setStreamingStatus(status)
             },
+            onFallback: () => {
+              setMessages(prev => prev.map(message =>
+                message.id === assistantId ? { ...message, content: '' } : message
+              ))
+            },
             onCalendarEvent: (evt) => {
               toast({
                 title: '📅 Evento creato',
@@ -2717,27 +2840,11 @@ REGOLE IMPORTANTI:
                     </div>
                   ) : (
                     <>
-                      {/* Section tabs — pill switcher */}
+                      {/* Section header */}
                       <div className="px-2.5 pt-2 pb-1.5 bg-white/70 border-b border-slate-200/70 shrink-0 flex items-center gap-1 backdrop-blur-sm">
-                        <div className="flex-1 flex items-center gap-1 rounded-[var(--selection-radius)] border p-1" style={buildAccentNavClusterStyle(accentTheme)}>
-                          <button
-                            onClick={() => setActiveTab('chat')}
-                            className={`ui-control-label group flex flex-1 min-h-[var(--selection-height)] items-center justify-center gap-1 px-2 rounded-[var(--selection-radius)] border transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--selection-border-hover)] ${activeTab === 'chat'
-                              ? 'bg-[image:var(--selection-active-bg)] text-[var(--selection-active-text)] border-[color:var(--selection-border-hover)] shadow-[var(--selection-shadow)]'
-                              : 'border-transparent text-slate-600 hover:border-[color:var(--selection-border)] hover:bg-[image:var(--selection-bg)] hover:text-[var(--selection-text)]'}`}
-                          >
-                            <MessageCircle className="h-3.5 w-3.5" />
-                            Cronologia
-                          </button>
-                          <button
-                            onClick={() => setActiveTab('teacherbots')}
-                            className={`ui-control-label group flex flex-1 min-h-[var(--selection-height)] items-center justify-center gap-1 px-2 rounded-[var(--selection-radius)] border transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--selection-border-hover)] ${activeTab === 'teacherbots'
-                              ? 'bg-[image:var(--selection-active-bg)] text-[var(--selection-active-text)] border-[color:var(--selection-border-hover)] shadow-[var(--selection-shadow)]'
-                              : 'border-transparent text-slate-600 hover:border-[color:var(--selection-border)] hover:bg-[image:var(--selection-bg)] hover:text-[var(--selection-text)]'}`}
-                          >
-                            <Sparkles className="h-3.5 w-3.5" />
-                            Teacherbots
-                          </button>
+                        <div className="flex-1 flex items-center gap-1.5 px-2 py-1.5 text-xs font-semibold text-slate-600">
+                          <MessageCircle className="h-3.5 w-3.5" />
+                          Cronologia
                         </div>
                         <Button
                           variant="ghost"
@@ -2750,81 +2857,70 @@ REGOLE IMPORTANTI:
                         </Button>
                       </div>
 
-                      {activeTab === 'chat' ? (
-                        <>
-                          {/* Action bar */}
-                          <div className="px-3 py-2 flex gap-2 border-b border-slate-200/60 shrink-0 bg-white/30">
-                            <Button variant="ghost" size="sm" onClick={handleNewChat} className="h-8 w-8 rounded-lg border p-0 shadow-sm" style={accentButtonStyle} title="Nuova chat">
-                              <Plus className="h-4 w-4" />
-                            </Button>
-                            <Button variant="ghost" size="sm" onClick={handleClearAllConversations} className="h-8 w-8 p-0 rounded-lg shadow-sm bg-rose-50 text-rose-700 hover:bg-rose-100" title="Pulisci cronologia">
-                              <Trash2 className={`h-4 w-4 ${PASTEL_ICON_TEXT.rose}`} />
-                            </Button>
-                          </div>
-                          <div className="flex-1 overflow-y-auto px-3 py-3 space-y-2">
-                            {conversations.map(conv => (
+                      {/* Action bar */}
+                      <div className="px-3 py-2 flex gap-2 border-b border-slate-200/60 shrink-0 bg-white/30">
+                        <Button variant="ghost" size="sm" onClick={handleNewChat} className="h-8 w-8 rounded-lg border p-0 shadow-sm" style={accentButtonStyle} title="Nuova chat">
+                          <Plus className="h-4 w-4" />
+                        </Button>
+                        <Button variant="ghost" size="sm" onClick={handleClearAllConversations} className="h-8 w-8 p-0 rounded-lg shadow-sm bg-rose-50 text-rose-700 hover:bg-rose-100" title="Pulisci cronologia">
+                          <Trash2 className={`h-4 w-4 ${PASTEL_ICON_TEXT.rose}`} />
+                        </Button>
+                      </div>
+                      <div className="flex-1 overflow-y-auto px-3 py-3 space-y-2">
+                        {conversations.map(conv => (
+                          <button
+                            key={conv.id}
+                            onClick={() => { openConversation(conv) }}
+                            className={`w-full text-left p-3 rounded-xl text-xs transition-all group ${currentConversationId === conv.id
+                              ? 'font-medium border shadow-sm'
+                              : 'bg-white text-slate-600 border border-slate-200/70 hover:border-slate-300 hover:bg-slate-50'
+                              }`}
+                            style={currentConversationId === conv.id ? selectedSoftStyle : undefined}
+                          >
+                            <div className="flex items-center gap-1 min-w-0">
+                              <span className="truncate flex-1">{conv.title}</span>
+                              {convsWithDocs.has(conv.id) && (
+                                <span title="Ha un documento generato"><Layout className="h-3 w-3 text-fuchsia-400 flex-shrink-0" /></span>
+                              )}
+                            </div>
+                            <div className="flex items-center justify-between mt-1">
+                              <span className="text-xs text-slate-400">{conv.createdAt.toLocaleDateString()}</span>
                               <button
-                                key={conv.id}
-                                onClick={() => { openConversation(conv) }}
-                                className={`w-full text-left p-3 rounded-xl text-xs transition-all group ${currentConversationId === conv.id
-                                  ? 'font-medium border shadow-sm'
-                                  : 'bg-white text-slate-600 border border-slate-200/70 hover:border-slate-300 hover:bg-slate-50'
-                                  }`}
-                                style={currentConversationId === conv.id ? selectedSoftStyle : undefined}
+                                className="text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity p-1"
+                                style={{ color: currentConversationId === conv.id ? accentTheme.text : undefined }}
+                                onClick={async (e) => {
+                                  e.stopPropagation()
+                                  if (confirm('Eliminare questa conversazione?')) {
+                                    try {
+                                      await teacherApi.deleteConversation(conv.id)
+                                    } catch (err) {
+                                      console.error('Failed to delete conv:', err)
+                                    }
+                                    setConversations(prev => prev.filter(c => c.id !== conv.id))
+                                    setConversationCache(prev => {
+                                      const next = { ...prev }
+                                      delete next[conv.id]
+                                      conversationCacheRef.current = next
+                                      localStorage.setItem('teacher_support_messages_cache', JSON.stringify(next))
+                                      return next
+                                    })
+                                    // Remove doc from cache
+                                    delete docCacheRef.current[conv.id]
+                                    localStorage.setItem('teacher_canvas_docs', JSON.stringify(docCacheRef.current))
+                                    setConvsWithDocs(prev => { const s = new Set(prev); s.delete(conv.id); return s })
+                                    if (currentConversationId === conv.id) handleNewChat()
+                                  }
+                                }}
                               >
-                                <div className="flex items-center gap-1 min-w-0">
-                                  <span className="truncate flex-1">{conv.title}</span>
-                                  {convsWithDocs.has(conv.id) && (
-                                    <span title="Ha un documento generato"><Layout className="h-3 w-3 text-fuchsia-400 flex-shrink-0" /></span>
-                                  )}
-                                </div>
-                                <div className="flex items-center justify-between mt-1">
-                                  <span className="text-xs text-slate-400">{conv.createdAt.toLocaleDateString()}</span>
-                                  <button
-                                    className="text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity p-1"
-                                    style={{ color: currentConversationId === conv.id ? accentTheme.text : undefined }}
-                                    onClick={async (e) => {
-                                      e.stopPropagation()
-                                      if (confirm('Eliminare questa conversazione?')) {
-                                        try {
-                                          await teacherApi.deleteConversation(conv.id)
-                                        } catch (err) {
-                                          console.error('Failed to delete conv:', err)
-                                        }
-                                        setConversations(prev => prev.filter(c => c.id !== conv.id))
-                                        setConversationCache(prev => {
-                                          const next = { ...prev }
-                                          delete next[conv.id]
-                                          conversationCacheRef.current = next
-                                          localStorage.setItem('teacher_support_messages_cache', JSON.stringify(next))
-                                          return next
-                                        })
-                                        // Remove doc from cache
-                                        delete docCacheRef.current[conv.id]
-                                        localStorage.setItem('teacher_canvas_docs', JSON.stringify(docCacheRef.current))
-                                        setConvsWithDocs(prev => { const s = new Set(prev); s.delete(conv.id); return s })
-                                        if (currentConversationId === conv.id) handleNewChat()
-                                      }
-                                    }}
-                                  >
-                                    <Trash2 className="h-3 w-3" />
-                                  </button>
-                                </div>
+                                <Trash2 className="h-3 w-3" />
                               </button>
-                            ))}
-                            {conversations.length === 0 && (
-                              <p className="text-xs text-slate-400 text-center py-8">Nessuna conversazione</p>
-                            )}
-                          </div>
-                        </>
-                      ) : (
-                        <div className="flex-1 overflow-y-auto px-3 py-2 bg-white/20">
-                          <TeacherbotsPanel
-                            onOpenSettings={(id) => setBotPanelTarget(id)}
-                            onCreateNew={() => setBotPanelTarget('create')}
-                          />
-                        </div>
-                      )}
+                            </div>
+                          </button>
+                        ))}
+                        {conversations.length === 0 && (
+                          <p className="text-xs text-slate-400 text-center py-8">Nessuna conversazione</p>
+                        )}
+                      </div>
                     </>
                   )}
                 </aside>
@@ -2891,19 +2987,6 @@ REGOLE IMPORTANTI:
                     </div>
                   )}
 
-                  {/* Teacherbot config modal — full-screen centered modal */}
-                  {botPanelTarget && (
-                    <div className="fixed inset-0 z-[80] flex items-start justify-center overflow-y-auto bg-black/40 p-2 backdrop-blur-sm md:p-5">
-                      <div className="my-3 h-[min(94vh,1040px)] w-full max-w-[1180px] overflow-hidden rounded-2xl bg-white shadow-2xl md:my-5">
-                        <TeacherbotForm
-                          teacherbotId={botPanelTarget !== 'create' ? botPanelTarget : undefined}
-                          onBack={() => setBotPanelTarget(null)}
-                          onSaved={() => setBotPanelTarget(null)}
-                        />
-                      </div>
-                    </div>
-                  )}
-
                   <header className="px-3 py-2 border-b border-slate-200 bg-white/80 backdrop-blur-sm sticky top-0 z-10 flex items-center justify-between shrink-0">
                     {isMobile ? (
                       /* Mobile header — essential only */
@@ -2912,13 +2995,13 @@ REGOLE IMPORTANTI:
                           onClick={() => !sidebarMode && setMobileHistoryOpen(true)}
                           className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg hover:bg-slate-100 transition-colors"
                         >
-                          <Bot className="h-4 w-4 text-slate-500" />
+                          <AcademicAiIcon className="h-4 w-4 text-slate-500" />
                           <span className="text-xs text-slate-500 font-medium">Chat</span>
                         </button>
 
                         <div className="flex items-center gap-2">
                           <div className="w-8 h-8 rounded-xl flex items-center justify-center border shadow-sm" style={accentButtonStyle}>
-                            <Bot className="h-3.5 w-3.5" />
+                            <AcademicAiIcon className="h-3.5 w-3.5" />
                           </div>
                           <span className="text-sm font-bold text-slate-800">AI Docente</span>
                         </div>
@@ -3283,7 +3366,7 @@ REGOLE IMPORTANTI:
                         </div>
                       ) : (
                         <div className="h-full flex flex-col items-center justify-center opacity-50">
-                          <Bot className="h-12 w-12 text-slate-300 mb-4" />
+                          <AcademicAiIcon className="mb-4 h-12 w-12 text-slate-300" />
                           <p className="text-slate-400 font-medium">Inizia una nuova conversazione</p>
                         </div>
                       )
@@ -3292,15 +3375,15 @@ REGOLE IMPORTANTI:
                         <div key={msg.id} className={`flex gap-4 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                           {msg.role === 'assistant' && (
                             <div className="w-8 h-8 rounded-full bg-white border border-slate-200 flex items-center justify-center flex-shrink-0">
-                              <Bot className="h-4 w-4 text-red-500" />
+                              <AcademicAiIcon className="h-4 w-4 text-red-500" />
                             </div>
                           )}
                           <div className={`max-w-[75%] space-y-1 ${msg.role === 'user' ? 'items-end flex flex-col' : 'items-start'}`}>
                             <div className={`teacher-support-message px-5 py-3 text-sm leading-relaxed shadow-sm backdrop-blur-md transition-all ${msg.role === 'user'
-                              ? `${chatBgIsDark ? 'bg-white/20 text-white border border-white/20' : 'text-white border border-transparent shadow-md'} font-medium rounded-2xl rounded-tr-sm`
+                              ? `${chatBgIsDark ? 'bg-white/20 text-white border border-white/20' : 'border'} font-medium rounded-2xl rounded-tr-sm`
                               : `${chatBgIsDark ? 'bg-white/10 text-white border border-white/15' : 'bg-slate-50/60 text-slate-800 border border-slate-200/80'} rounded-2xl rounded-tl-sm ${chatBgIsDark ? 'prose prose-invert' : ''}`
                               }`}
-                              style={msg.role === 'user' && !chatBgIsDark ? selectedSolidStyle : undefined}
+                              style={msg.role === 'user' && !chatBgIsDark ? userBubbleStyle : undefined}
                             >
                               {msg.role === 'assistant' ? (
                                 <MessageContent
@@ -3320,7 +3403,7 @@ REGOLE IMPORTANTI:
                                 />
                               ) : (
                                 <ReactMarkdown
-                                  className={`chat-markdown prose max-w-none prose-p:leading-relaxed prose-pre:bg-slate-800 prose-pre:text-slate-100 ${msg.role === 'user' ? '[&_*]:!text-white' : ''} [&_strong]:font-bold`}
+                                  className="chat-markdown prose max-w-none prose-p:leading-relaxed prose-pre:bg-slate-800 prose-pre:text-slate-100 [&_strong]:font-bold"
                                   components={markdownCodeComponents()}
                                 >
                                   {convertEmoticons(msg.content)}
@@ -3373,7 +3456,7 @@ REGOLE IMPORTANTI:
                     {isLoading && !isGeneratingDoc && !imageGenerationProgress && !streamingStatus && ( // eslint-disable-line
                       <div className="flex gap-4 justify-start">
                         <div className="w-8 h-8 rounded-full bg-white border border-slate-200 flex items-center justify-center">
-                          <Bot className="h-4 w-4 text-red-500" />
+                          <AcademicAiIcon className="h-4 w-4 text-red-500" />
                         </div>
                         <div className={`${chatBgIsDark ? 'bg-white/10 border border-white/15' : 'bg-white border border-slate-200'} px-4 py-3 rounded-2xl rounded-tl-sm shadow-sm`}>
                           <Loader2 className={`h-4 w-4 animate-spin ${chatBgIsDark ? 'text-white' : 'text-red-500'}`} />
@@ -4131,6 +4214,7 @@ function parseContentBlocks(content: string): {
   quiz: QuizData | null;
   exerciseData: ExerciseData | null;
   lessonData: LessonData | null;
+  presentationDocument: PresentationDocumentData | null;
   csv: string | null;
   textContent: string;
   isGenerating: boolean;
@@ -4144,6 +4228,7 @@ function parseContentBlocks(content: string): {
   let quiz: QuizData | null = null
   let exerciseData: ExerciseData | null = null
   let lessonData: LessonData | null = null
+  let presentationDocument: PresentationDocumentData | null = null
   let csv: string | null = null
   let sessionSelector: any[] | null = null
   let studentSelector: any[] | null = null
@@ -4190,7 +4275,7 @@ function parseContentBlocks(content: string): {
 
   const hasBase64Image = content.includes('data:image') && content.includes('base64')
   if (hasBase64Image) {
-    return { quiz, exerciseData, lessonData, csv, textContent, isGenerating: false, generationType: null, sessionSelector, studentSelector, reportTypeSelector, actionMenu }
+    return { quiz, exerciseData, lessonData, presentationDocument, csv, textContent, isGenerating: false, generationType: null, sessionSelector, studentSelector, reportTypeSelector, actionMenu }
   }
 
   const hasIncompleteQuiz = content.includes('```quiz') && !content.includes('```quiz')
@@ -4306,6 +4391,21 @@ function parseContentBlocks(content: string): {
     } catch (e) { console.error("Error parsing lesson_data", e) }
   }
 
+  const presentationDocumentMatch = content.match(/```presentation_document\s*([\s\S]*?)```/)
+  if (presentationDocumentMatch) {
+    try {
+      const parsed = JSON.parse(presentationDocumentMatch[1].trim()) as PresentationDocumentData
+      if (parsed?.draft_id && parsed?.title) {
+        presentationDocument = {
+          draft_id: String(parsed.draft_id),
+          title: String(parsed.title),
+          slide_count: Number(parsed.slide_count || 0),
+        }
+        textContent = textContent.replace(/```presentation_document[\s\S]*?```/, '').trim()
+      }
+    } catch (e) { console.error('Error parsing presentation_document', e) }
+  }
+
   // Extract Session Selector
   const sessionMatch = content.match(/```session_selector\s*([\s\S]*?)```/)
   if (sessionMatch) {
@@ -4341,7 +4441,7 @@ function parseContentBlocks(content: string): {
     } catch (e) { console.error("Error parsing action menu", e) }
   }
 
-  return { quiz, exerciseData, lessonData, csv, textContent, isGenerating, generationType, sessionSelector, studentSelector, reportTypeSelector, actionMenu }
+  return { quiz, exerciseData, lessonData, presentationDocument, csv, textContent, isGenerating, generationType, sessionSelector, studentSelector, reportTypeSelector, actionMenu }
 }
 
 function SessionSelector({ sessions, onSelect }: { sessions: any[], onSelect: (id: string) => void }) {
@@ -4502,7 +4602,8 @@ function MessageContent({ content, onPublish, onEdit, onInput, toast, darkMode =
   toast: any;
   darkMode?: boolean
 }) {
-  const { quiz, exerciseData, lessonData, csv, textContent, isGenerating, generationType, sessionSelector, studentSelector, reportTypeSelector, actionMenu } = parseContentBlocks(content)
+  const { quiz, exerciseData, lessonData, presentationDocument, csv, textContent, isGenerating, generationType, sessionSelector, studentSelector, reportTypeSelector, actionMenu } = parseContentBlocks(content)
+  const [fullLessonOpen, setFullLessonOpen] = useState(false)
   const { cleanContent, images } = extractBase64Images(textContent)
 
   if (isGenerating) {
@@ -4766,6 +4867,56 @@ function MessageContent({ content, onPublish, onEdit, onInput, toast, darkMode =
         </div>
       )}
 
+      {presentationDocument && (
+        <div
+          className="mt-3 cursor-pointer overflow-hidden rounded-xl border border-indigo-200 bg-white transition hover:border-indigo-300 hover:shadow-md"
+          role="link"
+          tabIndex={0}
+          onClick={() => window.location.assign(`/teacher/documents?open=${encodeURIComponent(presentationDocument.draft_id)}`)}
+          onKeyDown={event => {
+            if (event.key === 'Enter' || event.key === ' ') {
+              event.preventDefault()
+              window.location.assign(`/teacher/documents?open=${encodeURIComponent(presentationDocument.draft_id)}`)
+            }
+          }}
+        >
+          <div className="flex items-center gap-3 bg-indigo-50 px-3 py-3">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-indigo-200 bg-white text-indigo-700">
+              <Layout className="h-4 w-4" />
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="m-0 truncate text-sm font-bold text-indigo-950">{presentationDocument.title}</p>
+              <p className="m-0 text-xs text-indigo-600">Presentazione editabile · {presentationDocument.slide_count} slide</p>
+            </div>
+          </div>
+          <div className="flex justify-end gap-2 border-t border-indigo-100 px-3 py-2.5">
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-8 border-indigo-200 text-xs text-indigo-700 hover:bg-indigo-50"
+              onClick={event => {
+                event.stopPropagation()
+                window.location.assign(`/teacher/documents?open=${encodeURIComponent(presentationDocument.draft_id)}`)
+              }}
+            >
+              <Edit3 className="mr-1 h-3.5 w-3.5" />
+              Apri e modifica
+            </Button>
+            <Button
+              size="sm"
+              className="h-8 bg-indigo-600 text-xs text-white hover:bg-indigo-700"
+              onClick={event => {
+                event.stopPropagation()
+                window.location.assign(`/teacher/documents?open=${encodeURIComponent(presentationDocument.draft_id)}&publish=1`)
+              }}
+            >
+              <Plus className="mr-1 h-3.5 w-3.5" />
+              Pubblica
+            </Button>
+          </div>
+        </div>
+      )}
+
       {lessonData && (
         <div className="mt-3 border border-emerald-200 rounded-lg overflow-hidden">
           <div className="bg-emerald-50 px-3 py-2 flex items-center justify-between">
@@ -4773,14 +4924,25 @@ function MessageContent({ content, onPublish, onEdit, onInput, toast, darkMode =
               <FileText className="h-4 w-4" />
               Lezione: {lessonData.title}
             </span>
-            <Button
-              size="sm"
-              className="h-7 text-xs bg-emerald-600 hover:bg-emerald-700 text-white"
-              onClick={() => onPublish('lesson', lessonData)}
-            >
-              <Plus className="h-3 w-3 mr-1" />
-              Pubblica
-            </Button>
+            <div className="flex shrink-0 gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 border-emerald-200 text-xs text-emerald-700 hover:bg-emerald-100"
+                onClick={() => setFullLessonOpen(true)}
+              >
+                <FileText className="mr-1 h-3 w-3" />
+                Apri
+              </Button>
+              <Button
+                size="sm"
+                className="h-7 text-xs bg-emerald-600 hover:bg-emerald-700 text-white"
+                onClick={() => onPublish('lesson', lessonData)}
+              >
+                <Plus className="h-3 w-3 mr-1" />
+                Pubblica
+              </Button>
+            </div>
           </div>
           {lessonData.description && (
             <div className="px-3 py-1.5 bg-emerald-50/50 border-b border-emerald-100 text-xs text-emerald-700 italic">
@@ -4796,6 +4958,34 @@ function MessageContent({ content, onPublish, onEdit, onInput, toast, darkMode =
                 ? lessonData.content.slice(0, 600) + '\n\n*...(anteprima troncata)*'
                 : lessonData.content}
             </ReactMarkdown>
+          </div>
+        </div>
+      )}
+
+      {fullLessonOpen && lessonData && (
+        <div className="fixed inset-0 z-[90] flex items-center justify-center bg-slate-950/55 p-4 backdrop-blur-sm" onClick={() => setFullLessonOpen(false)}>
+          <div className="flex max-h-[88vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl" onClick={event => event.stopPropagation()}>
+            <div className="flex items-center justify-between gap-4 border-b border-slate-200 bg-emerald-50 px-5 py-4">
+              <div className="min-w-0">
+                <p className="m-0 text-xs font-bold uppercase tracking-wide text-emerald-600">Lezione completa</p>
+                <h2 className="m-0 truncate text-lg font-black text-emerald-950">{lessonData.title}</h2>
+              </div>
+              <button type="button" onClick={() => setFullLessonOpen(false)} className="rounded-lg p-2 text-slate-500 hover:bg-white hover:text-slate-800" aria-label="Chiudi lezione">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            {lessonData.description && <p className="m-0 border-b border-slate-100 px-5 py-3 text-sm italic text-slate-600">{lessonData.description}</p>}
+            <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
+              <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]} className="prose prose-slate max-w-none">
+                {lessonData.content}
+              </ReactMarkdown>
+            </div>
+            <div className="flex justify-end gap-2 border-t border-slate-200 bg-slate-50 px-5 py-3">
+              <Button variant="outline" onClick={() => setFullLessonOpen(false)}>Chiudi</Button>
+              <Button className="bg-emerald-600 text-white hover:bg-emerald-700" onClick={() => onPublish('lesson', lessonData)}>
+                <Plus className="mr-1 h-4 w-4" /> Pubblica
+              </Button>
+            </div>
           </div>
         </div>
       )}

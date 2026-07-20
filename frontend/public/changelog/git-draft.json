@@ -1,14 +1,14 @@
 {
-  "generated_at": "2026-07-07T15:32:06.519914+00:00",
-  "version_label": "2026.07.07-f464e1df",
+  "generated_at": "2026-07-13T09:08:45.561082+00:00",
+  "version_label": "2026.07.13-d1a0a886",
   "title": "Aggiornamenti branch bugfix/feedback-board-bugs",
   "summary": "Bozza generata automaticamente da 1 commit nuovi.",
-  "git_ref": "f464e1dfcc91db9f7d49ddd3ec220d45e861325d",
+  "git_ref": "d1a0a886d0bdf3cec72f8c4673246ed67343c6fa",
   "items": [
     {
       "category": "new",
-      "title": "Improve shared documents access",
-      "description": "Improve shared documents access"
+      "title": "Expand teaching and coding workflows",
+      "description": "Expand teaching and coding workflows"
     }
   ]
 }

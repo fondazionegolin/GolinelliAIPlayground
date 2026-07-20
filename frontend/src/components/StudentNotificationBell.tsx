@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react'
-import { Bell, Users, AtSign, Check } from 'lucide-react'
+import { Bell, Users, AtSign, Check, KanbanSquare } from 'lucide-react'
 
 interface RoomLite {
   id: string
@@ -10,7 +10,7 @@ interface RoomLite {
 
 interface Notif {
   id: string
-  type: 'invite' | 'mention'
+  type: 'invite' | 'mention' | 'board'
   from: string
   preview?: string
   room: RoomLite
@@ -47,6 +47,10 @@ export function StudentNotificationBell({
     }
     const onInvite = (d: any) => addNotif('invite', d.room, d.invited_by)
     const onMention = (d: any) => addNotif('mention', d.room, d.from_nickname, d.preview)
+    const onBoardShared = (d: any) => setNotifs((prev) => [
+      { id: `board-${d.board_id}-${Date.now()}`, type: 'board' as const, from: 'Docente', preview: d.title || 'Nuova board condivisa', room: { id: '', title: d.title || 'Board condivisa', participants: [] }, ts: Date.now(), read: false },
+      ...prev,
+    ].slice(0, 30))
 
     const attach = () => {
       const s = (window as any).socket
@@ -54,6 +58,7 @@ export function StudentNotificationBell({
         socket = s
         s.on('share_chat_invite', onInvite)
         s.on('share_chat_mention', onMention)
+        s.on('board_shared', onBoardShared)
       }
     }
     attach()
@@ -63,6 +68,7 @@ export function StudentNotificationBell({
       if (socket) {
         socket.off('share_chat_invite', onInvite)
         socket.off('share_chat_mention', onMention)
+        socket.off('board_shared', onBoardShared)
       }
     }
   }, [])
@@ -81,6 +87,16 @@ export function StudentNotificationBell({
     onNavigate?.('chatbot')
     setOpen(false)
     setNotifs((prev) => prev.map((n) => ({ ...n, read: true })))
+  }
+
+  const openNotification = (notification: Notif) => {
+    if (notification.type === 'board') {
+      onNavigate?.('boards')
+      setOpen(false)
+      setNotifs((prev) => prev.map((item) => item.id === notification.id ? { ...item, read: true } : item))
+      return
+    }
+    openShared(notification.room)
   }
 
   const markAllRead = () => setNotifs((prev) => prev.map((n) => ({ ...n, read: true })))
@@ -120,17 +136,17 @@ export function StudentNotificationBell({
                 <button
                   key={n.id}
                   type="button"
-                  onClick={() => openShared(n.room)}
+                  onClick={() => openNotification(n)}
                   className={`flex w-full items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-slate-50 ${n.read ? '' : 'bg-slate-50/60'}`}
                 >
                   <span className="mt-0.5 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full" style={{ backgroundColor: `${accentColor}1a`, color: accentColor }}>
-                    {n.type === 'mention' ? <AtSign className="h-4 w-4" /> : <Users className="h-4 w-4" />}
+                    {n.type === 'mention' ? <AtSign className="h-4 w-4" /> : n.type === 'board' ? <KanbanSquare className="h-4 w-4" /> : <Users className="h-4 w-4" />}
                   </span>
                   <span className="min-w-0 flex-1">
                     <span className="block text-sm font-semibold text-slate-800">
                       {n.type === 'mention'
                         ? `${n.from} ti ha menzionato`
-                        : `${n.from} ti ha incluso in una chat`}
+                        : n.type === 'board' ? 'Nuova board condivisa' : `${n.from} ti ha incluso in una chat`}
                     </span>
                     <span className="block truncate text-xs text-slate-500">
                       {n.preview || n.room.title || 'Chat condivisa'}

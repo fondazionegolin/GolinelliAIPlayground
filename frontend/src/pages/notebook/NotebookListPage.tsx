@@ -3,14 +3,15 @@ import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
-  ArrowLeft, BookOpen, Cpu, FileCode2, Gamepad2, Layers3, Loader2, Music2, Plus, Search, Sparkles, Trash2, X,
+  ArrowLeft, BookOpen, CheckCircle, ChevronDown, ChevronUp, Cpu, FileCode2, Gamepad2, Layers3, Loader2, Music2, Plus, Search, Share2, Sparkles, Trash2, X,
 } from 'lucide-react'
-import { notebooksApi } from '@/lib/api'
+import { notebooksApi, teacherApi, type NotebookAssignment } from '@/lib/api'
 import { formatDistanceToNow } from 'date-fns'
 import { enUS, it } from 'date-fns/locale'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/design/primitives/Button'
 import type { NotebookProjectType } from '@/components/notebook/types'
+import { useAuthStore } from '@/stores/auth'
 
 interface NotebookMeta {
   id: string
@@ -177,12 +178,14 @@ function NotebookCard({
   notebook,
   onOpen,
   onDelete,
+  onAssign,
   isDeleting,
   isEnglish,
 }: {
   notebook: NotebookMeta
   onOpen: () => void
   onDelete: (e: React.MouseEvent) => void
+  onAssign?: (e: React.MouseEvent) => void
   isDeleting: boolean
   isEnglish: boolean
 }) {
@@ -204,6 +207,16 @@ function NotebookCard({
       >
         <Trash2 className="h-3.5 w-3.5" />
       </button>
+
+      {onAssign && (
+        <button
+          onClick={onAssign}
+          className="absolute right-10 top-2 rounded-lg p-1 text-slate-400 opacity-70 transition-all hover:bg-indigo-50 hover:text-indigo-600 sm:opacity-0 sm:group-hover:opacity-100"
+          title={isEnglish ? 'Assign to a session' : 'Assegna a una sessione'}
+        >
+          <Share2 className="h-3.5 w-3.5" />
+        </button>
+      )}
 
       <div className="flex items-start justify-between gap-3">
         <div className={`flex h-11 w-11 items-center justify-center rounded-lg ${s.iconBg} ${s.icon}`}>
@@ -240,6 +253,11 @@ export default function NotebookListPage({ onOpen, onBack }: Props = {}) {
   const [showCreate, setShowCreate] = useState(false)
   const [newTitle, setNewTitle] = useState('')
   const [newProjectType, setNewProjectType] = useState<NotebookProjectType>('python')
+  const [templatesOpen, setTemplatesOpen] = useState(false)
+  const [shareNotebook, setShareNotebook] = useState<NotebookMeta | null>(null)
+  const [selectedSessionId, setSelectedSessionId] = useState('')
+  const studentSession = useAuthStore((state) => state.studentSession)
+  const isStudent = Boolean(studentSession)
 
   const openNotebook = (id: string) => onOpen ? onOpen(id) : navigate(`notebook/${id}`)
 
@@ -248,6 +266,27 @@ export default function NotebookListPage({ onOpen, onBack }: Props = {}) {
     queryFn: async () => {
       const res = await notebooksApi.list()
       return res.data as NotebookMeta[]
+    },
+  })
+
+  const { data: assignments = [] } = useQuery({
+    queryKey: ['notebook-assignments'],
+    queryFn: async () => (await notebooksApi.listAssignments()).data,
+  })
+
+  const { data: sessionOptions = [] } = useQuery({
+    queryKey: ['notebook-assignment-sessions'],
+    enabled: !isStudent && Boolean(shareNotebook),
+    queryFn: async () => {
+      const classes = (await teacherApi.getClasses()).data as { id: string; name: string }[]
+      const groups = await Promise.all(classes.map(async (class_) => ({
+        class_,
+        sessions: (await teacherApi.getSessions(class_.id)).data as { id: string; title?: string; name?: string }[],
+      })))
+      return groups.flatMap(({ class_, sessions }) => sessions.map(session => ({
+        id: session.id,
+        label: `${class_.name} · ${session.title || session.name || 'Sessione'}`,
+      })))
     },
   })
 
@@ -263,6 +302,24 @@ export default function NotebookListPage({ onOpen, onBack }: Props = {}) {
   const deleteMutation = useMutation({
     mutationFn: (id: string) => notebooksApi.delete(id),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['notebooks'] }),
+  })
+
+  const assignMutation = useMutation({
+    mutationFn: () => notebooksApi.assign(shareNotebook!.id, selectedSessionId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['notebook-assignments'] })
+      setShareNotebook(null)
+      setSelectedSessionId('')
+    },
+  })
+
+  const forkMutation = useMutation({
+    mutationFn: (assignmentId: string) => notebooksApi.forkAssignment(assignmentId),
+    onSuccess: (res) => {
+      queryClient.invalidateQueries({ queryKey: ['notebooks'] })
+      queryClient.invalidateQueries({ queryKey: ['notebook-assignments'] })
+      openNotebook(res.data.notebook_id)
+    },
   })
 
   const handleCreate = () => {
@@ -323,7 +380,7 @@ export default function NotebookListPage({ onOpen, onBack }: Props = {}) {
     )
   }
 
-  if (!notebooks || totalCount === 0) {
+  if ((!notebooks || totalCount === 0) && !(isStudent && assignments.length > 0)) {
     return (
       <div className="relative flex h-full flex-col overflow-y-auto bg-slate-50">
         {onBack && <NotebookBackButton isEnglish={isEnglish} onBack={onBack} className="absolute left-4 top-4 z-10" />}
@@ -353,6 +410,8 @@ export default function NotebookListPage({ onOpen, onBack }: Props = {}) {
               isEnglish={isEnglish}
               onCreate={handleCreateFromTemplate}
               isPending={createMutation.isPending}
+              open={templatesOpen}
+              onToggle={() => setTemplatesOpen(value => !value)}
               className="mt-8"
             />
 
@@ -416,12 +475,52 @@ export default function NotebookListPage({ onOpen, onBack }: Props = {}) {
               isEnglish={isEnglish}
               onCreate={handleCreateFromTemplate}
               isPending={createMutation.isPending}
+              open={templatesOpen}
+              onToggle={() => setTemplatesOpen(value => !value)}
               className="mt-7"
             />
           </div>
         </section>
 
         <div className="mx-auto max-w-6xl px-4 pb-24 pt-5 md:px-6 md:pb-8">
+          {isStudent && assignments.length > 0 && (
+            <section className="mb-6 rounded-xl border border-indigo-200 bg-indigo-50/70 p-4">
+              <div className="mb-3">
+                <h3 className="text-sm font-extrabold text-indigo-950">
+                  {isEnglish ? 'Assigned by your teacher' : 'Assegnati dal docente'}
+                </h3>
+                <p className="mt-1 text-xs text-indigo-700">
+                  {isEnglish ? 'Open your private copy. The teacher template will not change.' : 'Apri la tua copia privata: il template del docente non verrà modificato.'}
+                </p>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {(assignments as NotebookAssignment[]).map(assignment => (
+                  <div key={assignment.id} className="rounded-xl border border-indigo-200 bg-white p-4 shadow-sm">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-extrabold text-slate-950">{assignment.title}</p>
+                        <p className="mt-1 text-xs uppercase tracking-wide text-slate-500">{assignment.project_type}</p>
+                      </div>
+                      {assignment.submitted_at && <CheckCircle className="h-4 w-4 shrink-0 text-emerald-500" />}
+                    </div>
+                    <Button
+                      type="button"
+                      tone="accent"
+                      surface="soft"
+                      density="compact"
+                      className="mt-4 w-full"
+                      disabled={forkMutation.isPending}
+                      onClick={() => assignment.fork_notebook_id ? openNotebook(assignment.fork_notebook_id) : forkMutation.mutate(assignment.id)}
+                    >
+                      {assignment.fork_notebook_id
+                        ? (isEnglish ? 'Open my copy' : 'Apri la mia copia')
+                        : (isEnglish ? 'Create my copy' : 'Crea la mia copia')}
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
           <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <div>
               <div className="flex items-center gap-2 text-sm font-bold text-slate-900">
@@ -431,7 +530,7 @@ export default function NotebookListPage({ onOpen, onBack }: Props = {}) {
               <p className="mt-1 text-xs text-slate-500">
                 {isEnglish
                   ? 'Grouped by language so the workspace is easier to scan.'
-                  : 'Raggruppati per linguaggio, cosi lo spazio e piu facile da leggere.'}
+                  : 'Raggruppati per linguaggio, così lo spazio è più facile da leggere.'}
               </p>
             </div>
 
@@ -462,6 +561,7 @@ export default function NotebookListPage({ onOpen, onBack }: Props = {}) {
               notebooks={filtered.python}
               onOpen={openNotebook}
               onDelete={(id) => { if (confirm(isEnglish ? 'Delete this notebook?' : 'Eliminare questo notebook?')) deleteMutation.mutate(id) }}
+              onAssign={!isStudent ? (notebook) => setShareNotebook(notebook) : undefined}
               isEnglish={isEnglish}
               isDeleting={deleteMutation.isPending}
             />
@@ -473,6 +573,7 @@ export default function NotebookListPage({ onOpen, onBack }: Props = {}) {
               notebooks={filtered.microbit}
               onOpen={openNotebook}
               onDelete={(id) => { if (confirm(isEnglish ? 'Delete this micro:bit notebook?' : 'Eliminare questo notebook micro:bit?')) deleteMutation.mutate(id) }}
+              onAssign={!isStudent ? (notebook) => setShareNotebook(notebook) : undefined}
               isEnglish={isEnglish}
               isDeleting={deleteMutation.isPending}
             />
@@ -484,6 +585,7 @@ export default function NotebookListPage({ onOpen, onBack }: Props = {}) {
               notebooks={filtered.circuitplayground}
               onOpen={openNotebook}
               onDelete={(id) => { if (confirm(isEnglish ? 'Delete this Circuit Playground notebook?' : 'Eliminare questo notebook Circuit Playground?')) deleteMutation.mutate(id) }}
+              onAssign={!isStudent ? (notebook) => setShareNotebook(notebook) : undefined}
               isEnglish={isEnglish}
               isDeleting={deleteMutation.isPending}
             />
@@ -495,6 +597,7 @@ export default function NotebookListPage({ onOpen, onBack }: Props = {}) {
               notebooks={filtered.p5js}
               onOpen={openNotebook}
               onDelete={(id) => { if (confirm(isEnglish ? 'Delete this sketch?' : 'Eliminare questo sketch?')) deleteMutation.mutate(id) }}
+              onAssign={!isStudent ? (notebook) => setShareNotebook(notebook) : undefined}
               isEnglish={isEnglish}
               isDeleting={deleteMutation.isPending}
             />
@@ -506,6 +609,7 @@ export default function NotebookListPage({ onOpen, onBack }: Props = {}) {
               notebooks={filtered.game2d}
               onOpen={openNotebook}
               onDelete={(id) => { if (confirm(isEnglish ? 'Delete this 2D game?' : 'Eliminare questo gioco 2D?')) deleteMutation.mutate(id) }}
+              onAssign={!isStudent ? (notebook) => setShareNotebook(notebook) : undefined}
               isEnglish={isEnglish}
               isDeleting={deleteMutation.isPending}
             />
@@ -517,6 +621,7 @@ export default function NotebookListPage({ onOpen, onBack }: Props = {}) {
               notebooks={filtered.strudel}
               onOpen={openNotebook}
               onDelete={(id) => { if (confirm(isEnglish ? 'Delete this sketch?' : 'Eliminare questo sketch?')) deleteMutation.mutate(id) }}
+              onAssign={!isStudent ? (notebook) => setShareNotebook(notebook) : undefined}
               isEnglish={isEnglish}
               isDeleting={deleteMutation.isPending}
             />
@@ -528,7 +633,7 @@ export default function NotebookListPage({ onOpen, onBack }: Props = {}) {
                 {isEnglish ? `No notebook matches "${search}"` : `Nessun notebook corrisponde a "${search}"`}
               </p>
               <p className="mt-1 text-xs text-slate-500">
-                {isEnglish ? 'Try a shorter title fragment.' : 'Prova con una parte piu breve del titolo.'}
+                {isEnglish ? 'Try a shorter title fragment.' : 'Prova con una parte più breve del titolo.'}
               </p>
             </div>
           )}
@@ -549,6 +654,42 @@ export default function NotebookListPage({ onOpen, onBack }: Props = {}) {
           />
         )}
       </AnimatePresence>
+
+      {shareNotebook && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-4" onMouseDown={() => setShareNotebook(null)}>
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl" onMouseDown={event => event.stopPropagation()}>
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h3 className="text-lg font-black text-slate-950">{isEnglish ? 'Assign notebook' : 'Assegna notebook'}</h3>
+                <p className="mt-1 text-sm text-slate-500">{shareNotebook.title}</p>
+              </div>
+              <button className="rounded-lg p-1 text-slate-400 hover:bg-slate-100" onClick={() => setShareNotebook(null)}><X className="h-4 w-4" /></button>
+            </div>
+            <p className="mt-4 text-xs leading-5 text-slate-600">
+              {isEnglish ? 'Students receive an independent copy of this exact version.' : 'Gli studenti riceveranno una copia indipendente di questa versione esatta.'}
+            </p>
+            <select
+              value={selectedSessionId}
+              onChange={event => setSelectedSessionId(event.target.value)}
+              className="mt-4 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-200"
+            >
+              <option value="">{isEnglish ? 'Choose a session…' : 'Scegli una sessione…'}</option>
+              {sessionOptions.map(session => <option key={session.id} value={session.id}>{session.label}</option>)}
+            </select>
+            <Button
+              type="button"
+              tone="accent"
+              surface="solid"
+              className="mt-5 w-full"
+              disabled={!selectedSessionId || assignMutation.isPending}
+              onClick={() => assignMutation.mutate()}
+            >
+              {assignMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Share2 className="h-4 w-4" />}
+              {isEnglish ? 'Publish this version' : 'Pubblica questa versione'}
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -583,29 +724,32 @@ function ReadyTemplateGallery({
   isEnglish,
   onCreate,
   isPending,
+  open,
+  onToggle,
   className = '',
 }: {
   templates: NotebookTemplate[]
   isEnglish: boolean
   onCreate: (template: NotebookTemplate) => void
   isPending: boolean
+  open: boolean
+  onToggle: () => void
   className?: string
 }) {
   return (
     <section className={className}>
-      <div className="mb-3 flex flex-col items-center gap-1 text-center">
-        <div className="inline-flex items-center gap-2 rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-extrabold text-amber-800">
+      <button type="button" onClick={onToggle} className="mx-auto flex items-center gap-2 rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-extrabold text-amber-800 transition hover:bg-amber-100">
           <Sparkles className="h-3.5 w-3.5" />
           <span>{isEnglish ? 'Ready-made examples' : 'Modelli pronti'}</span>
-        </div>
-        <p className="max-w-2xl text-xs leading-5 text-slate-500">
+          {open ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+      </button>
+      {open && <p className="mx-auto mt-2 max-w-2xl text-center text-xs leading-5 text-slate-500">
           {isEnglish
             ? 'Start from a working, editable example that already shows the main features.'
-            : 'Parti da un esempio funzionante e modificabile che mostra subito le funzionalita principali.'}
-        </p>
-      </div>
+            : 'Parti da un esempio funzionante e modificabile che mostra subito le funzionalità principali.'}
+      </p>}
 
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+      {open && <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         {templates.map(template => {
           const s = NOTEBOOK_STYLES[template.projectType]
           return (
@@ -640,14 +784,14 @@ function ReadyTemplateGallery({
                     </span>
                   ))}
                 </div>
-                <span className="inline-flex h-9 w-full items-center justify-center rounded-full bg-slate-950 px-3 text-xs font-extrabold text-white transition group-hover:bg-slate-800">
+                <span className="inline-flex h-9 w-full items-center justify-center rounded-full border border-slate-300 bg-white/80 px-3 text-xs font-extrabold text-slate-700 transition group-hover:bg-white">
                   {isEnglish ? 'Use this model' : 'Usa questo modello'}
                 </span>
               </div>
             </button>
           )
         })}
-      </div>
+      </div>}
     </section>
   )
 }
@@ -711,12 +855,13 @@ function ProjectSummary({
 }
 
 function Section({
-  type, notebooks, onOpen, onDelete, isDeleting, isEnglish,
+  type, notebooks, onOpen, onDelete, onAssign, isDeleting, isEnglish,
 }: {
   type: NotebookProjectType
   notebooks: NotebookMeta[]
   onOpen: (id: string) => void
   onDelete: (id: string) => void
+  onAssign?: (notebook: NotebookMeta) => void
   isDeleting: boolean
   isEnglish: boolean
 }) {
@@ -724,15 +869,17 @@ function Section({
 
   return (
     <section className="mb-7">
-      <div className="mb-3 flex items-center justify-between gap-3">
-        <div className={`inline-flex items-center gap-2 rounded-lg border px-3 py-2 ${s.section}`}>
-          <ProjectIcon type={type} className="h-4 w-4" />
-          <h3 className="text-xs font-extrabold uppercase tracking-wide">{getProjectLabel(type)}</h3>
-          <span className="text-xs font-bold opacity-75">{notebooks.length}</span>
+      <div className="mb-3">
+        <div className="flex items-center gap-3">
+          <div className={`inline-flex items-center gap-2 rounded-lg border px-3 py-2 ${s.section}`}>
+            <ProjectIcon type={type} className="h-4 w-4" />
+            <h3 className="text-xs font-extrabold uppercase tracking-wide">{getProjectLabel(type)}</h3>
+            <span className="text-xs font-bold opacity-75">{notebooks.length}</span>
+          </div>
         </div>
-        <span className="hidden text-xs text-slate-400 sm:inline">
+        <p className="mt-1.5 text-xs text-slate-500">
           {getProjectDescription(type, isEnglish)}
-        </span>
+        </p>
       </div>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
         {notebooks.map(nb => (
@@ -741,6 +888,7 @@ function Section({
             notebook={nb}
             onOpen={() => onOpen(nb.id)}
             onDelete={(e) => { e.stopPropagation(); onDelete(nb.id) }}
+            onAssign={onAssign ? (e) => { e.stopPropagation(); onAssign(nb) } : undefined}
             isDeleting={isDeleting}
             isEnglish={isEnglish}
           />
