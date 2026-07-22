@@ -1,14 +1,14 @@
 {
-  "generated_at": "2026-07-22T07:59:21.720505+00:00",
-  "version_label": "2026.07.22-70434d13",
-  "title": "Aggiornamenti branch bugfix/feedback-board-bugs",
+  "generated_at": "2026-07-22T12:27:56.331810+00:00",
+  "version_label": "2026.07.22-d08fff27",
+  "title": "Aggiornamenti branch feat/platform-realtime",
   "summary": "Bozza generata automaticamente da 1 commit nuovi.",
-  "git_ref": "70434d134609cd205da17aa9858f82ba6a05b6d0",
+  "git_ref": "d08fff27d97d4175e2614b49f3079724e6c43b74",
   "items": [
     {
-      "category": "new",
-      "title": "Expand feedback and teaching workflows",
-      "description": "Expand feedback and teaching workflows"
+      "category": "improved",
+      "title": "Feat(realtime): sync platform updates",
+      "description": "Feat(realtime): sync platform updates"
     }
   ]
 }
