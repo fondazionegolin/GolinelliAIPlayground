@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input'
 import {
   Send, MessageSquare, Bell, Paperclip, X, Image as ImageIcon,
   MessagesSquare, MessageCircle, Pin, PinOff,
-  File, Wand2, Users, Folder, Search, Upload, List, Grid2X2, Minus, Plus, ChevronDown, CornerUpLeft, Brain, ExternalLink
+  File, Wand2, Users, Folder, Search, Upload, List, Grid2X2, Minus, Plus, ChevronDown, CornerUpLeft, Brain, ExternalLink, GraduationCap
 } from 'lucide-react'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { DEFAULT_STUDENT_ACCENT, getStudentAccentTheme, type StudentAccentId } from '@/lib/studentAccent'
@@ -964,7 +964,10 @@ export default function ChatSidebar({
 
         <div className={`flex flex-col max-w-[85%] ${isMe ? 'items-end' : 'items-start'}`}>
           {showAvatar && (
-            <span className="text-[10px] font-bold text-slate-400 mb-1 mx-1 uppercase tracking-tighter">
+            <span className="mx-1 mb-1 inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-tighter text-slate-400">
+              {msg.sender_is_class_owner && (
+                <GraduationCap className="h-3 w-3 text-violet-600" aria-label="Docente proprietario della classe" />
+              )}
               {msg.sender_name || 'User'}
             </span>
           )}

@@ -3,7 +3,7 @@ import { type RagSession, getRagSessions, saveRagSession, createRagSession, dele
 import { useTranslation } from 'react-i18next'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
-import { llmApi, studentApi, teacherbotsApi } from '@/lib/api'
+import { llmApi, studentApi, studentbotsApi, teacherbotsApi } from '@/lib/api'
 import DataFileCard, { type DataFilePreview } from '@/components/DataFileCard'
 import { Button } from '@/components/ui/button'
 import {
@@ -31,9 +31,11 @@ import {
 } from '@/design/themes/pastelSurfaces'
 import EnvironmentalImpactPill from '@/components/chat/EnvironmentalImpactPill'
 import type { TokenUsageJson } from '@/lib/environmentalImpact'
+import { AcademicAiIcon } from '@/components/icons/AcademicAiIcon'
 
 const StudentRagWorkspace = lazy(() => import('@/components/student/StudentRagWorkspace'))
 const RealtimeInterrogationPanel = lazy(() => import('@/components/student/RealtimeInterrogationPanel'))
+const TeacherbotForm = lazy(() => import('@/components/teacher/TeacherbotForm'))
 import type { VoiceSessionSource } from '@/components/student/RealtimeInterrogationPanel'
 const ShareWithModal = lazy(() => import('@/components/student/ShareWithModal'))
 import type { SharedRoom } from '@/components/student/SharedChatPanel'
@@ -333,6 +335,18 @@ interface Teacherbot {
   is_proactive: boolean
   proactive_message: string | null
   enable_live_voice?: boolean
+  is_studentbot?: boolean
+}
+
+interface StudentbotListItem {
+  id: string
+  name: string
+  synopsis: string | null
+  icon: string
+  color: string
+  status: string
+  updated_at: string
+  conversation_count: number
 }
 
 interface AttachedFile {
@@ -562,7 +576,7 @@ export default function ChatbotModule({ sessionId, studentId, initialTeacherbotI
   const [activeMasterPrompt, setActiveMasterPrompt] = useState<string | null>(null)
   const [isMasterPromptApplied, setIsMasterPromptApplied] = useState(false)
   // Learning section
-  const [mainTab, setMainTab] = useState<'assistants' | 'teacherbots' | 'learning' | 'rag'>('assistants')
+  const [mainTab, setMainTab] = useState<'assistants' | 'teacherbots' | 'studentbots' | 'learning' | 'rag'>('assistants')
   const [navCollapsed, setNavCollapsed] = useState(false)
   const [ragSessions, setRagSessions] = useState<RagSession[]>(() => getRagSessions())
   const [activeRagSessionId, setActiveRagSessionId] = useState<string | null>(null)
@@ -570,7 +584,8 @@ export default function ChatbotModule({ sessionId, studentId, initialTeacherbotI
   const [activeLearningSession, setActiveLearningSession] = useState<LearningSession | null>(null)
   const [learningMode, setLearningMode] = useState(false)
   const [chatbotSearch, setChatbotSearch] = useState('')
-  const [librarySection, setLibrarySection] = useState<'favorites' | 'assistants' | 'teacherbots' | 'rag'>('assistants')
+  const [librarySection, setLibrarySection] = useState<'favorites' | 'assistants' | 'teacherbots' | 'studentbots' | 'rag'>('assistants')
+  const [studentbotEditorTarget, setStudentbotEditorTarget] = useState<'create' | string | null>(null)
   const [libraryViewMode, setLibraryViewMode] = useState<'grid' | 'list'>(() =>
     localStorage.getItem('student_ai_library_view') === 'list' ? 'list' : 'grid'
   )
@@ -812,6 +827,24 @@ export default function ChatbotModule({ sessionId, studentId, initialTeacherbotI
     },
     staleTime: 1000 * 60 * 2,
     enabled: !isTeacherPreview,
+  })
+
+  const { data: studentbotsData = [], isLoading: studentbotsLoading } = useQuery({
+    queryKey: ['studentbots'],
+    queryFn: async () => {
+      const res = await studentbotsApi.list()
+      return res.data as StudentbotListItem[]
+    },
+    staleTime: 1000 * 60,
+    enabled: !isTeacherPreview,
+  })
+
+  const deleteStudentbotMutation = useMutation({
+    mutationFn: (id: string) => studentbotsApi.delete(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['studentbots'] })
+      queryClient.invalidateQueries({ queryKey: ['student-teacherbots'] })
+    },
   })
 
   // In teacher preview mode, load the specific bot via teacher API
@@ -1821,7 +1854,7 @@ REGOLE IMPORTANTI:
 
     if (isTeacherbot && tbConv) {
       setTeacherbotConversationId(convId)
-      const bot = availableTeacherbots.find(b => b.id === tbConv.teacherbot_id)
+      const bot = allAvailableTeacherbots.find(b => b.id === tbConv.teacherbot_id)
       if (bot) {
         setSelectedTeacherbot(bot)
         setSelectedProfile(null)
@@ -2017,7 +2050,7 @@ REGOLE IMPORTANTI:
     }
 
     setSelectedTeacherbot(teacherbot)
-    setMainTab('teacherbots')
+    setMainTab(teacherbot.is_studentbot ? 'studentbots' : 'teacherbots')
     setTeacherbotConversationId(null)
     setSelectedProfile(null)
     setConversationId(null)
@@ -2105,7 +2138,9 @@ REGOLE IMPORTANTI:
     [availableModels, defaultModelKey]
   )
   const effectiveSelectedModel = selectedModel || savedDefaultModel || teacherDefaultModel || null
-  const availableTeacherbots = teacherbotsData || []
+  const allAvailableTeacherbots = teacherbotsData || []
+  const availableTeacherbots = allAvailableTeacherbots.filter((bot) => !bot.is_studentbot)
+  const availableStudentbots = allAvailableTeacherbots.filter((bot) => bot.is_studentbot)
   const normalizedChatbotSearch = chatbotSearch.trim().toLowerCase()
   const filteredProfiles = useMemo(() => {
     if (!normalizedChatbotSearch) return profiles
@@ -2123,6 +2158,14 @@ REGOLE IMPORTANTI:
         .some((value) => String(value).toLowerCase().includes(normalizedChatbotSearch))
     )
   }, [availableTeacherbots, normalizedChatbotSearch])
+  const filteredStudentbots = useMemo(() => {
+    if (!normalizedChatbotSearch) return studentbotsData
+    return studentbotsData.filter((bot) =>
+      [bot.name, bot.synopsis]
+        .filter(Boolean)
+        .some((value) => String(value).toLowerCase().includes(normalizedChatbotSearch))
+    )
+  }, [studentbotsData, normalizedChatbotSearch])
   const filteredLearningSessions = useMemo(() => {
     if (!normalizedChatbotSearch) return learningSessions
     return learningSessions.filter((session) =>
@@ -2166,16 +2209,16 @@ REGOLE IMPORTANTI:
   }
 
   useEffect(() => {
-    if (!initialTeacherbotId || availableTeacherbots.length === 0) return
+    if (!initialTeacherbotId || allAvailableTeacherbots.length === 0) return
     if (selectedTeacherbot?.id === initialTeacherbotId) return
     if (lastAppliedTeacherbotIdRef.current === initialTeacherbotId) return
 
-    const bot = availableTeacherbots.find(b => b.id === initialTeacherbotId)
+    const bot = allAvailableTeacherbots.find(b => b.id === initialTeacherbotId)
     if (bot) {
       lastAppliedTeacherbotIdRef.current = initialTeacherbotId
       handleSelectTeacherbot(bot)
     }
-  }, [initialTeacherbotId, availableTeacherbots, selectedTeacherbot, handleSelectTeacherbot])
+  }, [initialTeacherbotId, allAvailableTeacherbots, selectedTeacherbot, handleSelectTeacherbot])
 
   const activeRagSession = ragSessions.find((s) => s.id === activeRagSessionId) ?? null
 
@@ -2223,6 +2266,20 @@ REGOLE IMPORTANTI:
       math_coach: { bg: 'rgba(219,234,254,0.9)', icon: 'rgba(59,130,246,0.16)', text: '#1d4ed8' },
       dataset_generator: { bg: 'rgba(207,250,254,0.9)', icon: 'rgba(14,165,233,0.16)', text: '#0369a1' },
     }
+    if (studentbotEditorTarget) {
+      return (
+        <div className="h-full min-h-0 bg-slate-50">
+          <Suspense fallback={<div className="flex h-full items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-violet-500" /></div>}>
+            <TeacherbotForm
+              variant="studentbot"
+              teacherbotId={studentbotEditorTarget === 'create' ? undefined : studentbotEditorTarget}
+              onBack={() => setStudentbotEditorTarget(null)}
+              onSaved={() => setStudentbotEditorTarget(null)}
+            />
+          </Suspense>
+        </div>
+      )
+    }
     return (
       <div className="h-full flex flex-col overflow-hidden" style={{ backgroundColor: '#f8fafc' }}>
         {/* Tab nav */}
@@ -2230,6 +2287,7 @@ REGOLE IMPORTANTI:
           {([
             { key: 'assistants' as const, label: 'Assistenti AI', icon: <Bot className="h-3 w-3" /> },
             { key: 'teacherbots' as const, label: 'Teacherbots', icon: <Wand2 className="h-3 w-3" />, badge: availableTeacherbots.length },
+            { key: 'studentbots' as const, label: 'Studentbot', icon: <Sparkles className="h-3 w-3" />, badge: studentbotsData.length },
             { key: 'rag' as const, label: 'RAG', icon: <Database className="h-3 w-3" /> },
           ]).map(({ key, label, icon, badge }) => (
             <button key={key} onClick={() => setMainTab(key)}
@@ -2306,6 +2364,36 @@ REGOLE IMPORTANTI:
                 ))}
               </div>
             )
+          )}
+
+          {mainTab === 'studentbots' && (
+            <div className="space-y-2">
+              <motion.button
+                whileTap={{ scale: 0.98 }}
+                onClick={() => setStudentbotEditorTarget('create')}
+                className="w-full rounded-xl border border-violet-200 bg-violet-50 p-4 text-left shadow-sm"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-violet-100 text-violet-700"><Plus className="h-5 w-5" /></div>
+                  <div><h3 className="text-sm font-bold text-violet-900">Crea il tuo bot personalizzato</h3><p className="text-[11px] text-violet-700/75">Configura personalità, istruzioni e allegati</p></div>
+                </div>
+              </motion.button>
+              {studentbotsData.map((bot) => {
+                const available = availableStudentbots.find((item) => item.id === bot.id)
+                return (
+                  <div key={bot.id} className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+                    <button type="button" onClick={() => available && handleSelectTeacherbot(available)} className="w-full text-left">
+                      <p className="text-sm font-bold text-slate-900">{bot.name}</p>
+                      <p className="mt-0.5 line-clamp-2 text-[11px] text-slate-500">{bot.synopsis || 'Il tuo assistente AI personalizzato'}</p>
+                    </button>
+                    <div className="mt-2 flex gap-2 border-t border-slate-100 pt-2">
+                      <button type="button" onClick={() => setStudentbotEditorTarget(bot.id)} className="rounded-lg px-2 py-1 text-[11px] font-bold text-violet-700 hover:bg-violet-50">Configura</button>
+                      <button type="button" onClick={() => { if (window.confirm(`Eliminare lo Studentbot “${bot.name}”?`)) deleteStudentbotMutation.mutate(bot.id) }} className="rounded-lg px-2 py-1 text-[11px] font-bold text-rose-600 hover:bg-rose-50">Elimina</button>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
           )}
 
           {/* Mobile: Oggi Imparo is retained only for legacy deep links, not exposed in navigation. */}
@@ -2499,7 +2587,7 @@ REGOLE IMPORTANTI:
 
       if (conversation.profile_key.startsWith('teacherbot-')) {
         const teacherbotId = conversation.profile_key.replace('teacherbot-', '')
-        const bot = availableTeacherbots.find((item) => item.id === teacherbotId)
+        const bot = allAvailableTeacherbots.find((item) => item.id === teacherbotId)
         if (!bot) return items
         items.push({
           profileKey: conversation.profile_key,
@@ -3262,7 +3350,7 @@ REGOLE IMPORTANTI:
                         {(() => {
                           if (conv.profile_key.startsWith('teacherbot-')) {
                             const tbId = conv.profile_key.replace('teacherbot-', '')
-                            const bot = availableTeacherbots.find(b => b.id === tbId)
+                            const bot = allAvailableTeacherbots.find(b => b.id === tbId)
                             return bot ? (
                               <div className="text-[10px] font-semibold text-violet-600 mb-0.5 flex items-center gap-1">
                                 <Wand2 className="h-2.5 w-2.5" />
@@ -3455,6 +3543,17 @@ REGOLE IMPORTANTI:
                 )}
               </Suspense>
             </div>
+          ) : studentbotEditorTarget ? (
+            <div className="min-h-0 flex-1 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+              <Suspense fallback={<div className="flex h-full items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-violet-500" /></div>}>
+                <TeacherbotForm
+                  variant="studentbot"
+                  teacherbotId={studentbotEditorTarget === 'create' ? undefined : studentbotEditorTarget}
+                  onBack={() => setStudentbotEditorTarget(null)}
+                  onSaved={() => setStudentbotEditorTarget(null)}
+                />
+              </Suspense>
+            </div>
           ) : isDesktopSelection ? (
             <div className="flex min-h-0 flex-1 flex-col">
               <section className="relative shrink-0 border-b border-slate-200 bg-white/70 backdrop-blur-sm">
@@ -3476,7 +3575,7 @@ REGOLE IMPORTANTI:
                     <p className="text-[11px] font-bold uppercase tracking-[0.18em]" style={{ color: accentTheme.text }}>Chatbot</p>
                     <h2 className="mt-2 text-3xl font-black tracking-tight text-slate-950">Spazio AI</h2>
                     <p className="mx-auto mt-3 max-w-2xl text-sm leading-6 text-slate-600">
-                      Assistenti per studio e quiz, teacherbot pubblicati dal docente e sessioni RAG sui tuoi documenti.
+                      Assistenti per studio e quiz, teacherbot del docente, Studentbot personalizzati e sessioni RAG sui tuoi documenti.
                     </p>
                     <label className="mx-auto mt-6 flex max-w-xl items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2.5 shadow-sm">
                       <Search className="h-4 w-4 shrink-0 text-slate-400" />
@@ -3504,11 +3603,12 @@ REGOLE IMPORTANTI:
               <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-8 pt-5 md:px-6">
                 <div className="mx-auto w-full max-w-6xl">
                   <div className="mb-5 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
                       {([
                         { key: 'favorites' as const, label: 'Preferiti', icon: Sparkles, count: filteredFavoriteChatbotItems.length },
                         { key: 'assistants' as const, label: 'Chatbot didattici', icon: GraduationCap, count: filteredProfiles.length },
                         { key: 'teacherbots' as const, label: 'Teacherbot', icon: Wand2, count: filteredTeacherbots.length },
+                        { key: 'studentbots' as const, label: 'Studentbot', icon: Sparkles, count: filteredStudentbots.length },
                         { key: 'rag' as const, label: 'RAG', icon: Database, count: filteredRagSessions.length },
                       ]).map(({ key, label, icon: Icon, count }) => (
                         <button
@@ -3557,16 +3657,16 @@ REGOLE IMPORTANTI:
                                   handleSelectProfile(item.profileKey)
                                 }
                               }}
-                              className={`group relative min-h-[112px] overflow-hidden rounded-[18px] border p-3 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-lg ${style.card}`}
+                              className={`group relative overflow-hidden border text-left shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-lg ${libraryViewMode === 'grid' ? 'min-h-[112px] rounded-[18px] p-3' : 'grid min-h-[64px] grid-cols-[36px_minmax(0,1fr)_auto] grid-rows-2 items-center gap-x-3 rounded-xl px-3 py-2'} ${style.card}`}
                             >
-                              <div className={`flex h-9 w-9 items-center justify-center rounded-lg shadow-sm ${style.icon}`}>
+                              <div className={`flex h-9 w-9 items-center justify-center rounded-lg shadow-sm ${libraryViewMode === 'list' ? 'col-start-1 row-span-2 row-start-1' : ''} ${style.icon}`}>
                                 {item.icon}
                               </div>
-                              <span className={`absolute right-4 top-4 rounded-full border px-2.5 py-1 text-[10px] font-black ${style.badge}`}>
+                              <span className={`${libraryViewMode === 'grid' ? 'absolute right-4 top-4' : 'col-start-3 row-span-2 row-start-1 self-center'} rounded-full border px-2.5 py-1 text-[10px] font-black ${style.badge}`}>
                                 {item.kind === 'teacherbot' ? 'Teacherbot' : 'Didattico'}
                               </span>
-                              <p className="mt-2 truncate text-sm font-black text-slate-950">{item.title}</p>
-                              <p title={libraryViewMode === 'list' ? item.description : undefined} className={`mt-1 text-[11px] font-medium text-slate-500 ${libraryViewMode === 'list' ? 'line-clamp-2' : ''}`}>{item.description}</p>
+                              <p className={`${libraryViewMode === 'grid' ? 'mt-2' : 'col-start-2 row-start-1 self-end'} truncate text-sm font-black text-slate-950`}>{item.title}</p>
+                              <p title={libraryViewMode === 'list' ? item.description : undefined} className={`${libraryViewMode === 'grid' ? 'mt-1' : 'col-start-2 row-start-2 self-start truncate'} text-[11px] font-medium text-slate-500`}>{item.description}</p>
                             </motion.button>
                           )
                         })}
@@ -3597,16 +3697,16 @@ REGOLE IMPORTANTI:
                               key={profile.key}
                               whileTap={{ scale: 0.98 }}
                               onClick={() => handleSelectProfile(profile.key)}
-                              className={`group relative min-h-[112px] overflow-hidden rounded-[18px] border p-3 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-lg ${style.card}`}
+                              className={`group relative overflow-hidden border text-left shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-lg ${libraryViewMode === 'grid' ? 'min-h-[112px] rounded-[18px] p-3' : 'grid min-h-[64px] grid-cols-[36px_minmax(0,1fr)_auto] grid-rows-2 items-center gap-x-3 rounded-xl px-3 py-2'} ${style.card}`}
                             >
-                              <div className={`flex h-9 w-9 items-center justify-center rounded-lg shadow-sm ${style.icon}`}>
+                              <div className={`flex h-9 w-9 items-center justify-center rounded-lg shadow-sm ${libraryViewMode === 'list' ? 'col-start-1 row-span-2 row-start-1' : ''} ${style.icon}`}>
                                 {PROFILE_ICONS[profile.key] || <Bot className="h-5 w-5" />}
                               </div>
-                              <span className={`absolute right-4 top-4 rounded-full border px-2.5 py-1 text-[10px] font-black ${style.badge}`}>
+                              <span className={`${libraryViewMode === 'grid' ? 'absolute right-4 top-4' : 'col-start-3 row-span-2 row-start-1 self-center'} rounded-full border px-2.5 py-1 text-[10px] font-black ${style.badge}`}>
                                 {usage > 0 ? usage : 'Nuovo'}
                               </span>
-                              <p className="mt-2 truncate text-sm font-black text-slate-950">{profile.name}</p>
-                              <p title={libraryViewMode === 'list' ? profile.description : undefined} className={`mt-1 text-[11px] font-medium text-slate-500 ${libraryViewMode === 'list' ? 'line-clamp-2' : ''}`}>{profile.description}</p>
+                              <p className={`${libraryViewMode === 'grid' ? 'mt-2' : 'col-start-2 row-start-1 self-end'} truncate text-sm font-black text-slate-950`}>{profile.name}</p>
+                              <p title={libraryViewMode === 'list' ? profile.description : undefined} className={`${libraryViewMode === 'grid' ? 'mt-1' : 'col-start-2 row-start-2 self-start truncate'} text-[11px] font-medium text-slate-500`}>{profile.description}</p>
                             </motion.button>
                           )
                         })}
@@ -3638,19 +3738,60 @@ REGOLE IMPORTANTI:
                               key={bot.id}
                               whileTap={{ scale: 0.98 }}
                               onClick={() => handleSelectTeacherbot(bot)}
-                              className={`group relative min-h-[112px] overflow-hidden rounded-[18px] border p-3 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-lg ${style.card}`}
+                              className={`group relative overflow-hidden border text-left shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-lg ${libraryViewMode === 'grid' ? 'min-h-[112px] rounded-[18px] p-3' : 'grid min-h-[64px] grid-cols-[36px_minmax(0,1fr)_auto] grid-rows-2 items-center gap-x-3 rounded-xl px-3 py-2'} ${style.card}`}
                             >
-                              <div className={`flex h-9 w-9 items-center justify-center rounded-lg shadow-sm ${style.icon}`}>
+                              <div className={`flex h-9 w-9 items-center justify-center rounded-lg shadow-sm ${libraryViewMode === 'list' ? 'col-start-1 row-span-2 row-start-1' : ''} ${style.icon}`}>
                                 <TeacherbotAvatarIcon bot={bot} uiLanguage={uiLanguage} className="h-5 w-5" />
                               </div>
-                              <span className={`absolute right-4 top-4 rounded-full border px-2.5 py-1 text-[10px] font-black ${style.badge}`}>Docente</span>
-                              <p className="mt-2 truncate text-sm font-black text-slate-950">{bot.name}</p>
-                              <p title={libraryViewMode === 'list' ? (bot.synopsis || bot.description || 'Assistente personalizzato per la sessione.') : undefined} className={`mt-1 text-[11px] font-medium text-slate-500 ${libraryViewMode === 'list' ? 'line-clamp-2' : ''}`}>{bot.synopsis || bot.description || 'Assistente personalizzato per la sessione.'}</p>
+                              <span className={`${libraryViewMode === 'grid' ? 'absolute right-4 top-4' : 'col-start-3 row-span-2 row-start-1 self-center'} rounded-full border px-2.5 py-1 text-[10px] font-black ${style.badge}`}>Docente</span>
+                              <p className={`${libraryViewMode === 'grid' ? 'mt-2' : 'col-start-2 row-start-1 self-end'} truncate text-sm font-black text-slate-950`}>{bot.name}</p>
+                              <p title={libraryViewMode === 'list' ? (bot.synopsis || bot.description || 'Assistente personalizzato per la sessione.') : undefined} className={`${libraryViewMode === 'grid' ? 'mt-1' : 'col-start-2 row-start-2 self-start truncate'} text-[11px] font-medium text-slate-500`}>{bot.synopsis || bot.description || 'Assistente personalizzato per la sessione.'}</p>
                             </motion.button>
                           )
                         })}
                       </div>
                     )}
+                  </section>
+                  )}
+
+                  {librarySection === 'studentbots' && (
+                  <section className="mb-7">
+                    <div className="mb-3 flex items-center justify-between gap-3">
+                      <div className="inline-flex items-center gap-2 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-sky-700">
+                        <Sparkles className="h-4 w-4" />
+                        <h3 className="text-xs font-extrabold uppercase tracking-wide">Studentbot</h3>
+                        <span className="text-xs font-bold opacity-75">{filteredStudentbots.length}</span>
+                      </div>
+                      <span className="hidden text-xs text-slate-400 sm:inline">I tuoi assistenti AI privati e personalizzati</span>
+                    </div>
+                    <div className={libraryViewMode === 'grid' ? 'grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4' : 'flex flex-col gap-2'}>
+                      <motion.button
+                        whileTap={{ scale: 0.98 }}
+                        onClick={() => setStudentbotEditorTarget('create')}
+                        className={`group relative overflow-hidden border text-left shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-lg ${libraryViewMode === 'grid' ? 'min-h-[112px] rounded-[18px] p-3' : 'grid min-h-[64px] grid-cols-[36px_minmax(0,1fr)_auto] grid-rows-2 items-center gap-x-3 rounded-xl px-3 py-2'} ${CHATBOT_CARD_STYLES.emerald.card}`}
+                      >
+                        <div className={`flex h-9 w-9 items-center justify-center rounded-lg shadow-sm ${libraryViewMode === 'list' ? 'col-start-1 row-span-2 row-start-1' : ''} ${CHATBOT_CARD_STYLES.emerald.icon}`}><Plus className="h-5 w-5" /></div>
+                        <span className={`${libraryViewMode === 'grid' ? 'absolute right-4 top-4' : 'col-start-3 row-span-2 row-start-1 self-center'} rounded-full border px-2.5 py-1 text-[10px] font-black ${CHATBOT_CARD_STYLES.emerald.badge}`}>Nuovo</span>
+                        <p className={`${libraryViewMode === 'grid' ? 'mt-2' : 'col-start-2 row-start-1 self-end'} truncate text-sm font-black text-slate-950`}>Crea il tuo bot personalizzato</p>
+                        <p className={`${libraryViewMode === 'grid' ? 'mt-1' : 'col-start-2 row-start-2 self-start truncate'} text-[11px] font-medium text-slate-500`}>Scegli personalità, istruzioni e allegati.</p>
+                      </motion.button>
+                      {studentbotsLoading && <div className="flex min-h-[112px] items-center justify-center"><Loader2 className="h-5 w-5 animate-spin text-sky-500" /></div>}
+                      {filteredStudentbots.map((bot) => {
+                        const available = availableStudentbots.find((item) => item.id === bot.id)
+                        return (
+                          <div key={bot.id} className={`group relative overflow-hidden border text-left shadow-sm ${libraryViewMode === 'grid' ? 'min-h-[112px] rounded-[18px] p-3' : 'grid min-h-[64px] grid-cols-[36px_minmax(0,1fr)_auto] grid-rows-2 items-center gap-x-3 rounded-xl px-3 py-2'} ${CHATBOT_CARD_STYLES.emerald.card}`}>
+                            <button type="button" onClick={() => available && handleSelectTeacherbot(available)} className="absolute inset-0 z-0" aria-label={`Apri ${bot.name}`} />
+                            <div className={`relative z-10 flex h-9 w-9 items-center justify-center rounded-lg shadow-sm pointer-events-none ${libraryViewMode === 'list' ? 'col-start-1 row-span-2 row-start-1' : ''} ${CHATBOT_CARD_STYLES.emerald.icon}`}><Sparkles className="h-5 w-5" /></div>
+                            <span className={`${libraryViewMode === 'grid' ? 'absolute right-3 top-3' : 'col-start-3 row-span-2 row-start-1 self-center'} z-20 flex gap-1`}>
+                              <button type="button" onClick={() => setStudentbotEditorTarget(bot.id)} className="rounded-lg border border-white/80 bg-white/90 px-2 py-1 text-[10px] font-black text-sky-700 shadow-sm">Configura</button>
+                              <button type="button" onClick={() => { if (window.confirm(`Eliminare lo Studentbot “${bot.name}”?`)) deleteStudentbotMutation.mutate(bot.id) }} className="rounded-lg border border-white/80 bg-white/90 px-2 py-1 text-[10px] font-black text-rose-600 shadow-sm">Elimina</button>
+                            </span>
+                            <p className={`${libraryViewMode === 'grid' ? 'relative z-10 mt-2 pr-28' : 'col-start-2 row-start-1 self-end'} truncate text-sm font-black text-slate-950 pointer-events-none`}>{bot.name}</p>
+                            <p className={`${libraryViewMode === 'grid' ? 'relative z-10 mt-1' : 'col-start-2 row-start-2 self-start truncate'} text-[11px] font-medium text-slate-500 pointer-events-none`}>{bot.synopsis || 'Il tuo assistente AI personalizzato'}</p>
+                          </div>
+                        )
+                      })}
+                    </div>
                   </section>
                   )}
 
@@ -3668,29 +3809,29 @@ REGOLE IMPORTANTI:
                       <motion.button
                         whileTap={{ scale: 0.98 }}
                         onClick={createAndOpenRagSession}
-                        className={`group relative min-h-[112px] overflow-hidden rounded-[18px] border p-3 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-lg ${CHATBOT_CARD_STYLES.emerald.card}`}
+                        className={`group relative overflow-hidden border text-left shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-lg ${libraryViewMode === 'grid' ? 'min-h-[112px] rounded-[18px] p-3' : 'grid min-h-[64px] grid-cols-[36px_minmax(0,1fr)_auto] grid-rows-2 items-center gap-x-3 rounded-xl px-3 py-2'} ${CHATBOT_CARD_STYLES.emerald.card}`}
                       >
-                        <div className={`flex h-9 w-9 items-center justify-center rounded-lg shadow-sm ${CHATBOT_CARD_STYLES.emerald.icon}`}>
+                        <div className={`flex h-9 w-9 items-center justify-center rounded-lg shadow-sm ${libraryViewMode === 'list' ? 'col-start-1 row-span-2 row-start-1' : ''} ${CHATBOT_CARD_STYLES.emerald.icon}`}>
                           <Plus className="h-5 w-5" />
                         </div>
-                        <p className="mt-2 truncate text-sm font-black text-slate-950">Nuova sessione RAG</p>
-                        <p title={libraryViewMode === 'list' ? 'Interroga documenti e fonti caricate.' : undefined} className={`mt-1 text-[11px] font-medium text-slate-500 ${libraryViewMode === 'list' ? 'line-clamp-2' : ''}`}>Interroga documenti e fonti caricate.</p>
+                        <p className={`${libraryViewMode === 'grid' ? 'mt-2' : 'col-start-2 row-start-1 self-end'} truncate text-sm font-black text-slate-950`}>Nuova sessione RAG</p>
+                        <p title={libraryViewMode === 'list' ? 'Interroga documenti e fonti caricate.' : undefined} className={`${libraryViewMode === 'grid' ? 'mt-1' : 'col-start-2 row-start-2 self-start truncate'} text-[11px] font-medium text-slate-500`}>Interroga documenti e fonti caricate.</p>
                       </motion.button>
                       {filteredRagSessions.slice(0, 7).map((ragSession) => (
                         <motion.button
                           key={ragSession.id}
                           whileTap={{ scale: 0.98 }}
                           onClick={() => openRagSession(ragSession)}
-                          className={`group relative min-h-[112px] overflow-hidden rounded-[18px] border p-3 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-lg ${CHATBOT_CARD_STYLES.emerald.card}`}
+                          className={`group relative overflow-hidden border text-left shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-lg ${libraryViewMode === 'grid' ? 'min-h-[112px] rounded-[18px] p-3' : 'grid min-h-[64px] grid-cols-[36px_minmax(0,1fr)_auto] grid-rows-2 items-center gap-x-3 rounded-xl px-3 py-2'} ${CHATBOT_CARD_STYLES.emerald.card}`}
                         >
-                          <div className={`flex h-9 w-9 items-center justify-center rounded-lg shadow-sm ${CHATBOT_CARD_STYLES.emerald.icon}`}>
+                          <div className={`flex h-9 w-9 items-center justify-center rounded-lg shadow-sm ${libraryViewMode === 'list' ? 'col-start-1 row-span-2 row-start-1' : ''} ${CHATBOT_CARD_STYLES.emerald.icon}`}>
                             <Database className="h-5 w-5" />
                           </div>
-                          <span className={`absolute right-4 top-4 rounded-full border px-2.5 py-1 text-[10px] font-black ${CHATBOT_CARD_STYLES.emerald.badge}`}>
+                          <span className={`${libraryViewMode === 'grid' ? 'absolute right-4 top-4' : 'col-start-3 row-span-2 row-start-1 self-center'} rounded-full border px-2.5 py-1 text-[10px] font-black ${CHATBOT_CARD_STYLES.emerald.badge}`}>
                             {ragSession.messages.length > 0 ? `${ragSession.messages.length} msg` : 'Pronta'}
                           </span>
-                          <p className="mt-2 truncate text-sm font-black text-slate-950">{ragSession.name}</p>
-                          <p title={libraryViewMode === 'list' ? (ragSession.messages.length > 0 ? `${ragSession.messages.length} messaggi` : 'Sessione pronta') : undefined} className={`mt-1 text-[11px] font-medium text-slate-500 ${libraryViewMode === 'list' ? 'line-clamp-2' : ''}`}>
+                          <p className={`${libraryViewMode === 'grid' ? 'mt-2' : 'col-start-2 row-start-1 self-end'} truncate text-sm font-black text-slate-950`}>{ragSession.name}</p>
+                          <p title={libraryViewMode === 'list' ? (ragSession.messages.length > 0 ? `${ragSession.messages.length} messaggi` : 'Sessione pronta') : undefined} className={`${libraryViewMode === 'grid' ? 'mt-1' : 'col-start-2 row-start-2 self-start truncate'} text-[11px] font-medium text-slate-500`}>
                             {ragSession.messages.length > 0 ? `${ragSession.messages.length} messaggi` : 'Sessione pronta'}
                           </p>
                         </motion.button>
@@ -3718,7 +3859,7 @@ REGOLE IMPORTANTI:
                   ) : selectedProfile && PROFILE_ICONS[selectedProfile] ? (
                     <div className="text-white scale-90">{PROFILE_ICONS[selectedProfile]}</div>
                   ) : (
-                    <Bot className="h-5 w-5 text-white" />
+                    <AcademicAiIcon className="h-5 w-5 text-white" />
                   )}
                 </div>
                 <div className="flex-1 min-w-0">
@@ -4043,7 +4184,7 @@ REGOLE IMPORTANTI:
                 ) : selectedProfile && PROFILE_ICONS[selectedProfile] ? (
                   <div className="text-white scale-125">{PROFILE_ICONS[selectedProfile]}</div>
                 ) : (
-                  <Bot className="h-10 w-10 text-white" />
+                  <AcademicAiIcon className="h-10 w-10 text-white" />
                 )}
               </div>
               <h3 className={`font-bold text-xl mb-2 ${chatBgIsDark ? 'text-white' : 'text-slate-800'}`}>{t('chatbot.greeting', { name: selectedTeacherbot ? selectedTeacherbot.name : currentProfile?.name })}</h3>
@@ -4097,7 +4238,7 @@ REGOLE IMPORTANTI:
                       ) : selectedProfile && PROFILE_ICONS[selectedProfile] ? (
                         <div className="scale-75 text-white">{PROFILE_ICONS[selectedProfile]}</div>
                       ) : (
-                        <Bot className="h-4 w-4 text-white" />
+                        <AcademicAiIcon className="h-4 w-4 text-white" />
                       )}
                     </div>
                   ) : isPeerUser ? (
@@ -4163,7 +4304,7 @@ REGOLE IMPORTANTI:
                 ) : selectedProfile && PROFILE_ICONS[selectedProfile] ? (
                   <div className="text-white scale-75">{PROFILE_ICONS[selectedProfile]}</div>
                 ) : (
-                  <Bot className="h-5 w-5 text-white" />
+                  <AcademicAiIcon className="h-5 w-5 text-white" />
                 )}
               </div>
 	              <div className={`${chatBgIsDark ? 'bg-white/10 border border-white/15' : 'bg-white border border-slate-100'} shadow-sm rounded-xl rounded-bl-md px-4 py-3`}>

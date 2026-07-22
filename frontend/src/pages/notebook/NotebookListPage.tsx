@@ -231,7 +231,7 @@ function NotebookCard({
         <span className="line-clamp-2 text-base font-extrabold leading-tight text-slate-950">
           {notebook.title}
         </span>
-        <div className="mt-4 flex items-center justify-between gap-3 border-t border-slate-200/70 pt-3">
+        <div className="mt-4 flex items-center justify-between gap-3 border-t-2 border-slate-300/90 pt-3">
           <span className="text-xs font-semibold text-slate-500">
             {formatCellCount(notebook.cell_count, isEnglish)}
           </span>

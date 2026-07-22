@@ -9,6 +9,7 @@ export interface ChatMessage {
   sender_id: string
   sender_name?: string
   sender_avatar_url?: string
+  sender_is_class_owner?: boolean
   sender_accent?: string
   text: string
   attachments?: unknown[]
@@ -56,7 +57,7 @@ const DEFAULT_CHUNK_SIZE = 30
 const MAX_IN_MEMORY_MESSAGES = 300
 const PERSISTED_CACHE_TTL_MS = 10 * 60 * 1000
 
-const getPersistedCacheKey = (sessionId: string) => `chat:session:${sessionId}:v3`
+const getPersistedCacheKey = (sessionId: string) => `chat:session:${sessionId}:v4`
 
 interface UseSocketReturn {
   socket: Socket | null

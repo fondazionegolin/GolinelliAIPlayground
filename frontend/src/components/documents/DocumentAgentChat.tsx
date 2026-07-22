@@ -58,18 +58,30 @@ export default function DocumentAgentChat({ context, presentationContext, docume
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const { data: serverHealth } = useServerHealth()
   const activeContext = wholePresentation && presentationContext ? presentationContext : context
+  const activeContextId = activeContext?.id
+  const activeContextKind = activeContext?.kind
+  const activeContextLabel = activeContext?.label
+  const activeContextDetail = activeContext?.detail
   const lastContextId = useRef<string | null>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    if (!activeContext || activeContext.id === lastContextId.current) return
-    lastContextId.current = activeContext.id
-    setMessages((current) => [...current, {
-      id: crypto.randomUUID(),
-      role: 'assistant',
-      content: `Hai selezionato ${activeContext.label.toLowerCase()}: “${activeContext.detail}”. Vuoi chiedermi una modifica?`,
-    }])
-  }, [activeContext])
+    if (!activeContextId || !activeContextLabel || !activeContextDetail || activeContextId === lastContextId.current) return
+
+    const announceContext = () => {
+      lastContextId.current = activeContextId
+      setMessages((current) => [...current, {
+        id: crypto.randomUUID(),
+        role: 'assistant',
+        content: `Hai selezionato ${activeContextLabel.toLowerCase()}: “${activeContextDetail}”. Vuoi chiedermi una modifica?`,
+      }])
+    }
+
+    // Text selection changes repeatedly while the pointer is moving. Wait until it
+    // has been stable long enough to announce only the user's final selection.
+    const timer = window.setTimeout(announceContext, activeContextKind === 'selected_text' ? 800 : 0)
+    return () => window.clearTimeout(timer)
+  }, [activeContextId, activeContextKind, activeContextLabel, activeContextDetail])
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })

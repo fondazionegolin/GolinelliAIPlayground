@@ -9,7 +9,7 @@ import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import {
-  Plus, Minus, Trash2, Play, ChevronDown, ChevronUp,
+  Plus, Minus, Trash2, Play, ChevronDown,
   ListChecks, CloudLightning, MessageSquare, ThumbsUp, GripVertical, Pencil,
   Radio, FileBarChart2, HelpCircle, X, SkipForward, BarChart2, Smartphone,
   ArrowRight, CheckCircle2, Zap, Pause,
@@ -617,11 +617,29 @@ function SlideCard({
             <Trash2 className="h-4 w-4" />
           </button>
         </div>
-        {expanded ? <ChevronUp className="h-4 w-4 text-slate-400" /> : <ChevronDown className="h-4 w-4 text-slate-400" />}
+        <motion.span
+          animate={{ rotate: expanded ? 180 : 0 }}
+          transition={{ duration: 0.2, ease: 'easeInOut' }}
+          className="flex h-4 w-4 items-center justify-center text-slate-400"
+        >
+          <ChevronDown className="h-4 w-4" />
+        </motion.span>
       </div>
 
+      <AnimatePresence initial={false}>
       {expanded && (
-        <div className="border-t border-slate-100 px-4 py-4 bg-slate-50/50">
+        <motion.div
+          key="slide-editor"
+          initial={{ height: 0, opacity: 0 }}
+          animate={{ height: 'auto', opacity: 1 }}
+          exit={{ height: 0, opacity: 0 }}
+          transition={{
+            height: { duration: 0.24, ease: [0.4, 0, 0.2, 1] },
+            opacity: { duration: 0.16, ease: 'easeOut' },
+          }}
+          className="overflow-hidden"
+        >
+        <div className="border-t border-slate-100 bg-slate-50/50 px-4 py-4">
           <div className="space-y-4">
             {slide.type === 'mcq'      && <McqEditor slide={slide} onChange={onChange} />}
             {slide.type === 'wordwall' && <WordwallEditor slide={slide} onChange={onChange} />}
@@ -669,7 +687,9 @@ function SlideCard({
             </div>
           </div>
         </div>
+        </motion.div>
       )}
+      </AnimatePresence>
     </div>
     </Reorder.Item>
   )

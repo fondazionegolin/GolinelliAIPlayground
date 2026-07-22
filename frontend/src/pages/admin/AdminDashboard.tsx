@@ -122,7 +122,7 @@ export default function AdminDashboard() {
   }
 
   return (
-    <AppBackground className="min-h-screen" gradient="#f8fafc">
+    <AppBackground className="min-h-screen" gradient="#eef1f5">
       <div className="flex min-h-screen">
         <AdminSidebar
           expanded={sidebarExpanded}
@@ -168,7 +168,7 @@ export default function AdminDashboard() {
             </div>
           </header>
 
-          <main className="w-full flex-1 px-4 py-5 sm:px-6 lg:px-8 lg:py-7">
+          <main className="w-full flex-1 bg-[#eef1f5] px-4 py-5 sm:px-6 lg:px-8 lg:py-8">
             <div className="mx-auto w-full max-w-[1500px]">
               <Routes>
                 <Route index element={<AdminOverviewPage />} />
@@ -220,9 +220,9 @@ function AdminSidebar({
 
   return (
     <aside
-      className={`${mobile ? 'flex' : 'sticky top-0 hidden lg:flex'} ${widthClass} h-screen shrink-0 flex-col border-r border-slate-200/80 bg-white/90 shadow-[var(--shadow-sm)] backdrop-blur-xl transition-[width] duration-200`}
+      className={`${mobile ? 'flex' : 'sticky top-0 hidden lg:flex'} ${widthClass} h-screen shrink-0 flex-col border-r border-slate-800 bg-slate-950 shadow-xl transition-[width] duration-200`}
     >
-      <div className="flex h-16 items-center gap-3 border-b border-slate-100 px-4">
+      <div className="flex h-16 items-center gap-3 border-b border-slate-800 px-4">
         <button
           type="button"
           onClick={() => onNavigate('/admin')}
@@ -233,12 +233,12 @@ function AdminSidebar({
           {expanded && (
             <div className="min-w-0">
               <div className="flex items-center gap-2">
-                <span className="truncate text-sm font-bold text-slate-950">
+                <span className="truncate text-sm font-bold text-white">
                   Golinelli<span className="text-[var(--logo-pink)]">.ai</span>
                 </span>
-                <span className="rounded-full border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[9px] font-bold text-slate-500">ADMIN</span>
+                <span className="rounded-full border border-slate-700 bg-slate-900 px-1.5 py-0.5 text-[9px] font-bold text-slate-300">ADMIN</span>
               </div>
-              <p className="truncate text-[11px] text-slate-500">Centro di controllo</p>
+              <p className="truncate text-[11px] text-slate-400">Centro di controllo</p>
             </div>
           )}
         </button>
@@ -255,7 +255,7 @@ function AdminSidebar({
       </div>
 
       {!expanded && !mobile && (
-        <div className="flex justify-center border-b border-slate-100 px-3 py-3">
+        <div className="flex justify-center border-b border-slate-800 px-3 py-3">
           <IconButton
             tone="neutral"
             surface="outline"
@@ -279,15 +279,15 @@ function AdminSidebar({
               onClick={() => onNavigate(item.path)}
               className={`group relative flex h-11 w-full items-center gap-3 rounded-xl px-3 text-sm font-medium transition-all ${
                 isActive
-                  ? 'text-[var(--app-accent-text,var(--logo-pink))]'
-                  : 'text-slate-500 hover:bg-slate-50 hover:text-slate-900'
+                  ? 'text-white'
+                  : 'text-slate-400 hover:bg-slate-900 hover:text-white'
               } ${expanded ? 'justify-start' : 'justify-center'}`}
               title={item.label}
             >
               {isActive && (
                 <motion.span
                   layoutId={mobile ? 'admin-mobile-nav-indicator' : 'admin-sidebar-nav-indicator'}
-                  className="absolute inset-0 rounded-xl border border-[rgba(254,0,77,0.18)] bg-[rgba(254,0,77,0.075)] shadow-[var(--shadow-sm)]"
+                  className="absolute inset-0 rounded-xl border border-pink-500/35 bg-pink-500/15 shadow-sm"
                   transition={{ type: 'spring', stiffness: 420, damping: 34 }}
                 />
               )}
@@ -298,7 +298,7 @@ function AdminSidebar({
         })}
       </nav>
 
-      <div className="border-t border-slate-100 p-3">
+      <div className="border-t border-slate-800 p-3">
         <div className="space-y-1">
           <SidebarAction
             expanded={expanded}
@@ -345,7 +345,7 @@ function SidebarAction({
       density="compact"
       onClick={onClick}
       title={label}
-      className={`h-10 w-full rounded-xl px-3 ${expanded ? 'justify-start' : 'justify-center'} ${danger ? '' : 'text-slate-500'}`}
+      className={`h-10 w-full rounded-xl px-3 ${expanded ? 'justify-start' : 'justify-center'} ${danger ? '' : 'text-slate-400 hover:text-white'}`}
     >
       <Icon className="h-4 w-4 shrink-0" />
       {expanded && <span className="truncate text-sm">{label}</span>}

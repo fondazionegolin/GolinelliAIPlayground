@@ -134,6 +134,118 @@ const DEVICE_COPY = {
   },
 } as const
 
+interface SuggestionContext {
+  device: Props['device']
+  source: string
+  lastOutput: string
+  messages: NotebookTutorMessage[]
+  hasPendingProposals: boolean
+}
+
+function getContextualSuggestions({
+  device,
+  source,
+  lastOutput,
+  messages,
+  hasPendingProposals,
+}: SuggestionContext): string[] {
+  if (device !== 'python' && device !== 'p5js') return []
+
+  const normalizedSource = source.trim().toLowerCase()
+  const normalizedOutput = lastOutput.trim().toLowerCase()
+  const hasError = /error|exception|traceback|syntaxerror|referenceerror|typeerror/.test(normalizedOutput)
+  const hasConversation = messages.some(message => message.role === 'user')
+
+  if (hasPendingProposals) {
+    return [
+      'Spiegami il diff proposto con parole semplici, senza applicare altre modifiche.',
+      'Controlla se la modifica proposta può essere semplificata per un principiante.',
+      'Suggeriscimi una prova pratica per verificare che la modifica funzioni.',
+    ]
+  }
+
+  if (hasError) {
+    return device === 'python'
+      ? [
+          'Spiegami l’errore nell’ultimo output con parole semplici e indicami la riga da controllare.',
+          'Proponi la correzione minima per risolvere l’errore, commentando il codice.',
+          'Aiutami ad aggiungere dei print di controllo per capire dove nasce il problema.',
+        ]
+      : [
+          'Spiegami l’errore dello sketch con parole semplici e indicami dove intervenire.',
+          'Proponi la correzione minima per far ripartire lo sketch p5.js.',
+          'Aiutami a controllare i valori nel draw() usando console.log senza confondermi.',
+        ]
+  }
+
+  if (!normalizedSource) {
+    return device === 'python'
+      ? [
+          'Scrivi un esempio semplice con variabili, input e print, spiegandomi ogni riga.',
+          'Creiamo insieme un piccolo programma che calcola media, minimo e massimo.',
+          'Proponimi un esercizio Python facile e guidami un passaggio alla volta.',
+        ]
+      : [
+          'Crea uno sketch semplice con setup() e draw() e spiegami a cosa servono.',
+          'Disegna una forma che segue il mouse e spiegami il codice un passaggio alla volta.',
+          'Proponimi un piccolo esercizio creativo p5.js adatto a chi inizia.',
+        ]
+  }
+
+  if (device === 'python') {
+    if (/\bdef\s+\w+\s*\(/.test(normalizedSource)) {
+      return [
+        'Spiegami come funziona questa funzione e fammi vedere un esempio di chiamata.',
+        'Aiutami a provare questa funzione con tre casi semplici, incluso un caso limite.',
+        'Suggerisci un nome e dei commenti più chiari senza cambiare il comportamento.',
+      ]
+    }
+    if (/\b(for|while)\b/.test(normalizedSource)) {
+      return [
+        'Spiegami questo ciclo passo per passo mostrando come cambiano le variabili.',
+        'Aiutami ad aggiungere una condizione al ciclo senza renderlo troppo complesso.',
+        'Controlla se il ciclo può bloccarsi o saltare un elemento e spiegami perché.',
+      ]
+    }
+    if (/\b(input|list|append)\b|\[[^\]]*\]/.test(normalizedSource)) {
+      return [
+        'Spiegami come vengono raccolti e usati i dati in questo codice.',
+        'Aiutami a gestire un valore non valido inserito dall’utente.',
+        'Aggiungi un risultato utile, come conteggio, media, minimo o massimo.',
+      ]
+    }
+    return [
+      'Spiegami questo codice riga per riga come se fosse la mia prima lezione di Python.',
+      'Suggeriscimi una piccola modifica per sperimentare senza riscrivere tutto.',
+      hasConversation
+        ? 'Riprendi la mia ultima richiesta e proponimi il prossimo passo più semplice.'
+        : 'Controlla il codice e indicami cosa potrei migliorare mantenendolo semplice.',
+    ]
+  }
+
+  if (/\b(mouse|key|touch)/.test(normalizedSource)) {
+    return [
+      'Spiegami come questo sketch reagisce all’interazione dell’utente.',
+      'Aiutami ad aggiungere una seconda interazione semplice con mouse o tastiera.',
+      'Mostrami come evitare che la forma esca dai bordi del canvas.',
+    ]
+  }
+  if (/\b(ellipse|circle|rect|line|triangle|image)\s*\(/.test(normalizedSource)) {
+    return [
+      'Spiegami come vengono disegnate e posizionate le forme in questo sketch.',
+      'Aiutami ad animare una forma cambiando una sola variabile alla volta.',
+      'Aggiungi colori o dimensioni variabili e spiegami ogni modifica.',
+    ]
+  }
+  return [
+    'Spiegami cosa succede in setup() e draw() durante l’esecuzione dello sketch.',
+    'Suggeriscimi una piccola modifica visiva adatta a un principiante.',
+    hasConversation
+      ? 'Riprendi la mia ultima idea e proponimi il prossimo passo più semplice.'
+      : 'Controlla lo sketch e indicami come renderlo interattivo passo per passo.',
+  ]
+}
+
 export default function NotebookMicrobitAgentChat({
   notebookId,
   device = 'microbit',
@@ -147,15 +259,23 @@ export default function NotebookMicrobitAgentChat({
   onOpenVersions,
 }: Props) {
   const copy = DEVICE_COPY[device]
-  const beginnerSuggestions = device === 'python' ? [
-    'Scrivi un esempio semplice che usa variabili, input e print, spiegandomi ogni riga.',
-    'Aiutami a leggere una lista di numeri e calcolarne media, minimo e massimo.',
-    'Controlla il mio codice, spiegami l’errore con parole semplici e proponi una correzione.',
-  ] : []
   const [messages, setMessages] = useState<NotebookTutorMessage[]>(initialMessages)
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
+  const inputRef = useRef<HTMLTextAreaElement>(null)
+  const contextualSuggestions = getContextualSuggestions({
+    device,
+    source: currentCellSource,
+    lastOutput,
+    messages,
+    hasPendingProposals: pendingProposals.length > 0,
+  })
+
+  const selectSuggestion = (suggestion: string) => {
+    setInput(suggestion)
+    window.requestAnimationFrame(() => inputRef.current?.focus())
+  }
 
   useEffect(() => {
     setMessages(initialMessages)
@@ -297,20 +417,6 @@ export default function NotebookMicrobitAgentChat({
             <p className="mt-2 text-xs leading-5">
               {copy.intro}
             </p>
-            {beginnerSuggestions.length > 0 && (
-              <div className="mt-3 space-y-2">
-                {beginnerSuggestions.map(suggestion => (
-                  <button
-                    key={suggestion}
-                    type="button"
-                    onClick={() => setInput(suggestion)}
-                    className="w-full rounded-lg border border-indigo-200 bg-white px-3 py-2 text-left text-xs leading-5 text-indigo-800 transition hover:border-indigo-300 hover:bg-indigo-50"
-                  >
-                    {suggestion}
-                  </button>
-                ))}
-              </div>
-            )}
           </div>
         )}
 
@@ -365,6 +471,26 @@ export default function NotebookMicrobitAgentChat({
             </div>
           )}
 
+          {contextualSuggestions.length > 0 && !loading && (
+            <div className="rounded-xl border border-indigo-100 bg-indigo-50/70 p-3">
+              <p className="mb-2 text-[10px] font-bold uppercase tracking-wide text-indigo-600">
+                Puoi chiedere anche
+              </p>
+              <div className="space-y-2">
+                {contextualSuggestions.map(suggestion => (
+                  <button
+                    key={suggestion}
+                    type="button"
+                    onClick={() => selectSuggestion(suggestion)}
+                    className="w-full rounded-lg border border-indigo-200 bg-white px-3 py-2 text-left text-xs leading-5 text-indigo-800 transition hover:border-indigo-300 hover:bg-indigo-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+                  >
+                    {suggestion}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           <div ref={bottomRef} />
         </div>
       </div>
@@ -372,6 +498,7 @@ export default function NotebookMicrobitAgentChat({
       <div className="shrink-0 border-t border-slate-200 p-3">
         <div className="flex gap-2 rounded-xl border border-slate-200 bg-white p-2">
           <textarea
+            ref={inputRef}
             value={input}
             onChange={(event) => setInput(event.target.value)}
             onKeyDown={(event) => {

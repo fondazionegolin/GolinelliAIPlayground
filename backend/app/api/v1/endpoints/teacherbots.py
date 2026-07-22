@@ -955,7 +955,303 @@ async def get_teacherbot_conversation_messages_teacher(
     ]
 
 
-# ==================== STUDENT ENDPOINTS ====================
+# ==================== STUDENTBOT MANAGEMENT ====================
+
+async def _get_owned_studentbot(db: AsyncSession, student: SessionStudent, bot_id: UUID) -> Teacherbot:
+    result = await db.execute(
+        select(Teacherbot)
+        .where(Teacherbot.id == bot_id)
+        .where(Teacherbot.creator_student_id == student.id)
+        .where(Teacherbot.tenant_id == student.tenant_id)
+    )
+    bot = result.scalar_one_or_none()
+    if not bot:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Studentbot non trovato")
+    return bot
+
+
+async def _student_credit_context(db: AsyncSession, student: SessionStudent):
+    result = await db.execute(
+        select(Session, Class)
+        .join(Class, Session.class_id == Class.id)
+        .where(Session.id == student.session_id)
+    )
+    row = result.first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Session not found")
+    return row
+
+
+@router.get("/student/studentbots", response_model=list[TeacherbotListResponse])
+async def list_studentbots(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    student: Annotated[SessionStudent, Depends(get_current_student)],
+):
+    result = await db.execute(
+        select(
+            Teacherbot,
+            func.count(TeacherbotConversation.id.distinct()).label("conversation_count"),
+        )
+        .outerjoin(TeacherbotConversation, TeacherbotConversation.teacherbot_id == Teacherbot.id)
+        .where(Teacherbot.creator_student_id == student.id)
+        .where(Teacherbot.tenant_id == student.tenant_id)
+        .group_by(Teacherbot.id)
+        .order_by(Teacherbot.updated_at.desc())
+    )
+    return [
+        TeacherbotListResponse(
+            id=bot.id,
+            name=bot.name,
+            synopsis=bot.synopsis,
+            icon=bot.icon,
+            color=bot.color,
+            status=bot.status.value,
+            is_proactive=bot.is_proactive,
+            enable_reporting=False,
+            created_at=bot.created_at,
+            updated_at=bot.updated_at,
+            publication_count=0,
+            conversation_count=conversation_count,
+        )
+        for bot, conversation_count in result.all()
+    ]
+
+
+@router.post("/student/studentbots", response_model=TeacherbotResponse)
+async def create_studentbot(
+    request: TeacherbotCreate,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    student: Annotated[SessionStudent, Depends(get_current_student)],
+):
+    bot = Teacherbot(
+        tenant_id=student.tenant_id,
+        teacher_id=None,
+        creator_student_id=student.id,
+        name=request.name,
+        synopsis=request.synopsis,
+        description=request.description,
+        icon=request.icon,
+        color=request.color,
+        system_prompt=request.system_prompt,
+        is_proactive=request.is_proactive,
+        proactive_message=request.proactive_message,
+        enable_live_voice=request.enable_live_voice,
+        enable_reporting=False,
+        report_prompt=None,
+        llm_provider=request.llm_provider,
+        llm_model=normalize_llm_model(request.llm_provider, request.llm_model),
+        temperature=request.temperature,
+        status=TeacherbotStatus.DRAFT,
+    )
+    db.add(bot)
+    await db.commit()
+    await db.refresh(bot)
+    return bot
+
+
+@router.get("/student/studentbots/{studentbot_id}", response_model=TeacherbotResponse)
+async def get_studentbot(
+    studentbot_id: UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    student: Annotated[SessionStudent, Depends(get_current_student)],
+):
+    return await _get_owned_studentbot(db, student, studentbot_id)
+
+
+@router.patch("/student/studentbots/{studentbot_id}", response_model=TeacherbotResponse)
+async def update_studentbot(
+    studentbot_id: UUID,
+    request: TeacherbotUpdate,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    student: Annotated[SessionStudent, Depends(get_current_student)],
+):
+    bot = await _get_owned_studentbot(db, student, studentbot_id)
+    for field in (
+        "name", "synopsis", "description", "icon", "color", "system_prompt",
+        "is_proactive", "proactive_message", "enable_live_voice", "llm_provider", "temperature",
+    ):
+        value = getattr(request, field)
+        if value is not None:
+            setattr(bot, field, value)
+    if request.llm_model is not None:
+        bot.llm_model = normalize_llm_model(request.llm_provider or bot.llm_provider, request.llm_model)
+    if request.status in (TeacherbotStatus.DRAFT.value, TeacherbotStatus.TESTING.value, TeacherbotStatus.ARCHIVED.value):
+        bot.status = TeacherbotStatus(request.status)
+    bot.enable_reporting = False
+    bot.report_prompt = None
+    await db.commit()
+    await db.refresh(bot)
+    return bot
+
+
+@router.delete("/student/studentbots/{studentbot_id}")
+async def delete_studentbot(
+    studentbot_id: UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    student: Annotated[SessionStudent, Depends(get_current_student)],
+):
+    bot = await _get_owned_studentbot(db, student, studentbot_id)
+    await db.delete(bot)
+    await db.commit()
+    return {"message": "Studentbot eliminato"}
+
+
+@router.post("/student/studentbots/{studentbot_id}/test", response_model=TeacherbotTestResponse)
+async def test_studentbot(
+    studentbot_id: UUID,
+    request: TeacherbotTestMessage,
+    http_request: Request,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    student: Annotated[SessionStudent, Depends(get_current_student)],
+):
+    bot = await _get_owned_studentbot(db, student, studentbot_id)
+    session_obj, class_obj = await _student_credit_context(db, student)
+    allowed = await credit_service.check_availability(
+        db, student.tenant_id, 0.0001,
+        teacher_id=class_obj.teacher_id,
+        class_id=class_obj.id,
+        session_id=session_obj.id,
+        student_id=student.id,
+    )
+    if not allowed:
+        raise HTTPException(status_code=402, detail="Credit limit exceeded")
+
+    messages = [
+        {"role": msg.get("role", "user"), "content": msg.get("content", "")}
+        for msg in (request.history or [])
+    ]
+    messages.append({"role": "user", "content": request.content})
+    kb_context = await _build_kb_context(db, bot, request.content, student.tenant_id)
+    system_prompt = request.system_prompt if request.system_prompt is not None else bot.system_prompt
+    if kb_context:
+        system_prompt = f"{system_prompt}\n\n{kb_context}"
+    system_prompt = apply_output_language_instruction(system_prompt, get_ui_language(http_request))
+    llm_response = await llm_service.generate(
+        messages=messages,
+        system_prompt=system_prompt,
+        provider=request.llm_provider or bot.llm_provider,
+        model=request.llm_model or bot.llm_model,
+        temperature=request.temperature if request.temperature is not None else bot.temperature,
+    )
+    cost = credit_service.calculate_cost_for_model(
+        llm_response.provider, llm_response.model,
+        llm_response.prompt_tokens, llm_response.completion_tokens,
+    )
+    await credit_service.track_usage(
+        db, student.tenant_id, llm_response.provider, llm_response.model, cost,
+        enrich_usage_with_environmental_impact(
+            {
+                "type": "studentbot_test",
+                "bot_id": str(bot.id),
+                "prompt_tokens": llm_response.prompt_tokens,
+                "completion_tokens": llm_response.completion_tokens,
+            },
+            provider=llm_response.provider,
+            model=llm_response.model,
+        ),
+        teacher_id=class_obj.teacher_id,
+        class_id=class_obj.id,
+        session_id=session_obj.id,
+        student_id=student.id,
+    )
+    if bot.status == TeacherbotStatus.DRAFT:
+        bot.status = TeacherbotStatus.TESTING
+        await db.commit()
+    return TeacherbotTestResponse(
+        content=llm_response.content,
+        provider=llm_response.provider,
+        model=llm_response.model,
+        token_usage_json=enrich_usage_with_environmental_impact(
+            {
+                "prompt_tokens": llm_response.prompt_tokens,
+                "completion_tokens": llm_response.completion_tokens,
+            },
+            provider=llm_response.provider,
+            model=llm_response.model,
+        ),
+    )
+
+
+@router.post("/student/studentbots/{studentbot_id}/kb")
+async def upload_studentbot_kb_document(
+    studentbot_id: UUID,
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+    student: SessionStudent = Depends(get_current_student),
+):
+    await _get_owned_studentbot(db, student, studentbot_id)
+    file_bytes = await file.read()
+    if len(file_bytes) > 20 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="File troppo grande (max 20 MB)")
+    filename = file.filename or "document"
+    mime_type = file.content_type or "application/octet-stream"
+    is_data = filename.lower().endswith((".xlsx", ".xls", ".csv"))
+    analysis = await document_processor.process(
+        file_bytes=file_bytes,
+        filename=filename,
+        mime_type=mime_type,
+        llm_service=None if is_data else llm_service,
+        analyze_visuals=not is_data,
+    )
+    if not analysis.rag_segments:
+        raise HTTPException(status_code=400, detail="Impossibile estrarre contenuto dal documento.")
+    doc = RAGDocument(
+        tenant_id=student.tenant_id,
+        scope=Scope.USER,
+        owner_student_id=student.id,
+        teacherbot_id=studentbot_id,
+        file_id=None,
+        title=filename,
+        doc_type=filename.rsplit(".", 1)[-1].lower() if "." in filename else "doc",
+        status=DocumentStatus.QUEUED,
+    )
+    db.add(doc)
+    await db.flush()
+    chunk_count = await rag_service.ingest_document(db, doc, analysis.rag_segments or analysis.raw_text)
+    return {"id": str(doc.id), "title": doc.title, "doc_type": doc.doc_type, "status": doc.status, "chunk_count": chunk_count}
+
+
+@router.get("/student/studentbots/{studentbot_id}/kb")
+async def list_studentbot_kb_documents(
+    studentbot_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    student: SessionStudent = Depends(get_current_student),
+):
+    await _get_owned_studentbot(db, student, studentbot_id)
+    result = await db.execute(
+        select(RAGDocument)
+        .where(RAGDocument.teacherbot_id == studentbot_id)
+        .where(RAGDocument.owner_student_id == student.id)
+        .order_by(RAGDocument.created_at.asc())
+    )
+    return [
+        {"id": str(doc.id), "title": doc.title, "doc_type": doc.doc_type, "status": doc.status, "created_at": doc.created_at.isoformat()}
+        for doc in result.scalars().all()
+    ]
+
+
+@router.delete("/student/studentbots/{studentbot_id}/kb/{doc_id}", status_code=204)
+async def delete_studentbot_kb_document(
+    studentbot_id: UUID,
+    doc_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    student: SessionStudent = Depends(get_current_student),
+):
+    await _get_owned_studentbot(db, student, studentbot_id)
+    result = await db.execute(
+        select(RAGDocument)
+        .where(RAGDocument.id == doc_id)
+        .where(RAGDocument.teacherbot_id == studentbot_id)
+        .where(RAGDocument.owner_student_id == student.id)
+    )
+    doc = result.scalar_one_or_none()
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+    await db.delete(doc)
+    await db.commit()
+
+
+# ==================== STUDENT CONVERSATION ENDPOINTS ====================
 
 @router.get("/student/teacherbots", response_model=list[StudentTeacherbotResponse])
 async def list_available_teacherbots(
@@ -969,7 +1265,7 @@ async def list_available_teacherbots(
     )
     session = session_result.scalar_one()
 
-    # Get active publications for this class or for this student individually
+    # Get active publications for this class or for this student individually.
     result = await db.execute(
         select(Teacherbot)
         .distinct()
@@ -981,7 +1277,15 @@ async def list_available_teacherbots(
         .where(TeacherbotPublication.is_active == True)
         .where(Teacherbot.status == TeacherbotStatus.PUBLISHED)
     )
-    bots = result.scalars().all()
+    published_bots = result.scalars().all()
+    own_result = await db.execute(
+        select(Teacherbot)
+        .where(Teacherbot.creator_student_id == student.id)
+        .where(Teacherbot.tenant_id == student.tenant_id)
+        .where(Teacherbot.status != TeacherbotStatus.ARCHIVED)
+    )
+    own_bots = own_result.scalars().all()
+    bots = list({bot.id: bot for bot in [*published_bots, *own_bots]}.values())
 
     return [
         StudentTeacherbotResponse(
@@ -994,6 +1298,7 @@ async def list_available_teacherbots(
             is_proactive=bot.is_proactive,
             proactive_message=bot.proactive_message if bot.is_proactive else None,
             enable_live_voice=bot.enable_live_voice,
+            is_studentbot=bot.creator_student_id == student.id,
         )
         for bot in bots
     ]
@@ -1012,7 +1317,16 @@ async def start_teacherbot_conversation(
     )
     session = session_result.scalar_one()
 
-    result = await db.execute(
+    own_result = await db.execute(
+        select(Teacherbot)
+        .where(Teacherbot.id == teacherbot_id)
+        .where(Teacherbot.creator_student_id == student.id)
+        .where(Teacherbot.tenant_id == student.tenant_id)
+        .where(Teacherbot.status != TeacherbotStatus.ARCHIVED)
+    )
+    bot = own_result.scalar_one_or_none()
+    if not bot:
+        result = await db.execute(
         select(Teacherbot)
         .distinct()
         .join(TeacherbotPublication, TeacherbotPublication.teacherbot_id == Teacherbot.id)
@@ -1023,8 +1337,8 @@ async def start_teacherbot_conversation(
         ))
         .where(TeacherbotPublication.is_active == True)
         .where(Teacherbot.status == TeacherbotStatus.PUBLISHED)
-    )
-    bot = result.scalar_one_or_none()
+        )
+        bot = result.scalar_one_or_none()
     if not bot:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Teacherbot not available")
 

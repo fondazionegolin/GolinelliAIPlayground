@@ -25,6 +25,7 @@ import {
   Palette,
   PanelLeftClose,
   PanelLeftOpen,
+  Paperclip,
   Plus,
   RefreshCw,
   RotateCcw,
@@ -227,24 +228,24 @@ function CodingModelSelector({
   if (!selected) return null
 
   return (
-    <div ref={rootRef} className="relative min-w-0 flex-1">
+    <div ref={rootRef} className={compact ? 'relative inline-block shrink-0' : 'relative min-w-0 flex-1'}>
       <button
         type="button"
         onClick={() => setOpen((value) => !value)}
-        className={`${compact ? 'h-8 rounded-full px-2.5 text-xs' : 'h-11 rounded-xl px-3 text-sm'} flex w-full items-center gap-2 border border-[var(--logo-violet-22)] bg-[var(--logo-violet-10)] font-semibold text-[var(--logo-violet-strong)] outline-none transition hover:border-[var(--logo-violet)] focus-visible:ring-2 focus-visible:ring-[var(--logo-violet-22)]`}
+        className={`${compact ? 'h-7 w-auto max-w-[190px] rounded-full px-2.5 text-xs' : 'h-11 w-full rounded-xl px-3 text-sm'} flex items-center gap-1.5 border border-[var(--logo-violet-22)] bg-[var(--logo-violet-10)] font-semibold text-[var(--logo-violet-strong)] outline-none transition hover:border-[var(--logo-violet)] focus-visible:ring-2 focus-visible:ring-[var(--logo-violet-22)]`}
         aria-haspopup="listbox"
         aria-expanded={open}
         title="Modello usato per generare il codice"
       >
         <ModelProviderIcon provider={selected.provider} className={compact ? 'h-3.5 w-3.5' : 'h-4 w-4'} />
-        <span className="min-w-0 flex-1 truncate text-left">{selected.label} · {selected.hint}</span>
+        <span className="min-w-0 flex-1 truncate text-left">{compact ? selected.label : `${selected.label} · ${selected.hint}`}</span>
         <ChevronDown className={`${compact ? 'h-3.5 w-3.5' : 'h-4 w-4'} shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
       {open && (
         <div
           role="listbox"
           aria-label="Seleziona il modello"
-          className={`${compact ? 'bottom-full mb-2' : 'top-full mt-2'} absolute left-0 z-50 w-full min-w-[17rem] overflow-hidden rounded-2xl border border-[color:var(--border-subtle)] bg-white p-1.5 shadow-[var(--shadow-lg)]`}
+          className={`${compact ? 'bottom-full right-0 mb-2' : 'top-full left-0 mt-2'} absolute z-50 w-full min-w-[17rem] overflow-hidden rounded-2xl border border-[color:var(--border-subtle)] bg-white p-1.5 shadow-[var(--shadow-lg)]`}
         >
           {options.map((option) => {
             const active = option.key === selected.key
@@ -276,6 +277,28 @@ function CodingModelSelector({
     </div>
   )
 }
+// Resizes an image file/blob to a JPEG data URL capped at `maxDimension` on its longest side, so
+// pasted screenshots stay a few hundred KB instead of multi-megabyte PNGs.
+function downscaleImageToDataUrl(blob: Blob, maxDimension = 1280, quality = 0.82): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const img = new Image()
+    const objectUrl = URL.createObjectURL(blob)
+    img.onload = () => {
+      URL.revokeObjectURL(objectUrl)
+      const scale = Math.min(1, maxDimension / Math.max(img.width, img.height))
+      const canvas = document.createElement('canvas')
+      canvas.width = Math.max(1, Math.round(img.width * scale))
+      canvas.height = Math.max(1, Math.round(img.height * scale))
+      const ctx = canvas.getContext('2d')
+      if (!ctx) { reject(new Error('canvas 2d context unavailable')); return }
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
+      resolve(canvas.toDataURL('image/jpeg', quality))
+    }
+    img.onerror = () => { URL.revokeObjectURL(objectUrl); reject(new Error('immagine non valida')) }
+    img.src = objectUrl
+  })
+}
+
 const CODING_TUTORIAL_STORAGE_KEY = 'coding_lab_tutorial_seen_v1'
 function composeDescription(title: string, prompt: string, answersText: string) {
   const spec = answersText ? `\n## Specifiche dal colloquio\n${answersText}\n` : ''
@@ -293,6 +316,11 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
   const [title, setTitle] = useState('')
   const [prompt, setPrompt] = useState('')
   const [message, setMessage] = useState('')
+  // Screenshots pasted (Ctrl+V) or picked into the prompt box, downscaled client-side and sent as
+  // data URLs — the backend describes them with a vision model so any codegen model can use them.
+  const [attachedImages, setAttachedImages] = useState<{ id: string; dataUrl: string; name: string }[]>([])
+  const attachmentFileInputRef = useRef<HTMLInputElement>(null)
+  const MAX_ATTACHMENTS = 3
   const [files, setFiles] = useState<GeneratedFile[]>([])
   const [selectedPath, setSelectedPath] = useState('index.html')
   const [loading, setLoading] = useState(true)
@@ -947,7 +975,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
     }
   }
 
-  const generateCode = async (projectId: string, nextPrompt?: string, filesOverride?: GeneratedFile[], isAutoFix = false) => {
+  const generateCode = async (projectId: string, nextPrompt?: string, filesOverride?: GeneratedFile[], isAutoFix = false, attachmentsOverride?: string[]) => {
     setGenerating(true)
     setError(null)
     setLiveReasoning('')
@@ -974,6 +1002,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
           prompt: nextPrompt,
           files: baseFiles.length ? baseFiles : undefined,
           model_key: modelKey,
+          attachments: attachmentsOverride?.length ? attachmentsOverride : undefined,
         }),
       })
       if (!response.ok || !response.body) throw new Error('La generazione non è partita.')
@@ -1077,7 +1106,9 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
     setError(null)
     try {
       const nextPrompt = message.trim()
+      const nextAttachments = attachedImages.map((a) => a.dataUrl)
       setMessage('')
+      setAttachedImages([])
       // Show the student's message immediately; the generate-stream endpoint persists it as the
       // codegen request, and loadProjectDetail reconciles this optimistic bubble afterwards.
       const optimistic: CodingMessage = {
@@ -1086,14 +1117,50 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
         role: 'user',
         content: nextPrompt,
         created_at: new Date().toISOString(),
+        metadata_json: nextAttachments.length ? { attachments: nextAttachments } : undefined,
       }
       setProjectDetail((prev) => prev ? { ...prev, messages: [...prev.messages, optimistic] } : prev)
-      await generateCode(selectedProjectId, nextPrompt)
+      await generateCode(selectedProjectId, nextPrompt, undefined, false, nextAttachments)
     } catch (err: any) {
       setError(err?.response?.data?.detail || 'Impossibile salvare il messaggio.')
     } finally {
       setSending(false)
     }
+  }
+
+  const addAttachments = async (blobs: (File | Blob)[]) => {
+    const room = Math.max(0, MAX_ATTACHMENTS - attachedImages.length)
+    if (room <= 0) return
+    const accepted = blobs.filter((b) => b.type.startsWith('image/')).slice(0, room)
+    for (const blob of accepted) {
+      try {
+        const dataUrl = await downscaleImageToDataUrl(blob)
+        setAttachedImages((prev) => prev.length >= MAX_ATTACHMENTS ? prev : [
+          ...prev,
+          { id: `${Date.now()}-${Math.random().toString(36).slice(2)}`, dataUrl, name: (blob as File).name || 'screenshot.png' },
+        ])
+      } catch {
+        setError('Non è stato possibile leggere una delle immagini allegate.')
+      }
+    }
+  }
+
+  const handlePromptPaste = (event: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const items = Array.from(event.clipboardData?.items || [])
+    const imageFiles = items.filter((item) => item.type.startsWith('image/')).map((item) => item.getAsFile()).filter((f): f is File => !!f)
+    if (imageFiles.length === 0) return
+    event.preventDefault()
+    void addAttachments(imageFiles)
+  }
+
+  const handleAttachmentFilePick = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const picked = Array.from(event.target.files || [])
+    event.target.value = ''
+    if (picked.length) void addAttachments(picked)
+  }
+
+  const removeAttachment = (id: string) => {
+    setAttachedImages((prev) => prev.filter((a) => a.id !== id))
   }
 
   const saveCurrentFilesVersion = async (reason: string) => {
@@ -1657,11 +1724,45 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
               )}
             </div>
             {!createPanelOpen && <div className="border-t border-slate-100 bg-white/90 p-3">
-              <div className="mb-2 flex items-center gap-2">
+              <div className="mb-2 flex items-center justify-end gap-2">
                 <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Modello</span>
                 <CodingModelSelector compact value={modelKey} options={modelOptions} onChange={handleModelChange} />
               </div>
-              <div className="flex items-end gap-2 rounded-[24px] border border-slate-200 bg-white px-3 py-2 shadow-sm transition-colors focus-within:border-slate-300">
+              {attachedImages.length > 0 && (
+                <div className="mb-2 flex flex-wrap gap-2">
+                  {attachedImages.map((att) => (
+                    <div key={att.id} className="group relative h-14 w-14 overflow-hidden rounded-lg border border-slate-200">
+                      <img src={att.dataUrl} alt={att.name} className="h-full w-full object-cover" />
+                      <button
+                        type="button"
+                        onClick={() => removeAttachment(att.id)}
+                        className="absolute right-0.5 top-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-black/60 text-white opacity-80 hover:opacity-100"
+                        title="Rimuovi allegato"
+                      >
+                        <X className="h-2.5 w-2.5" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <div className="flex items-center gap-2 rounded-[24px] border border-slate-200 bg-white px-3 py-2 shadow-sm transition-colors focus-within:border-slate-300">
+                <input
+                  ref={attachmentFileInputRef}
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  className="hidden"
+                  onChange={handleAttachmentFilePick}
+                />
+                <button
+                  type="button"
+                  onClick={() => attachmentFileInputRef.current?.click()}
+                  disabled={!selectedProjectId || attachedImages.length >= MAX_ATTACHMENTS}
+                  title="Allega uno screenshot (o incollalo con Ctrl+V nel campo di testo)"
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600 disabled:opacity-40"
+                >
+                  <Paperclip className="h-4 w-4" />
+                </button>
                 <textarea
                   value={message}
                   onChange={(event) => setMessage(event.target.value)}
@@ -1671,6 +1772,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
                       handleSendMessage()
                     }
                   }}
+                  onPaste={handlePromptPaste}
                   disabled={!selectedProjectId}
                   rows={2}
                   placeholder="Chiedi una modifica al progetto..."
@@ -2689,6 +2791,13 @@ function ConversationBubble({ item, onShowFileDiff }: { item: CodingMessage; onS
         <div className={`mb-1 text-[11px] font-black uppercase tracking-wide ${isUser ? 'text-[var(--logo-blue-strong)]/70' : 'text-[color:var(--text-secondary)]'}`}>
           {label}
         </div>
+        {Array.isArray(item.metadata_json?.attachments) && item.metadata_json.attachments.length > 0 && (
+          <div className="mb-2 flex flex-wrap gap-1.5">
+            {item.metadata_json.attachments.map((src: string, idx: number) => (
+              <img key={idx} src={src} alt={`Allegato ${idx + 1}`} className="h-14 w-14 rounded-lg border border-white/40 object-cover" />
+            ))}
+          </div>
+        )}
         <p className="whitespace-pre-wrap text-xs leading-relaxed">{item.content}</p>
       </div>
     </div>

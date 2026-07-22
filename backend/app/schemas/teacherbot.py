@@ -44,7 +44,8 @@ class TeacherbotUpdate(BaseModel):
 class TeacherbotResponse(BaseModel):
     id: UUID
     tenant_id: UUID
-    teacher_id: UUID
+    teacher_id: Optional[UUID] = None
+    creator_student_id: Optional[UUID] = None
     name: str
     synopsis: Optional[str]
     description: Optional[str]
@@ -218,6 +219,7 @@ class StudentTeacherbotResponse(BaseModel):
     is_proactive: bool
     proactive_message: Optional[str] = None
     enable_live_voice: bool = False
+    is_studentbot: bool = False
 
     class Config:
         from_attributes = True

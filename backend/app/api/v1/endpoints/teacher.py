@@ -17,16 +17,19 @@ from app.core.permissions import (
     teacher_can_access_session,
     teacher_is_class_owner,
     teacher_is_session_owner,
+    teacher_is_session_creator,
     get_class_with_access_check,
     get_session_with_access_check,
 )
 from app.api.deps import get_current_teacher
 from app.models.user import User
+from app.models.tenant import Tenant
+from app.models.teacher_school import TeacherSchoolInvitation, TeacherSchoolMembership
 from app.models.session import Class, Session, SessionModule, SessionStudent
 from app.models.invitation import ClassTeacher, ClassInvitation, SessionTeacher, SessionInvitation
 from app.models.llm import AuditEvent
 from app.models.chat import ChatRoom, ChatMessage
-from app.models.enums import SessionStatus, ChatRoomType, SenderType, InvitationStatus, UserRole
+from app.models.enums import SessionStatus, ChatRoomType, SenderType, InvitationStatus, UserRole, TenantType
 from app.models.task import Task, TaskSubmission, TaskStatus, TaskType
 from app.models.document_draft import DocumentDraft, DocumentDraftVersion
 from app.models.session_canvas import SessionCanvas
@@ -47,6 +50,7 @@ from app.schemas.invitation import (
     ClassTeacherResponse,
     SessionTeacherResponse,
     InvitationsListResponse,
+    SchoolInvitationResponse,
     TeacherBasicInfo,
 )
 from app.services.education_level import SCHOOL_GRADE_OPTIONS
@@ -61,6 +65,57 @@ from app.core.config import settings
 router = APIRouter()
 TEACHER_ACCENTS = {"cyan", "orange", "black", "red"}
 SCHOOL_GRADES = set(SCHOOL_GRADE_OPTIONS)
+
+
+async def _find_teacher_for_school_context(
+    db: AsyncSession, email: str, tenant_id: UUID, class_owner_id: UUID
+) -> User | None:
+    """Resolve an invitee and require membership in the class/session school.
+
+    Legacy INDIVIDUAL tenants keep the old primary-tenant behavior. SCHOOL tenants
+    use the explicit many-to-many membership, so one teacher can collaborate in
+    classes belonging to any school they have been assigned to.
+    """
+    invitee = (await db.execute(
+        select(User).where(
+            User.email == email,
+            User.role.in_([UserRole.TEACHER, UserRole.ADMIN]),
+            User.is_active == True,
+        )
+    )).scalar_one_or_none()
+    if not invitee:
+        return None
+
+    # Platform administrators can collaborate in any class/session without a
+    # school membership. Teachers remain constrained to the class institution.
+    if invitee.role == UserRole.ADMIN:
+        return invitee
+
+    target_tenant = (await db.execute(select(Tenant).where(Tenant.id == tenant_id))).scalar_one_or_none()
+    if target_tenant and target_tenant.tenant_type == TenantType.SCHOOL:
+        membership = (await db.execute(
+            select(TeacherSchoolMembership.id).where(
+                TeacherSchoolMembership.teacher_id == invitee.id,
+                TeacherSchoolMembership.school_tenant_id == tenant_id,
+            )
+        )).scalar_one_or_none()
+        return invitee if membership else None
+    owner_school_ids = set((await db.execute(
+        select(TeacherSchoolMembership.school_tenant_id).where(
+            TeacherSchoolMembership.teacher_id == class_owner_id
+        )
+    )).scalars().all())
+    if owner_school_ids:
+        shared_school = (await db.execute(
+            select(TeacherSchoolMembership.id).where(
+                TeacherSchoolMembership.teacher_id == invitee.id,
+                TeacherSchoolMembership.school_tenant_id.in_(owner_school_ids),
+            ).limit(1)
+        )).scalar_one_or_none()
+        return invitee if shared_school else None
+
+    # Compatibility for classes created before explicit school memberships.
+    return invitee if invitee.tenant_id == tenant_id else None
 
 
 class DocumentVersionCreate(BaseModel):
@@ -363,9 +418,25 @@ class ClassWithRoleResponse(BaseModel):
     session_count: int = 0
     role: str  # 'owner' or 'invited'
     owner_name: Optional[str] = None
+    school_tenant_id: Optional[UUID] = None
+    school_name: Optional[str] = None
 
     class Config:
         from_attributes = True
+
+
+@router.get("/schools")
+async def list_teacher_schools(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    teacher: Annotated[User, Depends(get_current_teacher)],
+):
+    rows = (await db.execute(
+        select(Tenant)
+        .join(TeacherSchoolMembership, TeacherSchoolMembership.school_tenant_id == Tenant.id)
+        .where(TeacherSchoolMembership.teacher_id == teacher.id)
+        .order_by(Tenant.name.asc())
+    )).scalars().all()
+    return [{"id": str(school.id), "name": school.name, "slug": school.slug} for school in rows]
 
 
 @router.get("/classes")
@@ -379,7 +450,6 @@ async def list_classes(
     owned_query = (
         select(Class)
         .where(Class.teacher_id == teacher.id)
-        .where(Class.tenant_id == teacher.tenant_id)
         .order_by(Class.created_at.desc())
     )
     if not include_archived:
@@ -399,6 +469,7 @@ async def list_classes(
             "archived_at": cls.archived_at,
             "role": "owner",
             "owner_name": None,
+            "school_tenant_id": cls.school_tenant_id,
         })
 
     # Get shared classes (via ClassTeacher)
@@ -407,7 +478,6 @@ async def list_classes(
         .join(ClassTeacher, ClassTeacher.class_id == Class.id)
         .join(User, Class.teacher_id == User.id)
         .where(ClassTeacher.teacher_id == teacher.id)
-        .where(Class.tenant_id == teacher.tenant_id)
         .order_by(Class.created_at.desc())
     )
     if not include_archived:
@@ -425,6 +495,7 @@ async def list_classes(
             "archived_at": cls.archived_at,
             "role": "invited",
             "owner_name": owner_name,
+            "school_tenant_id": cls.school_tenant_id,
         })
 
     class_ids = [cls["id"] for cls in classes_response]
@@ -440,6 +511,16 @@ async def list_classes(
 
     for cls in classes_response:
         cls["session_count"] = session_counts.get(cls["id"], 0)
+
+    school_ids = {cls["school_tenant_id"] for cls in classes_response if cls.get("school_tenant_id")}
+    school_names = {}
+    if school_ids:
+        school_names = {
+            school.id: school.name
+            for school in (await db.execute(select(Tenant).where(Tenant.id.in_(school_ids)))).scalars().all()
+        }
+    for cls in classes_response:
+        cls["school_name"] = school_names.get(cls.get("school_tenant_id"))
 
     # Sort by created_at desc
     classes_response.sort(key=lambda x: x["created_at"], reverse=True)
@@ -507,8 +588,17 @@ async def create_class(
     if request.school_grade and request.school_grade not in SCHOOL_GRADES:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid school_grade")
 
+    if request.school_tenant_id:
+        membership = (await db.execute(select(TeacherSchoolMembership.id).where(
+            TeacherSchoolMembership.teacher_id == teacher.id,
+            TeacherSchoolMembership.school_tenant_id == request.school_tenant_id,
+        ))).scalar_one_or_none()
+        if not membership:
+            raise HTTPException(status_code=403, detail="Non appartieni all'istituto selezionato")
+
     class_ = Class(
         tenant_id=teacher.tenant_id,
+        school_tenant_id=request.school_tenant_id,
         teacher_id=teacher.id,
         name=request.name,
         school_grade=request.school_grade,
@@ -536,6 +626,15 @@ async def update_class(
 
     class_.name = request.name
     class_.school_grade = request.school_grade
+    if request.school_tenant_id != class_.school_tenant_id:
+        if request.school_tenant_id:
+            membership = (await db.execute(select(TeacherSchoolMembership.id).where(
+                TeacherSchoolMembership.teacher_id == teacher.id,
+                TeacherSchoolMembership.school_tenant_id == request.school_tenant_id,
+            ))).scalar_one_or_none()
+            if not membership:
+                raise HTTPException(status_code=403, detail="Non appartieni all'istituto selezionato")
+        class_.school_tenant_id = request.school_tenant_id
     await db.commit()
     await db.refresh(class_)
     return class_
@@ -581,8 +680,9 @@ async def create_session(
         join_code = generate_join_code()
     
     session = Session(
-        tenant_id=teacher.tenant_id,
+        tenant_id=class_.tenant_id,
         class_id=class_id,
+        created_by_teacher_id=teacher.id,
         title=request.title,
         join_code=join_code,
         is_persistent=request.is_persistent,
@@ -595,7 +695,7 @@ async def create_session(
     # Create default modules
     for module_key in DEFAULT_MODULES:
         module = SessionModule(
-            tenant_id=teacher.tenant_id,
+            tenant_id=class_.tenant_id,
             session_id=session.id,
             module_key=module_key,
             is_enabled=True,
@@ -1144,9 +1244,8 @@ async def delete_session(
             detail="Confirmation required. Set confirm=true to delete.",
         )
 
-    # Only owner can delete sessions
-    if not await teacher_is_session_owner(db, teacher, session_id):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only the class owner can delete sessions")
+    if not await teacher_is_session_creator(db, teacher, session_id):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Solo il docente che ha creato la sessione può archiviarla")
 
     result = await db.execute(select(Session).where(Session.id == session_id))
     session = result.scalar_one_or_none()
@@ -1178,8 +1277,8 @@ async def restore_session(
     db: Annotated[AsyncSession, Depends(get_db)],
     teacher: Annotated[User, Depends(get_current_teacher)],
 ):
-    if not await teacher_is_session_owner(db, teacher, session_id):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only the class owner can restore sessions")
+    if not await teacher_is_session_creator(db, teacher, session_id):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Solo il docente che ha creato la sessione può ripristinarla")
 
     result = await db.execute(select(Session).where(Session.id == session_id))
     session = result.scalar_one_or_none()
@@ -1209,8 +1308,8 @@ async def permanently_delete_session(
             detail="Confirmation required. Set confirm=true to permanently delete.",
         )
 
-    if not await teacher_is_session_owner(db, teacher, session_id):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only the class owner can permanently delete sessions")
+    if not await teacher_is_session_creator(db, teacher, session_id):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Solo il docente che ha creato la sessione può eliminarla definitivamente")
 
     result = await db.execute(select(Session).where(Session.id == session_id))
     session = result.scalar_one_or_none()
@@ -2844,7 +2943,7 @@ async def _send_collaboration_invitation_email(
 ) -> None:
     inviter_name = f"{inviter.first_name or ''} {inviter.last_name or ''}".strip() or inviter.email
     target_label = "classe" if target_type == "class" else "sessione"
-    link = f"{settings.FRONTEND_URL.rstrip('/')}/teacher?invitations=open"
+    link = f"{settings.FRONTEND_URL.rstrip('/')}/teacher/classes?invitations=open"
     safe_target = escape(target_name)
     safe_inviter = escape(inviter_name or "Un docente")
     await email_service.send_email(
@@ -2895,6 +2994,27 @@ async def get_invitations(
     teacher: Annotated[User, Depends(get_current_teacher)],
 ):
     """Get all pending invitations for the current teacher"""
+    school_rows = (await db.execute(
+        select(TeacherSchoolInvitation, Tenant, User)
+        .join(Tenant, Tenant.id == TeacherSchoolInvitation.school_tenant_id)
+        .join(User, User.id == TeacherSchoolInvitation.invited_by_admin_id)
+        .where(TeacherSchoolInvitation.teacher_id == teacher.id)
+        .where(TeacherSchoolInvitation.status == InvitationStatus.PENDING)
+        .order_by(TeacherSchoolInvitation.created_at.desc())
+    )).all()
+    school_invitations = [
+        SchoolInvitationResponse(
+            id=invitation.id,
+            school_tenant_id=school.id,
+            school_name=school.name,
+            inviter=_teacher_to_basic_info(inviter),
+            status=invitation.status.value,
+            created_at=invitation.created_at,
+            responded_at=invitation.responded_at,
+        )
+        for invitation, school, inviter in school_rows
+    ]
+
     # Get pending class invitations
     result = await db.execute(
         select(ClassInvitation, Class, User)
@@ -2902,7 +3022,6 @@ async def get_invitations(
         .join(User, ClassInvitation.inviter_id == User.id)
         .where(ClassInvitation.invitee_id == teacher.id)
         .where(ClassInvitation.status == InvitationStatus.PENDING)
-        .where(ClassInvitation.tenant_id == teacher.tenant_id)
         .order_by(ClassInvitation.created_at.desc())
     )
     class_invitations_data = result.all()
@@ -2928,7 +3047,6 @@ async def get_invitations(
         .join(User, SessionInvitation.inviter_id == User.id)
         .where(SessionInvitation.invitee_id == teacher.id)
         .where(SessionInvitation.status == InvitationStatus.PENDING)
-        .where(SessionInvitation.tenant_id == teacher.tenant_id)
         .order_by(SessionInvitation.created_at.desc())
     )
     session_invitations_data = result.all()
@@ -2948,10 +3066,46 @@ async def get_invitations(
     ]
 
     return InvitationsListResponse(
+        school_invitations=school_invitations,
         class_invitations=class_invitations,
         session_invitations=session_invitations,
-        total_pending=len(class_invitations) + len(session_invitations),
+        total_pending=len(school_invitations) + len(class_invitations) + len(session_invitations),
     )
+
+
+@router.post("/invitations/school/{invitation_id}/respond")
+async def respond_to_school_invitation(
+    invitation_id: UUID,
+    request: InvitationResponseRequest,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    teacher: Annotated[User, Depends(get_current_teacher)],
+):
+    invitation = (await db.execute(
+        select(TeacherSchoolInvitation).where(
+            TeacherSchoolInvitation.id == invitation_id,
+            TeacherSchoolInvitation.teacher_id == teacher.id,
+        )
+    )).scalar_one_or_none()
+    if not invitation:
+        raise HTTPException(status_code=404, detail="Invito non trovato")
+    if invitation.status != InvitationStatus.PENDING:
+        raise HTTPException(status_code=400, detail="Invito già gestito")
+
+    invitation.responded_at = datetime.now(timezone.utc)
+    invitation.status = InvitationStatus.ACCEPTED if request.accept else InvitationStatus.DECLINED
+    if request.accept:
+        membership = (await db.execute(select(TeacherSchoolMembership.id).where(
+            TeacherSchoolMembership.teacher_id == teacher.id,
+            TeacherSchoolMembership.school_tenant_id == invitation.school_tenant_id,
+        ))).scalar_one_or_none()
+        if not membership:
+            db.add(TeacherSchoolMembership(
+                teacher_id=teacher.id,
+                school_tenant_id=invitation.school_tenant_id,
+                added_by_admin_id=invitation.invited_by_admin_id,
+            ))
+    await db.commit()
+    return {"message": "Invito accettato" if request.accept else "Invito rifiutato", "status": invitation.status.value}
 
 
 @router.post("/invitations/class/{invitation_id}/respond")
@@ -2966,7 +3120,6 @@ async def respond_to_class_invitation(
         select(ClassInvitation)
         .where(ClassInvitation.id == invitation_id)
         .where(ClassInvitation.invitee_id == teacher.id)
-        .where(ClassInvitation.tenant_id == teacher.tenant_id)
     )
     invitation = result.scalar_one_or_none()
     if not invitation:
@@ -2981,7 +3134,7 @@ async def respond_to_class_invitation(
         invitation.status = InvitationStatus.ACCEPTED
         # Add teacher to class
         class_teacher = ClassTeacher(
-            tenant_id=teacher.tenant_id,
+            tenant_id=invitation.tenant_id,
             class_id=invitation.class_id,
             teacher_id=teacher.id,
             added_by_id=invitation.inviter_id,
@@ -3010,7 +3163,6 @@ async def respond_to_session_invitation(
         select(SessionInvitation)
         .where(SessionInvitation.id == invitation_id)
         .where(SessionInvitation.invitee_id == teacher.id)
-        .where(SessionInvitation.tenant_id == teacher.tenant_id)
     )
     invitation = result.scalar_one_or_none()
     if not invitation:
@@ -3025,7 +3177,7 @@ async def respond_to_session_invitation(
         invitation.status = InvitationStatus.ACCEPTED
         # Add teacher to session
         session_teacher = SessionTeacher(
-            tenant_id=teacher.tenant_id,
+            tenant_id=invitation.tenant_id,
             session_id=invitation.session_id,
             teacher_id=teacher.id,
             added_by_id=invitation.inviter_id,
@@ -3131,15 +3283,9 @@ async def invite_teacher_to_class(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Class not found")
 
     # Find the teacher to invite by email
-    result = await db.execute(
-        select(User)
-        .where(User.email == request.email)
-        .where(User.tenant_id == teacher.tenant_id)
-        .where(User.role == UserRole.TEACHER)
-    )
-    invitee = result.scalar_one_or_none()
+    invitee = await _find_teacher_for_school_context(db, request.email, class_.school_tenant_id or class_.tenant_id, class_.teacher_id)
     if not invitee:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Teacher not found in this tenant")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Utente non trovato oppure docente non appartenente all'istituto della classe")
 
     # Cannot invite self
     if invitee.id == teacher.id:
@@ -3175,7 +3321,7 @@ async def invite_teacher_to_class(
         previous_invitation.created_at = datetime.now(timezone.utc)
     else:
         invitation = ClassInvitation(
-            tenant_id=teacher.tenant_id,
+            tenant_id=class_.tenant_id,
             class_id=class_id,
             inviter_id=teacher.id,
             invitee_id=invitee.id,
@@ -3378,15 +3524,9 @@ async def invite_teacher_to_session(
     session, class_ = session_data
 
     # Find the teacher to invite by email
-    result = await db.execute(
-        select(User)
-        .where(User.email == request.email)
-        .where(User.tenant_id == teacher.tenant_id)
-        .where(User.role == UserRole.TEACHER)
-    )
-    invitee = result.scalar_one_or_none()
+    invitee = await _find_teacher_for_school_context(db, request.email, class_.school_tenant_id or class_.tenant_id, class_.teacher_id)
     if not invitee:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Teacher not found in this tenant")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Utente non trovato oppure docente non appartenente all'istituto della classe")
 
     # Cannot invite self
     if invitee.id == teacher.id:
@@ -3430,7 +3570,7 @@ async def invite_teacher_to_session(
         previous_invitation.created_at = datetime.now(timezone.utc)
     else:
         invitation = SessionInvitation(
-            tenant_id=teacher.tenant_id,
+            tenant_id=class_.tenant_id,
             session_id=session_id,
             inviter_id=teacher.id,
             invitee_id=invitee.id,

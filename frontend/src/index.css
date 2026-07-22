@@ -679,6 +679,12 @@
   caret-color: #334155;  /* slate-700 for better visibility */
 }
 
+/* Keep the Document Builder selection visible while the user moves to the AI panel. */
+.ProseMirror .document-selection-highlight,
+.ProseMirror ::selection {
+  background: rgba(244, 114, 182, 0.32);
+}
+
 /* ── Code / agent blocks: Hasklig with programming ligatures ─────────────── */
 @layer utilities {
   .font-code,

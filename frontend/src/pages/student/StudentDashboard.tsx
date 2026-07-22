@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef, lazy, Suspense } from 'react'
+import { useEffect, useState, useCallback, useRef, lazy, Suspense, type ComponentType, type SVGProps } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { useNavigate, useLocation } from 'react-router-dom'
@@ -12,6 +12,7 @@ import {
   Loader2, ChevronRight, Sparkles, ClipboardList, FileText, LayoutDashboard,
   Home, Menu, BookOpen, Code2, KanbanSquare, X, LogOut, Radio, Video, Wifi
 } from 'lucide-react'
+import { AcademicAiIcon } from '@/components/icons/AcademicAiIcon'
 const ChatbotModule         = lazy(() => import('./ChatbotModule'))
 const TasksModule           = lazy(() => import('./TasksModule'))
 const ClassificationModule  = lazy(() => import('./ClassificationModule'))
@@ -64,7 +65,7 @@ const NON_SUBMITTABLE_TASK_TYPES = new Set(['lesson', 'presentation', 'student_s
 type ModuleConfig = {
   label: string
   description: string
-  icon: typeof Bot
+  icon: ComponentType<SVGProps<SVGSVGElement>>
   colorClass: string
   bgClass: string
   borderClass: string
@@ -85,7 +86,7 @@ function getModuleConfig(t: (key: string) => string): Record<string, ModuleConfi
     chatbot: {
       label: t('student_dashboard.chatbot_label'),
       description: t('student_dashboard.chatbot_desc'),
-      icon: Bot,
+      icon: AcademicAiIcon,
       colorClass: 'text-indigo-700',
       bgClass: 'bg-indigo-100',
       borderClass: 'border-indigo-200/70',
@@ -673,7 +674,7 @@ function StudentMobileShell({
   const moduleConfig = getModuleConfig(t)
   const topNav = [
     { key: null as string | null, label: 'Home', detail: sessionInfo.session.title, icon: Home },
-    { key: 'chatbot', label: 'Tutor AI', detail: 'Il tuo chatbot personale', icon: Bot },
+    { key: 'chatbot', label: 'Tutor AI', detail: 'Il tuo chatbot personale', icon: AcademicAiIcon },
     { key: 'live', label: 'Sessione live', detail: 'Attività in tempo reale', icon: Radio },
     { key: 'classe', label: 'Classe', detail: 'Chat e videocall', icon: Video },
     { key: 'self_assessment', label: t('navbar.nav_tasks'), detail: pendingTasksCount ? `${pendingTasksCount} assegnati` : 'Tutto in ordine', icon: ClipboardList },
@@ -837,7 +838,7 @@ function StudentMobileShell({
                     <p className="text-sm font-semibold text-white/60">Ciao, {sessionInfo.student.nickname}</p>
                     <h2 className="mt-1 text-3xl font-black leading-tight tracking-tight">Cosa facciamo<br />oggi?</h2>
                     <button onClick={() => handleNavigate('chatbot')} className="mt-6 flex min-h-[58px] w-full items-center justify-between rounded-[20px] bg-white px-5 text-left text-slate-950 shadow-lg active:scale-[0.98]">
-                      <span className="flex items-center gap-3"><Bot className="h-6 w-6 text-sky-600" /><span className="font-extrabold">Apri il Tutor AI</span></span>
+                      <span className="flex items-center gap-3"><AcademicAiIcon className="h-6 w-6 text-sky-600" /><span className="font-extrabold">Apri il Tutor AI</span></span>
                       <ChevronRight className="h-5 w-5" />
                     </button>
                   </div>

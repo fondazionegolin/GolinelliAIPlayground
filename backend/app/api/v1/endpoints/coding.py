@@ -2,6 +2,7 @@ import re
 import io
 import json
 import logging
+import posixpath
 import zipfile
 from typing import Annotated, Any, Optional
 from uuid import UUID
@@ -209,6 +210,26 @@ inline non conformi), nel formato delimitato, senza backtick e senza testo fuori
 Non ristampare i file gia` conformi. Dopo l'ultimo file scrivi ESATTAMENTE: === END ==="""
 
 
+# Deterministic safety net after generation/edits: relative imports that don't resolve to any
+# file in the project (typo, renamed file, forgotten new file) are exactly the kind of breakage
+# students can't debug themselves. This pass fixes them with the minimal change instead of a
+# full regeneration.
+IMPORT_FIX_SYSTEM_PROMPT = """Sei un senior front-end engineer dentro Golinelli.ai. Ricevi un elenco di import
+relativi che non puntano a nessun file esistente in un progetto React + TypeScript, l'elenco dei file
+realmente presenti nel progetto e il contenuto dei file coinvolti. Per ciascun import rotto scegli la
+correzione minima:
+- se nell'elenco dei file esistenti c'e` un percorso quasi omonimo (typo, maiuscole/minuscole, estensione,
+  cartella sbagliata), CORREGGI il percorso dell'import nel file che lo contiene;
+- se non esiste nulla di simile, CREA il file mancante con un'implementazione minima ma funzionante,
+  coerente con come viene importato (stesso export richiesto).
+Non toccare altro: nessuna modifica a logica, stile o file non coinvolti in un import rotto.
+
+FORMATO DI OUTPUT — restituisci SOLO i file che modifichi o crei, senza backtick e senza testo fuori:
+=== FILE: path ===
+<contenuto completo del file>
+=== END ==="""
+
+
 # --- Multi-phase streaming generation prompts (plan -> per-file) ---
 PLAN_SYSTEM_PROMPT = """Sei un senior software architect e UI/UX lead dentro Golinelli.ai.
 Progetti applicazioni web COMPLETE e ambiziose: non semplici paginette, ma vere mini-piattaforme
@@ -344,6 +365,10 @@ ascoltare window.addEventListener('golinelli:image-status', ...) per stati globa
 
 FORMATO DI OUTPUT — rispettalo ALLA LETTERA:
 1) Prima un breve RAGIONAMENTO in italiano (markdown, elenchi ok): piano, viste, componenti, scelte di design.
+   Chiudi SEMPRE il ragionamento con un elenco "File:" che elenca ESATTAMENTE i path che scriverai qui sotto,
+   uno per riga, con 2-5 parole sul perche' (es. "- App.tsx: aggiungo la vista dettaglio"). Se stai MODIFICANDO
+   un progetto esistente, l'elenco deve contenere SOLO i file che cambiano davvero (non quelli lasciati intatti)
+   e ogni riga deve dire cosa cambia in quel file, non solo che esiste.
 2) Poi una riga con ESATTAMENTE: @@FILES@@
 3) Poi OGNI file, senza backtick e senza commenti fuori dal codice, in questo formato:
 === FILE: package.json ===
@@ -1128,6 +1153,52 @@ async def _coding_generate_stream(messages: list[dict], system_prompt: str, *, p
             yield chunk
 
 
+MAX_CODING_ATTACHMENTS = 3
+MAX_ATTACHMENT_DATA_URL_CHARS = 2_000_000  # ~1.5MB decoded; frontend downsizes before sending
+_DATA_URL_RE = re.compile(r"^data:([\w/+.-]+);base64,(.+)$", re.DOTALL)
+
+
+async def _describe_attachments(data_urls: list[str]) -> str:
+    """Turn pasted/attached screenshots into a text description via a vision-capable model, so
+    ANY codegen model can use them as reference — including DeepSeek, which has no vision support
+    at all. Never raises: a failed/oversized image is skipped rather than blocking generation."""
+    descriptions: list[str] = []
+    for idx, data_url in enumerate((data_urls or [])[:MAX_CODING_ATTACHMENTS], start=1):
+        if not data_url or len(data_url) > MAX_ATTACHMENT_DATA_URL_CHARS or not _DATA_URL_RE.match(data_url.strip()):
+            continue
+        try:
+            response = await llm_service.generate(
+                messages=[{
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": (
+                                "Descrivi questo screenshot per un frontend engineer che deve modificare "
+                                "un'app React in base a questo riferimento: layout, componenti visibili, "
+                                "testi, colori, e ogni difetto o elemento rilevante per la richiesta dello "
+                                "studente. Sii preciso e conciso. Rispondi in italiano."
+                            ),
+                        },
+                        {"type": "image_url", "image_url": {"url": data_url.strip()}},
+                    ],
+                }],
+                provider="openai",
+                model="gpt-4o",
+                temperature=0.2,
+                max_tokens=500,
+            )
+            descriptions.append(f"[Screenshot {idx}]\n{response.content}")
+        except Exception as exc:
+            logger.warning("attachment vision analysis skipped (%s)", exc)
+    if not descriptions:
+        return ""
+    return (
+        "\n\nScreenshot allegati dallo studente (analizzati automaticamente, usali come riferimento "
+        "visivo per la richiesta):\n\n" + "\n\n".join(descriptions)
+    )
+
+
 async def _ui_review_files(files: list[dict]) -> tuple[list[dict], list[str]]:
     """Second pass: audit generated UI for contrast/overlap/readability defects and fix them.
 
@@ -1246,6 +1317,86 @@ async def _design_review_files(files: list[dict]) -> tuple[list[dict], list[str]
         return list(by_path.values()), [c["path"] for c in changed]
     except Exception as exc:
         logger.warning("design review pass skipped (%s)", exc)
+        return files, []
+
+
+_RELATIVE_IMPORT_RE = re.compile(r"""(?:from\s+|import\s+|import\s*\(\s*|require\s*\(\s*)['"](\.[^'"]+)['"]""")
+
+
+def _extract_relative_imports(content: str) -> list[str]:
+    """Relative import/require/dynamic-import targets ('./x', '../y'). Package imports and path
+    aliases are out of scope — we can only verify paths that resolve inside the project itself."""
+    return _RELATIVE_IMPORT_RE.findall(content)
+
+
+def _import_resolves(base_path: str, import_path: str, existing: set[str]) -> bool:
+    resolved = posixpath.normpath(posixpath.join(posixpath.dirname(base_path), import_path))
+    if posixpath.splitext(import_path)[1]:
+        # Explicit extension (.css, .svg, .json, ...): only an exact match counts.
+        return resolved in existing
+    candidates = [f"{resolved}{ext}" for ext in (".tsx", ".ts", ".jsx", ".js")]
+    candidates += [posixpath.join(resolved, f"index{ext}") for ext in (".tsx", ".ts", ".jsx", ".js")]
+    return any(c in existing for c in candidates)
+
+
+def _check_broken_imports(files: list[dict]) -> list[dict]:
+    """Scan .ts/.tsx/.js/.jsx files for relative imports that don't resolve to any file the model
+    actually produced — the classic 'renamed/forgot a file mid-edit' breakage that otherwise only
+    surfaces once the student hits the broken preview."""
+    existing = {str(f.get("path") or "") for f in files}
+    broken: list[dict] = []
+    for f in files:
+        path = str(f.get("path") or "")
+        if not path.lower().endswith((".ts", ".tsx", ".js", ".jsx")):
+            continue
+        for imp in _extract_relative_imports(str(f.get("content") or "")):
+            if not _import_resolves(path, imp, existing):
+                broken.append({"file": path, "import": imp})
+    return broken
+
+
+async def _repair_broken_imports(files: list[dict], broken: list[dict]) -> tuple[list[dict], list[str]]:
+    """One focused repair pass for the imports _check_broken_imports flagged: either fix a
+    misspelled/misplaced import path or create the missing file with a minimal implementation.
+    Returns (files, fixed_paths). Never raises — on any problem the original files come back
+    unchanged and the caller flags the version for review instead of calling it 'ready'."""
+    affected_paths = {b["file"] for b in broken}
+    affected = [f for f in files if str(f.get("path") or "") in affected_paths]
+    if not affected:
+        return files, []
+    try:
+        broken_list = "\n".join(f"- {b['file']}: import rotto \"{b['import']}\"" for b in broken[:20])
+        existing_list = "\n".join(
+            sorted(str(f.get("path") or "") for f in files if not str(f.get("path") or "").lower().endswith(".md"))
+        )
+        bundle = "\n\n".join(
+            f"=== FILE: {f.get('path')} ===\n{str(f.get('content') or '')[:12000]}" for f in affected
+        )
+        user = (
+            f"Import rotti da correggere:\n{broken_list}\n\n"
+            f"File realmente presenti nel progetto:\n{existing_list}\n\n"
+            f"Contenuto dei file coinvolti:\n\n{bundle}"
+        )
+        response = await _coding_generate(
+            messages=[{"role": "user", "content": user}],
+            system_prompt=IMPORT_FIX_SYSTEM_PROMPT,
+            temperature=0.1,
+            max_tokens=8000,
+        )
+        fixed = _parse_delimited_files(response.content)
+        fixed = [
+            f for f in fixed
+            if not str(f.get("path") or "").lower().endswith((".md", ".html", ".htm"))
+            and str(f.get("path") or "").lower() not in _RESERVED_PATHS
+        ]
+        if not fixed:
+            return files, []
+        by_path = {str(f.get("path")): f for f in files}
+        for c in fixed:
+            by_path[c["path"]] = c
+        return list(by_path.values()), [c["path"] for c in fixed]
+    except Exception as exc:
+        logger.warning("import repair pass skipped (%s)", exc)
         return files, []
 
 
@@ -2757,6 +2908,7 @@ async def generate_project_code_stream(
 
     explicit_prompt = bool((body.prompt or "").strip())
     user_prompt = (body.prompt or "").strip()
+    attachments = [a for a in (body.attachments or []) if a][:MAX_CODING_ATTACHMENTS]
     prompt_message_id: UUID | None = None
 
     if user_prompt:
@@ -2766,7 +2918,7 @@ async def generate_project_code_stream(
             actor_id=actor_id,
             role="user",
             content=user_prompt,
-            metadata_json={"kind": "codegen_request"},
+            metadata_json={"kind": "codegen_request", **({"attachments": attachments} if attachments else {})},
         )
         db.add(prompt_message)
         await db.flush()
@@ -2865,6 +3017,17 @@ async def generate_project_code_stream(
             usage_prompt = 0
             usage_completion = 0
 
+            # Screenshots aren't sent to the codegen model directly (DeepSeek has no vision
+            # support at all, and Anthropic's image format is untested here) — instead a
+            # vision-capable model describes them once, and that description is folded into the
+            # prompt so it works no matter which codegen model is selected.
+            final_gen_user = gen_user
+            if attachments:
+                yield _sse({"type": "status", "message": "Analizzo gli screenshot allegati..."})
+                attachment_context = await _describe_attachments(attachments)
+                if attachment_context:
+                    final_gen_user = f"{gen_user}{attachment_context}"
+
             # ONE coherent generation. The model streams a short reasoning, then "@@FILES@@", then
             # every file as "=== FILE: path ===\n<content>" ending with "=== END ===". Parsed line by
             # line so we can show live reasoning + per-file progress, while keeping a single context
@@ -2915,7 +3078,7 @@ async def generate_project_code_stream(
                 return _sse({"type": "file_start", "path": path})
 
             async for chunk in _coding_generate_stream(
-                messages=[{"role": "user", "content": gen_user}],
+                messages=[{"role": "user", "content": final_gen_user}],
                 system_prompt=CODEGEN_STREAM_SYSTEM_PROMPT,
                 provider=gen_provider,
                 model=gen_model,
@@ -2976,7 +3139,7 @@ async def generate_project_code_stream(
 
             reasoning_text = "\n".join(reasoning_parts).strip()
             est = build_estimated_token_usage(
-                [{"role": "system", "content": CODEGEN_STREAM_SYSTEM_PROMPT}, {"role": "user", "content": gen_user}],
+                [{"role": "system", "content": CODEGEN_STREAM_SYSTEM_PROMPT}, {"role": "user", "content": final_gen_user}],
                 full,
             )
             usage_prompt += est["prompt_tokens"]
@@ -3019,6 +3182,20 @@ async def generate_project_code_stream(
                 if ds_changed:
                     yield _sse({"type": "status", "message": f"Design system applicato ({len(ds_changed)} file aggiornati)."})
 
+            # Deterministic safety net: catch imports that don't resolve to any file the model
+            # actually produced (typo, renamed/forgotten file) BEFORE marking the version "ready".
+            # One focused repair attempt; if it still doesn't resolve, the version is flagged for
+            # review instead of silently handed to the student as working code.
+            broken_imports_unresolved: list[dict] = []
+            if _is_react_files(files):
+                broken = _check_broken_imports(files)
+                if broken:
+                    yield _sse({"type": "status", "message": "Verifico e correggo import non risolti..."})
+                    files, import_fixed = await _repair_broken_imports(files, broken)
+                    if import_fixed:
+                        yield _sse({"type": "status", "message": f"Import corretti ({len(import_fixed)} file)."})
+                    broken_imports_unresolved = _check_broken_imports(files)
+
             file_summary, file_summary_json = _build_file_change_summary(previous_files, files)
             summary = f"Progetto aggiornato: {len(files)} file, {file_summary_json['total_lines']} righe."
 
@@ -3040,7 +3217,7 @@ async def generate_project_code_stream(
                 },
                 artifact_manifest_json={},
                 prompt_message_id=prompt_message_id,
-                build_status="ready",
+                build_status="needs_review" if broken_imports_unresolved else "ready",
                 review_status="pending",
                 created_by_actor_type="agent",
             )
@@ -3053,6 +3230,17 @@ async def generate_project_code_stream(
             if proj:
                 proj.current_version_id = new_version_id
                 proj.status = "generated"
+
+            if broken_imports_unresolved:
+                broken_summary = "; ".join(f"{b['file']} -> \"{b['import']}\"" for b in broken_imports_unresolved[:5])
+                db.add(CodingMessage(
+                    project_id=project_pk,
+                    actor_type="agent",
+                    agent_name="Architetto",
+                    role="assistant",
+                    content=f"Attenzione: alcuni import non si risolvono e potrebbero rompere l'anteprima ({broken_summary}). Riprova la richiesta o descrivi meglio cosa serve in quei file.",
+                    metadata_json={"kind": "import_warning", "version_id": str(new_version_id), "broken_imports": broken_imports_unresolved[:10]},
+                ))
 
             if reasoning_text:
                 db.add(CodingMessage(
@@ -3112,6 +3300,7 @@ async def generate_project_code_stream(
                 "summary": summary,
                 "version_id": str(new_version_id),
                 "version_number": new_version_number,
+                "needs_review": bool(broken_imports_unresolved),
             })
         except Exception as exc:
             logger.exception("coding generate stream failed")

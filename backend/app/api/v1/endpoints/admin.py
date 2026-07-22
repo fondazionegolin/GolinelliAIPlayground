@@ -1,4 +1,5 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Query, Request, Body, Response
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status, Query, Request, Body, Response
+from html import escape
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, desc, delete as sa_delete, update as sa_update, cast, Integer, case, or_
 from typing import Annotated, Optional
@@ -16,6 +17,7 @@ from app.core.url_utils import resolve_frontend_url
 from app.api.deps import get_current_admin
 from app.models.user import User, TeacherRequest, ActivationToken, PasswordResetToken, LegalDocumentAcceptance
 from app.models.tenant import Tenant
+from app.models.teacher_school import TeacherSchoolInvitation, TeacherSchoolMembership
 from app.models.template_version import TenantTemplateVersion
 from app.models.session import Session, SessionStudent, Class as TeacherClass
 from app.models.chat import ChatMessage
@@ -27,14 +29,35 @@ from app.models.teacherbot import Teacherbot, TeacherbotConversation
 from app.models.coding import CodingProject
 from app.models.notebook import Notebook
 from app.models.ml import MLExperiment
-from app.models.enums import UserRole, TeacherRequestStatus, TenantStatus, LimitLevel, CreditTransactionType
-from app.schemas.tenant import TenantCreate, TenantUpdate, TenantResponse, TenantLimitsUpdate, SchoolTenantCreate
+from app.models.enums import UserRole, TeacherRequestStatus, TenantStatus, LimitLevel, CreditTransactionType, InvitationStatus
+from app.schemas.tenant import (
+    TenantCreate, TenantUpdate, TenantResponse, TenantLimitsUpdate, SchoolTenantCreate,
+    TeacherSchoolBulkUpdate, TeacherCreditLimitBulkUpdate,
+)
 from app.models.enums import TenantType
 from app.services.credit_service import credit_service
 from app.schemas.auth import TeacherRequestResponse
 from app.services.email_service import email_service
+from app.realtime.gateway import sio
 
 router = APIRouter()
+
+
+async def _send_school_invitation_email(teacher: User, school: Tenant) -> None:
+    link = f"{settings.FRONTEND_URL.rstrip('/')}/teacher/classes?invitations=open"
+    await email_service.send_email(
+        to_email=teacher.email,
+        subject=f"Invito all'istituto {school.name} su Golinelli.ai",
+        html_content=(
+            '<div style="font-family:Arial,sans-serif;max-width:600px;margin:auto;padding:24px">'
+            '<h2>Hai ricevuto un invito a un istituto</h2>'
+            f'<p>Sei stato invitato a entrare in <strong>{escape(school.name)}</strong> su Golinelli.ai.</p>'
+            '<p>Apri la sezione Classi per accettare o rifiutare.</p>'
+            f'<p><a href="{link}" style="display:inline-block;padding:12px 20px;background:#172033;color:white;text-decoration:none;border-radius:8px">Apri invito</a></p>'
+            '</div>'
+        ),
+        text_content=f"Sei stato invitato all'istituto {school.name} su Golinelli.ai. Apri l'invito: {link}",
+    )
 
 
 DEFAULT_TEMPLATE_CATALOG = {
@@ -2254,7 +2277,6 @@ async def get_teachers_status(
     teachers = (
         await db.execute(
             select(User).where(
-                User.tenant_id == admin.tenant_id,
                 User.role.in_([UserRole.TEACHER, UserRole.ADMIN]),
                 User.is_active == True,
             ).order_by(User.created_at.desc())
@@ -2269,7 +2291,6 @@ async def get_teachers_status(
                 func.count(CreditTransaction.id),
             )
             .where(
-                CreditTransaction.tenant_id == admin.tenant_id,
                 CreditTransaction.timestamp >= start_at,
                 CreditTransaction.teacher_id.is_not(None),
             )
@@ -2288,7 +2309,6 @@ async def get_teachers_status(
                 func.count(Session.id).label("session_count"),
             )
             .join(Session, Session.class_id == TeacherClass.id)
-            .where(TeacherClass.tenant_id == admin.tenant_id)
             .group_by(TeacherClass.teacher_id)
         )
     ).all()
@@ -2302,7 +2322,6 @@ async def get_teachers_status(
             )
             .join(Session, Session.class_id == TeacherClass.id)
             .join(SessionStudent, SessionStudent.session_id == Session.id)
-            .where(TeacherClass.tenant_id == admin.tenant_id)
             .group_by(TeacherClass.teacher_id)
         )
     ).all()
@@ -2311,13 +2330,28 @@ async def get_teachers_status(
     limits_rows = (
         await db.execute(
             select(CreditLimit).where(
-                CreditLimit.tenant_id == admin.tenant_id,
                 CreditLimit.level == LimitLevel.TEACHER,
                 CreditLimit.teacher_id.in_([t.id for t in teachers]),
             )
         )
     ).scalars().all()
     limits_by_teacher = {str(lim.teacher_id): lim for lim in limits_rows}
+
+    membership_rows = (
+        await db.execute(
+            select(TeacherSchoolMembership, Tenant)
+            .join(Tenant, Tenant.id == TeacherSchoolMembership.school_tenant_id)
+            .where(TeacherSchoolMembership.teacher_id.in_([t.id for t in teachers]))
+            .order_by(Tenant.name.asc())
+        )
+    ).all() if teachers else []
+    schools_by_teacher: dict[str, list[dict]] = {}
+    for membership, school in membership_rows:
+        schools_by_teacher.setdefault(str(membership.teacher_id), []).append({
+            "id": str(school.id),
+            "name": school.name,
+            "slug": school.slug,
+        })
 
     return {
         "items": [
@@ -2327,6 +2361,8 @@ async def get_teachers_status(
                 "last_name": t.last_name,
                 "email": t.email,
                 "institution": t.institution,
+                "tenant_id": str(t.tenant_id) if t.tenant_id else None,
+                "schools": schools_by_teacher.get(str(t.id), []),
                 "role": t.role.value,
                 "is_verified": bool(t.is_verified),
                 "created_at": t.created_at.isoformat() if t.created_at else None,
@@ -2425,12 +2461,18 @@ async def set_teacher_credit_limit(
     admin: Annotated[User, Depends(get_current_admin)],
     amount_cap: float = Body(..., embed=True),
 ):
+    target_teacher = (
+        await db.execute(select(User).where(User.id == teacher_id, User.role == UserRole.TEACHER))
+    ).scalar_one_or_none()
+    if not target_teacher or not target_teacher.tenant_id:
+        raise HTTPException(status_code=404, detail="Docente non trovato o privo di tenant operativo")
+
     existing = (
         await db.execute(
             select(CreditLimit).where(
                 CreditLimit.teacher_id == teacher_id,
                 CreditLimit.level == LimitLevel.TEACHER,
-                CreditLimit.tenant_id == admin.tenant_id,
+                CreditLimit.tenant_id == target_teacher.tenant_id,
             )
         )
     ).scalar_one_or_none()
@@ -2445,7 +2487,7 @@ async def set_teacher_credit_limit(
         except ValueError:
             limit_end = now_utc.replace(year=now_utc.year + 1, month=1, day=1)
         db.add(CreditLimit(
-            tenant_id=admin.tenant_id,
+            tenant_id=target_teacher.tenant_id,
             level=LimitLevel.TEACHER,
             teacher_id=teacher_id,
             amount_cap=amount_cap,
@@ -2458,6 +2500,120 @@ async def set_teacher_credit_limit(
     return {"ok": True, "amount_cap": amount_cap}
 
 
+@router.put("/teachers/schools/bulk")
+async def update_teacher_schools_bulk(
+    payload: TeacherSchoolBulkUpdate,
+    background_tasks: BackgroundTasks,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    admin: Annotated[User, Depends(get_current_admin)],
+):
+    """Add or remove several teachers from one school without moving their data tenant."""
+    if payload.action not in {"add", "remove"}:
+        raise HTTPException(status_code=422, detail="action deve essere 'add' oppure 'remove'")
+
+    school = (
+        await db.execute(select(Tenant).where(Tenant.id == payload.school_tenant_id))
+    ).scalar_one_or_none()
+    if not school or school.tenant_type != TenantType.SCHOOL:
+        raise HTTPException(status_code=404, detail="Istituto non trovato")
+
+    teacher_ids = list(dict.fromkeys(payload.teacher_ids))
+    valid_teachers = (await db.execute(
+        select(User).where(User.id.in_(teacher_ids), User.role == UserRole.TEACHER, User.is_active == True)
+    )).scalars().all()
+    valid_teacher_ids = {teacher.id for teacher in valid_teachers}
+    if len(valid_teacher_ids) != len(teacher_ids):
+        raise HTTPException(status_code=404, detail="Uno o più docenti non sono stati trovati")
+
+    if payload.action == "add":
+        existing_ids = set((await db.execute(
+            select(TeacherSchoolMembership.teacher_id).where(
+                TeacherSchoolMembership.teacher_id.in_(teacher_ids),
+                TeacherSchoolMembership.school_tenant_id == school.id,
+            )
+        )).scalars().all())
+        invite_targets = valid_teacher_ids - existing_ids
+        existing_invites = {
+            invitation.teacher_id: invitation
+            for invitation in (await db.execute(
+                select(TeacherSchoolInvitation).where(
+                    TeacherSchoolInvitation.teacher_id.in_(teacher_ids),
+                    TeacherSchoolInvitation.school_tenant_id == school.id,
+                )
+            )).scalars().all()
+        }
+        now = datetime.now(timezone.utc)
+        for teacher_id_value in invite_targets:
+            invitation = existing_invites.get(teacher_id_value)
+            if invitation:
+                invitation.status = InvitationStatus.PENDING
+                invitation.invited_by_admin_id = admin.id
+                invitation.created_at = now
+                invitation.responded_at = None
+            else:
+                db.add(TeacherSchoolInvitation(
+                    teacher_id=teacher_id_value,
+                    school_tenant_id=school.id,
+                    invited_by_admin_id=admin.id,
+                ))
+        changed = len(invite_targets)
+    else:
+        result = await db.execute(sa_delete(TeacherSchoolMembership).where(
+            TeacherSchoolMembership.teacher_id.in_(teacher_ids),
+            TeacherSchoolMembership.school_tenant_id == school.id,
+        ))
+        changed = result.rowcount or 0
+        await db.execute(sa_delete(TeacherSchoolInvitation).where(
+            TeacherSchoolInvitation.teacher_id.in_(teacher_ids),
+            TeacherSchoolInvitation.school_tenant_id == school.id,
+        ))
+
+    await db.commit()
+    if payload.action == "add":
+        teachers_by_id = {teacher.id: teacher for teacher in valid_teachers}
+        for teacher_id_value in invite_targets:
+            target = teachers_by_id[teacher_id_value]
+            background_tasks.add_task(_send_school_invitation_email, target, school)
+            await sio.emit(
+                "teacher_notification",
+                {
+                    "type": "school_invitation",
+                    "message": f"Nuovo invito all'istituto {school.name}",
+                    "school_id": str(school.id),
+                    "school_name": school.name,
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                },
+                room=f"user:{teacher_id_value}",
+            )
+    return {"ok": True, "changed": changed, "selected": len(teacher_ids)}
+
+
+@router.put("/teachers/credit-limits/bulk")
+async def set_teacher_credit_limits_bulk(
+    payload: TeacherCreditLimitBulkUpdate,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    admin: Annotated[User, Depends(get_current_admin)],
+):
+    teachers = (await db.execute(
+        select(User).where(
+            User.id.in_(list(dict.fromkeys(payload.teacher_ids))),
+            User.role == UserRole.TEACHER,
+            User.is_active == True,
+        )
+    )).scalars().all()
+    if len(teachers) != len(set(payload.teacher_ids)):
+        raise HTTPException(status_code=404, detail="Uno o più docenti non sono stati trovati")
+    if any(not teacher.tenant_id for teacher in teachers):
+        raise HTTPException(status_code=422, detail="Un docente non ha un tenant operativo")
+
+    for teacher in teachers:
+        await credit_service.set_limit_cap(
+            db, teacher.tenant_id, LimitLevel.TEACHER, payload.amount_cap, teacher_id=teacher.id
+        )
+    await db.commit()
+    return {"ok": True, "updated": len(teachers), "amount_cap": payload.amount_cap}
+
+
 @router.get("/classes")
 async def list_admin_classes(
     db: Annotated[AsyncSession, Depends(get_db)],
@@ -2465,9 +2621,9 @@ async def list_admin_classes(
 ):
     classes_rows = (
         await db.execute(
-            select(TeacherClass, User)
+            select(TeacherClass, User, Tenant)
             .join(User, User.id == TeacherClass.teacher_id)
-            .where(TeacherClass.tenant_id == admin.tenant_id)
+            .outerjoin(Tenant, Tenant.id == TeacherClass.school_tenant_id)
             .order_by(TeacherClass.created_at.desc())
         )
     ).all()
@@ -2475,7 +2631,7 @@ async def list_admin_classes(
     if not classes_rows:
         return {"items": []}
 
-    class_ids = [cls.id for cls, _ in classes_rows]
+    class_ids = [cls.id for cls, _, _ in classes_rows]
 
     sessions = (
         await db.execute(
@@ -2508,7 +2664,6 @@ async def list_admin_classes(
                 )
                 .where(
                     CreditTransaction.session_id.in_(session_ids),
-                    CreditTransaction.tenant_id == admin.tenant_id,
                 )
                 .group_by(CreditTransaction.session_id)
             )
@@ -2520,7 +2675,7 @@ async def list_admin_classes(
         students_by_session.setdefault(str(s.session_id), []).append(s)
 
     result = []
-    for cls, teacher in classes_rows:
+    for cls, teacher, school in classes_rows:
         sess_list = []
         for sess in sessions_by_class.get(str(cls.id), []):
             sess_students = students_by_session.get(str(sess.id), [])
@@ -2548,6 +2703,8 @@ async def list_admin_classes(
             "teacher_id": str(teacher.id),
             "teacher_name": f"{teacher.first_name or ''} {teacher.last_name or ''}".strip() or teacher.email,
             "teacher_email": teacher.email,
+            "school_id": str(school.id) if school else None,
+            "school_name": school.name if school else None,
             "session_count": len(sess_list),
             "sessions": sess_list,
         })

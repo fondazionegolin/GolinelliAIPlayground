@@ -82,6 +82,27 @@ const LinkShortcut = Extension.create({
 
 const paginationPluginKey = new PluginKey<DecorationSet>('documentPagination')
 
+const PersistentSelectionHighlight = Extension.create({
+  name: 'persistentSelectionHighlight',
+
+  addProseMirrorPlugins() {
+    return [
+      new Plugin({
+        key: new PluginKey('persistentSelectionHighlight'),
+        props: {
+          decorations(state) {
+            const { from, to, empty } = state.selection
+            if (empty) return DecorationSet.empty
+            return DecorationSet.create(state.doc, [
+              Decoration.inline(from, to, { class: 'document-selection-highlight' }),
+            ])
+          },
+        },
+      }),
+    ]
+  },
+})
+
 const Pagination = Extension.create<{
   pageHeight: number
   pageGap: number
@@ -311,6 +332,7 @@ export function RichTextEditor({
       }),
       LinkShortcut,
       Mathematics,
+      PersistentSelectionHighlight,
       ...(pagination ? [Pagination.configure(pagination)] : []),
     ],
     content: content,

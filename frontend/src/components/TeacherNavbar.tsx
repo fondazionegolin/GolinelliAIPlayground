@@ -114,6 +114,12 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
 
   // Connect to global WebSocket for teacher notifications (empty sessionId for global)
   const { notifications: socketNotifications } = useSocket('')
+  const { data: invitationData } = useQuery<{ total_pending: number }>({
+    queryKey: ['invitations'],
+    queryFn: async () => (await teacherApi.getInvitations()).data,
+    refetchInterval: 30_000,
+  })
+  const invitationCount = invitationData?.total_pending || 0
 
   // Convert socket notifications to teacher notifications format
   useEffect(() => {
@@ -174,6 +180,15 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
       }
     }
   }, [socketNotifications])
+
+  useEffect(() => {
+    if (socketNotifications.length === 0) return
+    const latest = socketNotifications[socketNotifications.length - 1]
+    const type = (latest.notification_data as { type?: string } | undefined)?.type
+    if (type === 'collaboration_invitation' || type === 'school_invitation') {
+      queryClient.invalidateQueries({ queryKey: ['invitations'] })
+    }
+  }, [queryClient, socketNotifications])
 
   // Count incoming class-chat messages on the chat icon, cleared when the chat sidebar is opened.
   // Uses the same `teacher_notification` channel as the bell above (delivered to the teacher's
@@ -378,19 +393,7 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
                 <span className="brand-wordmark">
                   Golinelli<span className="brand-wordmark-ai">.ai</span>
                 </span>
-                <ServerHealthIndicator />
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    setShowWhatsNew(true)
-                  }}
-                  className="inline-flex items-center self-center transition-transform hover:-translate-y-px"
-                >
-                  <span className="brand-beta-badge">
-                    BETA
-                  </span>
-                </button>
+                <ServerHealthIndicator onBetaClick={() => setShowWhatsNew(true)} />
               </div>
             </div>
 
@@ -405,6 +408,7 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
                       isActive={isActive(item.path)}
                       isAdjacent={Math.abs(idx - activeIdx) === 1}
                       accentTextClass="text-[var(--teacher-accent-text)]"
+                      badgeCount={item.path === '/teacher/classes' ? invitationCount : 0}
                     />
                   </Link>
                 ))
@@ -441,7 +445,12 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
                 >
                   <div className={`h-2.5 w-2.5 flex-shrink-0 rounded-full ${currentSession ? 'bg-green-500 animate-pulse shadow-sm shadow-green-300' : 'bg-slate-300'}`} />
                   <div className="text-left min-w-0">
-                    <span className="block max-w-[190px] truncate text-[11px] font-bold leading-tight text-[var(--teacher-accent-text)]">{currentSession ? currentSession.name : t('navbar.no_session')}</span>
+                    <span
+                      className="block max-w-[120px] truncate text-[11px] font-bold leading-tight text-[var(--teacher-accent-text)]"
+                      title={currentSession ? currentSession.name : t('navbar.no_session')}
+                    >
+                      {currentSession ? currentSession.name : t('navbar.no_session')}
+                    </span>
                     {currentSession?.joinCode && (
                       <span className="block text-[10px] font-mono font-black leading-tight tracking-widest" style={{ color: accentTheme.accent }}>{currentSession.joinCode}</span>
                     )}
@@ -659,7 +668,12 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
                     : 'text-slate-500 hover:text-[var(--teacher-accent-text)]'
                     }`}
                 >
-                  {item.label}
+                  <span className="relative">
+                    {item.label}
+                    {item.path === '/teacher/classes' && invitationCount > 0 && (
+                      <span className="ml-1 rounded-full bg-[#fe004d] px-1.5 py-0.5 text-[10px] font-black text-white">{invitationCount > 9 ? '9+' : invitationCount}</span>
+                    )}
+                  </span>
                 </Button>
               </Link>
             ))}
@@ -681,7 +695,7 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
                 key={item.path}
                 to={item.path}
                 aria-label={item.label}
-                className="flex h-11 w-11 items-center justify-center rounded-xl border text-slate-600 transition-colors hover:bg-white/70 hover:text-[var(--teacher-accent-text)]"
+                className="relative flex h-11 w-11 items-center justify-center rounded-xl border text-slate-600 transition-colors hover:bg-white/70 hover:text-[var(--teacher-accent-text)]"
                 style={isActiveItem
                   ? {
                       backgroundColor: accentTheme.accent,
@@ -694,6 +708,9 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
                     }}
               >
                 <Icon className="h-5 w-5" />
+                {item.path === '/teacher/classes' && invitationCount > 0 && (
+                  <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-[#fe004d] px-1 text-[10px] font-black text-white ring-2 ring-white">{invitationCount > 9 ? '9+' : invitationCount}</span>
+                )}
               </Link>
             )
           })}

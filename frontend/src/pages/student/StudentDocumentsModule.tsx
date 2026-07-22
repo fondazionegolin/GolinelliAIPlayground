@@ -15,6 +15,7 @@ import { CollaborativeCanvas } from '@/components/CollaborativeCanvas'
 import { Editor } from '@tiptap/react'
 import { useTranslation } from 'react-i18next'
 import DocumentAgentChat, { type DocumentAssistContext } from '@/components/documents/DocumentAgentChat'
+import DocumentThumbnail from '@/components/documents/DocumentThumbnail'
 
 // Types
 type Format = 'a4' | '16:9' | '4:3'
@@ -209,6 +210,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
   // Slide Editor State
   const [currentSlideIndex, setCurrentSlideIndex] = useState(0)
   const [scale, setScale] = useState(1)
+  const [mobileSlideScale, setMobileSlideScale] = useState(1)
   const [docScale, setDocScale] = useState(1)
   const [docMargins, setDocMargins] = useState({ vertical: 56, horizontal: 56 })
   const [documentPageCount, setDocumentPageCount] = useState(1)
@@ -218,6 +220,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
 
   // Refs
   const canvasRef = useRef<HTMLDivElement>(null)
+  const mobileSlidesViewportRef = useRef<HTMLDivElement>(null)
   const documentPageRef = useRef<HTMLDivElement>(null)
   const toolbarHostRef = useRef<HTMLDivElement>(null)
 
@@ -786,10 +789,11 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
       if (mode === 'slides' && canvasRef.current) {
         const parent = canvasRef.current.parentElement
         if (parent) {
+          if (parent.clientWidth <= 64 || parent.clientHeight <= 64) return
           const dims = FORMAT_DIMENSIONS[document.format]
           const scaleX = (parent.clientWidth - 64) / dims.width
           const scaleY = (parent.clientHeight - 64) / dims.height
-          setScale(Math.min(scaleX, scaleY, 1))
+          setScale(Math.max(0.1, Math.min(scaleX, scaleY, 1)))
         }
       }
     }
@@ -797,6 +801,24 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
     handleResize()
     return () => window.removeEventListener('resize', handleResize)
   }, [document.format, mode, showSidebar, presentationChatOpen])
+
+  useEffect(() => {
+    if (!readOnlyCatalog || viewMode !== 'editor' || mode !== 'slides') return
+    const viewport = mobileSlidesViewportRef.current
+    if (!viewport) return
+
+    const updateMobileSlideScale = () => {
+      const availableWidth = viewport.clientWidth - 18
+      if (availableWidth <= 0) return
+      const slideWidth = FORMAT_DIMENSIONS[document.format].width
+      setMobileSlideScale(Math.max(0.1, Math.min(availableWidth / slideWidth, 1)))
+    }
+
+    updateMobileSlideScale()
+    const observer = new ResizeObserver(updateMobileSlideScale)
+    observer.observe(viewport)
+    return () => observer.disconnect()
+  }, [document.format, mode, readOnlyCatalog, viewMode])
 
   const addSlide = () => {
     const newSlide: Slide = {
@@ -1209,17 +1231,16 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
                       <div
                         key={doc.id}
                         onClick={() => loadDraft(doc)}
-                        className={`group relative min-h-[112px] cursor-pointer overflow-hidden rounded-[18px] border p-3 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-lg ${docCardStyle(doc.type)}`}
+                        className={`group relative cursor-pointer overflow-hidden border shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-lg ${catalogViewMode === 'grid' ? 'rounded-[18px] border-slate-200 bg-white p-2' : `grid min-h-[64px] grid-cols-[36px_minmax(0,1fr)_auto_28px] grid-rows-2 items-center gap-x-3 rounded-xl px-3 py-2 ${docCardStyle(doc.type)}`}`}
                       >
-                        <div className={`mb-2 flex h-9 w-9 items-center justify-center rounded-lg shadow-sm ${docColor(doc.type)}`}>
-                          {docIcon(doc.type)}
-                        </div>
-                        <span className={`absolute right-9 top-4 rounded-full border px-2.5 py-1 text-[10px] font-black ${docBadge(doc.type)}`}>{docLabel(doc.type)}</span>
-                        <p className="text-sm font-black text-slate-950 truncate mb-1">{doc.title}</p>
-                        <p className="text-[11px] font-medium text-slate-500">{new Date(doc.updatedAt).toLocaleDateString(dateLocale, { day: 'numeric', month: 'short', year: 'numeric' })}</p>
+                        {catalogViewMode === 'grid' && <DocumentThumbnail contentJson={doc.contentJson} type={doc.type} title={doc.title} />}
+                        {catalogViewMode === 'list' && <div className={`col-start-1 row-span-2 row-start-1 flex h-9 w-9 items-center justify-center rounded-lg shadow-sm ${docColor(doc.type)}`}>{docIcon(doc.type)}</div>}
+                        <span className={`${catalogViewMode === 'grid' ? 'absolute left-4 top-4' : 'col-start-3 row-span-2 row-start-1 self-center'} rounded-full border px-2.5 py-1 text-[10px] font-black shadow-sm ${docBadge(doc.type)}`}>{docLabel(doc.type)}</span>
+                        <p className={`${catalogViewMode === 'grid' ? 'mb-1 mt-2.5 px-1' : 'col-start-2 row-start-1 self-end'} truncate text-sm font-black text-slate-950`}>{doc.title}</p>
+                        <p className={`${catalogViewMode === 'grid' ? 'px-1 pb-1' : 'col-start-2 row-start-2 self-start'} text-[11px] font-medium text-slate-500`}>{new Date(doc.updatedAt).toLocaleDateString(dateLocale, { day: 'numeric', month: 'short', year: 'numeric' })}</p>
                         <button
                           onClick={(e) => handleDeleteDraft(e, doc.id)}
-                          className="absolute right-3 top-3 rounded-lg p-1 text-slate-400 opacity-0 transition-all hover:bg-red-50 hover:text-red-600 group-hover:opacity-100"
+                          className={`${catalogViewMode === 'grid' ? 'absolute right-4 top-4 bg-white/90 opacity-0 shadow-sm group-hover:opacity-100' : 'col-start-4 row-span-2 row-start-1 opacity-70'} rounded-lg p-1 text-slate-400 transition-all hover:bg-red-50 hover:text-red-600`}
                         >
                           <Trash2 className="h-3.5 w-3.5" />
                         </button>
@@ -1244,17 +1265,16 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
                         <div
                           key={doc.id}
                           onClick={() => loadSubmittedDocument(doc)}
-                          className={`group relative min-h-[112px] cursor-pointer overflow-hidden rounded-[18px] border p-3 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-lg ${hasCorrection ? 'border-amber-300 bg-amber-50 hover:bg-amber-100/70' : docCardStyle(doc.type)}`}
+                          className={`group relative cursor-pointer overflow-hidden border shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-lg ${catalogViewMode === 'grid' ? `rounded-[18px] bg-white p-2 ${hasCorrection ? 'border-amber-300' : 'border-slate-200'}` : `grid min-h-[64px] grid-cols-[36px_minmax(0,1fr)_auto_auto] grid-rows-2 items-center gap-x-3 rounded-xl px-3 py-2 ${hasCorrection ? 'border-amber-300 bg-amber-50 hover:bg-amber-100/70' : docCardStyle(doc.type)}`}`}
                         >
-                          <div className={`mb-2 flex h-9 w-9 items-center justify-center rounded-lg shadow-sm ${hasCorrection ? 'border border-amber-300 bg-amber-200 text-amber-900' : docColor(doc.type)}`}>
-                            {docIcon(doc.type)}
-                          </div>
-                          <span className={`absolute right-4 top-4 rounded-full border px-2.5 py-1 text-[10px] font-black ${hasCorrection ? 'border-amber-300 bg-amber-200 text-amber-900' : docBadge(doc.type)}`}>
+                          {catalogViewMode === 'grid' && <DocumentThumbnail contentJson={doc.contentJson} type={doc.type} title={doc.title} />}
+                          {catalogViewMode === 'list' && <div className={`col-start-1 row-span-2 row-start-1 flex h-9 w-9 items-center justify-center rounded-lg shadow-sm ${hasCorrection ? 'border border-amber-300 bg-amber-200 text-amber-900' : docColor(doc.type)}`}>{docIcon(doc.type)}</div>}
+                          <span className={`${catalogViewMode === 'grid' ? 'absolute right-4 top-4 shadow-sm' : 'col-start-4 row-span-2 row-start-1 self-center'} rounded-full border px-2.5 py-1 text-[10px] font-black ${hasCorrection ? 'border-amber-300 bg-amber-200 text-amber-900' : docBadge(doc.type)}`}>
                             {hasCorrection ? (isEnglishUi ? 'Corrections' : 'Correzioni') : docLabel(doc.type)}
                           </span>
-                          <p className="mb-1 truncate text-sm font-black text-slate-950">{doc.title}</p>
-                          <p className="text-[11px] font-medium text-slate-500">{new Date(doc.updatedAt).toLocaleDateString(dateLocale, { day: 'numeric', month: 'short', year: 'numeric' })}</p>
-                          <div className={`mt-2 inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-black ${hasCorrection ? 'border-amber-300 bg-amber-200 text-amber-900' : 'border-slate-200 bg-white/80 text-slate-600'}`}>
+                          <p className={`${catalogViewMode === 'grid' ? 'mb-1 mt-2.5 px-1' : 'col-start-2 row-start-1 self-end'} truncate text-sm font-black text-slate-950`}>{doc.title}</p>
+                          <p className={`${catalogViewMode === 'grid' ? 'px-1' : 'col-start-2 row-start-2 self-start'} text-[11px] font-medium text-slate-500`}>{new Date(doc.updatedAt).toLocaleDateString(dateLocale, { day: 'numeric', month: 'short', year: 'numeric' })}</p>
+                          <div className={`${catalogViewMode === 'grid' ? 'mx-1 mb-1 mt-2 inline-flex' : 'col-start-3 row-span-2 row-start-1 hidden self-center sm:inline-flex'} items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-black ${hasCorrection ? 'border-amber-300 bg-amber-200 text-amber-900' : 'border-slate-200 bg-white/80 text-slate-600'}`}>
                             {hasCorrection ? <Sparkles className="h-3 w-3" /> : <CheckCircle className="h-3 w-3" />}
                             {hasCorrection ? (isEnglishUi ? 'Review requested' : 'Da revisionare') : (isEnglishUi ? 'Submitted' : 'Consegnato')}
                           </div>
@@ -1270,15 +1290,14 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
                   <div
                     key={doc.id}
                     onClick={() => loadLesson(doc)}
-                    className={`group relative min-h-[112px] cursor-pointer overflow-hidden rounded-[18px] border p-3 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-lg ${docCardStyle(doc.type)}`}
+                    className={`group relative cursor-pointer overflow-hidden border shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-lg ${catalogViewMode === 'grid' ? 'rounded-[18px] border-slate-200 bg-white p-2' : `grid min-h-[64px] grid-cols-[36px_minmax(0,1fr)_auto_auto] grid-rows-2 items-center gap-x-3 rounded-xl px-3 py-2 ${docCardStyle(doc.type)}`}`}
                   >
-                    <div className={`mb-2 flex h-9 w-9 items-center justify-center rounded-lg shadow-sm ${docColor(doc.type)}`}>
-                      {docIcon(doc.type)}
-                    </div>
-                    <span className={`absolute right-4 top-4 rounded-full border px-2.5 py-1 text-[10px] font-black ${docBadge(doc.type)}`}>{docLabel(doc.type)}</span>
-                    <p className="text-sm font-black text-slate-950 truncate mb-1">{doc.title}</p>
-                    <p className="text-[11px] font-medium text-slate-500">{doc.authorName} · {new Date(doc.updatedAt).toLocaleDateString(dateLocale, { day: 'numeric', month: 'short', year: 'numeric' })}</p>
-                    <div className="mt-2 inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-100 px-2 py-0.5 text-[10px] font-black text-emerald-800">
+                    {catalogViewMode === 'grid' && <DocumentThumbnail contentJson={doc.contentJson} type={doc.type} title={doc.title} />}
+                    {catalogViewMode === 'list' && <div className={`col-start-1 row-span-2 row-start-1 flex h-9 w-9 items-center justify-center rounded-lg shadow-sm ${docColor(doc.type)}`}>{docIcon(doc.type)}</div>}
+                    <span className={`${catalogViewMode === 'grid' ? 'absolute right-4 top-4 shadow-sm' : 'col-start-4 row-span-2 row-start-1 self-center'} rounded-full border px-2.5 py-1 text-[10px] font-black ${docBadge(doc.type)}`}>{docLabel(doc.type)}</span>
+                    <p className={`${catalogViewMode === 'grid' ? 'mb-1 mt-2.5 px-1' : 'col-start-2 row-start-1 self-end'} truncate text-sm font-black text-slate-950`}>{doc.title}</p>
+                    <p className={`${catalogViewMode === 'grid' ? 'px-1' : 'col-start-2 row-start-2 self-start truncate'} text-[11px] font-medium text-slate-500`}>{doc.authorName} · {new Date(doc.updatedAt).toLocaleDateString(dateLocale, { day: 'numeric', month: 'short', year: 'numeric' })}</p>
+                    <div className={`${catalogViewMode === 'grid' ? 'mx-1 mb-1 mt-2 inline-flex' : 'col-start-3 row-span-2 row-start-1 hidden self-center sm:inline-flex'} items-center gap-1 rounded-full border border-emerald-200 bg-emerald-100 px-2 py-0.5 text-[10px] font-black text-emerald-800`}>
                       <BookOpen className="h-3 w-3" />
                       {t('documents.read_only')}
                     </div>
@@ -1378,7 +1397,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
           )}
           {mode === 'slides' && (
             <>
-            <div className="space-y-4 md:hidden">
+            <div ref={mobileSlidesViewportRef} className="space-y-4 md:hidden">
               {document.slides.map((slide, index) => (
                 <section key={slide.id} className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
                   <div className="flex items-center justify-between border-b border-slate-100 px-3 py-2">
@@ -1386,10 +1405,10 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
                     <span className="max-w-[70%] truncate text-xs font-bold text-slate-700">{slide.title}</span>
                   </div>
                   <div className="flex justify-center overflow-hidden bg-slate-100 p-2">
-                    <div className="relative origin-top bg-white" style={{ width: slideDimensions.width * scale, height: slideDimensions.height * scale }}>
-                      <div className="relative origin-top-left bg-white" style={{ width: slideDimensions.width, height: slideDimensions.height, transform: `scale(${scale})` }}>
+                    <div className="relative origin-top bg-white" style={{ width: slideDimensions.width * mobileSlideScale, height: slideDimensions.height * mobileSlideScale }}>
+                      <div className="relative origin-top-left bg-white" style={{ width: slideDimensions.width, height: slideDimensions.height, transform: `scale(${mobileSlideScale})` }}>
                         {!slide.blocks.some(block => block.type === 'text' && block.y < 130 && (block.style.fontSize || 0) >= 26) && <h3 className="pointer-events-none absolute inset-x-8 top-8 z-10 text-4xl font-bold text-slate-900">{slide.title}</h3>}
-                        <SlideEditor blocks={slide.blocks} onChange={() => {}} selectedBlockId={null} onSelectBlock={() => {}} scale={scale} readOnly slideWidth={slideDimensions.width} slideHeight={slideDimensions.height} />
+                        <SlideEditor blocks={slide.blocks} onChange={() => {}} selectedBlockId={null} onSelectBlock={() => {}} scale={mobileSlideScale} readOnly slideWidth={slideDimensions.width} slideHeight={slideDimensions.height} />
                       </div>
                     </div>
                   </div>

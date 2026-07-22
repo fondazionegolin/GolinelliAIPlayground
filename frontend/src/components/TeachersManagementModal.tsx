@@ -185,7 +185,7 @@ export function TeachersManagementModal({
           {/* Invite Form */}
           <form onSubmit={handleInvite} className="space-y-3">
             <label className="block text-sm font-semibold text-slate-700">
-              Invita un docente
+              Invita docente o admin
             </label>
             {type === 'class' && (
               <div className="grid grid-cols-2 gap-2 rounded-xl bg-slate-100 p-1 text-xs font-bold">
@@ -204,7 +204,7 @@ export function TeachersManagementModal({
                 <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
                 <Input
                   type="email"
-                  placeholder="Email del docente..."
+                  placeholder="Email del docente o admin..."
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   className="pl-10"
@@ -227,7 +227,7 @@ export function TeachersManagementModal({
               </Button>
             </div>
             <p className="text-xs text-slate-500">
-              Il docente deve essere registrato nella stessa organizzazione
+              I docenti devono appartenere allo stesso istituto; gli admin possono essere invitati a qualsiasi classe o sessione.
             </p>
           </form>
 

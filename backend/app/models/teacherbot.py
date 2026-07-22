@@ -20,7 +20,13 @@ class Teacherbot(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     tenant_id = Column(UUID(as_uuid=True), ForeignKey("tenants.id"), nullable=False, index=True)
-    teacher_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
+    teacher_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True, index=True)
+    creator_student_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("session_students.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
     name = Column(String(100), nullable=False)
     synopsis = Column(String(255), nullable=True)  # Brief description for card display
     description = Column(Text, nullable=True)  # Full description of bot functionality
@@ -46,11 +52,17 @@ class Teacherbot(Base):
 
     # Relationships
     teacher = relationship("User", backref="teacherbots")
+    creator_student = relationship("SessionStudent", foreign_keys=[creator_student_id])
     publications = relationship("TeacherbotPublication", back_populates="teacherbot", lazy="dynamic", cascade="all, delete-orphan")
     conversations = relationship("TeacherbotConversation", back_populates="teacherbot", lazy="dynamic", cascade="all, delete-orphan")
 
     __table_args__ = (
         Index("ix_teacherbots_teacher_status", "teacher_id", "status"),
+        Index("ix_teacherbots_student_status", "creator_student_id", "status"),
+        CheckConstraint(
+            "(teacher_id IS NOT NULL) != (creator_student_id IS NOT NULL)",
+            name="ck_teacherbots_exactly_one_creator",
+        ),
     )
 
 

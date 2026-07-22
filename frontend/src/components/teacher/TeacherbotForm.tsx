@@ -7,7 +7,7 @@ import {
   Send, RefreshCw, Bot, Users, User,
 } from 'lucide-react'
 import { useToast } from '@/components/ui/use-toast'
-import { teacherbotsApi } from '@/lib/api'
+import { studentbotsApi, teacherbotsApi } from '@/lib/api'
 import { TeacherbotPromptOptimizer } from './TeacherbotPromptOptimizer'
 import TeacherbotIconPicker from './TeacherbotIconPicker'
 import TeacherbotShareModal from './TeacherbotShareModal'
@@ -34,6 +34,7 @@ interface TeacherbotFormProps {
   teacherbotId?: string
   onBack: () => void
   onSaved: () => void
+  variant?: 'teacherbot' | 'studentbot'
 }
 
 interface FormData {
@@ -83,6 +84,7 @@ interface KnowledgeBaseSectionProps {
   teacherbotId?: string
   pendingFiles?: File[]
   onPendingFilesChange?: (files: File[]) => void
+  variant?: 'teacherbot' | 'studentbot'
 }
 
 const EMBED_STEPS = [
@@ -93,7 +95,7 @@ const EMBED_STEPS = [
   { label: 'Indicizzazione nella knowledge base…' },
 ]
 
-function KnowledgeBaseSection({ teacherbotId, pendingFiles, onPendingFilesChange }: KnowledgeBaseSectionProps) {
+function KnowledgeBaseSection({ teacherbotId, pendingFiles, onPendingFilesChange, variant = 'teacherbot' }: KnowledgeBaseSectionProps) {
   const { toast } = useToast()
   const queryClient = useQueryClient()
   const kbInputRef = useRef<HTMLInputElement>(null)
@@ -104,18 +106,18 @@ function KnowledgeBaseSection({ teacherbotId, pendingFiles, onPendingFilesChange
 
   // Only fetch from API when we have a saved teacherbot
   const { data: docs, isLoading } = useQuery({
-    queryKey: ['teacherbot-kb', teacherbotId],
+    queryKey: [`${variant}-kb`, teacherbotId],
     queryFn: async () => {
-      const res = await teacherbotsApi.listKbDocuments(teacherbotId!)
+      const res = await (variant === 'studentbot' ? studentbotsApi : teacherbotsApi).listKbDocuments(teacherbotId!)
       return (res.data || []) as Array<{ id: string; title: string; doc_type: string; status: string; created_at: string }>
     },
     enabled: !!teacherbotId,
   })
 
   const deleteMutation = useMutation({
-    mutationFn: (docId: string) => teacherbotsApi.deleteKbDocument(teacherbotId!, docId),
+    mutationFn: (docId: string) => (variant === 'studentbot' ? studentbotsApi : teacherbotsApi).deleteKbDocument(teacherbotId!, docId),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['teacherbot-kb', teacherbotId] })
+      queryClient.invalidateQueries({ queryKey: [`${variant}-kb`, teacherbotId] })
       toast({ title: 'Documento rimosso dalla knowledge base' })
     },
   })
@@ -143,7 +145,7 @@ function KnowledgeBaseSection({ teacherbotId, pendingFiles, onPendingFilesChange
     let lastChunkCount = 0
     for (const file of fileArray) {
       try {
-        const res = await teacherbotsApi.uploadKbDocument(teacherbotId, file)
+        const res = await (variant === 'studentbot' ? studentbotsApi : teacherbotsApi).uploadKbDocument(teacherbotId, file)
         lastChunkCount = res.data?.chunk_count || 0
         setEmbedResult({ filename: file.name, chunk_count: lastChunkCount })
       } catch (e: any) {
@@ -155,7 +157,7 @@ function KnowledgeBaseSection({ teacherbotId, pendingFiles, onPendingFilesChange
       }
     }
     setUploading(false)
-    queryClient.invalidateQueries({ queryKey: ['teacherbot-kb', teacherbotId] })
+    queryClient.invalidateQueries({ queryKey: [`${variant}-kb`, teacherbotId] })
   }
 
   const removePending = (idx: number) => {
@@ -443,7 +445,7 @@ interface LivePreviewMessage {
   content: string
 }
 
-function TeacherbotLivePreview({ teacherbotId, formData }: { teacherbotId?: string; formData: FormData }) {
+function TeacherbotLivePreview({ teacherbotId, formData, variant = 'teacherbot' }: { teacherbotId?: string; formData: FormData; variant?: 'teacherbot' | 'studentbot' }) {
   const { toast } = useToast()
   const meta = colorMeta(formData.color)
   const endRef = useRef<HTMLDivElement>(null)
@@ -463,7 +465,7 @@ function TeacherbotLivePreview({ teacherbotId, formData }: { teacherbotId?: stri
   const testMutation = useMutation({
     mutationFn: async (content: string) => {
       const history = messages.map((m) => ({ role: m.role, content: m.content }))
-      return teacherbotsApi.test(teacherbotId!, content, history, undefined, {
+      return (variant === 'studentbot' ? studentbotsApi : teacherbotsApi).test(teacherbotId!, content, history, undefined, {
         system_prompt: formData.system_prompt,
         temperature: formData.temperature,
         llm_provider: formData.llm_provider || undefined,
@@ -474,7 +476,7 @@ function TeacherbotLivePreview({ teacherbotId, formData }: { teacherbotId?: stri
       setMessages((prev) => [...prev, { id: `a-${Date.now()}`, role: 'assistant', content: response.data.content }])
     },
     onError: () => {
-      toast({ title: 'Errore', description: 'Impossibile testare il teacherbot', variant: 'destructive' })
+      toast({ title: 'Errore', description: `Impossibile testare lo ${variant === 'studentbot' ? 'studentbot' : 'teacherbot'}`, variant: 'destructive' })
     },
   })
 
@@ -495,8 +497,8 @@ function TeacherbotLivePreview({ teacherbotId, formData }: { teacherbotId?: stri
           <TeacherbotPreviewIcon iconValue={formData.icon} className="h-4 w-4" />
         </div>
         <div className="min-w-0">
-          <div className="truncate text-sm font-bold text-slate-950">{formData.name.trim() || 'Teacherbot'}</div>
-          <div className="text-[11px] text-slate-500">Anteprima studente</div>
+          <div className="truncate text-sm font-bold text-slate-950">{formData.name.trim() || (variant === 'studentbot' ? 'Studentbot' : 'Teacherbot')}</div>
+          <div className="text-[11px] text-slate-500">Anteprima chat</div>
         </div>
       </div>
       {teacherbotId && (
@@ -592,11 +594,12 @@ function TeacherbotLivePreview({ teacherbotId, formData }: { teacherbotId?: stri
   )
 }
 
-export default function TeacherbotForm({ teacherbotId, onBack, onSaved }: TeacherbotFormProps) {
+export default function TeacherbotForm({ teacherbotId, onBack, onSaved, variant = 'teacherbot' }: TeacherbotFormProps) {
   const { toast } = useToast()
   const { t } = useTranslation()
   const queryClient = useQueryClient()
   const isEditing = !!teacherbotId
+  const isStudentbot = variant === 'studentbot'
 
   const [formData, setFormData] = useState<FormData>({
     name: '',
@@ -627,13 +630,13 @@ export default function TeacherbotForm({ teacherbotId, onBack, onSaved }: Teache
 
   // Load existing teacherbot data
   const { data: teacherbot, isLoading: isLoadingBot } = useQuery({
-    queryKey: ['teacherbot', teacherbotId],
+    queryKey: [variant, teacherbotId],
     queryFn: async () => {
       if (!teacherbotId) return null
-      const res = await teacherbotsApi.get(teacherbotId)
+      const res = await (isStudentbot ? studentbotsApi : teacherbotsApi).get(teacherbotId)
       return res.data
     },
-    enabled: !!teacherbotId,
+    enabled: !!teacherbotId && !isStudentbot,
   })
 
   const { data: publications } = useQuery({
@@ -642,7 +645,7 @@ export default function TeacherbotForm({ teacherbotId, onBack, onSaved }: Teache
       id: string; class_id: string | null; class_name: string | null; student_id: string | null;
       student_nickname: string | null; is_active: boolean
     }>,
-    enabled: !!teacherbotId,
+    enabled: !!teacherbotId && !isStudentbot,
   })
 
   const { data: shareLinks } = useQuery({
@@ -680,21 +683,23 @@ export default function TeacherbotForm({ teacherbotId, onBack, onSaved }: Teache
   const saveMutation = useMutation({
     mutationFn: async (data: FormData) => {
       if (isEditing) {
-        return teacherbotsApi.update(teacherbotId, data)
+        return (isStudentbot ? studentbotsApi : teacherbotsApi).update(teacherbotId, data)
       } else {
-        return teacherbotsApi.create(data)
+        return (isStudentbot ? studentbotsApi : teacherbotsApi).create(data)
       }
     },
     onSuccess: async (res) => {
       const savedId: string | undefined = res?.data?.id || teacherbotId
       if (!isEditing && pendingKbFiles.length > 0 && savedId) {
         for (const file of pendingKbFiles) {
-          try { await teacherbotsApi.uploadKbDocument(savedId, file) } catch {}
+          try { await (isStudentbot ? studentbotsApi : teacherbotsApi).uploadKbDocument(savedId, file) } catch {}
         }
         setPendingKbFiles([])
       }
       toast({ title: isEditing ? t('teacherbot.updated') : t('teacherbot.created') })
       queryClient.invalidateQueries({ queryKey: ['teacherbots'] })
+      queryClient.invalidateQueries({ queryKey: ['studentbots'] })
+      queryClient.invalidateQueries({ queryKey: ['student-teacherbots'] })
       onSaved()
     },
     onError: () => {
@@ -770,13 +775,15 @@ export default function TeacherbotForm({ teacherbotId, onBack, onSaved }: Teache
         </Button>
         <div className="min-w-0 flex-1">
           <h2 className="truncate text-xl font-bold tracking-tight text-slate-950">
-            {isEditing ? t('teacherbot.edit_teacherbot') : t('teacherbot.new_teacherbot')}
+            {isStudentbot
+              ? (isEditing ? 'Modifica Studentbot' : 'Nuovo Studentbot')
+              : (isEditing ? t('teacherbot.edit_teacherbot') : t('teacherbot.new_teacherbot'))}
           </h2>
           <p className="hidden text-xs text-slate-500 sm:block">
-            {formData.name.trim() || 'Configurazione assistente docente'}
+            {formData.name.trim() || (isStudentbot ? 'Il tuo assistente AI personalizzato' : 'Configurazione assistente docente')}
           </p>
         </div>
-        {isEditing && (
+        {isEditing && !isStudentbot && (
           <div className="flex shrink-0 items-center gap-2">
             <Button
               type="button"
@@ -800,7 +807,7 @@ export default function TeacherbotForm({ teacherbotId, onBack, onSaved }: Teache
         )}
       </div>
 
-      {isEditing && activePublications.length > 0 && (
+      {isEditing && !isStudentbot && activePublications.length > 0 && (
         <div className="flex flex-shrink-0 flex-wrap items-center gap-1.5 border-b border-slate-200 bg-white px-4 py-2 md:px-5">
           <span className="text-xs font-semibold text-slate-400">Condiviso con:</span>
           {activePublications.map((pub) => (
@@ -815,7 +822,7 @@ export default function TeacherbotForm({ teacherbotId, onBack, onSaved }: Teache
         </div>
       )}
 
-      <div className="flex flex-shrink-0 justify-start border-b border-slate-200 bg-white px-4 py-2.5 md:px-5">
+      <div className="flex flex-shrink-0 justify-start overflow-x-auto border-b border-slate-200 bg-white px-4 py-2.5 md:px-5">
         <div
           className="flex items-center gap-1.5 rounded-[var(--selection-radius)] border p-1.5"
           style={buildAccentNavClusterStyle(getTeacherAccentTheme())}
@@ -961,14 +968,14 @@ export default function TeacherbotForm({ teacherbotId, onBack, onSaved }: Teache
                   onChange={() => setFormData({ ...formData, enable_live_voice: !formData.enable_live_voice })}
                 />
 
-                <ToggleRow
+                {!isStudentbot && <ToggleRow
                   title={t('teacherbot.reporting')}
                   description={t('teacherbot.reporting_desc')}
                   checked={formData.enable_reporting}
                   onChange={() => setFormData({ ...formData, enable_reporting: !formData.enable_reporting })}
-                />
+                />}
 
-                {formData.enable_reporting && (
+                {!isStudentbot && formData.enable_reporting && (
                   <div className="pb-3">
                     <FieldLabel>{t('teacherbot.report_prompt_label')}</FieldLabel>
                     <textarea
@@ -1044,7 +1051,7 @@ Il tuo obiettivo è:
 - Proporre esercizi di difficoltà crescente`}
                 />
 
-                {selection && (
+                {selection && !isStudentbot && (
                   <TeacherbotPromptOptimizer
                     selectedText={selection.text}
                     teacherbotName={formData.name}
@@ -1062,13 +1069,14 @@ Il tuo obiettivo è:
                   teacherbotId={teacherbotId}
                   pendingFiles={pendingKbFiles}
                   onPendingFilesChange={setPendingKbFiles}
+                  variant={variant}
                 />
               )}
             </div>
           </div>
 
           <aside className="hidden w-[380px] flex-shrink-0 flex-col border-l border-slate-200 bg-slate-50/60 p-4 lg:flex xl:w-[420px]">
-            <TeacherbotLivePreview teacherbotId={teacherbotId} formData={formData} />
+            <TeacherbotLivePreview teacherbotId={teacherbotId} formData={formData} variant={variant} />
           </aside>
         </div>
 
@@ -1086,12 +1094,12 @@ Il tuo obiettivo è:
             ) : (
               <Save className="h-4 w-4 mr-2" />
             )}
-            {isEditing ? t('teacherbot.save_changes') : t('teacherbot.create_btn')}
+            {isEditing ? t('teacherbot.save_changes') : (isStudentbot ? 'Crea Studentbot' : t('teacherbot.create_btn'))}
           </Button>
         </div>
       </form>
 
-      {isEditing && shareOpen && (
+      {isEditing && !isStudentbot && shareOpen && (
         <TeacherbotShareModal
           teacherbotId={teacherbotId!}
           teacherbotName={formData.name.trim() || 'Teacherbot'}
@@ -1099,7 +1107,7 @@ Il tuo obiettivo è:
         />
       )}
 
-      {isEditing && shareLinksOpen && (
+      {isEditing && !isStudentbot && shareLinksOpen && (
         <TeacherbotShareLinksModal
           teacherbotId={teacherbotId!}
           teacherbotName={formData.name.trim() || 'Teacherbot'}

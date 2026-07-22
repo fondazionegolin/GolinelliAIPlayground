@@ -11,6 +11,7 @@ import {
   GraduationCap, Search, ChevronDown, ChevronUp, ChevronsUpDown,
   Users, BookOpen, Euro, LogIn, Pencil, ShieldCheck,
   Upload, Tag, MessageSquare, Send, AlertCircle, CheckCircle2, Loader2, Download,
+  Building2,
 } from 'lucide-react'
 
 /* ─── types ──────────────────────────────────────────── */
@@ -41,6 +42,15 @@ interface TeacherStatus {
   monthly_cap: number
   monthly_usage: number
   limit_id?: string | null
+  tenant_id?: string | null
+  schools: Array<{ id: string; name: string; slug: string }>
+}
+
+interface SchoolTenant {
+  id: string
+  name: string
+  tenant_type: string
+  status: string
 }
 
 interface ResetResult {
@@ -93,7 +103,7 @@ export default function TeachersPage() {
 
   const [search, setSearch] = useState('')
   const [showInvite, setShowInvite] = useState(false)
-  const [showInvitations, setShowInvitations] = useState(true)
+  const [showInvitations, setShowInvitations] = useState(false)
   const [inviteEmail, setInviteEmail] = useState('')
   const [inviteFirstName, setInviteFirstName] = useState('')
   const [inviteLastName, setInviteLastName] = useState('')
@@ -115,6 +125,9 @@ export default function TeachersPage() {
   const [hardDeleteEmail, setHardDeleteEmail] = useState('')
   const [sortField, setSortField] = useState<TeacherSortField>('name')
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc')
+  const [selectedTeacherIds, setSelectedTeacherIds] = useState<Set<string>>(new Set())
+  const [bulkSchoolId, setBulkSchoolId] = useState('')
+  const [bulkCap, setBulkCap] = useState('')
 
   const toggleSort = (field: TeacherSortField) => {
     if (sortField === field) {
@@ -141,6 +154,11 @@ export default function TeachersPage() {
     queryFn: async () => (await creditsApi.getInvitations()).data,
     refetchInterval: 20_000,
     staleTime: 10_000,
+  })
+
+  const { data: tenantRows } = useQuery<SchoolTenant[]>({
+    queryKey: ['admin-tenants'],
+    queryFn: async () => (await adminApi.getTenants()).data,
   })
 
   /* ── mutations ── */
@@ -269,6 +287,36 @@ export default function TeachersPage() {
     onError: () => toast({ variant: 'destructive', title: 'Errore aggiornamento limite' }),
   })
 
+  const bulkSchoolMutation = useMutation({
+    mutationFn: (action: 'add' | 'remove') =>
+      adminApi.updateTeacherSchoolsBulk(Array.from(selectedTeacherIds), bulkSchoolId, action),
+    onSuccess: (res, action) => {
+      queryClient.invalidateQueries({ queryKey: ['admin-teacher-status'] })
+      toast({
+        title: action === 'add' ? 'Inviti inviati' : 'Docenti rimossi',
+        description: action === 'add' ? `${res.data.changed} docenti notificati via piattaforma ed email` : `${res.data.changed} appartenenze aggiornate`,
+      })
+    },
+    onError: (error: any) => toast({
+      variant: 'destructive', title: 'Operazione non riuscita',
+      description: error.response?.data?.detail || 'Errore aggiornamento istituti',
+    }),
+  })
+
+  const bulkCapMutation = useMutation({
+    mutationFn: (cap: number) =>
+      adminApi.setTeacherCreditLimitsBulk(Array.from(selectedTeacherIds), cap),
+    onSuccess: (res) => {
+      queryClient.invalidateQueries({ queryKey: ['admin-teacher-status'] })
+      setBulkCap('')
+      toast({ title: 'Limiti mensili aggiornati', description: `${res.data.updated} docenti aggiornati` })
+    },
+    onError: (error: any) => toast({
+      variant: 'destructive', title: 'Operazione non riuscita',
+      description: error.response?.data?.detail || 'Errore aggiornamento limiti',
+    }),
+  })
+
   const hardDeleteMutation = useMutation({
     mutationFn: ({ userId, confirmEmail }: { userId: string; confirmEmail: string }) =>
       adminApi.hardDeleteUser(userId, confirmEmail),
@@ -363,13 +411,13 @@ export default function TeachersPage() {
     .filter((t) => {
       if (!search.trim()) return true
       const q = search.toLowerCase()
-      return [t.first_name, t.last_name, t.email, t.institution].join(' ').toLowerCase().includes(q)
+      return [t.first_name, t.last_name, t.email, t.institution, ...(t.schools || []).map(s => s.name)].join(' ').toLowerCase().includes(q)
     })
     .sort((a, b) => {
       const dir = sortDirection === 'asc' ? 1 : -1
       switch (sortField) {
         case 'institution':
-          return dir * (a.institution || '').localeCompare(b.institution || '')
+          return dir * ((a.schools || []).map(s => s.name).join(', ') || a.institution || '').localeCompare((b.schools || []).map(s => s.name).join(', ') || b.institution || '')
         case 'last_login_at':
           return dir * ((a.last_login_at ? new Date(a.last_login_at).getTime() : 0) - (b.last_login_at ? new Date(b.last_login_at).getTime() : 0))
         case 'session_count':
@@ -398,7 +446,7 @@ export default function TeachersPage() {
       t.email,
       t.role || 'teacher',
       t.is_verified ? 'si' : 'no',
-      t.institution || '',
+      (t.schools || []).map(school => school.name).join('; ') || t.institution || '',
       t.last_login_at || '',
       t.created_at || '',
       t.session_count,
@@ -420,6 +468,10 @@ export default function TeachersPage() {
   }
 
   const selectedCount = csvRows.filter(r => r.selected && r.status === 'idle').length
+  const selectedTeachersCount = selectedTeacherIds.size
+  const selectableTeachers = teachers.filter(t => (t.role || '').toUpperCase() !== 'ADMIN')
+  const allVisibleTeachersSelected = selectableTeachers.length > 0 && selectableTeachers.every(t => selectedTeacherIds.has(t.id))
+  const schoolTenants = (tenantRows || []).filter(t => t.tenant_type === 'SCHOOL' && t.status === 'active')
   const sentCount = csvRows.filter(r => r.status === 'sent').length
   const allIdleSelected = csvRows.filter(r => r.status === 'idle').length > 0 &&
     csvRows.filter(r => r.status === 'idle').every(r => r.selected)
@@ -447,10 +499,11 @@ export default function TeachersPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between gap-4">
+      <div className="flex flex-col gap-5 rounded-2xl border border-slate-700 bg-slate-900 px-6 py-5 text-white shadow-lg shadow-slate-200/70 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">Docenti</h1>
-          <p className="text-sm text-slate-500 mt-0.5">
+          <p className="mb-1 text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">Amministrazione utenti</p>
+          <h1 className="text-2xl font-bold text-white">Docenti</h1>
+          <p className="text-sm text-slate-300 mt-1">
             {teachers.length} docenti attivi
             {pending.length > 0 && (
               <span className="ml-2 inline-flex items-center gap-1 text-amber-600 font-medium">
@@ -464,14 +517,14 @@ export default function TeachersPage() {
             onClick={exportTeachersCsv}
             disabled={teachers.length === 0}
             variant="outline"
-            className="gap-2"
+            className="gap-2 border-slate-600 bg-slate-800 text-white hover:bg-slate-700 hover:text-white"
           >
             <Download className="h-4 w-4" />
             Esporta CSV
           </Button>
           <Button
             onClick={() => setShowInvite((v) => !v)}
-            className="gap-2 bg-slate-800 hover:bg-slate-900 text-white"
+            className="gap-2 bg-white hover:bg-slate-100 text-slate-950"
           >
             <UserPlus className="h-4 w-4" />
             Invita docente
@@ -480,13 +533,13 @@ export default function TeachersPage() {
         </div>
       </div>
 
-      <div className="relative max-w-xs">
+      <div className="relative max-w-md">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
         <Input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Cerca docente o invitato…"
-          className="pl-9 h-9 text-sm"
+          className="pl-9 h-10 border-slate-300 bg-white text-sm shadow-sm"
         />
       </div>
 
@@ -912,6 +965,70 @@ export default function TeachersPage() {
 
       {/* ── TEACHERS TABLE ─────────────────────────────── */}
       <div className="space-y-3">
+        {selectedTeachersCount > 0 && (
+          <div className="rounded-xl border border-slate-700 bg-slate-900 p-3 text-white shadow-md">
+            <div className="flex flex-wrap items-center gap-3">
+              <span className="text-sm font-semibold text-white">
+                {selectedTeachersCount} {selectedTeachersCount === 1 ? 'docente selezionato' : 'docenti selezionati'}
+              </span>
+              <div className="h-6 w-px bg-indigo-200 hidden sm:block" />
+              <select
+                value={bulkSchoolId}
+                onChange={(e) => setBulkSchoolId(e.target.value)}
+                className="h-8 min-w-[220px] rounded-md border border-slate-600 bg-slate-800 px-2 text-xs text-white"
+              >
+                <option value="">Scegli un istituto…</option>
+                {schoolTenants.map(school => <option key={school.id} value={school.id}>{school.name}</option>)}
+              </select>
+              <Button
+                size="sm"
+                className="h-8 bg-white text-xs text-slate-950 hover:bg-slate-100"
+                disabled={!bulkSchoolId || bulkSchoolMutation.isPending}
+                onClick={() => bulkSchoolMutation.mutate('add')}
+              >
+                <Building2 className="mr-1.5 h-3.5 w-3.5" /> Invita nell'istituto
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-8 border-slate-600 bg-slate-800 text-xs text-white hover:bg-slate-700 hover:text-white"
+                disabled={!bulkSchoolId || bulkSchoolMutation.isPending}
+                onClick={() => bulkSchoolMutation.mutate('remove')}
+              >
+                Rimuovi dall'istituto
+              </Button>
+              <div className="h-6 w-px bg-indigo-200 hidden lg:block" />
+              <div className="flex items-center gap-1">
+                <span className="text-xs text-slate-500">€</span>
+                <Input
+                  type="number"
+                  min="0"
+                  step="0.5"
+                  value={bulkCap}
+                  onChange={(e) => setBulkCap(e.target.value)}
+                  placeholder="Limite/mese"
+                  className="h-8 w-28 border-indigo-200 bg-white text-xs"
+                />
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-8 border-indigo-200 bg-white text-xs text-indigo-700"
+                  disabled={bulkCap === '' || Number.isNaN(Number(bulkCap)) || Number(bulkCap) < 0 || bulkCapMutation.isPending}
+                  onClick={() => bulkCapMutation.mutate(Number(bulkCap))}
+                >
+                  Applica limite
+                </Button>
+              </div>
+              <button
+                type="button"
+                className="ml-auto text-xs text-slate-300 hover:text-white"
+                onClick={() => setSelectedTeacherIds(new Set())}
+              >
+                Deseleziona tutti
+              </button>
+            </div>
+          </div>
+        )}
         <Card>
           <CardContent className="p-0">
             {loadingTeachers ? (
@@ -920,22 +1037,35 @@ export default function TeachersPage() {
               <div className="py-12 text-center text-slate-400 text-sm">Nessun docente trovato</div>
             ) : (
               <div className="overflow-x-auto">
-                <table className="w-full min-w-[860px] text-sm">
+                <table className="w-full min-w-[1080px] table-fixed text-sm">
                   <thead>
-                    <tr className="border-b border-slate-100 text-[11px] uppercase text-slate-400">
-                      <th className="px-4 py-3 text-left font-medium">
+                    <tr className="border-b border-slate-200 bg-slate-100 text-[11px] uppercase tracking-wide text-slate-600">
+                      <th className="w-10 px-4 py-3 text-left font-medium">
+                        <input
+                          type="checkbox"
+                          className="rounded"
+                          checked={allVisibleTeachersSelected}
+                          onChange={(e) => {
+                            const next = new Set(selectedTeacherIds)
+                            selectableTeachers.forEach(teacher => e.target.checked ? next.add(teacher.id) : next.delete(teacher.id))
+                            setSelectedTeacherIds(next)
+                          }}
+                          aria-label="Seleziona tutti i docenti visibili"
+                        />
+                      </th>
+                      <th className="w-[250px] px-4 py-3 text-left font-semibold">
                         <button type="button" onClick={() => toggleSort('name')} className="flex items-center gap-1 hover:text-slate-600">
                           Docente
                           <SortIcon field="name" sortField={sortField} sortDirection={sortDirection} />
                         </button>
                       </th>
-                      <th className="px-3 py-3 text-left font-medium">
+                      <th className="w-[210px] px-3 py-3 text-left font-semibold">
                         <button type="button" onClick={() => toggleSort('institution')} className="flex items-center gap-1 hover:text-slate-600">
                           Scuola
                           <SortIcon field="institution" sortField={sortField} sortDirection={sortDirection} />
                         </button>
                       </th>
-                      <th className="px-3 py-3 text-left font-medium">
+                      <th className="w-[145px] px-3 py-3 text-left font-semibold">
                         <button type="button" onClick={() => toggleSort('last_login_at')} className="flex items-center gap-1 hover:text-slate-600">
                           <LogIn className="h-3.5 w-3.5" />
                           Ultimo accesso
@@ -969,13 +1099,28 @@ export default function TeachersPage() {
                     {teachers.map((teacher) => (
                       <tr
                         key={teacher.id}
-                        className="border-t border-slate-100 hover:bg-slate-50 transition-colors"
+                        className="border-t border-slate-200 odd:bg-white even:bg-slate-50/70 hover:bg-sky-50 transition-colors"
                       >
+                        <td className="px-4 py-3">
+                          {(teacher.role || '').toUpperCase() !== 'ADMIN' && (
+                            <input
+                              type="checkbox"
+                              className="rounded"
+                              checked={selectedTeacherIds.has(teacher.id)}
+                              onChange={(e) => {
+                                const next = new Set(selectedTeacherIds)
+                                e.target.checked ? next.add(teacher.id) : next.delete(teacher.id)
+                                setSelectedTeacherIds(next)
+                              }}
+                              aria-label={`Seleziona ${teacher.email}`}
+                            />
+                          )}
+                        </td>
                         {/* Name / email / badge */}
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-2.5">
-                            <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${teacher.role === 'admin' ? 'bg-amber-100' : 'bg-slate-100'}`}>
-                              {teacher.role === 'admin'
+                            <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${(teacher.role || '').toUpperCase() === 'ADMIN' ? 'bg-amber-100' : 'bg-slate-100'}`}>
+                              {(teacher.role || '').toUpperCase() === 'ADMIN'
                                 ? <ShieldCheck className="h-4 w-4 text-amber-600" />
                                 : <GraduationCap className="h-4 w-4 text-slate-500" />
                               }
@@ -986,17 +1131,17 @@ export default function TeachersPage() {
                               </p>
                               <p className="text-xs text-slate-400">{teacher.email}</p>
                             </div>
-                            {teacher.role === 'admin' && (
+                            {(teacher.role || '').toUpperCase() === 'ADMIN' && (
                               <span className="ml-1 px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 text-[10px] font-medium hidden sm:inline">
                                 admin
                               </span>
                             )}
-                            {teacher.role !== 'admin' && teacher.is_verified && (
+                            {(teacher.role || '').toUpperCase() !== 'ADMIN' && teacher.is_verified && (
                               <span className="ml-1 px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700 text-[10px] font-medium hidden sm:inline">
                                 verificato
                               </span>
                             )}
-                            {teacher.role !== 'admin' && !teacher.is_verified && (
+                            {(teacher.role || '').toUpperCase() !== 'ADMIN' && !teacher.is_verified && (
                               <span className="ml-1 px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-500 text-[10px] font-medium hidden sm:inline">
                                 non verificato
                               </span>
@@ -1005,8 +1150,20 @@ export default function TeachersPage() {
                         </td>
 
                         {/* School */}
-                        <td className="px-3 py-3 text-slate-600 text-xs max-w-[120px] truncate">
-                          {teacher.institution || '—'}
+                        <td className="px-3 py-3 text-slate-600 text-xs max-w-[220px]">
+                          {(teacher.schools || []).length > 0 ? (
+                            <div className="flex flex-wrap gap-1">
+                              {teacher.schools.map(school => (
+                                <span key={school.id} className="rounded-full bg-pink-50 px-2 py-0.5 text-[10px] font-medium text-pink-700" title={school.name}>
+                                  {school.name}
+                                </span>
+                              ))}
+                            </div>
+                          ) : teacher.institution ? (
+                            <span title="Testo storico, non ancora collegato a un istituto">{teacher.institution}</span>
+                          ) : (
+                            <span className="text-slate-400">Nessun istituto</span>
+                          )}
                         </td>
 
                         {/* Last login */}
@@ -1150,7 +1307,7 @@ export default function TeachersPage() {
                                 <Key className="h-3.5 w-3.5 mr-1" />
                                 <span className="hidden lg:inline">Reset password</span>
                               </Button>
-                              {teacher.role !== 'admin' && (
+                              {(teacher.role || '').toUpperCase() !== 'ADMIN' && (
                                 <Button
                                   size="sm"
                                   variant="ghost"

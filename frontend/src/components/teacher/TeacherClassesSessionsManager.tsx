@@ -47,7 +47,9 @@ import { hexToRgba } from '@/design/themes/colorUtils'
 import { PASTEL_ICON_BACKGROUNDS, PASTEL_ICON_TEXT, PASTEL_SURFACES, type PastelTone } from '@/design/themes/pastelSurfaces'
 import { useTeacherProfile } from '@/hooks/useTeacherProfile'
 import { TeachersManagementModal } from '@/components/TeachersManagementModal'
+import { InvitationsPanel } from '@/components/InvitationsPanel'
 import { useToast } from '@/components/ui/use-toast'
+import { useAuthStore } from '@/stores/auth'
 
 interface ClassData {
   id: string
@@ -58,11 +60,16 @@ interface ClassData {
   role?: 'owner' | 'invited'
   owner_name?: string
   archived_at?: string | null
+  school_tenant_id?: string | null
+  school_name?: string | null
 }
+
+interface SchoolData { id: string; name: string; slug: string }
 
 interface SessionData {
   id: string
   class_id: string
+  created_by_teacher_id?: string | null
   title: string
   join_code?: string
   status: 'draft' | 'active' | 'paused' | 'finished' | 'ended'
@@ -106,6 +113,7 @@ export default function TeacherClassesSessionsManager({
   const { toast } = useToast()
   const [searchParams, setSearchParams] = useSearchParams()
   const { data: teacherProfile } = useTeacherProfile()
+  const currentTeacherId = useAuthStore((state) => state.user?.id)
   // The selected class keeps a neutral accent; session status colours are handled separately.
   const accentTheme = { ...getTeacherAccentTheme(teacherProfile?.uiAccent), accent: '#64748b', text: '#334155' }
 
@@ -130,6 +138,7 @@ export default function TeacherClassesSessionsManager({
     ended: { label: t('sessions.status_ended'), tone: 'logo-pink', dot: 'bg-[var(--logo-pink)]' },
   }
   const [newClassGrade, setNewClassGrade] = useState<string>(schoolGradeOptions[1])
+  const [newClassSchoolId, setNewClassSchoolId] = useState('')
   const [isEditingClass, setIsEditingClass] = useState(false)
   const [editClassName, setEditClassName] = useState('')
   const [editClassGrade, setEditClassGrade] = useState<string>(schoolGradeOptions[1])
@@ -152,8 +161,16 @@ export default function TeacherClassesSessionsManager({
     queryKey: ['classes'],
     queryFn: async () => (await teacherApi.getClasses({ include_archived: true })).data,
   })
+  const { data: teacherSchools = [] } = useQuery<SchoolData[]>({
+    queryKey: ['teacher-schools'],
+    queryFn: async () => (await teacherApi.getSchools()).data,
+  })
   const classes = useMemo(() => allClasses.filter(cls => !cls.archived_at), [allClasses])
   const archivedClasses = useMemo(() => allClasses.filter(cls => cls.archived_at && cls.role === 'owner'), [allClasses])
+
+  useEffect(() => {
+    if (!newClassSchoolId && teacherSchools.length === 1) setNewClassSchoolId(teacherSchools[0].id)
+  }, [newClassSchoolId, teacherSchools])
 
   useEffect(() => {
     if (!classes.length) return
@@ -197,7 +214,7 @@ export default function TeacherClassesSessionsManager({
   })
 
   const createClassMutation = useMutation({
-    mutationFn: (data: { name: string; school_grade?: string }) => teacherApi.createClass(data),
+    mutationFn: (data: { name: string; school_grade?: string; school_tenant_id?: string | null }) => teacherApi.createClass(data),
     onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ['classes'] })
       setNewClassName('')
@@ -214,8 +231,8 @@ export default function TeacherClassesSessionsManager({
   })
 
   const updateClassMutation = useMutation({
-    mutationFn: (data: { id: string; name: string; school_grade?: string }) =>
-      teacherApi.updateClass(data.id, { name: data.name, school_grade: data.school_grade }),
+    mutationFn: (data: { id: string; name: string; school_grade?: string; school_tenant_id?: string | null }) =>
+      teacherApi.updateClass(data.id, { name: data.name, school_grade: data.school_grade, school_tenant_id: data.school_tenant_id }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['classes'] })
       setIsEditingClass(false)
@@ -281,6 +298,7 @@ export default function TeacherClassesSessionsManager({
       setSessionToTrash(null)
       toast({ title: isEnglish ? 'Session moved to trash' : 'Sessione spostata nel cestino' })
     },
+    onError: (error: any) => toast({ title: error?.response?.data?.detail || 'Impossibile archiviare la sessione', variant: 'destructive' }),
   })
 
   const restoreSessionMutation = useMutation({
@@ -290,6 +308,7 @@ export default function TeacherClassesSessionsManager({
       queryClient.invalidateQueries({ queryKey: ['classes'] })
       toast({ title: isEnglish ? 'Session restored' : 'Sessione recuperata' })
     },
+    onError: (error: any) => toast({ title: error?.response?.data?.detail || 'Impossibile recuperare la sessione', variant: 'destructive' }),
   })
 
   const permanentlyDeleteSessionMutation = useMutation({
@@ -300,6 +319,7 @@ export default function TeacherClassesSessionsManager({
       setSessionToPermanentlyDelete(null)
       toast({ title: isEnglish ? 'Session permanently deleted' : 'Sessione eliminata definitivamente' })
     },
+    onError: (error: any) => toast({ title: error?.response?.data?.detail || 'Impossibile eliminare la sessione', variant: 'destructive' }),
   })
 
   const renameSessionMutation = useMutation({
@@ -336,13 +356,25 @@ export default function TeacherClassesSessionsManager({
     const query = classSearch.trim().toLowerCase()
     if (!query) return classes
     return classes.filter((cls) =>
-      [cls.name, cls.school_grade, cls.owner_name]
+      [cls.name, cls.school_grade, cls.owner_name, cls.school_name]
         .filter(Boolean)
         .join(' ')
         .toLowerCase()
         .includes(query)
     )
   }, [classSearch, classes])
+
+  const groupedClasses = useMemo(() => {
+    const groups = new Map<string, { id: string; name: string; classes: ClassData[] }>()
+    filteredClasses.forEach((cls) => {
+      const id = cls.school_tenant_id || 'unassigned'
+      const name = cls.school_name || (isEnglish ? 'No institution' : 'Senza istituto')
+      const group = groups.get(id) || { id, name, classes: [] }
+      group.classes.push(cls)
+      groups.set(id, group)
+    })
+    return Array.from(groups.values()).sort((a, b) => a.name.localeCompare(b.name))
+  }, [filteredClasses, isEnglish])
 
   const filteredOrderedSessions = useMemo(() => {
     const query = sessionSearch.trim().toLowerCase()
@@ -367,7 +399,7 @@ export default function TeacherClassesSessionsManager({
   const handleCreateClass = (e: React.FormEvent) => {
     e.preventDefault()
     if (!newClassName.trim()) return
-    createClassMutation.mutate({ name: newClassName.trim(), school_grade: newClassGrade })
+    createClassMutation.mutate({ name: newClassName.trim(), school_grade: newClassGrade, school_tenant_id: newClassSchoolId || null })
   }
 
   const handleSaveClass = () => {
@@ -386,6 +418,7 @@ export default function TeacherClassesSessionsManager({
       id: selectedClass.id,
       name: editClassName.trim(),
       school_grade: editClassGrade,
+      school_tenant_id: selectedClass.school_tenant_id || null,
     })
   }
 
@@ -456,6 +489,7 @@ export default function TeacherClassesSessionsManager({
               >
                 <Plus className="h-3.5 w-3.5" />
               </Button>
+              <InvitationsPanel />
             </div>
             <div className={`relative mt-4 rounded-2xl px-3 py-2 shadow-sm ${PASTEL_SURFACES.slate}`}>
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
@@ -503,6 +537,13 @@ export default function TeacherClassesSessionsManager({
                       : "Inserisci il nome che studenti e docenti vedranno nell'elenco classi."}
                   </p>
                 </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold uppercase tracking-wide text-slate-600">{isEnglish ? 'Institution' : 'Istituto'}</label>
+                  <Select value={newClassSchoolId} onChange={(e) => setNewClassSchoolId(e.target.value)} surface="base">
+                    <option value="">{isEnglish ? 'No institution' : 'Senza istituto'}</option>
+                    {teacherSchools.map((school) => <option key={school.id} value={school.id}>{school.name}</option>)}
+                  </Select>
+                </div>
                 <Select
                   value={newClassGrade}
                   onChange={(e) => setNewClassGrade(e.target.value)}
@@ -547,8 +588,18 @@ export default function TeacherClassesSessionsManager({
                 </p>
               </div>
             ) : (
-              <div className="space-y-2">
-                {filteredClasses.map((cls) => {
+              <div className="space-y-5">
+                {groupedClasses.map((group) => (
+                  <section key={group.id}>
+                    <div className="mb-2 flex items-center justify-between px-1">
+                      <span className="flex min-w-0 items-center gap-1.5 text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">
+                        <School className="h-3.5 w-3.5 shrink-0" />
+                        <span className="truncate">{group.name}</span>
+                      </span>
+                      <span className="rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-bold text-slate-600">{group.classes.length}</span>
+                    </div>
+                    <div className="space-y-2">
+                {group.classes.map((cls) => {
                   const isSelected = cls.id === selectedClassId
                   const isShared = cls.role === 'invited'
                   const cardTone: PastelTone = isSelected ? 'violet' : isShared ? 'indigo' : 'slate'
@@ -587,15 +638,16 @@ export default function TeacherClassesSessionsManager({
                     </button>
                   )
                 })}
+                    </div>
+                  </section>
+                ))}
               </div>
             )}
           </div>
-          {archivedClasses.length > 0 && (
-            <button type="button" onClick={() => setShowArchivedClasses(true)} className="mx-3 mb-3 flex w-[calc(100%-1.5rem)] items-center justify-between rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50">
-              <span className="flex items-center gap-2"><Archive className="h-3.5 w-3.5" />{isEnglish ? 'Class archive' : 'Archivio classi'}</span>
-              <span className="rounded-full bg-slate-100 px-2 py-0.5">{archivedClasses.length}</span>
-            </button>
-          )}
+          <button type="button" onClick={() => setShowArchivedClasses(true)} className="mx-3 mb-3 flex w-[calc(100%-1.5rem)] items-center justify-between rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50">
+            <span className="flex items-center gap-2"><Archive className="h-3.5 w-3.5" />{isEnglish ? 'Class archive' : 'Archivio classi'}</span>
+            <span className="rounded-full bg-slate-100 px-2 py-0.5">{archivedClasses.length}</span>
+          </button>
         </aside>
 
         <section className="min-w-0 flex-1 bg-slate-100">
@@ -670,6 +722,9 @@ export default function TeacherClassesSessionsManager({
                           </IconButton>
                         </div>
                         <div className="mt-2.5 flex flex-wrap items-center gap-1.5 text-[11px]">
+                          <span className="inline-flex items-center gap-1 rounded-full bg-slate-900 px-2 py-0.5 font-bold text-white">
+                            <School className="h-2.5 w-2.5" /> {selectedClass.school_name || (isEnglish ? 'No institution' : 'Senza istituto')}
+                          </span>
                           <span className="rounded-full bg-white/80 px-2 py-0.5 font-bold text-slate-600 ring-1 ring-slate-200/80">
                             {selectedClass.school_grade || '—'}
                           </span>
@@ -841,6 +896,7 @@ export default function TeacherClassesSessionsManager({
                           updatePending={updateSessionMutation.isPending}
                           onStatusChange={(id, status) => updateSessionMutation.mutate({ id, status })}
                           onTrashSession={(session) => setSessionToTrash(session)}
+                          currentTeacherId={currentTeacherId}
                           viewMode={sessionViewMode}
                         />
                         {trashedSessions.length > 0 && (
@@ -851,6 +907,7 @@ export default function TeacherClassesSessionsManager({
                             onPermanentDelete={(session) => setSessionToPermanentlyDelete(session)}
                             restorePending={restoreSessionMutation.isPending}
                             permanentDeletePending={permanentlyDeleteSessionMutation.isPending}
+                            currentTeacherId={currentTeacherId}
                           />
                         )}
                       </>
@@ -873,13 +930,18 @@ export default function TeacherClassesSessionsManager({
       )}
 
       <Dialog open={showArchivedClasses} onOpenChange={setShowArchivedClasses}>
-        <DialogContent size="md" surface="elevated" className="rounded-xl">
+        <DialogContent size="md" surface="elevated" className="rounded-xl !border-slate-200 !bg-white !opacity-100 !backdrop-blur-none">
           <DialogHeader>
             <DialogTitle>{isEnglish ? 'Class archive' : 'Archivio classi'}</DialogTitle>
             <DialogDescription>{isEnglish ? 'Restore a class or permanently delete all of its sessions and related data.' : 'Ripristina una classe oppure elimina definitivamente tutte le sessioni e i dati collegati.'}</DialogDescription>
           </DialogHeader>
           <DialogBody>
             <div className="space-y-2">
+              {archivedClasses.length === 0 && (
+                <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">
+                  {isEnglish ? 'There are no archived classes.' : 'Non ci sono classi archiviate.'}
+                </div>
+              )}
               {archivedClasses.map(cls => (
                 <div key={cls.id} className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
                   <div className="min-w-0">
@@ -943,7 +1005,7 @@ export default function TeacherClassesSessionsManager({
       )}
 
       <Dialog open={!!sessionToTrash} onOpenChange={(open) => { if (!open) setSessionToTrash(null) }}>
-        <DialogContent size="sm" surface="elevated" className="rounded-xl">
+        <DialogContent size="sm" surface="elevated" className="rounded-xl !border-slate-200 !bg-white !opacity-100 !backdrop-blur-none">
           <DialogHeader>
             <DialogTitle>{isEnglish ? 'Archive session?' : 'Archiviare la sessione?'}</DialogTitle>
             <DialogDescription>
@@ -979,13 +1041,13 @@ export default function TeacherClassesSessionsManager({
       </Dialog>
 
       <Dialog open={!!sessionToPermanentlyDelete} onOpenChange={(open) => { if (!open) setSessionToPermanentlyDelete(null) }}>
-        <DialogContent size="sm" surface="elevated" className="rounded-xl">
+        <DialogContent size="sm" surface="elevated" className="rounded-xl !border-slate-200 !bg-white !opacity-100 !backdrop-blur-none">
           <DialogHeader>
             <DialogTitle>{isEnglish ? 'Permanently delete?' : 'Eliminare definitivamente?'}</DialogTitle>
             <DialogDescription>
               {isEnglish
                 ? <>This will permanently delete <strong>{sessionToPermanentlyDelete?.title}</strong> and clean its related data.</>
-                : <>Questa azione eliminera definitivamente <strong>{sessionToPermanentlyDelete?.title}</strong> e pulira i dati collegati.</>}
+                : <>La sessione <strong>{sessionToPermanentlyDelete?.title}</strong> verrà eliminata definitivamente insieme a tutti i dati collegati.</>}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -1168,6 +1230,7 @@ function SessionList({
   updatePending,
   onStatusChange,
   onTrashSession,
+  currentTeacherId,
   viewMode,
 }: {
   isEnglish: boolean
@@ -1183,6 +1246,7 @@ function SessionList({
   updatePending: boolean
   onStatusChange: (id: string, status: string) => void
   onTrashSession: (session: SessionData) => void
+  currentTeacherId?: string
   viewMode: 'grid' | 'list'
 }) {
   if (sessions.length === 0) return null
@@ -1216,6 +1280,7 @@ function SessionList({
             updatePending={updatePending}
             onStatusChange={onStatusChange}
             onTrashSession={onTrashSession}
+            currentTeacherId={currentTeacherId}
             statusMeta={statusMeta}
             isEnglish={isEnglish}
             viewMode={viewMode}
@@ -1238,6 +1303,7 @@ function SessionRow({
   updatePending,
   onStatusChange,
   onTrashSession,
+  currentTeacherId,
   statusMeta,
   isEnglish,
   viewMode,
@@ -1253,6 +1319,7 @@ function SessionRow({
   updatePending: boolean
   onStatusChange: (id: string, status: string) => void
   onTrashSession: (session: SessionData) => void
+  currentTeacherId?: string
   statusMeta: Record<string, { label: string; tone: string; dot: string }>
   isEnglish: boolean
   viewMode: 'grid' | 'list'
@@ -1264,6 +1331,12 @@ function SessionRow({
   const iconTone: PastelTone = isPaused ? 'rose' : isActive ? 'violet' : 'slate'
   const cardColor = isActive ? '#7b69c9' : isPaused ? '#fe004d' : '#64748b'
   const cardOpacity = isActive ? 0.09 : isPaused ? 0.05 : 0.045
+  const canDelete = Boolean(currentTeacherId && session.created_by_teacher_id === currentTeacherId)
+  const deleteHint = canDelete
+    ? (!['ended', 'finished'].includes(session.status)
+      ? (isEnglish ? 'Stop the session before archiving it' : 'Termina la sessione prima di archiviarla')
+      : (isEnglish ? 'Archive session' : 'Archivia sessione'))
+    : (isEnglish ? 'Only the teacher who created this session can archive it' : 'Solo il docente che ha creato questa sessione può archiviarla')
 
   const navigate = useNavigate()
   const createdAt = new Date(session.created_at).toLocaleDateString(isEnglish ? 'en-GB' : 'it-IT', { day: '2-digit', month: '2-digit', year: '2-digit' })
@@ -1387,18 +1460,19 @@ function SessionRow({
             <MonitorPlay className="h-3.5 w-3.5" />
           </Button>
         )}
-        <Button
-          onClick={() => onTrashSession(session)}
-          disabled={updatePending || (!['ended', 'finished'].includes(session.status))}
-          tone="danger"
-          surface="ghost"
-          density="compact"
-          className="h-8 w-8 rounded-full p-0"
-          title={isEnglish ? 'Archive session' : 'Archivia sessione'}
-          aria-label={isEnglish ? 'Archive session' : 'Archivia sessione'}
-        >
-          <Trash2 className="h-3.5 w-3.5" />
-        </Button>
+        <span className="inline-flex" title={deleteHint}>
+          <Button
+            onClick={() => onTrashSession(session)}
+            disabled={!canDelete || updatePending || (!['ended', 'finished'].includes(session.status))}
+            tone="danger"
+            surface="ghost"
+            density="compact"
+            className="h-8 w-8 rounded-full p-0 disabled:cursor-not-allowed disabled:opacity-40"
+            aria-label={deleteHint}
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </Button>
+        </span>
       </div>
     </Card>
   )
@@ -1411,6 +1485,7 @@ function SessionTrash({
   onPermanentDelete,
   restorePending,
   permanentDeletePending,
+  currentTeacherId,
 }: {
   isEnglish: boolean
   sessions: SessionData[]
@@ -1418,6 +1493,7 @@ function SessionTrash({
   onPermanentDelete: (session: SessionData) => void
   restorePending: boolean
   permanentDeletePending: boolean
+  currentTeacherId?: string
 }) {
   return (
     <section className="rounded-2xl border border-slate-200 bg-slate-50/80 p-4">
@@ -1439,6 +1515,10 @@ function SessionTrash({
       </div>
       <div className="space-y-2">
         {sessions.map((session) => {
+          const canDelete = Boolean(currentTeacherId && session.created_by_teacher_id === currentTeacherId)
+          const ownerHint = isEnglish
+            ? 'Only the teacher who created this session can manage it'
+            : 'Solo il docente che ha creato questa sessione può gestirla'
           const deletedAt = session.deleted_at ? new Date(session.deleted_at) : null
           const purgeAfter = session.purge_after ? new Date(session.purge_after) : null
           const deletedText = deletedAt
@@ -1457,28 +1537,32 @@ function SessionTrash({
                 </p>
               </div>
               <div className="flex shrink-0 flex-wrap items-center gap-2">
-                <Button
-                  tone="neutral"
-                  surface="soft"
-                  density="compact"
-                  className="rounded-full"
-                  disabled={restorePending}
-                  onClick={() => onRestore(session.id)}
-                >
-                  {restorePending ? <Spinner className="mr-2" size="sm" tone="neutral" /> : <RotateCcw className="mr-1.5 h-3.5 w-3.5" />}
-                  {isEnglish ? 'Restore' : 'Recupera'}
-                </Button>
-                <Button
-                  tone="danger"
-                  surface="ghost"
-                  density="compact"
-                  className="rounded-full"
-                  disabled={permanentDeletePending}
-                  onClick={() => onPermanentDelete(session)}
-                >
-                  <Trash2 className="mr-1.5 h-3.5 w-3.5" />
-                  {isEnglish ? 'Delete forever' : 'Elimina per sempre'}
-                </Button>
+                <span className="inline-flex" title={canDelete ? undefined : ownerHint}>
+                  <Button
+                    tone="neutral"
+                    surface="soft"
+                    density="compact"
+                    className="rounded-full disabled:cursor-not-allowed disabled:opacity-40"
+                    disabled={!canDelete || restorePending}
+                    onClick={() => onRestore(session.id)}
+                  >
+                    {restorePending ? <Spinner className="mr-2" size="sm" tone="neutral" /> : <RotateCcw className="mr-1.5 h-3.5 w-3.5" />}
+                    {isEnglish ? 'Restore' : 'Recupera'}
+                  </Button>
+                </span>
+                <span className="inline-flex" title={canDelete ? undefined : ownerHint}>
+                  <Button
+                    tone="danger"
+                    surface="ghost"
+                    density="compact"
+                    className="rounded-full disabled:cursor-not-allowed disabled:opacity-40"
+                    disabled={!canDelete || permanentDeletePending}
+                    onClick={() => onPermanentDelete(session)}
+                  >
+                    <Trash2 className="mr-1.5 h-3.5 w-3.5" />
+                    {isEnglish ? 'Delete forever' : 'Elimina per sempre'}
+                  </Button>
+                </span>
               </div>
             </div>
           )

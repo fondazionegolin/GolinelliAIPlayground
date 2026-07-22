@@ -7,6 +7,7 @@ from datetime import datetime
 class ClassCreate(BaseModel):
     name: str
     school_grade: Optional[str] = None
+    school_tenant_id: Optional[UUID] = None
 
 
 class ClassResponse(BaseModel):
@@ -15,6 +16,7 @@ class ClassResponse(BaseModel):
     teacher_id: UUID
     name: str
     school_grade: Optional[str] = None
+    school_tenant_id: Optional[UUID] = None
     created_at: datetime
 
     class Config:
@@ -42,6 +44,7 @@ class SessionResponse(BaseModel):
     id: UUID
     tenant_id: UUID
     class_id: UUID
+    created_by_teacher_id: Optional[UUID] = None
     title: str
     join_code: str
     status: str

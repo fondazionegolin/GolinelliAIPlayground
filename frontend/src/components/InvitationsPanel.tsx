@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Bell, Check, X, Users, MonitorPlay, Loader2 } from 'lucide-react'
+import { Bell, Building2, Check, X, Users, MonitorPlay, Loader2 } from 'lucide-react'
 import { teacherApi } from '@/lib/api'
 import { useToast } from '@/components/ui/use-toast'
 import { Button } from '@/components/ui/button'
@@ -33,7 +33,17 @@ interface SessionInvitation {
   created_at: string
 }
 
+interface SchoolInvitation {
+  id: string
+  school_tenant_id: string
+  school_name: string
+  inviter: TeacherInfo
+  status: string
+  created_at: string
+}
+
 interface InvitationsData {
+  school_invitations: SchoolInvitation[]
   class_invitations: ClassInvitation[]
   session_invitations: SessionInvitation[]
   total_pending: number
@@ -79,6 +89,21 @@ export function InvitationsPanel() {
     },
   })
 
+  const respondToSchoolMutation = useMutation({
+    mutationFn: ({ id, accept }: { id: string; accept: boolean }) =>
+      teacherApi.respondToSchoolInvitation(id, accept),
+    onSuccess: (_, { accept }) => {
+      queryClient.invalidateQueries({ queryKey: ['invitations'] })
+      queryClient.invalidateQueries({ queryKey: ['teacher-schools'] })
+      queryClient.invalidateQueries({ queryKey: ['classes'] })
+      toast({
+        title: accept ? 'Invito accettato' : 'Invito rifiutato',
+        description: accept ? 'Ora appartieni al nuovo istituto' : "Hai rifiutato l'invito all'istituto",
+      })
+    },
+    onError: () => toast({ variant: 'destructive', title: "Errore nella risposta all'invito" }),
+  })
+
   const respondToSessionMutation = useMutation({
     mutationFn: ({ id, accept }: { id: string; accept: boolean }) =>
       teacherApi.respondToSessionInvitation(id, accept),
@@ -106,7 +131,7 @@ export function InvitationsPanel() {
   }, [])
 
   const pendingCount = invitations?.total_pending || 0
-  const isPending = respondToClassMutation.isPending || respondToSessionMutation.isPending
+  const isPending = respondToSchoolMutation.isPending || respondToClassMutation.isPending || respondToSessionMutation.isPending
 
   const formatInviterName = (inviter: TeacherInfo) => {
     if (inviter.first_name || inviter.last_name) {
@@ -147,9 +172,9 @@ export function InvitationsPanel() {
 
       {/* Dropdown Panel */}
       {isOpen && (
-        <div className="absolute right-0 mt-2 w-96 bg-white rounded-2xl shadow-2xl border border-slate-100 overflow-hidden animate-in fade-in zoom-in-95 duration-150 origin-top-right z-50">
+        <div className="isolate absolute right-0 z-50 mt-2 w-80 max-w-[calc(100vw-1rem)] overflow-hidden rounded-2xl border border-slate-200 bg-white opacity-100 shadow-2xl animate-in fade-in zoom-in-95 duration-150 origin-top-right">
           {/* Header */}
-          <div className="px-5 py-4 border-b border-slate-100 bg-gradient-to-r from-violet-50 to-purple-50">
+          <div className="border-b border-slate-200 bg-gradient-to-r from-violet-50 to-purple-50 px-5 py-4">
             <h3 className="font-bold text-slate-800">Inviti Ricevuti</h3>
             <p className="text-xs text-slate-500 mt-0.5">
               {pendingCount > 0 ? `${pendingCount} inviti in attesa` : 'Nessun invito in attesa'}
@@ -157,7 +182,7 @@ export function InvitationsPanel() {
           </div>
 
           {/* Content */}
-          <div className="max-h-96 overflow-y-auto">
+          <div className="max-h-96 overflow-y-auto bg-white">
             {isLoading ? (
               <div className="flex items-center justify-center py-12">
                 <Loader2 className="h-6 w-6 animate-spin text-violet-500" />
@@ -169,11 +194,31 @@ export function InvitationsPanel() {
                 </div>
                 <p className="text-slate-500 text-sm">Nessun invito in attesa</p>
                 <p className="text-slate-400 text-xs mt-1">
-                  Qui vedrai gli inviti a classi e sessioni
+                  Qui vedrai gli inviti a istituti, classi e sessioni
                 </p>
               </div>
             ) : (
               <div className="divide-y divide-slate-100">
+                {(invitations?.school_invitations || []).map((inv) => (
+                  <div key={inv.id} className="p-4 hover:bg-slate-50 transition-colors">
+                    <div className="flex items-start gap-3">
+                      <div className="p-2 bg-pink-100 rounded-lg flex-shrink-0"><Building2 className="h-5 w-5 text-pink-700" /></div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium text-slate-900">Invito all'istituto</p>
+                        <p className="truncate text-sm font-semibold text-pink-700">{inv.school_name}</p>
+                        <p className="mt-1 text-xs text-slate-500">{formatDate(inv.created_at)}</p>
+                      </div>
+                    </div>
+                    <div className="ml-11 mt-3 flex gap-2">
+                      <Button size="sm" className="h-8 flex-1 bg-slate-900 hover:bg-slate-800" onClick={() => respondToSchoolMutation.mutate({ id: inv.id, accept: true })} disabled={isPending}>
+                        <Check className="mr-1 h-4 w-4" /> Accetta
+                      </Button>
+                      <Button size="sm" variant="outline" className="h-8 flex-1" onClick={() => respondToSchoolMutation.mutate({ id: inv.id, accept: false })} disabled={isPending}>
+                        <X className="mr-1 h-4 w-4" /> Rifiuta
+                      </Button>
+                    </div>
+                  </div>
+                ))}
                 {/* Class Invitations */}
                 {invitations?.class_invitations.map((inv) => (
                   <div key={inv.id} className="p-4 hover:bg-slate-50 transition-colors">

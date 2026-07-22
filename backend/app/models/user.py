@@ -35,6 +35,12 @@ class User(Base):
 
     # Relationships
     tenant = relationship("Tenant", back_populates="users", foreign_keys=[tenant_id])
+    school_memberships = relationship(
+        "TeacherSchoolMembership",
+        back_populates="teacher",
+        foreign_keys="TeacherSchoolMembership.teacher_id",
+        cascade="all, delete-orphan",
+    )
     classes = relationship(
         "Class",
         back_populates="teacher",

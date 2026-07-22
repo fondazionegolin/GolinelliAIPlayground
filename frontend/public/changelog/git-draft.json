@@ -1,14 +1,14 @@
 {
-  "generated_at": "2026-07-13T09:08:45.561082+00:00",
-  "version_label": "2026.07.13-d1a0a886",
+  "generated_at": "2026-07-22T07:59:21.720505+00:00",
+  "version_label": "2026.07.22-70434d13",
   "title": "Aggiornamenti branch bugfix/feedback-board-bugs",
   "summary": "Bozza generata automaticamente da 1 commit nuovi.",
-  "git_ref": "d1a0a886d0bdf3cec72f8c4673246ed67343c6fa",
+  "git_ref": "70434d134609cd205da17aa9858f82ba6a05b6d0",
   "items": [
     {
       "category": "new",
-      "title": "Expand teaching and coding workflows",
-      "description": "Expand teaching and coding workflows"
+      "title": "Expand feedback and teaching workflows",
+      "description": "Expand feedback and teaching workflows"
     }
   ]
 }

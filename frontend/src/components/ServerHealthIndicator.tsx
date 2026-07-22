@@ -60,7 +60,7 @@ function metric(value: number | null | undefined) {
   return value == null ? 'n/d' : `${Math.round(value)}%`
 }
 
-export function ServerHealthIndicator() {
+export function ServerHealthIndicator({ onBetaClick }: { onBetaClick?: () => void }) {
   const { data } = useServerHealth()
   const health: ServerHealthResponse = data ?? {
     status: 'yellow',
@@ -70,20 +70,32 @@ export function ServerHealthIndicator() {
 
   return (
     <div className="group/health relative flex items-center" onClick={(event) => event.stopPropagation()}>
-      <button
-        type="button"
-        className="flex items-center gap-1 rounded-full border border-slate-200/90 bg-white/80 px-1.5 py-1 shadow-sm transition hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300"
-        aria-label={`Stato server: ${health.summary}`}
-        title={health.summary}
-      >
-        {LIGHTS.map((light) => (
-          <span
-            key={light}
-            className={`h-2 w-2 rounded-full transition ${health.status === light ? ACTIVE_CLASS[light] : 'bg-slate-200'}`}
-            aria-hidden="true"
-          />
-        ))}
-      </button>
+      <div className="flex min-w-9 flex-col items-center overflow-hidden rounded-full border border-slate-200/90 bg-white/80 shadow-sm transition hover:bg-white">
+        <button
+          type="button"
+          className="flex w-full items-center justify-center gap-0.5 px-1.5 pb-0.5 pt-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-slate-300"
+          aria-label={`Stato server: ${health.summary}`}
+          title={health.summary}
+        >
+          {LIGHTS.map((light) => (
+            <span
+              key={light}
+              className={`h-1.5 w-1.5 rounded-full transition ${health.status === light ? ACTIVE_CLASS[light] : 'bg-slate-200'}`}
+              aria-hidden="true"
+            />
+          ))}
+        </button>
+        {onBetaClick && (
+          <button
+            type="button"
+            onClick={onBetaClick}
+            className="w-full border-t border-slate-200/80 px-1 pb-1 pt-0.5 text-center text-[7px] font-black leading-none tracking-[0.08em] text-amber-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-amber-300"
+            aria-label="Scopri le novità della versione beta"
+          >
+            BETA
+          </button>
+        )}
+      </div>
 
       <div className="pointer-events-none absolute left-0 top-full z-[80] mt-2 hidden w-72 rounded-xl border border-slate-200 bg-white p-3 text-left shadow-xl group-hover/health:block group-focus-within/health:block">
         <div className="flex items-center gap-2">

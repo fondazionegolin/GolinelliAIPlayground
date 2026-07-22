@@ -1,5 +1,6 @@
 from app.models.tenant import Tenant
 from app.models.user import LegalDocumentAcceptance, User
+from app.models.teacher_school import TeacherSchoolInvitation, TeacherSchoolMembership
 from app.models.session import Class, Session, SessionModule, SessionStudent, SessionProfileOverride
 from app.models.chat import ChatRoom, ChatMessage
 from app.models.llm import LLMProfile, Conversation, ConversationMessage, AuditEvent, TeacherConversation, TeacherConversationMessage
@@ -32,6 +33,8 @@ __all__ = [
     "Tenant",
     "User",
     "LegalDocumentAcceptance",
+    "TeacherSchoolMembership",
+    "TeacherSchoolInvitation",
     "Class",
     "Session",
     "SessionModule",

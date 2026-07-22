@@ -332,6 +332,17 @@ export const adminApi = {
     api.get('/admin/email-templates/history', { params: { template_key: templateKey, limit } }),
   setTeacherCreditLimit: (teacherId: string, amountCap: number) =>
     api.put(`/admin/teachers/${teacherId}/credit-limit`, { amount_cap: amountCap }),
+  updateTeacherSchoolsBulk: (teacherIds: string[], schoolTenantId: string, action: 'add' | 'remove') =>
+    api.put('/admin/teachers/schools/bulk', {
+      teacher_ids: teacherIds,
+      school_tenant_id: schoolTenantId,
+      action,
+    }),
+  setTeacherCreditLimitsBulk: (teacherIds: string[], amountCap: number) =>
+    api.put('/admin/teachers/credit-limits/bulk', {
+      teacher_ids: teacherIds,
+      amount_cap: amountCap,
+    }),
   getAdminClasses: () => api.get('/admin/classes'),
   changePassword: (currentPassword: string, newPassword: string) =>
     api.post('/admin/change-password', { current_password: currentPassword, new_password: newPassword }),
@@ -411,11 +422,12 @@ export const voiceApi = {
 }
 
 export const teacherApi = {
+  getSchools: () => api.get('/teacher/schools'),
   changePassword: (data: { current_password: string; new_password: string; confirm_password: string }) =>
     api.post('/teacher/profile/change-password', data),
   getClasses: (params?: { include_archived?: boolean }) => api.get('/teacher/classes', { params }),
-  createClass: (data: { name: string; school_grade?: string }) => api.post('/teacher/classes', data),
-  updateClass: (id: string, data: { name: string; school_grade?: string }) =>
+  createClass: (data: { name: string; school_grade?: string; school_tenant_id?: string | null }) => api.post('/teacher/classes', data),
+  updateClass: (id: string, data: { name: string; school_grade?: string; school_tenant_id?: string | null }) =>
     api.patch(`/teacher/classes/${id}`, data),
   archiveClass: (id: string) => api.post(`/teacher/classes/${id}/archive`),
   restoreClass: (id: string) => api.post(`/teacher/classes/${id}/restore`),
@@ -500,6 +512,8 @@ export const teacherApi = {
   },
   // Invitations
   getInvitations: () => api.get('/teacher/invitations'),
+  respondToSchoolInvitation: (invitationId: string, accept: boolean) =>
+    api.post(`/teacher/invitations/school/${invitationId}/respond`, { accept }),
   respondToClassInvitation: (invitationId: string, accept: boolean) =>
     api.post(`/teacher/invitations/class/${invitationId}/respond`, { accept }),
   respondToSessionInvitation: (invitationId: string, accept: boolean) =>
@@ -955,6 +969,43 @@ export const teacherbotsApi = {
     api.get(`/teacherbots/${teacherbotId}/share-links/${linkId}/conversations`),
   getShareConversationMessages: (teacherbotId: string, conversationId: string) =>
     api.get(`/teacherbots/${teacherbotId}/share-conversations/${conversationId}/messages`),
+}
+
+export const studentbotsApi = {
+  list: () => api.get('/student/studentbots'),
+  create: (data: {
+    name: string
+    synopsis?: string
+    description?: string
+    icon?: string
+    color?: string
+    system_prompt: string
+    is_proactive?: boolean
+    proactive_message?: string
+    enable_live_voice?: boolean
+    llm_provider?: string
+    llm_model?: string
+    temperature?: number
+  }) => api.post('/student/studentbots', data),
+  get: (id: string) => api.get(`/student/studentbots/${id}`),
+  update: (id: string, data: Record<string, unknown>) => api.patch(`/student/studentbots/${id}`, data),
+  delete: (id: string) => api.delete(`/student/studentbots/${id}`),
+  test: (
+    id: string,
+    content: string,
+    history?: { role: string; content: string }[],
+    signal?: AbortSignal,
+    overrides?: { system_prompt?: string; temperature?: number; llm_provider?: string; llm_model?: string },
+  ) => api.post(`/student/studentbots/${id}/test`, { content, history, ...overrides }, { signal }),
+  uploadKbDocument: (id: string, file: File) => {
+    const formData = new FormData()
+    formData.append('file', file)
+    return api.post(`/student/studentbots/${id}/kb`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+  },
+  listKbDocuments: (id: string) => api.get(`/student/studentbots/${id}/kb`),
+  deleteKbDocument: (id: string, docId: string) => api.delete(`/student/studentbots/${id}/kb/${docId}`),
 }
 
 export const publicTeacherbotApi = {

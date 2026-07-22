@@ -20,7 +20,7 @@ import {
   ArrowLeft, Users, Copy, Play, Square,
   Snowflake, Sun, Bot, Brain, MessageSquare,
   ClipboardList, Plus, Trash2, Check, Eye, ChevronDown, ChevronUp, History, User, BookOpen, Search, X,
-  MonitorPlay, ChevronRight, LayoutGrid, List, FileCode2, Code2, FileText, Save, Send
+  MonitorPlay, ChevronRight, LayoutGrid, List, FileCode2, Code2, FileText, Save, Send, Filter, ArrowUpDown
 } from 'lucide-react'
 import { llmApi } from '@/lib/api'
 import { PASTEL_SURFACES, type PastelTone } from '@/design/themes/pastelSurfaces'
@@ -807,8 +807,33 @@ export default function SessionLivePage() {
 function SessionDocumentsPanel({ documents }: { documents: SharedDocumentData[] }) {
   const navigate = useNavigate()
   const [studentDocsCollapsed, setStudentDocsCollapsed] = useState(false)
-  const teacherDocuments = documents.filter((doc) => doc.source === 'teacher')
-  const studentDocuments = documents.filter((doc) => doc.source === 'student')
+  const [documentSearch, setDocumentSearch] = useState('')
+  const [sourceFilter, setSourceFilter] = useState<'all' | 'student' | 'teacher'>('all')
+  const [sortOrder, setSortOrder] = useState<'newest' | 'oldest' | 'az' | 'za'>('newest')
+  const visibleDocuments = useMemo(() => {
+    const sourceFiltered = sourceFilter === 'all'
+      ? documents
+      : documents.filter((doc) => doc.source === sourceFilter)
+    const terms = documentSearch.trim().toLocaleLowerCase('it').split(/\s+/).filter(Boolean)
+    const filtered = terms.length === 0
+      ? sourceFiltered
+      : sourceFiltered.filter((doc) => {
+          const searchableText = [doc.title, doc.author_name, doc.doc_type]
+            .join(' ')
+            .toLocaleLowerCase('it')
+          return terms.every((term) => searchableText.includes(term))
+        })
+    return [...filtered].sort((left, right) => {
+      if (sortOrder === 'az' || sortOrder === 'za') {
+        const comparison = left.title.localeCompare(right.title, 'it', { sensitivity: 'base' })
+        return sortOrder === 'az' ? comparison : -comparison
+      }
+      const comparison = new Date(left.updated_at).getTime() - new Date(right.updated_at).getTime()
+      return sortOrder === 'oldest' ? comparison : -comparison
+    })
+  }, [documentSearch, documents, sortOrder, sourceFilter])
+  const teacherDocuments = visibleDocuments.filter((doc) => doc.source === 'teacher')
+  const studentDocuments = visibleDocuments.filter((doc) => doc.source === 'student')
   const formatPublishedAt = (value: string) =>
     new Date(value).toLocaleString('it-IT', {
       day: 'numeric',
@@ -851,7 +876,9 @@ function SessionDocumentsPanel({ documents }: { documents: SharedDocumentData[] 
         <FileText className="h-4 w-4 text-slate-500" />
         <span className="text-sm font-semibold text-slate-800">Documenti</span>
         <span className="ml-auto rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-500">
-          {documents.length}
+          {visibleDocuments.length === documents.length
+            ? documents.length
+            : `${visibleDocuments.length}/${documents.length}`}
         </span>
       </div>
       <div className="space-y-5 p-4">
@@ -861,6 +888,65 @@ function SessionDocumentsPanel({ documents }: { documents: SharedDocumentData[] 
           </p>
         ) : (
           <>
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              <input
+                type="search"
+                value={documentSearch}
+                onChange={(event) => setDocumentSearch(event.target.value)}
+                placeholder="Cerca per titolo, autore o tipo…"
+                aria-label="Cerca documenti per titolo, autore o tipo"
+                className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-10 pr-10 text-sm text-slate-700 outline-none placeholder:text-slate-400 focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
+              />
+              {documentSearch && (
+                <button
+                  type="button"
+                  onClick={() => setDocumentSearch('')}
+                  aria-label="Cancella ricerca documenti"
+                  className="absolute right-2.5 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </div>
+
+            <div className="flex flex-col gap-2 rounded-xl border border-slate-200 bg-slate-50 p-3 sm:flex-row sm:items-center">
+              <label className="flex min-w-0 flex-1 items-center gap-2 text-xs font-semibold text-slate-600">
+                <Filter className="h-4 w-4 shrink-0 text-slate-400" />
+                <span>Filtra</span>
+                <select
+                  value={sourceFilter}
+                  onChange={(event) => setSourceFilter(event.target.value as typeof sourceFilter)}
+                  className="min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-xs font-semibold text-slate-700 outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
+                >
+                  <option value="all">Tutti</option>
+                  <option value="student">Studenti</option>
+                  <option value="teacher">Docente</option>
+                </select>
+              </label>
+              <label className="flex min-w-0 flex-1 items-center gap-2 text-xs font-semibold text-slate-600">
+                <ArrowUpDown className="h-4 w-4 shrink-0 text-slate-400" />
+                <span>Ordina</span>
+                <select
+                  value={sortOrder}
+                  onChange={(event) => setSortOrder(event.target.value as typeof sortOrder)}
+                  className="min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-xs font-semibold text-slate-700 outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
+                >
+                  <option value="newest">Più recenti</option>
+                  <option value="oldest">Meno recenti</option>
+                  <option value="az">Titolo A–Z</option>
+                  <option value="za">Titolo Z–A</option>
+                </select>
+              </label>
+            </div>
+
+            {visibleDocuments.length === 0 && (
+              <div className="rounded-xl border border-dashed border-slate-200 px-4 py-8 text-center text-sm text-slate-400">
+                Nessun documento corrisponde alla ricerca e ai filtri selezionati.
+              </div>
+            )}
+
+            {sourceFilter !== 'teacher' && visibleDocuments.length > 0 && (
             <section className="rounded-2xl border border-emerald-200 bg-emerald-50/80 p-3">
               <div className="mb-3 flex items-center justify-between gap-3">
                 <div>
@@ -901,6 +987,8 @@ function SessionDocumentsPanel({ documents }: { documents: SharedDocumentData[] 
                 </div>
               )}
             </section>
+            )}
+            {sourceFilter !== 'student' && visibleDocuments.length > 0 && (
             <section>
               <h3 className="mb-2 text-[10px] font-bold uppercase tracking-widest text-slate-400">Condivisi dal docente</h3>
               {teacherDocuments.length === 0 ? (
@@ -913,10 +1001,12 @@ function SessionDocumentsPanel({ documents }: { documents: SharedDocumentData[] 
                 </div>
               )}
             </section>
+            )}
+            {visibleDocuments.length > 0 && (
             <section>
               <h3 className="mb-2 text-[10px] font-bold uppercase tracking-widest text-slate-400">Tutti i documenti</h3>
               <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
-                {documents.map((doc) => (
+                {visibleDocuments.map((doc) => (
                   <button
                     key={`list-${doc.id}`}
                     type="button"
@@ -939,6 +1029,7 @@ function SessionDocumentsPanel({ documents }: { documents: SharedDocumentData[] 
                 ))}
               </div>
             </section>
+            )}
           </>
         )}
       </div>
