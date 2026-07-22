@@ -17,7 +17,7 @@ import { UnifiedToolbar } from '@/components/UnifiedToolbar'
 import DocumentAgentChat, { type DocumentAssistContext } from '@/components/documents/DocumentAgentChat'
 import DocumentThumbnail from '@/components/documents/DocumentThumbnail'
 import DocumentOpenModal, { type OpenableDocument } from '@/components/documents/DocumentOpenModal'
-import { SheetChartConfig, SheetCellStyles, SpreadsheetEditor } from '@/components/SpreadsheetEditor'
+import { SheetChartConfig, SheetCellStyles, SheetDimensions, SpreadsheetEditor } from '@/components/SpreadsheetEditor'
 import { CollaborativeCanvas } from '@/components/CollaborativeCanvas'
 import { Editor } from '@tiptap/react'
 import { useTranslation } from 'react-i18next'
@@ -59,6 +59,7 @@ interface Document {
   sheetData?: string[][]
   sheetChart?: SheetChartConfig
   sheetStyles?: SheetCellStyles
+  sheetDimensions?: SheetDimensions
   canvasContent?: string
   webUrl?: string
   source?: { filename?: string; extension?: string; mimeType?: string; fileId?: string; url?: string; preservedOriginal?: boolean }
@@ -460,7 +461,7 @@ export default function TeacherDocumentsPage() {
     const nativeContent = mode === 'slides'
         ? { type: 'presentation_v2', format: document.format, slides: document.slides }
         : mode === 'sheet'
-          ? { type: 'sheet_v1', data: document.sheetData || DEFAULT_SHEET_DATA, chart: document.sheetChart || DEFAULT_SHEET_CHART, styles: document.sheetStyles || {} }
+          ? { type: 'sheet_v1', data: document.sheetData || DEFAULT_SHEET_DATA, chart: document.sheetChart || DEFAULT_SHEET_CHART, styles: document.sheetStyles || {}, dimensions: document.sheetDimensions || {} }
           : mode === 'canvas'
             ? parseCanvasContent(document.canvasContent)
           : { type: 'document_v1', htmlContent: document.textContent || '', header: document.header, margins: docMargins }
@@ -475,7 +476,7 @@ export default function TeacherDocumentsPage() {
   const importDocumentFiles = async (files: File[]) => {
     const supported = files.filter(isSupportedDocumentFile)
     if (!supported.length) {
-      toast({ title: isEnglish ? 'Unsupported format' : 'Formato non supportato', description: 'PDF, PPT/PPTX, DOC/DOCX, MD, XLS/XLSX', variant: 'destructive' })
+      toast({ title: isEnglish ? 'Unsupported format' : 'Formato non supportato', description: 'PDF, PPT/PPTX, DOC/DOCX, MD, XLS/XLSX, CSV', variant: 'destructive' })
       return
     }
     setDocumentImporting(true)
@@ -821,6 +822,7 @@ export default function TeacherDocumentsPage() {
           sheetData: Array.isArray(content.data) ? content.data : DEFAULT_SHEET_DATA,
           sheetChart: content.chart || DEFAULT_SHEET_CHART,
           sheetStyles: content.styles || {},
+          sheetDimensions: content.dimensions || {},
           canvasContent: DEFAULT_CANVAS_CONTENT,
           webUrl: '',
           source: content.source,
@@ -956,6 +958,7 @@ export default function TeacherDocumentsPage() {
           sheetData: Array.isArray(content.data) ? content.data : DEFAULT_SHEET_DATA,
           sheetChart: content.chart || DEFAULT_SHEET_CHART,
           sheetStyles: content.styles || {},
+          sheetDimensions: content.dimensions || {},
           canvasContent: DEFAULT_CANVAS_CONTENT,
           webUrl: '',
           source: content.source,
@@ -1299,6 +1302,7 @@ export default function TeacherDocumentsPage() {
           data: document.sheetData || DEFAULT_SHEET_DATA,
           chart: document.sheetChart || DEFAULT_SHEET_CHART,
           styles: document.sheetStyles || {},
+          dimensions: document.sheetDimensions || {},
         })
         taskType = 'lesson'
       } else if (mode === 'canvas') {
@@ -1494,7 +1498,7 @@ export default function TeacherDocumentsPage() {
                 </button>
                 <button type="button" disabled={documentImporting} onClick={() => documentFileInputRef.current?.click()} className="flex min-h-[76px] items-start gap-3 rounded-xl border border-sky-200/80 bg-sky-50/70 p-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-sky-300 hover:bg-sky-100/70 hover:shadow-md disabled:cursor-wait disabled:opacity-60">
                   <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-sky-700 shadow-sm">{documentImporting ? <Loader2 className="h-5 w-5 animate-spin" /> : <FileUp className="h-5 w-5" />}</span>
-                  <span className="min-w-0 pt-0.5"><span className="block text-[13px] font-black leading-5 text-slate-950">{isEnglish ? 'Import file' : 'Importa file'}</span><span className="mt-0.5 block text-[11px] leading-4 text-slate-500">PDF · PPT · DOC · XLS</span></span>
+                  <span className="min-w-0 pt-0.5"><span className="block text-[13px] font-black leading-5 text-slate-950">{isEnglish ? 'Import file' : 'Importa file'}</span><span className="mt-0.5 block text-[11px] leading-4 text-slate-500">PDF · PPT · DOC · XLS · CSV</span></span>
                 </button>
               </section>
 
@@ -1665,7 +1669,7 @@ export default function TeacherDocumentsPage() {
           </div>
           {documentDragActive && (
             <div className="pointer-events-none absolute inset-4 z-50 flex items-center justify-center rounded-[28px] border-2 border-dashed border-sky-500 bg-sky-50/95 shadow-2xl backdrop-blur-sm">
-              <div className="text-center"><FileUp className="mx-auto h-12 w-12 text-sky-600" /><p className="mt-3 text-lg font-black text-slate-900">{isEnglish ? 'Drop files to import' : 'Rilascia i file per importarli'}</p><p className="mt-1 text-sm text-slate-600">PDF, PPT/PPTX, DOC/DOCX, MD, XLS/XLSX</p></div>
+              <div className="text-center"><FileUp className="mx-auto h-12 w-12 text-sky-600" /><p className="mt-3 text-lg font-black text-slate-900">{isEnglish ? 'Drop files to import' : 'Rilascia i file per importarli'}</p><p className="mt-1 text-sm text-slate-600">PDF, PPT/PPTX, DOC/DOCX, MD, XLS/XLSX, CSV</p></div>
             </div>
           )}
         </div>
@@ -2252,6 +2256,8 @@ export default function TeacherDocumentsPage() {
                    onChartConfigChange={(next) => setDocument(d => ({ ...d, sheetChart: next }))}
                    styles={document.sheetStyles || {}}
                    onStylesChange={(next) => setDocument(d => ({ ...d, sheetStyles: next }))}
+                   dimensions={document.sheetDimensions || {}}
+                   onDimensionsChange={(next) => setDocument(d => ({ ...d, sheetDimensions: next }))}
                  />
                </div>
              )}

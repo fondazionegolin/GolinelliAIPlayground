@@ -53,6 +53,7 @@ def test_imports_supported_editable_formats_and_preserves_source_metadata():
         "lezione.docx": (_docx_bytes(), "document"),
         "lezione.pptx": (_pptx_bytes(), "presentation"),
         "dati.xlsx": (_xlsx_bytes(), "sheet"),
+        "dati.csv": ("Nome;Valore\nAlfa;13\nBeta;5\n".encode(), "sheet"),
         "dispensa.pdf": (_pdf_bytes(), "document"),
         "note.md": (b"# Titolo MD\n\nTesto **forte**", "document"),
     }
@@ -64,6 +65,14 @@ def test_imports_supported_editable_formats_and_preserves_source_metadata():
         assert content["source"]["extension"] == filename.rsplit(".", 1)[1]
     pdf_content = json.loads(import_document("dispensa.pdf", samples["dispensa.pdf"][0]).content_json)
     assert pdf_content["previewImage"].startswith("data:image/jpeg;base64,")
+
+
+def test_csv_import_detects_delimiter_and_creates_editable_cells():
+    imported = import_document("dati.csv", b'Nome,Nota,Valore\nAlfa,"testo, con virgola",13\n')
+    content = json.loads(imported.content_json)
+    assert imported.doc_type == "sheet"
+    assert content["type"] == "sheet_v1"
+    assert content["data"] == [["Nome", "Nota", "Valore"], ["Alfa", "testo, con virgola", "13"]]
 
 
 def test_native_exports_produce_valid_office_files():

@@ -11,7 +11,7 @@ import { SlideEditor, SlideBlock, SlideBlockType, SlideSnapOptions, DEFAULT_SLID
 import { createShapeBlock } from '@/lib/slideBlocks'
 import { RichTextEditor } from '@/components/RichTextEditor'
 import { UnifiedToolbar } from '@/components/UnifiedToolbar'
-import { SheetChartConfig, SheetCellStyles, SpreadsheetEditor } from '@/components/SpreadsheetEditor'
+import { SheetChartConfig, SheetCellStyles, SheetDimensions, SpreadsheetEditor } from '@/components/SpreadsheetEditor'
 import { CollaborativeCanvas } from '@/components/CollaborativeCanvas'
 import { Editor } from '@tiptap/react'
 import { useTranslation } from 'react-i18next'
@@ -47,6 +47,7 @@ interface Document {
   sheetData?: string[][]
   sheetChart?: SheetChartConfig
   sheetStyles?: SheetCellStyles
+  sheetDimensions?: SheetDimensions
   canvasContent?: string
   webUrl?: string
   source?: { filename?: string; extension?: string; mimeType?: string; fileId?: string; url?: string; preservedOriginal?: boolean }
@@ -425,7 +426,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
     const nativeContent = mode === 'slides'
         ? { type: submission ? 'student_presentation' : 'presentation_v2', format: document.format, title: document.title, slides: document.slides }
         : mode === 'sheet'
-          ? { type: submission ? 'student_sheet' : 'sheet_v1', title: document.title, data: document.sheetData || DEFAULT_SHEET_DATA, chart: document.sheetChart || DEFAULT_SHEET_CHART, styles: document.sheetStyles || {} }
+          ? { type: submission ? 'student_sheet' : 'sheet_v1', title: document.title, data: document.sheetData || DEFAULT_SHEET_DATA, chart: document.sheetChart || DEFAULT_SHEET_CHART, styles: document.sheetStyles || {}, dimensions: document.sheetDimensions || {} }
           : mode === 'canvas'
             ? { ...JSON.parse(document.canvasContent || DEFAULT_CANVAS_CONTENT), type: submission ? 'student_canvas' : 'canvas_v1', title: document.title }
           : { type: submission ? 'student_document' : 'document_v1', title: document.title, htmlContent: document.textContent || '', header: document.header, margins: docMargins }
@@ -435,7 +436,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
   const importDocumentFiles = async (files: File[]) => {
     const supported = files.filter(isSupportedDocumentFile)
     if (!supported.length) {
-      toast({ title: isEnglishUi ? 'Unsupported format' : 'Formato non supportato', description: 'PDF, PPT/PPTX, DOC/DOCX, MD, XLS/XLSX', variant: 'destructive' })
+      toast({ title: isEnglishUi ? 'Unsupported format' : 'Formato non supportato', description: 'PDF, PPT/PPTX, DOC/DOCX, MD, XLS/XLSX, CSV', variant: 'destructive' })
       return
     }
     setDocumentImporting(true)
@@ -751,6 +752,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
           sheetData: Array.isArray(content.data) ? content.data : DEFAULT_SHEET_DATA,
           sheetChart: content.chart || DEFAULT_SHEET_CHART,
           sheetStyles: content.styles || {},
+          sheetDimensions: content.dimensions || {},
           canvasContent: DEFAULT_CANVAS_CONTENT,
           webUrl: '',
           source: content.source,
@@ -1278,7 +1280,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
                       className="group flex min-h-[76px] items-start gap-3 rounded-xl border border-emerald-200/80 bg-emerald-50/70 p-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-emerald-300 hover:bg-emerald-100/70 hover:shadow-md disabled:cursor-wait disabled:opacity-60"
                     >
                       <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-emerald-700 shadow-sm">{documentImporting ? <Loader2 className="h-5 w-5 animate-spin" /> : <FileUp className="h-5 w-5" />}</span>
-                      <span className="min-w-0 pt-0.5"><span className="block text-[13px] font-black leading-5 text-slate-950">{isEnglishUi ? 'Import file' : 'Importa file'}</span><span className="mt-0.5 block text-[11px] leading-4 text-slate-500">PDF · PPT · DOC · XLS</span></span>
+                      <span className="min-w-0 pt-0.5"><span className="block text-[13px] font-black leading-5 text-slate-950">{isEnglishUi ? 'Import file' : 'Importa file'}</span><span className="mt-0.5 block text-[11px] leading-4 text-slate-500">PDF · PPT · DOC · XLS · CSV</span></span>
                     </button>
                   </div>
                 )}
@@ -1405,7 +1407,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
           </div>
           {documentDragActive && !readOnlyCatalog && (
             <div className="pointer-events-none absolute inset-4 z-50 flex items-center justify-center rounded-[28px] border-2 border-dashed border-emerald-500 bg-emerald-50/95 shadow-2xl backdrop-blur-sm">
-              <div className="text-center"><FileUp className="mx-auto h-12 w-12 text-emerald-600" /><p className="mt-3 text-lg font-black text-slate-900">{isEnglishUi ? 'Drop files to import' : 'Rilascia i file per importarli'}</p><p className="mt-1 text-sm text-slate-600">PDF, PPT/PPTX, DOC/DOCX, MD, XLS/XLSX</p></div>
+              <div className="text-center"><FileUp className="mx-auto h-12 w-12 text-emerald-600" /><p className="mt-3 text-lg font-black text-slate-900">{isEnglishUi ? 'Drop files to import' : 'Rilascia i file per importarli'}</p><p className="mt-1 text-sm text-slate-600">PDF, PPT/PPTX, DOC/DOCX, MD, XLS/XLSX, CSV</p></div>
             </div>
           )}
         </div>
@@ -1546,6 +1548,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
                 chartConfig={document.sheetChart || DEFAULT_SHEET_CHART}
                 onChartConfigChange={() => {}}
                 styles={document.sheetStyles || {}}
+                dimensions={document.sheetDimensions || {}}
               />
             </div>
           )}
@@ -2244,6 +2247,8 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
                    onChartConfigChange={(next) => setDocument(d => ({ ...d, sheetChart: next }))}
                    styles={document.sheetStyles || {}}
                    onStylesChange={(next) => setDocument(d => ({ ...d, sheetStyles: next }))}
+                   dimensions={document.sheetDimensions || {}}
+                   onDimensionsChange={(next) => setDocument(d => ({ ...d, sheetDimensions: next }))}
                  />
                </div>
              )}

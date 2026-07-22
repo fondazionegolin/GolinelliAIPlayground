@@ -16,6 +16,7 @@ type ParsedContent = {
   content?: string
   data?: string[][]
   styles?: Record<string, CSSProperties>
+  dimensions?: { columnWidths?: number[]; rowHeights?: number[] }
   url?: string
   previewImage?: string
   source?: { fileId?: string; extension?: string; mimeType?: string }
@@ -118,7 +119,7 @@ export default function DocumentOpenModal({ document, onClose, onEdit, editLabel
                 </div>
               ) : Array.isArray(content.data) ? (
                 <div className="overflow-auto rounded-xl bg-white shadow">
-                  <table className="min-w-full border-collapse text-sm"><tbody>{content.data.map((row, rowIndex) => <tr key={rowIndex}>{row.map((cell, colIndex) => <td key={colIndex} style={content.styles?.[`${rowIndex}:${colIndex}`]} className="min-w-28 border border-slate-200 px-3 py-2 text-slate-700">{cell}</td>)}</tr>)}</tbody></table>
+                  <table className="min-w-full table-fixed border-collapse text-sm"><colgroup>{Array.from({ length: Math.max(0, ...content.data.map(row => row.length)) }, (_, index) => <col key={index} style={{ width: content.dimensions?.columnWidths?.[index] || 120 }} />)}</colgroup><tbody>{content.data.map((row, rowIndex) => <tr key={rowIndex} style={{ height: content.dimensions?.rowHeights?.[rowIndex] || 36 }}>{row.map((cell, colIndex) => <td key={colIndex} style={content.styles?.[`${rowIndex}:${colIndex}`]} className="border border-slate-200 px-3 py-2 text-slate-700">{cell}</td>)}</tr>)}</tbody></table>
                 </div>
               ) : html ? (
                 <article className="prose prose-slate mx-auto min-h-full max-w-[794px] rounded-sm bg-white px-10 py-12 shadow-xl sm:px-16" dangerouslySetInnerHTML={{ __html: html }} />

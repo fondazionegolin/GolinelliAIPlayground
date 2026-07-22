@@ -8,6 +8,7 @@ non-destructive by design.
 from __future__ import annotations
 
 import base64
+import csv
 import html
 import io
 import json
@@ -33,7 +34,7 @@ from pptx.enum.text import PP_ALIGN
 from pptx.util import Inches as PptxInches, Pt as PptxPt
 
 
-SUPPORTED_IMPORT_EXTENSIONS = {"pdf", "ppt", "pptx", "doc", "docx", "md", "xls", "xlsx"}
+SUPPORTED_IMPORT_EXTENSIONS = {"pdf", "ppt", "pptx", "doc", "docx", "md", "xls", "xlsx", "csv"}
 SUPPORTED_EXPORT_FORMATS = {"pdf", "ppt", "pptx", "doc", "docx", "xlsx"}
 
 MIME_BY_EXTENSION = {
@@ -45,6 +46,7 @@ MIME_BY_EXTENSION = {
     "md": "text/markdown",
     "xls": "application/vnd.ms-excel",
     "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "csv": "text/csv",
 }
 
 
@@ -271,6 +273,26 @@ def _xlsx_to_native(data: bytes) -> dict[str, Any]:
     return {"type": "sheet_v1", "data": rows or [[""]], "sheetName": sheet.title}
 
 
+def _csv_to_native(data: bytes) -> dict[str, Any]:
+    raw = data.decode("utf-8-sig", errors="replace")
+    sample = raw[:8192]
+    try:
+        dialect = csv.Sniffer().sniff(sample, delimiters=",;\t|")
+    except csv.Error:
+        dialect = csv.excel
+    rows: list[list[str]] = []
+    for row_index, row in enumerate(csv.reader(io.StringIO(raw), dialect)):
+        if row_index >= 1000:
+            break
+        values = [str(value) for value in row[:100]]
+        while values and values[-1] == "":
+            values.pop()
+        rows.append(values)
+    while rows and not rows[-1]:
+        rows.pop()
+    return {"type": "sheet_v1", "data": rows or [[""]], "sheetName": "CSV"}
+
+
 def import_document(filename: str, data: bytes, mime_type: str = "", file_id: str | None = None) -> ImportedDocument:
     extension = normalized_extension(filename)
     if extension not in SUPPORTED_IMPORT_EXTENSIONS:
@@ -286,6 +308,9 @@ def import_document(filename: str, data: bytes, mime_type: str = "", file_id: st
         doc_type = "presentation"
     elif modern_extension == "xlsx":
         content = _xlsx_to_native(working)
+        doc_type = "sheet"
+    elif extension == "csv":
+        content = _csv_to_native(data)
         doc_type = "sheet"
     elif modern_extension == "docx":
         content = {"type": "document_v1", "htmlContent": _docx_to_html(working)}

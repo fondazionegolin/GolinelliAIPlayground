@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type ClipboardEvent as ReactClipboardEvent, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { AlignCenter, AlignLeft, AlignRight, BarChart3, Bold, Check, ClipboardPaste, Copy, Download, Eraser, FileUp, Italic, Loader2, Plus, Scissors, Sigma, Trash2, TrendingUp, Wand2 } from 'lucide-react'
@@ -44,6 +44,11 @@ export interface SheetCellStyle {
 
 export type SheetCellStyles = Record<string, SheetCellStyle>
 
+export interface SheetDimensions {
+  columnWidths: number[]
+  rowHeights: number[]
+}
+
 interface SpreadsheetEditorProps {
   data: string[][]
   onDataChange: (next: string[][]) => void
@@ -51,6 +56,8 @@ interface SpreadsheetEditorProps {
   onChartConfigChange: (next: SheetChartConfig) => void
   styles?: SheetCellStyles
   onStylesChange?: (next: SheetCellStyles) => void
+  dimensions?: Partial<SheetDimensions>
+  onDimensionsChange?: (next: SheetDimensions) => void
 }
 
 type CellPos = { row: number; col: number }
@@ -168,11 +175,15 @@ export function SpreadsheetEditor({
   onChartConfigChange,
   styles = {},
   onStylesChange,
+  dimensions = {},
+  onDimensionsChange,
 }: SpreadsheetEditorProps) {
   const { toast } = useToast()
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const cellInputRefs = useRef<Record<string, HTMLInputElement | null>>({})
   const normalizedData = useMemo(() => normalizeGrid(data), [data])
+  const columnWidths = useMemo(() => normalizedData[0].map((_, index) => dimensions.columnWidths?.[index] || 120), [dimensions.columnWidths, normalizedData])
+  const rowHeights = useMemo(() => normalizedData.map((_, index) => dimensions.rowHeights?.[index] || 36), [dimensions.rowHeights, normalizedData])
 
   const [selectedCell, setSelectedCell] = useState<CellPos | null>({ row: 0, col: 0 })
   const [selectionRange, setSelectionRange] = useState<SelectionRange | null>({ startRow: 0, endRow: 0, startCol: 0, endCol: 0 })
@@ -370,6 +381,7 @@ Puoi inserire numeri, testo o formule (es. "=A2*2").`
   const removeSelectedRow = () => {
     if (!selectedCell || normalizedData.length <= 1) return
     onDataChange(normalizedData.filter((_, idx) => idx !== selectedCell.row))
+    onDimensionsChange?.({ columnWidths, rowHeights: rowHeights.filter((_, idx) => idx !== selectedCell.row) })
     setSelectedCell({ row: Math.max(0, selectedCell.row - 1), col: selectedCell.col })
   }
 
@@ -378,11 +390,13 @@ Puoi inserire numeri, testo o formule (es. "=A2*2").`
     const cols = normalizedData[0]?.length || 0
     if (cols <= 1) return
     onDataChange(normalizedData.map(row => row.filter((_, idx) => idx !== selectedCell.col)))
+    onDimensionsChange?.({ columnWidths: columnWidths.filter((_, idx) => idx !== selectedCell.col), rowHeights })
     setSelectedCell({ row: selectedCell.row, col: Math.max(0, selectedCell.col - 1) })
   }
 
   const clearSheet = () => {
     onDataChange(normalizeGrid([]))
+    onDimensionsChange?.({ columnWidths: [], rowHeights: [] })
     setSelectedCell({ row: 0, col: 0 })
     setSelectionRange({ startRow: 0, endRow: 0, startCol: 0, endCol: 0 })
   }
@@ -394,6 +408,7 @@ Puoi inserire numeri, testo o formule (es. "=A2*2").`
     const aoa = XLSX.utils.sheet_to_json(firstSheet, { header: 1, raw: false }) as Array<Array<string | number | boolean | null>>
     const asString = aoa.map(row => row.map(cell => (cell ?? '').toString()))
     onDataChange(normalizeGrid(asString))
+    onDimensionsChange?.({ columnWidths: [], rowHeights: [] })
     setSelectedCell({ row: 0, col: 0 })
     setSelectionRange({ startRow: 0, endRow: 0, startCol: 0, endCol: 0 })
   }
@@ -473,6 +488,47 @@ Puoi inserire numeri, testo o formule (es. "=A2*2").`
   const pasteSelection = async () => {
     try { pasteText(await navigator.clipboard.readText()) }
     catch { toast({ title: 'Incolla con Ctrl/Cmd+V', description: 'Il browser non ha concesso l’accesso diretto agli appunti.' }) }
+  }
+
+  const handleGridCopy = (event: ReactClipboardEvent<HTMLDivElement>) => {
+    const target = event.target as HTMLInputElement
+    if (editingCell && typeof target.selectionStart === 'number' && target.selectionStart !== target.selectionEnd) return
+    const text = selectionMatrix().map(row => row.join('\t')).join('\n')
+    if (!text) return
+    event.preventDefault()
+    event.clipboardData.setData('text/plain', text)
+  }
+
+  const handleGridPaste = (event: ReactClipboardEvent<HTMLDivElement>) => {
+    if (event.defaultPrevented || !selectedCell) return
+    event.preventDefault()
+    pasteText(event.clipboardData.getData('text/plain'), selectedCell)
+  }
+
+  const startResize = (kind: 'column' | 'row', index: number, event: ReactMouseEvent) => {
+    if (!onDimensionsChange) return
+    event.preventDefault()
+    event.stopPropagation()
+    const startPosition = kind === 'column' ? event.clientX : event.clientY
+    const startSize = kind === 'column' ? columnWidths[index] : rowHeights[index]
+    const onMove = (moveEvent: MouseEvent) => {
+      const delta = (kind === 'column' ? moveEvent.clientX : moveEvent.clientY) - startPosition
+      if (kind === 'column') {
+        const next = [...columnWidths]
+        next[index] = Math.max(56, Math.min(420, startSize + delta))
+        onDimensionsChange({ columnWidths: next, rowHeights })
+      } else {
+        const next = [...rowHeights]
+        next[index] = Math.max(24, Math.min(160, startSize + delta))
+        onDimensionsChange({ columnWidths, rowHeights: next })
+      }
+    }
+    const onUp = () => {
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+    }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
   }
 
   const splitSelection = () => {
@@ -638,7 +694,7 @@ Puoi inserire numeri, testo o formule (es. "=A2*2").`
   }
 
   return (
-    <div className="flex h-full min-h-[640px] flex-col gap-3">
+    <div className="flex h-full min-h-[640px] flex-col gap-3" onCopy={handleGridCopy} onPaste={handleGridPaste}>
       <div className="rounded-xl border border-slate-200 bg-white p-2 shadow-sm">
         <div className="flex flex-wrap items-center gap-1.5">
           <IconTool label="Importa CSV/XLSX" onClick={() => fileInputRef.current?.click()}><FileUp className="h-4 w-4" /></IconTool>
@@ -690,21 +746,43 @@ Puoi inserire numeri, testo o formule (es. "=A2*2").`
 
       <div className="min-h-0 flex-1 rounded-xl border border-slate-200 bg-white shadow-sm">
         <div className="max-h-[68vh] overflow-auto select-none">
-          <table className="w-full border-collapse text-sm">
+          <table className="min-w-full table-fixed border-collapse text-sm" style={{ width: 48 + columnWidths.reduce((total, width) => total + width, 0) }}>
+            <colgroup>
+              <col style={{ width: 48 }} />
+              {columnWidths.map((width, index) => <col key={index} style={{ width }} />)}
+            </colgroup>
             <thead className="sticky top-0 z-10 bg-slate-100">
               <tr>
                 <th className="w-12 border border-slate-200 px-2 py-1.5 text-xs text-slate-500">#</th>
                 {normalizedData[0]?.map((_, colIdx) => (
-                  <th key={colIdx} className="min-w-[120px] border border-slate-200 px-2 py-1.5 text-xs font-semibold text-slate-700">
+                  <th key={colIdx} className="relative border border-slate-200 px-2 py-1.5 text-xs font-semibold text-slate-700" style={{ width: columnWidths[colIdx] }}>
                     {columnName(colIdx)}
+                    {onDimensionsChange && <span
+                      role="separator"
+                      aria-orientation="vertical"
+                      title="Trascina per ridimensionare la colonna"
+                      onMouseDown={(event) => startResize('column', colIdx, event)}
+                      onDoubleClick={() => onDimensionsChange?.({ columnWidths: columnWidths.map((width, index) => index === colIdx ? 120 : width), rowHeights })}
+                      className="absolute -right-1 top-0 z-20 h-full w-2 cursor-col-resize hover:bg-indigo-400/50"
+                    />}
                   </th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {normalizedData.map((row, rowIdx) => (
-                <tr key={rowIdx}>
-                  <td className="border border-slate-200 bg-slate-50 px-2 text-xs text-slate-500">{rowIdx + 1}</td>
+                <tr key={rowIdx} style={{ height: rowHeights[rowIdx] }}>
+                  <td className="relative border border-slate-200 bg-slate-50 px-2 text-xs text-slate-500">
+                    {rowIdx + 1}
+                    {onDimensionsChange && <span
+                      role="separator"
+                      aria-orientation="horizontal"
+                      title="Trascina per ridimensionare la riga"
+                      onMouseDown={(event) => startResize('row', rowIdx, event)}
+                      onDoubleClick={() => onDimensionsChange?.({ columnWidths, rowHeights: rowHeights.map((height, index) => index === rowIdx ? 36 : height) })}
+                      className="absolute -bottom-1 left-0 z-10 h-2 w-full cursor-row-resize hover:bg-indigo-400/50"
+                    />}
+                  </td>
                   {row.map((_cell, colIdx) => {
                     const selected = isCellInSelection(rowIdx, colIdx)
                     const display = evaluatedData[rowIdx]?.[colIdx] ?? ''
@@ -740,14 +818,11 @@ Puoi inserire numeri, testo o formule (es. "=A2*2").`
                             }
                           }}
                           onPaste={(event) => {
-                            const text = event.clipboardData.getData('text/plain')
-                            if (text.includes('\t') || text.includes('\n')) {
-                              event.preventDefault()
-                              pasteText(text, { row: rowIdx, col: colIdx })
-                            }
+                            event.preventDefault()
+                            pasteText(event.clipboardData.getData('text/plain'), { row: rowIdx, col: colIdx })
                           }}
                           onChange={(e) => setCellValue(rowIdx, colIdx, e.target.value)}
-                          className="h-9 w-full border-0 bg-transparent px-2 text-sm text-slate-800 focus:outline-none"
+                          className="h-full min-h-6 w-full border-0 bg-transparent px-2 text-sm text-slate-800 focus:outline-none"
                           style={styles[cellKey]}
                           title={rawValue.startsWith('=') ? `${rawValue} → ${display}` : ''}
                         />

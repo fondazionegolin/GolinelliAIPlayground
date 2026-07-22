@@ -1,6 +1,6 @@
-export const DOCUMENT_IMPORT_ACCEPT = '.pdf,.ppt,.pptx,.doc,.docx,.md,.xls,.xlsx'
+export const DOCUMENT_IMPORT_ACCEPT = '.pdf,.ppt,.pptx,.doc,.docx,.md,.xls,.xlsx,.csv'
 
-export const DOCUMENT_IMPORT_EXTENSIONS = new Set(['pdf', 'ppt', 'pptx', 'doc', 'docx', 'md', 'xls', 'xlsx'])
+export const DOCUMENT_IMPORT_EXTENSIONS = new Set(['pdf', 'ppt', 'pptx', 'doc', 'docx', 'md', 'xls', 'xlsx', 'csv'])
 
 export function documentSourceExtension(contentJson: string, fallbackType = 'document'): string {
   try {
