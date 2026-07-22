@@ -189,6 +189,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
   const [lessonDocuments, setLessonDocuments] = useState<LessonDocument[]>([])
   const [submittedDocuments, setSubmittedDocuments] = useState<SubmittedDocument[]>([])
   const [docSearch, setDocSearch] = useState('')
+  const [catalogRefreshKey, setCatalogRefreshKey] = useState(0)
   const [catalogViewMode, setCatalogViewMode] = useState<'grid' | 'list'>(() =>
     localStorage.getItem('student_documents_catalog_view') === 'list' ? 'list' : 'grid'
   )
@@ -462,6 +463,12 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
   }
 
   useEffect(() => {
+    const refreshCatalog = () => setCatalogRefreshKey((value) => value + 1)
+    window.addEventListener('golinelli:documents-refresh', refreshCatalog)
+    return () => window.removeEventListener('golinelli:documents-refresh', refreshCatalog)
+  }, [])
+
+  useEffect(() => {
     const fetchSidebarDocuments = async () => {
       try {
         const [draftsRes, tasksRes, filesRes] = await Promise.all([
@@ -578,7 +585,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
       }
     }
     fetchSidebarDocuments()
-  }, [sessionId])
+  }, [sessionId, catalogRefreshKey])
 
   useEffect(() => {
     if (viewMode !== 'editor') return

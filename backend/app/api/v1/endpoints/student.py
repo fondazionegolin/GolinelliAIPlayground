@@ -32,7 +32,7 @@ from app.schemas.auth import (
 )
 from app.schemas.session import SessionResponse, SessionModuleResponse
 from app.schemas.credits import CreditUsageHistoryItem
-from app.realtime.gateway import sio
+from app.realtime.gateway import notify_session_teacher, sio
 
 router = APIRouter()
 
@@ -822,8 +822,8 @@ async def submit_task(
             },
             room=f"session:{student.session_id}",
         )
-        await sio.emit(
-            "teacher_notification",
+        await notify_session_teacher(
+            str(student.session_id),
             {
                 "type": "task_submitted",
                 "session_id": str(student.session_id),
@@ -834,7 +834,6 @@ async def submit_task(
                 "message": f'{student.nickname} ha aggiornato il compito "{task.title}"',
                 "timestamp": existing.submitted_at.isoformat(),
             },
-            room=f"session:{student.session_id}",
         )
         return {
             "id": str(existing.id),
@@ -869,8 +868,8 @@ async def submit_task(
     )
     
     # Send teacher notification for task submission
-    await sio.emit(
-        "teacher_notification",
+    await notify_session_teacher(
+        str(student.session_id),
         {
             "type": "task_submitted",
             "session_id": str(student.session_id),
@@ -881,7 +880,6 @@ async def submit_task(
             "message": f"{student.nickname} ha completato il compito \"{task.title}\"",
             "timestamp": datetime.utcnow().isoformat(),
         },
-        room=f"session:{student.session_id}",
     )
     
     return {
@@ -1031,8 +1029,8 @@ async def submit_document(
     await db.refresh(submission)
 
     # Notify teacher about new student document
-    await sio.emit(
-        "teacher_notification",
+    await notify_session_teacher(
+        str(student.session_id),
         {
             "type": "student_document",
             "session_id": str(student.session_id),
@@ -1044,7 +1042,6 @@ async def submit_document(
             "message": f"{student.nickname} ha inviato un {request.content_type}: \"{request.title}\"",
             "timestamp": datetime.utcnow().isoformat(),
         },
-        room=f"session:{student.session_id}",
     )
 
     return {

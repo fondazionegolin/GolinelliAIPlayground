@@ -212,8 +212,33 @@ async def revoke_student_session_access(session_id: str, reason: str, revoked_st
 
 # Helper to send teacher notification
 async def notify_session_teacher(session_id: str, notification_data: dict):
-    teacher_id = await get_session_teacher_id(session_id)
-    if teacher_id:
+    """Notify every teacher who can collaborate in the session navbar."""
+    teacher_ids: set[str] = set()
+    try:
+        async with AsyncSessionLocal() as db:
+            row = (await db.execute(
+                select(Session.class_id, Class.teacher_id)
+                .join(Class, Session.class_id == Class.id)
+                .where(Session.id == session_id)
+            )).first()
+            if row:
+                class_id, owner_id = row
+                teacher_ids.add(str(owner_id))
+                teacher_ids.update(str(value) for value in (await db.execute(
+                    select(ClassTeacher.teacher_id).where(ClassTeacher.class_id == class_id)
+                )).scalars().all())
+                teacher_ids.update(str(value) for value in (await db.execute(
+                    select(SessionTeacher.teacher_id).where(SessionTeacher.session_id == session_id)
+                )).scalars().all())
+    except Exception as exc:
+        print(f"[Gateway] Error resolving session teachers for {session_id}: {exc}")
+
+    if not teacher_ids:
+        owner_id = await get_session_teacher_id(session_id)
+        if owner_id:
+            teacher_ids.add(owner_id)
+
+    for teacher_id in teacher_ids:
         print(f"[Gateway] Sending notification to teacher {teacher_id} for session {session_id}")
         await sio.emit(
             "teacher_notification",

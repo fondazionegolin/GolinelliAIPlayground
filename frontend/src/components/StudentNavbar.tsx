@@ -16,6 +16,7 @@ import { buildAccentNavbarStyle, buildAccentNavClusterStyle } from '@/lib/navbar
 import { CreditBalancePill } from './CreditBalancePill'
 import { StudentNotificationBell } from './StudentNotificationBell'
 import { ServerHealthIndicator } from './ServerHealthIndicator'
+import { PLATFORM_REALTIME_EVENT, type PlatformRealtimeDetail } from '@/lib/realtimeEvents'
 
 interface StudentProfile {
   id?: string
@@ -86,6 +87,7 @@ export function StudentNavbar({
   const activeModuleRef = useRef<string | null | undefined>(activeModule)
   const chatSidebarOpenRef = useRef(chatSidebarOpen)
   const profileIdRef = useRef<string | undefined>(undefined)
+  const processedRealtimeIdsRef = useRef<Set<string>>(new Set())
 
   useEffect(() => {
     activeModuleRef.current = activeModule
@@ -95,57 +97,40 @@ export function StudentNavbar({
     chatSidebarOpenRef.current = chatSidebarOpen
   }, [chatSidebarOpen])
 
-  // Teacher-shared documents are surfaced on the Documents nav item. Published
-  // tasks use the authoritative pending-submission count passed by the dashboard.
-  useEffect(() => {
-    let socket: any = null
-    const bumpDocuments = () => {
-      if (activeModuleRef.current === 'documents') return
-      setDocumentsBadge((n) => n + 1)
-    }
-    const attach = () => {
-      const s = (window as any).socket
-      if (s && s !== socket) {
-        socket = s
-        s.on('document_uploaded', bumpDocuments)
-      }
-    }
-    attach()
-    const iv = setInterval(attach, 1500)
-    window.addEventListener('student-document-uploaded', bumpDocuments)
-    return () => {
-      clearInterval(iv)
-      window.removeEventListener('student-document-uploaded', bumpDocuments)
-      if (socket) {
-        socket.off('document_uploaded', bumpDocuments)
-      }
-    }
-  }, [])
-
   useEffect(() => {
     if (chatSidebarOpen) setChatBadge(0)
   }, [chatSidebarOpen])
 
   useEffect(() => {
-    let socket: any = null
-    const handleChatMessage = (data: { room_type?: string; message?: { sender_id?: string } }) => {
-      if (data?.room_type !== 'PUBLIC' || chatSidebarOpenRef.current) return
-      if (data.message?.sender_id && data.message.sender_id === profileIdRef.current) return
-      setChatBadge((count) => count + 1)
+    const handleRealtime = (event: Event) => {
+      const detail = (event as CustomEvent<PlatformRealtimeDetail>).detail
+      if (!detail) return
+      const { type, payload } = detail
+
+      if (type === 'chat_message') {
+        if (payload.room_type !== 'PUBLIC' || chatSidebarOpenRef.current) return
+        if (payload.message?.sender_id && payload.message.sender_id === profileIdRef.current) return
+        if (processedRealtimeIdsRef.current.has(detail.id)) return
+        processedRealtimeIdsRef.current.add(detail.id)
+        setChatBadge((count) => count + 1)
+        return
+      }
+
+      const taskData = payload.data || payload
+      const taskId = payload.task_id || payload.entity_id
+      const isPublishedTask = type === 'task_published' || (type === 'platform_change' && payload.entity === 'task' && payload.action === 'published')
+      const isDocumentTask = isPublishedTask && ['lesson', 'presentation', 'document', 'document_v1', 'presentation_v2'].includes(String(taskData.task_type || '').toLowerCase())
+      if (type === 'document_uploaded' || isDocumentTask) {
+        if (activeModuleRef.current === 'documents') return
+        const notificationId = `document-${payload.document_id || taskId}`
+        if (processedRealtimeIdsRef.current.has(notificationId)) return
+        processedRealtimeIdsRef.current.add(notificationId)
+        setDocumentsBadge((count) => count + 1)
+      }
     }
-    const attach = () => {
-      const nextSocket = (window as any).socket
-      if (!nextSocket || nextSocket === socket) return
-      if (socket) socket.off('chat_message', handleChatMessage)
-      socket = nextSocket
-      socket.on('chat_message', handleChatMessage)
-    }
-    attach()
-    const interval = window.setInterval(attach, 1500)
-    return () => {
-      window.clearInterval(interval)
-      if (socket) socket.off('chat_message', handleChatMessage)
-    }
+
+    window.addEventListener(PLATFORM_REALTIME_EVENT, handleRealtime)
+    return () => window.removeEventListener(PLATFORM_REALTIME_EVENT, handleRealtime)
   }, [])
 
   useEffect(() => {

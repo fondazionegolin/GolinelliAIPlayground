@@ -187,6 +187,7 @@ export default function TeacherDocumentsPage() {
   const [storedDocuments, setStoredDocuments] = useState<StoredDocument[]>([])
   const [draftDocuments, setDraftDocuments] = useState<DraftDocument[]>([])
   const [docSearch, setDocSearch] = useState('')
+  const [catalogRefreshKey, setCatalogRefreshKey] = useState(0)
   const [activePublishedTaskId, setActivePublishedTaskId] = useState<string | null>(null)
   const [activeStudentSubmissionId, setActiveStudentSubmissionId] = useState<string | null>(null)
   const [correctionSaveState, setCorrectionSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
@@ -563,6 +564,12 @@ export default function TeacherDocumentsPage() {
 
   // Load existing documents
   useEffect(() => {
+    const refreshCatalog = () => setCatalogRefreshKey((value) => value + 1)
+    window.addEventListener('golinelli:documents-refresh', refreshCatalog)
+    return () => window.removeEventListener('golinelli:documents-refresh', refreshCatalog)
+  }, [])
+
+  useEffect(() => {
     const fetchDrafts = async () => {
       try {
         const res = await teacherApi.listDocumentDrafts()
@@ -616,7 +623,7 @@ export default function TeacherDocumentsPage() {
     }
 
     fetchDocuments()
-  }, [classesData])
+  }, [classesData, catalogRefreshKey])
 
   useEffect(() => {
     draftIdRef.current = draftId

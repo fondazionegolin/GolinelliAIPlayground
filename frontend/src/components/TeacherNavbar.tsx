@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, type CSSProperties } from 'react'
+import { useState, useRef, useEffect, useCallback, type CSSProperties } from 'react'
 import { Link, useNavigate, useLocation } from 'react-router-dom'
 import { User, Settings, LogOut, ChevronDown, Users, MessageSquare, Mic, FileText, Check, Brain, FileCode2, KeyRound, Loader2, ShieldCheck, BookOpen, Zap, Box, Code2, KanbanSquare, Network, Bot } from 'lucide-react'
 import { AcademicAiIcon } from '@/components/icons/AcademicAiIcon'
@@ -20,6 +20,7 @@ import WhatsNewModal from './WhatsNewModal'
 import { buildAccentNavbarStyle, buildAccentNavClusterStyle } from '@/lib/navbarGlass'
 import { CreditBalancePill } from './CreditBalancePill'
 import { ServerHealthIndicator } from './ServerHealthIndicator'
+import { PLATFORM_REALTIME_EVENT, type PlatformRealtimeDetail, usePlatformRealtimeSync } from '@/lib/realtimeEvents'
 
 interface TeacherProfile {
   firstName: string
@@ -59,6 +60,7 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
   const { data: profileData } = useTeacherProfile()
   const invalidateProfile = useInvalidateTeacherProfile()
   const queryClient = useQueryClient()
+  usePlatformRealtimeSync(queryClient)
   const profile: TeacherProfile = profileData ?? { firstName: '', lastName: '', email: '', avatarUrl: '', uiAccent: DEFAULT_TEACHER_ACCENT }
   const isAdmin = authUser?.role === 'ADMIN'
   const [activeSessions, setActiveSessions] = useState<ActiveSession[]>([])
@@ -255,7 +257,7 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
 
-  const loadActiveSessions = async () => {
+  const loadActiveSessions = useCallback(async () => {
     try {
       console.log('[TeacherNavbar] Loading active sessions...')
       // First, get all classes
@@ -297,7 +299,17 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
     } catch (error) {
       console.error('Failed to load active sessions', error)
     }
-  }
+  }, [])
+
+  useEffect(() => {
+    const handleRealtime = (event: Event) => {
+      const detail = (event as CustomEvent<PlatformRealtimeDetail>).detail
+      if (detail?.type !== 'platform_change') return
+      if (detail.payload.entity === 'class' || detail.payload.entity === 'session') loadActiveSessions()
+    }
+    window.addEventListener(PLATFORM_REALTIME_EVENT, handleRealtime)
+    return () => window.removeEventListener(PLATFORM_REALTIME_EVENT, handleRealtime)
+  }, [loadActiveSessions])
 
   const handleLogout = () => {
     console.log('[TeacherNavbar] Logout clicked')

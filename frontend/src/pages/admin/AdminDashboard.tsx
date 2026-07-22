@@ -4,7 +4,7 @@ import { motion } from 'framer-motion'
 import { useAuthStore } from '@/stores/auth'
 import { AppBackground } from '@/components/ui/AppBackground'
 import { LogOut, LayoutDashboard, GraduationCap, BarChart3, Mail, School, Bug, KeyRound, X, Loader2, BookOpen, Database, Building2, Menu, PanelLeftClose, PanelLeftOpen, FileCheck2, KanbanSquare } from 'lucide-react'
-import { useMutation } from '@tanstack/react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { adminApi } from '@/lib/api'
 import { useToast } from '@/components/ui/use-toast'
 import { Button, IconButton } from '@/design'
@@ -18,6 +18,8 @@ import FeedbackBoardPage from './FeedbackBoardPage'
 import AdminBackendPage from './AdminBackendPage'
 import SchoolsPage from './SchoolsPage'
 import LicensesPage from './LicensesPage'
+import { useSocket } from '@/hooks/useSocket'
+import { usePlatformRealtimeSync } from '@/lib/realtimeEvents'
 
 const navItems = [
   { path: '/admin', label: 'Panoramica', icon: LayoutDashboard, exact: true },
@@ -101,6 +103,9 @@ function ChangePasswordModal({ onClose }: { onClose: () => void }) {
 }
 
 export default function AdminDashboard() {
+  const queryClient = useQueryClient()
+  useSocket('')
+  usePlatformRealtimeSync(queryClient)
   const { logout } = useAuthStore()
   const location = useLocation()
   const navigate = useNavigate()

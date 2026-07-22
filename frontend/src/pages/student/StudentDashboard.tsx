@@ -32,6 +32,7 @@ import { useSwipeBack } from '@/hooks/useSwipeBack'
 import { AppBackground } from '@/components/ui/AppBackground'
 import { getStudentAccentTheme, loadStudentAccent, type StudentAccentId } from '@/lib/studentAccent'
 import { getAppBackgroundGradient } from '@/lib/theme'
+import { publishRealtimeEvent, usePlatformRealtimeSync } from '@/lib/realtimeEvents'
 
 interface SessionInfo {
   session: {
@@ -51,6 +52,7 @@ interface SessionInfo {
   } | null
   enabled_modules: Array<{
     key: string
+    is_enabled?: boolean
     config: Record<string, unknown>
   }>
 }
@@ -173,6 +175,7 @@ export default function StudentDashboard() {
   const { studentSession, logout } = useAuthStore()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+  usePlatformRealtimeSync(queryClient)
   const location = useLocation()
   const [sessionInfo, setSessionInfo] = useState<SessionInfo | null>(null)
   const [loading, setLoading] = useState(true)
@@ -357,7 +360,8 @@ export default function StudentDashboard() {
 
   useEffect(() => {
     const studentToken = localStorage.getItem('student_token')
-    if (!studentToken || !sessionInfo?.session?.id) return
+    const studentId = studentSession?.student_id
+    if (!studentToken || !studentId || !sessionInfo?.session?.id) return
 
     const socket = io(window.location.origin, {
       path: '/socket.io',
@@ -372,13 +376,34 @@ export default function StudentDashboard() {
 
     socket.on('session_access_revoked', () => exitStudentSession())
     socket.on('document_uploaded', (data: { document_id: string; filename: string }) => {
+      publishRealtimeEvent('document_uploaded', data)
       window.dispatchEvent(new CustomEvent('student-document-uploaded', { detail: data }))
     })
     socket.on('task_published', (data: { task_id: string; title: string; task_type: string }) => {
+      publishRealtimeEvent('task_published', data)
       window.dispatchEvent(new CustomEvent('student-task-published', { detail: data }))
     })
-    socket.on('board_shared', () => queryClient.invalidateQueries({ queryKey: ['student-shared-boards'] }))
+    socket.on('board_shared', (data: Record<string, any>) => publishRealtimeEvent('board_shared', data))
+    socket.on('task_correction', (data: Record<string, any>) => {
+      if (data.student_id === studentId) publishRealtimeEvent('task_correction', data)
+    })
+    socket.on('task_feedback_published', (data: Record<string, any>) => {
+      if (data.student_id === studentId) publishRealtimeEvent('task_feedback_published', data)
+    })
+    socket.on('platform_change', (data: Record<string, any>) => publishRealtimeEvent('platform_change', data))
+    socket.on('share_chat_invite', (data: Record<string, any>) => publishRealtimeEvent('share_chat_invite', data))
+    socket.on('share_chat_mention', (data: Record<string, any>) => publishRealtimeEvent('share_chat_mention', data))
     socket.on('module_toggled', (data: { module_key: string; is_enabled: boolean }) => {
+      publishRealtimeEvent('module_toggled', data)
+      setSessionInfo((previous) => {
+        if (!previous) return previous
+        const modules = previous.enabled_modules || []
+        const existing = modules.find((module) => module.key === data.module_key)
+        const enabled_modules = existing
+          ? modules.map((module) => module.key === data.module_key ? { ...module, is_enabled: data.is_enabled } : module)
+          : [...modules, { key: data.module_key, is_enabled: data.is_enabled, config: {} }]
+        return { ...previous, enabled_modules }
+      })
       if (data.module_key === 'chat' && !data.is_enabled) {
         window.dispatchEvent(new CustomEvent('studentPrivateChatDisabled', { detail: data }))
       }
@@ -387,7 +412,7 @@ export default function StudentDashboard() {
     return () => {
       socket.disconnect()
     }
-  }, [sessionInfo?.session?.id, exitStudentSession, queryClient])
+  }, [sessionInfo?.session?.id, studentSession?.student_id, exitStudentSession])
 
   useEffect(() => {
     const handleResize = () => {
@@ -411,9 +436,9 @@ export default function StudentDashboard() {
     return () => window.removeEventListener('oggi-imparo:expand', handler)
   }, [])
 
-  const privateChatEnabled = sessionInfo?.enabled_modules?.some((m) => m.key === 'chat') ?? false
-  const collaborationEnabled = sessionInfo?.enabled_modules?.some((m) => m.key === 'chat_collaboration') ?? false
-  const sessionModules = sessionInfo?.enabled_modules?.map(m => m.key).filter(k => k !== 'chat' && k !== 'chat_collaboration') ?? []
+  const privateChatEnabled = sessionInfo?.enabled_modules?.some((m) => m.key === 'chat' && m.is_enabled !== false) ?? false
+  const collaborationEnabled = sessionInfo?.enabled_modules?.some((m) => m.key === 'chat_collaboration' && m.is_enabled !== false) ?? false
+  const sessionModules = sessionInfo?.enabled_modules?.filter((m) => m.is_enabled !== false).map(m => m.key).filter(k => k !== 'chat' && k !== 'chat_collaboration') ?? []
   const enabledModules = [...new Set([...sessionModules, 'classe', 'documents', ...(sharedBoards.length ? ['boards'] : [])])]
   const chatbotEnabled = enabledModules.includes('chatbot')
 

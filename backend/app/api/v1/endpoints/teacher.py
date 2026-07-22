@@ -7,7 +7,7 @@ from sqlalchemy import select, func, or_
 from sqlalchemy.orm import selectinload
 from typing import Annotated, Optional
 from datetime import datetime, timedelta, timezone
-from uuid import UUID
+from uuid import UUID, uuid4
 from pydantic import BaseModel, EmailStr, Field
 
 from app.core.database import get_db
@@ -65,6 +65,62 @@ from app.core.config import settings
 router = APIRouter()
 TEACHER_ACCENTS = {"cyan", "orange", "black", "red"}
 SCHOOL_GRADES = set(SCHOOL_GRADE_OPTIONS)
+
+
+async def _emit_platform_change(
+    db: AsyncSession,
+    *,
+    entity: str,
+    action: str,
+    entity_id: UUID | str,
+    class_id: UUID | None = None,
+    session_id: UUID | None = None,
+    include_session_room: bool = False,
+    data: dict | None = None,
+) -> None:
+    """Broadcast a post-commit cache hint without changing persisted state.
+
+    Personal rooms cover every teacher allowed on the class/session, including
+    collaborators who are not currently inside the live session. The optional
+    session room reaches students. Duplicate delivery is harmless because each
+    payload carries a stable event id and clients deduplicate it.
+    """
+    resolved_class_id = class_id
+    teacher_ids: set[UUID] = set()
+
+    if session_id:
+        session_row = (await db.execute(
+            select(Session.class_id).where(Session.id == session_id)
+        )).scalar_one_or_none()
+        resolved_class_id = resolved_class_id or session_row
+        teacher_ids.update((await db.execute(
+            select(SessionTeacher.teacher_id).where(SessionTeacher.session_id == session_id)
+        )).scalars().all())
+
+    if resolved_class_id:
+        owner_id = (await db.execute(
+            select(Class.teacher_id).where(Class.id == resolved_class_id)
+        )).scalar_one_or_none()
+        if owner_id:
+            teacher_ids.add(owner_id)
+        teacher_ids.update((await db.execute(
+            select(ClassTeacher.teacher_id).where(ClassTeacher.class_id == resolved_class_id)
+        )).scalars().all())
+
+    payload = {
+        "event_id": str(uuid4()),
+        "entity": entity,
+        "action": action,
+        "entity_id": str(entity_id),
+        "class_id": str(resolved_class_id) if resolved_class_id else None,
+        "session_id": str(session_id) if session_id else None,
+        "occurred_at": datetime.now(timezone.utc).isoformat(),
+        "data": data or {},
+    }
+    for teacher_id in teacher_ids:
+        await sio.emit("platform_change", payload, room=f"user:{teacher_id}")
+    if include_session_room and session_id:
+        await sio.emit("platform_change", payload, room=f"session:{session_id}")
 
 
 async def _find_teacher_for_school_context(
@@ -552,6 +608,7 @@ async def archive_class(
             session.deleted_by_id = teacher.id
             session.purge_after = now + timedelta(days=30)
     await db.commit()
+    await _emit_platform_change(db, entity="class", action="archived", entity_id=class_id, class_id=class_id)
     return {"message": "Class archived", "class_id": str(class_id), "archived_at": now}
 
 
@@ -576,6 +633,7 @@ async def restore_class(
         if session.status == SessionStatus.ENDED:
             session.status = SessionStatus.DRAFT
     await db.commit()
+    await _emit_platform_change(db, entity="class", action="restored", entity_id=class_id, class_id=class_id)
     return {"message": "Class restored", "class_id": str(class_id)}
 
 
@@ -606,6 +664,7 @@ async def create_class(
     db.add(class_)
     await db.commit()
     await db.refresh(class_)
+    await _emit_platform_change(db, entity="class", action="created", entity_id=class_.id, class_id=class_.id)
     return class_
 
 
@@ -637,6 +696,7 @@ async def update_class(
         class_.school_tenant_id = request.school_tenant_id
     await db.commit()
     await db.refresh(class_)
+    await _emit_platform_change(db, entity="class", action="updated", entity_id=class_.id, class_id=class_.id)
     return class_
 
 
@@ -705,6 +765,15 @@ async def create_session(
     
     await db.commit()
     await db.refresh(session)
+    await _emit_platform_change(
+        db,
+        entity="session",
+        action="created",
+        entity_id=session.id,
+        class_id=class_id,
+        session_id=session.id,
+        data={"title": session.title, "status": session.status.value},
+    )
     return session
 
 
@@ -766,6 +835,17 @@ async def update_session(
                 "La sessione è terminata. Il codice di accesso non è più disponibile.",
                 session.status.value,
             )
+
+    await _emit_platform_change(
+        db,
+        entity="session",
+        action="updated",
+        entity_id=session.id,
+        class_id=session.class_id,
+        session_id=session.id,
+        include_session_room=True,
+        data={"title": session.title, "status": session.status.value},
+    )
 
     return session
 
@@ -1262,6 +1342,14 @@ async def delete_session(
     session.deleted_by_id = teacher.id
     session.purge_after = now + timedelta(days=30)
     await db.commit()
+    await _emit_platform_change(
+        db,
+        entity="session",
+        action="archived",
+        entity_id=session_id,
+        class_id=session.class_id,
+        session_id=session_id,
+    )
 
     return {
         "message": "Session moved to trash",
@@ -1292,6 +1380,14 @@ async def restore_session(
         session.status = SessionStatus.DRAFT
     await db.commit()
     await db.refresh(session)
+    await _emit_platform_change(
+        db,
+        entity="session",
+        action="restored",
+        entity_id=session_id,
+        class_id=session.class_id,
+        session_id=session_id,
+    )
     return session
 
 
@@ -2115,6 +2211,17 @@ async def create_task(
             room=f"session:{session_id}",
         )
 
+    await _emit_platform_change(
+        db,
+        entity="task",
+        action="published" if task.status == TaskStatus.PUBLISHED else "created",
+        entity_id=task.id,
+        class_id=session.class_id,
+        session_id=session_id,
+        include_session_room=True,
+        data={"title": task.title, "task_type": task.task_type.value, "status": task.status.value},
+    )
+
     return {
         "id": str(task.id),
         "title": task.title,
@@ -2230,6 +2337,17 @@ async def update_task(
             },
             room=f"session:{session_id}",
         )
+
+    await _emit_platform_change(
+        db,
+        entity="task",
+        action="published" if old_status != TaskStatus.PUBLISHED and task.status == TaskStatus.PUBLISHED else "updated",
+        entity_id=task.id,
+        class_id=session.class_id,
+        session_id=session_id,
+        include_session_room=True,
+        data={"title": task.title, "task_type": task.task_type.value, "status": task.status.value},
+    )
     
     return {
         "id": str(task.id),
@@ -2266,6 +2384,14 @@ async def delete_task(
     
     await db.delete(task)
     await db.commit()
+    await _emit_platform_change(
+        db,
+        entity="task",
+        action="deleted",
+        entity_id=task_id,
+        session_id=session_id,
+        include_session_room=True,
+    )
     
     return {"message": "Task deleted"}
 
@@ -3105,6 +3231,18 @@ async def respond_to_school_invitation(
                 added_by_admin_id=invitation.invited_by_admin_id,
             ))
     await db.commit()
+    await sio.emit(
+        "platform_change",
+        {
+            "event_id": str(uuid4()),
+            "entity": "invitation",
+            "action": "accepted" if request.accept else "declined",
+            "entity_id": str(invitation.id),
+            "occurred_at": datetime.now(timezone.utc).isoformat(),
+            "data": {"target_type": "school", "status": invitation.status.value},
+        },
+        room=f"user:{teacher.id}",
+    )
     return {"message": "Invito accettato" if request.accept else "Invito rifiutato", "status": invitation.status.value}
 
 
@@ -3144,6 +3282,14 @@ async def respond_to_class_invitation(
         invitation.status = InvitationStatus.DECLINED
 
     await db.commit()
+    await _emit_platform_change(
+        db,
+        entity="invitation",
+        action="accepted" if request.accept else "declined",
+        entity_id=invitation.id,
+        class_id=invitation.class_id,
+        data={"target_type": "class", "status": invitation.status.value},
+    )
 
     return {
         "message": "Invitation accepted" if request.accept else "Invitation declined",
@@ -3187,6 +3333,14 @@ async def respond_to_session_invitation(
         invitation.status = InvitationStatus.DECLINED
 
     await db.commit()
+    await _emit_platform_change(
+        db,
+        entity="invitation",
+        action="accepted" if request.accept else "declined",
+        entity_id=invitation.id,
+        session_id=invitation.session_id,
+        data={"target_type": "session", "status": invitation.status.value},
+    )
 
     return {
         "message": "Invitation accepted" if request.accept else "Invitation declined",

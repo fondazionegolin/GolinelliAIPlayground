@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, useCallback } from 'react'
 import { io, Socket } from 'socket.io-client'
 import { useAuthStore } from '@/stores/auth'
 import { chatApi } from '@/lib/api'
+import { publishRealtimeEvent } from '@/lib/realtimeEvents'
 
 export interface ChatMessage {
   id: string
@@ -320,6 +321,7 @@ export function useSocket(sessionId?: string): UseSocketReturn {
     })
 
     socket.on('chat_message', (data: { room_type: string; message: ChatMessage; target_id?: string }) => {
+      publishRealtimeEvent('chat_message', data as unknown as Record<string, any>)
       const msg = {
         ...data.message,
         id: data.message.id || `${Date.now()}-${Math.random()}`,
@@ -415,12 +417,15 @@ export function useSocket(sessionId?: string): UseSocketReturn {
     })
 
     socket.on('module_toggled', (data: { module_key: string; is_enabled: boolean }) => {
+      publishRealtimeEvent('module_toggled', data)
       if (studentToken && data.module_key === 'chat' && !data.is_enabled) {
         window.dispatchEvent(new CustomEvent('studentPrivateChatDisabled', { detail: data }))
       }
     })
 
     socket.on('task_published', (data: { task_id: string; title: string; task_type: string }) => {
+      publishRealtimeEvent('task_published', data)
+      window.dispatchEvent(new CustomEvent('student-task-published', { detail: data }))
       const notification: ChatMessage = {
         id: `notif-${Date.now()}`,
         sender_type: 'TEACHER',
@@ -438,6 +443,7 @@ export function useSocket(sessionId?: string): UseSocketReturn {
 
     socket.on('task_correction', (data: { task_id: string; submission_id: string; student_id: string }) => {
       if (!studentToken || data.student_id !== currentUserIdRef.current) return
+      publishRealtimeEvent('task_correction', data)
       const notification: ChatMessage = {
         id: `correction-${data.submission_id}-${Date.now()}`,
         sender_type: 'TEACHER',
@@ -456,6 +462,7 @@ export function useSocket(sessionId?: string): UseSocketReturn {
 
     socket.on('task_feedback_published', (data: { task_id: string; submission_id: string; student_id: string }) => {
       if (!studentToken || data.student_id !== currentUserIdRef.current) return
+      publishRealtimeEvent('task_feedback_published', data)
       const notification: ChatMessage = {
         id: `feedback-${data.submission_id}-${Date.now()}`,
         sender_type: 'TEACHER',
@@ -473,6 +480,7 @@ export function useSocket(sessionId?: string): UseSocketReturn {
     })
 
     socket.on('document_uploaded', (data: { document_id: string; filename: string }) => {
+      publishRealtimeEvent('document_uploaded', data)
       const notification: ChatMessage = {
         id: `notif-${Date.now()}`,
         sender_type: 'TEACHER',
@@ -489,6 +497,7 @@ export function useSocket(sessionId?: string): UseSocketReturn {
     })
 
     socket.on('task_submission', (data: { task_id: string; task_title: string; student_id: string; student_name: string; submission_id: string }) => {
+      publishRealtimeEvent('task_submission', data)
       const notification: ChatMessage = {
         id: `notif-${Date.now()}`,
         sender_type: 'STUDENT',
@@ -519,6 +528,7 @@ export function useSocket(sessionId?: string): UseSocketReturn {
     })
 
     socket.on('teacher_notification', (data: { type: string; nickname: string; message: string; preview?: string; timestamp: string }) => {
+      publishRealtimeEvent(data.type || 'teacher_notification', data)
       const notification: ChatMessage = {
         id: `teacher-notif-${Date.now()}-${Math.random()}`,
         sender_type: 'STUDENT',
@@ -531,6 +541,26 @@ export function useSocket(sessionId?: string): UseSocketReturn {
         notification_data: data,
       }
       setNotifications(prev => [...prev, notification])
+    })
+
+    socket.on('platform_change', (data: Record<string, any>) => {
+      publishRealtimeEvent('platform_change', data)
+    })
+
+    socket.on('session_status_changed', (data: Record<string, any>) => {
+      publishRealtimeEvent('session_status_changed', data)
+    })
+
+    socket.on('board_shared', (data: Record<string, any>) => {
+      publishRealtimeEvent('board_shared', data)
+    })
+
+    socket.on('share_chat_invite', (data: Record<string, any>) => {
+      publishRealtimeEvent('share_chat_invite', data)
+    })
+
+    socket.on('share_chat_mention', (data: Record<string, any>) => {
+      publishRealtimeEvent('share_chat_mention', data)
     })
 
     socket.on('session_access_revoked', (data: { status: string; reason: string; session_id: string }) => {
