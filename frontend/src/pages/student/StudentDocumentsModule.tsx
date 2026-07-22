@@ -1458,7 +1458,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
             </div>
           )}
           {mode === 'canvas' && (
-            <div className="pointer-events-none min-h-[70dvh] overflow-hidden rounded-2xl bg-white shadow-sm">
+            <div className="min-h-[70dvh] overflow-hidden rounded-2xl bg-white shadow-sm">
               <CollaborativeCanvas
                 role="student"
                 sessionId={sessionId}

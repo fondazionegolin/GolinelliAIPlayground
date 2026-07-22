@@ -363,6 +363,16 @@ disabilita il comando, mostra spinner/testo di stato, aggiorna l'anteprima appen
 e mostra un errore chiaro se la promessa fallisce. Puoi anche passare onStatus a generateImage oppure
 ascoltare window.addEventListener('golinelli:image-status', ...) per stati globali.
 
+IMMAGINI RICHIESTE NEL PROGETTO: se lo studente chiede di inserire, sostituire o completare una o piu`
+immagini descrivendone il soggetto (per esempio "metti una rosa nel bicchiere" o "aggiungi le immagini
+mancanti"), NON inventare mai URL, ID di foto Unsplash/Pexels o percorsi locali inesistenti. Gli URL
+esterni gia` presenti nel progetto o forniti esplicitamente dallo studente possono restare invariati;
+per ogni nuova immagine richiesta usa invece window.GolinelliAI.generateImage({prompt}), mostra lo stato
+di attesa/errore e assegna image_url al relativo tag <img>. Persisti l'URL ottenuto con saveData e
+ricaricalo con loadData, cosi` l'immagine viene generata una sola volta e resta disponibile alle aperture
+successive. Per immagini puramente decorative non richieste esplicitamente preferisci SVG inline o
+gradienti: mai un URL esterno "plausibile" ma non verificato.
+
 FORMATO DI OUTPUT — rispettalo ALLA LETTERA:
 1) Prima un breve RAGIONAMENTO in italiano (markdown, elenchi ok): piano, viste, componenti, scelte di design.
    Chiudi SEMPRE il ragionamento con un elenco "File:" che elenca ESATTAMENTE i path che scriverai qui sotto,
