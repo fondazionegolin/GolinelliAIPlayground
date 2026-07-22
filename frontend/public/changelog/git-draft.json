@@ -1,14 +1,19 @@
 {
-  "generated_at": "2026-07-22T12:27:56.331810+00:00",
-  "version_label": "2026.07.22-d08fff27",
+  "generated_at": "2026-07-22T12:51:52.035043+00:00",
+  "version_label": "2026.07.22-fffcc57f",
   "title": "Aggiornamenti branch feat/platform-realtime",
-  "summary": "Bozza generata automaticamente da 1 commit nuovi.",
-  "git_ref": "d08fff27d97d4175e2614b49f3079724e6c43b74",
+  "summary": "Bozza generata automaticamente da 2 commit nuovi.",
+  "git_ref": "fffcc57f53e73683dfdd900f139db83e9a2d7b4a",
   "items": [
     {
       "category": "improved",
-      "title": "Feat(realtime): sync platform updates",
-      "description": "Feat(realtime): sync platform updates"
+      "title": "Update realtime changelog",
+      "description": "Update realtime changelog"
+    },
+    {
+      "category": "improved",
+      "title": "Fix(ui): resolve feedback inbox bugs",
+      "description": "Fix(ui): resolve feedback inbox bugs"
     }
   ]
 }
