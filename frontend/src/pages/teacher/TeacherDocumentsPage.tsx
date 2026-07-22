@@ -16,7 +16,8 @@ import { RichTextEditor } from '@/components/RichTextEditor'
 import { UnifiedToolbar } from '@/components/UnifiedToolbar'
 import DocumentAgentChat, { type DocumentAssistContext } from '@/components/documents/DocumentAgentChat'
 import DocumentThumbnail from '@/components/documents/DocumentThumbnail'
-import { SheetChartConfig, SpreadsheetEditor } from '@/components/SpreadsheetEditor'
+import DocumentOpenModal, { type OpenableDocument } from '@/components/documents/DocumentOpenModal'
+import { SheetChartConfig, SheetCellStyles, SpreadsheetEditor } from '@/components/SpreadsheetEditor'
 import { CollaborativeCanvas } from '@/components/CollaborativeCanvas'
 import { Editor } from '@tiptap/react'
 import { useTranslation } from 'react-i18next'
@@ -57,6 +58,7 @@ interface Document {
   header?: DocumentHeader
   sheetData?: string[][]
   sheetChart?: SheetChartConfig
+  sheetStyles?: SheetCellStyles
   canvasContent?: string
   webUrl?: string
   source?: { filename?: string; extension?: string; mimeType?: string; fileId?: string; url?: string; preservedOriginal?: boolean }
@@ -117,7 +119,7 @@ const EMPTY_DOC_HTML = '<p></p>'
 const DEFAULT_SHEET_DATA = Array.from({ length: 20 }, () => Array.from({ length: 8 }, () => ''))
 const DEFAULT_SHEET_CHART: SheetChartConfig = {
   type: 'line',
-  title: 'Grafico foglio',
+  title: 'Grafico tabella',
   xCol: 0,
   yCol: 1,
   showRegression: true,
@@ -156,6 +158,7 @@ export default function TeacherDocumentsPage() {
   const { isMobile } = useMobile()
   const defaultDocumentTitle = isEnglish ? 'New Document' : 'Nuovo Documento'
   const defaultPresentationTitle = isEnglish ? 'New Presentation' : 'Nuova Presentazione'
+  const defaultSheetTitle = isEnglish ? 'New Table' : 'Nuova Tabella'
   const defaultCanvasTitle = isEnglish ? 'New Board' : 'Nuova Lavagna'
   const dateLocale = isEnglish ? 'en-GB' : 'it-IT'
   const [draftId, setDraftId] = useState<string | null>(null)
@@ -217,6 +220,7 @@ export default function TeacherDocumentsPage() {
   const [selectedSessionId, setSelectedSessionId] = useState('')
   const [publishMode, setPublishMode] = useState<'published' | 'draft'>('published')
   const [showNewModal, setShowNewModal] = useState(false)
+  const [documentToOpen, setDocumentToOpen] = useState<{ document: OpenableDocument; onEdit: () => void } | null>(null)
   const [draftSaveState, setDraftSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
   const [viewMode, setViewMode] = useState<'list' | 'editor'>('list')
   const [studentDocsCollapsed, setStudentDocsCollapsed] = useState(false)
@@ -409,6 +413,22 @@ export default function TeacherDocumentsPage() {
     setViewMode('editor')
   }
 
+  const createNewSheet = () => {
+    setDocument({
+      id: crypto.randomUUID(), title: defaultSheetTitle, format: 'a4', slides: [], textContent: '',
+      sheetData: DEFAULT_SHEET_DATA, sheetChart: DEFAULT_SHEET_CHART, canvasContent: DEFAULT_CANVAS_CONTENT, webUrl: '',
+    })
+    setMode('sheet')
+    setDraftId(null)
+    draftIdRef.current = null
+    activePublishedTaskIdRef.current = null
+    setActivePublishedTaskId(null)
+    setActiveStudentSubmissionId(null)
+    suppressNextDraftSaveRef.current = true
+    setDraftSaveState('idle')
+    setViewMode('editor')
+  }
+
   const createNewCanvas = () => {
     const newDocId = crypto.randomUUID()
     setDocument({
@@ -440,7 +460,7 @@ export default function TeacherDocumentsPage() {
     const nativeContent = mode === 'slides'
         ? { type: 'presentation_v2', format: document.format, slides: document.slides }
         : mode === 'sheet'
-          ? { type: 'sheet_v1', data: document.sheetData || DEFAULT_SHEET_DATA, chart: document.sheetChart || DEFAULT_SHEET_CHART }
+          ? { type: 'sheet_v1', data: document.sheetData || DEFAULT_SHEET_DATA, chart: document.sheetChart || DEFAULT_SHEET_CHART, styles: document.sheetStyles || {} }
           : mode === 'canvas'
             ? parseCanvasContent(document.canvasContent)
           : { type: 'document_v1', htmlContent: document.textContent || '', header: document.header, margins: docMargins }
@@ -800,6 +820,7 @@ export default function TeacherDocumentsPage() {
           textContent: '',
           sheetData: Array.isArray(content.data) ? content.data : DEFAULT_SHEET_DATA,
           sheetChart: content.chart || DEFAULT_SHEET_CHART,
+          sheetStyles: content.styles || {},
           canvasContent: DEFAULT_CANVAS_CONTENT,
           webUrl: '',
           source: content.source,
@@ -934,6 +955,7 @@ export default function TeacherDocumentsPage() {
           textContent: '',
           sheetData: Array.isArray(content.data) ? content.data : DEFAULT_SHEET_DATA,
           sheetChart: content.chart || DEFAULT_SHEET_CHART,
+          sheetStyles: content.styles || {},
           canvasContent: DEFAULT_CANVAS_CONTENT,
           webUrl: '',
           source: content.source,
@@ -1276,6 +1298,7 @@ export default function TeacherDocumentsPage() {
           title: document.title,
           data: document.sheetData || DEFAULT_SHEET_DATA,
           chart: document.sheetChart || DEFAULT_SHEET_CHART,
+          styles: document.sheetStyles || {},
         })
         taskType = 'lesson'
       } else if (mode === 'canvas') {
@@ -1298,7 +1321,7 @@ export default function TeacherDocumentsPage() {
 
       const response = await teacherApi.createTask(selectedSessionId, {
         title: document.title,
-        description: `Documento creato con Golinelli AI Editor (${mode === 'slides' ? 'Presentazione' : mode === 'sheet' ? 'Foglio' : mode === 'canvas' ? 'Lavagna' : 'Testo'})`,
+        description: `Documento creato con Golinelli AI Editor (${mode === 'slides' ? 'Presentazione' : mode === 'sheet' ? 'Tabelle' : mode === 'canvas' ? 'Lavagna' : 'Testo'})`,
         task_type: taskType,
         content_json: contentJson
       })
@@ -1456,7 +1479,7 @@ export default function TeacherDocumentsPage() {
           <div className="flex-1 overflow-y-auto p-6">
             <div className="max-w-5xl mx-auto space-y-8">
 
-              <section className="grid gap-3 sm:grid-cols-3">
+              <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                 <button type="button" onClick={createNewDocument} className="flex min-h-[92px] items-center gap-4 rounded-2xl border border-emerald-200 bg-emerald-50/80 p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:bg-emerald-100/80 hover:shadow-md">
                   <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-white text-emerald-700 shadow-sm"><FileText className="h-6 w-6" /></span>
                   <span><span className="block text-sm font-black text-slate-950">{isEnglish ? 'New document' : 'Nuovo documento'}</span><span className="mt-1 block text-xs leading-5 text-slate-600">{isEnglish ? 'Write pages, reports and teaching materials.' : 'Scrivi pagine, relazioni e materiali didattici.'}</span></span>
@@ -1464,6 +1487,10 @@ export default function TeacherDocumentsPage() {
                 <button type="button" onClick={createNewPresentation} className="flex min-h-[92px] items-center gap-4 rounded-2xl border border-indigo-200 bg-indigo-50/80 p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:bg-indigo-100/80 hover:shadow-md">
                   <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-white text-indigo-700 shadow-sm"><MonitorPlay className="h-6 w-6" /></span>
                   <span><span className="block text-sm font-black text-slate-950">{isEnglish ? 'New presentation' : 'Nuova presentazione'}</span><span className="mt-1 block text-xs leading-5 text-slate-600">{isEnglish ? 'Create editable slides directly on the platform.' : 'Crea slide modificabili direttamente sulla piattaforma.'}</span></span>
+                </button>
+                <button type="button" onClick={createNewSheet} className="flex min-h-[92px] items-center gap-4 rounded-2xl border border-cyan-200 bg-cyan-50/80 p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:bg-cyan-100/80 hover:shadow-md">
+                  <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-white text-cyan-700 shadow-sm"><FileSpreadsheet className="h-6 w-6" /></span>
+                  <span><span className="block text-sm font-black text-slate-950">{isEnglish ? 'Tables' : 'Tabelle'}</span><span className="mt-1 block text-xs leading-5 text-slate-600">{isEnglish ? 'Data, formulas and statistics.' : 'Dati, formule e statistiche.'}</span></span>
                 </button>
                 <button type="button" disabled={documentImporting} onClick={() => documentFileInputRef.current?.click()} className="flex min-h-[92px] items-center gap-4 rounded-2xl border border-sky-200 bg-sky-50/80 p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:bg-sky-100/80 hover:shadow-md disabled:cursor-wait disabled:opacity-60">
                   <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-white text-sky-700 shadow-sm">{documentImporting ? <Loader2 className="h-6 w-6 animate-spin" /> : <FileUp className="h-6 w-6" />}</span>
@@ -1511,7 +1538,7 @@ export default function TeacherDocumentsPage() {
                     {filteredDrafts.map(doc => (
                       <div
                         key={doc.id}
-                        onClick={() => loadDraft(doc)}
+                        onClick={() => setDocumentToOpen({ document: doc, onEdit: () => loadDraft(doc) })}
                         className="group relative cursor-pointer overflow-hidden rounded-[20px] border border-slate-200 bg-white p-2 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-lg"
                       >
                         <DocumentThumbnail contentJson={doc.contentJson} type={doc.type} title={doc.title} />
@@ -1560,7 +1587,7 @@ export default function TeacherDocumentsPage() {
                         <button
                           key={doc.id}
                           type="button"
-                          onClick={() => loadDocument(doc)}
+                          onClick={() => setDocumentToOpen({ document: doc, onEdit: () => loadDocument(doc) })}
                           title={`${doc.title} · ${doc.authorName}`}
                           className={`flex max-w-[260px] shrink-0 items-center gap-2 rounded-xl px-2.5 py-2 text-left shadow-sm transition-transform hover:-translate-y-0.5 ${docColor(doc.type)}`}
                         >
@@ -1579,7 +1606,7 @@ export default function TeacherDocumentsPage() {
                       {filteredStudentDocuments.map(doc => (
                         <div
                           key={doc.id}
-                          onClick={() => loadDocument(doc)}
+                          onClick={() => setDocumentToOpen({ document: doc, onEdit: () => loadDocument(doc) })}
                           className="group relative cursor-pointer overflow-hidden rounded-[20px] border border-emerald-200 bg-white p-2 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-lg"
                         >
                           <DocumentThumbnail contentJson={doc.contentJson} type={doc.type} title={doc.title} />
@@ -1611,7 +1638,7 @@ export default function TeacherDocumentsPage() {
                     {filteredTeacherDocuments.map(doc => (
                       <div
                         key={doc.id}
-                        onClick={() => loadDocument(doc)}
+                        onClick={() => setDocumentToOpen({ document: doc, onEdit: () => loadDocument(doc) })}
                         className="group relative cursor-pointer overflow-hidden rounded-[20px] border border-slate-200 bg-white p-2 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-lg"
                       >
                         <DocumentThumbnail contentJson={doc.contentJson} type={doc.type} title={doc.title} />
@@ -1643,6 +1670,7 @@ export default function TeacherDocumentsPage() {
           )}
         </div>
 
+        {documentToOpen && <DocumentOpenModal document={documentToOpen.document} onEdit={documentToOpen.onEdit} onClose={() => setDocumentToOpen(null)} isEnglish={isEnglish} />}
         {showNewModal && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
             <div className={`w-full max-w-md mx-4 rounded-[28px] p-6 shadow-xl ${PASTEL_SURFACES.slate}`}>
@@ -1654,6 +1682,9 @@ export default function TeacherDocumentsPage() {
                 </Button>
                 <Button className="w-full justify-center" onClick={() => { createNewPresentation(); setShowNewModal(false) }}>
                   <Monitor className="h-4 w-4 mr-2" />{isEnglish ? 'New presentation' : 'Nuova presentazione'}
+                </Button>
+                <Button className="w-full justify-center" onClick={() => { createNewSheet(); setShowNewModal(false) }}>
+                  <FileSpreadsheet className="h-4 w-4 mr-2" />{isEnglish ? 'Tables' : 'Tabelle'}
                 </Button>
                 <Button className="w-full justify-center" onClick={() => { createNewCanvas(); setShowNewModal(false) }}>
                   <PenTool className="h-4 w-4 mr-2" />{isEnglish ? 'New board' : 'Nuova lavagna'}
@@ -1674,7 +1705,7 @@ export default function TeacherDocumentsPage() {
     const docTypeLabel: Record<string, string> = {
       presentation: isEnglish ? '📊 Presentation' : '📊 Presentazione',
       document: isEnglish ? '📄 Document' : '📄 Documento',
-      sheet: isEnglish ? '📋 Sheet' : '📋 Foglio',
+      sheet: isEnglish ? '📋 Tables' : '📋 Tabelle',
       canvas: '🎨 Canvas',
     }
     return (
@@ -1942,7 +1973,7 @@ export default function TeacherDocumentsPage() {
                   {draftDocuments.map((doc) => (
                     <div
                       key={doc.id}
-                      onClick={() => loadDraft(doc)}
+                      onClick={() => setDocumentToOpen({ document: doc, onEdit: () => loadDraft(doc) })}
                       className={`group flex flex-col p-3 rounded-2xl transition-all cursor-pointer shadow-sm ${draftId === doc.id ? PASTEL_SURFACES[docTone(doc.type)] : PASTEL_SURFACES.slate}`}
                     >
                       <div className="flex items-center gap-3 mb-2">
@@ -1994,7 +2025,7 @@ export default function TeacherDocumentsPage() {
                   {storedDocuments.map((doc) => (
                     <div
                       key={doc.id}
-                      onClick={() => loadDocument(doc)}
+                      onClick={() => setDocumentToOpen({ document: doc, onEdit: () => loadDocument(doc) })}
                       className={`group flex flex-col p-3 rounded-2xl transition-all cursor-pointer shadow-sm ${document.id === doc.id ? PASTEL_SURFACES[docTone(doc.type)] : PASTEL_SURFACES.slate}`}
                     >
                       <div className="flex items-center gap-3 mb-2">
@@ -2219,6 +2250,8 @@ export default function TeacherDocumentsPage() {
                    onDataChange={(next) => setDocument(d => ({ ...d, sheetData: next }))}
                    chartConfig={document.sheetChart || DEFAULT_SHEET_CHART}
                    onChartConfigChange={(next) => setDocument(d => ({ ...d, sheetChart: next }))}
+                   styles={document.sheetStyles || {}}
+                   onStylesChange={(next) => setDocument(d => ({ ...d, sheetStyles: next }))}
                  />
                </div>
              )}
@@ -2296,6 +2329,7 @@ export default function TeacherDocumentsPage() {
         )}
 
         {/* New Document Modal */}
+        {documentToOpen && <DocumentOpenModal document={documentToOpen.document} onEdit={documentToOpen.onEdit} onClose={() => setDocumentToOpen(null)} isEnglish={isEnglish} />}
         {showNewModal && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
             <div className="bg-white rounded-lg p-6 w-full max-w-md mx-4 shadow-xl">
@@ -2324,6 +2358,9 @@ export default function TeacherDocumentsPage() {
                   <Monitor className="h-4 w-4 mr-2" />
                   {isEnglish ? 'New presentation' : 'Nuova presentazione'}
                 </Button>
+                <Button className="w-full justify-center bg-red-500 hover:bg-red-600 text-white" onClick={() => { createNewSheet(); setShowNewModal(false) }}>
+                  <FileSpreadsheet className="h-4 w-4 mr-2" />{isEnglish ? 'Tables' : 'Tabelle'}
+                </Button>
                 <Button
                   className="w-full justify-center bg-red-500 hover:bg-red-600 text-white"
                   onClick={() => {
@@ -2346,7 +2383,7 @@ export default function TeacherDocumentsPage() {
         {showPublishModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg p-6 w-full max-w-md mx-4 shadow-xl">
-            <h3 className="text-lg font-semibold mb-4">{isEnglish ? 'Publish ' : 'Pubblica '}{mode === 'slides' ? (isEnglish ? 'Presentation' : 'Presentazione') : mode === 'sheet' ? (isEnglish ? 'Sheet' : 'Foglio') : mode === 'canvas' ? (isEnglish ? 'Board' : 'Lavagna') : (isEnglish ? 'Document' : 'Documento')}</h3>
+            <h3 className="text-lg font-semibold mb-4">{isEnglish ? 'Publish ' : 'Pubblica '}{mode === 'slides' ? (isEnglish ? 'Presentation' : 'Presentazione') : mode === 'sheet' ? (isEnglish ? 'Tables' : 'Tabelle') : mode === 'canvas' ? (isEnglish ? 'Board' : 'Lavagna') : (isEnglish ? 'Document' : 'Documento')}</h3>
             <p className="text-sm text-gray-600 mb-4">
               {isEnglish ? 'Save this content as an assignment or material for a class.' : 'Salva questo contenuto come compito/materiale per una classe.'}
             </p>

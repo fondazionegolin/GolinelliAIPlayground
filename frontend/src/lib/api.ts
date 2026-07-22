@@ -843,6 +843,8 @@ export const filesApi = {
   },
   exportDocument: (data: { title: string; content_json: string; target_format: 'pdf' | 'ppt' | 'pptx' | 'doc' | 'docx' | 'xlsx' }) =>
     api.post('/files/documents/export', data, { responseType: 'blob' }),
+  getContent: (fileId: string) =>
+    api.get(`/files/${fileId}/content`, { responseType: 'blob' }),
   getUploadUrl: (data: { filename: string; mime_type: string; size_bytes: number; scope: string; session_id?: string }) =>
     api.post('/files/upload-url', data),
   completeUpload: (fileId: string, checksum: string) =>

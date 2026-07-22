@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Download, FileUp, Loader2, Plus, Trash2, Sigma, Wand2 } from 'lucide-react'
+import { Copy, ClipboardPaste, Download, FileUp, Loader2, Plus, Scissors, Trash2, Sigma, Wand2 } from 'lucide-react'
 import { HyperFormula } from 'hyperformula'
 import * as XLSX from 'xlsx'
 import { llmApi } from '@/lib/api'
@@ -34,11 +34,23 @@ export interface SheetChartConfig {
   showRegression: boolean
 }
 
+export interface SheetCellStyle {
+  fontFamily?: string
+  fontSize?: number
+  fontWeight?: 'normal' | 'bold'
+  fontStyle?: 'normal' | 'italic'
+  textAlign?: 'left' | 'center' | 'right'
+}
+
+export type SheetCellStyles = Record<string, SheetCellStyle>
+
 interface SpreadsheetEditorProps {
   data: string[][]
   onDataChange: (next: string[][]) => void
   chartConfig: SheetChartConfig
   onChartConfigChange: (next: SheetChartConfig) => void
+  styles?: SheetCellStyles
+  onStylesChange?: (next: SheetCellStyles) => void
 }
 
 type CellPos = { row: number; col: number }
@@ -135,6 +147,8 @@ export function SpreadsheetEditor({
   onDataChange,
   chartConfig,
   onChartConfigChange,
+  styles = {},
+  onStylesChange,
 }: SpreadsheetEditorProps) {
   const { toast } = useToast()
   const fileInputRef = useRef<HTMLInputElement | null>(null)
@@ -149,6 +163,8 @@ export function SpreadsheetEditor({
   const [fillInstruction, setFillInstruction] = useState('')
   const [useFirstRowAsHeader, setUseFirstRowAsHeader] = useState(true)
   const [aiFillLoading, setAiFillLoading] = useState(false)
+  const [operation, setOperation] = useState<'+' | '-' | '*' | '/'>('+')
+  const [operationValue, setOperationValue] = useState('1')
 
   useEffect(() => {
     const onMouseUp = () => {
@@ -350,15 +366,15 @@ Puoi inserire numeri, testo o formule (es. "=A2*2").`
   const exportCsv = () => {
     const sheet = XLSX.utils.aoa_to_sheet(normalizedData)
     const wb = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(wb, sheet, 'Foglio')
-    XLSX.writeFile(wb, 'foglio.csv', { bookType: 'csv' })
+    XLSX.utils.book_append_sheet(wb, sheet, 'Tabelle')
+    XLSX.writeFile(wb, 'tabelle.csv', { bookType: 'csv' })
   }
 
   const exportXlsx = () => {
     const sheet = XLSX.utils.aoa_to_sheet(normalizedData)
     const wb = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(wb, sheet, 'Foglio')
-    XLSX.writeFile(wb, 'foglio.xlsx')
+    XLSX.utils.book_append_sheet(wb, sheet, 'Tabelle')
+    XLSX.writeFile(wb, 'tabelle.xlsx')
   }
 
   const handleCellMouseDown = (row: number, col: number, event: ReactMouseEvent) => {
@@ -403,6 +419,96 @@ Puoi inserire numeri, testo o formule (es. "=A2*2").`
       return
     }
     setFormulaInSelectedCell(`=${fnName}(${reference})`)
+  }
+
+  const selectionMatrix = () => {
+    if (!normalizedSelection) return [] as string[][]
+    return Array.from({ length: normalizedSelection.endRow - normalizedSelection.startRow + 1 }, (_, rowOffset) =>
+      Array.from({ length: normalizedSelection.endCol - normalizedSelection.startCol + 1 }, (_, colOffset) =>
+        normalizedData[normalizedSelection.startRow + rowOffset]?.[normalizedSelection.startCol + colOffset] ?? ''
+      )
+    )
+  }
+
+  const copySelection = async () => {
+    const text = selectionMatrix().map(row => row.join('\t')).join('\n')
+    if (!text) return
+    try {
+      await navigator.clipboard.writeText(text)
+      toast({ title: 'Celle copiate' })
+    } catch {
+      toast({ title: 'Copia con Ctrl/Cmd+C', description: 'Il browser non ha concesso l’accesso diretto agli appunti.' })
+    }
+  }
+
+  const pasteText = (text: string, start = selectedCell) => {
+    if (!start || !text) return
+    const incoming = text.replace(/\r/g, '').split('\n').filter((row, index, all) => row.length > 0 || index < all.length - 1).map(row => row.split('\t'))
+    const neededRows = Math.min(MAX_ROWS, Math.max(normalizedData.length, start.row + incoming.length))
+    const neededCols = Math.min(MAX_COLS, Math.max(normalizedData[0]?.length || 0, start.col + Math.max(0, ...incoming.map(row => row.length))))
+    const next = normalizeGrid(normalizedData, neededRows, neededCols)
+    incoming.forEach((row, rowOffset) => row.forEach((value, colOffset) => {
+      if (start.row + rowOffset < MAX_ROWS && start.col + colOffset < MAX_COLS) next[start.row + rowOffset][start.col + colOffset] = value
+    }))
+    onDataChange(next)
+  }
+
+  const pasteSelection = async () => {
+    try { pasteText(await navigator.clipboard.readText()) }
+    catch { toast({ title: 'Incolla con Ctrl/Cmd+V', description: 'Il browser non ha concesso l’accesso diretto agli appunti.' }) }
+  }
+
+  const splitSelection = () => {
+    if (!normalizedSelection) return
+    const next = normalizedData.map(row => [...row])
+    for (let row = normalizedSelection.startRow; row <= normalizedSelection.endRow; row += 1) {
+      for (let col = normalizedSelection.startCol; col <= normalizedSelection.endCol; col += 1) {
+        const raw = next[row]?.[col] || ''
+        const delimiter = raw.includes('\t') ? '\t' : raw.includes(';') ? ';' : raw.includes(',') ? ',' : ' '
+        raw.split(delimiter).map(value => value.trim()).forEach((value, offset) => {
+          if (col + offset < MAX_COLS) next[row][col + offset] = value
+        })
+      }
+    }
+    onDataChange(normalizeGrid(next, next.length, Math.min(MAX_COLS, Math.max(...next.map(row => row.length)))))
+  }
+
+  const applyNumericOperation = () => {
+    if (!normalizedSelection) return
+    const operand = Number(operationValue.replace(',', '.'))
+    if (!Number.isFinite(operand) || (operation === '/' && operand === 0)) return
+    const next = normalizedData.map(row => [...row])
+    for (let row = normalizedSelection.startRow; row <= normalizedSelection.endRow; row += 1) {
+      for (let col = normalizedSelection.startCol; col <= normalizedSelection.endCol; col += 1) {
+        const value = toNumber(evaluatedData[row]?.[col] || '')
+        if (value === null) continue
+        next[row][col] = String(operation === '+' ? value + operand : operation === '-' ? value - operand : operation === '*' ? value * operand : value / operand)
+      }
+    }
+    onDataChange(next)
+  }
+
+  const insertColumnStatistic = (fn: 'SUM' | 'AVERAGE' | 'MIN' | 'MAX' | 'COUNT' | 'MEDIAN' | 'STDEV.S') => {
+    if (!normalizedSelection) return
+    const targetRow = normalizedSelection.endRow + 1
+    if (targetRow >= MAX_ROWS) return
+    const next = normalizeGrid(normalizedData, Math.max(normalizedData.length, targetRow + 1), normalizedData[0]?.length || MIN_COLS)
+    for (let col = normalizedSelection.startCol; col <= normalizedSelection.endCol; col += 1) {
+      next[targetRow][col] = `=${fn}(${columnName(col)}${normalizedSelection.startRow + 1}:${columnName(col)}${normalizedSelection.endRow + 1})`
+    }
+    onDataChange(next)
+  }
+
+  const applyStyle = (patch: SheetCellStyle) => {
+    if (!normalizedSelection || !onStylesChange) return
+    const next = { ...styles }
+    for (let row = normalizedSelection.startRow; row <= normalizedSelection.endRow; row += 1) {
+      for (let col = normalizedSelection.startCol; col <= normalizedSelection.endCol; col += 1) {
+        const key = `${row}:${col}`
+        next[key] = { ...(next[key] || {}), ...patch }
+      }
+    }
+    onStylesChange(next)
   }
 
   const selectedRowsForCharts = useMemo(() => {
@@ -532,7 +638,11 @@ Puoi inserire numeri, testo o formule (es. "=A2*2").`
           <Button variant="outline" size="sm" onClick={addColumn}><Plus className="mr-2 h-4 w-4" />Colonna</Button>
           <Button variant="outline" size="sm" onClick={removeSelectedRow} disabled={!selectedCell}><Trash2 className="mr-2 h-4 w-4" />Elimina riga</Button>
           <Button variant="outline" size="sm" onClick={removeSelectedColumn} disabled={!selectedCell}><Trash2 className="mr-2 h-4 w-4" />Elimina colonna</Button>
-          <Button variant="outline" size="sm" onClick={clearSheet}>Pulisci foglio</Button>
+          <Button variant="outline" size="sm" onClick={clearSheet}>Pulisci tabella</Button>
+          <div className="mx-1 h-5 w-px bg-slate-200" />
+          <Button variant="outline" size="sm" onClick={() => void copySelection()} disabled={!normalizedSelection}><Copy className="mr-2 h-4 w-4" />Copia</Button>
+          <Button variant="outline" size="sm" onClick={() => void pasteSelection()} disabled={!selectedCell}><ClipboardPaste className="mr-2 h-4 w-4" />Incolla</Button>
+          <Button variant="outline" size="sm" onClick={splitSelection} disabled={!normalizedSelection}><Scissors className="mr-2 h-4 w-4" />Separa testo</Button>
         </div>
 
         <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-2">
@@ -563,6 +673,25 @@ Puoi inserire numeri, testo o formule (es. "=A2*2").`
                 {fn}
               </button>
             ))}
+          </div>
+          <div className="mt-2 flex flex-wrap items-center gap-2 border-t border-slate-200 pt-2">
+            <select className="h-8 rounded border border-slate-200 bg-white px-2 text-xs" onChange={event => applyStyle({ fontFamily: event.target.value })} defaultValue="Arial">
+              <option>Arial</option><option>Calibri</option><option>Georgia</option><option>Times New Roman</option><option>Verdana</option><option>monospace</option>
+            </select>
+            <select className="h-8 rounded border border-slate-200 bg-white px-2 text-xs" onChange={event => applyStyle({ fontSize: Number(event.target.value) })} defaultValue="14">
+              {[10, 12, 14, 16, 18, 20, 24].map(size => <option key={size} value={size}>{size}px</option>)}
+            </select>
+            <button className="h-8 rounded border border-slate-200 bg-white px-3 text-xs font-bold" onClick={() => applyStyle({ fontWeight: 'bold' })}>B</button>
+            <button className="h-8 rounded border border-slate-200 bg-white px-3 text-xs italic" onClick={() => applyStyle({ fontStyle: 'italic' })}>I</button>
+            {(['left', 'center', 'right'] as const).map(align => <button key={align} className="h-8 rounded border border-slate-200 bg-white px-2 text-[11px]" onClick={() => applyStyle({ textAlign: align })}>{align === 'left' ? '←' : align === 'center' ? '↔' : '→'}</button>)}
+            <span className="ml-1 text-[11px] font-semibold text-slate-500">Operazione</span>
+            <select value={operation} onChange={event => setOperation(event.target.value as typeof operation)} className="h-8 rounded border border-slate-200 bg-white px-2 text-xs"><option>+</option><option>-</option><option>*</option><option>/</option></select>
+            <Input value={operationValue} onChange={event => setOperationValue(event.target.value)} className="h-8 w-20 text-xs" inputMode="decimal" />
+            <Button variant="outline" size="sm" onClick={applyNumericOperation}>Applica</Button>
+          </div>
+          <div className="mt-2 flex flex-wrap items-center gap-1.5">
+            <span className="mr-1 text-[11px] font-semibold text-slate-500">Risultato sotto ogni colonna:</span>
+            {(['SUM', 'AVERAGE', 'MIN', 'MAX', 'COUNT', 'MEDIAN', 'STDEV.S'] as const).map(fn => <button key={fn} onClick={() => insertColumnStatistic(fn)} className="rounded border border-cyan-200 bg-cyan-50 px-2 py-1 text-[11px] font-semibold text-cyan-800 hover:bg-cyan-100">{fn}</button>)}
           </div>
           <p className="mt-2 text-[11px] text-slate-500">
             La barra formula modifica il contenuto grezzo della cella selezionata. Se selezioni più celle, i pulsanti funzione usano l'intervallo.
@@ -616,8 +745,16 @@ Puoi inserire numeri, testo o formule (es. "=A2*2").`
                               moveToCell(rowIdx + 1, colIdx)
                             }
                           }}
+                          onPaste={(event) => {
+                            const text = event.clipboardData.getData('text/plain')
+                            if (text.includes('\t') || text.includes('\n')) {
+                              event.preventDefault()
+                              pasteText(text, { row: rowIdx, col: colIdx })
+                            }
+                          }}
                           onChange={(e) => setCellValue(rowIdx, colIdx, e.target.value)}
                           className="h-9 w-full border-0 bg-transparent px-2 text-sm text-slate-800 focus:outline-none"
+                          style={styles[`${rowIdx}:${colIdx}`]}
                           title={normalizedData[rowIdx][colIdx].startsWith('=') ? `Risultato: ${display}` : ''}
                         />
                       </td>

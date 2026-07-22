@@ -11,12 +11,13 @@ import { SlideEditor, SlideBlock, SlideBlockType, SlideSnapOptions, DEFAULT_SLID
 import { createShapeBlock } from '@/lib/slideBlocks'
 import { RichTextEditor } from '@/components/RichTextEditor'
 import { UnifiedToolbar } from '@/components/UnifiedToolbar'
-import { SheetChartConfig, SpreadsheetEditor } from '@/components/SpreadsheetEditor'
+import { SheetChartConfig, SheetCellStyles, SpreadsheetEditor } from '@/components/SpreadsheetEditor'
 import { CollaborativeCanvas } from '@/components/CollaborativeCanvas'
 import { Editor } from '@tiptap/react'
 import { useTranslation } from 'react-i18next'
 import DocumentAgentChat, { type DocumentAssistContext } from '@/components/documents/DocumentAgentChat'
 import DocumentThumbnail from '@/components/documents/DocumentThumbnail'
+import DocumentOpenModal, { type OpenableDocument } from '@/components/documents/DocumentOpenModal'
 
 // Types
 type Format = 'a4' | '16:9' | '4:3'
@@ -45,6 +46,7 @@ interface Document {
   header?: DocumentHeader
   sheetData?: string[][]
   sheetChart?: SheetChartConfig
+  sheetStyles?: SheetCellStyles
   canvasContent?: string
   webUrl?: string
   source?: { filename?: string; extension?: string; mimeType?: string; fileId?: string; url?: string; preservedOriginal?: boolean }
@@ -127,7 +129,7 @@ const EMPTY_DOC_HTML = '<p></p>'
 const DEFAULT_SHEET_DATA = Array.from({ length: 20 }, () => Array.from({ length: 8 }, () => ''))
 const DEFAULT_SHEET_CHART: SheetChartConfig = {
   type: 'line',
-  title: 'Grafico foglio',
+  title: 'Grafico tabella',
   xCol: 0,
   yCol: 1,
   showRegression: true,
@@ -164,6 +166,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
   const dateLocale = isEnglishUi ? 'en-GB' : 'it-IT'
   const defaultDocumentTitle = t('documents.default_document_title')
   const defaultPresentationTitle = t('documents.default_presentation_title')
+  const defaultSheetTitle = isEnglishUi ? 'New Table' : 'Nuova Tabella'
   const filenamePlaceholder = t('documents.filename_placeholder')
 
   // State
@@ -230,6 +233,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
   // UI State
   const [showSubmitModal, setShowSubmitModal] = useState(false)
   const [showNewModal, setShowNewModal] = useState(false)
+  const [documentToOpen, setDocumentToOpen] = useState<{ document: OpenableDocument; onEdit?: () => void | Promise<void>; editLabel?: string } | null>(null)
   const [draggingMargin, setDraggingMargin] = useState<'left' | 'right' | null>(null)
   const [aiPanelAnchor, setAiPanelAnchor] = useState<{ x: number; y: number } | null>(null)
   const [viewMode, setViewMode] = useState<'list' | 'editor'>('list')
@@ -401,12 +405,27 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
     setViewMode('editor')
   }
 
+  const createNewSheet = () => {
+    setDocument({
+      id: crypto.randomUUID(), title: defaultSheetTitle, format: 'a4', slides: [], textContent: '',
+      sheetData: DEFAULT_SHEET_DATA, sheetChart: DEFAULT_SHEET_CHART, canvasContent: DEFAULT_CANVAS_CONTENT, webUrl: '',
+    })
+    setMode('sheet')
+    setSubmitted(false)
+    setDraftId(null)
+    setIsReadOnlyLesson(false)
+    setActiveLessonTaskId(null)
+    setActiveSubmittedDocument(null)
+    setIsCorrectionPreview(false)
+    setViewMode('editor')
+  }
+
   const buildNativeContentJson = (submission = false) => {
     const type = mode === 'slides' ? 'presentation' : mode === 'sheet' ? 'sheet' : mode === 'canvas' ? 'canvas' : 'document'
     const nativeContent = mode === 'slides'
         ? { type: submission ? 'student_presentation' : 'presentation_v2', format: document.format, title: document.title, slides: document.slides }
         : mode === 'sheet'
-          ? { type: submission ? 'student_sheet' : 'sheet_v1', title: document.title, data: document.sheetData || DEFAULT_SHEET_DATA, chart: document.sheetChart || DEFAULT_SHEET_CHART }
+          ? { type: submission ? 'student_sheet' : 'sheet_v1', title: document.title, data: document.sheetData || DEFAULT_SHEET_DATA, chart: document.sheetChart || DEFAULT_SHEET_CHART, styles: document.sheetStyles || {} }
           : mode === 'canvas'
             ? { ...JSON.parse(document.canvasContent || DEFAULT_CANVAS_CONTENT), type: submission ? 'student_canvas' : 'canvas_v1', title: document.title }
           : { type: submission ? 'student_document' : 'document_v1', title: document.title, htmlContent: document.textContent || '', header: document.header, margins: docMargins }
@@ -731,6 +750,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
           textContent: '',
           sheetData: Array.isArray(content.data) ? content.data : DEFAULT_SHEET_DATA,
           sheetChart: content.chart || DEFAULT_SHEET_CHART,
+          sheetStyles: content.styles || {},
           canvasContent: DEFAULT_CANVAS_CONTENT,
           webUrl: '',
           source: content.source,
@@ -807,6 +827,28 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
       { id: doc.id, title: doc.title, type: doc.type, contentJson },
       { readOnlyLesson: false, lessonTaskId: null, submittedDocument: doc }
     )
+  }
+
+  const editAsCopy = async (doc: { title: string; type: string; contentJson: string }) => {
+    try {
+      const response = await studentApi.createDocumentDraft({
+        title: `${doc.title} - ${isEnglishUi ? 'copy' : 'copia'}`,
+        doc_type: doc.type === 'pdf' || doc.type === 'web' ? 'document' : doc.type,
+        content_json: doc.contentJson,
+      })
+      const draft: DraftDocument = {
+        id: response.data.id,
+        title: response.data.title,
+        type: response.data.doc_type,
+        updatedAt: response.data.updated_at,
+        contentJson: response.data.content_json,
+      }
+      setDraftDocuments(previous => [draft, ...previous.filter(item => item.id !== draft.id)])
+      loadDraft(draft)
+    } catch (error) {
+      console.error('Unable to create editable copy', error)
+      toast({ title: isEnglishUi ? 'Unable to create a copy' : 'Impossibile creare una copia', variant: 'destructive' })
+    }
   }
 
   const acceptActiveCorrection = async () => {
@@ -1157,7 +1199,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
     }
     const docLabel = (type: string) => {
       if (type === 'presentation') return 'Slide'
-      if (type === 'sheet') return 'Sheet'
+      if (type === 'sheet') return isEnglishUi ? 'Tables' : 'Tabelle'
       if (type === 'canvas') return 'Canvas'
       if (type === 'web') return 'Web'
       return 'Doc'
@@ -1202,7 +1244,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
                   <button type="button" onClick={() => setCatalogViewMode('list')} aria-pressed={catalogViewMode === 'list'} title={isEnglishUi ? 'List view' : 'Vista elenco'} className={`flex h-8 w-8 items-center justify-center rounded-lg ${catalogViewMode === 'list' ? 'bg-emerald-100 text-emerald-800' : 'text-slate-400 hover:bg-slate-50'}`}><List className="h-4 w-4" /></button>
                 </div>
                 {!readOnlyCatalog && (
-                  <div className="mx-auto mt-6 grid max-w-4xl gap-3 sm:grid-cols-3">
+                  <div className="mx-auto mt-6 grid max-w-5xl gap-3 sm:grid-cols-2 lg:grid-cols-4">
                     <button
                       type="button"
                       onClick={createNewDocument}
@@ -1224,6 +1266,10 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
                         <span className="block text-sm font-black text-slate-950">{isEnglishUi ? 'New presentation' : 'Nuova presentazione'}</span>
                         <span className="mt-1 block text-xs leading-5 text-slate-600">{isEnglishUi ? 'Create editable slides directly here.' : 'Crea slide modificabili direttamente qui.'}</span>
                       </span>
+                    </button>
+                    <button type="button" onClick={createNewSheet} className="group flex min-h-[92px] items-center gap-4 rounded-2xl border border-cyan-200 bg-cyan-50/80 p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-cyan-300 hover:bg-cyan-100/80 hover:shadow-md">
+                      <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-white text-cyan-700 shadow-sm"><FileSpreadsheet className="h-6 w-6" /></span>
+                      <span className="min-w-0"><span className="block text-sm font-black text-slate-950">{isEnglishUi ? 'Tables' : 'Tabelle'}</span><span className="mt-1 block text-xs leading-5 text-slate-600">{isEnglishUi ? 'Data, formulas and statistics.' : 'Dati, formule e statistiche.'}</span></span>
                     </button>
                     <button
                       type="button"
@@ -1273,7 +1319,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
                     {filteredDrafts.map(doc => (
                       <div
                         key={doc.id}
-                        onClick={() => loadDraft(doc)}
+                        onClick={() => setDocumentToOpen({ document: doc, onEdit: () => loadDraft(doc) })}
                         className={`group relative cursor-pointer overflow-hidden border shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-lg ${catalogViewMode === 'grid' ? 'rounded-[18px] border-slate-200 bg-white p-2' : `grid min-h-[64px] grid-cols-[36px_minmax(0,1fr)_auto_28px] grid-rows-2 items-center gap-x-3 rounded-xl px-3 py-2 ${docCardStyle(doc.type)}`}`}
                       >
                         {catalogViewMode === 'grid' && <DocumentThumbnail contentJson={doc.contentJson} type={doc.type} title={doc.title} />}
@@ -1307,7 +1353,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
                       return (
                         <div
                           key={doc.id}
-                          onClick={() => loadSubmittedDocument(doc)}
+                          onClick={() => setDocumentToOpen({ document: doc, onEdit: () => editAsCopy(doc), editLabel: isEnglishUi ? 'Edit a copy' : 'Modifica una copia' })}
                           className={`group relative cursor-pointer overflow-hidden border shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-lg ${catalogViewMode === 'grid' ? `rounded-[18px] bg-white p-2 ${hasCorrection ? 'border-amber-300' : 'border-slate-200'}` : `grid min-h-[64px] grid-cols-[36px_minmax(0,1fr)_auto_auto] grid-rows-2 items-center gap-x-3 rounded-xl px-3 py-2 ${hasCorrection ? 'border-amber-300 bg-amber-50 hover:bg-amber-100/70' : docCardStyle(doc.type)}`}`}
                         >
                           {catalogViewMode === 'grid' && <DocumentThumbnail contentJson={doc.contentJson} type={doc.type} title={doc.title} />}
@@ -1332,7 +1378,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
                 const LessonCard = ({ doc }: { doc: LessonDocument }) => (
                   <div
                     key={doc.id}
-                    onClick={() => loadLesson(doc)}
+                    onClick={() => setDocumentToOpen({ document: doc, onEdit: readOnlyCatalog ? undefined : () => editAsCopy(doc), editLabel: isEnglishUi ? 'Edit a copy' : 'Modifica una copia' })}
                     className={`group relative cursor-pointer overflow-hidden border shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-lg ${catalogViewMode === 'grid' ? 'rounded-[18px] border-slate-200 bg-white p-2' : `grid min-h-[64px] grid-cols-[36px_minmax(0,1fr)_auto_auto] grid-rows-2 items-center gap-x-3 rounded-xl px-3 py-2 ${docCardStyle(doc.type)}`}`}
                   >
                     {catalogViewMode === 'grid' && <DocumentThumbnail contentJson={doc.contentJson} type={doc.type} title={doc.title} />}
@@ -1364,6 +1410,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
           )}
         </div>
 
+        {documentToOpen && <DocumentOpenModal document={documentToOpen.document} onEdit={documentToOpen.onEdit} editLabel={documentToOpen.editLabel} onClose={() => setDocumentToOpen(null)} isEnglish={isEnglishUi} />}
         {!readOnlyCatalog && showNewModal && (
           <div className="fixed inset-0 bg-slate-950/60 flex items-center justify-center z-50 p-4">
             <div className="w-full max-w-md rounded-xl border border-slate-200 bg-white p-6 shadow-2xl">
@@ -1377,6 +1424,9 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
                 <button className="w-full flex items-center gap-3 p-3 rounded-lg border border-emerald-200 bg-white text-emerald-900 hover:border-emerald-300 hover:bg-emerald-50 transition-all text-left shadow-sm" onClick={() => { createNewPresentation(); setShowNewModal(false) }}>
                   <div className="w-9 h-9 rounded-lg border border-emerald-200 bg-emerald-100 flex items-center justify-center text-emerald-800 flex-shrink-0"><Monitor className="h-4 w-4" /></div>
                   <span className="text-sm font-black">{t('documents.new_presentation')}</span>
+                </button>
+                <button className="w-full flex items-center gap-3 p-3 rounded-lg border border-cyan-200 bg-cyan-50 text-cyan-900 hover:bg-cyan-100 transition-all text-left shadow-sm" onClick={() => { createNewSheet(); setShowNewModal(false) }}>
+                  <div className="w-9 h-9 rounded-lg border border-cyan-200 bg-white flex items-center justify-center text-cyan-800 flex-shrink-0"><FileSpreadsheet className="h-4 w-4" /></div><span className="text-sm font-black">{isEnglishUi ? 'Tables' : 'Tabelle'}</span>
                 </button>
               </div>
               <div className="flex justify-end mt-4">
@@ -1495,6 +1545,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
                 onDataChange={() => {}}
                 chartConfig={document.sheetChart || DEFAULT_SHEET_CHART}
                 onChartConfigChange={() => {}}
+                styles={document.sheetStyles || {}}
               />
             </div>
           )}
@@ -1821,7 +1872,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
                   {draftDocuments.map((doc) => (
                     <div
                       key={doc.id}
-                      onClick={() => loadDraft(doc)}
+                      onClick={() => setDocumentToOpen({ document: doc, onEdit: () => loadDraft(doc) })}
                       className={`
                         group flex flex-col p-3 rounded-lg transition-all border cursor-pointer backdrop-blur-md
                         ${draftId === doc.id && !isReadOnlyLesson
@@ -1888,7 +1939,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
                       <button
                         key={doc.id}
                         type="button"
-                        onClick={() => loadSubmittedDocument(doc)}
+                        onClick={() => setDocumentToOpen({ document: doc, onEdit: () => editAsCopy(doc), editLabel: isEnglishUi ? 'Edit a copy' : 'Modifica una copia' })}
                         className={`flex w-full flex-col rounded-lg border p-3 text-left transition-all ${isActive ? 'border-amber-500 bg-amber-500 text-white shadow-md' : hasCorrection ? 'border-amber-300 bg-amber-50 hover:bg-amber-100' : 'border-slate-200 bg-white hover:border-slate-400'}`}
                       >
                         <div className="flex w-full items-center gap-3">
@@ -1930,7 +1981,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
                         ) })()}
                     <div
                       key={doc.id}
-                      onClick={() => loadLesson(doc)}
+                      onClick={() => setDocumentToOpen({ document: doc, onEdit: readOnlyCatalog ? undefined : () => editAsCopy(doc), editLabel: isEnglishUi ? 'Edit a copy' : 'Modifica una copia' })}
                       className={`
                         group flex flex-col p-3 rounded-lg transition-all border cursor-pointer backdrop-blur-md
                         ${activeLessonTaskId === doc.taskId
@@ -2191,6 +2242,8 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
                    onDataChange={(next) => setDocument(d => ({ ...d, sheetData: next }))}
                    chartConfig={document.sheetChart || DEFAULT_SHEET_CHART}
                    onChartConfigChange={(next) => setDocument(d => ({ ...d, sheetChart: next }))}
+                   styles={document.sheetStyles || {}}
+                   onStylesChange={(next) => setDocument(d => ({ ...d, sheetStyles: next }))}
                  />
                </div>
              )}
@@ -2228,6 +2281,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
         </div>
 
         {/* New Document Modal */}
+        {documentToOpen && <DocumentOpenModal document={documentToOpen.document} onEdit={documentToOpen.onEdit} editLabel={documentToOpen.editLabel} onClose={() => setDocumentToOpen(null)} isEnglish={isEnglishUi} />}
         {showNewModal && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
             <div className="bg-white rounded-xl border border-emerald-200 p-6 w-full max-w-md mx-4 shadow-[var(--shadow-xl)]">
@@ -2260,6 +2314,9 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
                   <Monitor className="h-4 w-4 mr-2" />
                   {t('documents.new_presentation')}
                 </Button>
+                <Button className="w-full justify-center rounded-lg border border-cyan-200 bg-cyan-50 font-black text-cyan-900 hover:bg-cyan-100" onClick={() => { createNewSheet(); setShowNewModal(false) }}>
+                  <FileSpreadsheet className="h-4 w-4 mr-2" />{isEnglishUi ? 'Tables' : 'Tabelle'}
+                </Button>
               </div>
               <div className="flex justify-end mt-4">
                 <Button variant="outline" onClick={() => setShowNewModal(false)}>{isEnglishUi ? 'Cancel' : 'Annulla'}</Button>
@@ -2278,7 +2335,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
                 type: mode === 'slides'
                   ? (isEnglishUi ? 'presentation' : 'presentazione')
                   : mode === 'sheet'
-                    ? (isEnglishUi ? 'sheet' : 'foglio')
+                  ? (isEnglishUi ? 'tables' : 'tabelle')
                     : mode === 'canvas'
                       ? (isEnglishUi ? 'board' : 'lavagna')
                       : (isEnglishUi ? 'document' : 'documento'),

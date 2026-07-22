@@ -2272,7 +2272,8 @@ async def document_context_assist(
         "Sei Document Builder, un assistente agentico per un editor didattico. "
         "Ricevi un bersaglio preciso già selezionato dall'utente e produci una proposta reversibile. "
         "Non modificare parti fuori dal bersaglio. Non applicare la modifica: il client chiederà conferma. "
-        "Rispondi esclusivamente con JSON valido."
+        "Rispondi esclusivamente con JSON valido, compatto e senza Markdown. "
+        "Evita ripetizioni e mantieni la risposta entro i limiti strettamente necessari."
     )
     user_prompt = (
         f"Lingua interfaccia: {language}\nCanvas slide: {canvas_width}x{canvas_height}\n"
@@ -2290,7 +2291,37 @@ async def document_context_assist(
             max_tokens=8000 if target_kind == "presentation" else 3200,
             allow_web_search=False,
         )
-        payload = _extract_json_object(response.content)
+        usage_responses = [response]
+        try:
+            payload = _extract_json_object(response.content)
+        except (json.JSONDecodeError, ValueError):
+            # Some providers can stop a long structured answer before the final quote/braces.
+            # Give the model one bounded repair pass and account for both calls in one usage event.
+            logger.warning(
+                "Repairing truncated document assist response (target_kind=%s, chars=%s)",
+                target_kind,
+                len(response.content or ""),
+            )
+            repair_response = await llm_service.generate(
+                messages=[{
+                    "role": "user",
+                    "content": (
+                        "Ripara e completa il seguente output interrotto. Restituisci un solo oggetto JSON "
+                        "valido e compatto, conforme allo schema indicato. Non aggiungere Markdown o spiegazioni. "
+                        "Mantieni il contenuto già prodotto e chiudi correttamente stringhe, array e oggetti.\n\n"
+                        f"Schema:\n{response_schema}\n\nOutput da riparare:\n{(response.content or '')[:30000]}"
+                    ),
+                }],
+                system_prompt="Sei un riparatore di JSON. Produci esclusivamente JSON valido e compatto.",
+                provider=provider,
+                model=model,
+                temperature=0,
+                max_tokens=10000 if target_kind == "presentation" else 5000,
+                allow_web_search=False,
+            )
+            usage_responses.append(repair_response)
+            response = repair_response
+            payload = _extract_json_object(response.content)
         summary = str(payload.get("summary") or "Ho preparato una modifica contestuale.").strip()[:500]
 
         if target_kind == "selected_text":
@@ -2334,15 +2365,18 @@ async def document_context_assist(
 
         real_provider = response.provider or provider or settings.DEFAULT_LLM_PROVIDER
         real_model = response.model or model or settings.DEFAULT_LLM_MODEL
-        cost = credit_service.calculate_cost_for_model(real_provider, real_model, response.prompt_tokens, response.completion_tokens)
+        prompt_tokens = sum(item.prompt_tokens for item in usage_responses)
+        completion_tokens = sum(item.completion_tokens for item in usage_responses)
+        cost = credit_service.calculate_cost_for_model(real_provider, real_model, prompt_tokens, completion_tokens)
         await safe_track_usage(
             db, tenant_id, real_provider, real_model, cost,
             enrich_usage_with_environmental_impact({
                 "type": "document_context_assist",
                 "target_kind": target_kind,
-                "prompt_tokens": response.prompt_tokens,
-                "completion_tokens": response.completion_tokens,
-                "total_tokens": response.prompt_tokens + response.completion_tokens,
+                "prompt_tokens": prompt_tokens,
+                "completion_tokens": completion_tokens,
+                "total_tokens": prompt_tokens + completion_tokens,
+                "repair_attempted": len(usage_responses) > 1,
             }, provider=real_provider, model=real_model),
             teacher_id, class_id, session_id, student_id,
             context="document_context_assist",
