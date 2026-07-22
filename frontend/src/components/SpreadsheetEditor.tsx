@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Copy, ClipboardPaste, Download, FileUp, Loader2, Plus, Scissors, Trash2, Sigma, Wand2 } from 'lucide-react'
+import { AlignCenter, AlignLeft, AlignRight, BarChart3, Bold, Check, ClipboardPaste, Copy, Download, Eraser, FileUp, Italic, Loader2, Plus, Scissors, Sigma, Trash2, TrendingUp, Wand2 } from 'lucide-react'
 import { HyperFormula } from 'hyperformula'
 import * as XLSX from 'xlsx'
 import { llmApi } from '@/lib/api'
@@ -55,6 +55,25 @@ interface SpreadsheetEditorProps {
 
 type CellPos = { row: number; col: number }
 type SelectionRange = { startRow: number; endRow: number; startCol: number; endCol: number }
+
+function IconTool({ label, onClick, disabled = false, active = false, children }: { label: string; onClick: () => void; disabled?: boolean; active?: boolean; children: ReactNode }) {
+  return (
+    <div className="group relative">
+      <button
+        type="button"
+        onClick={onClick}
+        disabled={disabled}
+        aria-label={label}
+        className={`flex h-9 w-9 items-center justify-center rounded-lg border transition disabled:cursor-not-allowed disabled:opacity-35 ${active ? 'border-indigo-300 bg-indigo-100 text-indigo-700' : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-100 hover:text-slate-900'}`}
+      >
+        {children}
+      </button>
+      <span role="tooltip" className="pointer-events-none absolute left-1/2 top-full z-50 mt-2 hidden -translate-x-1/2 whitespace-nowrap rounded-md bg-slate-950 px-2 py-1 text-[11px] font-medium text-white shadow-lg group-hover:block">
+        {label}
+      </span>
+    </div>
+  )
+}
 
 const MIN_ROWS = 20
 const MIN_COLS = 8
@@ -165,6 +184,8 @@ export function SpreadsheetEditor({
   const [aiFillLoading, setAiFillLoading] = useState(false)
   const [operation, setOperation] = useState<'+' | '-' | '*' | '/'>('+')
   const [operationValue, setOperationValue] = useState('1')
+  const [statFunction, setStatFunction] = useState<'SUM' | 'AVERAGE' | 'MIN' | 'MAX' | 'COUNT' | 'MEDIAN' | 'STDEV.S'>('SUM')
+  const [editingCell, setEditingCell] = useState<string | null>(null)
 
   useEffect(() => {
     const onMouseUp = () => {
@@ -192,6 +213,20 @@ export function SpreadsheetEditor({
     if (!normalizedSelection) return '-'
     return rangeToA1(normalizedSelection)
   }, [normalizedSelection])
+
+  const selectionStats = useMemo(() => {
+    if (!normalizedSelection) return null
+    const values: number[] = []
+    for (let row = normalizedSelection.startRow; row <= normalizedSelection.endRow; row += 1) {
+      for (let col = normalizedSelection.startCol; col <= normalizedSelection.endCol; col += 1) {
+        const numeric = toNumber(evaluatedData[row]?.[col] || '')
+        if (numeric !== null) values.push(numeric)
+      }
+    }
+    if (!values.length) return null
+    const sum = values.reduce((total, value) => total + value, 0)
+    return { count: values.length, sum, average: sum / values.length }
+  }, [evaluatedData, normalizedSelection])
 
   const setCellValue = (row: number, col: number, value: string) => {
     const next = normalizedData.map(r => [...r])
@@ -401,25 +436,7 @@ Puoi inserire numeri, testo o formule (es. "=A2*2").`
   }
 
   const selectedRawValue = selectedCell ? normalizedData[selectedCell.row]?.[selectedCell.col] ?? '' : ''
-
-  const setFormulaInSelectedCell = (formula: string) => {
-    if (!selectedCell) return
-    setCellValue(selectedCell.row, selectedCell.col, formula)
-  }
-
-  const insertFunctionFormula = (fnName: 'SUM' | 'AVERAGE' | 'MIN' | 'MAX' | 'COUNT' | 'ROUND' | 'CONCAT') => {
-    if (!selectedCell) return
-    const reference = normalizedSelection ? rangeToA1(normalizedSelection) : `${columnName(selectedCell.col)}${selectedCell.row + 1}`
-    if (fnName === 'ROUND') {
-      setFormulaInSelectedCell(`=ROUND(${reference.split(':')[0]},2)`)
-      return
-    }
-    if (fnName === 'CONCAT') {
-      setFormulaInSelectedCell(`=CONCAT(${reference.split(':')[0]})`)
-      return
-    }
-    setFormulaInSelectedCell(`=${fnName}(${reference})`)
-  }
+  const selectedStyle = selectedCell ? styles[`${selectedCell.row}:${selectedCell.col}`] || {} : {}
 
   const selectionMatrix = () => {
     if (!normalizedSelection) return [] as string[][]
@@ -476,16 +493,30 @@ Puoi inserire numeri, testo o formule (es. "=A2*2").`
   const applyNumericOperation = () => {
     if (!normalizedSelection) return
     const operand = Number(operationValue.replace(',', '.'))
-    if (!Number.isFinite(operand) || (operation === '/' && operand === 0)) return
+    if (!Number.isFinite(operand)) {
+      toast({ title: 'Inserisci un numero valido', variant: 'destructive' })
+      return
+    }
+    if (operation === '/' && operand === 0) {
+      toast({ title: 'Non è possibile dividere per zero', variant: 'destructive' })
+      return
+    }
     const next = normalizedData.map(row => [...row])
+    let changed = 0
     for (let row = normalizedSelection.startRow; row <= normalizedSelection.endRow; row += 1) {
       for (let col = normalizedSelection.startCol; col <= normalizedSelection.endCol; col += 1) {
         const value = toNumber(evaluatedData[row]?.[col] || '')
         if (value === null) continue
         next[row][col] = String(operation === '+' ? value + operand : operation === '-' ? value - operand : operation === '*' ? value * operand : value / operand)
+        changed += 1
       }
     }
+    if (!changed) {
+      toast({ title: 'Nessun numero nella selezione', description: 'Seleziona una o più celle numeriche.', variant: 'destructive' })
+      return
+    }
     onDataChange(next)
+    toast({ title: `${changed} ${changed === 1 ? 'cella aggiornata' : 'celle aggiornate'}` })
   }
 
   const insertColumnStatistic = (fn: 'SUM' | 'AVERAGE' | 'MIN' | 'MAX' | 'COUNT' | 'MEDIAN' | 'STDEV.S') => {
@@ -497,6 +528,9 @@ Puoi inserire numeri, testo o formule (es. "=A2*2").`
       next[targetRow][col] = `=${fn}(${columnName(col)}${normalizedSelection.startRow + 1}:${columnName(col)}${normalizedSelection.endRow + 1})`
     }
     onDataChange(next)
+    setSelectedCell({ row: targetRow, col: normalizedSelection.startCol })
+    setSelectionRange({ startRow: targetRow, endRow: targetRow, startCol: normalizedSelection.startCol, endCol: normalizedSelection.endCol })
+    toast({ title: 'Risultato inserito', description: `Riga ${targetRow + 1} · ${fn}` })
   }
 
   const applyStyle = (patch: SheetCellStyle) => {
@@ -605,97 +639,52 @@ Puoi inserire numeri, testo o formule (es. "=A2*2").`
 
   return (
     <div className="flex h-full min-h-[640px] flex-col gap-3">
-      <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
-        <div className="flex flex-wrap items-center gap-2">
-          <Button variant="outline" size="sm" onClick={() => fileInputRef.current?.click()}>
-            <FileUp className="mr-2 h-4 w-4" />
-            Importa CSV/XLSX
-          </Button>
-                          <input
-            ref={fileInputRef}
-            type="file"
-            className="hidden"
-            accept=".csv,.xlsx,.xls"
-            onChange={async (e) => {
-              const file = e.target.files?.[0]
-              if (!file) return
-              await importSheet(file)
-              e.target.value = ''
-            }}
-          />
-          <Button variant="outline" size="sm" onClick={exportCsv}>
-            <Download className="mr-2 h-4 w-4" />
-            Esporta CSV
-          </Button>
-          <Button variant="outline" size="sm" onClick={exportXlsx}>
-            <Download className="mr-2 h-4 w-4" />
-            Esporta XLSX
-          </Button>
-
-          <div className="mx-1 h-5 w-px bg-slate-200" />
-
-          <Button variant="outline" size="sm" onClick={addRow}><Plus className="mr-2 h-4 w-4" />Riga</Button>
-          <Button variant="outline" size="sm" onClick={addColumn}><Plus className="mr-2 h-4 w-4" />Colonna</Button>
-          <Button variant="outline" size="sm" onClick={removeSelectedRow} disabled={!selectedCell}><Trash2 className="mr-2 h-4 w-4" />Elimina riga</Button>
-          <Button variant="outline" size="sm" onClick={removeSelectedColumn} disabled={!selectedCell}><Trash2 className="mr-2 h-4 w-4" />Elimina colonna</Button>
-          <Button variant="outline" size="sm" onClick={clearSheet}>Pulisci tabella</Button>
-          <div className="mx-1 h-5 w-px bg-slate-200" />
-          <Button variant="outline" size="sm" onClick={() => void copySelection()} disabled={!normalizedSelection}><Copy className="mr-2 h-4 w-4" />Copia</Button>
-          <Button variant="outline" size="sm" onClick={() => void pasteSelection()} disabled={!selectedCell}><ClipboardPaste className="mr-2 h-4 w-4" />Incolla</Button>
-          <Button variant="outline" size="sm" onClick={splitSelection} disabled={!normalizedSelection}><Scissors className="mr-2 h-4 w-4" />Separa testo</Button>
+      <div className="rounded-xl border border-slate-200 bg-white p-2 shadow-sm">
+        <div className="flex flex-wrap items-center gap-1.5">
+          <IconTool label="Importa CSV/XLSX" onClick={() => fileInputRef.current?.click()}><FileUp className="h-4 w-4" /></IconTool>
+          <input ref={fileInputRef} type="file" className="hidden" accept=".csv,.xlsx,.xls" onChange={async (event) => { const file = event.target.files?.[0]; if (file) await importSheet(file); event.target.value = '' }} />
+          <IconTool label="Esporta CSV" onClick={exportCsv}><span className="relative"><Download className="h-4 w-4" /><span className="absolute -bottom-1 -right-1 text-[7px] font-black">C</span></span></IconTool>
+          <IconTool label="Esporta XLSX" onClick={exportXlsx}><span className="relative"><Download className="h-4 w-4" /><span className="absolute -bottom-1 -right-1 text-[7px] font-black">X</span></span></IconTool>
+          <div className="mx-1 h-6 w-px bg-slate-200" />
+          <IconTool label="Aggiungi riga" onClick={addRow}><span className="relative"><Plus className="h-4 w-4" /><span className="absolute -bottom-1 -right-1 text-[7px] font-black">R</span></span></IconTool>
+          <IconTool label="Aggiungi colonna" onClick={addColumn}><span className="relative"><Plus className="h-4 w-4" /><span className="absolute -bottom-1 -right-1 text-[7px] font-black">C</span></span></IconTool>
+          <IconTool label="Elimina riga selezionata" onClick={removeSelectedRow} disabled={!selectedCell}><span className="relative"><Trash2 className="h-4 w-4" /><span className="absolute -bottom-1 -right-1 text-[7px] font-black">R</span></span></IconTool>
+          <IconTool label="Elimina colonna selezionata" onClick={removeSelectedColumn} disabled={!selectedCell}><span className="relative"><Trash2 className="h-4 w-4" /><span className="absolute -bottom-1 -right-1 text-[7px] font-black">C</span></span></IconTool>
+          <IconTool label="Pulisci tutta la tabella" onClick={clearSheet}><Eraser className="h-4 w-4" /></IconTool>
+          <div className="mx-1 h-6 w-px bg-slate-200" />
+          <IconTool label="Copia selezione" onClick={() => void copySelection()} disabled={!normalizedSelection}><Copy className="h-4 w-4" /></IconTool>
+          <IconTool label="Incolla" onClick={() => void pasteSelection()} disabled={!selectedCell}><ClipboardPaste className="h-4 w-4" /></IconTool>
+          <IconTool label="Separa testo in colonne" onClick={splitSelection} disabled={!normalizedSelection}><Scissors className="h-4 w-4" /></IconTool>
+          <div className="mx-1 h-6 w-px bg-slate-200" />
+          <IconTool label="Crea grafico dalla selezione" onClick={() => openChartFromSelection(false)} active={activeContextMenu === 'chart'}><BarChart3 className="h-4 w-4" /></IconTool>
+          <IconTool label="Regressione lineare" onClick={() => openChartFromSelection(true)} active={activeContextMenu === 'chart' && chartConfig.type === 'scatter'}><TrendingUp className="h-4 w-4" /></IconTool>
+          <IconTool label="Riempimento guidato o AI" onClick={() => setActiveContextMenu(activeContextMenu === 'fill' ? 'none' : 'fill')} active={activeContextMenu === 'fill'}><Wand2 className="h-4 w-4" /></IconTool>
+          <span className="ml-auto rounded-md bg-slate-100 px-2 py-1 text-[11px] font-semibold text-slate-500">{selectedRangeLabel}</span>
         </div>
 
-        <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-2">
-          <div className="mb-1 flex items-center justify-between text-xs">
-            <span className="font-medium text-slate-700">Barra formula (cella attiva)</span>
-            <span className="text-slate-500">Selezione: {selectedRangeLabel}</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="w-20 rounded border bg-white px-2 py-1 text-xs text-slate-600">
-              {selectedCell ? `${columnName(selectedCell.col)}${selectedCell.row + 1}` : '-'}
-            </div>
-            <Input
-              value={selectedRawValue}
-              onChange={(e) => {
-                if (!selectedCell) return
-                setCellValue(selectedCell.row, selectedCell.col, e.target.value)
-              }}
-              placeholder="Valore o formula (es. =SUM(A2:A10))"
-            />
-          </div>
-          <div className="mt-2 flex flex-wrap items-center gap-1.5">
-            {(['SUM', 'AVERAGE', 'MIN', 'MAX', 'COUNT', 'ROUND', 'CONCAT'] as const).map(fn => (
-              <button
-                key={fn}
-                onClick={() => insertFunctionFormula(fn)}
-                className="rounded border border-slate-200 bg-white px-2 py-1 text-[11px] text-slate-700 hover:bg-slate-100"
-              >
-                {fn}
-              </button>
-            ))}
-          </div>
-          <div className="mt-2 flex flex-wrap items-center gap-2 border-t border-slate-200 pt-2">
-            <select className="h-8 rounded border border-slate-200 bg-white px-2 text-xs" onChange={event => applyStyle({ fontFamily: event.target.value })} defaultValue="Arial">
-              <option>Arial</option><option>Calibri</option><option>Georgia</option><option>Times New Roman</option><option>Verdana</option><option>monospace</option>
-            </select>
-            <select className="h-8 rounded border border-slate-200 bg-white px-2 text-xs" onChange={event => applyStyle({ fontSize: Number(event.target.value) })} defaultValue="14">
-              {[10, 12, 14, 16, 18, 20, 24].map(size => <option key={size} value={size}>{size}px</option>)}
-            </select>
-            <button className="h-8 rounded border border-slate-200 bg-white px-3 text-xs font-bold" onClick={() => applyStyle({ fontWeight: 'bold' })}>B</button>
-            <button className="h-8 rounded border border-slate-200 bg-white px-3 text-xs italic" onClick={() => applyStyle({ fontStyle: 'italic' })}>I</button>
-            {(['left', 'center', 'right'] as const).map(align => <button key={align} className="h-8 rounded border border-slate-200 bg-white px-2 text-[11px]" onClick={() => applyStyle({ textAlign: align })}>{align === 'left' ? '←' : align === 'center' ? '↔' : '→'}</button>)}
-            <span className="ml-1 text-[11px] font-semibold text-slate-500">Operazione</span>
-            <select value={operation} onChange={event => setOperation(event.target.value as typeof operation)} className="h-8 rounded border border-slate-200 bg-white px-2 text-xs"><option>+</option><option>-</option><option>*</option><option>/</option></select>
-            <Input value={operationValue} onChange={event => setOperationValue(event.target.value)} className="h-8 w-20 text-xs" inputMode="decimal" />
-            <Button variant="outline" size="sm" onClick={applyNumericOperation}>Applica</Button>
-          </div>
-          <div className="mt-2 flex flex-wrap items-center gap-1.5">
-            <span className="mr-1 text-[11px] font-semibold text-slate-500">Risultato sotto ogni colonna:</span>
-            {(['SUM', 'AVERAGE', 'MIN', 'MAX', 'COUNT', 'MEDIAN', 'STDEV.S'] as const).map(fn => <button key={fn} onClick={() => insertColumnStatistic(fn)} className="rounded border border-cyan-200 bg-cyan-50 px-2 py-1 text-[11px] font-semibold text-cyan-800 hover:bg-cyan-100">{fn}</button>)}
-          </div>
-          <p className="mt-2 text-[11px] text-slate-500">
-            La barra formula modifica il contenuto grezzo della cella selezionata. Se selezioni più celle, i pulsanti funzione usano l'intervallo.
-          </p>
+        <div className="mt-2 flex flex-wrap items-center gap-1.5 border-t border-slate-100 pt-2">
+          <span className="flex h-8 min-w-14 items-center justify-center rounded-md bg-slate-100 px-2 text-xs font-bold text-slate-600">{selectedCell ? `${columnName(selectedCell.col)}${selectedCell.row + 1}` : '-'}</span>
+          <span className="text-xs font-black text-slate-400">fx</span>
+          <Input value={selectedRawValue} onChange={(event) => { if (selectedCell) setCellValue(selectedCell.row, selectedCell.col, event.target.value) }} placeholder="Valore o formula" className="h-8 min-w-56 flex-1 text-sm" />
+          <select className="h-8 max-w-32 rounded-md border border-slate-200 bg-white px-2 text-xs" onChange={event => applyStyle({ fontFamily: event.target.value })} defaultValue="Arial"><option>Arial</option><option>Calibri</option><option>Georgia</option><option>Times New Roman</option><option>Verdana</option><option>monospace</option></select>
+          <select className="h-8 w-16 rounded-md border border-slate-200 bg-white px-1 text-xs" onChange={event => applyStyle({ fontSize: Number(event.target.value) })} defaultValue="14">{[10, 12, 14, 16, 18, 20, 24].map(size => <option key={size} value={size}>{size}</option>)}</select>
+          <IconTool label="Grassetto" active={selectedStyle.fontWeight === 'bold'} onClick={() => applyStyle({ fontWeight: selectedStyle.fontWeight === 'bold' ? 'normal' : 'bold' })}><Bold className="h-4 w-4" /></IconTool>
+          <IconTool label="Corsivo" active={selectedStyle.fontStyle === 'italic'} onClick={() => applyStyle({ fontStyle: selectedStyle.fontStyle === 'italic' ? 'normal' : 'italic' })}><Italic className="h-4 w-4" /></IconTool>
+          <IconTool label="Allinea a sinistra" active={selectedStyle.textAlign === 'left'} onClick={() => applyStyle({ textAlign: 'left' })}><AlignLeft className="h-4 w-4" /></IconTool>
+          <IconTool label="Centra" active={selectedStyle.textAlign === 'center'} onClick={() => applyStyle({ textAlign: 'center' })}><AlignCenter className="h-4 w-4" /></IconTool>
+          <IconTool label="Allinea a destra" active={selectedStyle.textAlign === 'right'} onClick={() => applyStyle({ textAlign: 'right' })}><AlignRight className="h-4 w-4" /></IconTool>
+        </div>
+
+        <div className="mt-2 flex flex-wrap items-center gap-1.5 border-t border-slate-100 pt-2">
+          <span className="text-[11px] font-semibold text-slate-500">Calcola sulle celle</span>
+          <select value={operation} onChange={event => setOperation(event.target.value as typeof operation)} className="h-8 w-12 rounded-md border border-slate-200 bg-white px-2 text-xs"><option>+</option><option>-</option><option>*</option><option>/</option></select>
+          <Input value={operationValue} onChange={event => setOperationValue(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') applyNumericOperation() }} className="h-8 w-20 text-xs" inputMode="decimal" />
+          <IconTool label="Applica operazione ai valori selezionati" onClick={applyNumericOperation}><Check className="h-4 w-4" /></IconTool>
+          <div className="mx-1 h-6 w-px bg-slate-200" />
+          <span className="text-[11px] font-semibold text-slate-500">Risultato sotto la selezione</span>
+          <select value={statFunction} onChange={event => setStatFunction(event.target.value as typeof statFunction)} className="h-8 rounded-md border border-slate-200 bg-white px-2 text-xs"><option>SUM</option><option>AVERAGE</option><option>MIN</option><option>MAX</option><option>COUNT</option><option>MEDIAN</option><option>STDEV.S</option></select>
+          <IconTool label="Inserisci il risultato sotto ogni colonna" onClick={() => insertColumnStatistic(statFunction)}><Sigma className="h-4 w-4" /></IconTool>
+          {selectionStats && <span className="ml-auto rounded-md bg-cyan-50 px-2.5 py-1.5 text-[11px] font-semibold text-cyan-800">{selectionStats.count} valori · Somma {selectionStats.sum.toLocaleString('it-IT', { maximumFractionDigits: 4 })} · Media {selectionStats.average.toLocaleString('it-IT', { maximumFractionDigits: 4 })}</span>}
         </div>
       </div>
 
@@ -719,6 +708,9 @@ Puoi inserire numeri, testo o formule (es. "=A2*2").`
                   {row.map((_cell, colIdx) => {
                     const selected = isCellInSelection(rowIdx, colIdx)
                     const display = evaluatedData[rowIdx]?.[colIdx] ?? ''
+                    const cellKey = `${rowIdx}:${colIdx}`
+                    const rawValue = normalizedData[rowIdx][colIdx]
+                    const isEditing = editingCell === cellKey
                     return (
                       <td
                         key={colIdx}
@@ -734,11 +726,13 @@ Puoi inserire numeri, testo o formule (es. "=A2*2").`
                             ;(e.currentTarget as HTMLInputElement).focus()
                           }}
                           onMouseEnter={() => handleCellMouseEnter(rowIdx, colIdx)}
-                          value={normalizedData[rowIdx][colIdx]}
+                          value={!isEditing && rawValue.startsWith('=') ? display : rawValue}
                           onFocus={() => {
+                            setEditingCell(cellKey)
                             setSelectedCell({ row: rowIdx, col: colIdx })
                             setSelectionRange({ startRow: rowIdx, endRow: rowIdx, startCol: colIdx, endCol: colIdx })
                           }}
+                          onBlur={() => setEditingCell(current => current === cellKey ? null : current)}
                           onKeyDown={(e) => {
                             if (e.key === 'Enter') {
                               e.preventDefault()
@@ -754,8 +748,8 @@ Puoi inserire numeri, testo o formule (es. "=A2*2").`
                           }}
                           onChange={(e) => setCellValue(rowIdx, colIdx, e.target.value)}
                           className="h-9 w-full border-0 bg-transparent px-2 text-sm text-slate-800 focus:outline-none"
-                          style={styles[`${rowIdx}:${colIdx}`]}
-                          title={normalizedData[rowIdx][colIdx].startsWith('=') ? `Risultato: ${display}` : ''}
+                          style={styles[cellKey]}
+                          title={rawValue.startsWith('=') ? `${rawValue} → ${display}` : ''}
                         />
                       </td>
                     )
@@ -767,42 +761,11 @@ Puoi inserire numeri, testo o formule (es. "=A2*2").`
         </div>
       </div>
 
-      {normalizedSelection && (
+      {normalizedSelection && activeContextMenu !== 'none' && (
         <div className="rounded-xl border border-slate-700 bg-slate-900 p-3 text-white shadow-xl">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <div>
-              <p className="text-xs text-slate-300">Azioni contestuali</p>
-              <p className="text-sm">Selezione: <span className="font-semibold">{selectedRangeLabel}</span></p>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <button
-                onClick={() => openChartFromSelection(false)}
-                className="rounded-md bg-white/10 px-2.5 py-1.5 text-left text-white transition-colors hover:bg-white/20"
-              >
-                <span className="block text-xs font-medium leading-tight">Grafico</span>
-                <span className="block text-[10px] leading-tight text-slate-300">Crea da selezione</span>
-              </button>
-              <button
-                onClick={() => openChartFromSelection(true)}
-                className="rounded-md bg-white/10 px-2.5 py-1.5 text-left text-white transition-colors hover:bg-white/20"
-              >
-                <span className="block text-xs font-medium leading-tight">Regressione</span>
-                <span className="block text-[10px] leading-tight text-slate-300">Linea + formula</span>
-              </button>
-              <button
-                onClick={() => setActiveContextMenu('fill')}
-                className="rounded-md bg-white/10 px-2.5 py-1.5 text-left text-white transition-colors hover:bg-white/20"
-              >
-                <span className="block text-xs font-medium leading-tight">Riempi celle</span>
-                <span className="block text-[10px] leading-tight text-slate-300">Linguaggio naturale</span>
-              </button>
-              <button
-                onClick={() => setActiveContextMenu('none')}
-                className="rounded-md px-2 py-1 text-xs text-slate-300 hover:bg-white/10"
-              >
-                Chiudi
-              </button>
-            </div>
+            <p className="text-xs font-semibold text-slate-300">{activeContextMenu === 'chart' ? 'Grafico' : 'Riempimento'} · {selectedRangeLabel}</p>
+            <button onClick={() => setActiveContextMenu('none')} className="rounded-md px-2 py-1 text-xs text-slate-300 hover:bg-white/10">Chiudi</button>
           </div>
 
           {activeContextMenu === 'fill' && (
