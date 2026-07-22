@@ -18,6 +18,8 @@ type ParsedContent = {
   content?: string
   data?: string[][]
   url?: string
+  previewImage?: string
+  source?: { extension?: string; filename?: string; url?: string }
 }
 
 const DIMENSIONS = {
@@ -190,7 +192,8 @@ export default function DocumentThumbnail({ contentJson, type, title, className 
 
   return (
     <div className={`pointer-events-none relative aspect-[16/10] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-inner ${className}`} aria-label={`Anteprima di ${title}`}>
-      {actualType === 'presentation' ? <SlidePreview content={content} title={title} />
+      {content.previewImage ? <img src={content.previewImage} alt="" className="h-full w-full object-contain bg-slate-100" />
+        : actualType === 'presentation' ? <SlidePreview content={content} title={title} />
         : actualType === 'document' && html ? <DocumentPagePreview html={html} />
         : actualType === 'sheet' ? <SheetPreview data={content.data || []} />
         : actualType === 'pdf' && content.url ? <iframe src={`${content.url}#page=1&toolbar=0&navpanes=0`} title={title} className="h-full w-full border-0 bg-white" />
@@ -202,6 +205,11 @@ export default function DocumentThumbnail({ contentJson, type, title, className 
           </div>
         )}
       <span className="absolute inset-0 ring-1 ring-inset ring-black/5" />
+      {content.source?.extension && (
+        <span className="absolute left-2 top-2 rounded-md border border-white/80 bg-slate-950/80 px-2 py-1 text-[9px] font-black uppercase tracking-wider text-white shadow-sm backdrop-blur-sm">
+          {content.source.extension}
+        </span>
+      )}
     </div>
   )
 }

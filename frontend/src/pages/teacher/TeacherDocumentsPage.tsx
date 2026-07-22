@@ -4,9 +4,10 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
   Plus, Trash2, Upload, Monitor, FileText, ChevronLeft, FileSpreadsheet, PenTool, Share2, User, Clock, MonitorPlay, Calendar, BookOpen, Search, X,
-  History, ArrowUp, ArrowDown, GripVertical, CheckSquare, Save
+  History, ArrowUp, ArrowDown, GripVertical, CheckSquare, Save, Download, Loader2, FileUp
 } from 'lucide-react'
-import { teacherApi } from '@/lib/api'
+import { filesApi, teacherApi } from '@/lib/api'
+import { DOCUMENT_IMPORT_ACCEPT, downloadExportedDocument, isSupportedDocumentFile } from '@/lib/documentFiles'
 import { useToast } from '@/components/ui/use-toast'
 import { useQuery } from '@tanstack/react-query'
 import { SlideEditor, SlideBlock, SlideBlockType, SlideSnapOptions, DEFAULT_SLIDE_SNAP_OPTIONS } from '@/components/SlideEditor'
@@ -58,6 +59,7 @@ interface Document {
   sheetChart?: SheetChartConfig
   canvasContent?: string
   webUrl?: string
+  source?: { filename?: string; extension?: string; mimeType?: string; fileId?: string; url?: string; preservedOriginal?: boolean }
 }
 
 // Stored Document Metadata for Sidebar
@@ -228,6 +230,10 @@ export default function TeacherDocumentsPage() {
   const [documentVersions, setDocumentVersions] = useState<DocumentDraftVersion[]>([])
   const [versionsLoading, setVersionsLoading] = useState(false)
   const [versionActionLoading, setVersionActionLoading] = useState(false)
+  const [documentImporting, setDocumentImporting] = useState(false)
+  const [documentDragActive, setDocumentDragActive] = useState(false)
+  const [documentExporting, setDocumentExporting] = useState(false)
+  const documentFileInputRef = useRef<HTMLInputElement>(null)
 
   const currentSlide = document.slides?.[currentSlideIndex] || { id: 'fallback', title: 'Slide', blocks: [] }
   const selectedBlock = currentSlide.blocks.find(b => b.id === selectedBlockId)
@@ -431,19 +437,63 @@ export default function TeacherDocumentsPage() {
 
   const buildDraftPayload = () => {
     const type = mode === 'slides' ? 'presentation' : mode === 'sheet' ? 'sheet' : mode === 'canvas' ? 'canvas' : 'document'
-    const contentJson = JSON.stringify(
-      mode === 'slides'
+    const nativeContent = mode === 'slides'
         ? { type: 'presentation_v2', format: document.format, slides: document.slides }
         : mode === 'sheet'
           ? { type: 'sheet_v1', data: document.sheetData || DEFAULT_SHEET_DATA, chart: document.sheetChart || DEFAULT_SHEET_CHART }
           : mode === 'canvas'
             ? parseCanvasContent(document.canvasContent)
           : { type: 'document_v1', htmlContent: document.textContent || '', header: document.header, margins: docMargins }
-    )
+    const contentJson = JSON.stringify({ ...nativeContent, ...(document.source ? { source: document.source, imported: true } : {}) })
     return {
       title: document.title || 'Senza titolo',
       doc_type: type,
       content_json: contentJson,
+    }
+  }
+
+  const importDocumentFiles = async (files: File[]) => {
+    const supported = files.filter(isSupportedDocumentFile)
+    if (!supported.length) {
+      toast({ title: isEnglish ? 'Unsupported format' : 'Formato non supportato', description: 'PDF, PPT/PPTX, DOC/DOCX, MD, XLS/XLSX', variant: 'destructive' })
+      return
+    }
+    setDocumentImporting(true)
+    try {
+      let lastDraft: DraftDocument | null = null
+      for (const file of supported) {
+        const response = await filesApi.importDocument(file)
+        const imported: DraftDocument = {
+          id: response.data.id,
+          title: response.data.title,
+          type: response.data.doc_type,
+          updatedAt: response.data.updated_at,
+          contentJson: response.data.content_json,
+        }
+        setDraftDocuments(previous => [imported, ...previous.filter(item => item.id !== imported.id)])
+        lastDraft = imported
+      }
+      if (lastDraft) loadDraft(lastDraft)
+      toast({ title: isEnglish ? 'Document imported' : 'Documento importato', description: isEnglish ? 'The original file was preserved.' : 'Il file originale è stato conservato.' })
+    } catch (error: any) {
+      toast({ title: isEnglish ? 'Import failed' : 'Importazione non riuscita', description: error?.response?.data?.detail || error?.message, variant: 'destructive' })
+    } finally {
+      setDocumentImporting(false)
+      if (documentFileInputRef.current) documentFileInputRef.current.value = ''
+    }
+  }
+
+  const exportCurrentDocument = async (targetFormat: 'pdf' | 'ppt' | 'pptx' | 'doc' | 'docx' | 'xlsx') => {
+    setDocumentExporting(true)
+    try {
+      const payload = buildDraftPayload()
+      const response = await filesApi.exportDocument({ title: payload.title, content_json: payload.content_json, target_format: targetFormat })
+      downloadExportedDocument(response.data, payload.title, targetFormat)
+      toast({ title: isEnglish ? `Exported as ${targetFormat.toUpperCase()}` : `Esportato in ${targetFormat.toUpperCase()}` })
+    } catch (error: any) {
+      toast({ title: isEnglish ? 'Export failed' : 'Esportazione non riuscita', description: error?.response?.data?.detail || error?.message, variant: 'destructive' })
+    } finally {
+      setDocumentExporting(false)
     }
   }
 
@@ -713,6 +763,7 @@ export default function TeacherDocumentsPage() {
           sheetChart: DEFAULT_SHEET_CHART,
           canvasContent: DEFAULT_CANVAS_CONTENT,
           webUrl: content.url || '',
+          source: content.source,
         })
       } else if (doc.type === 'presentation' || content.type === 'presentation_v2' || content.slides) {
         setMode('slides')
@@ -733,6 +784,7 @@ export default function TeacherDocumentsPage() {
           slides: safeSlides,
           textContent: '',
           webUrl: '',
+          source: content.source,
         })
         setCurrentSlideIndex(0)
         setSelectedBlockId(null)
@@ -750,6 +802,7 @@ export default function TeacherDocumentsPage() {
           sheetChart: content.chart || DEFAULT_SHEET_CHART,
           canvasContent: DEFAULT_CANVAS_CONTENT,
           webUrl: '',
+          source: content.source,
         })
       } else if (doc.type === 'canvas' || content.type === 'canvas_v1' || content.items) {
         setMode('canvas')
@@ -765,6 +818,7 @@ export default function TeacherDocumentsPage() {
           sheetChart: DEFAULT_SHEET_CHART,
           canvasContent: JSON.stringify({ type: 'canvas_v1', items: Array.isArray(content.items) ? content.items : [] }),
           webUrl: '',
+          source: content.source,
         })
       } else {
         setMode('document')
@@ -787,6 +841,7 @@ export default function TeacherDocumentsPage() {
           sheetChart: DEFAULT_SHEET_CHART,
           canvasContent: DEFAULT_CANVAS_CONTENT,
           webUrl: '',
+          source: content.source,
         })
       }
       
@@ -842,6 +897,7 @@ export default function TeacherDocumentsPage() {
           sheetChart: DEFAULT_SHEET_CHART,
           canvasContent: DEFAULT_CANVAS_CONTENT,
           webUrl: content.url || '',
+          source: content.source,
         })
       } else if (doc.type === 'presentation' || content.type === 'presentation_v2' || content.slides) {
         setMode('slides')
@@ -862,6 +918,7 @@ export default function TeacherDocumentsPage() {
           slides: safeSlides,
           textContent: '',
           webUrl: '',
+          source: content.source,
         })
         setCurrentSlideIndex(0)
         setSelectedBlockId(null)
@@ -879,6 +936,7 @@ export default function TeacherDocumentsPage() {
           sheetChart: content.chart || DEFAULT_SHEET_CHART,
           canvasContent: DEFAULT_CANVAS_CONTENT,
           webUrl: '',
+          source: content.source,
         })
       } else if (doc.type === 'canvas' || content.type === 'canvas_v1' || content.items) {
         setMode('canvas')
@@ -894,6 +952,7 @@ export default function TeacherDocumentsPage() {
           sheetChart: DEFAULT_SHEET_CHART,
           canvasContent: JSON.stringify({ type: 'canvas_v1', items: Array.isArray(content.items) ? content.items : [] }),
           webUrl: '',
+          source: content.source,
         })
       } else {
         setMode('document')
@@ -916,6 +975,7 @@ export default function TeacherDocumentsPage() {
           sheetChart: DEFAULT_SHEET_CHART,
           canvasContent: DEFAULT_CANVAS_CONTENT,
           webUrl: '',
+          source: content.source,
         })
       }
       setViewMode('editor')
@@ -1232,6 +1292,10 @@ export default function TeacherDocumentsPage() {
         taskType = 'lesson'
       }
 
+      if (document.source) {
+        contentJson = JSON.stringify({ ...JSON.parse(contentJson), source: document.source, imported: true })
+      }
+
       const response = await teacherApi.createTask(selectedSessionId, {
         title: document.title,
         description: `Documento creato con Golinelli AI Editor (${mode === 'slides' ? 'Presentazione' : mode === 'sheet' ? 'Foglio' : mode === 'canvas' ? 'Lavagna' : 'Testo'})`,
@@ -1370,7 +1434,18 @@ export default function TeacherDocumentsPage() {
       `${PASTEL_ICON_BACKGROUNDS[docTone(type)]} ${PASTEL_ICON_TEXT[docTone(type)]}`
     return (
       <>
-        <div className="h-full flex flex-col bg-slate-100 overflow-hidden">
+        <div
+          className="relative h-full flex flex-col bg-slate-100 overflow-hidden"
+          onDragEnter={(event) => { event.preventDefault(); setDocumentDragActive(true) }}
+          onDragOver={(event) => { event.preventDefault(); setDocumentDragActive(true) }}
+          onDragLeave={(event) => { if (event.currentTarget === event.target) setDocumentDragActive(false) }}
+          onDrop={(event) => {
+            event.preventDefault()
+            setDocumentDragActive(false)
+            void importDocumentFiles(Array.from(event.dataTransfer.files))
+          }}
+        >
+          <input ref={documentFileInputRef} type="file" multiple accept={DOCUMENT_IMPORT_ACCEPT} className="hidden" onChange={(event) => void importDocumentFiles(Array.from(event.target.files || []))} />
           <div className="h-14 bg-white/90 border-b border-slate-200/80 flex items-center px-6 z-20 shadow-sm shrink-0 backdrop-blur-sm">
             <div className="flex items-center gap-2">
               <FileText className="h-4 w-4 text-slate-500" />
@@ -1381,7 +1456,7 @@ export default function TeacherDocumentsPage() {
           <div className="flex-1 overflow-y-auto p-6">
             <div className="max-w-5xl mx-auto space-y-8">
 
-              <section className="grid gap-3 sm:grid-cols-2">
+              <section className="grid gap-3 sm:grid-cols-3">
                 <button type="button" onClick={createNewDocument} className="flex min-h-[92px] items-center gap-4 rounded-2xl border border-emerald-200 bg-emerald-50/80 p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:bg-emerald-100/80 hover:shadow-md">
                   <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-white text-emerald-700 shadow-sm"><FileText className="h-6 w-6" /></span>
                   <span><span className="block text-sm font-black text-slate-950">{isEnglish ? 'New document' : 'Nuovo documento'}</span><span className="mt-1 block text-xs leading-5 text-slate-600">{isEnglish ? 'Write pages, reports and teaching materials.' : 'Scrivi pagine, relazioni e materiali didattici.'}</span></span>
@@ -1389,6 +1464,10 @@ export default function TeacherDocumentsPage() {
                 <button type="button" onClick={createNewPresentation} className="flex min-h-[92px] items-center gap-4 rounded-2xl border border-indigo-200 bg-indigo-50/80 p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:bg-indigo-100/80 hover:shadow-md">
                   <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-white text-indigo-700 shadow-sm"><MonitorPlay className="h-6 w-6" /></span>
                   <span><span className="block text-sm font-black text-slate-950">{isEnglish ? 'New presentation' : 'Nuova presentazione'}</span><span className="mt-1 block text-xs leading-5 text-slate-600">{isEnglish ? 'Create editable slides directly on the platform.' : 'Crea slide modificabili direttamente sulla piattaforma.'}</span></span>
+                </button>
+                <button type="button" disabled={documentImporting} onClick={() => documentFileInputRef.current?.click()} className="flex min-h-[92px] items-center gap-4 rounded-2xl border border-sky-200 bg-sky-50/80 p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:bg-sky-100/80 hover:shadow-md disabled:cursor-wait disabled:opacity-60">
+                  <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-white text-sky-700 shadow-sm">{documentImporting ? <Loader2 className="h-6 w-6 animate-spin" /> : <FileUp className="h-6 w-6" />}</span>
+                  <span><span className="block text-sm font-black text-slate-950">{isEnglish ? 'Import file' : 'Importa file'}</span><span className="mt-1 block text-xs leading-5 text-slate-600">PDF · PPT · DOC · MD · XLS</span></span>
                 </button>
               </section>
 
@@ -1557,6 +1636,11 @@ export default function TeacherDocumentsPage() {
               )}
             </div>
           </div>
+          {documentDragActive && (
+            <div className="pointer-events-none absolute inset-4 z-50 flex items-center justify-center rounded-[28px] border-2 border-dashed border-sky-500 bg-sky-50/95 shadow-2xl backdrop-blur-sm">
+              <div className="text-center"><FileUp className="mx-auto h-12 w-12 text-sky-600" /><p className="mt-3 text-lg font-black text-slate-900">{isEnglish ? 'Drop files to import' : 'Rilascia i file per importarli'}</p><p className="mt-1 text-sm text-slate-600">PDF, PPT/PPTX, DOC/DOCX, MD, XLS/XLSX</p></div>
+            </div>
+          )}
         </div>
 
         {showNewModal && (
@@ -1708,6 +1792,30 @@ export default function TeacherDocumentsPage() {
                  <MonitorPlay className="mr-2 h-4 w-4" />
                  {isEnglish ? 'Document assistant' : 'Assistente documento'}
                </Button>
+             )}
+             {mode !== 'canvas' && mode !== 'web' && (
+               <label className="relative flex h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 shadow-sm">
+                 {documentExporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+                 <select
+                   aria-label={isEnglish ? 'Export document' : 'Esporta documento'}
+                   disabled={documentExporting}
+                   defaultValue=""
+                   className="max-w-[112px] cursor-pointer appearance-none bg-transparent pr-3 outline-none disabled:cursor-wait"
+                   onChange={(event) => {
+                     const format = event.target.value as 'pdf' | 'ppt' | 'pptx' | 'doc' | 'docx' | 'xlsx'
+                     if (format) void exportCurrentDocument(format)
+                     event.target.value = ''
+                   }}
+                 >
+                   <option value="" disabled>{isEnglish ? 'Export…' : 'Esporta…'}</option>
+                   <option value="pdf">PDF</option>
+                   {mode === 'slides' && <option value="pptx">PowerPoint (.pptx)</option>}
+                   {mode === 'slides' && <option value="ppt">PowerPoint 97-2003 (.ppt)</option>}
+                   {(mode === 'document' || mode === 'slides' || mode === 'sheet') && <option value="docx">Word (.docx)</option>}
+                   {mode === 'document' && <option value="pptx">PowerPoint (.pptx)</option>}
+                   {mode === 'sheet' && <option value="xlsx">Excel (.xlsx)</option>}
+                 </select>
+               </label>
              )}
              {activeStudentSubmissionId ? (
                <span className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-800">

@@ -2,9 +2,10 @@ import { useState, useRef, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
-  Bot, Copy, Layers, Plus, Save, Sparkles, Trash2, Monitor, FileText, ChevronLeft, ChevronRight, Send, CheckCircle, FileSpreadsheet, BookOpen, PenTool, Share2, User, Clock, MonitorPlay, Search, X, LayoutGrid, List
+  Bot, Copy, Layers, Plus, Save, Sparkles, Trash2, Monitor, FileText, ChevronLeft, ChevronRight, Send, CheckCircle, FileSpreadsheet, BookOpen, PenTool, Share2, User, Clock, MonitorPlay, Search, X, LayoutGrid, List, Download, Loader2, FileUp
 } from 'lucide-react'
 import { studentApi, filesApi } from '@/lib/api'
+import { DOCUMENT_IMPORT_ACCEPT, downloadExportedDocument, isSupportedDocumentFile } from '@/lib/documentFiles'
 import { useToast } from '@/components/ui/use-toast'
 import { SlideEditor, SlideBlock, SlideBlockType, SlideSnapOptions, DEFAULT_SLIDE_SNAP_OPTIONS } from '@/components/SlideEditor'
 import { createShapeBlock } from '@/lib/slideBlocks'
@@ -46,6 +47,7 @@ interface Document {
   sheetChart?: SheetChartConfig
   canvasContent?: string
   webUrl?: string
+  source?: { filename?: string; extension?: string; mimeType?: string; fileId?: string; url?: string; preservedOriginal?: boolean }
 }
 
 interface DraftDocument {
@@ -234,6 +236,10 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
   const [presentationTemplates, setPresentationTemplates] = useState<PresentationTemplate[]>([])
   const [presentationChatOpen, setPresentationChatOpen] = useState(false)
   const [documentSelection, setDocumentSelection] = useState<{ from: number; to: number; text: string } | null>(null)
+  const [documentImporting, setDocumentImporting] = useState(false)
+  const [documentDragActive, setDocumentDragActive] = useState(false)
+  const [documentExporting, setDocumentExporting] = useState(false)
+  const documentFileInputRef = useRef<HTMLInputElement>(null)
 
   const currentSlide = document.slides?.[currentSlideIndex] || { id: 'fallback', title: 'Slide', blocks: [] }
   const selectedBlock = currentSlide.blocks.find(b => b.id === selectedBlockId)
@@ -395,17 +401,59 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
     setViewMode('editor')
   }
 
-  const upsertDraft = async (titleOverride?: string) => {
+  const buildNativeContentJson = (submission = false) => {
     const type = mode === 'slides' ? 'presentation' : mode === 'sheet' ? 'sheet' : mode === 'canvas' ? 'canvas' : 'document'
-    const contentJson = JSON.stringify(
-      mode === 'slides'
-        ? { type: 'presentation_v2', format: document.format, slides: document.slides }
+    const nativeContent = mode === 'slides'
+        ? { type: submission ? 'student_presentation' : 'presentation_v2', format: document.format, title: document.title, slides: document.slides }
         : mode === 'sheet'
-          ? { type: 'sheet_v1', data: document.sheetData || DEFAULT_SHEET_DATA, chart: document.sheetChart || DEFAULT_SHEET_CHART }
+          ? { type: submission ? 'student_sheet' : 'sheet_v1', title: document.title, data: document.sheetData || DEFAULT_SHEET_DATA, chart: document.sheetChart || DEFAULT_SHEET_CHART }
           : mode === 'canvas'
-            ? JSON.parse(document.canvasContent || DEFAULT_CANVAS_CONTENT)
-          : { type: 'document_v1', htmlContent: document.textContent || '', header: document.header, margins: docMargins }
-    )
+            ? { ...JSON.parse(document.canvasContent || DEFAULT_CANVAS_CONTENT), type: submission ? 'student_canvas' : 'canvas_v1', title: document.title }
+          : { type: submission ? 'student_document' : 'document_v1', title: document.title, htmlContent: document.textContent || '', header: document.header, margins: docMargins }
+    return { type, contentJson: JSON.stringify({ ...nativeContent, ...(document.source ? { source: document.source, imported: true } : {}) }) }
+  }
+
+  const importDocumentFiles = async (files: File[]) => {
+    const supported = files.filter(isSupportedDocumentFile)
+    if (!supported.length) {
+      toast({ title: isEnglishUi ? 'Unsupported format' : 'Formato non supportato', description: 'PDF, PPT/PPTX, DOC/DOCX, MD, XLS/XLSX', variant: 'destructive' })
+      return
+    }
+    setDocumentImporting(true)
+    try {
+      let lastDraft: DraftDocument | null = null
+      for (const file of supported) {
+        const response = await filesApi.importDocument(file, sessionId)
+        const imported: DraftDocument = { id: response.data.id, title: response.data.title, type: response.data.doc_type, updatedAt: response.data.updated_at, contentJson: response.data.content_json }
+        setDraftDocuments(previous => [imported, ...previous.filter(item => item.id !== imported.id)])
+        lastDraft = imported
+      }
+      if (lastDraft) loadDraft(lastDraft)
+      toast({ title: isEnglishUi ? 'Document imported' : 'Documento importato', description: isEnglishUi ? 'The original file was preserved.' : 'Il file originale è stato conservato.' })
+    } catch (error: any) {
+      toast({ title: isEnglishUi ? 'Import failed' : 'Importazione non riuscita', description: error?.response?.data?.detail || error?.message, variant: 'destructive' })
+    } finally {
+      setDocumentImporting(false)
+      if (documentFileInputRef.current) documentFileInputRef.current.value = ''
+    }
+  }
+
+  const exportCurrentDocument = async (targetFormat: 'pdf' | 'ppt' | 'pptx' | 'doc' | 'docx' | 'xlsx') => {
+    setDocumentExporting(true)
+    try {
+      const { contentJson } = buildNativeContentJson(false)
+      const response = await filesApi.exportDocument({ title: document.title, content_json: contentJson, target_format: targetFormat })
+      downloadExportedDocument(response.data, document.title, targetFormat)
+      toast({ title: isEnglishUi ? `Exported as ${targetFormat.toUpperCase()}` : `Esportato in ${targetFormat.toUpperCase()}` })
+    } catch (error: any) {
+      toast({ title: isEnglishUi ? 'Export failed' : 'Esportazione non riuscita', description: error?.response?.data?.detail || error?.message, variant: 'destructive' })
+    } finally {
+      setDocumentExporting(false)
+    }
+  }
+
+  const upsertDraft = async (titleOverride?: string) => {
+    const { type, contentJson } = buildNativeContentJson(false)
     try {
       if (draftId) {
         const res = await studentApi.updateDocumentDraft(draftId, {
@@ -632,6 +680,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
           sheetChart: DEFAULT_SHEET_CHART,
           canvasContent: DEFAULT_CANVAS_CONTENT,
           webUrl: '',
+          source: content.source,
         })
       } else if (doc.type === 'web' || content.type === 'html_v1' || isFullHtmlDocument(content.htmlContent) || isFullHtmlDocument(content.content)) {
         setMode('web')
@@ -647,6 +696,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
           sheetChart: DEFAULT_SHEET_CHART,
           canvasContent: DEFAULT_CANVAS_CONTENT,
           webUrl: content.url || '',
+          source: content.source,
         })
       } else if (doc.type === 'presentation' || content.type === 'presentation_v2' || content.slides) {
         setMode('slides')
@@ -666,6 +716,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
           slides: safeSlides,
           textContent: '',
           webUrl: '',
+          source: content.source,
         })
         setCurrentSlideIndex(0)
         setSelectedBlockId(null)
@@ -682,6 +733,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
           sheetChart: content.chart || DEFAULT_SHEET_CHART,
           canvasContent: DEFAULT_CANVAS_CONTENT,
           webUrl: '',
+          source: content.source,
         })
       } else if (doc.type === 'canvas' || content.type === 'canvas_v1' || content.items) {
         setIsReadOnlyLesson(Boolean(options?.readOnlyLesson))
@@ -697,6 +749,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
           sheetChart: DEFAULT_SHEET_CHART,
           canvasContent: JSON.stringify({ type: 'canvas_v1', items: Array.isArray(content.items) ? content.items : [] }),
           webUrl: '',
+          source: content.source,
         })
       } else {
         setMode('document')
@@ -718,6 +771,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
           sheetChart: DEFAULT_SHEET_CHART,
           canvasContent: DEFAULT_CANVAS_CONTENT,
           webUrl: '',
+          source: content.source,
         })
       }
       setViewMode('editor')
@@ -991,41 +1045,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
     if (isEditorReadOnly) return
     setIsSubmitting(true)
     try {
-      let contentJson = ""
-
-      if (mode === 'slides') {
-        contentJson = JSON.stringify({
-          type: 'student_presentation',
-          format: document.format,
-          title: document.title,
-          slides: document.slides.map(s => ({
-            id: s.id,
-            title: s.title,
-            blocks: s.blocks
-          }))
-        })
-      } else if (mode === 'sheet') {
-        contentJson = JSON.stringify({
-          type: 'student_sheet',
-          title: document.title,
-          data: document.sheetData || DEFAULT_SHEET_DATA,
-          chart: document.sheetChart || DEFAULT_SHEET_CHART,
-        })
-      } else if (mode === 'canvas') {
-        contentJson = JSON.stringify({
-          type: 'student_canvas',
-          title: document.title,
-          ...JSON.parse(document.canvasContent || DEFAULT_CANVAS_CONTENT),
-        })
-      } else {
-        contentJson = JSON.stringify({
-          type: 'student_document',
-          title: document.title,
-          htmlContent: document.textContent,
-          header: document.header,
-          margins: docMargins
-        })
-      }
+      const { contentJson } = buildNativeContentJson(true)
 
       // Submit as a student work/task submission
       await studentApi.submitDocument({
@@ -1144,7 +1164,14 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
     }
     return (
       <>
-        <div className="h-full flex flex-col bg-slate-100 overflow-hidden">
+        <div
+          className="relative h-full flex flex-col bg-slate-100 overflow-hidden"
+          onDragEnter={(event) => { if (!readOnlyCatalog) { event.preventDefault(); setDocumentDragActive(true) } }}
+          onDragOver={(event) => { if (!readOnlyCatalog) { event.preventDefault(); setDocumentDragActive(true) } }}
+          onDragLeave={(event) => { if (event.currentTarget === event.target) setDocumentDragActive(false) }}
+          onDrop={(event) => { if (readOnlyCatalog) return; event.preventDefault(); setDocumentDragActive(false); void importDocumentFiles(Array.from(event.dataTransfer.files)) }}
+        >
+          {!readOnlyCatalog && <input ref={documentFileInputRef} type="file" multiple accept={DOCUMENT_IMPORT_ACCEPT} className="hidden" onChange={(event) => void importDocumentFiles(Array.from(event.target.files || []))} />}
           <section className="relative shrink-0 border-b border-slate-200/80 bg-white/90 backdrop-blur-sm shadow-sm">
             <div className="mx-auto max-w-6xl px-4 py-7 md:px-6">
               <div className="mx-auto max-w-3xl text-center">
@@ -1175,7 +1202,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
                   <button type="button" onClick={() => setCatalogViewMode('list')} aria-pressed={catalogViewMode === 'list'} title={isEnglishUi ? 'List view' : 'Vista elenco'} className={`flex h-8 w-8 items-center justify-center rounded-lg ${catalogViewMode === 'list' ? 'bg-emerald-100 text-emerald-800' : 'text-slate-400 hover:bg-slate-50'}`}><List className="h-4 w-4" /></button>
                 </div>
                 {!readOnlyCatalog && (
-                  <div className="mx-auto mt-6 grid max-w-2xl gap-3 sm:grid-cols-2">
+                  <div className="mx-auto mt-6 grid max-w-4xl gap-3 sm:grid-cols-3">
                     <button
                       type="button"
                       onClick={createNewDocument}
@@ -1197,6 +1224,15 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
                         <span className="block text-sm font-black text-slate-950">{isEnglishUi ? 'New presentation' : 'Nuova presentazione'}</span>
                         <span className="mt-1 block text-xs leading-5 text-slate-600">{isEnglishUi ? 'Create editable slides directly here.' : 'Crea slide modificabili direttamente qui.'}</span>
                       </span>
+                    </button>
+                    <button
+                      type="button"
+                      disabled={documentImporting}
+                      onClick={() => documentFileInputRef.current?.click()}
+                      className="group flex min-h-[92px] items-center gap-4 rounded-2xl border border-emerald-200 bg-emerald-50/80 p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-emerald-300 hover:bg-emerald-100/80 hover:shadow-md disabled:cursor-wait disabled:opacity-60"
+                    >
+                      <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-white text-emerald-700 shadow-sm">{documentImporting ? <Loader2 className="h-6 w-6 animate-spin" /> : <FileUp className="h-6 w-6" />}</span>
+                      <span className="min-w-0"><span className="block text-sm font-black text-slate-950">{isEnglishUi ? 'Import file' : 'Importa file'}</span><span className="mt-1 block text-xs leading-5 text-slate-600">PDF · PPT · DOC · MD · XLS</span></span>
                     </button>
                   </div>
                 )}
@@ -1242,7 +1278,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
                       >
                         {catalogViewMode === 'grid' && <DocumentThumbnail contentJson={doc.contentJson} type={doc.type} title={doc.title} />}
                         {catalogViewMode === 'list' && <div className={`col-start-1 row-span-2 row-start-1 flex h-9 w-9 items-center justify-center rounded-lg shadow-sm ${docColor(doc.type)}`}>{docIcon(doc.type)}</div>}
-                        <span className={`${catalogViewMode === 'grid' ? 'absolute left-4 top-4' : 'col-start-3 row-span-2 row-start-1 self-center'} rounded-full border px-2.5 py-1 text-[10px] font-black shadow-sm ${docBadge(doc.type)}`}>{docLabel(doc.type)}</span>
+                        {catalogViewMode === 'list' && <span className={`col-start-3 row-span-2 row-start-1 self-center rounded-full border px-2.5 py-1 text-[10px] font-black shadow-sm ${docBadge(doc.type)}`}>{docLabel(doc.type)}</span>}
                         <p className={`${catalogViewMode === 'grid' ? 'mb-1 mt-2.5 px-1' : 'col-start-2 row-start-1 self-end'} truncate text-sm font-black text-slate-950`}>{doc.title}</p>
                         <p className={`${catalogViewMode === 'grid' ? 'px-1 pb-1' : 'col-start-2 row-start-2 self-start'} text-[11px] font-medium text-slate-500`}>{new Date(doc.updatedAt).toLocaleDateString(dateLocale, { day: 'numeric', month: 'short', year: 'numeric' })}</p>
                         <button
@@ -1321,6 +1357,11 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
               })()}
             </div>
           </div>
+          {documentDragActive && !readOnlyCatalog && (
+            <div className="pointer-events-none absolute inset-4 z-50 flex items-center justify-center rounded-[28px] border-2 border-dashed border-emerald-500 bg-emerald-50/95 shadow-2xl backdrop-blur-sm">
+              <div className="text-center"><FileUp className="mx-auto h-12 w-12 text-emerald-600" /><p className="mt-3 text-lg font-black text-slate-900">{isEnglishUi ? 'Drop files to import' : 'Rilascia i file per importarli'}</p><p className="mt-1 text-sm text-slate-600">PDF, PPT/PPTX, DOC/DOCX, MD, XLS/XLSX</p></div>
+            </div>
+          )}
         </div>
 
         {!readOnlyCatalog && showNewModal && (
@@ -1526,6 +1567,31 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
           </div>
 
           <div className="flex shrink-0 gap-2">
+             {!isEditorReadOnly && !['canvas', 'web'].includes(mode) && (
+               <label className="relative flex h-10 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 font-bold text-slate-700 shadow-sm">
+                 {documentExporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+                 <span className="hidden xl:inline">{isEnglishUi ? 'Export' : 'Esporta'}</span>
+                 <select
+                   aria-label={isEnglishUi ? 'Export format' : 'Formato di esportazione'}
+                   disabled={documentExporting}
+                   value=""
+                   onChange={(event) => {
+                     const format = event.target.value as 'pdf' | 'ppt' | 'pptx' | 'doc' | 'docx' | 'xlsx'
+                     event.target.value = ''
+                     if (format) void exportCurrentDocument(format)
+                   }}
+                   className="absolute inset-0 cursor-pointer opacity-0 disabled:cursor-wait"
+                 >
+                   <option value="">{isEnglishUi ? 'Choose format' : 'Scegli formato'}</option>
+                   <option value="pdf">PDF</option>
+                   {mode === 'slides' && <option value="pptx">PPTX</option>}
+                   {mode === 'slides' && <option value="ppt">PPT</option>}
+                   {(mode === 'slides' || mode === 'document' || mode === 'sheet') && <option value="docx">DOCX</option>}
+                   {mode === 'document' && <option value="doc">DOC</option>}
+                   {mode === 'sheet' && <option value="xlsx">XLSX</option>}
+                 </select>
+               </label>
+             )}
              {(mode === 'slides' || mode === 'document') && !isEditorReadOnly && (
                  <Button
                    variant="outline"

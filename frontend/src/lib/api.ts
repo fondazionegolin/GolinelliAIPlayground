@@ -835,6 +835,14 @@ export const assessmentApi = {
 }
 
 export const filesApi = {
+  importDocument: (file: File, sessionId?: string) => {
+    const formData = new FormData()
+    formData.append('file', file)
+    if (sessionId) formData.append('session_id', sessionId)
+    return api.post('/files/documents/import', formData, { headers: { 'Content-Type': 'multipart/form-data' } })
+  },
+  exportDocument: (data: { title: string; content_json: string; target_format: 'pdf' | 'ppt' | 'pptx' | 'doc' | 'docx' | 'xlsx' }) =>
+    api.post('/files/documents/export', data, { responseType: 'blob' }),
   getUploadUrl: (data: { filename: string; mime_type: string; size_bytes: number; scope: string; session_id?: string }) =>
     api.post('/files/upload-url', data),
   completeUpload: (fileId: string, checksum: string) =>

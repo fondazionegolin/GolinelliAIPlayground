@@ -130,6 +130,8 @@ class Settings(BaseSettings):
     OCR_TROCR_MODEL: str = "microsoft/trocr-base-handwritten"
     ALLOWED_MIME_TYPES: list[str] = [
         "application/pdf",
+        "application/msword",
+        "text/markdown",
         "text/html",
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         "application/vnd.openxmlformats-officedocument.presentationml.presentation",

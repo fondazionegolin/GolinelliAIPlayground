@@ -2,12 +2,15 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     libpq-dev \
     tesseract-ocr \
     tesseract-ocr-eng \
     tesseract-ocr-ita \
+    libreoffice-writer \
+    libreoffice-impress \
+    libreoffice-calc \
     texlive-latex-base \
     texlive-latex-recommended \
     texlive-latex-extra \
