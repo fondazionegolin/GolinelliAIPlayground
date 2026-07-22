@@ -1477,24 +1477,24 @@ export default function TeacherDocumentsPage() {
           </div>
 
           <div className="flex-1 overflow-y-auto p-6">
-            <div className="max-w-5xl mx-auto space-y-8">
+            <div className="max-w-6xl mx-auto space-y-7">
 
-              <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                <button type="button" onClick={createNewDocument} className="flex min-h-[92px] items-center gap-4 rounded-2xl border border-emerald-200 bg-emerald-50/80 p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:bg-emerald-100/80 hover:shadow-md">
-                  <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-white text-emerald-700 shadow-sm"><FileText className="h-6 w-6" /></span>
-                  <span><span className="block text-sm font-black text-slate-950">{isEnglish ? 'New document' : 'Nuovo documento'}</span><span className="mt-1 block text-xs leading-5 text-slate-600">{isEnglish ? 'Write pages, reports and teaching materials.' : 'Scrivi pagine, relazioni e materiali didattici.'}</span></span>
+              <section className="mx-auto grid w-full max-w-4xl gap-2.5 sm:grid-cols-2 lg:grid-cols-4">
+                <button type="button" onClick={createNewDocument} className="flex min-h-[76px] items-start gap-3 rounded-xl border border-emerald-200/80 bg-emerald-50/70 p-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-emerald-300 hover:bg-emerald-100/70 hover:shadow-md">
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-emerald-700 shadow-sm"><FileText className="h-5 w-5" /></span>
+                  <span className="min-w-0 pt-0.5"><span className="block text-[13px] font-black leading-5 text-slate-950">{isEnglish ? 'New document' : 'Nuovo documento'}</span><span className="mt-0.5 block text-[11px] leading-4 text-slate-500">{isEnglish ? 'Write and format.' : 'Scrivi e impagina.'}</span></span>
                 </button>
-                <button type="button" onClick={createNewPresentation} className="flex min-h-[92px] items-center gap-4 rounded-2xl border border-indigo-200 bg-indigo-50/80 p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:bg-indigo-100/80 hover:shadow-md">
-                  <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-white text-indigo-700 shadow-sm"><MonitorPlay className="h-6 w-6" /></span>
-                  <span><span className="block text-sm font-black text-slate-950">{isEnglish ? 'New presentation' : 'Nuova presentazione'}</span><span className="mt-1 block text-xs leading-5 text-slate-600">{isEnglish ? 'Create editable slides directly on the platform.' : 'Crea slide modificabili direttamente sulla piattaforma.'}</span></span>
+                <button type="button" onClick={createNewPresentation} className="flex min-h-[76px] items-start gap-3 rounded-xl border border-indigo-200/80 bg-indigo-50/70 p-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-indigo-300 hover:bg-indigo-100/70 hover:shadow-md">
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-indigo-700 shadow-sm"><MonitorPlay className="h-5 w-5" /></span>
+                  <span className="min-w-0 pt-0.5"><span className="block text-[13px] font-black leading-5 text-slate-950">{isEnglish ? 'New presentation' : 'Nuova presentazione'}</span><span className="mt-0.5 block text-[11px] leading-4 text-slate-500">{isEnglish ? 'Create slides.' : 'Crea slide.'}</span></span>
                 </button>
-                <button type="button" onClick={createNewSheet} className="flex min-h-[92px] items-center gap-4 rounded-2xl border border-cyan-200 bg-cyan-50/80 p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:bg-cyan-100/80 hover:shadow-md">
-                  <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-white text-cyan-700 shadow-sm"><FileSpreadsheet className="h-6 w-6" /></span>
-                  <span><span className="block text-sm font-black text-slate-950">{isEnglish ? 'Tables' : 'Tabelle'}</span><span className="mt-1 block text-xs leading-5 text-slate-600">{isEnglish ? 'Data, formulas and statistics.' : 'Dati, formule e statistiche.'}</span></span>
+                <button type="button" onClick={createNewSheet} className="flex min-h-[76px] items-start gap-3 rounded-xl border border-cyan-200/80 bg-cyan-50/70 p-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-cyan-300 hover:bg-cyan-100/70 hover:shadow-md">
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-cyan-700 shadow-sm"><FileSpreadsheet className="h-5 w-5" /></span>
+                  <span className="min-w-0 pt-0.5"><span className="block text-[13px] font-black leading-5 text-slate-950">{isEnglish ? 'New table' : 'Nuova tabella'}</span><span className="mt-0.5 block text-[11px] leading-4 text-slate-500">{isEnglish ? 'Data and formulas.' : 'Dati e formule.'}</span></span>
                 </button>
-                <button type="button" disabled={documentImporting} onClick={() => documentFileInputRef.current?.click()} className="flex min-h-[92px] items-center gap-4 rounded-2xl border border-sky-200 bg-sky-50/80 p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:bg-sky-100/80 hover:shadow-md disabled:cursor-wait disabled:opacity-60">
-                  <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-white text-sky-700 shadow-sm">{documentImporting ? <Loader2 className="h-6 w-6 animate-spin" /> : <FileUp className="h-6 w-6" />}</span>
-                  <span><span className="block text-sm font-black text-slate-950">{isEnglish ? 'Import file' : 'Importa file'}</span><span className="mt-1 block text-xs leading-5 text-slate-600">PDF · PPT · DOC · MD · XLS</span></span>
+                <button type="button" disabled={documentImporting} onClick={() => documentFileInputRef.current?.click()} className="flex min-h-[76px] items-start gap-3 rounded-xl border border-sky-200/80 bg-sky-50/70 p-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-sky-300 hover:bg-sky-100/70 hover:shadow-md disabled:cursor-wait disabled:opacity-60">
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-sky-700 shadow-sm">{documentImporting ? <Loader2 className="h-5 w-5 animate-spin" /> : <FileUp className="h-5 w-5" />}</span>
+                  <span className="min-w-0 pt-0.5"><span className="block text-[13px] font-black leading-5 text-slate-950">{isEnglish ? 'Import file' : 'Importa file'}</span><span className="mt-0.5 block text-[11px] leading-4 text-slate-500">PDF · PPT · DOC · XLS</span></span>
                 </button>
               </section>
 
@@ -1534,16 +1534,16 @@ export default function TeacherDocumentsPage() {
               {filteredDrafts.length > 0 && (
                 <section>
                   <h2 className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-3">{isEnglish ? 'My Drafts' : 'Le mie Bozze'} {docSearch && <span className="normal-case font-normal">({filteredDrafts.length})</span>}</h2>
-                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                  <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-5">
                     {filteredDrafts.map(doc => (
                       <div
                         key={doc.id}
                         onClick={() => setDocumentToOpen({ document: doc, onEdit: () => loadDraft(doc) })}
-                        className="group relative cursor-pointer overflow-hidden rounded-[20px] border border-slate-200 bg-white p-2 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-lg"
+                        className="group relative cursor-pointer overflow-hidden rounded-2xl border border-slate-200/80 bg-white/95 p-1.5 shadow-[0_6px_20px_-14px_rgba(15,23,42,0.55)] transition-all hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-md"
                       >
                         <DocumentThumbnail contentJson={doc.contentJson} type={doc.type} title={doc.title} />
-                        <div className="px-1 pb-1 pt-2.5">
-                          <p className="truncate text-sm font-bold text-slate-800">{doc.title}</p>
+                        <div className="px-1.5 pb-1.5 pt-2">
+                          <p className="truncate text-[13px] font-bold text-slate-800">{doc.title}</p>
                           <p className="mt-1 text-[10px] text-slate-400">{formatDocumentDateTime(doc.updatedAt)}</p>
                         </div>
                         <button
@@ -1602,16 +1602,16 @@ export default function TeacherDocumentsPage() {
                       ))}
                     </div>
                   ) : (
-                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                    <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-5">
                       {filteredStudentDocuments.map(doc => (
                         <div
                           key={doc.id}
                           onClick={() => setDocumentToOpen({ document: doc, onEdit: () => loadDocument(doc) })}
-                          className="group relative cursor-pointer overflow-hidden rounded-[20px] border border-emerald-200 bg-white p-2 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-lg"
+                          className="group relative cursor-pointer overflow-hidden rounded-2xl border border-emerald-200/80 bg-white/95 p-1.5 shadow-[0_6px_20px_-14px_rgba(15,23,42,0.55)] transition-all hover:-translate-y-0.5 hover:border-emerald-300 hover:shadow-md"
                         >
                           <DocumentThumbnail contentJson={doc.contentJson} type={doc.type} title={doc.title} />
-                          <div className="px-1 pb-1 pt-2.5">
-                            <p className="truncate text-sm font-bold text-slate-800">{doc.title}</p>
+                          <div className="px-1.5 pb-1.5 pt-2">
+                            <p className="truncate text-[13px] font-bold text-slate-800">{doc.title}</p>
                             <p className="mt-1 flex items-center gap-1 truncate text-[10px] text-slate-500">
                               <User className="h-3 w-3 text-emerald-500" />
                               {isEnglish ? 'Author' : 'Autore'}: {doc.authorName}
@@ -1634,16 +1634,16 @@ export default function TeacherDocumentsPage() {
               {filteredTeacherDocuments.length > 0 && (
                 <section>
                   <h2 className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-3">{isEnglish ? 'Shared by Teacher' : 'Condivisi dal docente'} {docSearch && <span className="normal-case font-normal">({filteredTeacherDocuments.length})</span>}</h2>
-                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                  <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-5">
                     {filteredTeacherDocuments.map(doc => (
                       <div
                         key={doc.id}
                         onClick={() => setDocumentToOpen({ document: doc, onEdit: () => loadDocument(doc) })}
-                        className="group relative cursor-pointer overflow-hidden rounded-[20px] border border-slate-200 bg-white p-2 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-lg"
+                        className="group relative cursor-pointer overflow-hidden rounded-2xl border border-slate-200/80 bg-white/95 p-1.5 shadow-[0_6px_20px_-14px_rgba(15,23,42,0.55)] transition-all hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-md"
                       >
                         <DocumentThumbnail contentJson={doc.contentJson} type={doc.type} title={doc.title} />
-                        <div className="px-1 pb-1 pt-2.5">
-                          <p className="truncate text-sm font-bold text-slate-800">{doc.title}</p>
+                        <div className="px-1.5 pb-1.5 pt-2">
+                          <p className="truncate text-[13px] font-bold text-slate-800">{doc.title}</p>
                           <p className="mt-1 flex items-center gap-1 truncate text-[10px] text-slate-500">
                             <User className="h-3 w-3 text-slate-400" />
                             {isEnglish ? 'Author' : 'Autore'}: {doc.authorName}
