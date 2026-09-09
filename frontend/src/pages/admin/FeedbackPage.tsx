@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { feedbackApi } from '@/lib/api'
-import { Bug, ChevronDown, ChevronUp, CheckCircle, Clock, Monitor, Globe, AlertTriangle, Mail, Wrench, Send } from 'lucide-react'
+import { ZoomableImage } from '@/components/ui/ZoomableImage'
+import { Bug, ChevronDown, ChevronUp, CheckCircle, Clock, Monitor, Globe, AlertTriangle, Mail, Wrench, Send, ImageIcon } from 'lucide-react'
 
 interface FeedbackReport {
   id: string
@@ -18,6 +19,7 @@ interface FeedbackReport {
     platform?: string
     viewport_width?: number
     viewport_height?: number
+    screenshot_base64?: string
   }
   console_errors: string[]
   status: string
@@ -96,6 +98,29 @@ function FeedbackCard({
               <div className="flex items-center gap-1 mt-1.5">
                 <Globe className="h-3 w-3 text-slate-400" />
                 <span className="text-[11px] text-slate-400 truncate max-w-xs">{report.page_url}</span>
+              </div>
+            )}
+
+            {/* Screenshot allegato */}
+            {report.browser_info.screenshot_base64 && (
+              <div className="mt-2.5">
+                <div className="flex items-center gap-1 mb-1">
+                  <ImageIcon className="h-3 w-3 text-slate-400" />
+                  <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">Screenshot allegato</span>
+                </div>
+                <ZoomableImage
+                  src={report.browser_info.screenshot_base64}
+                  alt={`Screenshot feedback ${report.id}`}
+                  className="max-w-xs rounded-lg border border-slate-200 overflow-hidden"
+                  onDownload={() => {
+                    const link = document.createElement('a')
+                    link.href = report.browser_info.screenshot_base64 as string
+                    link.download = `feedback-${report.id}.png`
+                    document.body.appendChild(link)
+                    link.click()
+                    document.body.removeChild(link)
+                  }}
+                />
               </div>
             )}
           </div>

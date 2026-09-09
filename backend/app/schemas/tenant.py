@@ -1,4 +1,4 @@
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, Field
 from typing import Optional
 from uuid import UUID
 from datetime import datetime
@@ -34,6 +34,17 @@ class SchoolTenantCreate(BaseModel):
     max_students_per_teacher: Optional[int] = 100
     max_students_per_class: Optional[int] = 30
     monthly_credit_pool: Optional[float] = 10.0
+
+
+class TeacherSchoolBulkUpdate(BaseModel):
+    teacher_ids: list[UUID] = Field(min_length=1)
+    school_tenant_id: UUID
+    action: str
+
+
+class TeacherCreditLimitBulkUpdate(BaseModel):
+    teacher_ids: list[UUID] = Field(min_length=1)
+    amount_cap: float = Field(ge=0)
 
 
 class TenantResponse(BaseModel):

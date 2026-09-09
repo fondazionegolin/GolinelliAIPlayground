@@ -4,7 +4,7 @@ Pydantic models for quiz, lesson, and exercise content validation.
 """
 
 from pydantic import BaseModel, Field, validator
-from typing import List, Optional
+from typing import List, Optional, Literal
 from enum import Enum
 
 
@@ -109,6 +109,10 @@ class ExerciseData(BaseModel):
     solution: Optional[str] = Field(None, description="Complete solution (hidden from students)")
     difficulty: Optional[DifficultyLevel] = Field(DifficultyLevel.MEDIUM, description="Difficulty level")
     hint: Optional[str] = Field(None, description="Optional hint for students")
+    response_mode: Optional[Literal["free_text", "inline_blanks"]] = Field(
+        "free_text",
+        description="Student response mode: free_text or inline_blanks",
+    )
 
 
 # ============================================================================

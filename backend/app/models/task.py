@@ -38,6 +38,11 @@ class Task(Base):
     class_id = Column(UUID(as_uuid=True), ForeignKey("classes.id"), nullable=True, index=True)
     # parent_uda_id for child tasks inside a UDA
     parent_uda_id = Column(UUID(as_uuid=True), ForeignKey("tasks.id"), nullable=True, index=True)
+    # source_task_id links a per-session copy back to the UDA child template it was
+    # cloned from at publish time (NULL for templates and ordinary tasks)
+    source_task_id = Column(
+        UUID(as_uuid=True), ForeignKey("tasks.id", ondelete="CASCADE"), nullable=True, index=True
+    )
     # uda_phase tracks the UDA workflow: briefing | kb | plan | generating | review | published
     uda_phase = Column(String(50), nullable=True)
     
@@ -75,6 +80,19 @@ class Task(Base):
         back_populates="uda_children",
         remote_side="Task.id",
     )
+    # Per-session copies cloned from this UDA child template
+    derived_copies = relationship(
+        "Task",
+        foreign_keys="Task.source_task_id",
+        back_populates="source_task",
+        cascade="all, delete-orphan",
+    )
+    source_task = relationship(
+        "Task",
+        foreign_keys="Task.source_task_id",
+        back_populates="derived_copies",
+        remote_side="Task.id",
+    )
 
 
 class TaskSubmission(Base):
@@ -90,6 +108,11 @@ class TaskSubmission(Base):
     submitted_at = Column(DateTime, default=datetime.utcnow)
     score = Column(String(50), nullable=True)
     feedback = Column(Text, nullable=True)
+    feedback_draft_json = Column(Text, nullable=True)
+    answer_feedback_json = Column(Text, nullable=True)
+    feedback_published_at = Column(DateTime(timezone=True), nullable=True)
+    feedback_read_at = Column(DateTime(timezone=True), nullable=True)
+    corrections_json = Column(Text, nullable=True)
     
     # Relationships
     task = relationship("Task", back_populates="submissions")

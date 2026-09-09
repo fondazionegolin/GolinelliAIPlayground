@@ -74,7 +74,6 @@ async def can_user_access_session(user: dict, session_id: str) -> bool:
                 select(Session, Class)
                 .join(Class, Session.class_id == Class.id)
                 .where(Session.id == session_id)
-                .where(Session.tenant_id == tenant_id)
             )
             row = result.first()
             if not row:
@@ -124,11 +123,29 @@ def _voice_participant_name(user_id: str, user_type: str) -> str:
 def _voice_public_state(session_id: str) -> dict:
     state = voice_rooms.get(session_id) or {}
     queue_ids = state.get("queue", [])
+    active_speaker_ids = state.get("active_speaker_ids")
+    if active_speaker_ids is None:
+        active_speaker_ids = [state.get("active_speaker_id")] if state.get("active_speaker_id") else []
+    active_speaker_id = active_speaker_ids[0] if active_speaker_ids else None
     return {
         "session_id": session_id,
         "active": bool(state.get("active")),
         "teacher_id": state.get("teacher_id"),
-        "active_speaker_id": state.get("active_speaker_id"),
+        "active_speaker_id": active_speaker_id,
+        "active_speaker": {
+            "student_id": active_speaker_id,
+            "nickname": student_nicknames.get(active_speaker_id, "Studente"),
+            "avatar_url": student_avatars.get(active_speaker_id),
+        } if active_speaker_id else None,
+        "active_speaker_ids": active_speaker_ids,
+        "active_speakers": [
+            {
+                "student_id": student_id,
+                "nickname": student_nicknames.get(student_id, "Studente"),
+                "avatar_url": student_avatars.get(student_id),
+            }
+            for student_id in active_speaker_ids
+        ],
         "queue": [
             {
                 "student_id": student_id,
@@ -195,21 +212,39 @@ async def revoke_student_session_access(session_id: str, reason: str, revoked_st
 
 # Helper to send teacher notification
 async def notify_session_teacher(session_id: str, notification_data: dict):
-    teacher_id = await get_session_teacher_id(session_id)
-    if teacher_id:
+    """Notify every teacher who can collaborate in the session navbar."""
+    teacher_ids: set[str] = set()
+    try:
+        async with AsyncSessionLocal() as db:
+            row = (await db.execute(
+                select(Session.class_id, Class.teacher_id)
+                .join(Class, Session.class_id == Class.id)
+                .where(Session.id == session_id)
+            )).first()
+            if row:
+                class_id, owner_id = row
+                teacher_ids.add(str(owner_id))
+                teacher_ids.update(str(value) for value in (await db.execute(
+                    select(ClassTeacher.teacher_id).where(ClassTeacher.class_id == class_id)
+                )).scalars().all())
+                teacher_ids.update(str(value) for value in (await db.execute(
+                    select(SessionTeacher.teacher_id).where(SessionTeacher.session_id == session_id)
+                )).scalars().all())
+    except Exception as exc:
+        print(f"[Gateway] Error resolving session teachers for {session_id}: {exc}")
+
+    if not teacher_ids:
+        owner_id = await get_session_teacher_id(session_id)
+        if owner_id:
+            teacher_ids.add(owner_id)
+
+    for teacher_id in teacher_ids:
         print(f"[Gateway] Sending notification to teacher {teacher_id} for session {session_id}")
         await sio.emit(
             "teacher_notification",
             notification_data,
             room=f"user:{teacher_id}"
         )
-    
-    # Still emit to session room for redundancy/other listeners
-    await sio.emit(
-        "teacher_notification",
-        notification_data,
-        room=f"session:{session_id}"
-    )
 
 
 def get_user_from_token(token: str) -> Optional[dict]:
@@ -254,6 +289,7 @@ async def connect(sid, environ, auth):
     await sio.enter_room(sid, f"user:{user_id}")
 
     if user["type"] == "student":
+        sender_is_class_owner = False
         session_id = user["session_id"]
         student_id = user["id"]
         nickname = user.get("nickname", "Studente")
@@ -285,13 +321,20 @@ async def connect(sid, environ, auth):
 
         if session_id not in session_presence:
             session_presence[session_id] = set()
+        # Whether this student already has a live connection in the session
+        # (transport upgrade / reconnect / extra tab). Used to avoid notifying the
+        # teacher more than once per real "entrata".
+        already_present = any(
+            connected_users.get(s, {}).get("id") == student_id
+            for s in session_presence[session_id]
+        )
         session_presence[session_id].add(sid)
         print(f"[Gateway] Student {student_id} added to session {session_id}, total: {len(session_presence[session_id])}")
 
         await sio.enter_room(sid, f"session:{session_id}")
         # Also join personal room for private messages
         await sio.enter_room(sid, f"student:{student_id}")
-        
+
         # Notify others in session
         await sio.emit(
             "presence_update",
@@ -306,19 +349,21 @@ async def connect(sid, environ, auth):
             room=f"session:{session_id}",
             skip_sid=sid,
         )
-        
-        # Send teacher notification for student join
-        await notify_session_teacher(
-            session_id,
-            {
-                "type": "student_joined",
-                "session_id": session_id,
-                "student_id": student_id,
-                "nickname": nickname,
-                "message": f"{nickname} è entrato nella sessione",
-                "timestamp": datetime.utcnow().isoformat(),
-            }
-        )
+
+        # Send the teacher notification only on the student's first connection,
+        # so one "entrata" produces exactly one notification.
+        if not already_present:
+            await notify_session_teacher(
+                session_id,
+                {
+                    "type": "student_joined",
+                    "session_id": session_id,
+                    "student_id": student_id,
+                    "nickname": nickname,
+                    "message": f"{nickname} è entrato nella sessione",
+                    "timestamp": datetime.utcnow().isoformat(),
+                }
+            )
     else:
         teacher_id = user["id"]
         try:
@@ -352,35 +397,46 @@ async def disconnect(sid):
         
         user_activities.pop(user["id"], None)
         nickname = student_nicknames.get(user["id"], "Studente")
-        
-        await sio.emit(
-            "presence_update",
-            {
-                "student_id": user["id"],
-                "status": "offline",
-                "last_seen_at": datetime.utcnow().isoformat(),
-            },
-            room=f"session:{session_id}",
+
+        # Only treat this as a real "uscita" when the student has no other live
+        # connection left (transport upgrade / extra tab), so one action = one notification.
+        still_present = any(
+            connected_users.get(s, {}).get("id") == user["id"]
+            for s in session_presence.get(session_id, set())
         )
-        
-        # Send teacher notification for student leave
-        await notify_session_teacher(
-            session_id,
-            {
-                "type": "student_left",
-                "session_id": session_id,
-                "student_id": user["id"],
-                "nickname": nickname,
-                "message": f"{nickname} ha lasciato la sessione",
-                "timestamp": datetime.utcnow().isoformat(),
-            }
-        )
+
+        if not still_present:
+            await sio.emit(
+                "presence_update",
+                {
+                    "student_id": user["id"],
+                    "status": "offline",
+                    "last_seen_at": datetime.utcnow().isoformat(),
+                },
+                room=f"session:{session_id}",
+            )
+
+            # Send teacher notification for student leave
+            await notify_session_teacher(
+                session_id,
+                {
+                    "type": "student_left",
+                    "session_id": session_id,
+                    "student_id": user["id"],
+                    "nickname": nickname,
+                    "message": f"{nickname} ha lasciato la sessione",
+                    "timestamp": datetime.utcnow().isoformat(),
+                }
+            )
 
         voice_state = voice_rooms.get(session_id)
         if voice_state and voice_state.get("active"):
             queue = voice_state.get("queue", [])
             if user["id"] in queue:
                 voice_state["queue"] = [student_id for student_id in queue if student_id != user["id"]]
+            voice_state["active_speaker_ids"] = [
+                student_id for student_id in voice_state.get("active_speaker_ids", []) if student_id != user["id"]
+            ]
             if voice_state.get("active_speaker_id") == user["id"]:
                 voice_state["active_speaker_id"] = None
             await _broadcast_voice_state(session_id)
@@ -586,6 +642,7 @@ async def chat_public_message(sid, data):
     attachments = data.get("attachments", [])
     reply_to_id = data.get("reply_to_id")
     reply_preview = data.get("reply_preview")
+    sender_is_class_owner = False
     
     # Refresh sender metadata from DB for consistent cross-client rendering.
     if user["type"] == "student":
@@ -609,18 +666,26 @@ async def chat_public_message(sid, data):
             print(f"[Gateway] Error refreshing student sender metadata: {e}")
     else:
         sender_name = "Docente"
-        sender_avatar_url = None  # TODO: Add teacher avatar support
+        sender_avatar_url = None
         sender_accent = teacher_accents.get(user["id"])
         try:
             async with AsyncSessionLocal() as db:
                 result = await db.execute(select(User).where(User.id == user["id"]))
                 teacher_obj = result.scalar_one_or_none()
                 if teacher_obj:
+                    sender_name = f"{teacher_obj.first_name or ''} {teacher_obj.last_name or ''}".strip() or teacher_obj.email or "Docente"
+                    sender_avatar_url = teacher_obj.avatar_url
                     sender_accent = teacher_obj.ui_accent
                     if sender_accent:
                         teacher_accents[user["id"]] = sender_accent
+                owner_result = await db.execute(
+                    select(Class.teacher_id)
+                    .join(Session, Session.class_id == Class.id)
+                    .where(Session.id == session_id)
+                )
+                sender_is_class_owner = str(owner_result.scalar_one_or_none() or "") == str(user["id"])
         except Exception as e:
-            print(f"[Gateway] Error refreshing teacher sender accent: {e}")
+            print(f"[Gateway] Error refreshing teacher sender metadata: {e}")
     
     # Note: Message persistence is handled by the API endpoint (sendSessionMessage)
     # which is called before this socket event. This socket event only broadcasts
@@ -633,6 +698,7 @@ async def chat_public_message(sid, data):
         "sender_id": user["id"],
         "sender_name": sender_name,
         "sender_avatar_url": sender_avatar_url,
+        "sender_is_class_owner": sender_is_class_owner,
         "sender_accent": sender_accent,
         "text": text,
         "attachments": attachments,
@@ -827,6 +893,7 @@ async def voice_room_start(sid, data):
         "active": True,
         "teacher_id": user["id"],
         "active_speaker_id": None,
+        "active_speaker_ids": [],
         "queue": [],
         "started_at": datetime.utcnow().isoformat(),
     }
@@ -846,6 +913,7 @@ async def voice_room_end(sid, data):
         "active": False,
         "teacher_id": user["id"],
         "active_speaker_id": None,
+        "active_speaker_ids": [],
         "queue": [],
         "ended_at": datetime.utcnow().isoformat(),
     }
@@ -865,8 +933,9 @@ async def voice_request_speak(sid, data):
         return {"error": "Voice room is not active"}
 
     queue = state.setdefault("queue", [])
+    active_speaker_ids = state.setdefault("active_speaker_ids", [])
     student_id = user["id"]
-    if state.get("active_speaker_id") != student_id and student_id not in queue:
+    if student_id not in active_speaker_ids and student_id not in queue:
         queue.append(student_id)
     await _broadcast_voice_state(session_id)
     return {"success": True, **_voice_public_state(session_id)}
@@ -885,6 +954,9 @@ async def voice_cancel_request(sid, data):
 
     student_id = user["id"]
     state["queue"] = [queued_id for queued_id in state.get("queue", []) if queued_id != student_id]
+    state["active_speaker_ids"] = [
+        speaker_id for speaker_id in state.get("active_speaker_ids", []) if speaker_id != student_id
+    ]
     if state.get("active_speaker_id") == student_id:
         state["active_speaker_id"] = None
     await _broadcast_voice_state(session_id)
@@ -906,7 +978,10 @@ async def voice_grant_speaker(sid, data):
     if not state or not state.get("active"):
         return {"error": "Voice room is not active"}
 
-    state["active_speaker_id"] = student_id
+    active_speaker_ids = state.setdefault("active_speaker_ids", [])
+    if student_id not in active_speaker_ids:
+        active_speaker_ids.append(student_id)
+    state["active_speaker_id"] = active_speaker_ids[0] if active_speaker_ids else None
     state["queue"] = [queued_id for queued_id in state.get("queue", []) if queued_id != student_id]
     await _broadcast_voice_state(session_id)
     return {"success": True, **_voice_public_state(session_id)}
@@ -924,7 +999,14 @@ async def voice_revoke_speaker(sid, data):
     if not state:
         return {"success": True}
 
-    state["active_speaker_id"] = None
+    student_id = data.get("student_id")
+    if student_id:
+        state["active_speaker_ids"] = [
+            speaker_id for speaker_id in state.get("active_speaker_ids", []) if speaker_id != student_id
+        ]
+    else:
+        state["active_speaker_ids"] = []
+    state["active_speaker_id"] = state["active_speaker_ids"][0] if state.get("active_speaker_ids") else None
     await _broadcast_voice_state(session_id)
     return {"success": True, **_voice_public_state(session_id)}
 
@@ -1121,6 +1203,51 @@ async def canvas_item_unlock(sid, data):
             "user_type": user.get("type"),
         },
         room=f"session:{session_id}",
+    )
+    return {"success": True}
+
+
+@sio.event
+async def canvas_item_transform(sid, data):
+    """Relay lightweight in-progress transforms without persisting the canvas.
+
+    The authoritative document is still written through the versioned HTTP
+    endpoint when the gesture ends. This event only keeps collaborators' views
+    visually in sync while an item is moving or being resized.
+    """
+    user = connected_users.get(sid)
+    if not user:
+        return {"error": "Not authenticated"}
+
+    session_id = data.get("session_id")
+    item_id = data.get("item_id")
+    transform = data.get("transform")
+    if not session_id or not item_id or not isinstance(transform, dict):
+        return {"error": "session_id, item_id and transform required"}
+    if not await can_user_access_session(user, session_id):
+        return {"error": "Forbidden"}
+
+    allowed = {}
+    for key in ("x", "y", "w", "h"):
+        value = transform.get(key)
+        if isinstance(value, (int, float)):
+            if key in ("x", "y"):
+                allowed[key] = max(-100000.0, min(float(value), 100000.0))
+            else:
+                allowed[key] = max(0.0, min(float(value), 10000.0))
+    if not allowed:
+        return {"error": "No valid transform values"}
+
+    await sio.emit(
+        "canvas_item_transform",
+        {
+            "session_id": session_id,
+            "item_id": item_id,
+            "user_id": user.get("id"),
+            "transform": allowed,
+        },
+        room=f"session:{session_id}",
+        skip_sid=sid,
     )
     return {"success": True}
 

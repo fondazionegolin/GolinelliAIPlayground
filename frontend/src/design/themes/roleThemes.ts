@@ -18,42 +18,44 @@ export const ACCENT_THEMES: Record<AccentId, AccentTheme> = {
   cyan: {
     id: 'cyan',
     label: 'Logo Blue',
-    accent: colorTokens.info[500],
+    accent: colorTokens.logo.blue,
+    // Darker readable blue for text on light surfaces (the vivid blue fails contrast on white/chrome).
     text: colorTokens.info[700],
-    soft: colorTokens.info[50],
-    softMid: colorTokens.info[100],
-    softStrong: colorTokens.info[200],
-    border: colorTokens.info[200],
+    soft: 'rgba(62, 169, 244, 0.08)',
+    softMid: 'rgba(62, 169, 244, 0.12)',
+    softStrong: colorTokens.logo.blue,
+    border: colorTokens.logo.blue,
   },
   orange: {
     id: 'orange',
-    label: 'Orange',
-    accent: colorTokens.orange[500],
-    text: colorTokens.orange[700],
-    soft: colorTokens.warning[50],
-    softMid: colorTokens.warning[100],
-    softStrong: colorTokens.warning[200],
-    border: colorTokens.warning[200],
+    label: 'Logo Violet',
+    accent: colorTokens.logo.violet,
+    // Darker readable violet for text on light surfaces (the vivid violet is too light on white/chrome).
+    text: colorTokens.overlap[700],
+    soft: 'rgba(123, 105, 201, 0.08)',
+    softMid: 'rgba(123, 105, 201, 0.12)',
+    softStrong: colorTokens.logo.violet,
+    border: colorTokens.logo.violet,
   },
   black: {
     id: 'black',
-    label: 'High Contrast Black',
-    accent: colorTokens.black,
-    text: '#020617',
-    soft: '#f8fafc',
-    softMid: '#e2e8f0',
-    softStrong: '#cbd5e1',
-    border: '#94a3b8',
+    label: 'Logo Ink',
+    accent: colorTokens.logo.ink,
+    text: colorTokens.logo.ink,
+    soft: 'rgba(23, 21, 27, 0.06)',
+    softMid: 'rgba(23, 21, 27, 0.10)',
+    softStrong: colorTokens.logo.ink,
+    border: colorTokens.logo.ink,
   },
   red: {
     id: 'red',
-    label: 'Logo Violet',
-    accent: colorTokens.overlap[500],
-    text: colorTokens.overlap[700],
-    soft: colorTokens.overlap[50],
-    softMid: colorTokens.overlap[100],
-    softStrong: colorTokens.overlap[200],
-    border: colorTokens.overlap[200],
+    label: 'Logo Pink',
+    accent: colorTokens.logo.pink,
+    text: colorTokens.brand[700],
+    soft: 'rgba(254, 0, 77, 0.08)',
+    softMid: 'rgba(254, 0, 77, 0.12)',
+    softStrong: colorTokens.logo.pink,
+    border: colorTokens.logo.pink,
   },
 }
 
@@ -70,8 +72,22 @@ export const roleThemes: Record<RoleThemeId, RoleTheme> = {
   admin: { role: 'admin', defaultAccent: 'black' },
 }
 
-export function getAccentTheme(accent?: string): AccentTheme {
-  if (!accent) return ACCENT_THEMES[DEFAULT_ACCENT]
-  if (accent in ACCENT_THEMES) return ACCENT_THEMES[accent as AccentId]
-  return ACCENT_THEMES[DEFAULT_ACCENT]
+// Per-user accent themes were removed: the app now uses one fixed brand palette.
+// The "accent" (buttons / primary actions / navbar action buttons) is neutral.
+// Selectors and pill-like accent buttons use the lavender/violet CSS tokens.
+// Any stored/selected accent is ignored.
+const BRAND_THEME: AccentTheme = {
+  id: 'red',
+  label: 'Brand',
+  accent: '#475569',  // slate-600 — buttons reset to neutral grey
+  text: '#334155',    // slate-700
+  soft: 'rgba(71, 85, 105, 0.08)',
+  softMid: 'rgba(71, 85, 105, 0.12)',
+  softStrong: '#475569',
+  border: '#475569',
+}
+
+export function getAccentTheme(_accent?: string): AccentTheme {
+  void _accent
+  return BRAND_THEME
 }

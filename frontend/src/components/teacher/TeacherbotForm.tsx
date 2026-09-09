@@ -1,27 +1,52 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Button } from '@/components/ui/button'
-import { ArrowLeft, Save, Loader2, Globe, Check, X, Upload, Trash2, FileText, Database, AlertCircle, CheckCircle2, ChevronDown, ChevronUp, Sparkles, Layers } from 'lucide-react'
+import {
+  ArrowLeft, Save, Loader2, Check, Upload, Trash2, FileText, Database, AlertCircle, CheckCircle2,
+  ChevronDown, ChevronUp, Sparkles, Layers, Info, Palette, SlidersHorizontal, Terminal, Share2, Link2,
+  Send, RefreshCw, Bot, Users, User,
+} from 'lucide-react'
 import { useToast } from '@/components/ui/use-toast'
-import { teacherbotsApi, teacherApi } from '@/lib/api'
+import { studentbotsApi, teacherbotsApi } from '@/lib/api'
 import { TeacherbotPromptOptimizer } from './TeacherbotPromptOptimizer'
+import TeacherbotIconPicker from './TeacherbotIconPicker'
+import TeacherbotShareModal from './TeacherbotShareModal'
+import TeacherbotShareLinksModal from './TeacherbotShareLinksModal'
+import { resolveTeacherbotIcon } from '@/lib/teacherbotIcons'
+import { buildAccentNavClusterStyle } from '@/lib/navbarGlass'
+import { getTeacherAccentTheme } from '@/lib/teacherAccent'
 import { useTranslation } from 'react-i18next'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
+import { markdownCodeComponents } from '@/components/CodeBlock'
+
+type TabKey = 'info' | 'style' | 'options' | 'prompt' | 'kb'
+
+const TABS: { key: TabKey; label: string; icon: typeof Info }[] = [
+  { key: 'info', label: 'Informazioni base', icon: Info },
+  { key: 'style', label: 'Stile', icon: Palette },
+  { key: 'options', label: 'Opzioni', icon: SlidersHorizontal },
+  { key: 'prompt', label: 'System prompt', icon: Terminal },
+  { key: 'kb', label: 'Allegati', icon: Database },
+]
 
 interface TeacherbotFormProps {
   teacherbotId?: string
   onBack: () => void
   onSaved: () => void
+  variant?: 'teacherbot' | 'studentbot'
 }
 
 interface FormData {
   name: string
   synopsis: string
-  // description removed
+  description: string
   icon: string
   color: string
   system_prompt: string
   is_proactive: boolean
   proactive_message: string
+  enable_live_voice: boolean
   enable_reporting: boolean
   report_prompt: string
   llm_provider: string
@@ -30,6 +55,20 @@ interface FormData {
 }
 
 const COLORS = ['indigo', 'blue', 'green', 'purple', 'pink', 'orange', 'teal', 'cyan', 'red']
+
+const COLOR_META: Record<string, { label: string; hex: string; soft: string; border: string }> = {
+  indigo: { label: 'Grafite', hex: '#181b1e', soft: '#f3f4f6', border: '#d1d5db' },
+  blue: { label: 'Blu', hex: '#3b82f6', soft: '#eff6ff', border: '#bfdbfe' },
+  green: { label: 'Verde', hex: '#22c55e', soft: '#f0fdf4', border: '#bbf7d0' },
+  purple: { label: 'Viola', hex: '#a855f7', soft: '#faf5ff', border: '#e9d5ff' },
+  pink: { label: 'Rosa', hex: '#ec4899', soft: '#fdf2f8', border: '#fbcfe8' },
+  orange: { label: 'Arancio', hex: '#f97316', soft: '#fff7ed', border: '#fed7aa' },
+  teal: { label: 'Teal', hex: '#14b8a6', soft: '#f0fdfa', border: '#99f6e4' },
+  cyan: { label: 'Ciano', hex: '#06b6d4', soft: '#ecfeff', border: '#a5f3fc' },
+  red: { label: 'Rosso', hex: '#ef4444', soft: '#fef2f2', border: '#fecaca' },
+}
+
+const colorMeta = (color: string) => COLOR_META[color] || COLOR_META.indigo
 
 const DOC_TYPE_ICON: Record<string, React.ReactNode> = {
   pdf: <FileText className="h-4 w-4 text-red-500" />,
@@ -45,6 +84,7 @@ interface KnowledgeBaseSectionProps {
   teacherbotId?: string
   pendingFiles?: File[]
   onPendingFilesChange?: (files: File[]) => void
+  variant?: 'teacherbot' | 'studentbot'
 }
 
 const EMBED_STEPS = [
@@ -55,7 +95,7 @@ const EMBED_STEPS = [
   { label: 'Indicizzazione nella knowledge base…' },
 ]
 
-function KnowledgeBaseSection({ teacherbotId, pendingFiles, onPendingFilesChange }: KnowledgeBaseSectionProps) {
+function KnowledgeBaseSection({ teacherbotId, pendingFiles, onPendingFilesChange, variant = 'teacherbot' }: KnowledgeBaseSectionProps) {
   const { toast } = useToast()
   const queryClient = useQueryClient()
   const kbInputRef = useRef<HTMLInputElement>(null)
@@ -66,18 +106,18 @@ function KnowledgeBaseSection({ teacherbotId, pendingFiles, onPendingFilesChange
 
   // Only fetch from API when we have a saved teacherbot
   const { data: docs, isLoading } = useQuery({
-    queryKey: ['teacherbot-kb', teacherbotId],
+    queryKey: [`${variant}-kb`, teacherbotId],
     queryFn: async () => {
-      const res = await teacherbotsApi.listKbDocuments(teacherbotId!)
+      const res = await (variant === 'studentbot' ? studentbotsApi : teacherbotsApi).listKbDocuments(teacherbotId!)
       return (res.data || []) as Array<{ id: string; title: string; doc_type: string; status: string; created_at: string }>
     },
     enabled: !!teacherbotId,
   })
 
   const deleteMutation = useMutation({
-    mutationFn: (docId: string) => teacherbotsApi.deleteKbDocument(teacherbotId!, docId),
+    mutationFn: (docId: string) => (variant === 'studentbot' ? studentbotsApi : teacherbotsApi).deleteKbDocument(teacherbotId!, docId),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['teacherbot-kb', teacherbotId] })
+      queryClient.invalidateQueries({ queryKey: [`${variant}-kb`, teacherbotId] })
       toast({ title: 'Documento rimosso dalla knowledge base' })
     },
   })
@@ -105,7 +145,7 @@ function KnowledgeBaseSection({ teacherbotId, pendingFiles, onPendingFilesChange
     let lastChunkCount = 0
     for (const file of fileArray) {
       try {
-        const res = await teacherbotsApi.uploadKbDocument(teacherbotId, file)
+        const res = await (variant === 'studentbot' ? studentbotsApi : teacherbotsApi).uploadKbDocument(teacherbotId, file)
         lastChunkCount = res.data?.chunk_count || 0
         setEmbedResult({ filename: file.name, chunk_count: lastChunkCount })
       } catch (e: any) {
@@ -117,7 +157,7 @@ function KnowledgeBaseSection({ teacherbotId, pendingFiles, onPendingFilesChange
       }
     }
     setUploading(false)
-    queryClient.invalidateQueries({ queryKey: ['teacherbot-kb', teacherbotId] })
+    queryClient.invalidateQueries({ queryKey: [`${variant}-kb`, teacherbotId] })
   }
 
   const removePending = (idx: number) => {
@@ -142,17 +182,18 @@ function KnowledgeBaseSection({ teacherbotId, pendingFiles, onPendingFilesChange
   const getExt = (filename: string) => filename.split('.').pop()?.toLowerCase() || ''
 
   return (
-    <div className="mt-6 bg-white rounded-2xl border border-slate-200 p-6 space-y-4">
-      <div className="flex items-center justify-between">
+    <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm md:p-5">
+      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
-          <h3 className="font-semibold text-slate-800 flex items-center gap-2">
+          <h3 className="flex items-center gap-2 text-base font-bold text-slate-900">
             <Database className="h-4 w-4 text-indigo-600" />
-            Knowledge Base RAG
+            Allegati
           </h3>
-          <p className="text-xs text-slate-500 mt-0.5">
-            {teacherbotId
-              ? 'Carica documenti — il bot userà queste fonti per rispondere con citazioni accurate'
-              : 'Aggiungi documenti ora — verranno caricati automaticamente al salvataggio'}
+          <p className="mt-1 max-w-2xl text-sm leading-5 text-slate-500">
+            I documenti caricati qui condizionano fortemente il comportamento del bot: le sue risposte saranno vincolate
+            a questi contenuti, non solo ispirate. {teacherbotId
+              ? 'Vengono indicizzati subito e restano prioritari rispetto alla conoscenza generale del modello.'
+              : 'Verranno caricati e indicizzati automaticamente al salvataggio.'}
           </p>
         </div>
         <div>
@@ -170,7 +211,7 @@ function KnowledgeBaseSection({ teacherbotId, pendingFiles, onPendingFilesChange
             variant="outline"
             disabled={uploading}
             onClick={() => kbInputRef.current?.click()}
-            className="border-indigo-200 text-indigo-700 hover:bg-indigo-50"
+            className="whitespace-nowrap"
           >
             {uploading ? <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> : <Upload className="h-3.5 w-3.5 mr-1.5" />}
             {uploading ? 'Elaborazione…' : 'Aggiungi documento'}
@@ -255,7 +296,7 @@ function KnowledgeBaseSection({ teacherbotId, pendingFiles, onPendingFilesChange
 
       {/* Empty state (creation mode) */}
       {!teacherbotId && (!pendingFiles || pendingFiles.length === 0) && (
-        <div className="flex flex-col items-center justify-center py-8 text-slate-400 text-sm border-2 border-dashed border-slate-200 rounded-xl">
+        <div className="flex flex-col items-center justify-center rounded-lg border-2 border-dashed border-slate-200 bg-slate-50 py-8 text-sm text-slate-400">
           <Database className="h-8 w-8 mb-2 opacity-30" />
           <p>Nessun documento aggiunto</p>
           <p className="text-xs mt-1">Opzionale — puoi aggiungerne anche dopo il salvataggio</p>
@@ -271,7 +312,7 @@ function KnowledgeBaseSection({ teacherbotId, pendingFiles, onPendingFilesChange
 
       {/* Saved bot: empty */}
       {teacherbotId && !isLoading && (!docs || docs.length === 0) && (
-        <div className="flex flex-col items-center justify-center py-8 text-slate-400 text-sm border-2 border-dashed border-slate-200 rounded-xl">
+        <div className="flex flex-col items-center justify-center rounded-lg border-2 border-dashed border-slate-200 bg-slate-50 py-8 text-sm text-slate-400">
           <Database className="h-8 w-8 mb-2 opacity-30" />
           <p>Nessun documento nella knowledge base</p>
           <p className="text-xs mt-1">I documenti caricati guidano le risposte del bot con recupero contestuale</p>
@@ -346,20 +387,230 @@ function KnowledgeBaseSection({ teacherbotId, pendingFiles, onPendingFilesChange
   )
 }
 
-export default function TeacherbotForm({ teacherbotId, onBack, onSaved }: TeacherbotFormProps) {
+function FieldLabel({ children, required }: { children: React.ReactNode; required?: boolean }) {
+  return (
+    <label className="mb-1.5 block text-xs font-bold uppercase tracking-[0.08em] text-slate-500">
+      {children}
+      {required && <span className="ml-1 text-red-500">*</span>}
+    </label>
+  )
+}
+
+function ToggleRow({
+  title,
+  description,
+  checked,
+  onChange,
+}: {
+  title: string
+  description: string
+  checked: boolean
+  onChange: () => void
+}) {
+  return (
+    <div className="flex items-center justify-between gap-4 border-t border-slate-100 py-3 first:border-t-0 first:pt-0">
+      <div className="min-w-0">
+        <div className="text-sm font-semibold text-slate-800">{title}</div>
+        <p className="mt-0.5 text-sm leading-5 text-slate-500">{description}</p>
+      </div>
+      <button
+        type="button"
+        role="switch"
+        aria-checked={checked}
+        onClick={onChange}
+        className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full border transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-slate-300 focus:ring-offset-2 ${
+          checked ? 'border-slate-900 bg-slate-900' : 'border-slate-200 bg-slate-200'
+        }`}
+      >
+        <span
+          className={`inline-block h-5 w-5 rounded-full bg-white shadow-sm transition-transform duration-200 ease-out ${
+            checked ? 'translate-x-5' : 'translate-x-1'
+          }`}
+        />
+      </button>
+    </div>
+  )
+}
+
+function TeacherbotPreviewIcon({ iconValue, className }: { iconValue: string; className: string }) {
+  const resolved = resolveTeacherbotIcon(iconValue)
+  if (resolved.kind === 'lucide') return <resolved.Icon className={className} />
+  if (resolved.kind === 'emoji') return <span className="text-base leading-none">{resolved.emoji}</span>
+  return <Sparkles className={className} />
+}
+
+interface LivePreviewMessage {
+  id: string
+  role: 'user' | 'assistant'
+  content: string
+}
+
+function TeacherbotLivePreview({ teacherbotId, formData, variant = 'teacherbot' }: { teacherbotId?: string; formData: FormData; variant?: 'teacherbot' | 'studentbot' }) {
+  const { toast } = useToast()
+  const meta = colorMeta(formData.color)
+  const endRef = useRef<HTMLDivElement>(null)
+
+  const buildSeed = (): LivePreviewMessage[] =>
+    formData.is_proactive && formData.proactive_message.trim()
+      ? [{ id: 'proactive', role: 'assistant', content: formData.proactive_message.trim() }]
+      : []
+
+  const [messages, setMessages] = useState<LivePreviewMessage[]>(buildSeed)
+  const [input, setInput] = useState('')
+
+  useEffect(() => {
+    endRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [messages])
+
+  const testMutation = useMutation({
+    mutationFn: async (content: string) => {
+      const history = messages.map((m) => ({ role: m.role, content: m.content }))
+      return (variant === 'studentbot' ? studentbotsApi : teacherbotsApi).test(teacherbotId!, content, history, undefined, {
+        system_prompt: formData.system_prompt,
+        temperature: formData.temperature,
+        llm_provider: formData.llm_provider || undefined,
+        llm_model: formData.llm_model || undefined,
+      })
+    },
+    onSuccess: (response) => {
+      setMessages((prev) => [...prev, { id: `a-${Date.now()}`, role: 'assistant', content: response.data.content }])
+    },
+    onError: () => {
+      toast({ title: 'Errore', description: `Impossibile testare lo ${variant === 'studentbot' ? 'studentbot' : 'teacherbot'}`, variant: 'destructive' })
+    },
+  })
+
+  const handleSend = () => {
+    const text = input.trim()
+    if (!text || testMutation.isPending) return
+    setMessages((prev) => [...prev, { id: `u-${Date.now()}`, role: 'user', content: text }])
+    setInput('')
+    testMutation.mutate(text)
+  }
+
+  const handleReset = () => setMessages(buildSeed())
+
+  const header = (
+    <div className="flex items-center justify-between gap-3 border-b p-3" style={{ borderColor: meta.border, backgroundColor: meta.soft }}>
+      <div className="flex min-w-0 items-center gap-2">
+        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-white shadow-sm" style={{ backgroundColor: meta.hex }}>
+          <TeacherbotPreviewIcon iconValue={formData.icon} className="h-4 w-4" />
+        </div>
+        <div className="min-w-0">
+          <div className="truncate text-sm font-bold text-slate-950">{formData.name.trim() || (variant === 'studentbot' ? 'Studentbot' : 'Teacherbot')}</div>
+          <div className="text-[11px] text-slate-500">Anteprima chat</div>
+        </div>
+      </div>
+      {teacherbotId && (
+        <button
+          type="button"
+          onClick={handleReset}
+          title="Ricomincia la chat"
+          className="flex h-7 w-7 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-white/70"
+        >
+          <RefreshCw className="h-3.5 w-3.5" />
+        </button>
+      )}
+    </div>
+  )
+
+  if (!teacherbotId) {
+    return (
+      <section className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+        {header}
+        <div className="flex flex-1 flex-col items-center justify-center gap-2 p-6 text-center">
+          <Bot className="h-8 w-8 text-slate-300" />
+          <p className="text-sm font-medium text-slate-500">Salva il teacherbot per provarlo dal vivo</p>
+          <p className="max-w-[220px] text-xs text-slate-400">
+            Dopo il primo salvataggio potrai chattare qui con l'IA per testare le impostazioni.
+          </p>
+        </div>
+      </section>
+    )
+  }
+
+  return (
+    <section className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+      {header}
+
+      <div className="flex-1 space-y-3 overflow-y-auto p-3">
+        {messages.length === 0 && (
+          <div className="flex h-full flex-col items-center justify-center gap-2 text-center text-slate-400">
+            <Bot className="h-8 w-8 text-slate-300" />
+            <p className="text-xs">Scrivi un messaggio per provare il bot</p>
+          </div>
+        )}
+        {messages.map((msg) => (
+          <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+            <div
+              className={`max-w-[85%] rounded-xl px-3 py-2 text-xs leading-5 ${msg.role === 'user' ? 'text-white' : 'text-slate-800'}`}
+              style={msg.role === 'user' ? { backgroundColor: meta.hex } : { backgroundColor: meta.soft, border: `1px solid ${meta.border}` }}
+            >
+              {msg.role === 'assistant' ? (
+                <ReactMarkdown
+                  remarkPlugins={[remarkGfm]}
+                  className="chat-markdown prose prose-sm max-w-none prose-p:my-1 prose-pre:my-1.5"
+                  components={markdownCodeComponents()}
+                >
+                  {msg.content}
+                </ReactMarkdown>
+              ) : (
+                <p className="whitespace-pre-wrap">{msg.content}</p>
+              )}
+            </div>
+          </div>
+        ))}
+        {testMutation.isPending && (
+          <div className="flex justify-start">
+            <div className="rounded-xl px-3 py-2" style={{ backgroundColor: meta.soft, border: `1px solid ${meta.border}` }}>
+              <Loader2 className="h-3.5 w-3.5 animate-spin text-slate-500" />
+            </div>
+          </div>
+        )}
+        <div ref={endRef} />
+      </div>
+
+      <div className="flex items-center gap-2 border-t border-slate-100 p-2.5">
+        <input
+          type="text"
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleSend() } }}
+          placeholder="Scrivi un messaggio di test..."
+          disabled={testMutation.isPending}
+          className="h-9 flex-1 rounded-full border border-slate-200 bg-white px-3 text-xs outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
+        />
+        <button
+          type="button"
+          onClick={handleSend}
+          disabled={!input.trim() || testMutation.isPending}
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-white transition disabled:opacity-40"
+          style={{ backgroundColor: meta.hex }}
+        >
+          <Send className="h-4 w-4" />
+        </button>
+      </div>
+    </section>
+  )
+}
+
+export default function TeacherbotForm({ teacherbotId, onBack, onSaved, variant = 'teacherbot' }: TeacherbotFormProps) {
   const { toast } = useToast()
   const { t } = useTranslation()
   const queryClient = useQueryClient()
   const isEditing = !!teacherbotId
+  const isStudentbot = variant === 'studentbot'
 
   const [formData, setFormData] = useState<FormData>({
     name: '',
     synopsis: '',
+    description: '',
     icon: 'bot',
     color: 'indigo',
     system_prompt: '',
     is_proactive: false,
     proactive_message: '',
+    enable_live_voice: false,
     enable_reporting: false,
     report_prompt: '',
     llm_provider: '',
@@ -373,50 +624,53 @@ export default function TeacherbotForm({ teacherbotId, onBack, onSaved }: Teache
   const [selection, setSelection] = useState<{ text: string, position: { x: number, y: number } } | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
-  const [showPublishModal, setShowPublishModal] = useState(false)
-  const [selectedClassId, setSelectedClassId] = useState<string | null>(null)
+  const [activeTab, setActiveTab] = useState<TabKey>('info')
+  const [shareOpen, setShareOpen] = useState(false)
+  const [shareLinksOpen, setShareLinksOpen] = useState(false)
 
-  // Load existing teacherbot data
+  // Load existing teacherbot/studentbot data
   const { data: teacherbot, isLoading: isLoadingBot } = useQuery({
-    queryKey: ['teacherbot', teacherbotId],
+    queryKey: [variant, teacherbotId],
     queryFn: async () => {
       if (!teacherbotId) return null
-      const res = await teacherbotsApi.get(teacherbotId)
+      const res = await (isStudentbot ? studentbotsApi : teacherbotsApi).get(teacherbotId)
       return res.data
     },
     enabled: !!teacherbotId,
   })
 
-  // Load classes for publishing
-  const { data: classes } = useQuery({
-    queryKey: ['teacher-classes'],
-    queryFn: async () => {
-      const res = await teacherApi.getClasses()
-      return res.data || []
-    },
-  })
-
-  // Load publications for this teacherbot
   const { data: publications } = useQuery({
     queryKey: ['teacherbot-publications', teacherbotId],
-    queryFn: async () => {
-      if (!teacherbotId) return []
-      const res = await teacherbotsApi.getPublications(teacherbotId)
-      return res.data || []
-    },
-    enabled: !!teacherbotId,
+    queryFn: async () => (await teacherbotsApi.getPublications(teacherbotId!)).data as Array<{
+      id: string; class_id: string | null; class_name: string | null; student_id: string | null;
+      student_nickname: string | null; is_active: boolean
+    }>,
+    enabled: !!teacherbotId && !isStudentbot,
   })
+
+  const { data: shareLinks } = useQuery({
+    queryKey: ['teacherbot-share-links', teacherbotId],
+    queryFn: async () => (await teacherbotsApi.listShareLinks(teacherbotId!)).data as Array<{
+      id: string; is_active: boolean; expires_at: string
+    }>,
+    enabled: !!teacherbotId && !isStudentbot,
+  })
+
+  const activePublications = (publications || []).filter((p) => p.is_active)
+  const activeShareLinks = (shareLinks || []).filter((l) => l.is_active && new Date(l.expires_at).getTime() > Date.now())
 
   useEffect(() => {
     if (teacherbot) {
       setFormData({
         name: teacherbot.name || '',
         synopsis: teacherbot.synopsis || '',
+        description: teacherbot.description || '',
         icon: teacherbot.icon || 'bot',
         color: teacherbot.color || 'indigo',
         system_prompt: teacherbot.system_prompt || '',
         is_proactive: teacherbot.is_proactive || false,
         proactive_message: teacherbot.proactive_message || '',
+        enable_live_voice: teacherbot.enable_live_voice || false,
         enable_reporting: teacherbot.enable_reporting || false,
         report_prompt: teacherbot.report_prompt || '',
         llm_provider: teacherbot.llm_provider || '',
@@ -428,58 +682,28 @@ export default function TeacherbotForm({ teacherbotId, onBack, onSaved }: Teache
 
   const saveMutation = useMutation({
     mutationFn: async (data: FormData) => {
-      // Map back to API expected format (including description as optional/empty)
-      // We send empty description as requested
-      const apiData = { ...data, description: '' }
       if (isEditing) {
-        return teacherbotsApi.update(teacherbotId, apiData)
+        return (isStudentbot ? studentbotsApi : teacherbotsApi).update(teacherbotId, data)
       } else {
-        return teacherbotsApi.create(apiData)
+        return (isStudentbot ? studentbotsApi : teacherbotsApi).create(data)
       }
     },
     onSuccess: async (res) => {
       const savedId: string | undefined = res?.data?.id || teacherbotId
       if (!isEditing && pendingKbFiles.length > 0 && savedId) {
         for (const file of pendingKbFiles) {
-          try { await teacherbotsApi.uploadKbDocument(savedId, file) } catch {}
+          try { await (isStudentbot ? studentbotsApi : teacherbotsApi).uploadKbDocument(savedId, file) } catch {}
         }
         setPendingKbFiles([])
       }
       toast({ title: isEditing ? t('teacherbot.updated') : t('teacherbot.created') })
       queryClient.invalidateQueries({ queryKey: ['teacherbots'] })
+      queryClient.invalidateQueries({ queryKey: ['studentbots'] })
+      queryClient.invalidateQueries({ queryKey: ['student-teacherbots'] })
       onSaved()
     },
     onError: () => {
       toast({ title: t('common.error'), description: t('teacherbot.save_error'), variant: 'destructive' })
-    },
-  })
-
-  const publishMutation = useMutation({
-    mutationFn: async (classId: string) => {
-      return teacherbotsApi.publish(teacherbotId!, classId)
-    },
-    onSuccess: () => {
-      toast({ title: t('teacherbot.published'), description: t('teacherbot.published_body') })
-      queryClient.invalidateQueries({ queryKey: ['teacherbot-publications', teacherbotId] })
-      setShowPublishModal(false)
-      setSelectedClassId(null)
-    },
-    onError: (error: any) => {
-      const msg = error.response?.data?.detail || t('teacherbot.publish_error')
-      toast({ title: t('common.error'), description: msg, variant: 'destructive' })
-    },
-  })
-
-  const unpublishMutation = useMutation({
-    mutationFn: async (publicationId: string) => {
-      return teacherbotsApi.unpublish(teacherbotId!, publicationId)
-    },
-    onSuccess: () => {
-      toast({ title: t('teacherbot.unpublished') })
-      queryClient.invalidateQueries({ queryKey: ['teacherbot-publications', teacherbotId] })
-    },
-    onError: () => {
-      toast({ title: t('common.error'), description: t('teacherbot.unpublish_error'), variant: 'destructive' })
     },
   })
 
@@ -490,12 +714,6 @@ export default function TeacherbotForm({ teacherbotId, onBack, onSaved }: Teache
       return
     }
     saveMutation.mutate(formData)
-  }
-
-  const handlePublish = () => {
-    if (selectedClassId) {
-      publishMutation.mutate(selectedClassId)
-    }
   }
 
   const handleMouseUpWithEvent = useCallback((e: React.MouseEvent<HTMLTextAreaElement>) => {
@@ -538,24 +756,7 @@ export default function TeacherbotForm({ teacherbotId, onBack, onSaved }: Teache
     setSelection(null)
   }
 
-  const getColorClass = (color: string, isSelected: boolean) => {
-    const baseColors: Record<string, string> = {
-      indigo: 'bg-[#181b1e]',
-      blue: 'bg-blue-500',
-      green: 'bg-green-500',
-      purple: 'bg-purple-500',
-      pink: 'bg-pink-500',
-      orange: 'bg-orange-500',
-      teal: 'bg-teal-500',
-      cyan: 'bg-cyan-500',
-      red: 'bg-red-500',
-    }
-    const base = baseColors[color] || 'bg-[#181b1e]'
-    return isSelected ? `${base} ring-2 ring-offset-2 ring-${color}-500` : base
-  }
-
-  // Get published class IDs
-  const publishedClassIds = new Set((publications || []).filter((p: any) => p.is_active).map((p: any) => p.class_id))
+  const selectedColor = colorMeta(formData.color)
 
   if (isLoadingBot && isEditing) {
     return (
@@ -566,163 +767,235 @@ export default function TeacherbotForm({ teacherbotId, onBack, onSaved }: Teache
   }
 
   return (
-    <div className="h-full min-h-[600px] flex flex-col">
-      <div className="flex items-center gap-4 mb-4 flex-shrink-0">
-        <Button variant="ghost" onClick={onBack} className="text-slate-600">
+    <div className="flex h-full min-h-0 flex-col bg-slate-50 text-slate-950">
+      <div className="flex flex-shrink-0 items-center gap-3 border-b border-slate-200 bg-white px-4 py-3 md:px-5">
+        <Button variant="ghost" onClick={onBack} className="shrink-0 text-slate-600">
           <ArrowLeft className="h-4 w-4 mr-2" />
           {t('common.back')}
         </Button>
-        <div className="flex-1">
-          <h2 className="text-lg font-bold text-slate-800">
-            {isEditing ? t('teacherbot.edit_teacherbot') : t('teacherbot.new_teacherbot')}
+        <div className="min-w-0 flex-1">
+          <h2 className="truncate text-xl font-bold tracking-tight text-slate-950">
+            {isStudentbot
+              ? (isEditing ? 'Modifica Studentbot' : 'Nuovo Studentbot')
+              : (isEditing ? t('teacherbot.edit_teacherbot') : t('teacherbot.new_teacherbot'))}
           </h2>
+          <p className="hidden text-xs text-slate-500 sm:block">
+            {formData.name.trim() || (isStudentbot ? 'Il tuo assistente AI personalizzato' : 'Configurazione assistente docente')}
+          </p>
         </div>
-        {isEditing && (
-          <Button
-            variant="outline"
-            onClick={() => setShowPublishModal(true)}
-            className="text-[#181b1e] border-[#181b1e]/20 hover:bg-[#181b1e]/5"
-          >
-            <Globe className="h-4 w-4 mr-2" />
-            {t('teacherbot.publish_btn')}
-          </Button>
+        {isEditing && !isStudentbot && (
+          <div className="flex shrink-0 items-center gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setShareOpen(true)}
+              className="whitespace-nowrap border-violet-200 bg-violet-50 text-violet-700 hover:border-violet-300 hover:bg-violet-100"
+            >
+              <Share2 className="h-4 w-4 mr-2" />
+              {activePublications.length > 0 ? `Condiviso · ${activePublications.length}` : 'Condividi'}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setShareLinksOpen(true)}
+              className="whitespace-nowrap border-sky-200 bg-sky-50 text-sky-700 hover:border-sky-300 hover:bg-sky-100"
+            >
+              <Link2 className="h-4 w-4 mr-2" />
+              {activeShareLinks.length > 0 ? `Link attivo · ${activeShareLinks.length}` : 'Link pubblico'}
+            </Button>
+          </div>
         )}
       </div>
 
-      <form onSubmit={handleSubmit} className="flex-1 flex flex-col min-h-0">
-        <div className="flex-1 overflow-y-auto pr-1">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Left Column - Basic Info */}
-          <div className="space-y-6">
-            <div className="bg-white rounded-2xl border border-slate-200 p-6">
-              <h3 className="font-semibold text-slate-800 mb-4">{t('teacherbot.basic_info')}</h3>
+      {isEditing && !isStudentbot && activePublications.length > 0 && (
+        <div className="flex flex-shrink-0 flex-wrap items-center gap-1.5 border-b border-slate-200 bg-white px-4 py-2 md:px-5">
+          <span className="text-xs font-semibold text-slate-400">Condiviso con:</span>
+          {activePublications.map((pub) => (
+            <span
+              key={pub.id}
+              className="inline-flex items-center gap-1 rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 text-xs font-medium text-violet-700"
+            >
+              {pub.class_id ? <Users className="h-3 w-3" /> : <User className="h-3 w-3" />}
+              {pub.class_id ? pub.class_name : pub.student_nickname}
+            </span>
+          ))}
+        </div>
+      )}
 
-              <div className="space-y-4">
+      <div className="flex flex-shrink-0 justify-start overflow-x-auto border-b border-slate-200 bg-white px-4 py-2.5 md:px-5">
+        <div
+          className="flex items-center gap-1.5 rounded-[var(--selection-radius)] border p-1.5"
+          style={buildAccentNavClusterStyle(getTeacherAccentTheme())}
+        >
+          {TABS.map((tab) => {
+            const TabIcon = tab.icon
+            const isTabActive = activeTab === tab.key
+            return (
+              <button
+                key={tab.key}
+                type="button"
+                onClick={() => setActiveTab(tab.key)}
+                className={[
+                  'ui-control-label group flex min-h-[2.75rem] items-center justify-center gap-2 whitespace-nowrap px-4 text-sm font-semibold rounded-[var(--selection-radius)]',
+                  'border transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--selection-border-hover)]',
+                  isTabActive
+                    ? 'bg-[image:var(--selection-active-bg)] text-[var(--selection-active-text)] border-[color:var(--selection-border-hover)] shadow-[var(--selection-shadow)]'
+                    : 'border-transparent text-slate-600 hover:border-[color:var(--selection-border)] hover:bg-[image:var(--selection-bg)] hover:text-[var(--selection-text)]',
+                ].join(' ')}
+              >
+                <TabIcon className="h-4 w-4 shrink-0" />
+                {tab.label}
+              </button>
+            )
+          })}
+        </div>
+      </div>
+
+      <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
+        <div className="flex min-h-0 flex-1 overflow-hidden">
+          <div className="min-w-0 flex-1 overflow-y-auto p-4">
+            <div className="space-y-4">
+              {activeTab === 'info' && (
+              <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm md:p-5">
+                <h3 className="mb-4 text-base font-bold text-slate-950">{t('teacherbot.basic_info')}</h3>
+
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">
-                    Nome <span className="text-red-500">*</span>
-                  </label>
+                  <FieldLabel required>Nome</FieldLabel>
                   <input
                     type="text"
                     value={formData.name}
                     onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                    className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#181b1e] focus:border-transparent"
+                    className="h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-900 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
                     placeholder="es. Tutor di Matematica"
                     maxLength={100}
                   />
                 </div>
 
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">
-                    {t('teacherbot.synopsis_label')}
-                  </label>
+                <div className="mt-4">
+                  <FieldLabel>{t('teacherbot.description_label')}</FieldLabel>
+                  <textarea
+                    value={formData.description}
+                    onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                    className="min-h-[110px] w-full resize-y rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm leading-6 text-slate-800 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
+                    placeholder={t('teacherbot.description_placeholder')}
+                    maxLength={2000}
+                  />
+                </div>
+
+                <div className="mt-4">
+                  <FieldLabel>{t('teacherbot.synopsis_label')}</FieldLabel>
                   <input
                     type="text"
                     value={formData.synopsis}
                     onChange={(e) => setFormData({ ...formData, synopsis: e.target.value })}
-                    className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#181b1e] focus:border-transparent"
-                    placeholder="es. Un assistente per esercizi di algebra"
+                    className="h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-900 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
+                    placeholder="es. Assistente per esercizi di algebra"
                     maxLength={255}
                   />
                 </div>
+              </section>
+              )}
+
+              {activeTab === 'style' && (
+              <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm md:p-5">
+                <h3 className="mb-4 text-base font-bold text-slate-950">Stile</h3>
 
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">{t('teacherbot.color_label')}</label>
-                  <div className="flex gap-2 flex-wrap">
-                    {COLORS.map((color) => (
-                      <button
-                        key={color}
-                        type="button"
-                        onClick={() => setFormData({ ...formData, color })}
-                        className={`w-8 h-8 rounded-lg transition-all ${getColorClass(color, formData.color === color)}`}
-                      />
-                    ))}
+                  <FieldLabel>{t('teacherbot.color_label')}</FieldLabel>
+                  <div className="flex flex-wrap gap-2">
+                    {COLORS.map((color) => {
+                      const meta = colorMeta(color)
+                      const isSelected = formData.color === color
+                      return (
+                        <button
+                          key={color}
+                          type="button"
+                          title={meta.label}
+                          aria-label={meta.label}
+                          aria-pressed={isSelected}
+                          onClick={() => setFormData({ ...formData, color })}
+                          className={`flex h-9 w-9 items-center justify-center rounded-lg border transition duration-150 focus:outline-none focus:ring-2 focus:ring-slate-300 focus:ring-offset-2 ${
+                            isSelected ? 'border-slate-900 shadow-sm' : 'border-slate-200 hover:-translate-y-0.5 hover:border-slate-400'
+                          }`}
+                          style={{ backgroundColor: meta.hex }}
+                        >
+                          {isSelected && <Check className="h-4 w-4 text-white" />}
+                        </button>
+                      )
+                    })}
                   </div>
                 </div>
-              </div>
-            </div>
 
-            {/* Options */}
-            <div className="bg-white rounded-2xl border border-slate-200 p-6">
-              <h3 className="font-semibold text-slate-800 mb-4">{t('teacherbot.options_section')}</h3>
-
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <label className="font-medium text-slate-700">{t('teacherbot.proactive')}</label>
-                    <p className="text-sm text-slate-500">{t('teacherbot.proactive_desc')}</p>
-                  </div>
-                  <button
-                    type="button"
-                    role="switch"
-                    aria-checked={formData.is_proactive}
-                    onClick={() => setFormData({ ...formData, is_proactive: !formData.is_proactive })}
-                    className={`relative w-12 h-6 rounded-full transition-colors flex-shrink-0 ${
-                      formData.is_proactive ? 'bg-[#181b1e]' : 'bg-slate-200'
-                    }`}
-                  >
-                    <span className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${
-                      formData.is_proactive ? 'translate-x-7' : 'translate-x-1'
-                    }`} />
-                  </button>
+                <div className="mt-4">
+                  <FieldLabel>Icona</FieldLabel>
+                  <TeacherbotIconPicker
+                    value={formData.icon}
+                    onChange={(icon) => setFormData({ ...formData, icon })}
+                    swatchHex={selectedColor.hex}
+                  />
                 </div>
+              </section>
+              )}
+
+              {activeTab === 'options' && (
+              <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm md:p-5">
+                <h3 className="text-base font-bold text-slate-950">{t('teacherbot.options_section')}</h3>
+                <p className="mb-3 mt-1 text-sm leading-5 text-slate-500">{t('teacherbot.options_hint')}</p>
+
+                <ToggleRow
+                  title={t('teacherbot.proactive')}
+                  description={t('teacherbot.proactive_desc')}
+                  checked={formData.is_proactive}
+                  onChange={() => setFormData({ ...formData, is_proactive: !formData.is_proactive })}
+                />
 
                 {formData.is_proactive && (
-                  <div className="ml-1 pl-4 border-l-2 border-[#181b1e]/15 animate-in slide-in-from-top-2">
-                    <label className="block text-sm font-medium text-slate-700 mb-1">
-                      {t('teacherbot.initial_message_label')}
-                    </label>
+                  <div className="pb-3">
+                    <FieldLabel>{t('teacherbot.initial_message_label')}</FieldLabel>
                     <textarea
                       value={formData.proactive_message}
                       onChange={(e) => setFormData({ ...formData, proactive_message: e.target.value })}
-                      className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#181b1e] focus:border-transparent"
+                      className="min-h-[74px] w-full resize-y rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm leading-5 text-slate-800 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
                       placeholder={t('teacherbot.initial_message_placeholder')}
-                      rows={2}
                     />
                   </div>
                 )}
 
-                <div className="pt-4 border-t border-slate-100">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <label className="font-medium text-slate-700">{t('teacherbot.reporting')}</label>
-                      <p className="text-sm text-slate-500">{t('teacherbot.reporting_desc')}</p>
-                    </div>
-                    <button
-                      type="button"
-                      role="switch"
-                      aria-checked={formData.enable_reporting}
-                      onClick={() => setFormData({ ...formData, enable_reporting: !formData.enable_reporting })}
-                      className={`relative w-12 h-6 rounded-full transition-colors flex-shrink-0 ${
-                        formData.enable_reporting ? 'bg-[#181b1e]' : 'bg-slate-200'
-                      }`}
-                    >
-                      <span className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${
-                        formData.enable_reporting ? 'translate-x-7' : 'translate-x-1'
-                      }`} />
-                    </button>
-                  </div>
-                </div>
+                <ToggleRow
+                  title={t('teacherbot.live_voice')}
+                  description={t('teacherbot.live_voice_desc')}
+                  checked={formData.enable_live_voice}
+                  onChange={() => setFormData({ ...formData, enable_live_voice: !formData.enable_live_voice })}
+                />
 
-                {formData.enable_reporting && (
-                  <div className="ml-1 pl-4 border-l-2 border-[#181b1e]/15 animate-in slide-in-from-top-2">
-                    <label className="block text-sm font-medium text-slate-700 mb-1">
-                      {t('teacherbot.report_prompt_label')}
-                    </label>
+                {!isStudentbot && <ToggleRow
+                  title={t('teacherbot.reporting')}
+                  description={t('teacherbot.reporting_desc')}
+                  checked={formData.enable_reporting}
+                  onChange={() => setFormData({ ...formData, enable_reporting: !formData.enable_reporting })}
+                />}
+
+                {!isStudentbot && formData.enable_reporting && (
+                  <div className="pb-3">
+                    <FieldLabel>{t('teacherbot.report_prompt_label')}</FieldLabel>
                     <textarea
                       value={formData.report_prompt}
                       onChange={(e) => setFormData({ ...formData, report_prompt: e.target.value })}
-                      className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#181b1e] focus:border-transparent text-sm"
+                      className="min-h-[92px] w-full resize-y rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm leading-5 text-slate-800 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
                       placeholder={t('teacherbot.report_prompt_placeholder')}
-                      rows={3}
                     />
                   </div>
                 )}
 
-                <div className="pt-4 border-t border-slate-100">
-                  <label className="block text-sm font-medium text-slate-700 mb-2">
-                    {t('teacherbot.temperature_label', { value: formData.temperature.toFixed(1) })}
-                  </label>
+                <div className="border-t border-slate-100 pt-4">
+                  <div className="mb-2 flex items-center justify-between gap-3">
+                    <span className="text-sm font-semibold text-slate-800">
+                      {t('teacherbot.temperature_label', { value: formData.temperature.toFixed(1) })}
+                    </span>
+                    <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-1 text-xs font-semibold text-slate-500">
+                      {formData.temperature.toFixed(1)}
+                    </span>
+                  </div>
                   <input
                     type="range"
                     min="0"
@@ -730,170 +1003,116 @@ export default function TeacherbotForm({ teacherbotId, onBack, onSaved }: Teache
                     step="0.1"
                     value={formData.temperature}
                     onChange={(e) => setFormData({ ...formData, temperature: parseFloat(e.target.value) })}
-                    className="w-full"
+                    className="h-2 w-full cursor-pointer"
+                    style={{ accentColor: selectedColor.hex }}
                   />
-                  <div className="flex justify-between text-xs text-slate-400 mt-1">
+                  <div className="mt-1 flex justify-between text-xs text-slate-400">
                     <span>{t('teacherbot.temp_precise')}</span>
                     <span>{t('teacherbot.temp_creative')}</span>
                   </div>
+                  <p className="mt-2 text-xs leading-5 text-slate-500">{t('teacherbot.temperature_hint')}</p>
                 </div>
-              </div>
-            </div>
-          </div>
+              </section>
+              )}
 
-          {/* Right Column - System Prompt */}
-          <div className="bg-white rounded-2xl border border-slate-200 p-6 flex flex-col relative h-[520px] lg:h-[640px]">
-            <h3 className="font-semibold text-slate-800 mb-2">
-              System Prompt <span className="text-red-500">*</span>
-            </h3>
-            <p className="text-sm text-slate-500 mb-4">
-              {t('teacherbot.system_prompt_desc', 'Define the personality and behaviour of your assistant.')}
-              <br />
-              <span className="text-[#181b1e] text-xs italic">
-                {t('teacherbot.system_prompt_tip')}
-              </span>
-            </p>
+              {activeTab === 'prompt' && (
+              <section className="relative flex min-h-[420px] flex-col rounded-xl border border-slate-200 bg-white p-4 shadow-sm md:p-5">
+                <div className="mb-3 flex items-start justify-between gap-4">
+                  <div>
+                    <h3 className="text-base font-bold text-slate-950">
+                      System Prompt <span className="text-red-500">*</span>
+                    </h3>
+                    <p className="mt-1 text-sm leading-5 text-slate-500">
+                      {t('teacherbot.system_prompt_desc', 'Define the personality and behaviour of your assistant.')}
+                    </p>
+                  </div>
+                  <span className="shrink-0 rounded-full border border-slate-200 bg-slate-50 px-2 py-1 text-xs font-semibold text-slate-500">
+                    {formData.system_prompt.trim().length}
+                  </span>
+                </div>
 
-            <textarea
-              ref={textareaRef}
-              value={formData.system_prompt}
-              onChange={(e) => setFormData({ ...formData, system_prompt: e.target.value })}
-              onMouseUp={handleMouseUpWithEvent}
-              className="flex-1 w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#181b1e] focus:border-transparent font-mono text-sm resize-none"
-              placeholder={`Esempio:
+                <p className="mb-2 flex items-center gap-1.5 text-xs text-indigo-600">
+                  <Sparkles className="h-3.5 w-3.5 shrink-0" />
+                  {t('teacherbot.system_prompt_tip')}
+                </p>
+
+                <textarea
+                  ref={textareaRef}
+                  value={formData.system_prompt}
+                  onChange={(e) => setFormData({ ...formData, system_prompt: e.target.value })}
+                  onMouseUp={handleMouseUpWithEvent}
+                  className="min-h-[320px] flex-1 resize-y rounded-lg border border-slate-200 bg-white px-4 py-3 font-mono text-sm leading-6 text-slate-800 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
+                  placeholder={`Esempio:
 Sei un tutor esperto di matematica per studenti delle scuole superiori.
 
 Il tuo obiettivo è:
 - Aiutare gli studenti a comprendere i concetti matematici
 - Fornire spiegazioni chiare e step-by-step
 - Proporre esercizi di difficoltà crescente`}
-            />
+                />
 
-            {selection && (
-              <TeacherbotPromptOptimizer
-                selectedText={selection.text}
-                teacherbotName={formData.name}
-                teacherbotSynopsis={formData.synopsis}
-                position={selection.position}
-                onClose={() => setSelection(null)}
-                onApply={handleApplyOptimization}
-              />
-            )}
+                {selection && !isStudentbot && (
+                  <TeacherbotPromptOptimizer
+                    selectedText={selection.text}
+                    teacherbotName={formData.name}
+                    teacherbotSynopsis={formData.synopsis}
+                    position={selection.position}
+                    onClose={() => setSelection(null)}
+                    onApply={handleApplyOptimization}
+                  />
+                )}
+              </section>
+              )}
+
+              {activeTab === 'kb' && (
+                <KnowledgeBaseSection
+                  teacherbotId={teacherbotId}
+                  pendingFiles={pendingKbFiles}
+                  onPendingFilesChange={setPendingKbFiles}
+                  variant={variant}
+                />
+              )}
+            </div>
           </div>
-        </div>
+
+          <aside className="hidden w-[380px] flex-shrink-0 flex-col border-l border-slate-200 bg-slate-50/60 p-4 lg:flex xl:w-[420px]">
+            <TeacherbotLivePreview teacherbotId={teacherbotId} formData={formData} variant={variant} />
+          </aside>
         </div>
 
-        {/* Knowledge Base Section — always visible */}
-        <KnowledgeBaseSection
-          teacherbotId={teacherbotId}
-          pendingFiles={pendingKbFiles}
-          onPendingFilesChange={setPendingKbFiles}
-        />
-
-        {/* Save Button */}
-        <div className="mt-4 pt-4 pb-4 flex justify-end gap-3 border-t border-slate-200 bg-white/95 backdrop-blur-sm sticky bottom-0">
-          <Button type="button" variant="outline" onClick={onBack}>
+        <div className="flex flex-shrink-0 flex-col-reverse gap-2 border-t border-slate-200 bg-white px-4 py-3 sm:flex-row sm:items-center sm:justify-end md:px-5">
+          <Button type="button" variant="outline" onClick={onBack} className="w-full sm:w-auto">
             {t('common.cancel')}
           </Button>
           <Button
             type="submit"
             disabled={saveMutation.isPending}
-            className="bg-[#181b1e] hover:bg-[#0f1113]"
+            className="w-full sm:w-auto"
           >
             {saveMutation.isPending ? (
               <Loader2 className="h-4 w-4 mr-2 animate-spin" />
             ) : (
               <Save className="h-4 w-4 mr-2" />
             )}
-            {isEditing ? t('teacherbot.save_changes') : t('teacherbot.create_btn')}
+            {isEditing ? t('teacherbot.save_changes') : (isStudentbot ? 'Crea Studentbot' : t('teacherbot.create_btn'))}
           </Button>
         </div>
       </form>
 
-      {/* Publish Modal includes are kept same as before */}
-      {showPublishModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl p-8 w-full max-w-md shadow-2xl">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-lg font-bold text-slate-800">{t('teacherbot.publish_title')}</h3>
-              <Button variant="ghost" size="icon" onClick={() => setShowPublishModal(false)}>
-                <X className="h-5 w-5" />
-              </Button>
-            </div>
+      {isEditing && !isStudentbot && shareOpen && (
+        <TeacherbotShareModal
+          teacherbotId={teacherbotId!}
+          teacherbotName={formData.name.trim() || 'Teacherbot'}
+          onClose={() => setShareOpen(false)}
+        />
+      )}
 
-            <p className="text-sm text-slate-600 mb-4">
-              {t('teacherbot.publish_desc')}
-            </p>
-
-            {/* Current publications */}
-            {publications && publications.filter((p: any) => p.is_active).length > 0 && (
-              <div className="mb-4">
-                <label className="block text-sm font-medium text-slate-700 mb-2">{t('teacherbot.published_on')}</label>
-                <div className="space-y-2">
-                  {publications.filter((p: any) => p.is_active).map((pub: any) => (
-                    <div key={pub.id} className="flex items-center justify-between p-3 bg-green-50 rounded-xl border border-green-200">
-                      <span className="text-sm text-green-700 flex items-center gap-2">
-                        <Check className="h-4 w-4" />
-                        {pub.class_name}
-                      </span>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="text-red-600 hover:bg-red-50"
-                        onClick={() => unpublishMutation.mutate(pub.id)}
-                      >
-                        {t('teacherbot.remove_btn')}
-                      </Button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Available classes */}
-            <div className="space-y-2 max-h-60 overflow-y-auto mb-4">
-              {classes?.filter((c: any) => !publishedClassIds.has(c.id)).map((cls: any) => (
-                <button
-                  key={cls.id}
-                  type="button"
-                  onClick={() => setSelectedClassId(cls.id)}
-                  className={`w-full text-left p-3 rounded-xl border transition-all ${selectedClassId === cls.id
-                    ? 'border-[#181b1e]/40 bg-[#181b1e]/5'
-                    : 'border-slate-200 hover:border-[#181b1e]/20 hover:bg-slate-50'
-                    }`}
-                >
-                  <div className="font-medium text-slate-800">{cls.name}</div>
-                  <div className="text-xs text-slate-500">
-                    {cls.role === 'owner' ? t('teacherbot.owner') : t('teacherbot.shared_by', { name: cls.owner_name })}
-                  </div>
-                </button>
-              ))}
-              {classes?.filter((c: any) => !publishedClassIds.has(c.id)).length === 0 && (
-                <p className="text-center text-sm text-slate-400 py-4">
-                  {t('teacherbot.all_published')}
-                </p>
-              )}
-            </div>
-
-            <div className="flex justify-end gap-2">
-              <Button variant="ghost" onClick={() => setShowPublishModal(false)}>
-                {t('common.close')}
-              </Button>
-              <Button
-                onClick={handlePublish}
-                disabled={!selectedClassId || publishMutation.isPending}
-                className="bg-[#181b1e] hover:bg-[#0f1113]"
-              >
-                {publishMutation.isPending ? (
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                ) : (
-                  <Globe className="h-4 w-4 mr-2" />
-                )}
-                {t('teacherbot.publish_btn')}
-              </Button>
-            </div>
-          </div>
-        </div>
+      {isEditing && !isStudentbot && shareLinksOpen && (
+        <TeacherbotShareLinksModal
+          teacherbotId={teacherbotId!}
+          teacherbotName={formData.name.trim() || 'Teacherbot'}
+          onClose={() => setShareLinksOpen(false)}
+        />
       )}
     </div>
   )

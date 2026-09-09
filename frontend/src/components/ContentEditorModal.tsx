@@ -41,6 +41,7 @@ interface ExerciseData {
   solution?: string
   difficulty?: 'easy' | 'medium' | 'hard'
   hint?: string
+  response_mode?: 'free_text' | 'inline_blanks'
 }
 
 interface PresentationSlide {
@@ -103,6 +104,7 @@ export function ContentEditorModal({ content, type, onSave, onCancel }: ContentE
         instructions: data.instructions || data.text || '',
         examples: Array.isArray(data.examples) ? data.examples : [],
         difficulty: data.difficulty || 'medium',
+        response_mode: data.response_mode || 'free_text',
         hint: data.hint || ''
       }
     }
@@ -575,6 +577,21 @@ function ExerciseFormEditor({ content, onChange }: { content: ExerciseData; onCh
           className="w-full px-3 py-2 border rounded-lg"
           rows={4}
         />
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-2">Modalità di risposta</label>
+        <select
+          value={content.response_mode || 'free_text'}
+          onChange={(e) => updateField('response_mode', e.target.value)}
+          className="px-3 py-2 border rounded-lg"
+        >
+          <option value="free_text">Risposta libera</option>
+          <option value="inline_blanks">Campi direttamente nel testo</option>
+        </select>
+        {content.response_mode === 'inline_blanks' && (
+          <p className="mt-2 text-xs text-gray-500">Inserisci i vuoti nel testo come [________](#blank-1), usando un numero diverso per ogni campo.</p>
+        )}
       </div>
 
       <div>

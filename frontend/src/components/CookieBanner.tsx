@@ -23,30 +23,32 @@ export function CookieBanner() {
 
   return (
     <div
-      className="fixed bottom-0 left-0 right-0 z-[200] flex justify-center px-4 pb-4"
+      className="fixed inset-x-0 bottom-0 z-[200] flex justify-center px-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] sm:px-4 sm:pb-4"
       style={{ animation: 'cookieBannerIn 0.4s cubic-bezier(0.16,1,0.3,1)' }}
     >
-      <div className="w-full max-w-2xl bg-white/95 backdrop-blur-md border border-slate-200 rounded-2xl shadow-2xl shadow-slate-200/80 px-5 py-4 flex items-start gap-4">
-        <div className="flex-shrink-0 w-9 h-9 rounded-xl bg-amber-50 border border-amber-100 flex items-center justify-center mt-0.5">
-          <Cookie className="h-4 w-4 text-amber-500" />
+      <div className="relative flex max-h-[calc(100dvh-1.5rem)] w-full max-w-2xl flex-col gap-3 overflow-y-auto rounded-2xl border border-slate-200 bg-white/95 p-4 shadow-2xl shadow-slate-200/80 backdrop-blur-md sm:flex-row sm:items-start sm:gap-4 sm:px-5">
+        <div className="flex min-w-0 flex-1 items-start gap-3 sm:gap-4">
+          <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-amber-100 bg-amber-50">
+            <Cookie className="h-4 w-4 text-amber-500" />
+          </div>
+          <div className="min-w-0 flex-1 pr-9 sm:pr-0">
+            <p className="mb-0.5 text-sm font-semibold text-slate-800">{t('cookie.title')}</p>
+            <p className="text-xs leading-relaxed text-slate-500">
+              {t('cookie.body')}{' '}
+              <a href="/privacy-policy" className="font-medium text-blue-600 hover:underline" target="_blank" rel="noreferrer">
+                {t('cookie.policy_link')}
+              </a>
+            </p>
+          </div>
         </div>
-        <div className="flex-1 min-w-0">
-          <p className="text-sm font-semibold text-slate-800 mb-0.5">{t('cookie.title')}</p>
-          <p className="text-xs text-slate-500 leading-relaxed">
-            {t('cookie.body')}{' '}
-            <a href="/privacy-policy" className="text-blue-600 hover:underline font-medium" target="_blank" rel="noreferrer">
-              {t('cookie.policy_link')}
-            </a>
-          </p>
-        </div>
-        <div className="flex items-center gap-2 flex-shrink-0 mt-0.5">
-          <button onClick={decline} className="text-xs text-slate-400 hover:text-slate-600 transition-colors px-2 py-1.5 rounded-lg hover:bg-slate-50">
+        <div className="flex shrink-0 items-center gap-2 sm:mt-0.5">
+          <button onClick={decline} className="min-h-11 flex-1 rounded-xl px-3 py-2 text-xs font-semibold text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-700 sm:min-h-0 sm:flex-none sm:rounded-lg sm:px-2 sm:py-1.5 sm:font-normal">
             {t('cookie.decline')}
           </button>
-          <button onClick={accept} className="text-xs font-semibold text-white bg-slate-800 hover:bg-slate-900 transition-colors px-4 py-1.5 rounded-lg">
+          <button onClick={accept} className="min-h-11 flex-1 rounded-xl bg-slate-800 px-4 py-2 text-xs font-semibold text-white transition-colors hover:bg-slate-900 sm:min-h-0 sm:flex-none sm:rounded-lg sm:py-1.5">
             {t('cookie.accept')}
           </button>
-          <button onClick={decline} className="text-slate-300 hover:text-slate-500 transition-colors p-1 rounded-lg hover:bg-slate-50" aria-label={t('common.close')}>
+          <button onClick={decline} className="absolute right-2 top-2 flex h-11 w-11 items-center justify-center rounded-xl text-slate-300 transition-colors hover:bg-slate-50 hover:text-slate-500 sm:static sm:h-auto sm:w-auto sm:rounded-lg sm:p-1" aria-label={t('common.close')}>
             <X className="h-4 w-4" />
           </button>
         </div>

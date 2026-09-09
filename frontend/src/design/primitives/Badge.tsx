@@ -34,22 +34,22 @@ const badgeVariants = cva(
       {
         tone: 'accent',
         surface: 'solid',
-        className: 'border-transparent bg-blue-600 text-white',
+        className: 'border-transparent bg-[var(--app-accent)] text-white',
       },
       {
         tone: 'success',
         surface: 'solid',
-        className: 'border-transparent bg-emerald-600 text-white',
+        className: 'border-transparent bg-[var(--logo-blue-strong)] text-white',
       },
       {
         tone: 'warning',
         surface: 'solid',
-        className: 'border-transparent bg-orange-500 text-white',
+        className: 'border-transparent bg-[var(--logo-violet-strong)] text-white',
       },
       {
         tone: 'danger',
         surface: 'solid',
-        className: 'border-transparent bg-rose-600 text-white',
+        className: 'border-transparent bg-[var(--logo-pink)] text-white',
       },
       {
         tone: 'neutral',
@@ -59,22 +59,22 @@ const badgeVariants = cva(
       {
         tone: 'accent',
         surface: 'soft',
-        className: 'border-transparent bg-blue-50 text-blue-700',
+        className: 'border-transparent bg-[var(--app-accent)] text-white',
       },
       {
         tone: 'success',
         surface: 'soft',
-        className: 'border-transparent bg-emerald-100 text-emerald-700',
+        className: 'border-transparent bg-[var(--logo-blue-strong)] text-white',
       },
       {
         tone: 'warning',
         surface: 'soft',
-        className: 'border-transparent bg-orange-50 text-orange-700',
+        className: 'border-transparent bg-[var(--logo-violet-strong)] text-white',
       },
       {
         tone: 'danger',
         surface: 'soft',
-        className: 'border-transparent bg-rose-100 text-rose-700',
+        className: 'border-transparent bg-[var(--logo-pink)] text-white',
       },
       {
         tone: 'neutral',
@@ -84,22 +84,22 @@ const badgeVariants = cva(
       {
         tone: 'accent',
         surface: 'outline',
-        className: 'border-blue-200 bg-transparent text-blue-700',
+        className: 'border-[var(--app-accent)] bg-transparent text-[var(--app-accent-text)]',
       },
       {
         tone: 'success',
         surface: 'outline',
-        className: 'border-emerald-200 bg-transparent text-emerald-700',
+        className: 'border-[var(--logo-blue)] bg-transparent text-[var(--logo-blue-strong)]',
       },
       {
         tone: 'warning',
         surface: 'outline',
-        className: 'border-orange-200 bg-transparent text-orange-700',
+        className: 'border-[var(--logo-violet)] bg-transparent text-[var(--logo-violet-strong)]',
       },
       {
         tone: 'danger',
         surface: 'outline',
-        className: 'border-rose-200 bg-transparent text-rose-700',
+        className: 'border-[var(--logo-pink)] bg-transparent text-[var(--logo-pink)]',
       },
     ],
     defaultVariants: {

@@ -698,10 +698,7 @@ tabs.forEach((tab)=>tab.addEventListener('click',()=>{
   tab.classList.add('active');
   const target=tab.dataset.target;
   const chartsSection=document.querySelector('.grid');
-  const rankingCards=[...document.querySelectorAll('.panel')];
-  rankingCards.forEach((panel)=>panel.style.opacity='1');
   if(target==='charts'){
-    rankingCards.forEach((panel,index)=>{ if(index>2) panel.style.opacity='.35'; });
     chartsSection.scrollIntoView({behavior:'smooth', block:'start'});
   } else if(target==='ranking'){
     const leaderboard=document.querySelector('.leaderboard');
@@ -718,17 +715,18 @@ reportData.charts.forEach((chart, index)=>{
   const canvas=document.getElementById(chart.id);
   if(!canvas || !window.Chart) return;
   const color=chart.color||'${DEFAULT_COLORS[0]}';
+  const chartType=chart.type==='radar' && chart.labels.length<3 ? 'bar' : chart.type;
   new Chart(canvas,{
-    type:chart.type,
+    type:chartType,
     data:{
       labels:chart.labels,
       datasets:[{
         label:chart.title,
         data:chart.values,
-        backgroundColor:chart.type==='doughnut'?chart.values.map((_,i)=>palette[i%palette.length] || color):color+'CC',
-        borderColor:chart.type==='line'?color:color,
+        backgroundColor:chartType==='doughnut'?chart.values.map((_,i)=>palette[i%palette.length] || color):color+'CC',
+        borderColor:color,
         borderWidth:2,
-        fill:chart.type==='line',
+        fill:chartType==='line',
         tension:.35,
         ...chartDefaults
       }]
@@ -736,8 +734,8 @@ reportData.charts.forEach((chart, index)=>{
     options:{
       responsive:true,
       maintainAspectRatio:false,
-      plugins:{legend:{display:chart.type==='doughnut'||chart.type==='radar'},tooltip:{enabled:true}},
-      scales:chart.type==='doughnut'||chart.type==='radar'?{}:{y:{beginAtZero:true,grid:{color:'rgba(24,39,51,.08)'}},x:{grid:{display:false}}}
+      plugins:{legend:{display:chartType==='doughnut'||chartType==='radar'},tooltip:{enabled:true}},
+      scales:chartType==='doughnut'||chartType==='radar'?{}:{y:{beginAtZero:true,grid:{color:'rgba(24,39,51,.08)'}},x:{grid:{display:false}}}
     }
   });
 });

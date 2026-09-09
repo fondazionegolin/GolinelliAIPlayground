@@ -78,7 +78,7 @@ function TenantRow({ tenant, onRefresh }: { tenant: Tenant; onRefresh: () => voi
         onClick={() => setExpanded(e => !e)}
       >
         <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
-          style={{ backgroundColor: isSchool ? '#e85c8d18' : '#6366f118' }}>
+          style={{ backgroundColor: isSchool ? '#fe004d18' : '#6366f118' }}>
           {isSchool
             ? <Building2 className="w-4 h-4 text-pink-500" />
             : <User className="w-4 h-4 text-indigo-500" />}
@@ -297,7 +297,7 @@ export default function SchoolsPage() {
         {(['all', 'SCHOOL', 'INDIVIDUAL'] as const).map(f => (
           <button key={f} onClick={() => setFilter(f)}
             className="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all"
-            style={filter === f ? { backgroundColor: '#e85c8d', color: 'white' } : { color: '#64748b' }}>
+            style={filter === f ? { backgroundColor: '#fe004d', color: 'white' } : { color: '#64748b' }}>
             {f === 'all' ? 'Tutti' : f === 'SCHOOL' ? '🏫 Scuole' : '👤 Individuali'}
           </button>
         ))}

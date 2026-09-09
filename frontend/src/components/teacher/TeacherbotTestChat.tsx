@@ -187,7 +187,7 @@ export default function TeacherbotTestChat({ teacherbotId, onBack }: TeacherbotT
                   {msg.role === 'assistant' ? (
                     <ReactMarkdown
                       remarkPlugins={[remarkGfm]}
-                      className="prose prose-sm max-w-none prose-p:my-1"
+                      className="chat-markdown prose max-w-none prose-p:my-1"
                       components={markdownCodeComponents()}
                     >
                       {msg.content}
@@ -223,10 +223,15 @@ export default function TeacherbotTestChat({ teacherbotId, onBack }: TeacherbotT
         {/* Input */}
         <div className="p-4 border-t border-slate-100">
           <div className="flex gap-2">
-            <input
-              type="text"
+            <textarea
+              rows={1}
               value={inputText}
-              onChange={(e) => setInputText(e.target.value)}
+              onChange={(e) => {
+                setInputText(e.target.value)
+                const el = e.currentTarget
+                el.style.height = 'auto'
+                el.style.height = `${Math.min(el.scrollHeight, 140)}px`
+              }}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && !e.shiftKey) {
                   e.preventDefault()
@@ -234,7 +239,7 @@ export default function TeacherbotTestChat({ teacherbotId, onBack }: TeacherbotT
                 }
               }}
               placeholder="Scrivi un messaggio di test..."
-              className="flex-1 px-4 py-2 border border-slate-200 rounded-full focus:ring-2 focus:ring-[#181b1e] focus:border-transparent text-sm"
+              className="flex-1 resize-none px-4 py-2 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-[#181b1e] focus:border-transparent text-sm leading-6"
               disabled={isLoading}
             />
             <Button

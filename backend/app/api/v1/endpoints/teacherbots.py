@@ -1,15 +1,18 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File, Form, Request
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
+from sqlalchemy import select, func, or_
 from typing import Annotated, Optional, List
-from datetime import datetime
+from datetime import datetime, timezone
 from uuid import UUID
 import json
 import base64
 import logging
+import secrets
 
 from app.core.database import get_db
 from app.core.permissions import teacher_can_access_class, get_class_with_access_check
+from app.core.security import generate_join_code
 from app.api.deps import get_current_teacher, get_current_student
 from app.models.user import User
 from app.models.session import Class, Session, SessionStudent
@@ -19,6 +22,9 @@ from app.models.teacherbot import (
     Teacherbot, TeacherbotStatus, TeacherbotPublication,
     TeacherbotConversation, TeacherbotMessage
 )
+from app.models.teacherbot_share_link import (
+    TeacherbotShareLink, TeacherbotShareConversation, TeacherbotShareMessage
+)
 from app.schemas.teacherbot import (
     TeacherbotCreate, TeacherbotUpdate, TeacherbotResponse, TeacherbotListResponse,
     TeacherbotPublishRequest, TeacherbotPublicationResponse,
@@ -26,20 +32,27 @@ from app.schemas.teacherbot import (
     TeacherbotMessageCreate, TeacherbotMessageResponse,
     TeacherbotTestMessage, TeacherbotTestResponse,
     TeacherbotReportResponse, StudentTeacherbotResponse,
+    ShareLinkCreate, ShareLinkResponse, ShareLinkVerifyRequest, ShareLinkPublicInfo,
+    ShareVisitorMessageCreate, ShareConversationResponse, ShareMessageResponse,
 )
-from app.services.llm_service import llm_service
+from app.services.llm_service import llm_service, normalize_llm_model
 from app.services.credit_service import credit_service
 from app.services.education_level import get_school_grade_instruction
 from app.services.environmental_impact import enrich_usage_with_environmental_impact
 from app.services.rag_service import rag_service
 from app.services.document_processor import document_processor
 from app.services.ui_language import apply_output_language_instruction, resolve_ui_language
+from app.api.v1.endpoints.stt import transcribe_with_whisper
 from app.models.rag import RAGDocument
 from app.models.enums import DocumentStatus, Scope
 from app.realtime.gateway import sio
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
+
+class TeacherbotConversationTitleUpdate(BaseModel):
+    title: str
 
 
 def get_ui_language(request: Optional[Request]) -> str:
@@ -142,10 +155,11 @@ async def create_teacherbot(
         system_prompt=request.system_prompt,
         is_proactive=request.is_proactive,
         proactive_message=request.proactive_message,
+        enable_live_voice=request.enable_live_voice,
         enable_reporting=request.enable_reporting,
         report_prompt=request.report_prompt,
         llm_provider=request.llm_provider,
-        llm_model=request.llm_model,
+        llm_model=normalize_llm_model(request.llm_provider, request.llm_model),
         temperature=request.temperature,
         status=TeacherbotStatus.DRAFT,
     )
@@ -206,6 +220,8 @@ async def update_teacherbot(
         bot.is_proactive = request.is_proactive
     if request.proactive_message is not None:
         bot.proactive_message = request.proactive_message
+    if request.enable_live_voice is not None:
+        bot.enable_live_voice = request.enable_live_voice
     if request.enable_reporting is not None:
         bot.enable_reporting = request.enable_reporting
     if request.report_prompt is not None:
@@ -213,7 +229,7 @@ async def update_teacherbot(
     if request.llm_provider is not None:
         bot.llm_provider = request.llm_provider
     if request.llm_model is not None:
-        bot.llm_model = request.llm_model
+        bot.llm_model = normalize_llm_model(request.llm_provider or bot.llm_provider, request.llm_model)
     if request.temperature is not None:
         bot.temperature = request.temperature
     if request.status is not None and request.status in [s.value for s in TeacherbotStatus]:
@@ -277,9 +293,10 @@ async def test_teacherbot(
             messages.append({"role": msg.get("role", "user"), "content": msg.get("content", "")})
     messages.append({"role": "user", "content": request.content})
 
-    # Augment system prompt with KB context if available
+    # Augment system prompt with KB context if available. Overrides let the teacher test
+    # unsaved edits (system prompt, temperature, model) straight from the config panel.
     kb_context = await _build_kb_context(db, bot, request.content, teacher.tenant_id)
-    system_prompt = bot.system_prompt
+    system_prompt = request.system_prompt if request.system_prompt is not None else bot.system_prompt
     if kb_context:
         system_prompt = f"{system_prompt}\n\n{kb_context}"
     system_prompt = apply_output_language_instruction(system_prompt, get_ui_language(http_request))
@@ -288,9 +305,9 @@ async def test_teacherbot(
     llm_response = await llm_service.generate(
         messages=messages,
         system_prompt=system_prompt,
-        provider=bot.llm_provider,
-        model=bot.llm_model,
-        temperature=bot.temperature,
+        provider=request.llm_provider or bot.llm_provider,
+        model=request.llm_model or bot.llm_model,
+        temperature=request.temperature if request.temperature is not None else bot.temperature,
     )
 
     # Track usage (Context: Teacher only)
@@ -553,7 +570,7 @@ async def publish_teacherbot(
     db: Annotated[AsyncSession, Depends(get_db)],
     teacher: Annotated[User, Depends(get_current_teacher)],
 ):
-    """Publish a teacherbot to a class"""
+    """Publish a teacherbot to a class, or share it with a single student"""
     # Verify teacherbot ownership
     result = await db.execute(
         select(Teacherbot)
@@ -563,6 +580,9 @@ async def publish_teacherbot(
     bot = result.scalar_one_or_none()
     if not bot:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Teacherbot not found")
+
+    if request.student_id is not None:
+        return await _publish_teacherbot_to_student(db, teacher, bot, request.student_id)
 
     # Verify class access
     class_ = await get_class_with_access_check(db, teacher, request.class_id)
@@ -684,6 +704,85 @@ async def publish_teacherbot(
     )
 
 
+async def _publish_teacherbot_to_student(
+    db: AsyncSession, teacher: User, bot: Teacherbot, student_id: UUID,
+) -> TeacherbotPublicationResponse:
+    """Share a teacherbot with a single student (rather than their whole class)."""
+    result = await db.execute(
+        select(SessionStudent, Session, Class)
+        .join(Session, SessionStudent.session_id == Session.id)
+        .join(Class, Session.class_id == Class.id)
+        .where(SessionStudent.id == student_id)
+        .where(SessionStudent.tenant_id == teacher.tenant_id)
+    )
+    row = result.first()
+    if not row:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Student not found")
+    student, session, class_ = row
+
+    if not await teacher_can_access_class(db, teacher, class_.id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Student not found")
+
+    result = await db.execute(
+        select(TeacherbotPublication)
+        .where(TeacherbotPublication.teacherbot_id == bot.id)
+        .where(TeacherbotPublication.student_id == student_id)
+        .where(TeacherbotPublication.is_active == True)
+    )
+    if result.scalar_one_or_none():
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Already shared with this student")
+
+    publication = TeacherbotPublication(
+        tenant_id=teacher.tenant_id,
+        teacherbot_id=bot.id,
+        student_id=student_id,
+        published_by_id=teacher.id,
+        is_active=True,
+    )
+    db.add(publication)
+
+    if bot.status != TeacherbotStatus.PUBLISHED:
+        bot.status = TeacherbotStatus.PUBLISHED
+        bot.published_at = datetime.utcnow()
+
+    await db.commit()
+    await db.refresh(publication)
+
+    await sio.emit(
+        "chat_message",
+        {
+            "room_type": "PUBLIC",
+            "session_id": str(session.id),
+            "message": {
+                "id": f"share-{publication.id}",
+                "sender_type": "SYSTEM",
+                "text": f"Il docente ti ha condiviso un assistente: {bot.name}",
+                "created_at": datetime.utcnow().isoformat(),
+                "is_notification": True,
+                "notification_type": "teacherbot_published",
+                "notification_data": {
+                    "teacherbot_id": str(bot.id),
+                    "name": bot.name,
+                    "icon": bot.icon,
+                    "color": bot.color,
+                    "synopsis": bot.synopsis,
+                },
+            },
+        },
+        room=f"student:{student_id}",
+    )
+
+    return TeacherbotPublicationResponse(
+        id=publication.id,
+        teacherbot_id=publication.teacherbot_id,
+        student_id=publication.student_id,
+        student_nickname=student.nickname,
+        is_active=publication.is_active,
+        published_at=publication.published_at,
+        published_by_id=publication.published_by_id,
+    )
+
+
 @router.get("/teacherbots/{teacherbot_id}/publications", response_model=list[TeacherbotPublicationResponse])
 async def list_teacherbot_publications(
     teacherbot_id: UUID,
@@ -702,8 +801,9 @@ async def list_teacherbot_publications(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Teacherbot not found")
 
     result = await db.execute(
-        select(TeacherbotPublication, Class)
-        .join(Class, TeacherbotPublication.class_id == Class.id)
+        select(TeacherbotPublication, Class, SessionStudent)
+        .outerjoin(Class, TeacherbotPublication.class_id == Class.id)
+        .outerjoin(SessionStudent, TeacherbotPublication.student_id == SessionStudent.id)
         .where(TeacherbotPublication.teacherbot_id == teacherbot_id)
         .order_by(TeacherbotPublication.published_at.desc())
     )
@@ -714,12 +814,14 @@ async def list_teacherbot_publications(
             id=pub.id,
             teacherbot_id=pub.teacherbot_id,
             class_id=pub.class_id,
-            class_name=cls.name,
+            class_name=cls.name if cls else None,
+            student_id=pub.student_id,
+            student_nickname=student.nickname if student else None,
             is_active=pub.is_active,
             published_at=pub.published_at,
             published_by_id=pub.published_by_id,
         )
-        for pub, cls in rows
+        for pub, cls, student in rows
     ]
 
 
@@ -858,7 +960,303 @@ async def get_teacherbot_conversation_messages_teacher(
     ]
 
 
-# ==================== STUDENT ENDPOINTS ====================
+# ==================== STUDENTBOT MANAGEMENT ====================
+
+async def _get_owned_studentbot(db: AsyncSession, student: SessionStudent, bot_id: UUID) -> Teacherbot:
+    result = await db.execute(
+        select(Teacherbot)
+        .where(Teacherbot.id == bot_id)
+        .where(Teacherbot.creator_student_id == student.id)
+        .where(Teacherbot.tenant_id == student.tenant_id)
+    )
+    bot = result.scalar_one_or_none()
+    if not bot:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Studentbot non trovato")
+    return bot
+
+
+async def _student_credit_context(db: AsyncSession, student: SessionStudent):
+    result = await db.execute(
+        select(Session, Class)
+        .join(Class, Session.class_id == Class.id)
+        .where(Session.id == student.session_id)
+    )
+    row = result.first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Session not found")
+    return row
+
+
+@router.get("/student/studentbots", response_model=list[TeacherbotListResponse])
+async def list_studentbots(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    student: Annotated[SessionStudent, Depends(get_current_student)],
+):
+    result = await db.execute(
+        select(
+            Teacherbot,
+            func.count(TeacherbotConversation.id.distinct()).label("conversation_count"),
+        )
+        .outerjoin(TeacherbotConversation, TeacherbotConversation.teacherbot_id == Teacherbot.id)
+        .where(Teacherbot.creator_student_id == student.id)
+        .where(Teacherbot.tenant_id == student.tenant_id)
+        .group_by(Teacherbot.id)
+        .order_by(Teacherbot.updated_at.desc())
+    )
+    return [
+        TeacherbotListResponse(
+            id=bot.id,
+            name=bot.name,
+            synopsis=bot.synopsis,
+            icon=bot.icon,
+            color=bot.color,
+            status=bot.status.value,
+            is_proactive=bot.is_proactive,
+            enable_reporting=False,
+            created_at=bot.created_at,
+            updated_at=bot.updated_at,
+            publication_count=0,
+            conversation_count=conversation_count,
+        )
+        for bot, conversation_count in result.all()
+    ]
+
+
+@router.post("/student/studentbots", response_model=TeacherbotResponse)
+async def create_studentbot(
+    request: TeacherbotCreate,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    student: Annotated[SessionStudent, Depends(get_current_student)],
+):
+    bot = Teacherbot(
+        tenant_id=student.tenant_id,
+        teacher_id=None,
+        creator_student_id=student.id,
+        name=request.name,
+        synopsis=request.synopsis,
+        description=request.description,
+        icon=request.icon,
+        color=request.color,
+        system_prompt=request.system_prompt,
+        is_proactive=request.is_proactive,
+        proactive_message=request.proactive_message,
+        enable_live_voice=request.enable_live_voice,
+        enable_reporting=False,
+        report_prompt=None,
+        llm_provider=request.llm_provider,
+        llm_model=normalize_llm_model(request.llm_provider, request.llm_model),
+        temperature=request.temperature,
+        status=TeacherbotStatus.DRAFT,
+    )
+    db.add(bot)
+    await db.commit()
+    await db.refresh(bot)
+    return bot
+
+
+@router.get("/student/studentbots/{studentbot_id}", response_model=TeacherbotResponse)
+async def get_studentbot(
+    studentbot_id: UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    student: Annotated[SessionStudent, Depends(get_current_student)],
+):
+    return await _get_owned_studentbot(db, student, studentbot_id)
+
+
+@router.patch("/student/studentbots/{studentbot_id}", response_model=TeacherbotResponse)
+async def update_studentbot(
+    studentbot_id: UUID,
+    request: TeacherbotUpdate,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    student: Annotated[SessionStudent, Depends(get_current_student)],
+):
+    bot = await _get_owned_studentbot(db, student, studentbot_id)
+    for field in (
+        "name", "synopsis", "description", "icon", "color", "system_prompt",
+        "is_proactive", "proactive_message", "enable_live_voice", "llm_provider", "temperature",
+    ):
+        value = getattr(request, field)
+        if value is not None:
+            setattr(bot, field, value)
+    if request.llm_model is not None:
+        bot.llm_model = normalize_llm_model(request.llm_provider or bot.llm_provider, request.llm_model)
+    if request.status in (TeacherbotStatus.DRAFT.value, TeacherbotStatus.TESTING.value, TeacherbotStatus.ARCHIVED.value):
+        bot.status = TeacherbotStatus(request.status)
+    bot.enable_reporting = False
+    bot.report_prompt = None
+    await db.commit()
+    await db.refresh(bot)
+    return bot
+
+
+@router.delete("/student/studentbots/{studentbot_id}")
+async def delete_studentbot(
+    studentbot_id: UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    student: Annotated[SessionStudent, Depends(get_current_student)],
+):
+    bot = await _get_owned_studentbot(db, student, studentbot_id)
+    await db.delete(bot)
+    await db.commit()
+    return {"message": "Studentbot eliminato"}
+
+
+@router.post("/student/studentbots/{studentbot_id}/test", response_model=TeacherbotTestResponse)
+async def test_studentbot(
+    studentbot_id: UUID,
+    request: TeacherbotTestMessage,
+    http_request: Request,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    student: Annotated[SessionStudent, Depends(get_current_student)],
+):
+    bot = await _get_owned_studentbot(db, student, studentbot_id)
+    session_obj, class_obj = await _student_credit_context(db, student)
+    allowed = await credit_service.check_availability(
+        db, student.tenant_id, 0.0001,
+        teacher_id=class_obj.teacher_id,
+        class_id=class_obj.id,
+        session_id=session_obj.id,
+        student_id=student.id,
+    )
+    if not allowed:
+        raise HTTPException(status_code=402, detail="Credit limit exceeded")
+
+    messages = [
+        {"role": msg.get("role", "user"), "content": msg.get("content", "")}
+        for msg in (request.history or [])
+    ]
+    messages.append({"role": "user", "content": request.content})
+    kb_context = await _build_kb_context(db, bot, request.content, student.tenant_id)
+    system_prompt = request.system_prompt if request.system_prompt is not None else bot.system_prompt
+    if kb_context:
+        system_prompt = f"{system_prompt}\n\n{kb_context}"
+    system_prompt = apply_output_language_instruction(system_prompt, get_ui_language(http_request))
+    llm_response = await llm_service.generate(
+        messages=messages,
+        system_prompt=system_prompt,
+        provider=request.llm_provider or bot.llm_provider,
+        model=request.llm_model or bot.llm_model,
+        temperature=request.temperature if request.temperature is not None else bot.temperature,
+    )
+    cost = credit_service.calculate_cost_for_model(
+        llm_response.provider, llm_response.model,
+        llm_response.prompt_tokens, llm_response.completion_tokens,
+    )
+    await credit_service.track_usage(
+        db, student.tenant_id, llm_response.provider, llm_response.model, cost,
+        enrich_usage_with_environmental_impact(
+            {
+                "type": "studentbot_test",
+                "bot_id": str(bot.id),
+                "prompt_tokens": llm_response.prompt_tokens,
+                "completion_tokens": llm_response.completion_tokens,
+            },
+            provider=llm_response.provider,
+            model=llm_response.model,
+        ),
+        teacher_id=class_obj.teacher_id,
+        class_id=class_obj.id,
+        session_id=session_obj.id,
+        student_id=student.id,
+    )
+    if bot.status == TeacherbotStatus.DRAFT:
+        bot.status = TeacherbotStatus.TESTING
+        await db.commit()
+    return TeacherbotTestResponse(
+        content=llm_response.content,
+        provider=llm_response.provider,
+        model=llm_response.model,
+        token_usage_json=enrich_usage_with_environmental_impact(
+            {
+                "prompt_tokens": llm_response.prompt_tokens,
+                "completion_tokens": llm_response.completion_tokens,
+            },
+            provider=llm_response.provider,
+            model=llm_response.model,
+        ),
+    )
+
+
+@router.post("/student/studentbots/{studentbot_id}/kb")
+async def upload_studentbot_kb_document(
+    studentbot_id: UUID,
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+    student: SessionStudent = Depends(get_current_student),
+):
+    await _get_owned_studentbot(db, student, studentbot_id)
+    file_bytes = await file.read()
+    if len(file_bytes) > 20 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="File troppo grande (max 20 MB)")
+    filename = file.filename or "document"
+    mime_type = file.content_type or "application/octet-stream"
+    is_data = filename.lower().endswith((".xlsx", ".xls", ".csv"))
+    analysis = await document_processor.process(
+        file_bytes=file_bytes,
+        filename=filename,
+        mime_type=mime_type,
+        llm_service=None if is_data else llm_service,
+        analyze_visuals=not is_data,
+    )
+    if not analysis.rag_segments:
+        raise HTTPException(status_code=400, detail="Impossibile estrarre contenuto dal documento.")
+    doc = RAGDocument(
+        tenant_id=student.tenant_id,
+        scope=Scope.USER,
+        owner_student_id=student.id,
+        teacherbot_id=studentbot_id,
+        file_id=None,
+        title=filename,
+        doc_type=filename.rsplit(".", 1)[-1].lower() if "." in filename else "doc",
+        status=DocumentStatus.QUEUED,
+    )
+    db.add(doc)
+    await db.flush()
+    chunk_count = await rag_service.ingest_document(db, doc, analysis.rag_segments or analysis.raw_text)
+    return {"id": str(doc.id), "title": doc.title, "doc_type": doc.doc_type, "status": doc.status, "chunk_count": chunk_count}
+
+
+@router.get("/student/studentbots/{studentbot_id}/kb")
+async def list_studentbot_kb_documents(
+    studentbot_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    student: SessionStudent = Depends(get_current_student),
+):
+    await _get_owned_studentbot(db, student, studentbot_id)
+    result = await db.execute(
+        select(RAGDocument)
+        .where(RAGDocument.teacherbot_id == studentbot_id)
+        .where(RAGDocument.owner_student_id == student.id)
+        .order_by(RAGDocument.created_at.asc())
+    )
+    return [
+        {"id": str(doc.id), "title": doc.title, "doc_type": doc.doc_type, "status": doc.status, "created_at": doc.created_at.isoformat()}
+        for doc in result.scalars().all()
+    ]
+
+
+@router.delete("/student/studentbots/{studentbot_id}/kb/{doc_id}", status_code=204)
+async def delete_studentbot_kb_document(
+    studentbot_id: UUID,
+    doc_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    student: SessionStudent = Depends(get_current_student),
+):
+    await _get_owned_studentbot(db, student, studentbot_id)
+    result = await db.execute(
+        select(RAGDocument)
+        .where(RAGDocument.id == doc_id)
+        .where(RAGDocument.teacherbot_id == studentbot_id)
+        .where(RAGDocument.owner_student_id == student.id)
+    )
+    doc = result.scalar_one_or_none()
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+    await db.delete(doc)
+    await db.commit()
+
+
+# ==================== STUDENT CONVERSATION ENDPOINTS ====================
 
 @router.get("/student/teacherbots", response_model=list[StudentTeacherbotResponse])
 async def list_available_teacherbots(
@@ -872,15 +1270,27 @@ async def list_available_teacherbots(
     )
     session = session_result.scalar_one()
 
-    # Get active publications for this class
+    # Get active publications for this class or for this student individually.
     result = await db.execute(
         select(Teacherbot)
+        .distinct()
         .join(TeacherbotPublication, TeacherbotPublication.teacherbot_id == Teacherbot.id)
-        .where(TeacherbotPublication.class_id == session.class_id)
+        .where(or_(
+            TeacherbotPublication.class_id == session.class_id,
+            TeacherbotPublication.student_id == student.id,
+        ))
         .where(TeacherbotPublication.is_active == True)
         .where(Teacherbot.status == TeacherbotStatus.PUBLISHED)
     )
-    bots = result.scalars().all()
+    published_bots = result.scalars().all()
+    own_result = await db.execute(
+        select(Teacherbot)
+        .where(Teacherbot.creator_student_id == student.id)
+        .where(Teacherbot.tenant_id == student.tenant_id)
+        .where(Teacherbot.status != TeacherbotStatus.ARCHIVED)
+    )
+    own_bots = own_result.scalars().all()
+    bots = list({bot.id: bot for bot in [*published_bots, *own_bots]}.values())
 
     return [
         StudentTeacherbotResponse(
@@ -892,6 +1302,8 @@ async def list_available_teacherbots(
             color=bot.color,
             is_proactive=bot.is_proactive,
             proactive_message=bot.proactive_message if bot.is_proactive else None,
+            enable_live_voice=bot.enable_live_voice,
+            is_studentbot=bot.creator_student_id == student.id,
         )
         for bot in bots
     ]
@@ -910,15 +1322,28 @@ async def start_teacherbot_conversation(
     )
     session = session_result.scalar_one()
 
-    result = await db.execute(
+    own_result = await db.execute(
         select(Teacherbot)
+        .where(Teacherbot.id == teacherbot_id)
+        .where(Teacherbot.creator_student_id == student.id)
+        .where(Teacherbot.tenant_id == student.tenant_id)
+        .where(Teacherbot.status != TeacherbotStatus.ARCHIVED)
+    )
+    bot = own_result.scalar_one_or_none()
+    if not bot:
+        result = await db.execute(
+        select(Teacherbot)
+        .distinct()
         .join(TeacherbotPublication, TeacherbotPublication.teacherbot_id == Teacherbot.id)
         .where(Teacherbot.id == teacherbot_id)
-        .where(TeacherbotPublication.class_id == session.class_id)
+        .where(or_(
+            TeacherbotPublication.class_id == session.class_id,
+            TeacherbotPublication.student_id == student.id,
+        ))
         .where(TeacherbotPublication.is_active == True)
         .where(Teacherbot.status == TeacherbotStatus.PUBLISHED)
-    )
-    bot = result.scalar_one_or_none()
+        )
+        bot = result.scalar_one_or_none()
     if not bot:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Teacherbot not available")
 
@@ -961,6 +1386,60 @@ async def list_student_teacherbot_conversations(
         .order_by(TeacherbotConversation.updated_at.desc())
     )
     return result.scalars().all()
+
+
+@router.patch("/student/teacherbots/conversations/{conversation_id}", response_model=TeacherbotConversationResponse)
+async def rename_student_teacherbot_conversation(
+    conversation_id: UUID,
+    request: TeacherbotConversationTitleUpdate,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    student: Annotated[SessionStudent, Depends(get_current_student)],
+):
+    """Rename one of the current student's teacherbot conversations."""
+    result = await db.execute(
+        select(TeacherbotConversation)
+        .where(TeacherbotConversation.id == conversation_id)
+        .where(TeacherbotConversation.student_id == student.id)
+        .where(TeacherbotConversation.session_id == student.session_id)
+    )
+    conversation = result.scalar_one_or_none()
+    if not conversation:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found")
+
+    title = request.title.strip()
+    if not title:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Title cannot be empty")
+    conversation.title = title[:255]
+    await db.commit()
+    await db.refresh(conversation)
+    return conversation
+
+
+@router.delete("/student/teacherbots/conversations/{conversation_id}")
+async def delete_student_teacherbot_conversation(
+    conversation_id: UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    student: Annotated[SessionStudent, Depends(get_current_student)],
+):
+    """Delete one of the current student's teacherbot conversations and its messages."""
+    result = await db.execute(
+        select(TeacherbotConversation)
+        .where(TeacherbotConversation.id == conversation_id)
+        .where(TeacherbotConversation.student_id == student.id)
+        .where(TeacherbotConversation.session_id == student.session_id)
+    )
+    conversation = result.scalar_one_or_none()
+    if not conversation:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found")
+
+    await db.execute(
+        TeacherbotMessage.__table__.delete().where(
+            TeacherbotMessage.conversation_id == conversation_id
+        )
+    )
+    await db.delete(conversation)
+    await db.commit()
+    return {"status": "deleted", "conversation_id": str(conversation_id)}
 
 
 @router.get("/student/teacherbots/conversations/{conversation_id}/messages", response_model=list[TeacherbotMessageResponse])
@@ -1049,6 +1528,7 @@ async def send_teacherbot_message(
         content=request.content,
     )
     db.add(user_msg)
+    conv.updated_at = datetime.now(timezone.utc)
     await db.flush()
 
     # Get conversation history
@@ -1290,6 +1770,7 @@ async def send_teacherbot_message_with_files(
         content=content or "[Allegati caricati]",
     )
     db.add(user_msg)
+    conv.updated_at = datetime.now(timezone.utc)
     await db.flush()
 
     # Get conversation history
@@ -1574,3 +2055,580 @@ async def end_teacherbot_conversation(
     except Exception as e:
         logger.error(f"Report generation error: {e}")
         return {"message": f"Failed to generate report: {str(e)}"}
+
+
+# ==================== SHARE LINK ENDPOINTS (teacher) ====================
+
+async def _get_owned_teacherbot(db: AsyncSession, teacherbot_id: UUID, teacher: User) -> Teacherbot:
+    result = await db.execute(
+        select(Teacherbot)
+        .where(Teacherbot.id == teacherbot_id)
+        .where(Teacherbot.teacher_id == teacher.id)
+    )
+    bot = result.scalar_one_or_none()
+    if not bot:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Teacherbot not found")
+    return bot
+
+
+@router.post("/teacherbots/{teacherbot_id}/share-links", response_model=ShareLinkResponse)
+async def create_teacherbot_share_link(
+    teacherbot_id: UUID,
+    request: ShareLinkCreate,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    teacher: Annotated[User, Depends(get_current_teacher)],
+):
+    """Create a public link (token + access code + expiry) for this teacherbot"""
+    bot = await _get_owned_teacherbot(db, teacherbot_id, teacher)
+
+    expires_at = request.expires_at
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    if expires_at <= datetime.now(timezone.utc):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="expires_at must be in the future")
+
+    access_code = (request.access_code or "").strip().upper() or generate_join_code(6)
+
+    link = TeacherbotShareLink(
+        tenant_id=teacher.tenant_id,
+        teacherbot_id=bot.id,
+        created_by_id=teacher.id,
+        token=secrets.token_urlsafe(16),
+        access_code=access_code,
+        label=request.label,
+        expires_at=expires_at,
+    )
+    db.add(link)
+    await db.commit()
+    await db.refresh(link)
+    return link
+
+
+@router.get("/teacherbots/{teacherbot_id}/share-links", response_model=list[ShareLinkResponse])
+async def list_teacherbot_share_links(
+    teacherbot_id: UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    teacher: Annotated[User, Depends(get_current_teacher)],
+):
+    """List public links created for this teacherbot"""
+    await _get_owned_teacherbot(db, teacherbot_id, teacher)
+
+    result = await db.execute(
+        select(TeacherbotShareLink)
+        .where(TeacherbotShareLink.teacherbot_id == teacherbot_id)
+        .order_by(TeacherbotShareLink.created_at.desc())
+    )
+    return result.scalars().all()
+
+
+@router.delete("/teacherbots/{teacherbot_id}/share-links/{link_id}")
+async def revoke_teacherbot_share_link(
+    teacherbot_id: UUID,
+    link_id: UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    teacher: Annotated[User, Depends(get_current_teacher)],
+):
+    """Revoke a public link so it can no longer be opened"""
+    await _get_owned_teacherbot(db, teacherbot_id, teacher)
+
+    result = await db.execute(
+        select(TeacherbotShareLink)
+        .where(TeacherbotShareLink.id == link_id)
+        .where(TeacherbotShareLink.teacherbot_id == teacherbot_id)
+    )
+    link = result.scalar_one_or_none()
+    if not link:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Link not found")
+
+    link.is_active = False
+    link.revoked_at = datetime.now(timezone.utc)
+    await db.commit()
+    return {"message": "Link revoked"}
+
+
+@router.get("/teacherbots/{teacherbot_id}/share-links/{link_id}/conversations", response_model=list[ShareConversationResponse])
+async def list_teacherbot_share_link_conversations(
+    teacherbot_id: UUID,
+    link_id: UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    teacher: Annotated[User, Depends(get_current_teacher)],
+):
+    """List visitor conversations opened through a given share link"""
+    await _get_owned_teacherbot(db, teacherbot_id, teacher)
+
+    result = await db.execute(
+        select(TeacherbotShareLink)
+        .where(TeacherbotShareLink.id == link_id)
+        .where(TeacherbotShareLink.teacherbot_id == teacherbot_id)
+    )
+    if not result.scalar_one_or_none():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Link not found")
+
+    result = await db.execute(
+        select(TeacherbotShareConversation)
+        .where(TeacherbotShareConversation.share_link_id == link_id)
+        .order_by(TeacherbotShareConversation.updated_at.desc())
+    )
+    return result.scalars().all()
+
+
+@router.get("/teacherbots/{teacherbot_id}/share-conversations/{conversation_id}/messages", response_model=list[ShareMessageResponse])
+async def get_teacherbot_share_conversation_messages(
+    teacherbot_id: UUID,
+    conversation_id: UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    teacher: Annotated[User, Depends(get_current_teacher)],
+):
+    """Get messages of a visitor conversation (teacher review view)"""
+    await _get_owned_teacherbot(db, teacherbot_id, teacher)
+
+    result = await db.execute(
+        select(TeacherbotShareConversation)
+        .join(TeacherbotShareLink, TeacherbotShareLink.id == TeacherbotShareConversation.share_link_id)
+        .where(TeacherbotShareConversation.id == conversation_id)
+        .where(TeacherbotShareLink.teacherbot_id == teacherbot_id)
+    )
+    if not result.scalar_one_or_none():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found")
+
+    result = await db.execute(
+        select(TeacherbotShareMessage)
+        .where(TeacherbotShareMessage.conversation_id == conversation_id)
+        .order_by(TeacherbotShareMessage.created_at.asc())
+    )
+    return result.scalars().all()
+
+
+# ==================== SHARE LINK ENDPOINTS (public, no auth) ====================
+
+# Very small in-memory throttle for wrong access-code attempts: {token: [timestamps]}.
+# Not meant to survive process restarts/multiple workers — just a speed bump against brute force.
+_verify_attempts: dict[str, list[datetime]] = {}
+_VERIFY_MAX_ATTEMPTS = 8
+_VERIFY_WINDOW_SECONDS = 600
+
+# Same idea for anonymous voice-dictation requests: Whisper has a real per-minute API cost and
+# this endpoint has no per-user credit ledger to lean on, so cap it per share link instead.
+_transcribe_attempts: dict[str, list[datetime]] = {}
+_TRANSCRIBE_MAX_ATTEMPTS = 30
+_TRANSCRIBE_WINDOW_SECONDS = 3600
+
+
+def _too_many_transcribe_attempts(token: str) -> bool:
+    now = datetime.now(timezone.utc)
+    attempts = [t for t in _transcribe_attempts.get(token, []) if (now - t).total_seconds() < _TRANSCRIBE_WINDOW_SECONDS]
+    _transcribe_attempts[token] = attempts
+    return len(attempts) >= _TRANSCRIBE_MAX_ATTEMPTS
+
+
+def _record_transcribe_attempt(token: str) -> None:
+    _transcribe_attempts.setdefault(token, []).append(datetime.now(timezone.utc))
+
+
+def _too_many_verify_attempts(token: str) -> bool:
+    now = datetime.now(timezone.utc)
+    attempts = [t for t in _verify_attempts.get(token, []) if (now - t).total_seconds() < _VERIFY_WINDOW_SECONDS]
+    _verify_attempts[token] = attempts
+    return len(attempts) >= _VERIFY_MAX_ATTEMPTS
+
+
+def _record_verify_attempt(token: str) -> None:
+    _verify_attempts.setdefault(token, []).append(datetime.now(timezone.utc))
+
+
+async def _get_active_share_link(db: AsyncSession, token: str) -> TeacherbotShareLink:
+    result = await db.execute(
+        select(TeacherbotShareLink).where(TeacherbotShareLink.token == token)
+    )
+    link = result.scalar_one_or_none()
+    if not link or not link.is_active:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Link not found")
+    if link.expires_at <= datetime.now(timezone.utc):
+        raise HTTPException(status_code=status.HTTP_410_GONE, detail="Link expired")
+    return link
+
+
+@router.get("/public/teacherbot-links/{token}", response_model=ShareLinkPublicInfo)
+async def get_public_teacherbot_link_info(
+    token: str,
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Non-sensitive bot info shown before the access-code gate"""
+    link = await _get_active_share_link(db, token)
+    result = await db.execute(select(Teacherbot).where(Teacherbot.id == link.teacherbot_id))
+    bot = result.scalar_one()
+    return ShareLinkPublicInfo(
+        name=bot.name,
+        synopsis=bot.synopsis,
+        icon=bot.icon,
+        color=bot.color,
+        is_proactive=bot.is_proactive,
+        proactive_message=bot.proactive_message if bot.is_proactive else None,
+    )
+
+
+@router.post("/public/teacherbot-links/{token}/verify", response_model=ShareConversationResponse)
+async def verify_public_teacherbot_link(
+    token: str,
+    request: ShareLinkVerifyRequest,
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Verify the access code and open a new visitor conversation"""
+    link = await _get_active_share_link(db, token)
+
+    if _too_many_verify_attempts(token):
+        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="Too many attempts, try again later")
+
+    if request.access_code.strip().upper() != link.access_code.upper():
+        _record_verify_attempt(token)
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid access code")
+
+    result = await db.execute(select(Teacherbot).where(Teacherbot.id == link.teacherbot_id))
+    bot = result.scalar_one()
+
+    conversation = TeacherbotShareConversation(
+        tenant_id=link.tenant_id,
+        share_link_id=link.id,
+    )
+    db.add(conversation)
+    await db.flush()
+
+    if bot.is_proactive and bot.proactive_message:
+        db.add(TeacherbotShareMessage(
+            tenant_id=link.tenant_id,
+            conversation_id=conversation.id,
+            role="assistant",
+            content=bot.proactive_message,
+        ))
+
+    await db.commit()
+    await db.refresh(conversation)
+    return conversation
+
+
+@router.get("/public/teacherbot-links/conversations/{conversation_id}/messages", response_model=list[ShareMessageResponse])
+async def get_public_teacherbot_conversation_messages(
+    conversation_id: UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Message history for a visitor conversation (used on page refresh)"""
+    result = await db.execute(
+        select(TeacherbotShareConversation).where(TeacherbotShareConversation.id == conversation_id)
+    )
+    if not result.scalar_one_or_none():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found")
+
+    result = await db.execute(
+        select(TeacherbotShareMessage)
+        .where(TeacherbotShareMessage.conversation_id == conversation_id)
+        .order_by(TeacherbotShareMessage.created_at.asc())
+    )
+    return result.scalars().all()
+
+
+@router.post("/public/teacherbot-links/conversations/{conversation_id}/message", response_model=ShareMessageResponse)
+async def send_public_teacherbot_message(
+    conversation_id: UUID,
+    request: ShareVisitorMessageCreate,
+    http_request: Request,
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Send a message as an anonymous visitor and get the teacherbot's reply"""
+    result = await db.execute(
+        select(TeacherbotShareConversation, TeacherbotShareLink)
+        .join(TeacherbotShareLink, TeacherbotShareLink.id == TeacherbotShareConversation.share_link_id)
+        .where(TeacherbotShareConversation.id == conversation_id)
+    )
+    row = result.first()
+    if not row:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found")
+    conv, link = row
+    if not link.is_active:
+        raise HTTPException(status_code=status.HTTP_410_GONE, detail="Link revoked")
+    if link.expires_at <= datetime.now(timezone.utc):
+        raise HTTPException(status_code=status.HTTP_410_GONE, detail="Link expired")
+
+    result = await db.execute(select(Teacherbot).where(Teacherbot.id == link.teacherbot_id))
+    bot = result.scalar_one()
+
+    allowed = await credit_service.check_availability(
+        db, bot.tenant_id, estimated_cost=0.0001, teacher_id=bot.teacher_id,
+    )
+    if not allowed:
+        raise HTTPException(
+            status_code=status.HTTP_402_PAYMENT_REQUIRED,
+            detail="Credit limit exceeded for this teacherbot.",
+        )
+
+    user_msg = TeacherbotShareMessage(
+        tenant_id=link.tenant_id,
+        conversation_id=conversation_id,
+        role="user",
+        content=request.content,
+    )
+    db.add(user_msg)
+    await db.flush()
+
+    result = await db.execute(
+        select(TeacherbotShareMessage)
+        .where(TeacherbotShareMessage.conversation_id == conversation_id)
+        .order_by(TeacherbotShareMessage.created_at.asc())
+    )
+    history = result.scalars().all()
+    messages = [{"role": msg.role, "content": msg.content} for msg in history]
+
+    kb_context = await _build_kb_context(db, bot, request.content, link.tenant_id)
+    system_prompt = bot.system_prompt
+    if kb_context:
+        system_prompt = f"{system_prompt}\n\n{kb_context}"
+    system_prompt = apply_output_language_instruction(system_prompt, get_ui_language(http_request))
+
+    llm_response = await llm_service.generate(
+        messages=messages,
+        system_prompt=system_prompt,
+        provider=bot.llm_provider,
+        model=bot.llm_model,
+        temperature=bot.temperature,
+    )
+
+    cost = credit_service.calculate_cost_for_model(llm_response.provider, llm_response.model, llm_response.prompt_tokens, llm_response.completion_tokens)
+    await credit_service.track_usage(
+        db, bot.tenant_id, llm_response.provider, llm_response.model, cost,
+        enrich_usage_with_environmental_impact(
+            {
+                "type": "teacherbot_share_chat",
+                "bot_id": str(bot.id),
+                "share_link_id": str(link.id),
+                "prompt_tokens": llm_response.prompt_tokens,
+                "completion_tokens": llm_response.completion_tokens,
+            },
+            provider=llm_response.provider,
+            model=llm_response.model,
+        ),
+        teacher_id=bot.teacher_id,
+    )
+
+    assistant_msg = TeacherbotShareMessage(
+        tenant_id=link.tenant_id,
+        conversation_id=conversation_id,
+        role="assistant",
+        content=llm_response.content,
+        provider=llm_response.provider,
+        model=llm_response.model,
+        token_usage_json=enrich_usage_with_environmental_impact(
+            {
+                "prompt_tokens": llm_response.prompt_tokens,
+                "completion_tokens": llm_response.completion_tokens,
+            },
+            provider=llm_response.provider,
+            model=llm_response.model,
+        ),
+    )
+    db.add(assistant_msg)
+    conv.updated_at = datetime.now(timezone.utc)
+
+    await db.commit()
+    await db.refresh(assistant_msg)
+    return assistant_msg
+
+
+def _extract_public_attachment_text(filename: str, mime_type: str, file_data: bytes) -> str:
+    """Text extraction for public share-link attachments. Deliberately narrower than the
+    authenticated student path: no vision/image analysis and no image-generation trigger, since
+    anonymous visitors have no per-user credit ledger to bound that cost against."""
+    if mime_type.startswith("text/") or filename.endswith((".txt", ".md", ".csv", ".py", ".js", ".ts", ".html", ".css", ".json")):
+        try:
+            return file_data.decode("utf-8")
+        except Exception:
+            return file_data.decode("latin-1", errors="ignore")
+    if mime_type == "application/pdf" or filename.endswith(".pdf"):
+        try:
+            import fitz  # PyMuPDF
+            pdf_doc = fitz.open(stream=file_data, filetype="pdf")
+            text = "".join(page.get_text() for page in pdf_doc)
+            pdf_doc.close()
+            return text
+        except Exception as e:
+            return f"[Errore lettura PDF: {e}]"
+    if (
+        mime_type in (
+            "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+            "application/vnd.ms-powerpoint",
+        )
+        or filename.lower().endswith((".pptx", ".ppt"))
+    ):
+        try:
+            import io as _io
+            from pptx import Presentation
+            prs = Presentation(_io.BytesIO(file_data))
+            slide_texts: list[str] = []
+            for i, slide in enumerate(prs.slides, 1):
+                parts: list[str] = []
+                for shape in slide.shapes:
+                    if not shape.has_text_frame:
+                        continue
+                    for para in shape.text_frame.paragraphs:
+                        line = " ".join(run.text for run in para.runs if run.text.strip())
+                        if line.strip():
+                            parts.append(line.strip())
+                if parts:
+                    slide_texts.append(f"## Slide {i}\n" + "\n".join(parts))
+            return "\n\n".join(slide_texts)
+        except Exception as e:
+            return f"[Errore lettura PPTX: {e}]"
+    if mime_type.startswith("image/"):
+        return f"[Immagine allegata: {filename} — non analizzata in questa chat pubblica]"
+    return f"[Formato non supportato: {filename}]"
+
+
+@router.post("/public/teacherbot-links/conversations/{conversation_id}/message-with-files", response_model=ShareMessageResponse)
+async def send_public_teacherbot_message_with_files(
+    conversation_id: UUID,
+    http_request: Request,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    content: str = Form(""),
+    files: List[UploadFile] = File(default=[]),
+):
+    """Send a message with document attachments as an anonymous share-link visitor.
+    No image generation and no image-vision analysis here (see _extract_public_attachment_text)."""
+    result = await db.execute(
+        select(TeacherbotShareConversation, TeacherbotShareLink)
+        .join(TeacherbotShareLink, TeacherbotShareLink.id == TeacherbotShareConversation.share_link_id)
+        .where(TeacherbotShareConversation.id == conversation_id)
+    )
+    row = result.first()
+    if not row:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found")
+    conv, link = row
+    if not link.is_active:
+        raise HTTPException(status_code=status.HTTP_410_GONE, detail="Link revoked")
+    if link.expires_at <= datetime.now(timezone.utc):
+        raise HTTPException(status_code=status.HTTP_410_GONE, detail="Link expired")
+
+    if len(files) > 3:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Massimo 3 allegati per messaggio")
+
+    result = await db.execute(select(Teacherbot).where(Teacherbot.id == link.teacherbot_id))
+    bot = result.scalar_one()
+
+    allowed = await credit_service.check_availability(
+        db, bot.tenant_id, estimated_cost=0.0001, teacher_id=bot.teacher_id,
+    )
+    if not allowed:
+        raise HTTPException(
+            status_code=status.HTTP_402_PAYMENT_REQUIRED,
+            detail="Credit limit exceeded for this teacherbot.",
+        )
+
+    file_contents = []
+    for file in files:
+        file_data = await file.read()
+        if len(file_data) > 8 * 1024 * 1024:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"{file.filename}: massimo 8MB per allegato")
+        filename = file.filename or "unknown"
+        mime_type = file.content_type or "application/octet-stream"
+        extracted = _extract_public_attachment_text(filename, mime_type, file_data)
+        file_contents.append({"filename": filename, "mime_type": mime_type, "content": extracted[:20000]})
+
+    full_content = content
+    if file_contents:
+        files_context = "\n\n--- DOCUMENTI ALLEGATI ---\n"
+        for fc in file_contents:
+            files_context += f"\n📄 **{fc['filename']}** ({fc['mime_type']}):\n{fc['content']}\n"
+        files_context += "\n--- FINE DOCUMENTI ---\n"
+        full_content = files_context + "\n" + content if content else files_context
+
+    user_msg = TeacherbotShareMessage(
+        tenant_id=link.tenant_id,
+        conversation_id=conversation_id,
+        role="user",
+        content=content or "[Allegati caricati]",
+    )
+    db.add(user_msg)
+    await db.flush()
+
+    result = await db.execute(
+        select(TeacherbotShareMessage)
+        .where(TeacherbotShareMessage.conversation_id == conversation_id)
+        .order_by(TeacherbotShareMessage.created_at.asc())
+    )
+    history = result.scalars().all()
+    messages = [{"role": msg.role, "content": msg.content} for msg in history]
+    if messages:
+        messages[-1]["content"] = full_content
+
+    kb_context = await _build_kb_context(db, bot, content, link.tenant_id)
+    system_prompt = bot.system_prompt
+    if kb_context:
+        system_prompt = f"{system_prompt}\n\n{kb_context}"
+    system_prompt = apply_output_language_instruction(system_prompt, get_ui_language(http_request))
+
+    llm_response = await llm_service.generate(
+        messages=messages,
+        system_prompt=system_prompt,
+        provider=bot.llm_provider,
+        model=bot.llm_model,
+        temperature=bot.temperature,
+    )
+
+    cost = credit_service.calculate_cost_for_model(llm_response.provider, llm_response.model, llm_response.prompt_tokens, llm_response.completion_tokens)
+    await credit_service.track_usage(
+        db, bot.tenant_id, llm_response.provider, llm_response.model, cost,
+        enrich_usage_with_environmental_impact(
+            {
+                "type": "teacherbot_share_chat_with_files",
+                "bot_id": str(bot.id),
+                "share_link_id": str(link.id),
+                "prompt_tokens": llm_response.prompt_tokens,
+                "completion_tokens": llm_response.completion_tokens,
+            },
+            provider=llm_response.provider,
+            model=llm_response.model,
+        ),
+        teacher_id=bot.teacher_id,
+    )
+
+    assistant_msg = TeacherbotShareMessage(
+        tenant_id=link.tenant_id,
+        conversation_id=conversation_id,
+        role="assistant",
+        content=llm_response.content,
+        provider=llm_response.provider,
+        model=llm_response.model,
+        token_usage_json=enrich_usage_with_environmental_impact(
+            {
+                "prompt_tokens": llm_response.prompt_tokens,
+                "completion_tokens": llm_response.completion_tokens,
+            },
+            provider=llm_response.provider,
+            model=llm_response.model,
+        ),
+    )
+    db.add(assistant_msg)
+    conv.updated_at = datetime.now(timezone.utc)
+
+    await db.commit()
+    await db.refresh(assistant_msg)
+    return assistant_msg
+
+
+@router.post("/public/teacherbot-links/{token}/transcribe")
+async def transcribe_public_teacherbot_audio(
+    token: str,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    file: UploadFile = File(...),
+    language: Optional[str] = Form(None),
+):
+    """Voice dictation for anonymous share-link visitors: transcribes audio to text so it can be
+    edited and sent as a normal message. Rate-limited per link since there's no per-visitor
+    credit ledger to fall back on."""
+    await _get_active_share_link(db, token)  # 404/410 if invalid/expired
+
+    if _too_many_transcribe_attempts(token):
+        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="Too many transcription requests, try again later")
+    _record_transcribe_attempt(token)
+
+    audio_bytes = await file.read()
+    filename = file.filename or "recording.webm"
+    content_type = file.content_type or "audio/webm"
+    return await transcribe_with_whisper(audio_bytes, filename, content_type, language)

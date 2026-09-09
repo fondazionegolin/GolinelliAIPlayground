@@ -6,8 +6,9 @@ from sqlalchemy import select
 import uuid
 
 from app.core.database import get_db
+from app.core.legal_documents import LEGAL_DOCUMENTS
 from app.core.security import decode_token
-from app.models.user import User
+from app.models.user import LegalDocumentAcceptance, User
 from app.models.session import SessionStudent, Session
 from app.models.enums import UserRole, SessionStatus
 
@@ -74,6 +75,7 @@ async def get_current_admin(
 
 
 async def get_current_teacher(
+    db: Annotated[AsyncSession, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> User:
     if current_user.role not in (UserRole.TEACHER, UserRole.ADMIN):
@@ -86,6 +88,24 @@ async def get_current_teacher(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Teacher account not verified",
         )
+    if current_user.role == UserRole.TEACHER:
+        result = await db.execute(
+            select(LegalDocumentAcceptance).where(
+                LegalDocumentAcceptance.user_id == current_user.id,
+                LegalDocumentAcceptance.document_key.in_([doc["key"] for doc in LEGAL_DOCUMENTS]),
+            )
+        )
+        rows = result.scalars().all()
+        accepted_current = {
+            row.document_key
+            for row in rows
+            if any(row.document_key == doc["key"] and row.document_version == doc["version"] for doc in LEGAL_DOCUMENTS)
+        }
+        if len(accepted_current) < len(LEGAL_DOCUMENTS):
+            raise HTTPException(
+                status_code=status.HTTP_428_PRECONDITION_REQUIRED,
+                detail="Legal consents required",
+            )
     return current_user
 
 

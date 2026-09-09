@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
-import { Bot, Send, Loader2, GraduationCap, ChevronDown, ChevronUp, GripHorizontal } from 'lucide-react'
+import { Bot, Send, Loader2, GraduationCap, ChevronDown, ChevronUp, GripHorizontal, History } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { markdownCodeComponents } from '@/components/CodeBlock'
@@ -16,12 +16,15 @@ interface Props {
   initialMessages?: NotebookTutorMessage[]
   variant?: 'docked' | 'floating' | 'sidebar'
   className?: string
+  onOpenVersions?: () => void
 }
 
 function projectLabel(projectType: NotebookProjectType) {
   if (projectType === 'python') return 'Python'
   if (projectType === 'strudel') return 'Strudel'
   if (projectType === 'game2d') return 'Game 2D'
+  if (projectType === 'circuitplayground') return 'Circuit Playground'
+  if (projectType === 'microbit') return 'micro:bit'
   return 'p5.js'
 }
 
@@ -35,6 +38,7 @@ export default function NotebookTutorChat({
   initialMessages = [],
   variant = 'docked',
   className = '',
+  onOpenVersions,
 }: Props) {
   const isFloating = variant === 'floating'
   const isSidebar = variant === 'sidebar'
@@ -166,6 +170,15 @@ export default function NotebookTutorChat({
             {isFloating ? 'Supporto AI' : notebookTitle}
           </p>
         </div>
+        {onOpenVersions && (
+          <button
+            onClick={onOpenVersions}
+            className="rounded-lg p-1 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900"
+            title="Cronologia versioni / rollback"
+          >
+            <History className="h-4 w-4" />
+          </button>
+        )}
         <button
           onClick={() => setCollapsed((v) => !v)}
           className="text-slate-500 transition-colors hover:text-slate-900"

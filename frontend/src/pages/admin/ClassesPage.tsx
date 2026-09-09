@@ -5,7 +5,7 @@ import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import {
   ChevronRight, GraduationCap, Users, BookOpen,
-  Search, Euro, Clock, Wifi,
+  Search, Euro, Clock, Wifi, Building2,
 } from 'lucide-react'
 
 /* ─── types ─────────────────────────────────────────── */
@@ -35,6 +35,8 @@ interface ClassInfo {
   teacher_email: string
   session_count: number
   sessions: SessionInfo[]
+  school_id?: string | null
+  school_name?: string | null
 }
 
 /* ─── helpers ───────────────────────────────────────── */
@@ -95,9 +97,17 @@ export default function ClassesPage() {
       cls.class_name.toLowerCase().includes(q) ||
       cls.teacher_name.toLowerCase().includes(q) ||
       cls.teacher_email.toLowerCase().includes(q) ||
+      (cls.school_name || '').toLowerCase().includes(q) ||
       cls.sessions.some((s) => s.title.toLowerCase().includes(q))
     )
   })
+  const schoolGroups = Array.from(filteredClasses.reduce((groups, cls) => {
+    const key = cls.school_id || 'unassigned'
+    const group = groups.get(key) || { id: key, name: cls.school_name || 'Senza istituto', classes: [] as ClassInfo[] }
+    group.classes.push(cls)
+    groups.set(key, group)
+    return groups
+  }, new Map<string, { id: string; name: string; classes: ClassInfo[] }>()).values()).sort((a, b) => a.name.localeCompare(b.name))
 
   const totalSessions = allClasses.reduce((a, c) => a + c.session_count, 0)
   const totalStudents = allClasses.reduce(
@@ -112,10 +122,11 @@ export default function ClassesPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col gap-5 rounded-2xl border border-slate-700 bg-slate-900 px-6 py-5 text-white shadow-lg shadow-slate-200/70 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">Classi & Sessioni</h1>
-          <p className="text-sm text-slate-500 mt-0.5">
+          <p className="mb-1 text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">Struttura didattica</p>
+          <h1 className="text-2xl font-bold text-white">Istituti, classi e sessioni</h1>
+          <p className="text-sm text-slate-300 mt-1">
             {allClasses.length} classi · {totalSessions} sessioni · {totalStudents} studenti totali
           </p>
         </div>
@@ -125,28 +136,28 @@ export default function ClassesPage() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Cerca classi, docenti…"
-            className="pl-9 h-9 text-sm"
+            className="pl-9 h-10 border-slate-600 bg-slate-800 text-sm text-white placeholder:text-slate-400"
           />
         </div>
       </div>
 
       {/* Summary pills */}
-      <div className="grid grid-cols-3 gap-3">
-        <div className="rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-3 flex items-center gap-2.5">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <div className="rounded-xl border border-slate-300 bg-white px-4 py-3 flex items-center gap-2.5 shadow-sm">
           <BookOpen className="h-5 w-5 text-indigo-500 flex-shrink-0" />
           <div>
             <p className="text-[11px] text-slate-500">Sessioni</p>
             <p className="text-lg font-bold text-slate-900">{totalSessions}</p>
           </div>
         </div>
-        <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 flex items-center gap-2.5">
+        <div className="rounded-xl border border-slate-300 bg-white px-4 py-3 flex items-center gap-2.5 shadow-sm">
           <Users className="h-5 w-5 text-emerald-500 flex-shrink-0" />
           <div>
             <p className="text-[11px] text-slate-500">Studenti</p>
             <p className="text-lg font-bold text-slate-900">{totalStudents}</p>
           </div>
         </div>
-        <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 flex items-center gap-2.5">
+        <div className="rounded-xl border border-slate-300 bg-white px-4 py-3 flex items-center gap-2.5 shadow-sm">
           <Euro className="h-5 w-5 text-slate-500 flex-shrink-0" />
           <div>
             <p className="text-[11px] text-slate-500">Costo totale</p>
@@ -161,14 +172,23 @@ export default function ClassesPage() {
       ) : filteredClasses.length === 0 ? (
         <div className="py-16 text-center text-slate-400 text-sm">Nessuna classe trovata</div>
       ) : (
-        <div className="space-y-2">
-          {filteredClasses.map((cls) => {
+        <div className="space-y-6">
+          {schoolGroups.map((school) => (
+            <section key={school.id} className="overflow-hidden rounded-2xl border border-slate-300 bg-white shadow-sm">
+              <div className="flex items-center justify-between border-b border-slate-200 bg-slate-100 px-5 py-3">
+                <div className="flex items-center gap-2.5">
+                  <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-900 text-white"><Building2 className="h-4 w-4" /></span>
+                  <div><h2 className="text-sm font-bold text-slate-900">{school.name}</h2><p className="text-[11px] text-slate-500">{school.classes.length} classi</p></div>
+                </div>
+              </div>
+              <div className="divide-y divide-slate-200">
+          {school.classes.map((cls) => {
             const isClassOpen = expandedClasses.has(cls.class_id)
             return (
-              <Card key={cls.class_id} className="overflow-hidden">
+              <Card key={cls.class_id} className="overflow-hidden rounded-none border-0 shadow-none">
                 {/* Class header */}
                 <button
-                  className="w-full flex items-center gap-3 px-4 py-3.5 hover:bg-slate-50 transition-colors text-left"
+                  className="grid w-full grid-cols-[20px_40px_minmax(240px,1fr)_minmax(260px,auto)] items-center gap-3 px-5 py-3.5 hover:bg-sky-50 transition-colors text-left"
                   onClick={() => toggleClass(cls.class_id)}
                 >
                   <div className={`transition-transform ${isClassOpen ? 'rotate-90' : ''}`}>
@@ -299,6 +319,9 @@ export default function ClassesPage() {
               </Card>
             )
           })}
+              </div>
+            </section>
+          ))}
         </div>
       )}
     </div>

@@ -1,4 +1,12 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+import asyncio
+import hashlib
+import io
+from pathlib import Path
+from urllib.parse import quote
+
+from fastapi import APIRouter, Depends, File as UploadField, Form, HTTPException, UploadFile, status
+from fastapi.responses import StreamingResponse
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from typing import Annotated
@@ -10,7 +18,16 @@ from app.core.config import settings
 from app.api.deps import get_student_or_teacher, StudentOrTeacher
 from app.core.permissions import teacher_can_access_session
 from app.models.file import File
+from app.models.document_draft import DocumentDraft
 from app.models.enums import OwnerType, Scope
+from app.services.document_conversion import (
+    MIME_BY_EXTENSION,
+    SUPPORTED_IMPORT_EXTENSIONS,
+    export_document,
+    import_document,
+    normalized_extension,
+)
+from app.services.storage_service import storage_service
 from app.schemas.file import (
     UploadUrlRequest, UploadUrlResponse,
     FileCompleteRequest, FileResponse,
@@ -18,6 +35,155 @@ from app.schemas.file import (
 )
 
 router = APIRouter()
+
+
+class DocumentExportRequest(BaseModel):
+    title: str
+    content_json: str
+    target_format: str
+
+
+def _draft_response(draft: DocumentDraft) -> dict:
+    return {
+        "id": str(draft.id),
+        "title": draft.title,
+        "doc_type": draft.doc_type,
+        "content_json": draft.content_json,
+        "session_id": str(draft.session_id) if draft.session_id else None,
+        "created_at": draft.created_at.isoformat(),
+        "updated_at": draft.updated_at.isoformat(),
+    }
+
+
+async def _can_access_file(db: AsyncSession, auth: StudentOrTeacher, stored_file: File) -> bool:
+    if auth.is_student:
+        if stored_file.owner_student_id == auth.student.id:
+            return True
+        return stored_file.scope == Scope.SESSION and stored_file.session_id == auth.student.session_id
+    if stored_file.owner_teacher_id == auth.teacher.id:
+        return True
+    if stored_file.tenant_id != auth.teacher.tenant_id:
+        return False
+    if stored_file.scope == Scope.SESSION and stored_file.session_id:
+        return await teacher_can_access_session(db, auth.teacher, stored_file.session_id)
+    return False
+
+
+@router.post("/documents/import")
+async def import_lms_document(
+    file: UploadFile = UploadField(...),
+    session_id: str | None = Form(default=None),
+    db: Annotated[AsyncSession, Depends(get_db)] = None,
+    auth: Annotated[StudentOrTeacher, Depends(get_student_or_teacher)] = None,
+):
+    """Preserve an Office/PDF source and create a separate native editable draft."""
+    filename = Path(file.filename or "documento").name
+    extension = normalized_extension(filename)
+    if extension not in SUPPORTED_IMPORT_EXTENSIONS:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Formato .{extension or '?'} non supportato")
+    data = await file.read()
+    max_size = settings.MAX_UPLOAD_SIZE_MB * 1024 * 1024
+    if not data or len(data) > max_size:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"File vuoto o superiore a {settings.MAX_UPLOAD_SIZE_MB} MB")
+
+    parsed_session_id: UUID | None = None
+    if auth.is_student:
+        tenant_id = auth.student.tenant_id
+        owner_type = OwnerType.STUDENT
+        owner_student_id = auth.student.id
+        owner_teacher_id = None
+        parsed_session_id = auth.student.session_id
+    else:
+        tenant_id = auth.teacher.tenant_id
+        owner_type = OwnerType.TEACHER
+        owner_student_id = None
+        owner_teacher_id = auth.teacher.id
+        if session_id:
+            try:
+                parsed_session_id = UUID(session_id)
+            except ValueError as exc:
+                raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Sessione non valida") from exc
+            if not await teacher_can_access_session(db, auth.teacher, parsed_session_id):
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
+
+    file_id = uuid4()
+    mime_type = file.content_type or MIME_BY_EXTENSION.get(extension, "application/octet-stream")
+    storage_key = f"{tenant_id}/documents/originals/{file_id}/{filename}"
+    checksum = hashlib.sha256(data).hexdigest()
+    stored_file = File(
+        id=file_id,
+        tenant_id=tenant_id,
+        owner_type=owner_type,
+        owner_teacher_id=owner_teacher_id,
+        owner_student_id=owner_student_id,
+        scope=Scope.USER,
+        session_id=parsed_session_id,
+        class_id=None,
+        storage_key=storage_key,
+        filename=filename,
+        mime_type=mime_type,
+        size_bytes=len(data),
+        checksum_sha256=checksum,
+    )
+    try:
+        imported = await asyncio.to_thread(import_document, filename, data, mime_type, str(file_id))
+        await asyncio.to_thread(storage_service.upload_file, storage_key, data, mime_type)
+    except (ValueError, RuntimeError) as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+
+    draft = DocumentDraft(
+        tenant_id=tenant_id,
+        session_id=parsed_session_id,
+        owner_teacher_id=owner_teacher_id,
+        owner_student_id=owner_student_id,
+        title=imported.title,
+        doc_type=imported.doc_type,
+        content_json=imported.content_json,
+    )
+    db.add(stored_file)
+    db.add(draft)
+    await db.commit()
+    await db.refresh(draft)
+    return {**_draft_response(draft), "source_file_id": str(file_id), "source_extension": extension}
+
+
+@router.post("/documents/export")
+async def export_native_document(
+    request: DocumentExportRequest,
+    auth: Annotated[StudentOrTeacher, Depends(get_student_or_teacher)],
+):
+    del auth  # Authentication is the authorization boundary; no stored data is read here.
+    try:
+        exported = await asyncio.to_thread(export_document, request.content_json, request.title, request.target_format)
+    except (ValueError, RuntimeError) as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+    disposition = f"attachment; filename*=UTF-8''{quote(exported.filename)}"
+    return StreamingResponse(
+        io.BytesIO(exported.content),
+        media_type=exported.mime_type,
+        headers={"Content-Disposition": disposition, "Content-Length": str(len(exported.content))},
+    )
+
+
+@router.get("/{file_id}/content")
+async def stream_file_content(
+    file_id: UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    auth: Annotated[StudentOrTeacher, Depends(get_student_or_teacher)],
+):
+    result = await db.execute(select(File).where(File.id == file_id))
+    stored_file = result.scalar_one_or_none()
+    if not stored_file or not await _can_access_file(db, auth, stored_file):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found")
+    data = await asyncio.to_thread(storage_service.download_file, stored_file.storage_key)
+    return StreamingResponse(
+        io.BytesIO(data),
+        media_type=stored_file.mime_type,
+        headers={
+            "Content-Disposition": f"inline; filename*=UTF-8''{quote(stored_file.filename)}",
+            "Content-Length": str(len(data)),
+        },
+    )
 
 
 @router.post("/upload-url", response_model=UploadUrlResponse)

@@ -16,9 +16,9 @@ export default function StudentJoinPage() {
         <div className="text-center">
           <div className="flex items-center justify-center gap-4 mb-4">
             <LogoMark className="h-14 w-14" />
-            <h1 className="text-[30px] leading-[1.15] tracking-tight text-left pb-[1px]" style={{ fontFamily: '"SofiaPro"' }}>
-              <span className="font-bold text-[#2d2d2d]/85">Golinelli</span>
-              <span className="font-black text-[#e85c8d]">.ai</span>
+            <h1 className="text-[30px] leading-[1.15] tracking-tight text-left pb-[1px]" style={{ fontFamily: 'var(--font-family-brand)' }}>
+              <span className="font-bold text-[var(--logo-ink)]">Golinelli</span>
+              <span className="font-black text-[var(--logo-pink)]">.ai</span>
             </h1>
           </div>
           <p className="text-gray-600 mt-2">{t('student_join.code_intro')}</p>

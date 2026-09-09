@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { motion, AnimatePresence } from 'framer-motion'
+import { motion, AnimatePresence, Reorder, useDragControls } from 'framer-motion'
 import { liveInteractionApi } from '@/lib/api'
 import { useToast } from '@/components/ui/use-toast'
 import { Button } from '@/components/ui/button'
@@ -9,10 +9,10 @@ import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import {
-  Plus, Trash2, Play, ChevronDown, ChevronUp,
+  Plus, Minus, Trash2, Play, ChevronDown,
   ListChecks, CloudLightning, MessageSquare, ThumbsUp, GripVertical, Pencil,
   Radio, FileBarChart2, HelpCircle, X, SkipForward, BarChart2, Smartphone,
-  ArrowRight, CheckCircle2, Zap,
+  ArrowRight, CheckCircle2, Zap, Pause, Sparkles, Loader2, FileUp, FileText,
 } from 'lucide-react'
 
 // ── Types ──
@@ -30,11 +30,24 @@ interface Slide {
   max_words?: number
 }
 
+const makeKey = (): string =>
+  typeof crypto !== 'undefined' && 'randomUUID' in crypto
+    ? crypto.randomUUID()
+    : `${Date.now()}-${Math.random().toString(36).slice(2)}`
+
+interface EditableSlide {
+  key: string
+  slide: Slide
+}
+
+const editableSlide = (slide: Slide): EditableSlide => ({ key: makeKey(), slide })
+
 interface LiveInteractionItem {
   id: string
   title: string
   status: string
   slides_count: number
+  slides_json?: Slide[]
   current_slide_index: number
   created_at: string
 }
@@ -60,6 +73,13 @@ const SLIDE_COLORS: Record<SlideType, string> = {
   feedback: 'bg-rose-100 text-rose-700 border-rose-200',
 }
 
+function normalizeAiSlide(raw: Partial<Slide> & { type?: string }): Slide {
+  const type: SlideType = (['mcq', 'wordwall', 'opinion', 'feedback'] as const).includes(raw?.type as SlideType)
+    ? (raw.type as SlideType)
+    : 'mcq'
+  return { ...defaultSlide(type), ...raw, type }
+}
+
 function defaultSlide(type: SlideType): Slide {
   switch (type) {
     case 'mcq':      return { type, question: '', options: ['', '', '', ''], correct_option: null, max_seconds: 30, show_ranking: false }
@@ -69,9 +89,93 @@ function defaultSlide(type: SlideType): Slide {
   }
 }
 
-// ── Tutorial ──
+// ── Reference document (PDF) ──
 
-const TUTORIAL_KEY = 'live_interaction_tutorial_v1'
+interface ReferenceDoc {
+  filename: string
+  text: string
+  charCount: number
+  truncated: boolean
+  pageCount: number
+}
+
+function ReferenceDocUploader({
+  sessionId, value, onChange,
+}: {
+  sessionId: string
+  value: ReferenceDoc | null
+  onChange: (v: ReferenceDoc | null) => void
+}) {
+  const { toast } = useToast()
+  const [uploading, setUploading] = useState(false)
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  const handleFile = async (file: File) => {
+    if (!file.name.toLowerCase().endsWith('.pdf')) {
+      toast({ title: 'Sono supportati solo file PDF', variant: 'destructive' })
+      return
+    }
+    setUploading(true)
+    try {
+      const res = await liveInteractionApi.extractReference(sessionId, file)
+      onChange({
+        filename: res.data.filename,
+        text: res.data.reference_text,
+        charCount: res.data.char_count,
+        truncated: res.data.truncated,
+        pageCount: res.data.page_count,
+      })
+    } catch {
+      toast({ title: 'Errore nel caricamento del PDF', variant: 'destructive' })
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  return (
+    <div>
+      <label className="text-xs font-medium text-slate-600 mb-1 block">Documento di riferimento (opzionale)</label>
+      {!value ? (
+        <>
+          <input
+            ref={inputRef}
+            type="file"
+            accept="application/pdf"
+            className="hidden"
+            onChange={e => {
+              const f = e.target.files?.[0]
+              if (f) handleFile(f)
+              e.target.value = ''
+            }}
+          />
+          <Button
+            type="button" tone="neutral" surface="outline" density="compact"
+            onClick={() => inputRef.current?.click()}
+            disabled={uploading}
+          >
+            {uploading
+              ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Estraggo testo...</>
+              : <><FileUp className="h-3.5 w-3.5" /> Carica PDF</>}
+          </Button>
+          <p className="text-[11px] text-slate-400 mt-1">L'AI ancorerà le proposte al contenuto del documento caricato.</p>
+        </>
+      ) : (
+        <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs">
+          <FileText className="h-3.5 w-3.5 text-indigo-600 flex-shrink-0" />
+          <span className="flex-1 truncate text-slate-700 font-medium">{value.filename}</span>
+          <span className="text-slate-400 flex-shrink-0">
+            {value.pageCount ? `${value.pageCount} pag. · ` : ''}{value.charCount} car.{value.truncated ? ' (troncato)' : ''}
+          </span>
+          <button type="button" onClick={() => onChange(null)} className="text-slate-400 hover:text-red-500 flex-shrink-0">
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Tutorial ──
 
 const TUTORIAL_STEPS = [
   {
@@ -277,18 +381,26 @@ const TUTORIAL_STEPS = [
 
 function HowItWorks({ onDismiss }: { onDismiss: () => void }) {
   const [active, setActive] = useState(0)
+  const [paused, setPaused] = useState(false)
 
   useEffect(() => {
+    if (paused) return
     const id = setInterval(() => setActive(prev => (prev + 1) % TUTORIAL_STEPS.length), 3000)
     return () => clearInterval(id)
-  }, [])
+  }, [paused])
 
   const step = TUTORIAL_STEPS[active]
   const StepIcon = step.icon
   const Visual = step.visual
 
   return (
-    <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-900 via-slate-800 to-indigo-950 p-6 md:p-8 shadow-2xl mb-8">
+    <div
+      className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-900 via-slate-800 to-indigo-950 p-6 md:p-8 shadow-2xl mb-8"
+      onMouseEnter={() => setPaused(true)}
+      onMouseLeave={() => setPaused(false)}
+      onFocus={() => setPaused(true)}
+      onBlur={() => setPaused(false)}
+    >
       {/* Background decoration */}
       <div className="absolute top-0 right-0 w-72 h-72 bg-white/[0.02] rounded-full -translate-y-24 translate-x-20 pointer-events-none" />
       <div className="absolute bottom-0 left-0 w-48 h-48 bg-white/[0.02] rounded-full translate-y-16 -translate-x-10 pointer-events-none" />
@@ -300,6 +412,13 @@ function HowItWorks({ onDismiss }: { onDismiss: () => void }) {
         title="Chiudi tutorial"
       >
         <X className="h-4 w-4" />
+      </button>
+      <button
+        onClick={() => setPaused(prev => !prev)}
+        className="absolute top-4 right-14 w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white/60 hover:text-white transition-colors"
+        title={paused ? 'Riprendi tutorial' : 'Ferma tutorial'}
+      >
+        {paused ? <Play className="h-4 w-4" /> : <Pause className="h-4 w-4" />}
       </button>
 
       {/* Header */}
@@ -411,12 +530,105 @@ function HowItWorks({ onDismiss }: { onDismiss: () => void }) {
 
 // ── Slide editor components ──
 
-function McqEditor({ slide, onChange }: { slide: Slide; onChange: (s: Slide) => void }) {
+interface AssistProps {
+  onAssist?: () => void
+  assisting?: boolean
+}
+
+function AiAssistButton({ onAssist, assisting, disabled }: AssistProps & { disabled?: boolean }) {
+  if (!onAssist) return null
+  return (
+    <button
+      type="button"
+      onClick={onAssist}
+      disabled={assisting || disabled}
+      className="inline-flex items-center gap-1 text-xs font-medium text-indigo-600 hover:text-indigo-800 disabled:opacity-40 disabled:cursor-not-allowed"
+      title="Completa con l'aiuto dell'AI"
+    >
+      {assisting ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
+      {assisting ? 'Genero...' : 'Aiuto AI'}
+    </button>
+  )
+}
+
+interface EditableOption {
+  key: string
+  value: string
+}
+
+function McqOptionRow({
+  item, index, isCorrect, canDelete, onToggleCorrect, onChange, onDelete,
+}: {
+  item: EditableOption; index: number; isCorrect: boolean; canDelete: boolean
+  onToggleCorrect: () => void; onChange: (v: string) => void; onDelete: () => void
+}) {
+  const dragControls = useDragControls()
+  return (
+    <Reorder.Item
+      value={item}
+      dragListener={false}
+      dragControls={dragControls}
+      whileDrag={{ scale: 1.02, boxShadow: '0 10px 24px rgba(15, 23, 42, 0.12)' }}
+      className="relative z-0 list-none data-[dragging=true]:z-20"
+    >
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          aria-label={`Trascina per riordinare l'opzione ${index + 1}`}
+          title="Trascina per cambiare posizione"
+          onPointerDown={event => { event.stopPropagation(); dragControls.start(event) }}
+          className="flex h-6 w-5 flex-shrink-0 touch-none items-center justify-center text-slate-300 transition hover:bg-slate-100 hover:text-slate-600 rounded active:cursor-grabbing"
+          style={{ cursor: 'grab' }}
+        >
+          <GripVertical className="h-3.5 w-3.5" />
+        </button>
+        <button
+          type="button"
+          onClick={onToggleCorrect}
+          className={`w-6 h-6 rounded-full border-2 flex-shrink-0 transition-colors ${isCorrect ? 'bg-emerald-500 border-emerald-500' : 'border-slate-300 hover:border-emerald-400'}`}
+          title="Segna come risposta corretta"
+        />
+        <Input
+          value={item.value}
+          onChange={e => onChange(e.target.value)}
+          placeholder={`Opzione ${String.fromCharCode(65 + index)}`}
+          className="flex-1 h-8 text-sm"
+        />
+        {canDelete && (
+          <button type="button" onClick={onDelete} className="text-slate-400 hover:text-red-500">
+            <Trash2 className="h-3.5 w-3.5" />
+          </button>
+        )}
+      </div>
+    </Reorder.Item>
+  )
+}
+
+function McqEditor({ slide, onChange, onAssist, assisting }: { slide: Slide; onChange: (s: Slide) => void } & AssistProps) {
   const options = slide.options || ['', '', '', '']
+
+  // Stable per-row identity for drag reordering, independent of (often duplicate/empty) option text.
+  const keysRef = useRef<string[]>([])
+  if (keysRef.current.length !== options.length) {
+    keysRef.current = options.map((_, i) => keysRef.current[i] ?? makeKey())
+  }
+  const items: EditableOption[] = options.map((value, i) => ({ key: keysRef.current[i], value }))
+  const correctKey = slide.correct_option != null ? items[slide.correct_option]?.key ?? null : null
+
+  // correct_option is a plain index, so any add/remove/reorder must remap it to keep pointing at the same answer.
+  const applyOptions = (newItems: EditableOption[], nextCorrectKey: string | null) => {
+    keysRef.current = newItems.map(it => it.key)
+    const newCorrect = nextCorrectKey != null ? newItems.findIndex(it => it.key === nextCorrectKey) : -1
+    onChange({ ...slide, options: newItems.map(it => it.value), correct_option: newCorrect === -1 ? null : newCorrect })
+  }
+
   return (
     <div className="space-y-3">
       <div>
-        <label className="text-xs font-medium text-slate-600 mb-1 block">Domanda</label>
+        <div className="flex items-center justify-between mb-1">
+          <label className="text-xs font-medium text-slate-600 block">Domanda</label>
+          <AiAssistButton onAssist={onAssist} assisting={assisting} disabled={!(slide.question || '').trim()} />
+        </div>
         <Textarea
           value={slide.question || ''}
           onChange={e => onChange({ ...slide, question: e.target.value })}
@@ -427,43 +639,24 @@ function McqEditor({ slide, onChange }: { slide: Slide; onChange: (s: Slide) => 
       </div>
       <div>
         <label className="text-xs font-medium text-slate-600 mb-1 block">Opzioni di risposta</label>
-        <div className="space-y-1.5">
-          {options.map((opt, i) => (
-            <div key={i} className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => onChange({ ...slide, correct_option: slide.correct_option === i ? null : i })}
-                className={`w-6 h-6 rounded-full border-2 flex-shrink-0 transition-colors ${slide.correct_option === i ? 'bg-emerald-500 border-emerald-500' : 'border-slate-300 hover:border-emerald-400'}`}
-                title="Segna come risposta corretta"
-              />
-              <Input
-                value={opt}
-                onChange={e => {
-                  const next = [...options]; next[i] = e.target.value
-                  onChange({ ...slide, options: next })
-                }}
-                placeholder={`Opzione ${String.fromCharCode(65 + i)}`}
-                className="flex-1 h-8 text-sm"
-              />
-              {options.length > 2 && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    const next = options.filter((_, j) => j !== i)
-                    onChange({ ...slide, options: next, correct_option: slide.correct_option === i ? null : slide.correct_option })
-                  }}
-                  className="text-slate-400 hover:text-red-500"
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </button>
-              )}
-            </div>
+        <Reorder.Group axis="y" values={items} onReorder={newItems => applyOptions(newItems, correctKey)} className="space-y-1.5">
+          {items.map((item, i) => (
+            <McqOptionRow
+              key={item.key}
+              item={item}
+              index={i}
+              isCorrect={correctKey === item.key}
+              canDelete={items.length > 2}
+              onToggleCorrect={() => applyOptions(items, correctKey === item.key ? null : item.key)}
+              onChange={v => applyOptions(items.map((it, j) => j === i ? { ...it, value: v } : it), correctKey)}
+              onDelete={() => applyOptions(items.filter((_, j) => j !== i), item.key === correctKey ? null : correctKey)}
+            />
           ))}
-        </div>
-        {options.length < 6 && (
+        </Reorder.Group>
+        {items.length < 6 && (
           <button
             type="button"
-            onClick={() => onChange({ ...slide, options: [...options, ''] })}
+            onClick={() => applyOptions([...items, { key: makeKey(), value: '' }], correctKey)}
             className="mt-2 text-xs text-indigo-600 hover:text-indigo-800 flex items-center gap-1"
           >
             <Plus className="h-3 w-3" /> Aggiungi opzione
@@ -483,11 +676,14 @@ function McqEditor({ slide, onChange }: { slide: Slide; onChange: (s: Slide) => 
   )
 }
 
-function WordwallEditor({ slide, onChange }: { slide: Slide; onChange: (s: Slide) => void }) {
+function WordwallEditor({ slide, onChange, onAssist, assisting }: { slide: Slide; onChange: (s: Slide) => void } & AssistProps) {
   return (
     <div className="space-y-3">
       <div>
-        <label className="text-xs font-medium text-slate-600 mb-1 block">Prompt</label>
+        <div className="flex items-center justify-between mb-1">
+          <label className="text-xs font-medium text-slate-600 block">Prompt</label>
+          <AiAssistButton onAssist={onAssist} assisting={assisting} disabled={!(slide.prompt || '').trim()} />
+        </div>
         <Textarea
           value={slide.prompt || ''}
           onChange={e => onChange({ ...slide, prompt: e.target.value })}
@@ -509,10 +705,13 @@ function WordwallEditor({ slide, onChange }: { slide: Slide; onChange: (s: Slide
   )
 }
 
-function OpinionEditor({ slide, onChange }: { slide: Slide; onChange: (s: Slide) => void }) {
+function OpinionEditor({ slide, onChange, onAssist, assisting }: { slide: Slide; onChange: (s: Slide) => void } & AssistProps) {
   return (
     <div>
-      <label className="text-xs font-medium text-slate-600 mb-1 block">Prompt</label>
+      <div className="flex items-center justify-between mb-1">
+        <label className="text-xs font-medium text-slate-600 block">Prompt</label>
+        <AiAssistButton onAssist={onAssist} assisting={assisting} disabled={!(slide.prompt || '').trim()} />
+      </div>
       <Textarea
         value={slide.prompt || ''}
         onChange={e => onChange({ ...slide, prompt: e.target.value })}
@@ -524,10 +723,13 @@ function OpinionEditor({ slide, onChange }: { slide: Slide; onChange: (s: Slide)
   )
 }
 
-function FeedbackEditor({ slide, onChange }: { slide: Slide; onChange: (s: Slide) => void }) {
+function FeedbackEditor({ slide, onChange, onAssist, assisting }: { slide: Slide; onChange: (s: Slide) => void } & AssistProps) {
   return (
     <div>
-      <label className="text-xs font-medium text-slate-600 mb-1 block">Domanda</label>
+      <div className="flex items-center justify-between mb-1">
+        <label className="text-xs font-medium text-slate-600 block">Domanda</label>
+        <AiAssistButton onAssist={onAssist} assisting={assisting} disabled={!(slide.prompt || '').trim()} />
+      </div>
       <Textarea
         value={slide.prompt || ''}
         onChange={e => onChange({ ...slide, prompt: e.target.value })}
@@ -540,23 +742,46 @@ function FeedbackEditor({ slide, onChange }: { slide: Slide; onChange: (s: Slide
 }
 
 function SlideCard({
-  slide, index, total, expanded, onToggle, onChange, onDelete, onMoveUp, onMoveDown,
+  item, index, expanded, onToggle, onChange, onDelete, onDragStart, onAssist, assisting,
 }: {
-  slide: Slide; index: number; total: number; expanded: boolean
+  item: EditableSlide; index: number; expanded: boolean
   onToggle: () => void; onChange: (s: Slide) => void; onDelete: () => void
-  onMoveUp: () => void; onMoveDown: () => void
-}) {
+  onDragStart: () => void
+} & AssistProps) {
+  const slide = item.slide
+  const dragControls = useDragControls()
   const Icon = SLIDE_ICONS[slide.type]
   const colorCls = SLIDE_COLORS[slide.type]
   const title = slide.question || slide.prompt || `Slide ${index + 1}`
 
   return (
-    <div className="border border-slate-200 rounded-xl overflow-hidden bg-white shadow-sm">
+    <Reorder.Item
+      value={item}
+      dragListener={false}
+      dragControls={dragControls}
+      onDragStart={onDragStart}
+      whileDrag={{ scale: 1.015, boxShadow: '0 18px 45px rgba(15, 23, 42, 0.16)' }}
+      className="relative z-0 list-none rounded-xl data-[dragging=true]:z-20"
+    >
+    <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
       <div
         className="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-slate-50 transition-colors"
         onClick={onToggle}
       >
-        <GripVertical className="h-4 w-4 text-slate-300 flex-shrink-0" />
+        <button
+          type="button"
+          aria-label={`Trascina per riordinare la slide ${index + 1}`}
+          title="Trascina per cambiare posizione"
+          onPointerDown={(event) => {
+            event.stopPropagation()
+            dragControls.start(event)
+          }}
+          onClick={event => event.stopPropagation()}
+          className="-ml-1 flex h-8 w-7 flex-shrink-0 touch-none items-center justify-center rounded-lg text-slate-300 transition hover:bg-slate-100 hover:text-slate-600 active:cursor-grabbing"
+          style={{ cursor: 'grab' }}
+        >
+          <GripVertical className="h-4 w-4" />
+        </button>
         <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium border ${colorCls}`}>
           <Icon className="h-3 w-3" />
           {SLIDE_LABELS[slide.type]}
@@ -564,36 +789,125 @@ function SlideCard({
         <span className="flex-1 text-sm text-slate-700 truncate">{title}</span>
         <span className="text-xs text-slate-400">{slide.max_seconds}s</span>
         <div className="flex items-center gap-1 ml-2" onClick={e => e.stopPropagation()}>
-          <button disabled={index === 0} onClick={onMoveUp} className="p-1 text-slate-400 hover:text-slate-700 disabled:opacity-30">
-            <ChevronUp className="h-4 w-4" />
-          </button>
-          <button disabled={index === total - 1} onClick={onMoveDown} className="p-1 text-slate-400 hover:text-slate-700 disabled:opacity-30">
-            <ChevronDown className="h-4 w-4" />
-          </button>
           <button onClick={onDelete} className="p-1 text-slate-400 hover:text-red-500">
             <Trash2 className="h-4 w-4" />
           </button>
         </div>
-        {expanded ? <ChevronUp className="h-4 w-4 text-slate-400" /> : <ChevronDown className="h-4 w-4 text-slate-400" />}
+        <motion.span
+          animate={{ rotate: expanded ? 180 : 0 }}
+          transition={{ duration: 0.2, ease: 'easeInOut' }}
+          className="flex h-4 w-4 items-center justify-center text-slate-400"
+        >
+          <ChevronDown className="h-4 w-4" />
+        </motion.span>
       </div>
 
+      <AnimatePresence initial={false}>
       {expanded && (
-        <div className="border-t border-slate-100 px-4 py-4 bg-slate-50/50">
+        <motion.div
+          key="slide-editor"
+          initial={{ height: 0, opacity: 0 }}
+          animate={{ height: 'auto', opacity: 1 }}
+          exit={{ height: 0, opacity: 0 }}
+          transition={{
+            height: { duration: 0.24, ease: [0.4, 0, 0.2, 1] },
+            opacity: { duration: 0.16, ease: 'easeOut' },
+          }}
+          className="overflow-hidden"
+        >
+        <div className="border-t border-slate-100 bg-slate-50/50 px-4 py-4">
           <div className="space-y-4">
-            {slide.type === 'mcq'      && <McqEditor slide={slide} onChange={onChange} />}
-            {slide.type === 'wordwall' && <WordwallEditor slide={slide} onChange={onChange} />}
-            {slide.type === 'opinion'  && <OpinionEditor slide={slide} onChange={onChange} />}
-            {slide.type === 'feedback' && <FeedbackEditor slide={slide} onChange={onChange} />}
+            {slide.type === 'mcq'      && <McqEditor slide={slide} onChange={onChange} onAssist={onAssist} assisting={assisting} />}
+            {slide.type === 'wordwall' && <WordwallEditor slide={slide} onChange={onChange} onAssist={onAssist} assisting={assisting} />}
+            {slide.type === 'opinion'  && <OpinionEditor slide={slide} onChange={onChange} onAssist={onAssist} assisting={assisting} />}
+            {slide.type === 'feedback' && <FeedbackEditor slide={slide} onChange={onChange} onAssist={onAssist} assisting={assisting} />}
             <div>
               <label className="text-xs font-medium text-slate-600 mb-1 block">Tempo massimo (secondi)</label>
-              <Input
-                type="number" min={10} max={600}
-                value={slide.max_seconds}
-                onChange={e => onChange({ ...slide, max_seconds: parseInt(e.target.value) || 60 })}
-                className="w-28 h-8 text-sm"
-              />
+              <div className="inline-flex h-9 items-stretch overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+                <button
+                  type="button"
+                  onClick={() => onChange({ ...slide, max_seconds: Math.max(10, slide.max_seconds - 5) })}
+                  disabled={slide.max_seconds <= 10}
+                  className="flex w-9 items-center justify-center border-r border-slate-200 text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-35"
+                  aria-label="Riduci il tempo massimo di 5 secondi"
+                  title="Riduci di 5 secondi"
+                >
+                  <Minus className="h-3.5 w-3.5" />
+                </button>
+                <Input
+                  type="number"
+                  min={10}
+                  max={600}
+                  step={5}
+                  value={slide.max_seconds}
+                  onChange={event => {
+                    const nextValue = Number.parseInt(event.target.value, 10)
+                    if (Number.isFinite(nextValue)) {
+                      onChange({ ...slide, max_seconds: Math.min(600, Math.max(10, nextValue)) })
+                    }
+                  }}
+                  className="h-full w-16 rounded-none border-0 px-2 text-center text-sm shadow-none focus-visible:ring-0"
+                  aria-label="Tempo massimo in secondi"
+                />
+                <button
+                  type="button"
+                  onClick={() => onChange({ ...slide, max_seconds: Math.min(600, slide.max_seconds + 5) })}
+                  disabled={slide.max_seconds >= 600}
+                  className="flex w-9 items-center justify-center border-l border-slate-200 text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-35"
+                  aria-label="Aumenta il tempo massimo di 5 secondi"
+                  title="Aumenta di 5 secondi"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                </button>
+              </div>
             </div>
           </div>
+        </div>
+        </motion.div>
+      )}
+      </AnimatePresence>
+    </div>
+    </Reorder.Item>
+  )
+}
+
+function SlidePreviewStrip({ slides, count }: { slides?: Slide[]; count: number }) {
+  const previewSlides = (slides || []).slice(0, 5)
+  if (previewSlides.length === 0) {
+    return (
+      <div className="mt-3 flex items-center gap-2 text-xs text-slate-400">
+        <div className="h-10 w-16 rounded-xl border border-dashed border-slate-200 bg-slate-50" />
+        <span>{count} slide</span>
+      </div>
+    )
+  }
+
+  return (
+    <div className="mt-3 flex items-center gap-2 overflow-hidden">
+      {previewSlides.map((slide, idx) => {
+        const Icon = SLIDE_ICONS[slide.type] || Zap
+        const label = slide.question || slide.prompt || SLIDE_LABELS[slide.type]
+        return (
+          <div
+            key={idx}
+            className="flex h-[78px] w-[124px] flex-shrink-0 flex-col justify-between rounded-2xl border border-slate-200 bg-white/72 p-2.5 shadow-sm"
+            title={label}
+          >
+            <div className="flex items-center justify-between gap-1">
+              <span className={`inline-flex h-6 w-6 items-center justify-center rounded-lg border ${SLIDE_COLORS[slide.type]}`}>
+                <Icon className="h-3.5 w-3.5" />
+              </span>
+              <span className="text-[11px] font-black text-slate-400">{idx + 1}</span>
+            </div>
+            <p className="line-clamp-3 text-[11px] font-semibold leading-[14px] text-slate-600">
+              {label}
+            </p>
+          </div>
+        )
+      })}
+      {count > previewSlides.length && (
+        <div className="flex h-[78px] min-w-[60px] items-center justify-center rounded-2xl border border-slate-200 bg-slate-50 text-xs font-black text-slate-400">
+          +{count - previewSlides.length}
         </div>
       )}
     </div>
@@ -603,18 +917,21 @@ function SlideCard({
 // ── Editor panel ──
 
 function InteractionEditor({
-  sessionId, interactionId, onSaved, onCancel,
+  sessionId, interactionId, onSaved, onCancel, prefillTitle, prefillSlides,
 }: {
   sessionId: string; interactionId: string | null; onSaved: () => void; onCancel: () => void
+  prefillTitle?: string; prefillSlides?: Slide[]
 }) {
   const { toast } = useToast()
   const queryClient = useQueryClient()
   const navigate = useNavigate()
 
-  const [title, setTitle] = useState('')
-  const [slides, setSlides] = useState<Slide[]>([])
+  const [title, setTitle] = useState(() => prefillTitle || '')
+  const [slides, setSlides] = useState<EditableSlide[]>(() => (prefillSlides || []).map(editableSlide))
   const [expandedIdx, setExpandedIdx] = useState<number | null>(0)
   const [showTypeMenu, setShowTypeMenu] = useState(false)
+  const [assistingKey, setAssistingKey] = useState<string | null>(null)
+  const [reference, setReference] = useState<ReferenceDoc | null>(null)
 
   const { data: existing, isLoading } = useQuery({
     queryKey: ['live-interaction', interactionId],
@@ -623,13 +940,17 @@ function InteractionEditor({
   })
 
   useEffect(() => {
-    if (existing) { setTitle(existing.title); setSlides(existing.slides_json || []) }
+    if (existing) {
+      setTitle(existing.title)
+      setSlides(((existing.slides_json || []) as Slide[]).map(editableSlide))
+    }
   }, [existing])
 
   const saveMutation = useMutation({
     mutationFn: async () => {
-      if (interactionId) return liveInteractionApi.update(interactionId, { title, slides_json: slides })
-      return liveInteractionApi.create({ session_id: sessionId, title, slides_json: slides })
+      const slidesJson = slides.map(item => item.slide)
+      if (interactionId) return liveInteractionApi.update(interactionId, { title, slides_json: slidesJson })
+      return liveInteractionApi.create({ session_id: sessionId, title, slides_json: slidesJson })
     },
     onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ['live-interactions', sessionId] })
@@ -641,18 +962,32 @@ function InteractionEditor({
   })
 
   const addSlide = (type: SlideType) => {
-    setSlides(prev => [...prev, defaultSlide(type)])
+    setSlides(prev => [...prev, editableSlide(defaultSlide(type))])
     setExpandedIdx(slides.length)
     setShowTypeMenu(false)
   }
-  const updateSlide = (i: number, s: Slide) => setSlides(prev => prev.map((x, j) => j === i ? s : x))
+  const updateSlide = (i: number, s: Slide) => setSlides(prev => prev.map((item, j) => j === i ? { ...item, slide: s } : item))
   const deleteSlide = (i: number) => setSlides(prev => prev.filter((_, j) => j !== i))
-  const moveSlide = (i: number, dir: -1 | 1) => {
-    setSlides(prev => {
-      const next = [...prev]; const j = i + dir
-      ;[next[i], next[j]] = [next[j], next[i]]
-      return next
-    })
+
+  const handleAssist = async (i: number) => {
+    const item = slides[i]
+    const draftText = (item.slide.question || item.slide.prompt || '').trim()
+    if (!draftText) return
+    setAssistingKey(item.key)
+    try {
+      const res = await liveInteractionApi.assistSlide({
+        slide_type: item.slide.type,
+        draft_text: draftText,
+        session_id: sessionId,
+        other_slides: slides.map(s => s.slide),
+        reference_text: reference?.text,
+      })
+      updateSlide(i, { ...item.slide, ...res.data })
+    } catch {
+      toast({ title: "Errore durante l'aiuto AI", variant: 'destructive' })
+    } finally {
+      setAssistingKey(null)
+    }
   }
 
   if (isLoading) return <div className="p-8 text-center text-slate-400">Caricamento...</div>
@@ -669,21 +1004,25 @@ function InteractionEditor({
         />
       </div>
 
-      <div className="space-y-2">
-        {slides.map((slide, i) => (
+      <ReferenceDocUploader sessionId={sessionId} value={reference} onChange={setReference} />
+
+      <Reorder.Group axis="y" values={slides} onReorder={setSlides} className="space-y-2">
+        {slides.map((item, i) => (
           <SlideCard
-            key={i}
-            slide={slide} index={i} total={slides.length}
+            key={item.key}
+            item={item} index={i}
             expanded={expandedIdx === i}
             onToggle={() => setExpandedIdx(expandedIdx === i ? null : i)}
             onChange={s => updateSlide(i, s)}
             onDelete={() => deleteSlide(i)}
-            onMoveUp={() => moveSlide(i, -1)}
-            onMoveDown={() => moveSlide(i, 1)}
+            onDragStart={() => setExpandedIdx(null)}
+            onAssist={() => handleAssist(i)}
+            assisting={assistingKey === item.key}
           />
         ))}
-      </div>
+      </Reorder.Group>
 
+      <div className="sticky bottom-0 z-30 space-y-3 border-t border-slate-100 bg-white/95 py-3 backdrop-blur">
       <div className="relative">
         <Button
           variant="outline"
@@ -693,7 +1032,7 @@ function InteractionEditor({
           <Plus className="h-4 w-4 mr-2" /> Aggiungi slide
         </Button>
         {showTypeMenu && (
-          <div className="absolute top-full mt-1 left-0 right-0 bg-white rounded-xl shadow-lg border border-slate-200 z-20 p-2 grid grid-cols-2 gap-1">
+          <div className="absolute bottom-full mb-1 left-0 right-0 bg-white rounded-xl shadow-lg border border-slate-200 z-20 p-2 grid grid-cols-2 gap-1">
             {(Object.keys(SLIDE_LABELS) as SlideType[]).map(type => {
               const Icon = SLIDE_ICONS[type]
               return (
@@ -710,7 +1049,7 @@ function InteractionEditor({
         )}
       </div>
 
-      <div className="flex justify-end gap-3 pt-2 border-t border-slate-100">
+      <div className="flex justify-end gap-3">
         <Button tone="neutral" surface="ghost" onClick={onCancel}>Annulla</Button>
         <Button
           tone="accent" surface="solid"
@@ -719,6 +1058,89 @@ function InteractionEditor({
         >
           {saveMutation.isPending ? 'Salvataggio...' : interactionId ? 'Salva modifiche' : 'Salva e vai al pannello →'}
         </Button>
+      </div>
+      </div>
+    </div>
+  )
+}
+
+// ── AI structure suggestion modal ──
+
+function StructureAssistModal({
+  sessionId, onClose, onGenerated,
+}: {
+  sessionId: string; onClose: () => void; onGenerated: (result: { title: string; slides: Slide[] }) => void
+}) {
+  const { toast } = useToast()
+  const [topic, setTopic] = useState('')
+  const [numSlides, setNumSlides] = useState(5)
+  const [loading, setLoading] = useState(false)
+  const [reference, setReference] = useState<ReferenceDoc | null>(null)
+
+  const handleGenerate = async () => {
+    if (!topic.trim()) return
+    setLoading(true)
+    try {
+      const res = await liveInteractionApi.assistStructure({
+        session_id: sessionId,
+        topic: topic.trim(),
+        num_slides: numSlides,
+        reference_text: reference?.text,
+      })
+      onGenerated(res.data)
+    } catch {
+      toast({ title: 'Errore durante la generazione', variant: 'destructive' })
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-2xl w-full max-w-lg shadow-xl">
+        <div className="flex items-center justify-between p-6 border-b border-slate-100">
+          <div className="flex items-center gap-2">
+            <Sparkles className="h-5 w-5 text-indigo-600" />
+            <h2 className="text-lg font-bold text-slate-800">Suggerisci struttura con AI</h2>
+          </div>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        <div className="p-6 space-y-4">
+          <div>
+            <label className="text-xs font-medium text-slate-600 mb-1 block">Argomento della sessione</label>
+            <Textarea
+              value={topic}
+              onChange={e => setTopic(e.target.value)}
+              placeholder="Es. La Rivoluzione Francese, i verbi irregolari inglesi, il ciclo dell'acqua..."
+              className="resize-none"
+              rows={3}
+              autoFocus
+            />
+          </div>
+          <div>
+            <label className="text-xs font-medium text-slate-600 mb-1 block">Numero di slide</label>
+            <Input
+              type="number" min={3} max={8}
+              value={numSlides}
+              onChange={e => setNumSlides(Math.min(8, Math.max(3, parseInt(e.target.value) || 5)))}
+              className="w-24 h-8 text-sm"
+            />
+          </div>
+          <ReferenceDocUploader sessionId={sessionId} value={reference} onChange={setReference} />
+          <p className="text-xs text-slate-400">
+            L'AI proporrà titolo e sequenza di slide (tipi variati) tenendo conto delle altre sessioni live già svolte in questa classe{reference ? ' e del documento caricato' : ''}. Potrai modificare tutto prima di salvare.
+          </p>
+        </div>
+
+        <div className="flex justify-end gap-3 p-6 border-t border-slate-100">
+          <Button tone="neutral" surface="ghost" onClick={onClose}>Annulla</Button>
+          <Button tone="accent" surface="solid" onClick={handleGenerate} disabled={!topic.trim() || loading}>
+            {loading ? <><Loader2 className="h-4 w-4 animate-spin" /> Genero...</> : <><Sparkles className="h-4 w-4" /> Genera struttura</>}
+          </Button>
+        </div>
       </div>
     </div>
   )
@@ -738,14 +1160,9 @@ export default function LiveInteractionBuilderPage({ sessionId }: { sessionId?: 
 
   const [editingId, setEditingId] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
-  const [showTutorial, setShowTutorial] = useState(() => {
-    return !localStorage.getItem(TUTORIAL_KEY)
-  })
-
-  const dismissTutorial = () => {
-    localStorage.setItem(TUTORIAL_KEY, '1')
-    setShowTutorial(false)
-  }
+  const [showTutorial, setShowTutorial] = useState(true)
+  const [showStructureModal, setShowStructureModal] = useState(false)
+  const [prefill, setPrefill] = useState<{ title: string; slides: Slide[] } | null>(null)
 
   const { data: interactions, isLoading } = useQuery<LiveInteractionItem[]>({
     queryKey: ['live-interactions', activeSessionId],
@@ -771,8 +1188,10 @@ export default function LiveInteractionBuilderPage({ sessionId }: { sessionId?: 
         <InteractionEditor
           sessionId={activeSessionId!}
           interactionId={editingId}
-          onSaved={() => { setCreating(false); setEditingId(null) }}
-          onCancel={() => { setCreating(false); setEditingId(null) }}
+          prefillTitle={editingId ? undefined : prefill?.title}
+          prefillSlides={editingId ? undefined : prefill?.slides}
+          onSaved={() => { setCreating(false); setEditingId(null); setPrefill(null) }}
+          onCancel={() => { setCreating(false); setEditingId(null); setPrefill(null) }}
         />
       </div>
     )
@@ -786,26 +1205,41 @@ export default function LiveInteractionBuilderPage({ sessionId }: { sessionId?: 
         <div>
           <div className="flex items-center gap-2">
             <h1 className="text-2xl font-bold text-slate-800">Live Interaction</h1>
-            {!showTutorial && (
-              <button
-                onClick={() => setShowTutorial(true)}
-                className="w-7 h-7 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-500 hover:text-slate-700 transition-colors"
-                title="Mostra tutorial"
-              >
-                <HelpCircle className="h-4 w-4" />
-              </button>
-            )}
+            <button
+              onClick={() => setShowTutorial(v => !v)}
+              className="w-7 h-7 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-500 hover:text-slate-700 transition-colors"
+              title={showTutorial ? 'Nascondi tutorial' : 'Mostra tutorial'}
+            >
+              <HelpCircle className="h-4 w-4" />
+            </button>
           </div>
           <p className="text-sm text-slate-500 mt-0.5">
             {storedSession ? `Sessione: ${storedSession.name}` : 'Seleziona una sessione dalla navbar'}
           </p>
         </div>
         {activeSessionId && (
-          <Button tone="accent" surface="solid" onClick={() => setCreating(true)}>
-            <Plus className="h-4 w-4" /> Nuova sessione
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button tone="accent" surface="outline" onClick={() => setShowStructureModal(true)}>
+              <Sparkles className="h-4 w-4" /> Suggerisci struttura AI
+            </Button>
+            <Button tone="accent" surface="solid" onClick={() => setCreating(true)}>
+              <Plus className="h-4 w-4" /> Nuova sessione
+            </Button>
+          </div>
         )}
       </div>
+
+      {showStructureModal && activeSessionId && (
+        <StructureAssistModal
+          sessionId={activeSessionId}
+          onClose={() => setShowStructureModal(false)}
+          onGenerated={(result) => {
+            setPrefill({ title: result.title, slides: (result.slides || []).map(normalizeAiSlide) })
+            setShowStructureModal(false)
+            setCreating(true)
+          }}
+        />
+      )}
 
       {/* Tutorial */}
       <AnimatePresence>
@@ -816,7 +1250,7 @@ export default function LiveInteractionBuilderPage({ sessionId }: { sessionId?: 
             exit={{ opacity: 0, y: -12, height: 0 }}
             transition={{ duration: 0.3 }}
           >
-            <HowItWorks onDismiss={dismissTutorial} />
+            <HowItWorks onDismiss={() => setShowTutorial(false)} />
           </motion.div>
         )}
       </AnimatePresence>
@@ -844,7 +1278,8 @@ export default function LiveInteractionBuilderPage({ sessionId }: { sessionId?: 
       {/* List */}
       <div className="space-y-3">
         {interactions?.map(item => (
-          <div key={item.id} className="border border-slate-200 rounded-xl bg-white shadow-sm p-4 flex items-center gap-3">
+          <div key={item.id} className="border border-slate-200 rounded-[24px] bg-white/86 shadow-sm p-4 transition-all hover:-translate-y-0.5 hover:shadow-md">
+            <div className="flex items-center gap-3">
             {item.status === 'ACTIVE' && (
               <span className="flex-shrink-0 w-2 h-2 rounded-full bg-green-500 animate-pulse" />
             )}
@@ -902,6 +1337,8 @@ export default function LiveInteractionBuilderPage({ sessionId }: { sessionId?: 
                 </Button>
               )}
             </div>
+            </div>
+            <SlidePreviewStrip slides={item.slides_json} count={item.slides_count} />
           </div>
         ))}
       </div>

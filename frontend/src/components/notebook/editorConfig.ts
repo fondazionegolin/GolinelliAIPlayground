@@ -1,12 +1,13 @@
 import { autocompletion, completeFromList } from '@codemirror/autocomplete'
 import { indentWithTab } from '@codemirror/commands'
 import { javascript, javascriptLanguage } from '@codemirror/lang-javascript'
-import { python } from '@codemirror/lang-python'
+import { python, pythonLanguage } from '@codemirror/lang-python'
 import { HighlightStyle, indentUnit, syntaxHighlighting } from '@codemirror/language'
 import { type Extension, RangeSetBuilder } from '@codemirror/state'
 import { tags } from '@lezer/highlight'
 import { Decoration } from '@codemirror/view'
 import { EditorView, keymap } from '@codemirror/view'
+import { microbitApiCompletions } from './microbitApi'
 import type { NotebookCodeProposal, NotebookFontFamily, NotebookProjectType, NotebookTheme } from './types'
 
 const p5ApiCompletions = completeFromList([
@@ -124,8 +125,8 @@ const highlightStyles: Record<NotebookTheme, HighlightStyle> = {
 
   // background #ffffff  (light)
   light: HighlightStyle.define([
-    { tag: [tags.keyword, tags.modifier],                          color: '#1d4ed8', fontWeight: '700' },
-    { tag: [tags.self],                                            color: '#1d4ed8', fontWeight: '700' },
+    { tag: [tags.keyword, tags.modifier],                          color: '#1278bd', fontWeight: '700' },
+    { tag: [tags.self],                                            color: '#1278bd', fontWeight: '700' },
     { tag: [tags.bool, tags.null],                                 color: '#dc2626', fontWeight: '700' },
     { tag: [tags.string, tags.special(tags.string)],               color: '#059669' },
     { tag: tags.number,                                            color: '#b45309' },
@@ -256,15 +257,25 @@ export function proposalDecorationExtension(source: string, proposals: NotebookC
   const offsets = getLineOffsets(source)
   const builder = new RangeSetBuilder<Decoration>()
 
-  for (const proposal of proposals) {
+  // RangeSetBuilder.add() richiede range aggiunti in ordine strettamente crescente di
+  // `from`, senza sovrapposizioni. Le proposte arrivano dal backend (o da uno stato
+  // React non ancora aggiornato dopo un "Applica") e non è garantito che siano già
+  // ordinate/disgiunte: senza questa difesa un ordine sbagliato fa esplodere l'intero
+  // editor con un errore non catturato (pagina bianca), per un problema puramente
+  // cosmetico (la sottolineatura del diff, non l'applicazione del codice).
+  const sorted = [...proposals].sort((a, b) => a.line_start - b.line_start)
+  let lastTo = -1
+  for (const proposal of sorted) {
     const from = offsets[Math.max(0, proposal.line_start - 1)] ?? 0
     const lineEndOffset = offsets[Math.max(0, proposal.line_end)] ?? source.length
     const to = Math.max(from, Math.min(source.length, lineEndOffset > 0 ? lineEndOffset - 1 : source.length))
+    if (from <= lastTo) continue // si sovrappone alla precedente già aggiunta: la saltiamo invece di crashare
     const decoration = Decoration.mark({
       class: `cm-ai-proposal cm-ai-proposal-${proposal.severity}`,
       attributes: { 'data-ai-proposal': proposal.message },
     })
     builder.add(from, to, decoration)
+    lastTo = to
   }
 
   return EditorView.decorations.of(builder.finish())
@@ -314,9 +325,9 @@ export function getEditorExtensions(
   runKeys: Extension,
   fontWeight = 400,
 ): Extension[] {
-  const language = projectType === 'python'
+  const language = projectType === 'python' || projectType === 'microbit'
     ? python()
-    : javascript({ jsx: false, typescript: false })
+    : javascript({ jsx: false, typescript: projectType === 'circuitplayground' })
 
   // For p5js: register p5 completions; for strudel: register strudel completions
   const jsLanguageData = projectType === 'p5js'
@@ -325,6 +336,11 @@ export function getEditorExtensions(
       ? javascriptLanguage.data.of({ autocomplete: strudelApiCompletions })
       : []
 
+  // For micro:bit: register the full MicroPython board API as Python completions.
+  const pythonLanguageData = projectType === 'microbit'
+    ? pythonLanguage.data.of({ autocomplete: microbitApiCompletions })
+    : []
+
   const extraAutocomplete = autocompletion({ activateOnTypingDelay: 50, maxRenderedOptions: 16 })
 
   return [
@@ -332,6 +348,7 @@ export function getEditorExtensions(
     syntaxHighlighting(highlightStyles[theme] ?? highlightStyles.dark),
     language,
     jsLanguageData,
+    pythonLanguageData,
     indentUnit.of('  '),
     extraAutocomplete,
     runKeys,

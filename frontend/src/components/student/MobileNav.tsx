@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
-import { Home, MessageSquare, Bot, Brain } from 'lucide-react'
+import { Home, MessageSquare, Bot, Brain, Code2 } from 'lucide-react'
 import { triggerHaptic } from '@/lib/haptics'
 import { loadStudentAccent, getStudentAccentTheme } from '@/lib/studentAccent'
 import { useTranslation } from 'react-i18next'
@@ -19,6 +19,7 @@ export function MobileNav({ activeModule, onNavigate, unreadMessages = 0, hidden
     { key: null as string | null, icon: Home, label: t('student_dashboard.back_home') },
     { key: 'chatbot', icon: Bot, label: 'AI' },
     { key: 'classe', icon: MessageSquare, label: t('student_dashboard.chat_label') },
+    { key: 'coding', icon: Code2, label: 'Code' },
     { key: 'classification', icon: Brain, label: 'ML' },
   ]
   const ALWAYS_SHOWN = new Set<string | null>([null])

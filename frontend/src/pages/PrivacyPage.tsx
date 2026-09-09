@@ -148,9 +148,9 @@ export default function PrivacyPage() {
       <nav className="sticky top-0 z-50 w-full backdrop-blur-md bg-white/70 border-b border-white/50 px-6 py-4 flex items-center justify-between">
         <Link to="/" className="flex items-center gap-3">
           <img src="/logo_new.png" alt="Golinelli AI" className="h-9 w-auto shadow-sm rounded-md" />
-          <span className="text-xl tracking-tight" style={{ fontFamily: '"SofiaPro"' }}>
-            <span className="font-bold text-[#2d2d2d]/85">Golinelli</span>
-            <span className="font-black text-[#e85c8d]">.ai</span>
+          <span className="text-xl tracking-tight" style={{ fontFamily: 'var(--font-family-brand)' }}>
+            <span className="font-bold text-[var(--logo-ink)]">Golinelli</span>
+            <span className="font-black text-[var(--logo-pink)]">.ai</span>
           </span>
         </Link>
         <div className="flex items-center gap-3">
@@ -170,7 +170,7 @@ export default function PrivacyPage() {
           </div>
           <h1 className="text-4xl sm:text-5xl font-black text-slate-900 leading-tight mb-3">
             Privacy Policy <br />
-            <span className="bg-clip-text text-transparent bg-gradient-to-r from-[#e85c8d] via-indigo-600 to-[#2d2d2d]">
+            <span className="bg-clip-text text-transparent bg-gradient-to-r from-[#fe004d] via-indigo-600 to-[#2d2d2d]">
               & AI Act Compliance
             </span>
           </h1>
@@ -194,7 +194,7 @@ export default function PrivacyPage() {
             <nav className="space-y-1">
               {TOC.map(item => (
                 <a key={item.id} href={`#${item.id}`}
-                  className="block text-xs text-slate-500 hover:text-[#e85c8d] hover:font-medium py-1 transition-colors truncate">
+                  className="block text-xs text-slate-500 hover:text-[var(--logo-pink)] hover:font-medium py-1 transition-colors truncate">
                   {item.label}
                 </a>
               ))}
@@ -434,7 +434,7 @@ export default function PrivacyPage() {
 
       {/* Footer */}
       <footer className="py-6 text-center text-sm text-slate-500 bg-white/40 backdrop-blur-sm border-t border-white/50">
-        <p>© 2025 Fondazione Golinelli — <Link to="/" className="hover:text-[#e85c8d] transition-colors">Golinelli.ai</Link> — Documento in bozza, versione febbraio 2026</p>
+        <p>© 2025 Fondazione Golinelli — <Link to="/" className="hover:text-[var(--logo-pink)] transition-colors">Golinelli.ai</Link> — Documento in bozza, versione febbraio 2026</p>
       </footer>
     </div>
   )

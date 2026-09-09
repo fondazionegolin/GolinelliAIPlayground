@@ -40,7 +40,8 @@ api.interceptors.response.use(
       // Only redirect for auth-critical endpoints; never for content/chat calls
       const isContentCall = url.includes('/llm/') || url.includes('/desktop')
       const isStudentAccessFlow = url.includes('/student/join') || url.includes('/student/check-access')
-      if (!url.includes('/auth/login') && !isContentCall && !isStudentAccessFlow) {
+      const isPublicTeacherbotLink = url.includes('/public/teacherbot-links')
+      if (!url.includes('/auth/login') && !isContentCall && !isStudentAccessFlow && !isPublicTeacherbotLink) {
         localStorage.removeItem('student_token')
         window.location.href = '/login'
       }
@@ -51,10 +52,36 @@ api.interceptors.response.use(
 
 export default api
 
+export type ServerHealthStatus = 'green' | 'yellow' | 'red'
+export interface ServerHealthResponse {
+  status: ServerHealthStatus
+  summary: string
+  reasons: string[]
+  checked_at?: string
+  metrics?: {
+    cpu_percent?: number | null
+    memory_percent?: number | null
+    gpu_available?: boolean | null
+    gpu_percent?: number | null
+    gpu_memory_percent?: number | null
+    database_ms?: number | null
+    redis_ms?: number | null
+    network_ms?: number | null
+  }
+}
+
+export const systemApi = {
+  health: () => api.get<ServerHealthResponse>('/system/health', { timeout: 5000 }),
+}
+
 export const authApi = {
   login: (email: string, password: string) =>
     api.post('/auth/login', { email, password }),
   logout: () => api.post('/auth/logout'),
+  getLegalConsents: () =>
+    api.get('/auth/legal-consents/me'),
+  acceptLegalConsent: (documentKey: string) =>
+    api.post('/auth/legal-consents/accept', { document_key: documentKey }),
   getPublicSettings: (tenantSlug?: string) =>
     api.get('/auth/public-settings', { params: { tenant_slug: tenantSlug } }),
   requestTeacher: (data: { email: string; first_name: string; last_name: string; tenant_slug?: string; school_name?: string }) =>
@@ -77,8 +104,14 @@ export const studentApi = {
   getTasks: () => api.get('/student/tasks'),
   submitTask: (taskId: string, content?: string, content_json?: string) =>
     api.post(`/student/tasks/${taskId}/submit`, null, { params: { content, content_json } }),
+  acknowledgeTaskCorrection: (taskId: string) =>
+    api.post(`/student/tasks/${taskId}/correction/read`),
+  acknowledgeTaskFeedback: (taskId: string) =>
+    api.post(`/student/tasks/${taskId}/feedback/read`),
   submitDocument: (data: { title: string; content_type: string; content_json: string }) =>
     api.post('/student/documents/submit', data),
+  acceptDocumentCorrection: (submissionId: string) =>
+    api.post(`/student/documents/submissions/${submissionId}/correction/accept`),
   listDocumentDrafts: () => api.get('/student/documents/drafts'),
   createDocumentDraft: (data: { title: string; doc_type: string; content_json: string }) =>
     api.post('/student/documents/drafts', data),
@@ -93,6 +126,129 @@ export const studentApi = {
   getProfile: () => api.get('/student/profile'),
   updateProfile: (data: { avatar_url?: string; ui_accent?: string }) =>
     api.patch('/student/profile', data),
+  getCreditBalance: () => api.get('/student/credits/balance'),
+  getCreditHistory: (limit = 20) => api.get('/student/credits/history', { params: { limit } }),
+}
+
+export const codingApi = {
+  listBriefs: (sessionId?: string) =>
+    api.get('/coding/briefs', { params: sessionId ? { session_id: sessionId } : undefined }),
+  listProjects: (sessionId?: string) =>
+    api.get('/coding/projects', { params: sessionId ? { session_id: sessionId } : undefined }),
+  createProject: (data: {
+    title: string
+    session_id?: string
+    brief_id?: string
+    template_key?: string
+    initial_prompt?: string
+  }) => api.post('/coding/projects', data),
+  getProject: (projectId: string) =>
+    api.get(`/coding/projects/${projectId}`),
+  addMessage: (projectId: string, data: { content: string; metadata_json?: Record<string, unknown> }) =>
+    api.post(`/coding/projects/${projectId}/messages`, data),
+  generateProject: (projectId: string, data: { prompt?: string; files?: { path: string; content: string; language?: string }[] }) =>
+    api.post(`/coding/projects/${projectId}/generate`, data),
+  generateProjectStreamUrl: (projectId: string) => `/api/v1/coding/projects/${projectId}/generate-stream`,
+  interview: (data: { title?: string; prompt?: string }) =>
+    api.post('/coding/ai/interview', data),
+  uiReview: (projectId: string, data: { files?: { path: string; content: string; language?: string }[] }) =>
+    api.post(`/coding/projects/${projectId}/ui-review`, data),
+  createVersion: (projectId: string, data: { parent_version_id?: string | null; source_manifest_json: Record<string, unknown>; artifact_manifest_json?: Record<string, unknown>; build_status?: string; review_status?: string }) =>
+    api.post(`/coding/projects/${projectId}/versions`, data),
+  saveDraft: (projectId: string, data: { parent_version_id?: string | null; source_manifest_json: Record<string, unknown>; artifact_manifest_json?: Record<string, unknown>; build_status?: string; review_status?: string }) =>
+    api.put(`/coding/projects/${projectId}/draft`, data),
+  getProjectData: (projectId: string, key: string) =>
+    api.get(`/coding/projects/${projectId}/data/${encodeURIComponent(key)}`),
+  putProjectData: (projectId: string, key: string, value: unknown) =>
+    api.put(`/coding/projects/${projectId}/data/${encodeURIComponent(key)}`, { value }),
+  deleteProjectData: (projectId: string, key: string) =>
+    api.delete(`/coding/projects/${projectId}/data/${encodeURIComponent(key)}`),
+  shareToClass: (projectId: string) =>
+    api.post(`/coding/projects/${projectId}/share-to-class`),
+  forkProject: (projectId: string) =>
+    api.post(`/coding/projects/${projectId}/fork`),
+  commitToCreator: (projectId: string) =>
+    api.post(`/coding/projects/${projectId}/commit-to-creator`),
+  listCommits: (projectId: string) =>
+    api.get(`/coding/projects/${projectId}/commits`),
+  mergeCommit: (projectId: string, commitMessageId: string) =>
+    api.post(`/coding/projects/${projectId}/commits/${commitMessageId}/merge`),
+  rollbackVersion: (projectId: string, versionId: string) =>
+    api.post(`/coding/projects/${projectId}/versions/${versionId}/rollback`),
+  getUpstreamStatus: (projectId: string) =>
+    api.get(`/coding/projects/${projectId}/upstream-status`),
+  pullUpstream: (projectId: string) =>
+    api.post(`/coding/projects/${projectId}/pull-upstream`),
+  publishProject: (projectId: string) =>
+    api.post(`/coding/projects/${projectId}/publish`),
+  downloadProjectZip: (projectId: string) =>
+    api.get(`/coding/projects/${projectId}/download.zip`, { responseType: 'blob' }),
+  getPublicProject: (slug: string) =>
+    api.get(`/coding/public/${slug}`),
+  aiChat: (data: { content: string; history?: { role: string; content: string }[]; profileKey?: string; provider?: string; model?: string }) =>
+    api.post('/coding/ai/chat', data),
+}
+
+export type DesignTokens = {
+  mood?: string
+  palette: {
+    primary: string; primaryText: string
+    accent: string; accentText: string
+    background: string; surface: string
+    text: string; textMuted: string; border: string
+    success: string; danger: string
+  }
+  typography: {
+    fontHeading: string; fontBody: string
+    baseSize: number; scaleRatio: number; headingWeight: number; bodyWeight: number
+  }
+  shape: {
+    radius: number
+    buttonShape: 'squared' | 'soft' | 'pill'
+    buttonStyle: 'solid' | 'outline' | 'soft' | 'gradient' | 'glass' | 'glossy'
+    surfaceStyle: 'flat' | 'transparent' | 'frosted' | 'glossy'
+    shadowLevel: 'none' | 'soft' | 'strong'
+    borderWidth: number
+  }
+  spacing: { base: number; density: 'compact' | 'comfortable' | 'spacious' }
+  priorities: string[]
+}
+
+export type DesignSystem = {
+  id: string
+  tenant_id: string
+  session_id: string | null
+  owner_student_id: string | null
+  owner_user_id: string | null
+  name: string
+  description: string | null
+  tokens_json: DesignTokens
+  created_at: string
+  updated_at: string
+}
+
+export type DesignContrastCheck = { label: string; foreground: string; background: string; ratio: number; passes_aa: boolean }
+export type DesignCompileResult = {
+  tokens: DesignTokens
+  markdown: string
+  path: string
+  contrast_checks: DesignContrastCheck[]
+  coherence_score: number
+  warnings: string[]
+}
+
+export const designSystemApi = {
+  list: () => api.get<DesignSystem[]>('/coding/design-systems'),
+  get: (id: string) => api.get<DesignSystem>(`/coding/design-systems/${id}`),
+  create: (data: { name: string; description?: string; session_id?: string; tokens: DesignTokens }) =>
+    api.post<DesignSystem>('/coding/design-systems', data),
+  update: (id: string, data: { name?: string; description?: string; tokens?: DesignTokens }) =>
+    api.put<DesignSystem>(`/coding/design-systems/${id}`, data),
+  remove: (id: string) => api.delete(`/coding/design-systems/${id}`),
+  suggest: (data: { mood?: string; audience?: string; idea?: string; title?: string }) =>
+    api.post<{ tokens: DesignTokens; rationale: Record<string, string> }>('/coding/design-systems/suggest', data),
+  compile: (tokens: DesignTokens & { name?: string; description?: string }) =>
+    api.post<DesignCompileResult>('/coding/design-systems/compile', { tokens }),
 }
 
 export const adminApi = {
@@ -127,6 +283,35 @@ export const adminApi = {
     model?: string
     include_empty?: boolean
   }) => api.get('/admin/analytics/report', { params }),
+  getUsageTransactions: (params?: {
+    start_date?: string
+    end_date?: string
+    teacher_id?: string
+    class_id?: string
+    session_id?: string
+    provider?: string
+    model?: string
+    actor_role?: string
+    q?: string
+    limit?: number
+    offset?: number
+  }) => api.get('/admin/usage/transactions', { params }),
+  downloadUsageTransactions: (params?: {
+    start_date?: string
+    end_date?: string
+    teacher_id?: string
+    class_id?: string
+    session_id?: string
+    provider?: string
+    model?: string
+    actor_role?: string
+    q?: string
+  }) => api.get('/admin/usage/transactions.csv', { params, responseType: 'blob' }),
+  downloadTeacherUsageReport: (params?: {
+    start_date?: string
+    end_date?: string
+    include_inactive?: boolean
+  }) => api.get('/admin/usage/teacher-report.csv', { params, responseType: 'blob' }),
   getDashboardOverview: (days = 30) =>
     api.get('/admin/dashboard/overview', { params: { days } }),
   getTopConsumers: (days = 30, limit = 25) =>
@@ -135,6 +320,8 @@ export const adminApi = {
     api.get('/admin/teachers/status', { params: { days } }),
   getRealtimeStatus: () =>
     api.get('/admin/realtime/status'),
+  getLegalConsents: () =>
+    api.get('/admin/legal-consents'),
   getEmailTemplates: () =>
     api.get('/admin/email-templates'),
   updateEmailTemplates: (data: Record<string, { subject: string; html: string; text: string }>) =>
@@ -145,6 +332,17 @@ export const adminApi = {
     api.get('/admin/email-templates/history', { params: { template_key: templateKey, limit } }),
   setTeacherCreditLimit: (teacherId: string, amountCap: number) =>
     api.put(`/admin/teachers/${teacherId}/credit-limit`, { amount_cap: amountCap }),
+  updateTeacherSchoolsBulk: (teacherIds: string[], schoolTenantId: string, action: 'add' | 'remove') =>
+    api.put('/admin/teachers/schools/bulk', {
+      teacher_ids: teacherIds,
+      school_tenant_id: schoolTenantId,
+      action,
+    }),
+  setTeacherCreditLimitsBulk: (teacherIds: string[], amountCap: number) =>
+    api.put('/admin/teachers/credit-limits/bulk', {
+      teacher_ids: teacherIds,
+      amount_cap: amountCap,
+    }),
   getAdminClasses: () => api.get('/admin/classes'),
   changePassword: (currentPassword: string, newPassword: string) =>
     api.post('/admin/change-password', { current_password: currentPassword, new_password: newPassword }),
@@ -224,14 +422,18 @@ export const voiceApi = {
 }
 
 export const teacherApi = {
+  getSchools: () => api.get('/teacher/schools'),
   changePassword: (data: { current_password: string; new_password: string; confirm_password: string }) =>
     api.post('/teacher/profile/change-password', data),
-  getClasses: () => api.get('/teacher/classes'),
-  createClass: (data: { name: string; school_grade?: string }) => api.post('/teacher/classes', data),
-  updateClass: (id: string, data: { name: string; school_grade?: string }) =>
+  getClasses: (params?: { include_archived?: boolean }) => api.get('/teacher/classes', { params }),
+  createClass: (data: { name: string; school_grade?: string; school_tenant_id?: string | null }) => api.post('/teacher/classes', data),
+  updateClass: (id: string, data: { name: string; school_grade?: string; school_tenant_id?: string | null }) =>
     api.patch(`/teacher/classes/${id}`, data),
-  getSessions: (classId: string) =>
-    api.get(`/teacher/classes/${classId}/sessions`),
+  archiveClass: (id: string) => api.post(`/teacher/classes/${id}/archive`),
+  restoreClass: (id: string) => api.post(`/teacher/classes/${id}/restore`),
+  permanentlyDeleteClass: (id: string) => api.delete(`/teacher/classes/${id}/permanent`, { params: { confirm: true } }),
+  getSessions: (classId: string, params?: { include_deleted?: boolean }) =>
+    api.get(`/teacher/classes/${classId}/sessions`, { params }),
   createSession: (classId: string, data: { title: string; is_persistent?: boolean }) =>
     api.post(`/teacher/classes/${classId}/sessions`, data),
   updateSession: (id: string, data: { title?: string; status?: string; default_llm_provider?: string; default_llm_model?: string }) =>
@@ -256,24 +458,40 @@ export const teacherApi = {
     api.delete(`/teacher/sessions/${sessionId}/students/${studentId}`),
   deleteSession: (sessionId: string) =>
     api.delete(`/teacher/sessions/${sessionId}`, { params: { confirm: true } }),
+  restoreSession: (sessionId: string) =>
+    api.post(`/teacher/sessions/${sessionId}/restore`),
+  permanentlyDeleteSession: (sessionId: string) =>
+    api.delete(`/teacher/sessions/${sessionId}/permanent`, { params: { confirm: true } }),
   exportSession: (sessionId: string) =>
     api.post(`/teacher/sessions/${sessionId}/export`),
   getAudit: (sessionId: string, cursor?: string) =>
     api.get(`/teacher/sessions/${sessionId}/audit`, { params: { cursor } }),
   getTasks: (sessionId: string) =>
     api.get(`/teacher/sessions/${sessionId}/tasks`),
-  createTask: (sessionId: string, data: { title: string; description?: string; task_type?: string; points?: string; content_json?: string }) =>
+  createTask: (sessionId: string, data: { title: string; description?: string; task_type?: string; points?: string; content_json?: string; due_at?: string | null }) =>
     api.post(`/teacher/sessions/${sessionId}/tasks`, data),
-  updateTask: (sessionId: string, taskId: string, data: { title?: string; description?: string; new_status?: string; points?: string; content_json?: string }) =>
-    api.patch(`/teacher/sessions/${sessionId}/tasks/${taskId}`, null, { params: data }),
+  updateTask: (sessionId: string, taskId: string, data: { title?: string; description?: string; new_status?: string; points?: string; content_json?: string; due_at?: string | null }) => {
+    const hasDueAt = Object.prototype.hasOwnProperty.call(data, 'due_at')
+    return api.patch(`/teacher/sessions/${sessionId}/tasks/${taskId}`, null, {
+      params: {
+        ...data,
+        due_at: data.due_at ?? undefined,
+        clear_due_at: hasDueAt && data.due_at === null ? true : undefined,
+      },
+    })
+  },
   deleteTask: (sessionId: string, taskId: string) =>
     api.delete(`/teacher/sessions/${sessionId}/tasks/${taskId}`),
   getTaskSubmissions: (sessionId: string, taskId: string) =>
     api.get(`/teacher/sessions/${sessionId}/tasks/${taskId}/submissions`),
+  correctExerciseSubmission: (sessionId: string, taskId: string, submissionId: string, content: string) =>
+    api.put(`/teacher/sessions/${sessionId}/tasks/${taskId}/submissions/${submissionId}/correction`, { content }),
   gradeSubmission: (sessionId: string, taskId: string, submissionId: string, data: { score?: string; feedback?: string }) =>
     api.patch(`/teacher/sessions/${sessionId}/tasks/${taskId}/submissions/${submissionId}`, null, { params: data }),
-  analyzeTask: (sessionId: string, taskId: string, question?: string) =>
-    api.post(`/teacher/sessions/${sessionId}/tasks/${taskId}/analyze`, { question: question || '' }),
+  updateSubmissionFeedback: (sessionId: string, taskId: string, submissionId: string, data: { overall_feedback: string; answer_feedback: Record<string, string>; score?: string; publish: boolean }) =>
+    api.put(`/teacher/sessions/${sessionId}/tasks/${taskId}/submissions/${submissionId}/feedback`, data),
+  analyzeTask: (sessionId: string, taskId: string, question?: string, signal?: AbortSignal) =>
+    api.post(`/teacher/sessions/${sessionId}/tasks/${taskId}/analyze`, { question: question || '' }, { signal }),
   // Profile
   getProfile: () => api.get('/teacher/profile'),
   updateProfile: (data: { first_name?: string; last_name?: string; institution?: string; avatar_url?: string; ui_accent?: string }) =>
@@ -283,8 +501,19 @@ export const teacherApi = {
     formData.append('file', file)
     return api.post('/teacher/avatar', formData, { headers: { 'Content-Type': 'multipart/form-data' } })
   },
+  transcribeOcr: (file: File) => {
+    const formData = new FormData()
+    formData.append('file', file)
+    return api.post<{ text: string; engine: string; confidence?: number | null; lines?: Array<Record<string, unknown>> | null }>(
+      '/teacher/ocr/transcribe',
+      formData,
+      { headers: { 'Content-Type': 'multipart/form-data' } }
+    )
+  },
   // Invitations
   getInvitations: () => api.get('/teacher/invitations'),
+  respondToSchoolInvitation: (invitationId: string, accept: boolean) =>
+    api.post(`/teacher/invitations/school/${invitationId}/respond`, { accept }),
   respondToClassInvitation: (invitationId: string, accept: boolean) =>
     api.post(`/teacher/invitations/class/${invitationId}/respond`, { accept }),
   respondToSessionInvitation: (invitationId: string, accept: boolean) =>
@@ -294,6 +523,8 @@ export const teacherApi = {
     api.get(`/teacher/classes/${classId}/teachers`),
   inviteTeacherToClass: (classId: string, email: string) =>
     api.post(`/teacher/classes/${classId}/teachers/invite`, { email }),
+  resendClassTeacherInvitation: (classId: string, invitationId: string) =>
+    api.post(`/teacher/classes/${classId}/teachers/invitations/${invitationId}/resend`),
   removeTeacherFromClass: (classId: string, teacherId: string) =>
     api.delete(`/teacher/classes/${classId}/teachers/${teacherId}`),
   // Student preview
@@ -304,6 +535,8 @@ export const teacherApi = {
     api.get(`/teacher/sessions/${sessionId}/teachers`),
   inviteTeacherToSession: (sessionId: string, email: string) =>
     api.post(`/teacher/sessions/${sessionId}/teachers/invite`, { email }),
+  resendSessionTeacherInvitation: (sessionId: string, invitationId: string) =>
+    api.post(`/teacher/sessions/${sessionId}/teachers/invitations/${invitationId}/resend`),
   removeTeacherFromSession: (sessionId: string, teacherId: string) =>
     api.delete(`/teacher/sessions/${sessionId}/teachers/${teacherId}`),
   // Teacher AI Conversations (server-side persistence)
@@ -325,12 +558,22 @@ export const teacherApi = {
   deleteConversationDocument: (conversationId: string) =>
     api.delete(`/teacher/conversations/${conversationId}/document`),
   listDocumentDrafts: (sessionId?: string) => api.get('/teacher/documents/drafts', { params: { session_id: sessionId } }),
+  listSharedDocuments: (params?: { class_id?: string; session_id?: string }) =>
+    api.get('/teacher/documents/shared', { params }),
+  updateDocumentCorrection: (submissionId: string, contentJson: string) =>
+    api.put(`/teacher/documents/submissions/${submissionId}/correction`, { content_json: contentJson }),
   createDocumentDraft: (data: { title: string; doc_type: string; content_json: string; session_id?: string }) =>
     api.post('/teacher/documents/drafts', data),
   updateDocumentDraft: (draftId: string, data: { title?: string; doc_type?: string; content_json?: string; session_id?: string }) =>
     api.patch(`/teacher/documents/drafts/${draftId}`, data),
   deleteDocumentDraft: (draftId: string) =>
     api.delete(`/teacher/documents/drafts/${draftId}`),
+  listDocumentDraftVersions: (draftId: string) =>
+    api.get(`/teacher/documents/drafts/${draftId}/versions`),
+  createDocumentDraftVersion: (draftId: string, label?: string) =>
+    api.post(`/teacher/documents/drafts/${draftId}/versions`, { label }),
+  restoreDocumentDraftVersion: (draftId: string, versionId: string) =>
+    api.post(`/teacher/documents/drafts/${draftId}/versions/${versionId}/restore`),
   getCanvas: (sessionId: string) =>
     api.get(`/teacher/sessions/${sessionId}/canvas`),
   updateCanvas: (sessionId: string, data: { title?: string; content_json: string; base_version?: number; students_can_write?: boolean }) =>
@@ -411,31 +654,75 @@ export const chatApi = {
   },
 }
 
+export const toyLmApi = {
+  generateShared: (jobId: string, sessionId: string, payload: { seed: string; max_tokens: number; temperature: number }) =>
+    api.post(`/toy-lm/shared/jobs/${jobId}/generate`, { ...payload, session_id: sessionId }),
+}
+
 export const llmApi = {
   getProfiles: () => api.get('/llm/profiles'),
   getChatbotProfiles: () => api.get('/llm/chatbot-profiles'),
+  createRealtimeInterrogationSession: (
+    topic: string,
+    language: string,
+    opts?: { voice?: string; style?: string; pace?: string }
+  ) =>
+    api.post<{ value: string; model: string; expires_at?: number | string | null }>(
+      '/llm/realtime/interrogation-session',
+      { topic, language, ...opts }
+    ),
+  createRealtimeTeacherbotSession: (
+    teacherbotId: string,
+    language: string,
+    opts?: { voice?: string; style?: string; pace?: string }
+  ) =>
+    api.post<{ value: string; model: string; expires_at?: number | string | null }>(
+      '/llm/realtime/teacherbot-session',
+      { teacherbot_id: teacherbotId, language, ...opts }
+    ),
   getChatbotProfilesFull: () => api.get('/teacher/chatbot-profiles-full'),
   getAvailableModels: () => api.get('/llm/available-models'),
   getSessionConversations: (sessionId: string) => api.get(`/llm/sessions/${sessionId}/conversations`),
   getConversationMessages: (conversationId: string) => api.get(`/llm/conversations/${conversationId}/messages`),
-  createConversation: (sessionId: string, profileKey: string, title?: string, provider?: string, model?: string) =>
-    api.post('/llm/conversations', { session_id: sessionId, profile_key: profileKey, title, provider, model }),
+  createConversation: (sessionId: string, profileKey: string, title?: string, provider?: string, model?: string, signal?: AbortSignal) =>
+    api.post('/llm/conversations', { session_id: sessionId, profile_key: profileKey, title, provider, model }, { signal }),
   getConversations: (sessionId?: string, studentId?: string) =>
     api.get('/llm/conversations', { params: { session_id: sessionId, student_id: studentId } }),
   getMessages: (conversationId: string) =>
     api.get(`/llm/conversations/${conversationId}/messages`),
-  sendMessage: (conversationId: string, content: string, imageProvider?: string, imageSize?: string, verboseMode?: boolean) =>
-    api.post(`/llm/conversations/${conversationId}/message`, { content, image_provider: imageProvider, image_size: imageSize, verbose_mode: verboseMode }),
+  renameConversation: (conversationId: string, title: string) =>
+    api.patch(`/llm/conversations/${conversationId}`, { title }),
+  sendMessage: (conversationId: string, content: string, imageProvider?: string, imageSize?: string, verboseMode?: boolean, signal?: AbortSignal) =>
+    api.post(`/llm/conversations/${conversationId}/message`, { content, image_provider: imageProvider, image_size: imageSize, verbose_mode: verboseMode }, { signal }),
   sendMessageStreamUrl: (conversationId: string) => `/api/v1/llm/conversations/${conversationId}/message-stream`,
   deleteConversation: (conversationId: string) =>
     api.delete(`/llm/conversations/${conversationId}`),
   deleteAllConversations: (sessionId: string) =>
     api.delete(`/llm/sessions/${sessionId}/conversations`),
-  studentChat: (content: string, history: { role: string; content: string }[], profileKey?: string, provider?: string, model?: string) =>
-    api.post('/llm/student/chat', { content, history, profile_key: profileKey, provider, model }),
-  teacherChat: (content: string, history: { role: string; content: string }[], profileKey?: string, provider?: string, model?: string, imageProvider?: string, imageSize?: string) =>
-    api.post('/llm/teacher/chat', { content, history, profile_key: profileKey, provider, model, image_provider: imageProvider, image_size: imageSize }),
-  teacherChatWithFiles: (content: string, history: { role: string; content: string }[], profileKey: string, provider: string, model: string, files: File[], imageProvider?: string, imageSize?: string) => {
+  studentChat: (content: string, history: { role: string; content: string }[], profileKey?: string, provider?: string, model?: string, signal?: AbortSignal) =>
+    api.post('/llm/student/chat', { content, history, profile_key: profileKey, provider, model }, { signal }),
+  presentationAgent: (data: {
+    prompt: string
+    mode?: 'create' | 'edit'
+    format: string
+    dims: { width: number; height: number }
+    current_presentation?: Record<string, unknown>
+    provider?: string
+    model?: string
+  }, signal?: AbortSignal) =>
+    api.post('/llm/presentations/agent', data, { signal }),
+  documentAssist: (data: {
+    prompt: string
+    target: Record<string, unknown>
+    document_context?: Record<string, unknown>
+    dims?: { width: number; height: number }
+    provider?: string
+    model?: string
+  }, signal?: AbortSignal) =>
+    api.post('/llm/documents/assist', data, { signal }),
+  teacherChat: (content: string, history: { role: string; content: string }[], profileKey?: string, provider?: string, model?: string, imageProvider?: string, imageSize?: string, signal?: AbortSignal) =>
+    api.post('/llm/teacher/chat', { content, history, profile_key: profileKey, provider, model, image_provider: imageProvider, image_size: imageSize }, { signal }),
+  teacherChatWithFiles: (content: string, history: { role: string; content: string }[], profileKey: string, provider: string, model: string, files: File[], imageProvider?: string, imageSize?: string, signal?: AbortSignal) => {
     const formData = new FormData()
     formData.append('content', content)
     formData.append('history', JSON.stringify(history))
@@ -446,19 +733,21 @@ export const llmApi = {
     if (imageSize) formData.append('image_size', imageSize)
     files.forEach(file => formData.append('files', file))
     return api.post('/llm/teacher/chat-with-files', formData, {
-      headers: { 'Content-Type': 'multipart/form-data' }
+      headers: { 'Content-Type': 'multipart/form-data' },
+      signal,
     })
   },
-  sendMessageWithFiles: (conversationId: string, content: string, files: File[]) => {
+  sendMessageWithFiles: (conversationId: string, content: string, files: File[], signal?: AbortSignal) => {
     const formData = new FormData()
     formData.append('content', content)
     files.forEach(file => formData.append('files', file))
     return api.post(`/llm/conversations/${conversationId}/message-with-files`, formData, {
-      headers: { 'Content-Type': 'multipart/form-data' }
+      headers: { 'Content-Type': 'multipart/form-data' },
+      signal,
     })
   },
-  generateImage: (prompt: string, provider: string = 'flux-schnell') =>
-    api.post('/llm/generate-image', { prompt, provider }),
+  generateImage: (prompt: string, provider: string = 'gpt-image-2-2026-04-21', signal?: AbortSignal) =>
+    api.post('/llm/generate-image', { prompt, provider }, { signal }),
   explain: (messageId: string) =>
     api.post('/llm/explain', { message_id: messageId }),
   filePreview: (file: File) => {
@@ -474,10 +763,10 @@ export const llmApi = {
     api.post('/llm/compile-latex', { content, filename }, { responseType: 'arraybuffer' }),
   getYoutubeTranscript: (url: string) =>
     api.post<{ video_id: string; title: string | null; transcript: string; duration_seconds: number }>('/llm/youtube/transcript', { url }),
-  editHtmlPage: (html: string, modification: string) =>
-    api.post<{ html: string }>('/llm/html-page/edit', { html, modification }),
-  editBrochure: (payload: object, modification: string) =>
-    api.post<{ payload: object }>('/llm/brochure/edit', { payload, modification }),
+  editHtmlPage: (html: string, modification: string, signal?: AbortSignal) =>
+    api.post<{ html: string }>('/llm/html-page/edit', { html, modification }, { signal }),
+  editBrochure: (payload: object, modification: string, signal?: AbortSignal) =>
+    api.post<{ payload: object }>('/llm/brochure/edit', { payload, modification }, { signal }),
 }
 
 export const ragApi = {
@@ -494,18 +783,24 @@ export const ragApi = {
 }
 
 export const studentRagApi = {
-  uploadDocument: (file: File) => {
+  uploadDocument: (file: File, projectId?: string) => {
     const form = new FormData()
     form.append('file', file)
+    if (projectId) form.append('project_id', projectId)
     return api.post('/rag/student/upload', form, { headers: { 'Content-Type': 'multipart/form-data' } })
   },
-  listDocuments: () => api.get('/rag/student/documents'),
+  ingestYoutube: (url: string, projectId?: string) =>
+    api.post('/rag/student/youtube', { url, project_id: projectId }),
+  generateArtifact: (prompt: string, artifactType: 'html' | 'brochure', projectId?: string) =>
+    api.post('/rag/student/artifact', { prompt, artifact_type: artifactType, project_id: projectId }),
+  listDocuments: (projectId?: string) => api.get('/rag/student/documents', { params: { project_id: projectId } }),
   deleteDocument: (docId: string) => api.delete(`/rag/student/documents/${docId}`),
   getChunks: (docId: string) => api.get(`/rag/student/documents/${docId}/chunks`),
-  search: (query: string, docIds?: string[], topK?: number) =>
-    api.post('/rag/student/search', { query, doc_ids: docIds, top_k: topK }),
-  chat: (message: string, history: { role: string; content: string }[], docIds?: string[], topK?: number) =>
-    api.post('/rag/student/chat', { message, history, doc_ids: docIds, top_k: topK }),
+  getGraph: (projectId?: string) => api.get('/rag/student/graph', { params: { project_id: projectId } }),
+  search: (query: string, docIds?: string[], topK?: number, projectId?: string) =>
+    api.post('/rag/student/search', { query, doc_ids: docIds, top_k: topK, project_id: projectId }),
+  chat: (message: string, history: { role: string; content: string }[], docIds?: string[], topK?: number, projectId?: string) =>
+    api.post('/rag/student/chat', { message, history, doc_ids: docIds, top_k: topK, project_id: projectId }),
 }
 
 export const mlApi = {
@@ -542,6 +837,16 @@ export const assessmentApi = {
 }
 
 export const filesApi = {
+  importDocument: (file: File, sessionId?: string) => {
+    const formData = new FormData()
+    formData.append('file', file)
+    if (sessionId) formData.append('session_id', sessionId)
+    return api.post('/files/documents/import', formData, { headers: { 'Content-Type': 'multipart/form-data' } })
+  },
+  exportDocument: (data: { title: string; content_json: string; target_format: 'pdf' | 'ppt' | 'pptx' | 'doc' | 'docx' | 'xlsx' }) =>
+    api.post('/files/documents/export', data, { responseType: 'blob' }),
+  getContent: (fileId: string) =>
+    api.get(`/files/${fileId}/content`, { responseType: 'blob' }),
   getUploadUrl: (data: { filename: string; mime_type: string; size_bytes: number; scope: string; session_id?: string }) =>
     api.post('/files/upload-url', data),
   completeUpload: (fileId: string, checksum: string) =>
@@ -550,6 +855,23 @@ export const filesApi = {
     api.get(`/files/${fileId}/download-url`),
   listSessionFiles: (sessionId: string) =>
     api.get(`/files/session/${sessionId}`),
+}
+
+export const collaborationApi = {
+  listParticipants: () => api.get('/collaboration/participants'),
+  createRoom: (data: {
+    kind: 'teacherbot' | 'assistant'
+    teacherbot_id?: string
+    profile_key?: string
+    participant_ids: string[]
+    title?: string
+    seed_messages?: { role: string; content: string; sender_nickname?: string }[]
+  }) => api.post('/collaboration/rooms', data),
+  listRooms: () => api.get('/collaboration/rooms'),
+  getRoom: (roomId: string) => api.get(`/collaboration/rooms/${roomId}`),
+  sendMessage: (roomId: string, content: string) =>
+    api.post(`/collaboration/rooms/${roomId}/messages`, { content }),
+  closeRoom: (roomId: string) => api.post(`/collaboration/rooms/${roomId}/close`),
 }
 
 export const teacherbotsApi = {
@@ -589,10 +911,18 @@ export const teacherbotsApi = {
     status?: string
   }) => api.patch(`/teacherbots/${id}`, data),
   delete: (id: string) => api.delete(`/teacherbots/${id}`),
-  test: (id: string, content: string, history?: { role: string; content: string }[]) =>
-    api.post(`/teacherbots/${id}/test`, { content, history }),
+  test: (
+    id: string,
+    content: string,
+    history?: { role: string; content: string }[],
+    signal?: AbortSignal,
+    overrides?: { system_prompt?: string; temperature?: number; llm_provider?: string; llm_model?: string },
+  ) =>
+    api.post(`/teacherbots/${id}/test`, { content, history, ...overrides }, { signal }),
   publish: (id: string, classId: string) =>
     api.post(`/teacherbots/${id}/publish`, { class_id: classId }),
+  publishToStudent: (id: string, studentId: string) =>
+    api.post(`/teacherbots/${id}/publish`, { student_id: studentId }),
   getPublications: (id: string) =>
     api.get(`/teacherbots/${id}/publications`),
   unpublish: (id: string, publicationId: string) =>
@@ -617,19 +947,24 @@ export const teacherbotsApi = {
 
   // Student endpoints
   listAvailable: () => api.get('/student/teacherbots'),
-  startConversation: (teacherbotId: string, sessionId: string) =>
-    api.post(`/student/teacherbots/${teacherbotId}/conversations`, { session_id: sessionId }),
+  startConversation: (teacherbotId: string, sessionId: string, signal?: AbortSignal) =>
+    api.post(`/student/teacherbots/${teacherbotId}/conversations`, { session_id: sessionId }, { signal }),
   getConversations: () => api.get('/student/teacherbots/conversations'),
+  renameConversation: (conversationId: string, title: string) =>
+    api.patch(`/student/teacherbots/conversations/${conversationId}`, { title }),
+  deleteConversation: (conversationId: string) =>
+    api.delete(`/student/teacherbots/conversations/${conversationId}`),
   getConversationMessages: (conversationId: string) =>
     api.get(`/student/teacherbots/conversations/${conversationId}/messages`),
-  sendMessage: (conversationId: string, content: string) =>
-    api.post(`/student/teacherbots/conversations/${conversationId}/message`, { content }),
-  sendMessageWithFiles: (conversationId: string, content: string, files: File[]) => {
+  sendMessage: (conversationId: string, content: string, signal?: AbortSignal) =>
+    api.post(`/student/teacherbots/conversations/${conversationId}/message`, { content }, { signal }),
+  sendMessageWithFiles: (conversationId: string, content: string, files: File[], signal?: AbortSignal) => {
     const formData = new FormData()
     formData.append('content', content)
     files.forEach(file => formData.append('files', file))
     return api.post(`/student/teacherbots/conversations/${conversationId}/message-with-files`, formData, {
-      headers: { 'Content-Type': 'multipart/form-data' }
+      headers: { 'Content-Type': 'multipart/form-data' },
+      signal,
     })
   },
   endConversation: (conversationId: string) =>
@@ -638,9 +973,81 @@ export const teacherbotsApi = {
     api.get(`/teacher/sessions/${sessionId}/teacherbot-conversations`),
   getTeacherConvMessages: (teacherbotId: string, conversationId: string) =>
     api.get(`/teacherbots/${teacherbotId}/conversations/${conversationId}/messages`),
+
+  // Share links (public link + access code + expiry)
+  createShareLink: (teacherbotId: string, data: { expires_at: string; label?: string; access_code?: string }) =>
+    api.post(`/teacherbots/${teacherbotId}/share-links`, data),
+  listShareLinks: (teacherbotId: string) =>
+    api.get(`/teacherbots/${teacherbotId}/share-links`),
+  revokeShareLink: (teacherbotId: string, linkId: string) =>
+    api.delete(`/teacherbots/${teacherbotId}/share-links/${linkId}`),
+  listShareLinkConversations: (teacherbotId: string, linkId: string) =>
+    api.get(`/teacherbots/${teacherbotId}/share-links/${linkId}/conversations`),
+  getShareConversationMessages: (teacherbotId: string, conversationId: string) =>
+    api.get(`/teacherbots/${teacherbotId}/share-conversations/${conversationId}/messages`),
+}
+
+export const studentbotsApi = {
+  list: () => api.get('/student/studentbots'),
+  create: (data: {
+    name: string
+    synopsis?: string
+    description?: string
+    icon?: string
+    color?: string
+    system_prompt: string
+    is_proactive?: boolean
+    proactive_message?: string
+    enable_live_voice?: boolean
+    llm_provider?: string
+    llm_model?: string
+    temperature?: number
+  }) => api.post('/student/studentbots', data),
+  get: (id: string) => api.get(`/student/studentbots/${id}`),
+  update: (id: string, data: Record<string, unknown>) => api.patch(`/student/studentbots/${id}`, data),
+  delete: (id: string) => api.delete(`/student/studentbots/${id}`),
+  test: (
+    id: string,
+    content: string,
+    history?: { role: string; content: string }[],
+    signal?: AbortSignal,
+    overrides?: { system_prompt?: string; temperature?: number; llm_provider?: string; llm_model?: string },
+  ) => api.post(`/student/studentbots/${id}/test`, { content, history, ...overrides }, { signal }),
+  uploadKbDocument: (id: string, file: File) => {
+    const formData = new FormData()
+    formData.append('file', file)
+    return api.post(`/student/studentbots/${id}/kb`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+  },
+  listKbDocuments: (id: string) => api.get(`/student/studentbots/${id}/kb`),
+  deleteKbDocument: (id: string, docId: string) => api.delete(`/student/studentbots/${id}/kb/${docId}`),
+}
+
+export const publicTeacherbotApi = {
+  getLinkInfo: (token: string) => api.get(`/public/teacherbot-links/${token}`),
+  verifyCode: (token: string, accessCode: string) =>
+    api.post(`/public/teacherbot-links/${token}/verify`, { access_code: accessCode }),
+  getMessages: (conversationId: string) =>
+    api.get(`/public/teacherbot-links/conversations/${conversationId}/messages`),
+  sendMessage: (conversationId: string, content: string, signal?: AbortSignal) =>
+    api.post(`/public/teacherbot-links/conversations/${conversationId}/message`, { content }, { signal }),
+  sendMessageWithFiles: (conversationId: string, content: string, files: File[], signal?: AbortSignal) => {
+    const formData = new FormData()
+    formData.append('content', content)
+    files.forEach((file) => formData.append('files', file))
+    return api.post(`/public/teacherbot-links/conversations/${conversationId}/message-with-files`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      signal,
+    })
+  },
 }
 
 export const creditsApi = {
+  getBalance: () => api.get('/credits/balance'),
+  getHistory: (limit = 20) => api.get('/credits/history', { params: { limit } }),
+  getStudentPoolBalance: () => api.get('/credits/student-pool/balance'),
+  getStudentPoolHistory: (limit = 50) => api.get('/credits/student-pool/history', { params: { limit } }),
   getStats: (startDate?: string, endDate?: string) =>
     api.get('/credits/stats', { params: { start_date: startDate, end_date: endDate } }),
   getLimits: (level?: string) =>
@@ -693,14 +1100,82 @@ export const feedbackApi = {
     api.patch(`/feedback/admin/${id}/status`, { status }),
   reply: (id: string, reply_type: 'in_progress' | 'resolved') =>
     api.post(`/feedback/admin/${id}/reply`, { reply_type }),
+
+  // ── Project-management board ──
+  boardAccess: () => api.get('/feedback/board/access'),
+  board: () => api.get('/feedback/board'),
+  boardConfig: () => api.get('/feedback/board/config'),
+  updateBoardConfig: (data: {
+    title?: string
+    columns?: { id: string; label: string; hint?: string; color?: string }[]
+    template_id?: string
+    is_shared_with_class?: boolean
+    students_can_contribute?: boolean
+  }) => api.put('/feedback/board/config', data),
+  createBoardCard: (data: {
+    message: string
+    board_status?: string
+    category?: string
+    urgency?: string
+    internal_note?: string
+  }) => api.post('/feedback/board/cards', data),
+  updateBoardCard: (
+    id: string,
+    patch: { board_status?: string; category?: string; urgency?: string; internal_note?: string },
+  ) => api.patch(`/feedback/board/${id}`, patch),
+  classifyCard: (id: string) => api.post(`/feedback/board/${id}/classify`),
+  classifyAll: () => api.post('/feedback/board/classify-all'),
+  replyBoardCard: (id: string, reply_type: 'in_progress' | 'resolved') =>
+    api.post(`/feedback/board/${id}/reply`, { reply_type }),
+  listCollaborators: () => api.get('/feedback/board/collaborators'),
+  listEligibleCollaborators: () => api.get('/feedback/board/eligible-collaborators'),
+  addCollaborator: (email: string) => api.post('/feedback/board/collaborators', { email }),
+  removeCollaborator: (teacherId: string) => api.delete(`/feedback/board/collaborators/${teacherId}`),
+}
+
+export const boardsApi = {
+  templates: () => api.get('/boards/templates'),
+  list: (sessionId?: string) => api.get('/boards', { params: { session_id: sessionId } }),
+  create: (data: {
+    title: string
+    description?: string
+    session_id?: string
+    template_key?: string
+    columns?: { id: string; label: string; hint?: string; color?: string }[]
+    visibility?: 'private' | 'session_shared'
+    students_can_edit?: boolean
+  }) => api.post('/boards', data),
+  get: (id: string) => api.get(`/boards/${id}`),
+  delete: (id: string) => api.delete(`/boards/${id}`),
+  update: (id: string, data: {
+    title?: string
+    description?: string
+    columns?: { id: string; label: string; hint?: string; color?: string }[]
+    visibility?: 'private' | 'session_shared'
+    students_can_edit?: boolean
+    coding_project_id?: string | null
+    move_cards_from_column_id?: string
+    move_cards_to_column_id?: string
+  }) => api.patch(`/boards/${id}`, data),
+  createCard: (boardId: string, data: { title: string; description?: string; column_id?: string; color?: string }) =>
+    api.post(`/boards/${boardId}/cards`, data),
+  createCardsBulk: (boardId: string, data: { cards: { title: string; description?: string; column_id?: string; color?: string }[] }) =>
+    api.post(`/boards/${boardId}/cards/bulk`, data),
+  updateCard: (boardId: string, cardId: string, data: { title?: string; description?: string; column_id?: string; color?: string; coding_project_id?: string | null; coding_status?: string | null; sort_order?: string }) =>
+    api.patch(`/boards/${boardId}/cards/${cardId}`, data),
+  deleteCard: (boardId: string, cardId: string) =>
+    api.delete(`/boards/${boardId}/cards/${cardId}`),
+  aiChat: (boardId: string, data: { message: string; history?: { role: string; content: string }[]; generate_tasks?: boolean }) =>
+    api.post(`/boards/${boardId}/ai/chat`, data),
 }
 
 
 export const notebooksApi = {
   list: () => api.get('/notebooks'),
-  create: (title: string, projectType: 'python' | 'p5js' | 'strudel' | 'game2d') => api.post('/notebooks', { title, project_type: projectType }),
+  create: (title: string, projectType: 'python' | 'p5js' | 'strudel' | 'game2d' | 'microbit' | 'circuitplayground', templateKey?: string) =>
+    api.post('/notebooks', { title, project_type: projectType, template_key: templateKey }),
   get: (id: string) => api.get(`/notebooks/${id}`),
-  update: (id: string, data: { title?: string; cells?: unknown[]; project_type?: 'python' | 'p5js' | 'strudel' | 'game2d'; editor_settings?: Record<string, unknown> }) => api.put(`/notebooks/${id}`, data),
+  update: (id: string, data: { title?: string; cells?: unknown[]; project_type?: 'python' | 'p5js' | 'strudel' | 'game2d' | 'microbit' | 'circuitplayground'; editor_settings?: Record<string, unknown> }) => api.put(`/notebooks/${id}`, data),
   delete: (id: string) => api.delete(`/notebooks/${id}`),
   tutorChat: (id: string, data: {
     message: string
@@ -714,6 +1189,71 @@ export const notebooksApi = {
     current_cell_source?: string
     last_output?: string
   }) => api.post(`/notebooks/${id}/assist`, data),
+  assistStreamUrl: (id: string) => `/api/v1/notebooks/${id}/assist-stream`,
+  listVersions: (id: string) => api.get<NotebookVersionSummary[]>(`/notebooks/${id}/versions`),
+  createVersion: (id: string, data: { label?: string; source?: NotebookVersionSource }) =>
+    api.post<NotebookVersionSummary>(`/notebooks/${id}/versions`, data),
+  getVersion: (id: string, versionId: string) =>
+    api.get<NotebookVersionDetail>(`/notebooks/${id}/versions/${versionId}`),
+  restoreVersion: (id: string, versionId: string) =>
+    api.post(`/notebooks/${id}/versions/${versionId}/restore`, {}),
+  deleteVersion: (id: string, versionId: string) =>
+    api.delete(`/notebooks/${id}/versions/${versionId}`),
+  listAssignments: () => api.get<NotebookAssignment[]>('/notebooks/assignments'),
+  assign: (id: string, sessionId: string, description?: string) =>
+    api.post<NotebookAssignment>(`/notebooks/${id}/assign`, { session_id: sessionId, description }),
+  forkAssignment: (assignmentId: string) =>
+    api.post<{ notebook_id: string; created: boolean }>(`/notebooks/assignments/${assignmentId}/fork`, {}),
+  submit: (id: string) =>
+    api.post<{ id: string; version_id: string; submitted_at: string }>(`/notebooks/${id}/submit`, {}),
+}
+
+export interface NotebookAssignment {
+  id: string
+  task_id: string
+  session_id: string
+  session_title?: string
+  source_notebook_id: string
+  source_version_id: string
+  title: string
+  project_type: string
+  is_active: boolean
+  created_at: string
+  fork_notebook_id?: string | null
+  submitted_at?: string | null
+  submission_count?: number
+}
+
+export type NotebookVersionSource = 'manual' | 'ai' | 'auto' | 'rollback'
+
+export interface NotebookVersionSummary {
+  id: string
+  label: string
+  source: NotebookVersionSource
+  title: string
+  project_type: string
+  cell_count: number
+  created_at: string
+}
+
+export interface NotebookVersionDetail extends NotebookVersionSummary {
+  cells: unknown[]
+  editor_settings: Record<string, unknown>
+}
+
+export interface CircuitPlaygroundCompileResult {
+  ok: boolean
+  board: 'circuitplayground' | string
+  filename: string
+  mime_type: string
+  size_bytes: number
+  uf2_base64: string
+  logs?: string
+}
+
+export const hardwareApi = {
+  compileCircuitPlayground: (code: string) =>
+    api.post<CircuitPlaygroundCompileResult>('/hardware/circuit-playground/compile', { code }),
 }
 
 export const desktopApi = {
@@ -774,6 +1314,16 @@ export const liveInteractionApi = {
     api.post(`/teacher/live-interactions/${id}/end`),
   results: (id: string) =>
     api.get(`/teacher/live-interactions/${id}/results`),
+  assistSlide: (data: { slide_type: string; draft_text: string; session_id: string; other_slides?: object[]; reference_text?: string }) =>
+    api.post('/teacher/live-interactions/assist-slide', data),
+  assistStructure: (data: { session_id: string; topic: string; num_slides?: number; reference_text?: string }) =>
+    api.post('/teacher/live-interactions/assist-structure', data),
+  extractReference: (sessionId: string, file: File) => {
+    const fd = new FormData()
+    fd.append('session_id', sessionId)
+    fd.append('file', file)
+    return api.post('/teacher/live-interactions/extract-reference', fd, { headers: { 'Content-Type': 'multipart/form-data' } })
+  },
   // Student
   currentStudent: () =>
     api.get('/student/live-interaction/current'),

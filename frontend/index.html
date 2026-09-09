@@ -7,28 +7,33 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Golinelli AI Playground</title>
     <script>
-      // COOP/COEP headers are set by nginx — this SW is a fallback for environments without them.
-      // Guard: only reload once per browser session to avoid infinite loops on browsers
-      // that don't support COEP "credentialless" (e.g. Safari ≤16).
-      if ('serviceWorker' in navigator && !self.crossOriginIsolated) {
-        if (!sessionStorage.getItem('coi-sw-reloaded')) {
-          navigator.serviceWorker.register('/coi-serviceworker.js').then(function (reg) {
-            var sw = reg.installing || reg.waiting || reg.active;
-            if (sw && sw.state !== 'activated') {
-              sw.addEventListener('statechange', function (e) {
-                if (e.target.state === 'activated') {
-                  sessionStorage.setItem('coi-sw-reloaded', '1');
-                  location.reload();
-                }
-              });
-            } else {
-              // SW already active but still not isolated — reload once, then give up.
-              sessionStorage.setItem('coi-sw-reloaded', '1');
-              location.reload();
-            }
-          }).catch(function (e) { console.warn('[COI-SW]', e); });
-        }
-      }
+      // Cross-origin isolation (COOP/COEP) is intentionally DISABLED: it makes the page
+      // cross-origin isolated, which blocks the Coding Lab's Sandpack bundler iframe
+      // ("Couldn't connect to server / TIME_OUT"). We no longer register the coi-serviceworker.
+      // Clients that already installed it stay isolated, so proactively unregister it once.
+      (function () {
+        if (!('serviceWorker' in navigator)) return;
+        // Guard lives in localStorage, NOT sessionStorage: dropping COOP/COEP swaps the
+        // browsing context group, and a per-session flag can be lost across that reload —
+        // which turned this cleanup into an infinite refresh loop (Chrome/Windows).
+        var GUARD = 'coi-sw-removed-v2';
+        navigator.serviceWorker.getRegistrations().then(function (regs) {
+          var coi = regs.filter(function (reg) {
+            var sw = reg.active || reg.waiting || reg.installing;
+            return sw && /coi-serviceworker/.test(sw.scriptURL);
+          });
+          if (!coi.length) return;
+          // Await the unregister: reloading first can abort it and leave the SW installed.
+          return Promise.all(coi.map(function (reg) { return reg.unregister(); })).then(function () {
+            var alreadyReloaded = true;
+            try {
+              alreadyReloaded = localStorage.getItem(GUARD) === '1';
+              localStorage.setItem(GUARD, '1');
+            } catch (e) { /* site data blocked: never reload, so we can never loop */ }
+            if (!alreadyReloaded) location.reload();
+          });
+        }).catch(function (e) { console.warn('[COI-SW cleanup]', e); });
+      })();
     </script>
   </head>
   <body>

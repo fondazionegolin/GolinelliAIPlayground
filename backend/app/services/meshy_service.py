@@ -1,4 +1,5 @@
 import asyncio
+import base64
 import logging
 import httpx
 from typing import Optional
@@ -9,6 +10,7 @@ logger = logging.getLogger(__name__)
 
 MESHY_V1_URL = "https://api.meshy.ai/openapi/v1"
 MESHY_V2_URL = "https://api.meshy.ai/openapi/v2"
+OPENAI_IMAGE_MODEL = settings.OPENAI_IMAGE_MODEL
 
 
 class MeshyService:
@@ -65,7 +67,7 @@ class MeshyService:
         quality: str = "standard",
         style: str = "natural",
     ) -> dict:
-        """Generate an image with DALL-E 3. Returns {image_data (base64), image_mime, revised_prompt}."""
+        """Generate an image with OpenAI Images. Returns {image_data (base64), image_mime, revised_prompt}."""
         if not settings.OPENAI_API_KEY:
             raise ValueError("OPENAI_API_KEY not configured")
 
@@ -73,18 +75,25 @@ class MeshyService:
         client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
 
         response = await client.images.generate(
-            model="dall-e-3",
+            model=OPENAI_IMAGE_MODEL,
             prompt=prompt,
             size=size,  # type: ignore[arg-type]
-            quality=quality,  # type: ignore[arg-type]
-            style=style,  # type: ignore[arg-type]
-            response_format="b64_json",
             n=1,
         )
+        image_data = response.data[0]
+        b64_json = getattr(image_data, "b64_json", None)
+        if not b64_json:
+            image_url = getattr(image_data, "url", None)
+            if not image_url:
+                raise RuntimeError("Image generation returned neither base64 data nor a URL")
+            async with httpx.AsyncClient(timeout=60.0) as http_client:
+                image_response = await http_client.get(image_url)
+                image_response.raise_for_status()
+                b64_json = base64.b64encode(image_response.content).decode("ascii")
         return {
-            "image_data": response.data[0].b64_json,
+            "image_data": b64_json,
             "image_mime": "image/png",
-            "revised_prompt": response.data[0].revised_prompt,
+            "revised_prompt": getattr(image_data, "revised_prompt", None) or prompt,
         }
 
     async def start_image_to_3d(

@@ -1,0 +1,11 @@
+[mcp_servers.golinelli_feedback_board]
+command = "python3"
+args = ["/home/ale/GIT/GolinelliAIPlayground/mcp/feedback_board_server.py"]
+cwd = "/home/ale/GIT/GolinelliAIPlayground"
+startup_timeout_sec = 10
+tool_timeout_sec = 60
+default_tools_approval_mode = "approve"
+env_vars = ["GOLINELLI_API_TOKEN"]
+
+[mcp_servers.golinelli_feedback_board.env]
+GOLINELLI_API_BASE_URL = "https://dev.golinelli.ai/api/v1"

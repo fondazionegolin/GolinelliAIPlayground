@@ -2,8 +2,9 @@ import { useState, useRef, useCallback, useEffect } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   BookOpen, Upload, Trash2, FileText, Database, Search, Send, Loader2,
-  CheckCircle2, Layers, Eye, ChevronDown, ChevronUp,
+  CheckCircle2, Eye, ChevronDown, ChevronUp,
   Sparkles, PanelLeftClose, PanelLeftOpen, AlertCircle, Plus, Clock,
+  Link2, ImageIcon,
 } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -30,6 +31,8 @@ interface RagChunk {
   document_id: string
   document_title: string
   score?: number
+  terms?: string[]
+  embedded?: boolean
 }
 
 interface RagMessage {
@@ -68,21 +71,45 @@ const DOC_ICON: Record<string, React.ReactNode> = {
   xlsx: <Database className="h-4 w-4 text-emerald-400" />,
   xls: <Database className="h-4 w-4 text-emerald-400" />,
   txt: <FileText className="h-4 w-4 text-slate-400" />,
+  png: <ImageIcon className="h-4 w-4 text-fuchsia-400" />,
+  jpg: <ImageIcon className="h-4 w-4 text-fuchsia-400" />,
+  jpeg: <ImageIcon className="h-4 w-4 text-fuchsia-400" />,
+  webp: <ImageIcon className="h-4 w-4 text-fuchsia-400" />,
+  gif: <ImageIcon className="h-4 w-4 text-fuchsia-400" />,
+  youtube: <Link2 className="h-4 w-4 text-red-500" />,
+  html: <FileText className="h-4 w-4 text-cyan-500" />,
+  brochure: <FileText className="h-4 w-4 text-amber-500" />,
 }
 
 function docIcon(docType: string) {
   return DOC_ICON[docType] ?? <FileText className="h-4 w-4 text-slate-400" />
 }
 
+function cleanChunkText(value: string) {
+  return (value || '')
+    .replace(/\u00a0/g, ' ')
+    .replace(/\u200b/g, '')
+    .replace(/https?:\/\/\S+/g, '[link]')
+    .replace(/^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?\s*$/gm, ' ')
+    .replace(/^\s{0,3}#{1,6}\s*/gm, '')
+    .replace(/[`*_]{2,}/g, '')
+    .replace(/\s*\|\s*/g, ' · ')
+    .replace(/[ \t]{2,}/g, ' ')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+}
+
 function normalizeChunk(c: Record<string, unknown>): RagChunk {
   return {
     id: (c.id || c.chunk_id) as string,
     chunk_index: c.chunk_index as number,
-    text: c.text as string,
+    text: cleanChunkText(c.text as string),
     page: c.page as number | undefined,
     document_id: c.document_id as string,
     document_title: (c.document_title || '') as string,
     score: c.score as number | undefined,
+    terms: Array.isArray(c.terms) ? c.terms.map(String) : undefined,
+    embedded: typeof c.embedded === 'boolean' ? c.embedded : undefined,
   }
 }
 
@@ -145,14 +172,17 @@ function EmbeddingExplainer({ theme }: { theme: AccentTheme }) {
 
 function DocumentPanel({
   docs, selectedDocIds, onToggleDoc, onDelete, onUpload,
-  isUploading, uploadStep, uploadResult, activeDocForChunks, onViewChunks, theme,
+  onYoutube, isUploading, isAddingSource,
+  uploadStep, uploadResult, activeDocForChunks, onViewChunks, theme,
 }: {
   docs: RagDoc[]
   selectedDocIds: string[]
   onToggleDoc: (id: string) => void
   onDelete: (id: string) => void
   onUpload: (files: FileList) => void
+  onYoutube: (url: string) => void
   isUploading: boolean
+  isAddingSource: boolean
   uploadStep: number
   uploadResult: { chunk_count: number; key_concepts: string[]; summary: string } | null
   activeDocForChunks: string | null
@@ -160,9 +190,12 @@ function DocumentPanel({
   theme: AccentTheme
 }) {
   const fileRef = useRef<HTMLInputElement>(null)
+  const [dragOver, setDragOver] = useState(false)
+  const [youtubeUrl, setYoutubeUrl] = useState('')
+  const busy = isUploading || isAddingSource
 
   return (
-    <div className="flex flex-col h-full gap-3">
+    <div className="flex flex-col h-full min-h-0 gap-3">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
@@ -175,15 +208,75 @@ function DocumentPanel({
             </span>
           )}
         </div>
-        <div>
-          <input ref={fileRef} type="file" className="hidden" multiple
-            accept=".pdf,.doc,.docx,.txt,.csv,.xlsx,.xls,.md"
-            onChange={(e) => e.target.files && onUpload(e.target.files)} />
-          <button onClick={() => fileRef.current?.click()} disabled={isUploading}
-            className="flex items-center gap-1.5 rounded-lg border bg-white px-3 py-1.5 text-xs font-semibold transition hover:bg-slate-50 disabled:opacity-50"
-            style={{ borderColor: hex2rgba(theme.accent, 0.35), color: theme.text }}>
-            {isUploading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Upload className="h-3 w-3" />}
-            Carica
+      </div>
+
+      <input ref={fileRef} type="file" className="hidden" multiple
+        accept=".pdf,.doc,.docx,.txt,.csv,.xlsx,.xls,.md,.png,.jpg,.jpeg,.webp,.gif"
+        onChange={(e) => {
+          if (e.target.files) onUpload(e.target.files)
+          e.target.value = ''
+        }} />
+
+      <button
+        type="button"
+        onClick={() => fileRef.current?.click()}
+        disabled={busy}
+        onDragOver={(event) => {
+          event.preventDefault()
+          if (!busy) setDragOver(true)
+        }}
+        onDragLeave={() => setDragOver(false)}
+        onDrop={(event) => {
+          event.preventDefault()
+          setDragOver(false)
+          if (!busy && event.dataTransfer.files.length) onUpload(event.dataTransfer.files)
+        }}
+        className={`rounded-xl border border-dashed px-3 py-4 text-left transition-all disabled:opacity-60 ${
+          dragOver
+            ? 'border-[color:var(--selection-border-hover)] bg-[image:var(--selection-bg)] shadow-sm'
+            : 'border-[color:var(--border-subtle)] bg-[var(--surface-base)] hover:border-[color:var(--selection-border-hover)] hover:bg-[image:var(--button-chrome-bg)]'
+        }`}
+      >
+        <div className="flex items-start gap-3">
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-[color:var(--button-chrome-border)] bg-[image:var(--button-chrome-bg)] text-[var(--text-primary)]">
+            {isUploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+          </span>
+          <div className="min-w-0">
+            <p className="text-sm font-bold text-[var(--text-primary)]">Aggiungi file alla knowledge base</p>
+            <p className="mt-1 text-xs font-medium leading-relaxed text-[var(--text-muted)]">
+              Trascina qui documenti, fogli dati o immagini. Verranno indicizzati solo per questo progetto.
+            </p>
+            <p className="mt-2 text-[10px] font-bold uppercase tracking-[0.08em] text-[var(--text-muted)]">
+              PDF · Word · TXT · CSV · Excel · immagini
+            </p>
+          </div>
+        </div>
+      </button>
+
+      <div className="rounded-xl border border-[color:var(--border-subtle)] bg-[var(--surface-base)] p-3">
+        <div className="mb-2 flex items-center gap-2">
+          <Link2 className="h-3.5 w-3.5 text-[var(--text-muted)]" />
+          <p className="text-xs font-bold text-[var(--text-primary)]">YouTube in knowledge base</p>
+        </div>
+        <div className="flex gap-2">
+          <input
+            value={youtubeUrl}
+            onChange={(event) => setYoutubeUrl(event.target.value)}
+            placeholder="https://youtu.be/..."
+            disabled={busy}
+            className="min-w-0 flex-1 rounded-lg border border-[color:var(--border-subtle)] bg-white px-2.5 py-2 text-xs text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)] focus:border-slate-300"
+          />
+          <button
+            type="button"
+            disabled={busy || !youtubeUrl.trim()}
+            onClick={() => {
+              onYoutube(youtubeUrl.trim())
+              setYoutubeUrl('')
+            }}
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-[color:var(--button-chrome-border)] bg-[image:var(--button-chrome-bg)] text-[var(--text-primary)] disabled:bg-none disabled:bg-slate-100 disabled:text-slate-300"
+            title="Trascrivi e indicizza"
+          >
+            {isAddingSource ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
           </button>
         </div>
       </div>
@@ -217,7 +310,7 @@ function DocumentPanel({
 
       {/* Upload result */}
       {uploadResult && !isUploading && (
-        <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 space-y-2">
+        <div className="max-h-56 overflow-y-auto rounded-xl border border-emerald-200 bg-emerald-50 p-3 space-y-2">
           <div className="flex items-center gap-2 text-emerald-700">
             <CheckCircle2 className="h-4 w-4" />
             <span className="text-xs font-semibold">Documento pronto per le domande</span>
@@ -273,9 +366,9 @@ function DocumentPanel({
               <div className="flex items-start gap-2">
 	                  <div className="mt-0.5 h-4 w-4 rounded border-2 shrink-0 flex items-center justify-center transition-all"
 	                    style={isSelected
-	                    ? { borderColor: theme.accent, backgroundColor: '#0f172a' }
+	                    ? { borderColor: 'var(--selection-border)', backgroundImage: 'var(--selection-bg)', color: 'var(--selection-active-text)' }
 	                    : { borderColor: '#cbd5e1' }}>
-                  {isSelected && <CheckCircle2 className="h-3 w-3 text-white" />}
+                  {isSelected && <CheckCircle2 className="h-3 w-3" />}
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-1.5">
@@ -299,12 +392,12 @@ function DocumentPanel({
                 <div className="flex gap-1 shrink-0">
                   {(doc.status === 'ready' || doc.status === 'READY') && (
                     <button onClick={(e) => { e.stopPropagation(); onViewChunks(isActive ? null : doc.id) }}
-                      title="Visualizza blocchi"
+                      title="Anteprima documento"
 	                      className="p-1 rounded-lg transition-colors"
 	                      style={isActive
 	                        ? { color: theme.text, backgroundColor: '#f1f5f9' }
 	                        : { color: '#94a3b8' }}>
-                      <Layers className="h-3.5 w-3.5" />
+                      <Eye className="h-3.5 w-3.5" />
                     </button>
                   )}
                   <button onClick={(e) => { e.stopPropagation(); onDelete(doc.id) }}
@@ -326,17 +419,16 @@ function DocumentPanel({
 // ─── Cited Content ────────────────────────────────────────────────────────────
 
 function CitedContent({
-  content, sourceChunks, onCitationClick, activeCitationIndex, theme,
+  content, sourceChunks, onCitationClick, activeCitationIndex,
 }: {
   content: string
   sourceChunks: RagChunk[]
   onCitationClick: (chunk: RagChunk, index: number, chunks: RagChunk[]) => void
   activeCitationIndex: number | null
-  theme: AccentTheme
 }) {
   const segments = parseCitations(content)
   return (
-    <div className="prose prose-sm max-w-none prose-slate">
+    <div className="chat-markdown prose max-w-none prose-slate text-[16px] leading-7">
       {segments.map((seg, i) => {
         if (seg.type === 'cite') {
           const idx = seg.index! - 1
@@ -344,18 +436,28 @@ function CitedContent({
           const isActive = activeCitationIndex === idx
           return (
             <button key={i} onClick={() => chunk && onCitationClick(chunk, idx, sourceChunks)}
-              className="inline-flex items-center justify-center h-5 min-w-5 px-1.5 rounded text-[10px] font-bold transition-all mx-0.5"
+              className="mx-0.5 inline-flex h-5 min-w-5 items-center justify-center rounded px-1.5 text-[11px] font-bold transition-all"
               style={isActive
-	                ? { backgroundColor: '#0f172a', color: 'white' }
+	                ? { backgroundColor: 'var(--text-primary)', color: 'var(--surface-base)' }
 	                : chunk
-	                  ? { backgroundColor: '#f1f5f9', color: theme.text }
-                  : { backgroundColor: '#f1f5f9', color: '#64748b' }}
+	                  ? { backgroundColor: 'var(--surface-muted)', color: 'var(--selection-active-text)' }
+                  : { backgroundColor: 'var(--surface-muted)', color: 'var(--text-muted)' }}
               title={chunk ? `Fonte: ${chunk.document_title}${chunk.page ? ` — p.${chunk.page}` : ''}` : 'Fonte non disponibile'}>
               {seg.index}
             </button>
           )
         }
-        return <ReactMarkdown key={i} remarkPlugins={[remarkGfm]}>{seg.content}</ReactMarkdown>
+        return (
+          <ReactMarkdown
+            key={i}
+            remarkPlugins={[remarkGfm]}
+            components={{
+              p: ({ children }) => <span>{children}</span>,
+            }}
+          >
+            {seg.content}
+          </ReactMarkdown>
+        )
       })}
     </div>
   )
@@ -393,35 +495,6 @@ function ChatPanel({
 
   return (
     <div className="flex flex-col h-full min-h-0">
-      <div
-	        className="mb-4 shrink-0 rounded-xl border bg-white px-4 py-3"
-	        style={{ borderColor: hex2rgba(theme.accent, 0.18) }}
-      >
-        <div className="flex items-center gap-2 flex-wrap">
-	          <span
-	            className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.12em]"
-	            style={{ color: theme.text }}
-	          >
-            Ricerca intelligente attiva
-          </span>
-          <span className="text-xs font-medium text-slate-600">
-            Significato + parole esatte, solo nei documenti caricati.
-          </span>
-        </div>
-        <div className="mt-2 flex items-center gap-2 flex-wrap text-[11px] text-slate-500">
-          {selectedDocIds.length > 0 ? (
-            <span className="rounded-full bg-white px-2.5 py-1 border border-slate-200">
-              {selectedDocIds.length} documenti selezionati
-            </span>
-          ) : (
-            <span className="rounded-full bg-white px-2.5 py-1 border border-slate-200">
-              Tutta la knowledge base personale
-            </span>
-          )}
-          <span>Le fonti usate compaiono subito a destra.</span>
-        </div>
-      </div>
-
       {/* Messages */}
       <div className="flex-1 min-h-0 overflow-y-auto space-y-4 pr-1">
         {messages.length === 0 && (
@@ -437,18 +510,18 @@ function ChatPanel({
         {messages.map((msg) => (
           <div key={msg.id} className={`flex gap-3 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
             {msg.role === 'assistant' && (
-	              <div className="h-7 w-7 rounded-lg flex items-center justify-center shrink-0 mt-0.5 bg-slate-100"
-	                style={{ color: theme.text }}>
-	                <BookOpen className="h-3.5 w-3.5" />
+	              <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-sky-500 to-blue-600 shadow-sm">
+	                <BookOpen className="h-3.5 w-3.5 text-white" />
 	              </div>
             )}
-	            <div className="max-w-[85%] rounded-xl px-4 py-3 text-sm"
-	              style={msg.role === 'user'
-	                ? { backgroundColor: '#0f172a', color: 'white', borderRadius: '0.75rem 0.75rem 4px 0.75rem' }
-	                : { backgroundColor: 'white', border: '1px solid #e2e8f0', color: '#1e293b', borderRadius: '0.75rem 0.75rem 0.75rem 4px', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
+	            <div className={`max-w-[92%] md:max-w-[80%] rounded-xl px-4 py-3 text-[16px] leading-7 shadow-sm ${
+                msg.role === 'user'
+                  ? 'rounded-br-md border border-[color:var(--selection-border)] bg-[image:var(--selection-bg)] text-[var(--selection-active-text)]'
+                  : 'rounded-bl-md border border-[color:var(--border-subtle)] bg-[var(--surface-base)] text-[var(--text-primary)]'
+              }`}>
               {msg.role === 'assistant' ? (
                 <CitedContent content={msg.content} sourceChunks={msg.sourceChunks || []}
-                  onCitationClick={onCitationClick} activeCitationIndex={activeCitationIndex} theme={theme} />
+                  onCitationClick={onCitationClick} activeCitationIndex={activeCitationIndex} />
               ) : (
                 <p className="whitespace-pre-wrap">{msg.content}</p>
               )}
@@ -462,10 +535,9 @@ function ChatPanel({
 	            <div className="h-7 w-7 rounded-lg flex items-center justify-center shrink-0 bg-slate-100">
               <Search className="h-3.5 w-3.5 animate-pulse" style={{ color: theme.text }} />
             </div>
-	            <div className="rounded-xl rounded-bl-md bg-white px-4 py-3 shadow-sm border"
-	              style={{ borderColor: hex2rgba(theme.accent, 0.2) }}>
-              <p className="text-xs font-medium" style={{ color: theme.text }}>Ricerca nelle fonti…</p>
-              <p className="mt-1 text-[11px] text-slate-500">Sto combinando significato e corrispondenze testuali.</p>
+	            <div className="rounded-xl rounded-bl-md border border-[color:var(--border-subtle)] bg-[var(--surface-base)] px-4 py-3 shadow-sm">
+              <p className="text-sm font-medium text-[var(--text-primary)]">Ricerca nelle fonti…</p>
+              <p className="mt-1 text-xs text-[var(--text-muted)]">Sto combinando significato e corrispondenze testuali.</p>
               <div className="flex gap-1 mt-1.5">
                 {[0, 150, 300].map((d) => (
 	                  <span key={d} className="w-1.5 h-1.5 rounded-full animate-bounce"
@@ -480,9 +552,9 @@ function ChatPanel({
 	            <div className="h-7 w-7 rounded-lg flex items-center justify-center shrink-0 bg-slate-100">
 	              <Loader2 className="h-3.5 w-3.5 animate-spin" style={{ color: theme.text }} />
 	            </div>
-	            <div className="bg-white border border-slate-200 rounded-xl rounded-bl-md px-4 py-3 shadow-sm">
-              <p className="text-xs text-slate-500 font-medium">Generazione risposta…</p>
-              <p className="mt-1 text-[11px] text-slate-400">La risposta viene costruita solo a partire dai passaggi trovati.</p>
+	            <div className="rounded-xl rounded-bl-md border border-[color:var(--border-subtle)] bg-[var(--surface-base)] px-4 py-3 shadow-sm">
+              <p className="text-sm font-medium text-[var(--text-primary)]">Generazione risposta…</p>
+              <p className="mt-1 text-xs text-[var(--text-muted)]">La risposta viene costruita solo a partire dai passaggi trovati.</p>
               <div className="flex gap-1 mt-1.5">
                 {[0, 150, 300].map((d) => (
 	                  <span key={d} className="w-2 h-2 rounded-full animate-bounce"
@@ -505,7 +577,7 @@ function ChatPanel({
 
       {/* Input */}
       <div className="shrink-0 pt-3 border-t border-slate-200 mt-3">
-	        <div className={`flex gap-2 items-end rounded-xl border bg-white p-2 transition-all ${isLoading ? 'opacity-70' : ''}`}
+	        <div className={`flex gap-2 items-end rounded-[24px] border bg-white p-1.5 shadow-sm transition-all focus-within:border-slate-300 focus-within:ring-2 focus-within:ring-slate-200 ${isLoading ? 'opacity-70' : ''}`}
           style={{ borderColor: isLoading ? '#e2e8f0' : '#cbd5e1' }}
           onFocus={(e) => { if (!isLoading) (e.currentTarget as HTMLDivElement).style.borderColor = theme.accent }}
           onBlur={(e) => { (e.currentTarget as HTMLDivElement).style.borderColor = '#cbd5e1' }}>
@@ -514,9 +586,9 @@ function ChatPanel({
             placeholder={isLoading ? 'Elaborazione in corso…' :
               selectedDocIds.length > 0 ? 'Domanda sui documenti selezionati…' : 'Domanda sulla knowledge base…'}
             rows={2} disabled={isLoading}
-            className="flex-1 resize-none bg-transparent text-sm leading-relaxed text-slate-800 outline-none placeholder:text-slate-400 disabled:cursor-not-allowed" />
+            className="flex-1 resize-none bg-transparent px-2 py-2 text-[16px] leading-7 text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)] disabled:cursor-not-allowed" />
           <button onClick={handleSend} disabled={!input.trim() || isLoading}
-	            className="h-8 w-8 rounded-lg flex items-center justify-center bg-slate-900 text-white transition hover:bg-slate-800 disabled:opacity-40 shrink-0">
+	            className="h-9 w-9 rounded-full flex items-center justify-center border border-[color:var(--button-chrome-border)] bg-[image:var(--button-chrome-bg)] text-[var(--text-primary)] transition hover:border-[color:var(--button-chrome-border-hover)] disabled:bg-none disabled:bg-slate-100 disabled:text-slate-300 shrink-0">
             <Send className="h-3.5 w-3.5" />
           </button>
         </div>
@@ -593,6 +665,7 @@ function SourcePanel({
       <div className="flex-1 min-h-0 overflow-y-auto space-y-2 pr-1">
         {displayChunks.map((chunk, i) => {
           const isHighlighted = highlightedChunk?.id === chunk.id
+          const scorePct = chunk.score !== undefined ? Math.round(Math.min(1, Math.max(0, chunk.score)) * 100) : null
           return (
             <div key={chunk.id} ref={isHighlighted ? highlightRef : undefined}
               className="rounded-xl border p-3 transition-all duration-300"
@@ -612,12 +685,12 @@ function SourcePanel({
                   <span className="text-[10px] text-slate-500 truncate flex-1">{chunk.document_title}</span>
                 )}
                 {chunk.page && <span className="text-[10px] text-slate-400 shrink-0">p.{chunk.page}</span>}
-                {chunk.score !== undefined && (
+                {scorePct !== null && (
                   <div className="ml-auto shrink-0 flex items-center gap-1.5">
                     <div className="h-1.5 w-14 rounded-full bg-slate-200 overflow-hidden">
-	                      <div className="h-full rounded-full bg-slate-500" style={{ width: `${Math.min(100, chunk.score * 100)}%` }} />
+	                      <div className="h-full rounded-full bg-slate-500" style={{ width: `${scorePct}%` }} />
                     </div>
-                    <span className="text-[10px] text-slate-400">{(chunk.score * 100).toFixed(0)}%</span>
+                    <span className="text-[10px] text-slate-400">{scorePct}%</span>
                   </div>
                 )}
               </div>
@@ -650,6 +723,7 @@ export default function StudentRagWorkspace({
   const [selectedDocIds, setSelectedDocIds] = useState<string[]>(session.selectedDocIds)
   const [messages, setMessages] = useState<RagMessage[]>(session.messages)
   const [isUploading, setIsUploading] = useState(false)
+  const [isAddingSource, setIsAddingSource] = useState(false)
   const [uploadStep, setUploadStep] = useState(0)
   const [uploadResult, setUploadResult] = useState<{ chunk_count: number; key_concepts: string[]; summary: string } | null>(null)
   const [activeDocForChunks, setActiveDocForChunks] = useState<string | null>(null)
@@ -689,9 +763,9 @@ export default function StudentRagWorkspace({
   }, [session, onSessionUpdate])
 
   const { data: docs = [] } = useQuery<RagDoc[]>({
-    queryKey: ['student-rag-docs'],
+    queryKey: ['student-rag-docs', session.id],
     queryFn: async () => {
-      const res = await studentRagApi.listDocuments()
+      const res = await studentRagApi.listDocuments(session.id)
       return res.data || []
     },
   })
@@ -708,14 +782,14 @@ export default function StudentRagWorkspace({
   const handleDelete = useCallback(async (id: string) => {
     try {
       await studentRagApi.deleteDocument(id)
-      queryClient.invalidateQueries({ queryKey: ['student-rag-docs'] })
+      queryClient.invalidateQueries({ queryKey: ['student-rag-docs', session.id] })
       setSelectedDocIds((prev) => {
         const next = prev.filter((d) => d !== id)
         persistSession(messages, next)
         return next
       })
     } catch { /* noop */ }
-  }, [messages, persistSession, queryClient])
+  }, [messages, persistSession, queryClient, session.id])
 
   const handleUpload = useCallback(async (files: FileList) => {
     setIsUploading(true)
@@ -725,7 +799,7 @@ export default function StudentRagWorkspace({
     timings.forEach((delay, i) => setTimeout(() => setUploadStep(i + 1), delay))
     try {
       for (const file of Array.from(files)) {
-        const res = await studentRagApi.uploadDocument(file)
+        const res = await studentRagApi.uploadDocument(file, session.id)
         const data = res.data
         setUploadResult({
           chunk_count: data.chunk_count,
@@ -734,13 +808,34 @@ export default function StudentRagWorkspace({
         })
       }
       setUploadStep(4)
-      queryClient.invalidateQueries({ queryKey: ['student-rag-docs'] })
+      queryClient.invalidateQueries({ queryKey: ['student-rag-docs', session.id] })
     } catch {
       setChatError('Errore durante il caricamento del documento.')
     } finally {
       setIsUploading(false)
     }
-  }, [queryClient])
+  }, [queryClient, session.id])
+
+  const handleYoutube = useCallback(async (url: string) => {
+    setIsAddingSource(true)
+    setUploadResult(null)
+    setChatError(null)
+    try {
+      const res = await studentRagApi.ingestYoutube(url, session.id)
+      const data = res.data
+      setUploadResult({
+        chunk_count: data.chunk_count,
+        key_concepts: data.key_concepts || [],
+        summary: data.summary || '',
+      })
+      queryClient.invalidateQueries({ queryKey: ['student-rag-docs', session.id] })
+    } catch (err: unknown) {
+      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+      setChatError(detail || 'Impossibile trascrivere e indicizzare il video YouTube.')
+    } finally {
+      setIsAddingSource(false)
+    }
+  }, [queryClient, session.id])
 
   const toggleDocSelection = useCallback((id: string) => {
     setSelectedDocIds((prev) => {
@@ -762,14 +857,14 @@ export default function StudentRagWorkspace({
 
     setRagPhase('searching')
     try {
-      const searchRes = await studentRagApi.search(message, docFilter, 8)
+      const searchRes = await studentRagApi.search(message, docFilter, 10, session.id)
       const chunks = (searchRes.data || []).map(normalizeChunk)
       setPendingChunks(chunks)
     } catch { /* non-fatal */ }
 
     setRagPhase('generating')
     try {
-      const chatRes = await studentRagApi.chat(message, history, docFilter, 8)
+      const chatRes = await studentRagApi.chat(message, history, docFilter, 10, session.id)
       const data = chatRes.data as { response: string; source_chunks: unknown[] }
       const responseChunks = (data.source_chunks || []).map((c) => normalizeChunk(c as Record<string, unknown>))
       const newAssistant: RagMessage = {
@@ -792,7 +887,7 @@ export default function StudentRagWorkspace({
     } finally {
       setRagPhase('idle')
     }
-  }, [messages, selectedDocIds, persistSession])
+  }, [messages, selectedDocIds, persistSession, session.id])
 
   const handleCitationClick = useCallback((chunk: RagChunk, index: number, citationChunks: RagChunk[]) => {
     setSourceChunks(citationChunks)
@@ -906,7 +1001,7 @@ export default function StudentRagWorkspace({
         <button
           onClick={onNewSession}
           title="Nuova sessione"
-	          className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-900 text-xs font-semibold text-white shadow-sm shrink-0 transition-colors hover:bg-slate-800"
+	          className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-[color:var(--button-chrome-border)] bg-[image:var(--button-chrome-bg)] text-xs font-semibold text-[var(--text-primary)] shadow-sm shrink-0 transition-colors hover:border-[color:var(--button-chrome-border-hover)]"
         >
           <Plus className="h-3.5 w-3.5" />
           Nuova
@@ -928,8 +1023,8 @@ export default function StudentRagWorkspace({
               <div key={doc.id} title={doc.title}
 	                className="w-7 h-7 rounded-lg flex items-center justify-center text-[10px] font-bold cursor-pointer transition-colors"
 	                style={selectedDocIds.includes(doc.id)
-	                  ? { backgroundColor: '#0f172a', color: 'white' }
-	                  : { backgroundColor: '#f1f5f9', color: '#64748b' }}
+	                  ? { backgroundImage: 'var(--selection-bg)', color: 'var(--selection-active-text)', border: '1px solid var(--selection-border)' }
+	                  : { backgroundColor: 'var(--surface-muted)', color: 'var(--text-muted)' }}
                 onClick={() => toggleDocSelection(doc.id)}>
                 {doc.title.slice(0, 1).toUpperCase()}
               </div>
@@ -951,7 +1046,9 @@ export default function StudentRagWorkspace({
                 docs={docs} selectedDocIds={selectedDocIds}
                 onToggleDoc={toggleDocSelection}
                 onDelete={handleDelete} onUpload={handleUpload}
-                isUploading={isUploading} uploadStep={uploadStep} uploadResult={uploadResult}
+                onYoutube={handleYoutube}
+                isUploading={isUploading} isAddingSource={isAddingSource}
+                uploadStep={uploadStep} uploadResult={uploadResult}
                 activeDocForChunks={activeDocForChunks} onViewChunks={handleViewChunks}
                 theme={theme}
               />

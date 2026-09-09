@@ -37,6 +37,7 @@ services:
       - "host.docker.internal:host-gateway"
     volumes:
       - ./data/chat_uploads:/app/uploads
+      - ./data/toy_lm_checkpoints:/app/toy_lm_checkpoints
     env_file:
       - .env
     environment:
@@ -47,6 +48,8 @@ services:
       - CELERY_RESULT_BACKEND=redis://redis:6379/2
       - MINIO_ENDPOINT=minio:9000
       - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      - PXT_COMPILER_URL=http://pxt-compiler:8090
+      - TOY_LM_CHECKPOINT_DIR=/app/toy_lm_checkpoints
     depends_on:
       postgres:
         condition: service_healthy
@@ -54,6 +57,20 @@ services:
         condition: service_healthy
       minio:
         condition: service_started
+      pxt-compiler:
+        condition: service_started
+    networks:
+      - eduai-network
+    restart: unless-stopped
+
+  # MakeCode/PXT compiler for classroom boards
+  pxt-compiler:
+    build:
+      context: ./services/pxt-compiler
+      dockerfile: Dockerfile
+    environment:
+      - PORT=8090
+      - PXT_HOME=/tmp/pxt-home
     networks:
       - eduai-network
     restart: unless-stopped

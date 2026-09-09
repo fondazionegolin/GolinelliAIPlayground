@@ -3,27 +3,34 @@ import { Routes, Route, useLocation, useNavigate, Navigate } from 'react-router-
 import { motion } from 'framer-motion'
 import { useAuthStore } from '@/stores/auth'
 import { AppBackground } from '@/components/ui/AppBackground'
-import { LogOut, LayoutDashboard, GraduationCap, BarChart3, Mail, School, Bug, KeyRound, X, Loader2, BookOpen, Database, Building2 } from 'lucide-react'
-import { useMutation } from '@tanstack/react-query'
+import { LogOut, LayoutDashboard, GraduationCap, BarChart3, Mail, School, Bug, KeyRound, X, Loader2, BookOpen, Database, Building2, Menu, PanelLeftClose, PanelLeftOpen, FileCheck2, KanbanSquare } from 'lucide-react'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { adminApi } from '@/lib/api'
 import { useToast } from '@/components/ui/use-toast'
+import { Button, IconButton } from '@/design'
 import AdminOverviewPage from './AdminControlCenterPage'
 import TeachersPage from './TeachersPage'
 import ClassesPage from './ClassesPage'
 import UsersPage from './UsersPage'
 import TeacherRequestsPage from './TeacherRequestsPage'
 import FeedbackPage from './FeedbackPage'
+import FeedbackBoardPage from './FeedbackBoardPage'
 import AdminBackendPage from './AdminBackendPage'
 import SchoolsPage from './SchoolsPage'
+import LicensesPage from './LicensesPage'
+import { useSocket } from '@/hooks/useSocket'
+import { usePlatformRealtimeSync } from '@/lib/realtimeEvents'
 
 const navItems = [
   { path: '/admin', label: 'Panoramica', icon: LayoutDashboard, exact: true },
   { path: '/admin/schools', label: 'Scuole', icon: Building2, exact: false },
   { path: '/admin/teachers', label: 'Docenti', icon: GraduationCap, exact: false },
+  { path: '/admin/licenses', label: 'Licenze', icon: FileCheck2, exact: false },
   { path: '/admin/classes', label: 'Classi', icon: School, exact: false },
   { path: '/admin/costs', label: 'Costi', icon: BarChart3, exact: false },
   { path: '/admin/email', label: 'Email', icon: Mail, exact: false },
-  { path: '/admin/feedback', label: 'Feedback', icon: Bug, exact: false },
+  { path: '/admin/feedback', label: 'Feedback', icon: Bug, exact: true },
+  { path: '/admin/feedback-board', label: 'Board Feedback', icon: KanbanSquare, exact: false },
   { path: '/admin/backend', label: 'Backend', icon: Database, exact: false },
 ]
 
@@ -96,115 +103,257 @@ function ChangePasswordModal({ onClose }: { onClose: () => void }) {
 }
 
 export default function AdminDashboard() {
+  const queryClient = useQueryClient()
+  useSocket('')
+  usePlatformRealtimeSync(queryClient)
   const { logout } = useAuthStore()
   const location = useLocation()
   const navigate = useNavigate()
   const [showChangePwd, setShowChangePwd] = useState(false)
+  const [sidebarExpanded, setSidebarExpanded] = useState(() => {
+    if (typeof window === 'undefined') return true
+    return window.localStorage.getItem('admin-sidebar-expanded') !== 'false'
+  })
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
+
+  const setExpanded = (value: boolean) => {
+    setSidebarExpanded(value)
+    window.localStorage.setItem('admin-sidebar-expanded', String(value))
+  }
+
+  const goTo = (path: string) => {
+    navigate(path)
+    setMobileSidebarOpen(false)
+  }
 
   return (
-    <AppBackground className="min-h-screen flex flex-col" gradient="#f8fafc">
-      {/* Top Navbar */}
-      <nav className="bg-[#1a1a2e] border-b border-white/10 sticky top-0 z-50 shadow-lg">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 flex items-center h-14 gap-4">
-          {/* Logo */}
-          <div
-            className="flex items-center gap-2.5 cursor-pointer flex-shrink-0"
-            onClick={() => navigate('/admin')}
-          >
+    <AppBackground className="min-h-screen" gradient="#eef1f5">
+      <div className="flex min-h-screen">
+        <AdminSidebar
+          expanded={sidebarExpanded}
+          locationPath={location.pathname}
+          onNavigate={goTo}
+          onToggleExpanded={() => setExpanded(!sidebarExpanded)}
+          onShowChangePassword={() => setShowChangePwd(true)}
+          onLogout={logout}
+        />
+
+        {mobileSidebarOpen && (
+          <div className="fixed inset-0 z-50 lg:hidden">
+            <div className="absolute inset-0 bg-slate-950/35 backdrop-blur-sm" onClick={() => setMobileSidebarOpen(false)} />
+            <div className="absolute inset-y-0 left-0 w-[18rem] max-w-[calc(100vw-2rem)]">
+              <AdminSidebar
+                expanded
+                mobile
+                locationPath={location.pathname}
+                onNavigate={goTo}
+                onToggleExpanded={() => setMobileSidebarOpen(false)}
+                onShowChangePassword={() => setShowChangePwd(true)}
+                onLogout={logout}
+              />
+            </div>
+          </div>
+        )}
+
+        <div className="flex min-w-0 flex-1 flex-col">
+          <header className="sticky top-0 z-30 flex h-14 items-center gap-3 border-b border-slate-200/80 bg-white/85 px-4 backdrop-blur-xl lg:hidden">
+            <IconButton
+              tone="neutral"
+              surface="outline"
+              size="default"
+              onClick={() => setMobileSidebarOpen(true)}
+              title="Apri menu admin"
+            >
+              <Menu className="h-4 w-4" />
+            </IconButton>
             <img src="/logo_new.png" alt="Golinelli.ai" className="h-7 w-auto" />
-            <span className="text-white font-bold text-base hidden sm:inline">
-              Golinelli<span className="text-slate-400">.ai</span>
-            </span>
-            <span className="text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-slate-600">
-              ADMIN
-            </span>
-          </div>
+            <div className="min-w-0">
+              <p className="truncate text-sm font-semibold text-slate-950">Pannello admin</p>
+              <p className="text-[11px] text-slate-500">Golinelli.ai</p>
+            </div>
+          </header>
 
-          {/* Separator */}
-          <div className="w-px h-6 bg-white/20 hidden sm:block" />
-
-          {/* Nav items */}
-          <div className="flex items-center gap-0.5">
-            {navItems.map((item) => {
-              const isActive = item.exact
-                ? location.pathname === item.path
-                : location.pathname.startsWith(item.path)
-              return (
-                <button
-                  key={item.path}
-                  onClick={() => navigate(item.path)}
-                  className={`relative flex items-center gap-1.5 px-3 py-2 text-sm font-medium transition-colors rounded-lg ${
-                    isActive ? 'text-white' : 'text-white/55 hover:text-white/85'
-                  }`}
-                >
-                  <item.icon className="h-4 w-4" />
-                  <span className="hidden md:inline">{item.label}</span>
-                  {isActive && (
-                    <motion.div
-                      layoutId="admin-nav-indicator"
-                      className="absolute bottom-0 left-2 right-2 h-0.5 rounded-full bg-white/60"
-                      transition={{ type: 'spring', stiffness: 400, damping: 30 }}
-                    />
-                  )}
-                </button>
-              )
-            })}
-          </div>
-
-          <div className="flex-1" />
-
-          {/* Switch to teacher panel */}
-          <button
-            onClick={() => navigate('/teacher')}
-            className="flex items-center gap-1.5 text-white/55 hover:text-white text-sm transition-colors"
-            title="Vai al pannello docente"
-          >
-            <BookOpen className="h-4 w-4" />
-            <span className="hidden sm:inline text-xs">Docente</span>
-          </button>
-
-          {/* Change password */}
-          <button
-            onClick={() => setShowChangePwd(true)}
-            className="flex items-center gap-1.5 text-white/55 hover:text-white text-sm transition-colors"
-            title="Cambia password"
-          >
-            <KeyRound className="h-4 w-4" />
-          </button>
-
-          {/* Logout */}
-          <button
-            onClick={logout}
-            className="flex items-center gap-1.5 text-white/55 hover:text-white text-sm transition-colors"
-          >
-            <LogOut className="h-4 w-4" />
-            <span className="hidden sm:inline">Esci</span>
-          </button>
+          <main className="w-full flex-1 bg-[#eef1f5] px-4 py-5 sm:px-6 lg:px-8 lg:py-8">
+            <div className="mx-auto w-full max-w-[1500px]">
+              <Routes>
+                <Route index element={<AdminOverviewPage />} />
+                <Route path="schools" element={<SchoolsPage />} />
+                <Route path="teachers" element={<TeachersPage />} />
+                <Route path="licenses" element={<LicensesPage />} />
+                <Route path="classes" element={<ClassesPage />} />
+                <Route path="costs" element={<UsersPage />} />
+                <Route path="email" element={<TeacherRequestsPage />} />
+                <Route path="feedback" element={<FeedbackPage />} />
+                <Route path="feedback-board" element={<FeedbackBoardPage />} />
+                <Route path="backend" element={<AdminBackendPage />} />
+                {/* Legacy redirects */}
+                <Route path="teacher-requests" element={<Navigate to="/admin/teachers" replace />} />
+                <Route path="users" element={<Navigate to="/admin/teachers" replace />} />
+                <Route path="tenants" element={<Navigate to="/admin/schools" replace />} />
+                <Route path="overview" element={<Navigate to="/admin" replace />} />
+                <Route path="usage" element={<Navigate to="/admin/costs" replace />} />
+                <Route path="credits" element={<Navigate to="/admin/costs" replace />} />
+              </Routes>
+            </div>
+          </main>
         </div>
-      </nav>
-
-      {/* Page content */}
-      <main className="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 py-6">
-        <Routes>
-          <Route index element={<AdminOverviewPage />} />
-          <Route path="schools" element={<SchoolsPage />} />
-          <Route path="teachers" element={<TeachersPage />} />
-          <Route path="classes" element={<ClassesPage />} />
-          <Route path="costs" element={<UsersPage />} />
-          <Route path="email" element={<TeacherRequestsPage />} />
-          <Route path="feedback" element={<FeedbackPage />} />
-          <Route path="backend" element={<AdminBackendPage />} />
-          {/* Legacy redirects */}
-          <Route path="teacher-requests" element={<Navigate to="/admin/teachers" replace />} />
-          <Route path="users" element={<Navigate to="/admin/teachers" replace />} />
-          <Route path="tenants" element={<Navigate to="/admin/schools" replace />} />
-          <Route path="overview" element={<Navigate to="/admin" replace />} />
-          <Route path="usage" element={<Navigate to="/admin/costs" replace />} />
-          <Route path="credits" element={<Navigate to="/admin/costs" replace />} />
-        </Routes>
-      </main>
+      </div>
 
       {showChangePwd && <ChangePasswordModal onClose={() => setShowChangePwd(false)} />}
     </AppBackground>
+  )
+}
+
+function AdminSidebar({
+  expanded,
+  mobile = false,
+  locationPath,
+  onNavigate,
+  onToggleExpanded,
+  onShowChangePassword,
+  onLogout,
+}: {
+  expanded: boolean
+  mobile?: boolean
+  locationPath: string
+  onNavigate: (path: string) => void
+  onToggleExpanded: () => void
+  onShowChangePassword: () => void
+  onLogout: () => void
+}) {
+  const widthClass = expanded ? 'w-72' : 'w-[5.25rem]'
+
+  return (
+    <aside
+      className={`${mobile ? 'flex' : 'sticky top-0 hidden lg:flex'} ${widthClass} h-screen shrink-0 flex-col border-r border-slate-800 bg-slate-950 shadow-xl transition-[width] duration-200`}
+    >
+      <div className="flex h-16 items-center gap-3 border-b border-slate-800 px-4">
+        <button
+          type="button"
+          onClick={() => onNavigate('/admin')}
+          className={`flex min-w-0 flex-1 items-center gap-3 rounded-lg text-left ${expanded ? '' : 'justify-center'}`}
+          title="Pannello admin"
+        >
+          <img src="/logo_new.png" alt="Golinelli.ai" className={`${expanded ? 'h-8 w-auto' : 'h-8 w-8 object-contain'} shrink-0`} />
+          {expanded && (
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <span className="truncate text-sm font-bold text-white">
+                  Golinelli<span className="text-[var(--logo-pink)]">.ai</span>
+                </span>
+                <span className="rounded-full border border-slate-700 bg-slate-900 px-1.5 py-0.5 text-[9px] font-bold text-slate-300">ADMIN</span>
+              </div>
+              <p className="truncate text-[11px] text-slate-400">Centro di controllo</p>
+            </div>
+          )}
+        </button>
+        <IconButton
+          tone="neutral"
+          surface="ghost"
+          size="sm"
+          onClick={onToggleExpanded}
+          title={mobile ? 'Chiudi menu' : expanded ? 'Mostra solo icone' : 'Mostra titoli'}
+          className={expanded ? '' : 'hidden'}
+        >
+          {mobile ? <X className="h-4 w-4" /> : expanded ? <PanelLeftClose className="h-4 w-4" /> : <PanelLeftOpen className="h-4 w-4" />}
+        </IconButton>
+      </div>
+
+      {!expanded && !mobile && (
+        <div className="flex justify-center border-b border-slate-800 px-3 py-3">
+          <IconButton
+            tone="neutral"
+            surface="outline"
+            size="default"
+            onClick={onToggleExpanded}
+            title="Mostra titoli"
+          >
+            <PanelLeftOpen className="h-4 w-4" />
+          </IconButton>
+        </div>
+      )}
+
+      <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4">
+        {navItems.map((item) => {
+          const isActive = item.exact
+            ? locationPath === item.path
+            : locationPath.startsWith(item.path)
+          return (
+            <button
+              key={item.path}
+              onClick={() => onNavigate(item.path)}
+              className={`group relative flex h-11 w-full items-center gap-3 rounded-xl px-3 text-sm font-medium transition-all ${
+                isActive
+                  ? 'text-white'
+                  : 'text-slate-400 hover:bg-slate-900 hover:text-white'
+              } ${expanded ? 'justify-start' : 'justify-center'}`}
+              title={item.label}
+            >
+              {isActive && (
+                <motion.span
+                  layoutId={mobile ? 'admin-mobile-nav-indicator' : 'admin-sidebar-nav-indicator'}
+                  className="absolute inset-0 rounded-xl border border-pink-500/35 bg-pink-500/15 shadow-sm"
+                  transition={{ type: 'spring', stiffness: 420, damping: 34 }}
+                />
+              )}
+              <item.icon className="relative h-4 w-4 shrink-0" />
+              {expanded && <span className="relative truncate">{item.label}</span>}
+            </button>
+          )
+        })}
+      </nav>
+
+      <div className="border-t border-slate-800 p-3">
+        <div className="space-y-1">
+          <SidebarAction
+            expanded={expanded}
+            icon={BookOpen}
+            label="Pannello docente"
+            onClick={() => onNavigate('/teacher')}
+          />
+          <SidebarAction
+            expanded={expanded}
+            icon={KeyRound}
+            label="Cambia password"
+            onClick={onShowChangePassword}
+          />
+          <SidebarAction
+            expanded={expanded}
+            icon={LogOut}
+            label="Esci"
+            onClick={onLogout}
+            danger
+          />
+        </div>
+      </div>
+    </aside>
+  )
+}
+
+function SidebarAction({
+  expanded,
+  icon: Icon,
+  label,
+  onClick,
+  danger = false,
+}: {
+  expanded: boolean
+  icon: React.FC<{ className?: string }>
+  label: string
+  onClick: () => void
+  danger?: boolean
+}) {
+  return (
+    <Button
+      tone={danger ? 'danger' : 'neutral'}
+      surface="ghost"
+      density="compact"
+      onClick={onClick}
+      title={label}
+      className={`h-10 w-full rounded-xl px-3 ${expanded ? 'justify-start' : 'justify-center'} ${danger ? '' : 'text-slate-400 hover:text-white'}`}
+    >
+      <Icon className="h-4 w-4 shrink-0" />
+      {expanded && <span className="truncate text-sm">{label}</span>}
+    </Button>
   )
 }

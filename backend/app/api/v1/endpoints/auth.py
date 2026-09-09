@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Response, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from typing import Annotated
 from datetime import datetime, timezone, timedelta
 from pydantic import BaseModel
@@ -11,8 +12,10 @@ import unicodedata
 from app.core.database import get_db
 from app.core.security import verify_password, create_access_token, get_password_hash
 from app.core.config import settings
+from app.core.legal_documents import LEGAL_DOCUMENTS
 from app.core.url_utils import resolve_frontend_url
-from app.models.user import User, TeacherRequest, ActivationToken, PasswordResetToken
+from app.api.deps import get_current_user
+from app.models.user import User, TeacherRequest, ActivationToken, PasswordResetToken, LegalDocumentAcceptance
 from app.models.invitation import PlatformInvitation
 from app.models.tenant import Tenant
 from app.models.enums import UserRole, TeacherRequestStatus
@@ -30,6 +33,83 @@ class ActivationInfoResponse(BaseModel):
 
 class ChangePasswordRequest(BaseModel):
     new_password: str
+
+
+class LegalDocumentResponse(BaseModel):
+    key: str
+    title: str
+    version: str
+    source_url: str
+    accept_label: str
+
+
+class LegalAcceptanceResponse(BaseModel):
+    document_key: str
+    document_title: str
+    document_version: str
+    accepted_at: str
+
+
+class LegalConsentStatusResponse(BaseModel):
+    required: bool
+    complete: bool
+    required_documents: list[LegalDocumentResponse]
+    accepted: list[LegalAcceptanceResponse]
+
+
+class LegalConsentAcceptRequest(BaseModel):
+    document_key: str
+
+
+def _required_legal_documents() -> list[LegalDocumentResponse]:
+    return [LegalDocumentResponse(**doc) for doc in LEGAL_DOCUMENTS]
+
+
+def _legal_document_by_key(document_key: str) -> dict | None:
+    return next((doc for doc in LEGAL_DOCUMENTS if doc["key"] == document_key), None)
+
+
+async def _current_legal_acceptances(db: AsyncSession, user: User) -> list[LegalDocumentAcceptance]:
+    result = await db.execute(
+        select(LegalDocumentAcceptance)
+        .where(
+            LegalDocumentAcceptance.user_id == user.id,
+            LegalDocumentAcceptance.document_key.in_([doc["key"] for doc in LEGAL_DOCUMENTS]),
+        )
+        .order_by(LegalDocumentAcceptance.accepted_at.asc())
+    )
+    return result.scalars().all()
+
+
+def _legal_status_for(user: User, rows: list[LegalDocumentAcceptance]) -> LegalConsentStatusResponse:
+    accepted_current: list[LegalAcceptanceResponse] = []
+    current_keys = set()
+    for doc in LEGAL_DOCUMENTS:
+        match = next(
+            (
+                row for row in rows
+                if row.document_key == doc["key"] and row.document_version == doc["version"]
+            ),
+            None,
+        )
+        if match:
+            current_keys.add(doc["key"])
+            accepted_current.append(
+                LegalAcceptanceResponse(
+                    document_key=match.document_key,
+                    document_title=match.document_title,
+                    document_version=match.document_version,
+                    accepted_at=match.accepted_at.isoformat() if match.accepted_at else "",
+                )
+            )
+    required = user.role == UserRole.TEACHER
+    return LegalConsentStatusResponse(
+        required=required,
+        complete=not required or len(current_keys) == len(LEGAL_DOCUMENTS),
+        required_documents=_required_legal_documents(),
+        accepted=accepted_current,
+    )
+
 
 router = APIRouter()
 DEFAULT_BETA_DISCLAIMER_HTML = (
@@ -93,7 +173,7 @@ async def login(
         httponly=True,
         secure=True,
         samesite="lax",
-        max_age=60 * 60 * 24,
+        max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
     )
     
     return LoginResponse(
@@ -108,6 +188,65 @@ async def login(
 async def logout(response: Response):
     response.delete_cookie("access_token")
     return {"message": "Logged out successfully"}
+
+
+@router.get("/legal-consents/me", response_model=LegalConsentStatusResponse)
+async def get_my_legal_consents(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+):
+    rows = await _current_legal_acceptances(db, current_user)
+    return _legal_status_for(current_user, rows)
+
+
+@router.post("/legal-consents/accept", response_model=LegalConsentStatusResponse)
+async def accept_legal_consent(
+    body: LegalConsentAcceptRequest,
+    request: Request,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+):
+    if current_user.role != UserRole.TEACHER:
+        rows = await _current_legal_acceptances(db, current_user)
+        return _legal_status_for(current_user, rows)
+
+    document = _legal_document_by_key(body.document_key)
+    if not document:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Documento non valido")
+
+    rows = await _current_legal_acceptances(db, current_user)
+    accepted_current_keys = {
+        row.document_key
+        for row in rows
+        if any(row.document_key == doc["key"] and row.document_version == doc["version"] for doc in LEGAL_DOCUMENTS)
+    }
+    next_required = next((doc for doc in LEGAL_DOCUMENTS if doc["key"] not in accepted_current_keys), None)
+    if next_required and next_required["key"] != document["key"]:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Completa i documenti nell'ordine richiesto")
+
+    already_accepted = any(
+        row.document_key == document["key"] and row.document_version == document["version"]
+        for row in rows
+    )
+    if not already_accepted:
+        db.add(
+            LegalDocumentAcceptance(
+                tenant_id=current_user.tenant_id,
+                user_id=current_user.id,
+                document_key=document["key"],
+                document_title=document["title"],
+                document_version=document["version"],
+                ip_address=request.client.host if request.client else None,
+                user_agent=request.headers.get("user-agent"),
+            )
+        )
+        try:
+            await db.commit()
+        except IntegrityError:
+            await db.rollback()
+        rows = await _current_legal_acceptances(db, current_user)
+
+    return _legal_status_for(current_user, rows)
 
 
 @router.get("/public-settings")

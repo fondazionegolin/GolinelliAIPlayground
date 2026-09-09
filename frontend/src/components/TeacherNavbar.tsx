@@ -1,23 +1,26 @@
-import { useState, useRef, useEffect, type CSSProperties } from 'react'
+import { useState, useRef, useEffect, useCallback, type CSSProperties } from 'react'
 import { Link, useNavigate, useLocation } from 'react-router-dom'
-import { User, Settings, LogOut, ChevronDown, Users, MessageSquare, FileText, Check, Brain, MonitorPlay, FileCode2, KeyRound, Loader2, LayoutDashboard, ShieldCheck, BookOpen, Zap, Box } from 'lucide-react'
+import { User, Settings, LogOut, ChevronDown, Users, MessageSquare, Mic, FileText, Check, Brain, FileCode2, KeyRound, Loader2, ShieldCheck, BookOpen, Zap, Box, Code2, KanbanSquare, Network, Bot } from 'lucide-react'
+import { AcademicAiIcon } from '@/components/icons/AcademicAiIcon'
 import { Button } from './ui/button'
 import { useToast } from '@/components/ui/use-toast'
 import { LogoMark } from './LogoMark'
-import { teacherApi } from '@/lib/api'
+import { teacherApi, feedbackApi } from '@/lib/api'
 import { useAuthStore } from '@/stores/auth'
 import TeacherNotifications, { TeacherNotification } from './TeacherNotifications'
 import { useSocket } from '@/hooks/useSocket'
-import { DEFAULT_TEACHER_ACCENT, getTeacherAccentTheme, TEACHER_ACCENTS, type TeacherAccentId } from '@/lib/teacherAccent'
+import { DEFAULT_TEACHER_ACCENT, getTeacherAccentTheme, type TeacherAccentId } from '@/lib/teacherAccent'
 import { NavTab } from '@/components/ui/NavTab'
 import { useTranslation } from 'react-i18next'
 import { LanguageSwitcher } from '@/components/LanguageSwitcher'
 import { useTeacherProfile, useInvalidateTeacherProfile, TEACHER_PROFILE_KEY } from '@/hooks/useTeacherProfile'
-import { useQueryClient } from '@tanstack/react-query'
+import { useQueryClient, useQuery } from '@tanstack/react-query'
 import { NavbarCalendarClock } from './NavbarCalendarClock'
 import WhatsNewModal from './WhatsNewModal'
 import { buildAccentNavbarStyle, buildAccentNavClusterStyle } from '@/lib/navbarGlass'
-import { Badge } from '@/components/ui/badge'
+import { CreditBalancePill } from './CreditBalancePill'
+import { ServerHealthIndicator } from './ServerHealthIndicator'
+import { PLATFORM_REALTIME_EVENT, type PlatformRealtimeDetail, usePlatformRealtimeSync } from '@/lib/realtimeEvents'
 
 interface TeacherProfile {
   firstName: string
@@ -57,6 +60,7 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
   const { data: profileData } = useTeacherProfile()
   const invalidateProfile = useInvalidateTeacherProfile()
   const queryClient = useQueryClient()
+  usePlatformRealtimeSync(queryClient)
   const profile: TeacherProfile = profileData ?? { firstName: '', lastName: '', email: '', avatarUrl: '', uiAccent: DEFAULT_TEACHER_ACCENT }
   const isAdmin = authUser?.role === 'ADMIN'
   const [activeSessions, setActiveSessions] = useState<ActiveSession[]>([])
@@ -64,6 +68,12 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
   const [showSessionsMenu, setShowSessionsMenu] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
   const [showWhatsNew, setShowWhatsNew] = useState(false)
+  const [voiceActive, setVoiceActive] = useState(false)
+  const [chatBadge, setChatBadge] = useState(0)
+  const processedChatBadgeIdsRef = useRef<Set<string>>(new Set())
+
+  useEffect(() => { if (chatSidebarOpen) setChatBadge(0) }, [chatSidebarOpen])
+  const processedNotificationIdsRef = useRef<Set<string>>(new Set())
   const dropdownRef = useRef<HTMLDivElement>(null)
   const sessionsMenuRef = useRef<HTMLDivElement>(null)
   const accentTheme = getTeacherAccentTheme(profile.uiAccent)
@@ -82,15 +92,36 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
     root.style.setProperty('--app-accent-soft', accentTheme.soft)
     root.style.setProperty('--app-accent-soft-strong', accentTheme.softStrong)
     root.style.setProperty('--app-accent-border', accentTheme.border)
-    root.style.setProperty('--app-body-bg', '#ffffff')
-    root.style.setProperty('--surface-page', '#ffffff')
+    root.style.setProperty('--app-body-bg', '#f1f3f5')
+    root.style.setProperty('--surface-page', '#f1f3f5')
   }, [accentTheme])
+
+  useEffect(() => {
+    setVoiceActive(false)
+    if (!currentSession?.id) return
+
+    const handleVoiceState = (event: Event) => {
+      const detail = (event as CustomEvent<{ sessionId?: string; active?: boolean }>).detail
+      if (detail?.sessionId === currentSession.id) {
+        setVoiceActive(Boolean(detail.active))
+      }
+    }
+
+    window.addEventListener('golinelli:voice-room-state', handleVoiceState)
+    return () => window.removeEventListener('golinelli:voice-room-state', handleVoiceState)
+  }, [currentSession?.id])
 
   // Global notifications state
   const [teacherNotifications, setTeacherNotifications] = useState<TeacherNotification[]>([])
 
   // Connect to global WebSocket for teacher notifications (empty sessionId for global)
   const { notifications: socketNotifications } = useSocket('')
+  const { data: invitationData } = useQuery<{ total_pending: number }>({
+    queryKey: ['invitations'],
+    queryFn: async () => (await teacherApi.getInvitations()).data,
+    refetchInterval: 30_000,
+  })
+  const invitationCount = invitationData?.total_pending || 0
 
   // Convert socket notifications to teacher notifications format
   useEffect(() => {
@@ -143,9 +174,36 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
           timestamp: nd.timestamp || new Date().toISOString(),
           read: false,
         }
-        setTeacherNotifications(prev => [newNotification, ...prev])
+        const dedupeKey = `${nd.type}:${nd.session_id || ''}:${nd.student_id || ''}:${nd.timestamp || latestNotification.created_at || latestNotification.id}`
+        if (processedNotificationIdsRef.current.has(latestNotification.id) || processedNotificationIdsRef.current.has(dedupeKey)) return
+        processedNotificationIdsRef.current.add(latestNotification.id)
+        processedNotificationIdsRef.current.add(dedupeKey)
+        setTeacherNotifications(prev => prev.some(n => n.id === newNotification.id) ? prev : [newNotification, ...prev])
       }
     }
+  }, [socketNotifications])
+
+  useEffect(() => {
+    if (socketNotifications.length === 0) return
+    const latest = socketNotifications[socketNotifications.length - 1]
+    const type = (latest.notification_data as { type?: string } | undefined)?.type
+    if (type === 'collaboration_invitation' || type === 'school_invitation') {
+      queryClient.invalidateQueries({ queryKey: ['invitations'] })
+    }
+  }, [queryClient, socketNotifications])
+
+  // Count incoming class-chat messages on the chat icon, cleared when the chat sidebar is opened.
+  // Uses the same `teacher_notification` channel as the bell above (delivered to the teacher's
+  // personal `user:{id}` room) rather than the raw `chat_message` socket event, which only reaches
+  // sockets joined into a `session:{id}` room — this navbar's socket (useSocket('')) never joins one.
+  useEffect(() => {
+    if (socketNotifications.length === 0) return
+    const latestNotification = socketNotifications[socketNotifications.length - 1]
+    const type = (latestNotification.notification_data as { type?: string } | undefined)?.type
+    if (type !== 'public_chat') return
+    if (processedChatBadgeIdsRef.current.has(latestNotification.id)) return
+    processedChatBadgeIdsRef.current.add(latestNotification.id)
+    setChatBadge((n) => n + 1)
   }, [socketNotifications])
 
   const handleClearNotifications = () => setTeacherNotifications([])
@@ -199,7 +257,7 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
 
-  const loadActiveSessions = async () => {
+  const loadActiveSessions = useCallback(async () => {
     try {
       console.log('[TeacherNavbar] Loading active sessions...')
       // First, get all classes
@@ -241,7 +299,17 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
     } catch (error) {
       console.error('Failed to load active sessions', error)
     }
-  }
+  }, [])
+
+  useEffect(() => {
+    const handleRealtime = (event: Event) => {
+      const detail = (event as CustomEvent<PlatformRealtimeDetail>).detail
+      if (detail?.type !== 'platform_change') return
+      if (detail.payload.entity === 'class' || detail.payload.entity === 'session') loadActiveSessions()
+    }
+    window.addEventListener(PLATFORM_REALTIME_EVENT, handleRealtime)
+    return () => window.removeEventListener(PLATFORM_REALTIME_EVENT, handleRealtime)
+  }, [loadActiveSessions])
 
   const handleLogout = () => {
     console.log('[TeacherNavbar] Logout clicked')
@@ -278,17 +346,26 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
 
   const { t } = useTranslation()
 
+  // Feedback board is visible only to admins and teachers added as collaborators
+  const { data: boardAccess } = useQuery({
+    queryKey: ['feedback-board-access'],
+    queryFn: async () => (await feedbackApi.boardAccess()).data as { has_access: boolean; is_admin: boolean },
+    staleTime: 5 * 60 * 1000,
+  })
+
   const navItems = [
-    { path: '/teacher', label: t('navbar.nav_support'), icon: MessageSquare },
+    { path: '/teacher', label: t('navbar.nav_support'), icon: AcademicAiIcon },
     { path: '/teacher/classes', label: t('navbar.nav_classes'), icon: Users },
-    { path: '/teacher/demo', label: t('navbar.nav_studentbot'), icon: MonitorPlay },
     { path: '/teacher/documents', label: t('navbar.nav_documents'), icon: FileText },
-    { path: '/teacher/wiki', label: t('navbar.nav_wiki'), icon: BookOpen },
+    { path: '/teacher/teacherbots', label: t('navbar.nav_teacherbots'), icon: Bot },
     { path: '/teacher/ml-lab', label: t('navbar.nav_ml_lab'), icon: Brain },
     { path: '/teacher/notebooks', label: t('navbar.nav_notebook'), icon: FileCode2 },
+    { path: '/teacher/coding', label: t('navbar.nav_coding_lab'), icon: Code2 },
+    { path: '/teacher/boards', label: 'Board', icon: KanbanSquare },
     { path: '/teacher/live-interaction', label: 'Live', icon: Zap },
     { path: '/teacher/3d-lab', label: '3D Lab', icon: Box },
-    { path: '/teacher/desktop', label: t('navbar.nav_desktop'), icon: LayoutDashboard },
+    { path: '/teacher/toy-lm', label: 'ToyGPT', icon: Network },
+    ...(boardAccess?.has_access ? [{ path: '/teacher/feedback-board', label: 'Backlog', icon: ShieldCheck }] : []),
   ]
 
   const handleNotificationClick = (notification: TeacherNotification) => {
@@ -303,6 +380,8 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
         onSessionChange?.(sessionInfo)
         localStorage.setItem('teacher_selected_session', JSON.stringify(sessionInfo))
         navigate(`/teacher/sessions/${notification.session_id}?tab=chat`)
+      } else if (notification.type === 'student_document') {
+        navigate(`/teacher/sessions/${notification.session_id}?tab=documents`)
       } else if (notification.type === 'task_submitted' || notification.type === 'quiz_completed') {
         navigate(`/teacher/sessions/${notification.session_id}?tab=tasks`)
       } else {
@@ -322,29 +401,15 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
             {/* Logo/Brand */}
             <div className="flex items-center gap-3 cursor-pointer" onClick={() => navigate('/teacher')}>
               <LogoMark className="h-9 w-9" />
-              <div className="flex items-center gap-2">
-                <span className="flex items-center text-[18px] leading-none tracking-tight" style={{ fontFamily: '"SofiaPro"' }}>
-                  <span className="font-bold text-[#2d2d2d]/85">
-                    Golinelli
-                  </span>
-                  <span className="font-black text-[#e85c8d]">.ai</span>
+              <div className="flex items-center gap-1.5 pt-0.5">
+                <span className="brand-wordmark">
+                  Golinelli<span className="brand-wordmark-ai">.ai</span>
                 </span>
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    setShowWhatsNew(true)
-                  }}
-                  className="inline-flex items-center self-center transition-transform hover:-translate-y-px"
-                >
-                  <Badge tone="warning" surface="soft" density="compact" className="inline-flex min-h-[22px] items-center border border-orange-200 px-2 py-0.5 text-[10px] font-bold leading-none tracking-[0.14em] text-orange-700">
-                    BETA
-                  </Badge>
-                </button>
+                <ServerHealthIndicator onBetaClick={() => setShowWhatsNew(true)} />
               </div>
             </div>
 
-            <div className="hidden xl:flex items-center gap-1 h-11 rounded-xl border p-1" style={buildAccentNavClusterStyle(accentTheme)}>
+            <div className="hidden xl:flex items-center gap-1 h-11 rounded-[var(--selection-radius)] border p-1" style={buildAccentNavClusterStyle(accentTheme)}>
               {(() => {
                 const activeIdx = navItems.findIndex(item => isActive(item.path))
                 return navItems.map((item, idx) => (
@@ -354,8 +419,8 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
                       label={item.label}
                       isActive={isActive(item.path)}
                       isAdjacent={Math.abs(idx - activeIdx) === 1}
-                      accentClass="bg-[color:var(--teacher-accent-soft-strong)]"
                       accentTextClass="text-[var(--teacher-accent-text)]"
+                      badgeCount={item.path === '/teacher/classes' ? invitationCount : 0}
                     />
                   </Link>
                 ))
@@ -365,10 +430,12 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
             <div className="hidden xl:block h-8 w-px bg-slate-200/80 mx-1" />
 
             <div className="flex items-center gap-3">
+              <div className="hidden h-11 items-center gap-1 rounded-[var(--selection-radius)] border p-1 lg:flex" style={buildAccentNavClusterStyle(accentTheme)}>
               {/* Date/time + mini calendar */}
               <NavbarCalendarClock
                 sessionId={currentSession?.id}
                 accentColor={accentTheme.accent}
+                inNavCluster
               />
 
               {/* Teacher Notifications (unified) */}
@@ -378,32 +445,57 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
                 onMarkAsRead={handleMarkAsRead}
                 onNotificationClick={handleNotificationClick}
                 onAlertAction={handleAlertAction}
+                inNavCluster
               />
 
               {/* Session Selector */}
               <div className="relative flex items-center gap-2" ref={sessionsMenuRef}>
                 <button
                   onClick={() => setShowSessionsMenu(!showSessionsMenu)}
-                  className="hidden lg:flex items-center gap-1.5 h-auto py-1.5 px-2.5 rounded-xl border bg-white/92 border-slate-200 hover:bg-white hover:border-slate-300 transition-colors duration-150 cursor-pointer shadow-[var(--shadow-sm)]"
+                  className="navbar-inline-control flex h-9 items-center gap-2 rounded-[var(--selection-radius)] px-3"
+                  style={{ '--btn-tone': accentTheme.accent } as CSSProperties}
                 >
-                  <div className={`w-2 h-2 rounded-full flex-shrink-0 ${currentSession ? 'bg-green-500 animate-pulse shadow-sm shadow-green-300' : 'bg-slate-300'}`} />
+                  <div className={`h-2.5 w-2.5 flex-shrink-0 rounded-full ${currentSession ? 'bg-green-500 animate-pulse shadow-sm shadow-green-300' : 'bg-slate-300'}`} />
                   <div className="text-left min-w-0">
-                    <span className="text-[11px] font-semibold text-[var(--teacher-accent-text)] truncate max-w-[120px] block leading-tight">{currentSession ? currentSession.name : t('navbar.no_session')}</span>
+                    <span
+                      className="block max-w-[120px] truncate text-[11px] font-bold leading-tight text-[var(--teacher-accent-text)]"
+                      title={currentSession ? currentSession.name : t('navbar.no_session')}
+                    >
+                      {currentSession ? currentSession.name : t('navbar.no_session')}
+                    </span>
                     {currentSession?.joinCode && (
-                      <span className="text-[9px] font-mono font-bold tracking-widest leading-tight block" style={{ color: accentTheme.accent }}>{currentSession.joinCode}</span>
+                      <span className="block text-[10px] font-mono font-black leading-tight tracking-widest" style={{ color: accentTheme.accent }}>{currentSession.joinCode}</span>
                     )}
                   </div>
-                  <ChevronDown className={`h-3 w-3 ml-0.5 text-slate-400 transition-transform flex-shrink-0 ${showSessionsMenu ? 'rotate-180' : ''}`} />
+                  <ChevronDown className={`ml-0.5 h-3.5 w-3.5 flex-shrink-0 text-slate-500 transition-transform ${showSessionsMenu ? 'rotate-180' : ''}`} />
                 </button>
                 <button
-                  className="hidden lg:flex items-center justify-center p-2.5 rounded-xl border transition-colors duration-150 shadow-[var(--shadow-sm)] hover:-translate-y-px"
-                  style={chatSidebarOpen
-                    ? { backgroundColor: accentTheme.accent, borderColor: accentTheme.accent, color: '#fff' }
-                    : { backgroundColor: 'rgba(255,255,255,0.92)', borderColor: `${accentTheme.accent}35`, color: accentTheme.text }}
+                  className={`navbar-inline-control relative flex h-9 w-9 items-center justify-center rounded-[var(--selection-radius)] p-0 ${chatSidebarOpen ? 'navbar-inline-control-active' : ''}`}
+                  style={{ '--btn-tone': accentTheme.accent } as CSSProperties}
                   onClick={onToggleChatSidebar}
                   title={chatSidebarOpen ? t('navbar.hide_class_chat') : t('navbar.show_class_chat')}
                 >
                   <MessageSquare className="h-4 w-4" />
+                  {!voiceActive && chatBadge > 0 && (
+                    <span
+                      className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-bold text-white ring-2 ring-white"
+                      style={{ backgroundColor: accentTheme.accent }}
+                    >
+                      {chatBadge > 9 ? '9+' : chatBadge}
+                    </span>
+                  )}
+                  {voiceActive && (
+                    <span
+                      className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full text-white ring-2 ring-white"
+                      style={{ backgroundColor: accentTheme.accent }}
+                    >
+                      <span
+                        className="absolute inline-flex h-full w-full animate-ping rounded-full opacity-40"
+                        style={{ backgroundColor: accentTheme.accent }}
+                      />
+                      <Mic className="relative h-2.5 w-2.5" />
+                    </span>
+                  )}
                 </button>
 
                 {/* Sessions Dropdown Menu */}
@@ -451,9 +543,16 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
                                   <p className={`text-sm font-medium truncate ${isSelected ? 'text-[var(--teacher-accent-text)]' : 'text-slate-700'}`}>
                                     {session.name}
                                   </p>
-                                  <p className={`text-xs truncate ${isSelected ? 'text-slate-700' : 'text-slate-400'}`}>
-                                    {session.className}
-                                  </p>
+                                  <div className="mt-0.5 flex min-w-0 items-center gap-2">
+                                    <p className={`min-w-0 truncate text-xs ${isSelected ? 'text-slate-700' : 'text-slate-400'}`}>
+                                      {session.className}
+                                    </p>
+                                    {session.joinCode && (
+                                      <span className={`shrink-0 rounded-md px-1.5 py-0.5 font-mono text-[10px] font-black leading-none tracking-widest ${isSelected ? 'bg-white/70 text-[var(--teacher-accent-text)]' : 'bg-slate-100 text-slate-500 group-hover:bg-slate-200'}`}>
+                                        {session.joinCode}
+                                      </span>
+                                    )}
+                                  </div>
                                 </div>
                                 <div className="flex items-center gap-2">
                                   {session.studentCount !== undefined && session.studentCount > 0 && (
@@ -477,23 +576,28 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
                   </div>
                 )}
               </div>
+              <div className="flex items-center gap-1">
+                <CreditBalancePill audience="teacher" accentColor={accentTheme.accent} />
+                <CreditBalancePill audience="studentPool" accentColor={accentTheme.accent} />
+              </div>
+              </div>
 
               {/* Avatar Dropdown */}
               <div className="relative" ref={dropdownRef}>
                 <button
                   onClick={() => setShowDropdown(!showDropdown)}
-                  className="flex items-center gap-1 hover:bg-slate-100 rounded-full p-1 transition-colors border border-transparent hover:border-slate-200"
+                  className="group flex items-center gap-1 rounded-full border border-transparent p-1 transition-colors hover:bg-white/55"
                   title={`${profile.firstName} ${profile.lastName}`}
                 >
                   {profile.avatarUrl ? (
                     <img
                       src={profile.avatarUrl}
                       alt="Avatar"
-                      className="w-8 h-8 rounded-full object-cover"
+                      className="h-10 w-10 rounded-full object-cover transition-transform duration-200 group-hover:scale-110"
                       style={{ boxShadow: `0 0 0 2px ${accentTheme.accent}` }}
                     />
                   ) : (
-                    <div className={`w-8 h-8 rounded-full ${getAvatarColor()} flex items-center justify-center text-white text-xs font-bold`} style={{ boxShadow: `0 0 0 2px ${accentTheme.accent}` }}>
+                    <div className={`h-10 w-10 rounded-full ${getAvatarColor()} flex items-center justify-center text-sm font-bold text-white transition-transform duration-200 group-hover:scale-110`} style={{ boxShadow: `0 0 0 2px ${accentTheme.accent}` }}>
                       {getInitials()}
                     </div>
                   )}
@@ -533,7 +637,7 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
                       <>
                         <button
                           onClick={() => { setShowDropdown(false); navigate('/admin') }}
-                          className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-indigo-700 hover:bg-indigo-50 transition-colors"
+                          className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-[var(--logo-violet)] hover:bg-[var(--logo-violet-10)] transition-colors"
                         >
                           <ShieldCheck className="h-4 w-4" />
                           {t('navbar.nav_admin')}
@@ -541,6 +645,16 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
                       </>
                     )}
                     <div className="h-px bg-slate-50 my-1"></div>
+                    <button
+                      onClick={() => {
+                        setShowDropdown(false)
+                        navigate('/teacher/wiki')
+                      }}
+                      className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-600 hover:bg-slate-50 hover:text-[var(--teacher-accent-text)] transition-colors"
+                    >
+                      <BookOpen className="h-4 w-4" />
+                      Guida all'uso
+                    </button>
                     <button
                       onClick={handleLogout}
                       className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 transition-colors"
@@ -566,7 +680,12 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
                     : 'text-slate-500 hover:text-[var(--teacher-accent-text)]'
                     }`}
                 >
-                  {item.label}
+                  <span className="relative">
+                    {item.label}
+                    {item.path === '/teacher/classes' && invitationCount > 0 && (
+                      <span className="ml-1 rounded-full bg-[#fe004d] px-1.5 py-0.5 text-[10px] font-black text-white">{invitationCount > 9 ? '9+' : invitationCount}</span>
+                    )}
+                  </span>
                 </Button>
               </Link>
             ))}
@@ -587,14 +706,13 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
               <Link
                 key={item.path}
                 to={item.path}
-                title={item.label}
                 aria-label={item.label}
-                className="flex h-11 w-11 items-center justify-center rounded-xl border text-slate-600 transition-colors hover:bg-white/70 hover:text-[var(--teacher-accent-text)]"
+                className="relative flex h-11 w-11 items-center justify-center rounded-xl border text-slate-600 transition-colors hover:bg-white/70 hover:text-[var(--teacher-accent-text)]"
                 style={isActiveItem
                   ? {
-                      backgroundColor: accentTheme.softStrong,
+                      backgroundColor: accentTheme.accent,
                       borderColor: `${accentTheme.accent}45`,
-                      color: accentTheme.text,
+                      color: '#fff',
                     }
                   : {
                       backgroundColor: 'rgba(255,255,255,0.56)',
@@ -602,6 +720,9 @@ export function TeacherNavbar({ currentSession, onSessionChange, chatSidebarOpen
                     }}
               >
                 <Icon className="h-5 w-5" />
+                {item.path === '/teacher/classes' && invitationCount > 0 && (
+                  <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-[#fe004d] px-1 text-[10px] font-black text-white ring-2 ring-white">{invitationCount > 9 ? '9+' : invitationCount}</span>
+                )}
               </Link>
             )
           })}
@@ -803,31 +924,7 @@ function SettingsModal({ profile, onSave, onClose }: SettingsModalProps) {
             <LanguageSwitcher variant="full" />
           </div>
 
-          <div>
-            <label className="block text-xs font-semibold text-slate-500 uppercase mb-2">{t('navbar.accent_color')}</label>
-            <div className="grid grid-cols-4 gap-2">
-              {(Object.values(TEACHER_ACCENTS)).map((accentOption) => {
-                const isSelected = formData.uiAccent === accentOption.id
-                return (
-                  <button
-                    key={accentOption.id}
-                    type="button"
-                    onClick={() => setFormData({ ...formData, uiAccent: accentOption.id })}
-                    className={`relative h-10 rounded-lg border transition-all ${isSelected ? 'border-slate-500' : 'border-slate-200 hover:border-slate-300'}`}
-                    style={{ backgroundColor: accentOption.soft }}
-                    title={accentOption.label}
-                  >
-                    <span className="absolute inset-0 m-auto h-5 w-5 rounded-full" style={{ backgroundColor: accentOption.accent }} />
-                    {isSelected && (
-                      <Check className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-white text-slate-700 p-0.5 shadow" />
-                    )}
-                  </button>
-                )
-              })}
-            </div>
-          </div>
-
-
+          {/* Accent-color picker removed: the app now uses a single fixed brand palette. */}
 
           {/* Change password section */}
           <div className="border-t border-slate-100 pt-4">
@@ -865,14 +962,21 @@ function SettingsModal({ profile, onSave, onClose }: SettingsModalProps) {
                   onChange={e => setConfirmPassword(e.target.value)}
                   placeholder="Conferma nuova password"
                   required
+                  aria-invalid={Boolean(newPassword && confirmPassword && newPassword !== confirmPassword)}
+                  aria-describedby="password-confirmation-error"
                   className={`w-full px-3 py-2 bg-slate-50 border rounded-lg text-sm focus:ring-2 focus:border-transparent outline-none ${newPassword && confirmPassword && newPassword !== confirmPassword ? 'border-red-300 focus:ring-red-400' : 'border-slate-200 focus:ring-slate-400'}`}
                 />
+                {newPassword && confirmPassword && newPassword !== confirmPassword && (
+                  <p id="password-confirmation-error" className="text-xs font-medium text-red-600" role="alert">
+                    Le password non coincidono.
+                  </p>
+                )}
                 <Button
                   type="button"
                   size="sm"
                   disabled={changingPassword}
-                  className="w-full text-white"
-                  style={{ backgroundColor: modalAccentTheme.accent }}
+                  className="w-full"
+                  style={{ '--btn-tone': modalAccentTheme.accent } as CSSProperties}
                   onClick={handleChangePassword}
                 >
                   {changingPassword ? <><Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />Aggiornamento…</> : 'Aggiorna password'}
@@ -886,7 +990,7 @@ function SettingsModal({ profile, onSave, onClose }: SettingsModalProps) {
             <Button type="button" variant="ghost" onClick={onClose} className="flex-1 text-slate-500 hover:text-slate-700 hover:bg-slate-100">
               {t('common.cancel')}
             </Button>
-            <Button type="submit" className="flex-1 text-white shadow-lg" style={{ backgroundColor: modalAccentTheme.accent }} disabled={isUploading}>
+            <Button type="submit" className="flex-1" style={{ '--btn-tone': modalAccentTheme.accent } as CSSProperties} disabled={isUploading}>
               {t('common.save')}
             </Button>
           </div>

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { Bell, UserPlus, UserMinus, MessageSquare, ClipboardCheck, X, Share2, CheckCircle2, XCircle, ShieldAlert, Eye, Ban, Check } from 'lucide-react'
+import { Bell, UserPlus, UserMinus, MessageSquare, ClipboardCheck, FileText, X, Share2, CheckCircle2, XCircle, ShieldAlert, Eye, Ban, Check } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
 export interface QuizAnswer {
@@ -12,7 +12,7 @@ export interface QuizAnswer {
 
 export interface TeacherNotification {
   id: string
-  type: 'student_joined' | 'student_left' | 'private_message' | 'task_submitted' | 'public_chat' | 'assignment_shared' | 'quiz_completed' | 'content_alert'
+  type: 'student_joined' | 'student_left' | 'private_message' | 'task_submitted' | 'student_document' | 'public_chat' | 'assignment_shared' | 'quiz_completed' | 'content_alert'
   session_id: string
   session_name?: string
   class_name?: string
@@ -39,6 +39,7 @@ interface TeacherNotificationsProps {
   onMarkAsRead: (id: string) => void
   onNotificationClick: (notification: TeacherNotification) => void
   onAlertAction?: (alertId: string, action: 'acknowledged' | 'blocked' | 'accepted') => void
+  inNavCluster?: boolean
 }
 
 const getNotificationIcon = (type: string) => {
@@ -53,6 +54,8 @@ const getNotificationIcon = (type: string) => {
       return <MessageSquare className="h-3 w-3 text-cyan-500" />
     case 'task_submitted':
       return <ClipboardCheck className="h-3 w-3 text-purple-500" />
+    case 'student_document':
+      return <FileText className="h-3 w-3 text-emerald-500" />
     case 'assignment_shared':
       return <Share2 className="h-3 w-3 text-indigo-500" />
     case 'quiz_completed':
@@ -83,6 +86,7 @@ export default function TeacherNotifications({
   onMarkAsRead,
   onNotificationClick,
   onAlertAction,
+  inNavCluster = false,
 }: TeacherNotificationsProps) {
   const [isOpen, setIsOpen] = useState(false)
   const [newNotificationIds, setNewNotificationIds] = useState<Set<string>>(new Set())
@@ -140,7 +144,7 @@ export default function TeacherNotifications({
       <Button
         variant="ghost"
         size="sm"
-        className="relative h-8 w-8 p-0 flex items-center justify-center"
+        className={`${inNavCluster ? 'navbar-inline-control h-9 w-9' : 'navbar-widget-control navbar-widget-control-inset h-10 w-10'} relative flex items-center justify-center rounded-xl p-0`}
         onClick={() => setIsOpen(!isOpen)}
       >
         <Bell className={`h-4 w-4 ${hasUnreadAlerts ? 'text-red-600 animate-bounce' : ''}`} />

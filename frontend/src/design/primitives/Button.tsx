@@ -5,7 +5,7 @@ import { cva, type VariantProps } from 'class-variance-authority'
 import { cn } from '@/lib/utils'
 
 const buttonVariants = cva(
-  'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-lg font-medium transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-45 [&_svg]:pointer-events-none [&_svg]:h-4 [&_svg]:w-4 [&_svg]:shrink-0',
+  'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-[var(--button-radius)] font-[var(--button-font-weight)] transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:pointer-events-none disabled:cursor-not-allowed disabled:!border-[color:var(--border-subtle)] disabled:!bg-[image:none] disabled:!bg-[color:color-mix(in_srgb,var(--text-secondary)_6%,transparent)] disabled:!text-[var(--text-secondary)] disabled:!opacity-60 disabled:!shadow-none [&_svg]:pointer-events-none [&_svg]:h-4 [&_svg]:w-4 [&_svg]:shrink-0',
   {
     variants: {
       tone: {
@@ -23,10 +23,10 @@ const buttonVariants = cva(
         link: 'rounded-none px-0 shadow-none underline-offset-4 hover:underline',
       },
       density: {
-        compact: 'h-9 px-3 text-sm',
-        default: 'h-10 px-4 text-sm',
-        roomy: 'h-11 px-5 text-base',
-        icon: 'h-10 w-10 p-0',
+        compact: 'h-[var(--button-height-compact)] px-[var(--button-padding-x-compact)] text-xs',
+        default: 'h-[var(--button-height-default)] px-[var(--button-padding-x-default)] text-xs',
+        roomy: 'h-[var(--button-height-roomy)] px-[var(--button-padding-x-roomy)] text-sm',
+        icon: 'h-[var(--button-height-icon)] w-[var(--button-height-icon)] p-0',
       },
       fullWidth: {
         true: 'w-full',
@@ -38,121 +38,121 @@ const buttonVariants = cva(
         tone: 'neutral',
         surface: 'solid',
         className:
-          'border border-slate-700 bg-[var(--text-primary)] text-white shadow-[var(--shadow-sm)] hover:-translate-y-px hover:bg-slate-800 hover:shadow-[var(--shadow-md)] focus-visible:ring-slate-400',
+          '[--btn-tone:var(--text-primary)] border border-[color:var(--button-chrome-border)] bg-[image:var(--button-chrome-bg)] text-[var(--text-primary)] shadow-[var(--button-chrome-shadow)] hover:-translate-y-px hover:border-[color:var(--button-chrome-border-hover)] hover:bg-[image:var(--button-chrome-bg-hover)] hover:shadow-[var(--button-chrome-shadow-hover)] focus-visible:ring-slate-400',
       },
       {
         tone: 'accent',
         surface: 'solid',
         className:
-          'border border-[var(--app-accent-border,var(--app-accent,var(--ring)))] bg-[var(--app-accent,var(--primary))] text-white shadow-[var(--shadow-sm)] hover:-translate-y-px hover:brightness-[0.98] hover:shadow-[var(--shadow-md)] focus-visible:ring-[var(--app-accent-border,var(--ring))]',
+          'border border-[color:var(--selection-border-hover)] bg-[image:var(--selection-active-bg)] text-[var(--selection-active-text)] shadow-[var(--selection-shadow)] hover:-translate-y-px hover:border-[color:var(--selection-border-hover)] hover:bg-[image:var(--selection-bg-hover)] focus-visible:ring-[var(--selection-border-hover)]',
       },
       {
         tone: 'success',
         surface: 'solid',
         className:
-          'border border-emerald-300/70 bg-emerald-600 text-white shadow-[var(--shadow-sm)] hover:-translate-y-px hover:bg-emerald-700 hover:shadow-[var(--shadow-md)] focus-visible:ring-emerald-200',
+          '[--btn-tone:var(--logo-blue)] border border-[color:var(--button-chrome-border)] bg-[image:var(--button-chrome-bg)] text-[var(--logo-blue-strong)] shadow-[var(--button-chrome-shadow)] hover:-translate-y-px hover:border-[color:var(--button-chrome-border-hover)] hover:bg-[image:var(--button-chrome-bg-hover)] hover:shadow-[var(--button-chrome-shadow-hover)] focus-visible:ring-[var(--logo-blue)]',
       },
       {
         tone: 'warning',
         surface: 'solid',
         className:
-          'border border-orange-300/70 bg-orange-500 text-white shadow-[var(--shadow-sm)] hover:-translate-y-px hover:bg-orange-600 hover:shadow-[var(--shadow-md)] focus-visible:ring-orange-200',
+          '[--btn-tone:var(--logo-violet)] border border-[color:var(--button-chrome-border)] bg-[image:var(--button-chrome-bg)] text-[var(--logo-violet-strong)] shadow-[var(--button-chrome-shadow)] hover:-translate-y-px hover:border-[color:var(--button-chrome-border-hover)] hover:bg-[image:var(--button-chrome-bg-hover)] hover:shadow-[var(--button-chrome-shadow-hover)] focus-visible:ring-[var(--logo-violet)]',
       },
       {
         tone: 'danger',
         surface: 'solid',
         className:
-          'border border-rose-300/70 bg-rose-600 text-white shadow-[var(--shadow-sm)] hover:-translate-y-px hover:bg-rose-700 hover:shadow-[var(--shadow-md)] focus-visible:ring-rose-200',
+          '[--btn-tone:var(--logo-pink)] border border-[color:var(--button-chrome-border)] bg-[image:var(--button-chrome-bg)] text-[var(--logo-pink)] shadow-[var(--button-chrome-shadow)] hover:-translate-y-px hover:border-[color:var(--button-chrome-border-hover)] hover:bg-[image:var(--button-chrome-bg-hover)] hover:shadow-[var(--button-chrome-shadow-hover)] focus-visible:ring-[var(--logo-pink)]',
       },
       {
         tone: 'neutral',
         surface: 'soft',
         className:
-          'border border-slate-200 bg-slate-100 text-slate-700 hover:bg-slate-200 focus-visible:ring-slate-200',
+          '[--btn-tone:var(--text-primary)] border border-[color:var(--button-chrome-border)] bg-[image:var(--button-chrome-bg)] text-slate-700 shadow-[var(--button-chrome-shadow)] hover:border-[color:var(--button-chrome-border-hover)] hover:bg-[image:var(--button-chrome-bg-hover)] focus-visible:ring-slate-200',
       },
       {
         tone: 'accent',
         surface: 'soft',
         className:
-          'border border-[var(--app-accent-border,var(--app-accent,var(--ring)))] bg-[var(--app-accent-soft,var(--accent))] text-[var(--app-accent-text,var(--primary))] hover:bg-[var(--app-accent-soft-strong,var(--accent))] focus-visible:ring-[var(--app-accent-border,var(--ring))]',
+          'border border-[color:var(--selection-border)] bg-[image:var(--selection-bg)] text-[var(--selection-text)] shadow-[var(--selection-shadow)] hover:-translate-y-px hover:border-[color:var(--selection-border-hover)] hover:bg-[image:var(--selection-bg-hover)] focus-visible:ring-[var(--selection-border-hover)]',
       },
       {
         tone: 'success',
         surface: 'soft',
         className:
-          'border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 focus-visible:ring-emerald-200',
+          '[--btn-tone:var(--logo-blue)] border border-[color:var(--button-chrome-border)] bg-[image:var(--button-chrome-bg)] text-[var(--logo-blue-strong)] shadow-[var(--button-chrome-shadow)] hover:border-[color:var(--button-chrome-border-hover)] hover:bg-[image:var(--button-chrome-bg-hover)] focus-visible:ring-[var(--logo-blue)]',
       },
       {
         tone: 'warning',
         surface: 'soft',
         className:
-          'border border-orange-200 bg-orange-50 text-orange-700 hover:bg-orange-100 focus-visible:ring-orange-200',
+          '[--btn-tone:var(--logo-violet)] border border-[color:var(--button-chrome-border)] bg-[image:var(--button-chrome-bg)] text-[var(--logo-violet-strong)] shadow-[var(--button-chrome-shadow)] hover:border-[color:var(--button-chrome-border-hover)] hover:bg-[image:var(--button-chrome-bg-hover)] focus-visible:ring-[var(--logo-violet)]',
       },
       {
         tone: 'danger',
         surface: 'soft',
         className:
-          'border border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100 focus-visible:ring-rose-200',
+          '[--btn-tone:var(--logo-pink)] border border-[color:var(--button-chrome-border)] bg-[image:var(--button-chrome-bg)] text-[var(--logo-pink)] shadow-[var(--button-chrome-shadow)] hover:border-[color:var(--button-chrome-border-hover)] hover:bg-[image:var(--button-chrome-bg-hover)] focus-visible:ring-[var(--logo-pink)]',
       },
       {
         tone: 'neutral',
         surface: 'outline',
         className:
-          'border border-[var(--border-subtle)] bg-[var(--surface-base)] text-[var(--text-primary)] hover:bg-[var(--surface-muted)] focus-visible:ring-slate-300',
+          '[--btn-tone:var(--text-primary)] border border-[color:var(--button-chrome-border)] bg-[image:var(--button-chrome-bg)] text-[var(--text-primary)] shadow-[var(--button-chrome-shadow)] hover:border-[color:var(--button-chrome-border-hover)] hover:bg-[image:var(--button-chrome-bg-hover)] focus-visible:ring-slate-300',
       },
       {
         tone: 'accent',
         surface: 'outline',
         className:
-          'border border-[var(--app-accent-border,var(--app-accent,var(--ring)))] bg-[var(--surface-base)] text-[var(--app-accent-text,var(--primary))] hover:bg-[var(--app-accent-soft,var(--accent))] focus-visible:ring-[var(--app-accent-border,var(--ring))]',
+          'border border-[color:var(--selection-border)] bg-[image:var(--selection-bg)] text-[var(--selection-text)] shadow-[var(--selection-shadow)] hover:border-[color:var(--selection-border-hover)] hover:bg-[image:var(--selection-bg-hover)] focus-visible:ring-[var(--selection-border-hover)]',
       },
       {
         tone: 'success',
         surface: 'outline',
         className:
-          'border border-emerald-200 bg-[var(--surface-base)] text-emerald-700 hover:bg-emerald-50 focus-visible:ring-emerald-200',
+          '[--btn-tone:var(--logo-blue)] border border-[color:var(--button-chrome-border)] bg-[image:var(--button-chrome-bg)] text-[var(--logo-blue-strong)] shadow-[var(--button-chrome-shadow)] hover:border-[color:var(--button-chrome-border-hover)] hover:bg-[image:var(--button-chrome-bg-hover)] focus-visible:ring-[var(--logo-blue)]',
       },
       {
         tone: 'warning',
         surface: 'outline',
         className:
-          'border border-orange-200 bg-[var(--surface-base)] text-orange-700 hover:bg-orange-50 focus-visible:ring-orange-200',
+          '[--btn-tone:var(--logo-violet)] border border-[color:var(--button-chrome-border)] bg-[image:var(--button-chrome-bg)] text-[var(--logo-violet-strong)] shadow-[var(--button-chrome-shadow)] hover:border-[color:var(--button-chrome-border-hover)] hover:bg-[image:var(--button-chrome-bg-hover)] focus-visible:ring-[var(--logo-violet)]',
       },
       {
         tone: 'danger',
         surface: 'outline',
         className:
-          'border border-rose-200 bg-[var(--surface-base)] text-rose-700 hover:bg-rose-50 focus-visible:ring-rose-200',
+          '[--btn-tone:var(--logo-pink)] border border-[color:var(--button-chrome-border)] bg-[image:var(--button-chrome-bg)] text-[var(--logo-pink)] shadow-[var(--button-chrome-shadow)] hover:border-[color:var(--button-chrome-border-hover)] hover:bg-[image:var(--button-chrome-bg-hover)] focus-visible:ring-[var(--logo-pink)]',
       },
       {
         tone: 'neutral',
         surface: 'ghost',
         className:
-          'text-[var(--text-primary)] hover:bg-[var(--surface-muted)] focus-visible:ring-slate-300',
+          '[--btn-tone:var(--text-primary)] border border-transparent text-[var(--text-primary)] hover:border-[color:var(--button-chrome-border)] hover:bg-[image:var(--button-chrome-bg)] hover:shadow-[var(--button-chrome-shadow)] focus-visible:ring-slate-300',
       },
       {
         tone: 'accent',
         surface: 'ghost',
         className:
-          'text-[var(--app-accent-text,var(--primary))] hover:bg-[var(--app-accent-soft,var(--accent))] focus-visible:ring-[var(--app-accent-border,var(--ring))]',
+          '[--btn-tone:var(--app-accent,var(--logo-pink))] border border-transparent text-[var(--app-accent-text,var(--primary))] hover:border-[color:var(--button-chrome-border)] hover:bg-[image:var(--button-chrome-bg)] hover:shadow-[var(--button-chrome-shadow)] focus-visible:ring-[var(--app-accent,var(--ring))]',
       },
       {
         tone: 'success',
         surface: 'ghost',
         className:
-          'text-emerald-700 hover:bg-emerald-50 focus-visible:ring-emerald-200',
+          '[--btn-tone:var(--logo-blue)] border border-transparent text-[var(--logo-blue-strong)] hover:border-[color:var(--button-chrome-border)] hover:bg-[image:var(--button-chrome-bg)] hover:shadow-[var(--button-chrome-shadow)] focus-visible:ring-[var(--logo-blue)]',
       },
       {
         tone: 'warning',
         surface: 'ghost',
         className:
-          'text-orange-700 hover:bg-orange-50 focus-visible:ring-orange-200',
+          '[--btn-tone:var(--logo-violet)] border border-transparent text-[var(--logo-violet-strong)] hover:border-[color:var(--button-chrome-border)] hover:bg-[image:var(--button-chrome-bg)] hover:shadow-[var(--button-chrome-shadow)] focus-visible:ring-[var(--logo-violet)]',
       },
       {
         tone: 'danger',
         surface: 'ghost',
         className:
-          'text-rose-700 hover:bg-rose-50 focus-visible:ring-rose-200',
+          '[--btn-tone:var(--logo-pink)] border border-transparent text-[var(--logo-pink)] hover:border-[color:var(--button-chrome-border)] hover:bg-[image:var(--button-chrome-bg)] hover:shadow-[var(--button-chrome-shadow)] focus-visible:ring-[var(--logo-pink)]',
       },
       {
         tone: 'neutral',
@@ -167,17 +167,17 @@ const buttonVariants = cva(
       {
         tone: 'success',
         surface: 'link',
-        className: 'text-emerald-700',
+        className: 'text-[var(--logo-blue-strong)]',
       },
       {
         tone: 'warning',
         surface: 'link',
-        className: 'text-orange-700',
+        className: 'text-[var(--logo-violet-strong)]',
       },
       {
         tone: 'danger',
         surface: 'link',
-        className: 'text-rose-700',
+        className: 'text-[var(--logo-pink)]',
       },
     ],
     defaultVariants: {
@@ -231,6 +231,41 @@ function resolveLegacySize(size?: LegacySize) {
   }
 }
 
+// A solid background-COLOR utility (bg-pink-500, bg-[#fff], bg-black/80, …) but
+// NOT a gradient or an explicit background-image utility.
+const BG_COLOR_OVERRIDE = /\bbg-(?:\[(?:#|rgb|hsl)|[a-z]+-\d+|black|white|transparent|current)\b/
+const BG_IMAGE_OR_GRADIENT = /\b(?:bg-\[image:|bg-gradient|from-|via-|to-)/
+
+function normalizeReadableChromeClasses(className?: string) {
+  if (!className) return className
+
+  // The accent variant paints its lavender pill via `background-image`
+  // (var(--selection-active-bg)). A consumer's `bg-<color>` only sets
+  // `background-color`, which renders *underneath* that gradient — so the pill
+  // stays lavender while any `text-white` becomes unreadable. When a solid color
+  // override is present, clear the variant gradient so the intended color shows.
+  const hasColorBg = BG_COLOR_OVERRIDE.test(className) && !/\bbg-\[image:/.test(className)
+  const hasGradientOrImage = BG_IMAGE_OR_GRADIENT.test(className)
+
+  let result = className
+  if (hasColorBg && !/\bbg-none\b/.test(result)) {
+    result = `${result} bg-none`
+    // The variant also swaps in a gradient on hover; neutralize it too when the
+    // consumer supplies its own hover color so the override survives hover.
+    if (/\bhover:bg-(?:\[|[a-z]+-\d|black|white)/.test(result) && !/\bhover:bg-none\b/.test(result)) {
+      result = `${result} hover:bg-none`
+    }
+  }
+
+  // `text-white` is only safe over an actual filled background; with no override
+  // at all, drop it so the variant's own readable text color applies.
+  if (/\b!?text-white\b/.test(result) && !hasColorBg && !hasGradientOrImage) {
+    result = result.replace(/\s*!?text-white\b/g, '')
+  }
+
+  return result
+}
+
 export interface ButtonProps
   extends React.ButtonHTMLAttributes<HTMLButtonElement>,
     Omit<VariantProps<typeof buttonVariants>, 'tone' | 'surface'> {
@@ -269,7 +304,7 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
             density: density ?? legacyDensity,
             fullWidth,
           }),
-          className
+          normalizeReadableChromeClasses(className)
         )}
         ref={ref}
         {...props}

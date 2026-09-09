@@ -97,7 +97,7 @@ async def create_livekit_token(
     if not settings.LIVEKIT_URL or not settings.LIVEKIT_API_KEY or not settings.LIVEKIT_API_SECRET:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Voice chat is not configured",
+            detail="Realtime media chat is not configured",
         )
 
     if not await _can_access_session(db, principal, request.session_id):
@@ -111,7 +111,10 @@ async def create_livekit_token(
         identity = f"student:{principal.student.id}"
         name = principal.student.nickname or "Studente"
         voice_state = voice_rooms.get(str(request.session_id)) or {}
-        can_publish = voice_state.get("active_speaker_id") == str(principal.student.id)
+        active_speaker_ids = voice_state.get("active_speaker_ids")
+        if active_speaker_ids is None:
+            active_speaker_ids = [voice_state.get("active_speaker_id")] if voice_state.get("active_speaker_id") else []
+        can_publish = str(principal.student.id) in active_speaker_ids
     else:
         identity = f"teacher:{principal.teacher.id}"
         name = f"{principal.teacher.first_name or ''} {principal.teacher.last_name or ''}".strip() or "Docente"

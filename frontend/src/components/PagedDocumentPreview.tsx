@@ -73,6 +73,18 @@ export function PagedDocumentPreview({
           .doc-content h2 { font-size: 22px; margin: 20px 0 10px; }
           .doc-content h3 { font-size: 18px; margin: 16px 0 8px; }
           .doc-content p { margin: 0 0 12px; }
+          .doc-content p { orphans: 2; widows: 2; }
+          .doc-content h1, .doc-content h2, .doc-content h3,
+          .doc-content h4, .doc-content h5, .doc-content h6 {
+            break-after: avoid-page;
+            page-break-after: avoid;
+          }
+          .doc-content img, .doc-content table, .doc-content figure,
+          .doc-content pre, .doc-content blockquote, .doc-content .katex-display {
+            break-inside: avoid-page;
+            page-break-inside: avoid;
+            max-width: 100%;
+          }
           .pagedjs_pages {
             display: flex;
             flex-direction: column;

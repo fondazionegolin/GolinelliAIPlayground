@@ -1,10 +1,11 @@
 import { useState, useRef, useEffect, type CSSProperties } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { User, Settings, LogOut, ChevronDown, Bot, Brain, Award, FileEdit, FileText, Menu, X, MessageSquare, Check, FileCode2, MonitorPlay, LayoutDashboard, BookOpen } from 'lucide-react'
+import { User, Settings, LogOut, ChevronDown, Brain, Award, FileEdit, FileText, Menu, X, MessageSquare, Mic, FileCode2, MonitorPlay, BookOpen, Code2, KanbanSquare } from 'lucide-react'
+import { AcademicAiIcon } from '@/components/icons/AcademicAiIcon'
 import { Button } from './ui/button'
 import { LogoMark } from './LogoMark'
 import { studentApi } from '@/lib/api'
-import { DEFAULT_STUDENT_ACCENT, getStudentAccentTheme, saveStudentAccent, STUDENT_ACCENTS, type StudentAccentId } from '@/lib/studentAccent'
+import { DEFAULT_STUDENT_ACCENT, getStudentAccentTheme, saveStudentAccent, type StudentAccentId } from '@/lib/studentAccent'
 import { NavTab } from '@/components/ui/NavTab'
 import { useTranslation } from 'react-i18next'
 import { LanguageSwitcher } from '@/components/LanguageSwitcher'
@@ -12,7 +13,10 @@ import { useAuthStore } from '@/stores/auth'
 import { NavbarCalendarClock } from './NavbarCalendarClock'
 import WhatsNewModal from './WhatsNewModal'
 import { buildAccentNavbarStyle, buildAccentNavClusterStyle } from '@/lib/navbarGlass'
-import { Badge } from '@/components/ui/badge'
+import { CreditBalancePill } from './CreditBalancePill'
+import { StudentNotificationBell } from './StudentNotificationBell'
+import { ServerHealthIndicator } from './ServerHealthIndicator'
+import { PLATFORM_REALTIME_EVENT, type PlatformRealtimeDetail } from '@/lib/realtimeEvents'
 
 interface StudentProfile {
   id?: string
@@ -33,6 +37,7 @@ interface StudentNavbarProps {
   onAccentChange?: (accent: StudentAccentId) => void
   enabledModules?: string[]
   chatAvailable?: boolean
+  pendingTasksCount?: number
 }
 
 export function StudentNavbar({
@@ -47,6 +52,7 @@ export function StudentNavbar({
   onAccentChange,
   enabledModules,
   chatAvailable = true,
+  pendingTasksCount = 0,
 }: StudentNavbarProps) {
   const navigate = useNavigate()
   const logout = useAuthStore((s) => s.logout)
@@ -73,8 +79,63 @@ export function StudentNavbar({
   const [showSettings, setShowSettings] = useState(false)
   const [showMobileMenu, setShowMobileMenu] = useState(false)
   const [showWhatsNew, setShowWhatsNew] = useState(false)
+  const [voiceActive, setVoiceActive] = useState(false)
+  const [chatBadge, setChatBadge] = useState(0)
+  const [documentsBadge, setDocumentsBadge] = useState(0)
   const dropdownRef = useRef<HTMLDivElement>(null)
   const mobileMenuRef = useRef<HTMLDivElement>(null)
+  const activeModuleRef = useRef<string | null | undefined>(activeModule)
+  const chatSidebarOpenRef = useRef(chatSidebarOpen)
+  const profileIdRef = useRef<string | undefined>(undefined)
+  const processedRealtimeIdsRef = useRef<Set<string>>(new Set())
+
+  useEffect(() => {
+    activeModuleRef.current = activeModule
+  }, [activeModule])
+
+  useEffect(() => {
+    chatSidebarOpenRef.current = chatSidebarOpen
+  }, [chatSidebarOpen])
+
+  useEffect(() => {
+    if (chatSidebarOpen) setChatBadge(0)
+  }, [chatSidebarOpen])
+
+  useEffect(() => {
+    const handleRealtime = (event: Event) => {
+      const detail = (event as CustomEvent<PlatformRealtimeDetail>).detail
+      if (!detail) return
+      const { type, payload } = detail
+
+      if (type === 'chat_message') {
+        if (payload.room_type !== 'PUBLIC' || chatSidebarOpenRef.current) return
+        if (payload.message?.sender_id && payload.message.sender_id === profileIdRef.current) return
+        if (processedRealtimeIdsRef.current.has(detail.id)) return
+        processedRealtimeIdsRef.current.add(detail.id)
+        setChatBadge((count) => count + 1)
+        return
+      }
+
+      const taskData = payload.data || payload
+      const taskId = payload.task_id || payload.entity_id
+      const isPublishedTask = type === 'task_published' || (type === 'platform_change' && payload.entity === 'task' && payload.action === 'published')
+      const isDocumentTask = isPublishedTask && ['lesson', 'presentation', 'document', 'document_v1', 'presentation_v2'].includes(String(taskData.task_type || '').toLowerCase())
+      if (type === 'document_uploaded' || isDocumentTask) {
+        if (activeModuleRef.current === 'documents') return
+        const notificationId = `document-${payload.document_id || taskId}`
+        if (processedRealtimeIdsRef.current.has(notificationId)) return
+        processedRealtimeIdsRef.current.add(notificationId)
+        setDocumentsBadge((count) => count + 1)
+      }
+    }
+
+    window.addEventListener(PLATFORM_REALTIME_EVENT, handleRealtime)
+    return () => window.removeEventListener(PLATFORM_REALTIME_EVENT, handleRealtime)
+  }, [])
+
+  useEffect(() => {
+    if (activeModule === 'documents') setDocumentsBadge(0)
+  }, [activeModule])
 
   const { t } = useTranslation()
   const [profile, setProfile] = useState<StudentProfile>({
@@ -96,9 +157,24 @@ export function StudentNavbar({
     root.style.setProperty('--app-accent-soft', accentTheme.soft)
     root.style.setProperty('--app-accent-soft-strong', accentTheme.softStrong)
     root.style.setProperty('--app-accent-border', accentTheme.border)
-    root.style.setProperty('--app-body-bg', '#ffffff')
-    root.style.setProperty('--surface-page', '#ffffff')
+    root.style.setProperty('--app-body-bg', '#f1f3f5')
+    root.style.setProperty('--surface-page', '#f1f3f5')
   }, [accentTheme])
+
+  useEffect(() => {
+    setVoiceActive(false)
+    if (!sessionId) return
+
+    const handleVoiceState = (event: Event) => {
+      const detail = (event as CustomEvent<{ sessionId?: string; active?: boolean }>).detail
+      if (detail?.sessionId === sessionId) {
+        setVoiceActive(Boolean(detail.active))
+      }
+    }
+
+    window.addEventListener('golinelli:voice-room-state', handleVoiceState)
+    return () => window.removeEventListener('golinelli:voice-room-state', handleVoiceState)
+  }, [sessionId])
 
   // Load profile from API
   useEffect(() => {
@@ -112,6 +188,7 @@ export function StudentNavbar({
           avatarUrl: data.avatar_url || undefined,
           uiAccent: data.ui_accent || undefined,
         })
+        profileIdRef.current = data.id
         if (data.ui_accent && onAccentChange) {
           const serverAccent = data.ui_accent as StudentAccentId
           onAccentChange(serverAccent)
@@ -150,12 +227,9 @@ export function StudentNavbar({
   // Generate random color based on nickname (consistent)
   const getAvatarColor = () => {
     const colors = [
-      'bg-violet-500',
-      'bg-fuchsia-500',
-      'bg-purple-500',
-      'bg-pink-500',
-      'bg-rose-500',
-      'bg-indigo-500'
+      'bg-[var(--logo-pink)]',
+      'bg-[var(--logo-blue)]',
+      'bg-[var(--logo-violet)]'
     ]
     const hash = profile.nickname.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0)
     return colors[hash % colors.length]
@@ -168,25 +242,34 @@ export function StudentNavbar({
   }
 
   const ALL_NAV_ITEMS = [
-    { key: 'desktop', label: t('navbar.nav_desktop'), icon: LayoutDashboard },
-    { key: 'chatbot', label: t('navbar.nav_chatbot'), icon: Bot },
-    { key: 'wiki', label: t('navbar.nav_wiki'), icon: BookOpen },
+    { key: 'chatbot', label: t('navbar.nav_chatbot'), icon: AcademicAiIcon },
     { key: 'classification', label: t('navbar.nav_ml_lab'), icon: Brain },
     { key: 'documents', label: t('navbar.nav_documents'), icon: FileEdit },
     { key: 'self_assessment', label: t('navbar.nav_tasks'), icon: Award },
     { key: 'notebook', label: t('navbar.nav_notebook'), icon: FileCode2 },
+    { key: 'coding', label: t('navbar.nav_coding_lab'), icon: Code2 },
+    { key: 'boards', label: 'Board', icon: KanbanSquare },
   ]
-  // Always show desktop and documents; filter optional modules by session settings
-  const ALWAYS_SHOWN = new Set(['desktop', 'documents', 'notebook', 'wiki'])
+  // Always show core modules; filter optional modules by session settings
+  const ALWAYS_SHOWN = new Set(['chatbot', 'documents'])
   const navItems = enabledModules
     ? ALL_NAV_ITEMS.filter(item => ALWAYS_SHOWN.has(item.key) || enabledModules.includes(item.key))
     : ALL_NAV_ITEMS
+  const getNavBadge = (key: string) => {
+    if (key === 'self_assessment') return pendingTasksCount
+    if (key === 'documents') return documentsBadge
+    return 0
+  }
+  const handleNavigate = (key: string) => {
+    if (key === 'documents') setDocumentsBadge(0)
+    onNavigate?.(key)
+  }
 
   return (
     <>
       {/* Preview mode banner */}
       {isPreviewMode && (
-        <div className="fixed top-0 left-0 right-0 z-[60] bg-amber-500 text-white text-xs font-semibold flex items-center justify-center gap-3 py-1.5 px-4">
+        <div className="fixed top-0 left-0 right-0 z-[60] bg-[var(--logo-violet)] text-white text-xs font-semibold flex items-center justify-center gap-3 py-1.5 px-4">
           <MonitorPlay className="h-3.5 w-3.5 flex-shrink-0" />
           <span>{t('navbar.preview_banner')}</span>
           <button
@@ -206,25 +289,11 @@ export function StudentNavbar({
             {/* Logo/Brand */}
             <div className="flex items-center gap-3 cursor-pointer" onClick={() => onNavigate?.(null)}>
               <LogoMark className="h-9 w-9" />
-              <div className="flex items-center gap-2">
-                <span className="flex items-center text-[18px] leading-none tracking-tight" style={{ fontFamily: '"SofiaPro"' }}>
-                  <span className="font-bold text-[#2d2d2d]/85">
-                    Golinelli
-                  </span>
-                  <span className="font-black text-[#e85c8d]">.ai</span>
+              <div className="flex items-center gap-1.5 pt-0.5">
+                <span className="brand-wordmark">
+                  Golinelli<span className="brand-wordmark-ai">.ai</span>
                 </span>
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    setShowWhatsNew(true)
-                  }}
-                  className="inline-flex items-center self-center transition-transform hover:-translate-y-px"
-                >
-                  <Badge tone="warning" surface="soft" density="compact" className="inline-flex min-h-[22px] items-center border border-orange-200 px-2 py-0.5 text-[10px] font-bold leading-none tracking-[0.14em] text-orange-700">
-                    BETA
-                  </Badge>
-                </button>
+                <ServerHealthIndicator onBetaClick={() => setShowWhatsNew(true)} />
               </div>
             </div>
 
@@ -242,7 +311,7 @@ export function StudentNavbar({
 
             {/* Desktop Navigation */}
             {onNavigate && (
-              <div className="hidden xl:flex items-center gap-1 h-11 rounded-xl border p-1" style={buildAccentNavClusterStyle(accentTheme)}>
+              <div className="hidden xl:flex items-center gap-1 h-11 rounded-[var(--selection-radius)] border p-1" style={buildAccentNavClusterStyle(accentTheme)}>
                 {(() => {
                   const activeIdx = navItems.findIndex(item => activeModule === item.key)
                   return navItems.map((item, idx) => (
@@ -252,9 +321,9 @@ export function StudentNavbar({
                       label={item.label}
                       isActive={activeModule === item.key}
                       isAdjacent={Math.abs(idx - activeIdx) === 1}
-                      onClick={() => onNavigate(item.key)}
-                      accentClass="bg-[color:var(--student-accent-soft-strong)]"
+                      onClick={() => handleNavigate(item.key)}
                       accentTextClass="text-[var(--student-accent-text)]"
+                      badgeCount={getNavBadge(item.key)}
                     />
                   ))
                 })()}
@@ -263,56 +332,87 @@ export function StudentNavbar({
 
             <div className="hidden xl:block h-8 w-px bg-slate-200/80 mx-1" />
 
-            <div className="flex items-center gap-2">
-              {/* Date/time + mini calendar */}
-              <NavbarCalendarClock
-                sessionId={sessionId}
-                accentColor={accentTheme.accent}
-              />
+            <div className="flex items-center gap-3">
+              <div className="hidden h-11 items-center gap-1 rounded-[var(--selection-radius)] border p-1 lg:flex" style={buildAccentNavClusterStyle(accentTheme)}>
+                {/* Date/time + mini calendar */}
+                <NavbarCalendarClock
+                  sessionId={sessionId}
+                  accentColor={accentTheme.accent}
+                  inNavCluster
+                />
 
-              {/* Session Info - Always visible */}
-              {sessionTitle && (
-                <div className="hidden lg:flex items-center gap-2 h-9 px-3 rounded-xl border bg-white/92 border-slate-200 shadow-[var(--shadow-sm)]">
-                  <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse shadow-sm shadow-green-300" />
-                  <div className="text-left min-w-0">
-                    <span className="text-sm font-bold text-[var(--student-accent-text)] truncate max-w-[120px]">{sessionTitle}</span>
-                    {joinCode && (
-                      <span className="ml-2 text-xs font-mono font-semibold text-slate-400 tracking-wider">{joinCode}</span>
-                    )}
+                {/* Session Info - Always visible */}
+                {sessionTitle && (
+                  <div
+                    className="navbar-inline-control flex h-9 items-center gap-2 rounded-[var(--selection-radius)] px-3"
+                    style={{ '--btn-tone': accentTheme.accent } as CSSProperties}
+                  >
+                    <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse shadow-sm shadow-green-300" />
+                    <div className="text-left min-w-0">
+                      <span className="block max-w-[150px] truncate text-[11px] font-bold leading-tight text-[var(--student-accent-text)]">{sessionTitle}</span>
+                      {joinCode && (
+                        <span className="block text-[10px] font-mono font-black leading-tight tracking-widest" style={{ color: accentTheme.accent }}>{joinCode}</span>
+                      )}
+                    </div>
                   </div>
-                </div>
-              )}
+                )}
 
-              {chatAvailable && onToggleChatSidebar && (
-                <button
-                  className="hidden lg:flex items-center justify-center w-10 h-10 rounded-xl border transition-colors duration-150 shadow-[var(--shadow-sm)] hover:-translate-y-px"
-                  style={chatSidebarOpen
-                    ? { backgroundColor: accentTheme.accent, borderColor: accentTheme.accent, color: '#fff' }
-                    : { backgroundColor: 'rgba(255,255,255,0.92)', borderColor: `${accentTheme.accent}35`, color: accentTheme.text }}
-                  onClick={onToggleChatSidebar}
-                  title={chatSidebarOpen ? t('navbar.hide_class_chat') : t('navbar.show_class_chat')}
-                >
-                  <MessageSquare className="h-4 w-4 flex-shrink-0" />
-                </button>
-              )}
+                {chatAvailable && onToggleChatSidebar && (
+                  <button
+                    className={`navbar-inline-control relative flex h-9 w-9 items-center justify-center rounded-[var(--selection-radius)] p-0 ${chatSidebarOpen ? 'navbar-inline-control-active' : ''}`}
+                    style={{ '--btn-tone': accentTheme.accent } as CSSProperties}
+                    onClick={onToggleChatSidebar}
+                    title={chatSidebarOpen ? t('navbar.hide_class_chat') : t('navbar.show_class_chat')}
+                  >
+                    <MessageSquare className="h-4 w-4 flex-shrink-0" />
+                    {voiceActive ? (
+                      <span
+                        className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full text-white ring-2 ring-white"
+                        style={{ backgroundColor: accentTheme.accent }}
+                      >
+                        <span
+                          className="absolute inline-flex h-full w-full animate-ping rounded-full opacity-40"
+                          style={{ backgroundColor: accentTheme.accent }}
+                        />
+                        <Mic className="relative h-2.5 w-2.5" />
+                      </span>
+                    ) : chatBadge > 0 ? (
+                      <span
+                        className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-bold text-white ring-2 ring-white"
+                        style={{ backgroundColor: accentTheme.accent }}
+                      >
+                        {chatBadge > 9 ? '9+' : chatBadge}
+                      </span>
+                    ) : null}
+                  </button>
+                )}
+
+                <StudentNotificationBell accentColor={accentTheme.accent} onNavigate={onNavigate} />
+
+                <CreditBalancePill audience="student" accentColor={accentTheme.accent} />
+              </div>
+
+              <div className="lg:hidden">
+                <CreditBalancePill audience="student" accentColor={accentTheme.accent} />
+              </div>
 
               {/* Avatar Dropdown */}
               <div className="relative" ref={dropdownRef}>
                 <button
                   onClick={() => setShowDropdown(!showDropdown)}
-                  className="flex items-center gap-1 hover:bg-slate-100 rounded-full p-1 transition-colors border border-transparent hover:border-slate-200"
+                  className="group flex items-center gap-1 rounded-full border border-transparent p-1 transition-colors hover:bg-slate-100"
                   title={profile.nickname}
                 >
                   {profile.avatarUrl ? (
                     <img
                       src={profile.avatarUrl}
                       alt="Avatar"
-                      className="w-8 h-8 rounded-full object-cover"
+                      className="h-10 w-10 rounded-full object-cover transition-transform duration-200 group-hover:scale-110"
                       style={{ boxShadow: `0 0 0 2px ${accentTheme.accent}` }}
                     />
                   ) : (
                     <div
-                      className={`w-8 h-8 rounded-full ${getAvatarColor()} flex items-center justify-center text-white text-xs font-bold`}
+                      className={`h-10 w-10 rounded-full ${getAvatarColor()} flex items-center justify-center text-sm font-bold text-white transition-transform duration-200 group-hover:scale-110`}
                       style={{ boxShadow: `0 0 0 2px ${accentTheme.accent}` }}
                     >
                       {getInitials()}
@@ -337,6 +437,20 @@ export function StudentNavbar({
                     >
                       <Settings className="h-4 w-4" />
                       {t('navbar.settings')}
+                    </button>
+                    <button
+                      onClick={() => {
+                        setShowDropdown(false)
+                        if (onNavigate) {
+                          onNavigate('wiki')
+                        } else {
+                          navigate('/student/wiki')
+                        }
+                      }}
+                      className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-600 hover:bg-slate-50 hover:text-[var(--student-accent-text)] transition-colors"
+                    >
+                      <BookOpen className="h-4 w-4" />
+                      {t('navbar.nav_wiki')}
                     </button>
                     <button
                       onClick={() => {
@@ -370,7 +484,7 @@ export function StudentNavbar({
                   <button
                     key={item.label}
                     onClick={() => {
-                      onNavigate?.(item.key)
+                      handleNavigate(item.key)
                       setShowMobileMenu(false)
                     }}
                     className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors ${activeModule === item.key
@@ -378,7 +492,14 @@ export function StudentNavbar({
                         : 'text-slate-600 hover:bg-[var(--student-accent-soft)] hover:text-[var(--student-accent-text)]'
                       }`}
                   >
-                    <item.icon className="h-4 w-4" />
+                    <span className="relative">
+                      <item.icon className="h-4 w-4" />
+                      {getNavBadge(item.key) > 0 && (
+                        <span className="absolute -right-2 -top-2 flex h-4 min-w-4 items-center justify-center rounded-full bg-[#fe004d] px-1 text-[10px] font-black leading-none text-white ring-2 ring-white">
+                          {getNavBadge(item.key) > 9 ? '9+' : getNavBadge(item.key)}
+                        </span>
+                      )}
+                    </span>
                     {item.label}
                   </button>
                 ))}
@@ -401,15 +522,14 @@ export function StudentNavbar({
               return (
                 <button
                   key={item.key}
-                  onClick={() => onNavigate(item.key)}
-                  title={item.label}
+                  onClick={() => handleNavigate(item.key)}
                   aria-label={item.label}
-                  className="flex h-11 w-11 items-center justify-center rounded-xl border text-slate-600 transition-colors hover:bg-white/70 hover:text-[var(--student-accent-text)]"
+                  className="relative flex h-11 w-11 items-center justify-center rounded-xl border text-slate-600 transition-colors hover:bg-white/70 hover:text-[var(--student-accent-text)]"
                   style={isActiveItem
                     ? {
-                        backgroundColor: accentTheme.softStrong,
+                        backgroundColor: accentTheme.accent,
                         borderColor: `${accentTheme.accent}45`,
-                        color: accentTheme.text,
+                        color: '#fff',
                       }
                     : {
                         backgroundColor: 'rgba(255,255,255,0.56)',
@@ -417,6 +537,11 @@ export function StudentNavbar({
                       }}
                 >
                   <Icon className="h-5 w-5" />
+                  {getNavBadge(item.key) > 0 && (
+                    <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-[#fe004d] px-1 text-[10px] font-black leading-none text-white ring-2 ring-white">
+                      {getNavBadge(item.key) > 9 ? '9+' : getNavBadge(item.key)}
+                    </span>
+                  )}
                 </button>
               )
             })}
@@ -467,7 +592,7 @@ function SettingsModal({ profile, accent, onSave, onClose }: SettingsModalProps)
   const { t } = useTranslation()
   const [formData, setFormData] = useState(profile)
   const [previewUrl, setPreviewUrl] = useState(profile.avatarUrl || '')
-  const [selectedAccent, setSelectedAccent] = useState<StudentAccentId>(accent)
+  const [selectedAccent] = useState<StudentAccentId>(accent)
   const selectedTheme = getStudentAccentTheme(selectedAccent)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -567,32 +692,7 @@ function SettingsModal({ profile, accent, onSave, onClose }: SettingsModalProps)
             <LanguageSwitcher variant="full" />
           </div>
 
-          <div>
-            <label className="block text-xs font-semibold text-slate-500 uppercase mb-2">{t('navbar.accent_color')}</label>
-            <div className="grid grid-cols-4 gap-2">
-              {(Object.values(STUDENT_ACCENTS)).map((accentOption) => {
-                const isSelected = selectedAccent === accentOption.id
-                return (
-                  <button
-                    key={accentOption.id}
-                    type="button"
-                    onClick={() => setSelectedAccent(accentOption.id)}
-                    className={`relative h-10 rounded-xl border transition-all ${isSelected ? 'border-slate-500' : 'border-slate-200 hover:border-slate-300'}`}
-                    style={{ backgroundColor: accentOption.soft }}
-                    title={accentOption.label}
-                  >
-                    <span
-                      className="absolute inset-0 m-auto h-5 w-5 rounded-full"
-                      style={{ backgroundColor: accentOption.accent }}
-                    />
-                    {isSelected && (
-                      <Check className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-white text-slate-700 p-0.5 shadow" />
-                    )}
-                  </button>
-                )
-              })}
-            </div>
-          </div>
+          {/* Accent-color picker removed: the app now uses a single fixed brand palette. */}
 
           {/* Actions */}
           <div className="flex gap-3 pt-2">
@@ -601,8 +701,8 @@ function SettingsModal({ profile, accent, onSave, onClose }: SettingsModalProps)
             </Button>
             <Button
               type="submit"
-              className="flex-1 text-white shadow-lg rounded-xl"
-              style={{ backgroundColor: selectedTheme.accent }}
+              className="flex-1 rounded-xl"
+              style={{ '--btn-tone': selectedTheme.accent } as CSSProperties}
             >
               {t('common.save')}
             </Button>

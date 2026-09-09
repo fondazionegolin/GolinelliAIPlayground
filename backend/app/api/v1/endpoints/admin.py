@@ -1,31 +1,63 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Query, Request, Body
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status, Query, Request, Body, Response
+from html import escape
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, desc, delete as sa_delete, update as sa_update, cast, Integer
+from sqlalchemy import select, func, desc, delete as sa_delete, update as sa_update, cast, Integer, case, or_
 from typing import Annotated, Optional
 from datetime import date, datetime, timedelta, timezone
 from uuid import UUID
 import secrets
+import csv
+import io
 
 from app.core.database import get_db
 from app.core.security import get_password_hash, verify_password
 from app.core.config import settings
+from app.core.legal_documents import LEGAL_DOCUMENTS
 from app.core.url_utils import resolve_frontend_url
 from app.api.deps import get_current_admin
-from app.models.user import User, TeacherRequest, ActivationToken, PasswordResetToken
+from app.models.user import User, TeacherRequest, ActivationToken, PasswordResetToken, LegalDocumentAcceptance
 from app.models.tenant import Tenant
+from app.models.teacher_school import TeacherSchoolInvitation, TeacherSchoolMembership
 from app.models.template_version import TenantTemplateVersion
 from app.models.session import Session, SessionStudent, Class as TeacherClass
+from app.models.chat import ChatMessage
 from app.models.llm import Conversation, ConversationMessage, TeacherConversation, TeacherConversationMessage
 from app.models.credits import CreditLimit, CreditTransaction, CreditRequest
 from app.models.invitation import PlatformInvitation
-from app.models.enums import UserRole, TeacherRequestStatus, TenantStatus, LimitLevel, CreditTransactionType
-from app.schemas.tenant import TenantCreate, TenantUpdate, TenantResponse, TenantLimitsUpdate, SchoolTenantCreate
+from app.models.task import Task
+from app.models.teacherbot import Teacherbot, TeacherbotConversation
+from app.models.coding import CodingProject
+from app.models.notebook import Notebook
+from app.models.ml import MLExperiment
+from app.models.enums import UserRole, TeacherRequestStatus, TenantStatus, LimitLevel, CreditTransactionType, InvitationStatus
+from app.schemas.tenant import (
+    TenantCreate, TenantUpdate, TenantResponse, TenantLimitsUpdate, SchoolTenantCreate,
+    TeacherSchoolBulkUpdate, TeacherCreditLimitBulkUpdate,
+)
 from app.models.enums import TenantType
 from app.services.credit_service import credit_service
 from app.schemas.auth import TeacherRequestResponse
 from app.services.email_service import email_service
+from app.realtime.gateway import sio
 
 router = APIRouter()
+
+
+async def _send_school_invitation_email(teacher: User, school: Tenant) -> None:
+    link = f"{settings.FRONTEND_URL.rstrip('/')}/teacher/classes?invitations=open"
+    await email_service.send_email(
+        to_email=teacher.email,
+        subject=f"Invito all'istituto {school.name} su Golinelli.ai",
+        html_content=(
+            '<div style="font-family:Arial,sans-serif;max-width:600px;margin:auto;padding:24px">'
+            '<h2>Hai ricevuto un invito a un istituto</h2>'
+            f'<p>Sei stato invitato a entrare in <strong>{escape(school.name)}</strong> su Golinelli.ai.</p>'
+            '<p>Apri la sezione Classi per accettare o rifiutare.</p>'
+            f'<p><a href="{link}" style="display:inline-block;padding:12px 20px;background:#172033;color:white;text-decoration:none;border-radius:8px">Apri invito</a></p>'
+            '</div>'
+        ),
+        text_content=f"Sei stato invitato all'istituto {school.name} su Golinelli.ai. Apri l'invito: {link}",
+    )
 
 
 DEFAULT_TEMPLATE_CATALOG = {
@@ -408,13 +440,17 @@ async def approve_teacher_request(
     )
     db.add(token_record)
     
-    # Crea limite crediti in base al tipo di tenant
+    # Ogni docente parte da 300 crediti (€3) o dal default configurato sul tenant.
+    # L'admin puo' poi modificare il limite del singolo docente.
     tenant_obj = (await db.execute(select(Tenant).where(Tenant.id == user.tenant_id))).scalar_one_or_none()
+    await credit_service.ensure_teacher_limit(
+        db,
+        user.tenant_id,
+        user.id,
+        tenant_obj.teacher_monthly_cap if tenant_obj else 3.0,
+    )
     if tenant_obj and getattr(tenant_obj, 'tenant_type', TenantType.INDIVIDUAL.value) == TenantType.INDIVIDUAL.value:
-        # Tenant individuale: limite personale del docente
-        await credit_service.ensure_teacher_limit(db, user.tenant_id, user.id, tenant_obj.teacher_monthly_cap)
         await credit_service.ensure_student_pool_limit(db, user.tenant_id, tenant_obj.monthly_credit_pool)
-    # Per SCHOOL: il GLOBAL limit è già sul tenant, non serve limite per-teacher
 
     # Update request
     teacher_request.status = TeacherRequestStatus.APPROVED
@@ -997,6 +1033,12 @@ async def get_admin_analytics_report(
                 "connected_users": [],
                 "api_calls": 0,
                 "cost": 0.0,
+                "teacher_api_calls": 0,
+                "teacher_cost": 0.0,
+                "teacher_tokens": 0,
+                "student_api_calls": 0,
+                "student_cost": 0.0,
+                "student_tokens": 0,
                 "prompt_tokens": 0,
                 "completion_tokens": 0,
                 "total_tokens": 0,
@@ -1064,6 +1106,35 @@ async def get_admin_analytics_report(
             if row["api_calls"]
             else 0.0
         )
+
+    actor_role_expr = case(
+        (CreditTransaction.student_id.is_not(None), "student"),
+        else_="teacher",
+    ).label("actor_role")
+    role_daily_rows = (
+        await db.execute(
+            select(
+                tx_bucket,
+                actor_role_expr,
+                func.count(CreditTransaction.id).label("api_calls"),
+                func.coalesce(func.sum(CreditTransaction.cost), 0.0).label("cost"),
+                func.coalesce(func.sum(total_tokens), 0).label("total_tokens"),
+            )
+            .where(*tx_conditions)
+            .group_by(tx_bucket, actor_role_expr)
+            .order_by(tx_bucket)
+        )
+    ).all()
+    for bucket, actor_role, api_calls, cost, token_count in role_daily_rows:
+        row = ensure_row(bucket)
+        if actor_role == "student":
+            row["student_api_calls"] = int(api_calls or 0)
+            row["student_cost"] = float(cost or 0.0)
+            row["student_tokens"] = int(token_count or 0)
+        else:
+            row["teacher_api_calls"] = int(api_calls or 0)
+            row["teacher_cost"] = float(cost or 0.0)
+            row["teacher_tokens"] = int(token_count or 0)
 
     def add_connected_user(bucket_value, user_id, email, first_name=None, last_name=None) -> None:
         if not user_id:
@@ -1317,6 +1388,19 @@ async def get_admin_analytics_report(
             .order_by(func.coalesce(func.sum(CreditTransaction.cost), 0.0).desc())
         )
     ).all()
+    role_rows = (
+        await db.execute(
+            select(
+                actor_role_expr,
+                func.count(CreditTransaction.id),
+                func.coalesce(func.sum(CreditTransaction.cost), 0.0),
+                func.coalesce(func.sum(total_tokens), 0),
+            )
+            .where(*tx_conditions)
+            .group_by(actor_role_expr)
+            .order_by(func.coalesce(func.sum(CreditTransaction.cost), 0.0).desc())
+        )
+    ).all()
     model_rows = (
         await db.execute(
             select(
@@ -1415,6 +1499,15 @@ async def get_admin_analytics_report(
             }
             for item_model, calls, cost, tokens in model_rows
         ],
+        "role_breakdown": [
+            {
+                "role": actor_role,
+                "calls": int(calls or 0),
+                "cost": float(cost or 0.0),
+                "total_tokens": int(tokens or 0),
+            }
+            for actor_role, calls, cost, tokens in role_rows
+        ],
         "top_users": [
             {
                 "user_id": str(user_id),
@@ -1435,6 +1528,745 @@ async def get_admin_analytics_report(
     }
 
 
+def _usage_json_int(details: dict | None, key: str) -> int:
+    if not isinstance(details, dict):
+        return 0
+    try:
+        return int(details.get(key) or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _format_usage_actor(tx: CreditTransaction, teacher: User | None, student: SessionStudent | None) -> dict:
+    teacher_name = " ".join([p for p in [getattr(teacher, "first_name", None), getattr(teacher, "last_name", None)] if p]).strip()
+    teacher_email = getattr(teacher, "email", None)
+    student_name = getattr(student, "nickname", None)
+    if tx.student_id:
+        actor_role = "student"
+        actor_name = student_name or f"Studente {str(tx.student_id)[:8]}"
+    else:
+        teacher_role = getattr(getattr(teacher, "role", None), "value", getattr(teacher, "role", None))
+        actor_role = "admin" if teacher_role == UserRole.ADMIN.value else "teacher"
+        actor_name = teacher_name or teacher_email or f"Utente {str(tx.teacher_id)[:8] if tx.teacher_id else 'sconosciuto'}"
+    return {
+        "actor_role": actor_role,
+        "actor_name": actor_name,
+        "teacher_name": teacher_name or teacher_email,
+        "teacher_email": teacher_email,
+        "student_name": student_name,
+    }
+
+
+def _usage_transaction_dict(tx: CreditTransaction, teacher: User | None, student: SessionStudent | None, class_name: str | None, session_title: str | None) -> dict:
+    details = tx.usage_details or {}
+    prompt_tokens = _usage_json_int(details, "prompt_tokens")
+    completion_tokens = _usage_json_int(details, "completion_tokens")
+    total_tokens = _usage_json_int(details, "total_tokens") or prompt_tokens + completion_tokens
+    actor = _format_usage_actor(tx, teacher, student)
+    return {
+        "id": str(tx.id),
+        "timestamp": tx.timestamp.isoformat() if tx.timestamp else None,
+        "transaction_type": tx.transaction_type.value if hasattr(tx.transaction_type, "value") else str(tx.transaction_type),
+        "provider": tx.provider or "unknown",
+        "model": tx.model or "unknown",
+        "cost": float(tx.cost or 0.0),
+        "cost_credits": int(round(float(tx.cost or 0.0) * 100)),
+        "prompt_tokens": prompt_tokens,
+        "completion_tokens": completion_tokens,
+        "total_tokens": total_tokens,
+        "usage_type": details.get("type") or details.get("usage_type") or "api_call",
+        "teacher_id": str(tx.teacher_id) if tx.teacher_id else None,
+        "student_id": str(tx.student_id) if tx.student_id else None,
+        "class_id": str(tx.class_id) if tx.class_id else None,
+        "session_id": str(tx.session_id) if tx.session_id else None,
+        "class_name": class_name,
+        "session_title": session_title,
+        **actor,
+    }
+
+
+def _usage_transaction_conditions(
+    admin: User,
+    start_date: Optional[date],
+    end_date: Optional[date],
+    teacher_id: Optional[UUID],
+    class_id: Optional[UUID],
+    session_id: Optional[UUID],
+    provider: Optional[str],
+    model: Optional[str],
+    actor_role: Optional[str],
+    search: Optional[str],
+) -> list:
+    end_day = end_date or datetime.now(timezone.utc).date()
+    start_day = start_date or (end_day - timedelta(days=29))
+    start_at = datetime.combine(start_day, datetime.min.time(), tzinfo=timezone.utc)
+    end_exclusive = datetime.combine(end_day + timedelta(days=1), datetime.min.time(), tzinfo=timezone.utc)
+    conditions = [
+        CreditTransaction.tenant_id == admin.tenant_id,
+        CreditTransaction.transaction_type == CreditTransactionType.API_CALL,
+        CreditTransaction.timestamp >= start_at,
+        CreditTransaction.timestamp < end_exclusive,
+    ]
+    if provider:
+        conditions.append(CreditTransaction.provider == provider)
+    if model:
+        conditions.append(CreditTransaction.model == model)
+    if teacher_id:
+        conditions.append(CreditTransaction.teacher_id == teacher_id)
+    if class_id:
+        conditions.append(CreditTransaction.class_id == class_id)
+    if session_id:
+        conditions.append(CreditTransaction.session_id == session_id)
+    if actor_role == "student":
+        conditions.append(CreditTransaction.student_id.is_not(None))
+    elif actor_role in {"teacher", "admin"}:
+        conditions.append(CreditTransaction.student_id.is_(None))
+        if actor_role == "admin":
+            conditions.append(User.role == UserRole.ADMIN)
+        else:
+            conditions.append(User.role != UserRole.ADMIN)
+    if search:
+        needle = f"%{search.strip().lower()}%"
+        conditions.append(
+            or_(
+                func.lower(func.coalesce(User.email, "")).like(needle),
+                func.lower(func.coalesce(User.first_name, "")).like(needle),
+                func.lower(func.coalesce(User.last_name, "")).like(needle),
+                func.lower(func.coalesce(SessionStudent.nickname, "")).like(needle),
+                func.lower(func.coalesce(TeacherClass.name, "")).like(needle),
+                func.lower(func.coalesce(Session.title, "")).like(needle),
+                func.lower(func.coalesce(CreditTransaction.provider, "")).like(needle),
+                func.lower(func.coalesce(CreditTransaction.model, "")).like(needle),
+            )
+        )
+    return conditions
+
+
+def _usage_transactions_from_clause(statement):
+    return (
+        statement
+        .outerjoin(User, User.id == CreditTransaction.teacher_id)
+        .outerjoin(SessionStudent, SessionStudent.id == CreditTransaction.student_id)
+        .outerjoin(TeacherClass, TeacherClass.id == CreditTransaction.class_id)
+        .outerjoin(Session, Session.id == CreditTransaction.session_id)
+    )
+
+
+@router.get("/usage/transactions")
+async def list_usage_transactions(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    admin: Annotated[User, Depends(get_current_admin)],
+    start_date: Optional[date] = Query(None),
+    end_date: Optional[date] = Query(None),
+    teacher_id: Optional[UUID] = Query(None),
+    class_id: Optional[UUID] = Query(None),
+    session_id: Optional[UUID] = Query(None),
+    provider: Optional[str] = Query(None),
+    model: Optional[str] = Query(None),
+    actor_role: Optional[str] = Query(None),
+    q: Optional[str] = Query(None),
+    limit: int = Query(200, ge=1, le=1000),
+    offset: int = Query(0, ge=0),
+):
+    if start_date and end_date and start_date > end_date:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="start_date must be before end_date")
+    if start_date and end_date and (end_date - start_date).days > 730:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Maximum report range is 730 days")
+
+    conditions = _usage_transaction_conditions(admin, start_date, end_date, teacher_id, class_id, session_id, provider, model, actor_role, q)
+    base_columns = (
+        CreditTransaction,
+        User,
+        SessionStudent,
+        TeacherClass.name.label("class_name"),
+        Session.title.label("session_title"),
+    )
+    rows = (
+        await db.execute(
+            _usage_transactions_from_clause(select(*base_columns))
+            .options()
+            .where(*conditions)
+            .order_by(CreditTransaction.timestamp.desc(), CreditTransaction.id.desc())
+            .limit(limit)
+            .offset(offset)
+        )
+    ).all()
+
+    count_result = await db.execute(
+        _usage_transactions_from_clause(select(func.count(CreditTransaction.id))).where(*conditions)
+    )
+    total_result = await db.execute(
+        _usage_transactions_from_clause(
+            select(
+                func.coalesce(func.sum(CreditTransaction.cost), 0.0),
+                func.count(CreditTransaction.id),
+            )
+        ).where(*conditions)
+    )
+    total_cost, total_calls = total_result.one()
+
+    # Load relationship objects from the ORM identity map when present.
+    items = []
+    for tx, teacher, student, class_name, session_title in rows:
+        items.append(_usage_transaction_dict(tx, teacher, student, class_name, session_title))
+
+    return {
+        "items": items,
+        "total": int(count_result.scalar() or 0),
+        "limit": limit,
+        "offset": offset,
+        "summary": {
+            "calls": int(total_calls or 0),
+            "cost": float(total_cost or 0.0),
+        },
+    }
+
+
+@router.get("/usage/transactions.csv")
+async def download_usage_transactions_csv(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    admin: Annotated[User, Depends(get_current_admin)],
+    start_date: Optional[date] = Query(None),
+    end_date: Optional[date] = Query(None),
+    teacher_id: Optional[UUID] = Query(None),
+    class_id: Optional[UUID] = Query(None),
+    session_id: Optional[UUID] = Query(None),
+    provider: Optional[str] = Query(None),
+    model: Optional[str] = Query(None),
+    actor_role: Optional[str] = Query(None),
+    q: Optional[str] = Query(None),
+):
+    if start_date and end_date and start_date > end_date:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="start_date must be before end_date")
+    if start_date and end_date and (end_date - start_date).days > 730:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Maximum report range is 730 days")
+
+    conditions = _usage_transaction_conditions(admin, start_date, end_date, teacher_id, class_id, session_id, provider, model, actor_role, q)
+    rows = (
+        await db.execute(
+            _usage_transactions_from_clause(
+                select(
+                    CreditTransaction,
+                    User,
+                    SessionStudent,
+                    TeacherClass.name.label("class_name"),
+                    Session.title.label("session_title"),
+                )
+            )
+            .where(*conditions)
+            .order_by(CreditTransaction.timestamp.desc(), CreditTransaction.id.desc())
+            .limit(20000)
+        )
+    ).all()
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow([
+        "timestamp",
+        "ruolo",
+        "utente",
+        "studente",
+        "docente_pool",
+        "email_docente",
+        "classe",
+        "sessione",
+        "provider",
+        "modello",
+        "tipo_uso",
+        "prompt_tokens",
+        "completion_tokens",
+        "total_tokens",
+        "costo_eur",
+        "crediti",
+    ])
+    for tx, teacher, student, class_name, session_title in rows:
+        item = _usage_transaction_dict(tx, teacher, student, class_name, session_title)
+        writer.writerow([
+            item["timestamp"] or "",
+            item["actor_role"],
+            item["actor_name"],
+            item["student_name"] or "",
+            item["teacher_name"] or "",
+            item["teacher_email"] or "",
+            item["class_name"] or "",
+            item["session_title"] or "",
+            item["provider"],
+            item["model"],
+            item["usage_type"],
+            item["prompt_tokens"],
+            item["completion_tokens"],
+            item["total_tokens"],
+            f'{item["cost"]:.6f}',
+            item["cost_credits"],
+        ])
+
+    filename_parts = ["admin-credit-ledger"]
+    if start_date:
+        filename_parts.append(start_date.isoformat())
+    if end_date:
+        filename_parts.append(end_date.isoformat())
+    filename = "-".join(filename_parts) + ".csv"
+    return Response(
+        content="\ufeff" + output.getvalue(),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.get("/usage/teacher-report.csv")
+async def download_teacher_usage_report_csv(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    admin: Annotated[User, Depends(get_current_admin)],
+    start_date: Optional[date] = Query(None),
+    end_date: Optional[date] = Query(None),
+    include_inactive: bool = Query(True),
+):
+    if start_date and end_date and start_date > end_date:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="start_date must be before end_date")
+    if start_date and end_date and (end_date - start_date).days > 730:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Maximum report range is 730 days")
+
+    start_at = datetime.combine(start_date, datetime.min.time(), tzinfo=timezone.utc) if start_date else None
+    end_exclusive = datetime.combine(end_date + timedelta(days=1), datetime.min.time(), tzinfo=timezone.utc) if end_date else None
+    start_at_naive = start_at.replace(tzinfo=None) if start_at else None
+    end_exclusive_naive = end_exclusive.replace(tzinfo=None) if end_exclusive else None
+
+    def period_conditions(column):
+        conditions = []
+        if start_at:
+            conditions.append(column >= start_at)
+        if end_exclusive:
+            conditions.append(column < end_exclusive)
+        return conditions
+
+    def period_conditions_naive(column):
+        conditions = []
+        if start_at_naive:
+            conditions.append(column >= start_at_naive)
+        if end_exclusive_naive:
+            conditions.append(column < end_exclusive_naive)
+        return conditions
+
+    def add_count(bucket: dict[str, dict[str, int]], teacher_id, key, count) -> None:
+        if teacher_id is None:
+            return
+        bucket.setdefault(str(teacher_id), {})[str(key or "unknown")] = int(count or 0)
+
+    def add_metric(bucket: dict[str, dict[str, float]], teacher_id, values: dict[str, float]) -> None:
+        if teacher_id is None:
+            return
+        item = bucket.setdefault(str(teacher_id), {"calls": 0, "cost": 0.0, "tokens": 0})
+        item["calls"] += int(values.get("calls") or 0)
+        item["cost"] += float(values.get("cost") or 0.0)
+        item["tokens"] += int(values.get("tokens") or 0)
+
+    def format_counts(values: dict[str, int] | None) -> str:
+        if not values:
+            return ""
+        return "; ".join(f"{key}:{values[key]}" for key in sorted(values))
+
+    def format_money(value: float) -> str:
+        return f"{float(value or 0.0):.6f}"
+
+    teacher_roles = [UserRole.TEACHER, UserRole.ADMIN]
+    teacher_conditions = [
+        User.tenant_id == admin.tenant_id,
+        User.role.in_(teacher_roles),
+    ]
+    if not include_inactive:
+        teacher_conditions.append(User.is_active == True)
+    teachers = (
+        await db.execute(
+            select(User)
+            .where(*teacher_conditions)
+            .order_by(User.last_name.asc().nulls_last(), User.first_name.asc().nulls_last(), User.email.asc())
+        )
+    ).scalars().all()
+    teacher_ids = [teacher.id for teacher in teachers]
+    teacher_id_strings = {str(teacher.id) for teacher in teachers}
+
+    class_counts: dict[str, int] = {}
+    session_counts: dict[str, int] = {}
+    student_counts: dict[str, int] = {}
+    student_nicknames: dict[str, dict[str, int]] = {}
+    task_counts: dict[str, dict[str, int]] = {}
+    activity_counts: dict[str, dict[str, int]] = {}
+    teacher_call_metrics: dict[str, dict[str, float]] = {}
+    student_call_metrics: dict[str, dict[str, float]] = {}
+    teacher_call_types: dict[str, dict[str, int]] = {}
+    student_call_types: dict[str, dict[str, int]] = {}
+
+    if teacher_ids:
+        class_rows = (
+            await db.execute(
+                select(TeacherClass.teacher_id, func.count(TeacherClass.id))
+                .where(
+                    TeacherClass.tenant_id == admin.tenant_id,
+                    TeacherClass.teacher_id.in_(teacher_ids),
+                    *period_conditions(TeacherClass.created_at),
+                )
+                .group_by(TeacherClass.teacher_id)
+            )
+        ).all()
+        class_counts = {str(tid): int(count or 0) for tid, count in class_rows}
+
+        session_rows = (
+            await db.execute(
+                select(TeacherClass.teacher_id, func.count(Session.id))
+                .join(Session, Session.class_id == TeacherClass.id)
+                .where(
+                    TeacherClass.tenant_id == admin.tenant_id,
+                    TeacherClass.teacher_id.in_(teacher_ids),
+                    *period_conditions(Session.created_at),
+                )
+                .group_by(TeacherClass.teacher_id)
+            )
+        ).all()
+        session_counts = {str(tid): int(count or 0) for tid, count in session_rows}
+
+        nickname_rows = (
+            await db.execute(
+                select(
+                    TeacherClass.teacher_id,
+                    SessionStudent.nickname,
+                    func.count(func.distinct(SessionStudent.id)),
+                )
+                .join(Session, Session.class_id == TeacherClass.id)
+                .join(SessionStudent, SessionStudent.session_id == Session.id)
+                .where(
+                    TeacherClass.tenant_id == admin.tenant_id,
+                    TeacherClass.teacher_id.in_(teacher_ids),
+                    *period_conditions(SessionStudent.created_at),
+                )
+                .group_by(TeacherClass.teacher_id, SessionStudent.nickname)
+                .order_by(TeacherClass.teacher_id, SessionStudent.nickname)
+            )
+        ).all()
+        for teacher_id_value, nickname, count in nickname_rows:
+            teacher_key = str(teacher_id_value)
+            nick = (nickname or "Senza nickname").strip() or "Senza nickname"
+            student_nicknames.setdefault(teacher_key, {})[nick] = int(count or 0)
+        student_counts = {
+            teacher_key: sum(nicks.values())
+            for teacher_key, nicks in student_nicknames.items()
+        }
+
+        task_session_rows = (
+            await db.execute(
+                select(TeacherClass.teacher_id, Task.task_type, func.count(Task.id))
+                .join(Session, Task.session_id == Session.id)
+                .join(TeacherClass, Session.class_id == TeacherClass.id)
+                .where(
+                    TeacherClass.tenant_id == admin.tenant_id,
+                    TeacherClass.teacher_id.in_(teacher_ids),
+                    *period_conditions_naive(Task.created_at),
+                )
+                .group_by(TeacherClass.teacher_id, Task.task_type)
+            )
+        ).all()
+        for teacher_id_value, task_type, count in task_session_rows:
+            add_count(task_counts, teacher_id_value, getattr(task_type, "value", task_type), count)
+
+        task_class_rows = (
+            await db.execute(
+                select(TeacherClass.teacher_id, Task.task_type, func.count(Task.id))
+                .join(TeacherClass, Task.class_id == TeacherClass.id)
+                .where(
+                    TeacherClass.tenant_id == admin.tenant_id,
+                    TeacherClass.teacher_id.in_(teacher_ids),
+                    Task.session_id.is_(None),
+                    *period_conditions_naive(Task.created_at),
+                )
+                .group_by(TeacherClass.teacher_id, Task.task_type)
+            )
+        ).all()
+        for teacher_id_value, task_type, count in task_class_rows:
+            add_count(task_counts, teacher_id_value, getattr(task_type, "value", task_type), count)
+
+        prompt_tokens = _json_int(CreditTransaction.usage_details, "prompt_tokens")
+        completion_tokens = _json_int(CreditTransaction.usage_details, "completion_tokens")
+        total_tokens = func.coalesce(
+            cast(func.nullif(CreditTransaction.usage_details["total_tokens"].astext, ""), Integer),
+            prompt_tokens + completion_tokens,
+            0,
+        )
+        usage_type = func.coalesce(CreditTransaction.usage_details["type"].astext, "api_call")
+
+        teacher_tx_conditions = [
+            CreditTransaction.tenant_id == admin.tenant_id,
+            CreditTransaction.transaction_type == CreditTransactionType.API_CALL,
+            CreditTransaction.teacher_id.in_(teacher_ids),
+            CreditTransaction.student_id.is_(None),
+            *period_conditions(CreditTransaction.timestamp),
+        ]
+        teacher_tx_rows = (
+            await db.execute(
+                select(
+                    CreditTransaction.teacher_id,
+                    func.count(CreditTransaction.id),
+                    func.coalesce(func.sum(CreditTransaction.cost), 0.0),
+                    func.coalesce(func.sum(total_tokens), 0),
+                )
+                .where(*teacher_tx_conditions)
+                .group_by(CreditTransaction.teacher_id)
+            )
+        ).all()
+        for teacher_id_value, calls, cost, tokens in teacher_tx_rows:
+            add_metric(teacher_call_metrics, teacher_id_value, {"calls": calls, "cost": cost, "tokens": tokens})
+
+        teacher_tx_type_rows = (
+            await db.execute(
+                select(CreditTransaction.teacher_id, usage_type, func.count(CreditTransaction.id))
+                .where(*teacher_tx_conditions)
+                .group_by(CreditTransaction.teacher_id, usage_type)
+            )
+        ).all()
+        for teacher_id_value, tx_type, count in teacher_tx_type_rows:
+            add_count(teacher_call_types, teacher_id_value, tx_type, count)
+            add_count(activity_counts, teacher_id_value, f"docente:{tx_type}", count)
+
+        student_tx_conditions = [
+            CreditTransaction.tenant_id == admin.tenant_id,
+            CreditTransaction.transaction_type == CreditTransactionType.API_CALL,
+            CreditTransaction.teacher_id.in_(teacher_ids),
+            CreditTransaction.student_id.is_not(None),
+            *period_conditions(CreditTransaction.timestamp),
+        ]
+        student_tx_rows = (
+            await db.execute(
+                select(
+                    CreditTransaction.teacher_id,
+                    func.count(CreditTransaction.id),
+                    func.coalesce(func.sum(CreditTransaction.cost), 0.0),
+                    func.coalesce(func.sum(total_tokens), 0),
+                )
+                .where(*student_tx_conditions)
+                .group_by(CreditTransaction.teacher_id)
+            )
+        ).all()
+        for teacher_id_value, calls, cost, tokens in student_tx_rows:
+            add_metric(student_call_metrics, teacher_id_value, {"calls": calls, "cost": cost, "tokens": tokens})
+
+        student_tx_type_rows = (
+            await db.execute(
+                select(CreditTransaction.teacher_id, usage_type, func.count(CreditTransaction.id))
+                .where(*student_tx_conditions)
+                .group_by(CreditTransaction.teacher_id, usage_type)
+            )
+        ).all()
+        for teacher_id_value, tx_type, count in student_tx_type_rows:
+            add_count(student_call_types, teacher_id_value, tx_type, count)
+            add_count(activity_counts, teacher_id_value, f"studenti:{tx_type}", count)
+
+        teacherbot_rows = (
+            await db.execute(
+                select(Teacherbot.teacher_id, func.count(Teacherbot.id))
+                .where(
+                    Teacherbot.tenant_id == admin.tenant_id,
+                    Teacherbot.teacher_id.in_(teacher_ids),
+                    *period_conditions(Teacherbot.created_at),
+                )
+                .group_by(Teacherbot.teacher_id)
+            )
+        ).all()
+        for teacher_id_value, count in teacherbot_rows:
+            add_count(activity_counts, teacher_id_value, "teacherbot_creati", count)
+
+        class_chat_rows = (
+            await db.execute(
+                select(ChatMessage.sender_teacher_id, func.count(ChatMessage.id))
+                .where(
+                    ChatMessage.tenant_id == admin.tenant_id,
+                    ChatMessage.sender_teacher_id.in_(teacher_ids),
+                    *period_conditions(ChatMessage.created_at),
+                )
+                .group_by(ChatMessage.sender_teacher_id)
+            )
+        ).all()
+        for teacher_id_value, count in class_chat_rows:
+            add_count(activity_counts, teacher_id_value, "messaggi_chat_classe", count)
+
+        teacher_conversation_rows = (
+            await db.execute(
+                select(TeacherConversation.teacher_id, func.count(func.distinct(TeacherConversation.id)))
+                .where(
+                    TeacherConversation.tenant_id == admin.tenant_id,
+                    TeacherConversation.teacher_id.in_(teacher_ids),
+                    *period_conditions(TeacherConversation.created_at),
+                )
+                .group_by(TeacherConversation.teacher_id)
+            )
+        ).all()
+        for teacher_id_value, count in teacher_conversation_rows:
+            add_count(activity_counts, teacher_id_value, "conversazioni_chatbot_docente", count)
+
+        student_conversation_rows = (
+            await db.execute(
+                select(TeacherClass.teacher_id, func.count(func.distinct(Conversation.id)))
+                .join(Session, Conversation.session_id == Session.id)
+                .join(TeacherClass, Session.class_id == TeacherClass.id)
+                .where(
+                    Conversation.tenant_id == admin.tenant_id,
+                    TeacherClass.teacher_id.in_(teacher_ids),
+                    *period_conditions(Conversation.created_at),
+                )
+                .group_by(TeacherClass.teacher_id)
+            )
+        ).all()
+        for teacher_id_value, count in student_conversation_rows:
+            add_count(activity_counts, teacher_id_value, "conversazioni_chatbot_studenti", count)
+
+        teacherbot_conversation_rows = (
+            await db.execute(
+                select(TeacherClass.teacher_id, func.count(func.distinct(TeacherbotConversation.id)))
+                .join(Session, TeacherbotConversation.session_id == Session.id)
+                .join(TeacherClass, Session.class_id == TeacherClass.id)
+                .where(
+                    TeacherbotConversation.tenant_id == admin.tenant_id,
+                    TeacherClass.teacher_id.in_(teacher_ids),
+                    *period_conditions(TeacherbotConversation.created_at),
+                )
+                .group_by(TeacherClass.teacher_id)
+            )
+        ).all()
+        for teacher_id_value, count in teacherbot_conversation_rows:
+            add_count(activity_counts, teacher_id_value, "conversazioni_teacherbot_studenti", count)
+
+        coding_teacher_rows = (
+            await db.execute(
+                select(CodingProject.owner_user_id, func.count(CodingProject.id))
+                .where(
+                    CodingProject.tenant_id == admin.tenant_id,
+                    CodingProject.owner_user_id.in_(teacher_ids),
+                    *period_conditions(CodingProject.created_at),
+                )
+                .group_by(CodingProject.owner_user_id)
+            )
+        ).all()
+        for teacher_id_value, count in coding_teacher_rows:
+            add_count(activity_counts, teacher_id_value, "coding_projects_docente", count)
+
+        coding_student_rows = (
+            await db.execute(
+                select(TeacherClass.teacher_id, func.count(CodingProject.id))
+                .join(Session, CodingProject.session_id == Session.id)
+                .join(TeacherClass, Session.class_id == TeacherClass.id)
+                .where(
+                    CodingProject.tenant_id == admin.tenant_id,
+                    TeacherClass.teacher_id.in_(teacher_ids),
+                    CodingProject.owner_student_id.is_not(None),
+                    *period_conditions(CodingProject.created_at),
+                )
+                .group_by(TeacherClass.teacher_id)
+            )
+        ).all()
+        for teacher_id_value, count in coding_student_rows:
+            add_count(activity_counts, teacher_id_value, "coding_projects_studenti", count)
+
+        notebook_teacher_rows = (
+            await db.execute(
+                select(Notebook.owner_id, func.count(Notebook.id))
+                .where(
+                    Notebook.tenant_id == admin.tenant_id,
+                    Notebook.owner_id.in_(teacher_ids),
+                    *period_conditions(Notebook.created_at),
+                )
+                .group_by(Notebook.owner_id)
+            )
+        ).all()
+        for teacher_id_value, count in notebook_teacher_rows:
+            add_count(activity_counts, teacher_id_value, "notebook_docente", count)
+
+        ml_rows = (
+            await db.execute(
+                select(MLExperiment.teacher_id, func.count(MLExperiment.id))
+                .where(
+                    MLExperiment.tenant_id == admin.tenant_id,
+                    MLExperiment.teacher_id.in_(teacher_ids),
+                    *period_conditions(MLExperiment.created_at),
+                )
+                .group_by(MLExperiment.teacher_id)
+            )
+        ).all()
+        for teacher_id_value, count in ml_rows:
+            add_count(activity_counts, teacher_id_value, "esperimenti_ml", count)
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow([
+        "utente_id",
+        "email",
+        "nome",
+        "cognome",
+        "ruolo",
+        "attivo",
+        "data_iscrizione",
+        "ultimo_accesso",
+        "classi_create",
+        "sessioni_create",
+        "tipologie_attivita_fatte",
+        "task_per_tipo",
+        "studenti_gestiti_totale",
+        "studenti_gestiti_per_nickname",
+        "chiamate_docente",
+        "costo_docente_eur",
+        "token_docente",
+        "tipi_chiamate_docente",
+        "chiamate_studenti",
+        "costo_studenti_eur",
+        "token_studenti",
+        "tipi_chiamate_studenti",
+    ])
+
+    for teacher in teachers:
+        teacher_key = str(teacher.id)
+        if teacher_key not in teacher_id_strings:
+            continue
+        teacher_metrics = teacher_call_metrics.get(teacher_key, {"calls": 0, "cost": 0.0, "tokens": 0})
+        student_metrics = student_call_metrics.get(teacher_key, {"calls": 0, "cost": 0.0, "tokens": 0})
+        nick_counts = student_nicknames.get(teacher_key, {})
+        nick_detail = "; ".join(
+            f"{nickname} ({nick_counts[nickname]})"
+            for nickname in sorted(nick_counts, key=lambda item: item.lower())
+        )
+        writer.writerow([
+            str(teacher.id),
+            teacher.email or "",
+            teacher.first_name or "",
+            teacher.last_name or "",
+            teacher.role.value if hasattr(teacher.role, "value") else str(teacher.role),
+            "si" if teacher.is_active else "no",
+            teacher.created_at.isoformat() if teacher.created_at else "",
+            teacher.last_login_at.isoformat() if teacher.last_login_at else "",
+            class_counts.get(teacher_key, 0),
+            session_counts.get(teacher_key, 0),
+            format_counts(activity_counts.get(teacher_key)),
+            format_counts(task_counts.get(teacher_key)),
+            student_counts.get(teacher_key, 0),
+            nick_detail,
+            int(teacher_metrics["calls"]),
+            format_money(teacher_metrics["cost"]),
+            int(teacher_metrics["tokens"]),
+            format_counts(teacher_call_types.get(teacher_key)),
+            int(student_metrics["calls"]),
+            format_money(student_metrics["cost"]),
+            int(student_metrics["tokens"]),
+            format_counts(student_call_types.get(teacher_key)),
+        ])
+
+    filename_parts = ["admin-teacher-usage"]
+    if start_date:
+        filename_parts.append(start_date.isoformat())
+    if end_date:
+        filename_parts.append(end_date.isoformat())
+    filename = "-".join(filename_parts) + ".csv"
+    return Response(
+        content="\ufeff" + output.getvalue(),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
 @router.get("/teachers/status")
 async def get_teachers_status(
     db: Annotated[AsyncSession, Depends(get_db)],
@@ -1445,7 +2277,6 @@ async def get_teachers_status(
     teachers = (
         await db.execute(
             select(User).where(
-                User.tenant_id == admin.tenant_id,
                 User.role.in_([UserRole.TEACHER, UserRole.ADMIN]),
                 User.is_active == True,
             ).order_by(User.created_at.desc())
@@ -1460,7 +2291,6 @@ async def get_teachers_status(
                 func.count(CreditTransaction.id),
             )
             .where(
-                CreditTransaction.tenant_id == admin.tenant_id,
                 CreditTransaction.timestamp >= start_at,
                 CreditTransaction.teacher_id.is_not(None),
             )
@@ -1479,7 +2309,6 @@ async def get_teachers_status(
                 func.count(Session.id).label("session_count"),
             )
             .join(Session, Session.class_id == TeacherClass.id)
-            .where(TeacherClass.tenant_id == admin.tenant_id)
             .group_by(TeacherClass.teacher_id)
         )
     ).all()
@@ -1493,7 +2322,6 @@ async def get_teachers_status(
             )
             .join(Session, Session.class_id == TeacherClass.id)
             .join(SessionStudent, SessionStudent.session_id == Session.id)
-            .where(TeacherClass.tenant_id == admin.tenant_id)
             .group_by(TeacherClass.teacher_id)
         )
     ).all()
@@ -1502,13 +2330,28 @@ async def get_teachers_status(
     limits_rows = (
         await db.execute(
             select(CreditLimit).where(
-                CreditLimit.tenant_id == admin.tenant_id,
                 CreditLimit.level == LimitLevel.TEACHER,
                 CreditLimit.teacher_id.in_([t.id for t in teachers]),
             )
         )
     ).scalars().all()
     limits_by_teacher = {str(lim.teacher_id): lim for lim in limits_rows}
+
+    membership_rows = (
+        await db.execute(
+            select(TeacherSchoolMembership, Tenant)
+            .join(Tenant, Tenant.id == TeacherSchoolMembership.school_tenant_id)
+            .where(TeacherSchoolMembership.teacher_id.in_([t.id for t in teachers]))
+            .order_by(Tenant.name.asc())
+        )
+    ).all() if teachers else []
+    schools_by_teacher: dict[str, list[dict]] = {}
+    for membership, school in membership_rows:
+        schools_by_teacher.setdefault(str(membership.teacher_id), []).append({
+            "id": str(school.id),
+            "name": school.name,
+            "slug": school.slug,
+        })
 
     return {
         "items": [
@@ -1518,6 +2361,8 @@ async def get_teachers_status(
                 "last_name": t.last_name,
                 "email": t.email,
                 "institution": t.institution,
+                "tenant_id": str(t.tenant_id) if t.tenant_id else None,
+                "schools": schools_by_teacher.get(str(t.id), []),
                 "role": t.role.value,
                 "is_verified": bool(t.is_verified),
                 "created_at": t.created_at.isoformat() if t.created_at else None,
@@ -1535,6 +2380,80 @@ async def get_teachers_status(
     }
 
 
+@router.get("/legal-consents")
+async def list_legal_consents(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    admin: Annotated[User, Depends(get_current_admin)],
+):
+    teachers = (
+        await db.execute(
+            select(User).where(
+                User.tenant_id == admin.tenant_id,
+                User.role == UserRole.TEACHER,
+                User.is_active == True,
+            ).order_by(User.last_name.asc().nulls_last(), User.first_name.asc().nulls_last(), User.email.asc())
+        )
+    ).scalars().all()
+
+    teacher_ids = [teacher.id for teacher in teachers]
+    acceptance_rows = []
+    if teacher_ids:
+        acceptance_rows = (
+            await db.execute(
+                select(LegalDocumentAcceptance)
+                .where(
+                    LegalDocumentAcceptance.user_id.in_(teacher_ids),
+                    LegalDocumentAcceptance.document_key.in_([doc["key"] for doc in LEGAL_DOCUMENTS]),
+                )
+                .order_by(LegalDocumentAcceptance.accepted_at.desc())
+            )
+        ).scalars().all()
+
+    by_teacher: dict[str, list[LegalDocumentAcceptance]] = {}
+    for row in acceptance_rows:
+        by_teacher.setdefault(str(row.user_id), []).append(row)
+
+    return {
+        "required_documents": LEGAL_DOCUMENTS,
+        "items": [
+            {
+                "teacher": {
+                    "id": str(teacher.id),
+                    "first_name": teacher.first_name,
+                    "last_name": teacher.last_name,
+                    "email": teacher.email,
+                    "institution": teacher.institution,
+                    "created_at": teacher.created_at.isoformat() if teacher.created_at else None,
+                    "last_login_at": teacher.last_login_at.isoformat() if teacher.last_login_at else None,
+                },
+                "acceptances": [
+                    {
+                        "document_key": doc["key"],
+                        "document_title": doc["title"],
+                        "document_version": doc["version"],
+                        "accepted_at": (
+                            match.accepted_at.isoformat()
+                            if match and match.accepted_at
+                            else None
+                        ),
+                    }
+                    for doc in LEGAL_DOCUMENTS
+                    for match in [
+                        next(
+                            (
+                                row for row in by_teacher.get(str(teacher.id), [])
+                                if row.document_key == doc["key"] and row.document_version == doc["version"]
+                            ),
+                            None,
+                        )
+                    ]
+                ],
+            }
+            for teacher in teachers
+        ],
+    }
+
+
 @router.put("/teachers/{teacher_id}/credit-limit")
 async def set_teacher_credit_limit(
     teacher_id: UUID,
@@ -1542,12 +2461,18 @@ async def set_teacher_credit_limit(
     admin: Annotated[User, Depends(get_current_admin)],
     amount_cap: float = Body(..., embed=True),
 ):
+    target_teacher = (
+        await db.execute(select(User).where(User.id == teacher_id, User.role == UserRole.TEACHER))
+    ).scalar_one_or_none()
+    if not target_teacher or not target_teacher.tenant_id:
+        raise HTTPException(status_code=404, detail="Docente non trovato o privo di tenant operativo")
+
     existing = (
         await db.execute(
             select(CreditLimit).where(
                 CreditLimit.teacher_id == teacher_id,
                 CreditLimit.level == LimitLevel.TEACHER,
-                CreditLimit.tenant_id == admin.tenant_id,
+                CreditLimit.tenant_id == target_teacher.tenant_id,
             )
         )
     ).scalar_one_or_none()
@@ -1562,7 +2487,7 @@ async def set_teacher_credit_limit(
         except ValueError:
             limit_end = now_utc.replace(year=now_utc.year + 1, month=1, day=1)
         db.add(CreditLimit(
-            tenant_id=admin.tenant_id,
+            tenant_id=target_teacher.tenant_id,
             level=LimitLevel.TEACHER,
             teacher_id=teacher_id,
             amount_cap=amount_cap,
@@ -1575,6 +2500,120 @@ async def set_teacher_credit_limit(
     return {"ok": True, "amount_cap": amount_cap}
 
 
+@router.put("/teachers/schools/bulk")
+async def update_teacher_schools_bulk(
+    payload: TeacherSchoolBulkUpdate,
+    background_tasks: BackgroundTasks,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    admin: Annotated[User, Depends(get_current_admin)],
+):
+    """Add or remove several teachers from one school without moving their data tenant."""
+    if payload.action not in {"add", "remove"}:
+        raise HTTPException(status_code=422, detail="action deve essere 'add' oppure 'remove'")
+
+    school = (
+        await db.execute(select(Tenant).where(Tenant.id == payload.school_tenant_id))
+    ).scalar_one_or_none()
+    if not school or school.tenant_type != TenantType.SCHOOL:
+        raise HTTPException(status_code=404, detail="Istituto non trovato")
+
+    teacher_ids = list(dict.fromkeys(payload.teacher_ids))
+    valid_teachers = (await db.execute(
+        select(User).where(User.id.in_(teacher_ids), User.role == UserRole.TEACHER, User.is_active == True)
+    )).scalars().all()
+    valid_teacher_ids = {teacher.id for teacher in valid_teachers}
+    if len(valid_teacher_ids) != len(teacher_ids):
+        raise HTTPException(status_code=404, detail="Uno o più docenti non sono stati trovati")
+
+    if payload.action == "add":
+        existing_ids = set((await db.execute(
+            select(TeacherSchoolMembership.teacher_id).where(
+                TeacherSchoolMembership.teacher_id.in_(teacher_ids),
+                TeacherSchoolMembership.school_tenant_id == school.id,
+            )
+        )).scalars().all())
+        invite_targets = valid_teacher_ids - existing_ids
+        existing_invites = {
+            invitation.teacher_id: invitation
+            for invitation in (await db.execute(
+                select(TeacherSchoolInvitation).where(
+                    TeacherSchoolInvitation.teacher_id.in_(teacher_ids),
+                    TeacherSchoolInvitation.school_tenant_id == school.id,
+                )
+            )).scalars().all()
+        }
+        now = datetime.now(timezone.utc)
+        for teacher_id_value in invite_targets:
+            invitation = existing_invites.get(teacher_id_value)
+            if invitation:
+                invitation.status = InvitationStatus.PENDING
+                invitation.invited_by_admin_id = admin.id
+                invitation.created_at = now
+                invitation.responded_at = None
+            else:
+                db.add(TeacherSchoolInvitation(
+                    teacher_id=teacher_id_value,
+                    school_tenant_id=school.id,
+                    invited_by_admin_id=admin.id,
+                ))
+        changed = len(invite_targets)
+    else:
+        result = await db.execute(sa_delete(TeacherSchoolMembership).where(
+            TeacherSchoolMembership.teacher_id.in_(teacher_ids),
+            TeacherSchoolMembership.school_tenant_id == school.id,
+        ))
+        changed = result.rowcount or 0
+        await db.execute(sa_delete(TeacherSchoolInvitation).where(
+            TeacherSchoolInvitation.teacher_id.in_(teacher_ids),
+            TeacherSchoolInvitation.school_tenant_id == school.id,
+        ))
+
+    await db.commit()
+    if payload.action == "add":
+        teachers_by_id = {teacher.id: teacher for teacher in valid_teachers}
+        for teacher_id_value in invite_targets:
+            target = teachers_by_id[teacher_id_value]
+            background_tasks.add_task(_send_school_invitation_email, target, school)
+            await sio.emit(
+                "teacher_notification",
+                {
+                    "type": "school_invitation",
+                    "message": f"Nuovo invito all'istituto {school.name}",
+                    "school_id": str(school.id),
+                    "school_name": school.name,
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                },
+                room=f"user:{teacher_id_value}",
+            )
+    return {"ok": True, "changed": changed, "selected": len(teacher_ids)}
+
+
+@router.put("/teachers/credit-limits/bulk")
+async def set_teacher_credit_limits_bulk(
+    payload: TeacherCreditLimitBulkUpdate,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    admin: Annotated[User, Depends(get_current_admin)],
+):
+    teachers = (await db.execute(
+        select(User).where(
+            User.id.in_(list(dict.fromkeys(payload.teacher_ids))),
+            User.role == UserRole.TEACHER,
+            User.is_active == True,
+        )
+    )).scalars().all()
+    if len(teachers) != len(set(payload.teacher_ids)):
+        raise HTTPException(status_code=404, detail="Uno o più docenti non sono stati trovati")
+    if any(not teacher.tenant_id for teacher in teachers):
+        raise HTTPException(status_code=422, detail="Un docente non ha un tenant operativo")
+
+    for teacher in teachers:
+        await credit_service.set_limit_cap(
+            db, teacher.tenant_id, LimitLevel.TEACHER, payload.amount_cap, teacher_id=teacher.id
+        )
+    await db.commit()
+    return {"ok": True, "updated": len(teachers), "amount_cap": payload.amount_cap}
+
+
 @router.get("/classes")
 async def list_admin_classes(
     db: Annotated[AsyncSession, Depends(get_db)],
@@ -1582,9 +2621,9 @@ async def list_admin_classes(
 ):
     classes_rows = (
         await db.execute(
-            select(TeacherClass, User)
+            select(TeacherClass, User, Tenant)
             .join(User, User.id == TeacherClass.teacher_id)
-            .where(TeacherClass.tenant_id == admin.tenant_id)
+            .outerjoin(Tenant, Tenant.id == TeacherClass.school_tenant_id)
             .order_by(TeacherClass.created_at.desc())
         )
     ).all()
@@ -1592,7 +2631,7 @@ async def list_admin_classes(
     if not classes_rows:
         return {"items": []}
 
-    class_ids = [cls.id for cls, _ in classes_rows]
+    class_ids = [cls.id for cls, _, _ in classes_rows]
 
     sessions = (
         await db.execute(
@@ -1625,7 +2664,6 @@ async def list_admin_classes(
                 )
                 .where(
                     CreditTransaction.session_id.in_(session_ids),
-                    CreditTransaction.tenant_id == admin.tenant_id,
                 )
                 .group_by(CreditTransaction.session_id)
             )
@@ -1637,7 +2675,7 @@ async def list_admin_classes(
         students_by_session.setdefault(str(s.session_id), []).append(s)
 
     result = []
-    for cls, teacher in classes_rows:
+    for cls, teacher, school in classes_rows:
         sess_list = []
         for sess in sessions_by_class.get(str(cls.id), []):
             sess_students = students_by_session.get(str(sess.id), [])
@@ -1665,6 +2703,8 @@ async def list_admin_classes(
             "teacher_id": str(teacher.id),
             "teacher_name": f"{teacher.first_name or ''} {teacher.last_name or ''}".strip() or teacher.email,
             "teacher_email": teacher.email,
+            "school_id": str(school.id) if school else None,
+            "school_name": school.name if school else None,
             "session_count": len(sess_list),
             "sessions": sess_list,
         })
@@ -1843,7 +2883,10 @@ async def update_email_templates(
     if not isinstance(payload, dict):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid payload")
 
-    templates = tenant.email_templates_json or {}
+    # Copy into a fresh dict so SQLAlchemy detects the change on the JSONB column.
+    # Mutating tenant.email_templates_json in place and reassigning the same object
+    # is NOT flagged as dirty, so the UPDATE would never be emitted.
+    templates = dict(tenant.email_templates_json or {})
     for key, defaults in DEFAULT_TEMPLATE_CATALOG.items():
         incoming = payload.get(key)
         if incoming is None:
@@ -1897,7 +2940,8 @@ async def reset_email_template_to_default(
     html = str(defaults.get("html", ""))
     text = str(defaults.get("text", ""))
 
-    templates = tenant.email_templates_json or {}
+    # Fresh dict so the JSONB column is flagged dirty (see update_email_templates).
+    templates = dict(tenant.email_templates_json or {})
     await _save_template_version(
         db=db,
         tenant_id=tenant.id,

@@ -7,6 +7,7 @@ from pathlib import Path
 
 from app.core.config import settings
 from app.api.v1.router import api_router
+from app.api.v1.endpoints.coding import public_router as coding_public_router
 from app.realtime.gateway import socket_app
 from app.services.storage_service import storage_service
 
@@ -27,6 +28,8 @@ REQUEST_DURATION = Histogram(
 async def lifespan(app: FastAPI):
     # Startup
     await storage_service.ensure_bucket()
+    from app.services.toy_lm_trainer import toy_lm_service
+    toy_lm_service.start_queue_processor()
     yield
     # Shutdown
 
@@ -47,6 +50,7 @@ app.add_middleware(
 )
 
 app.include_router(api_router, prefix=settings.API_V1_PREFIX)
+app.include_router(coding_public_router)
 
 # Mount Socket.IO
 app.mount("/socket.io", socket_app)

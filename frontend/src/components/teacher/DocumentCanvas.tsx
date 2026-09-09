@@ -1,9 +1,14 @@
-import { useState, useCallback, useMemo, useEffect } from 'react'
-import { X, Download, Layout, FileText, GripVertical, Share2, Check, Loader2, RotateCcw, BarChart2 } from 'lucide-react'
+import { useState, useCallback, useMemo } from 'react'
+import { X, Layout, FileText, GripVertical, Share2, Check, Loader2, BarChart2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useToast } from '@/components/ui/use-toast'
-import { chatApi, llmApi } from '@/lib/api'
-import { buildBrochureLatex, buildDispensaLatex, buildReportHtml, parseBrochurePayload, parseDispensaPayload, parseReportPayload } from '@/components/teacher/reportTemplates'
+import { chatApi } from '@/lib/api'
+import { buildReportHtml, parseBrochurePayload, parseDispensaPayload, parseReportPayload } from '@/components/teacher/reportTemplates'
+
+// Toolbar pills — homogeneous with the main navbar (shared --selection-* tokens).
+const TOOLBAR_PILL = 'ui-control-label inline-flex items-center gap-1 h-7 rounded-[var(--selection-radius)] border px-2.5 transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--selection-border-hover)] disabled:opacity-50'
+const TOOLBAR_PILL_INACTIVE = 'border-transparent text-slate-600 hover:border-[color:var(--selection-border)] hover:bg-[image:var(--selection-bg)] hover:text-[var(--selection-text)]'
+const TOOLBAR_PILL_ACTIVE = 'bg-[image:var(--selection-active-bg)] text-[var(--selection-active-text)] border-[color:var(--selection-border-hover)] shadow-[var(--selection-shadow)]'
 
 export interface GeneratedDoc {
   type: 'brochure' | 'dispensa' | 'report' | 'html_page'
@@ -33,23 +38,23 @@ const DISPENSA_CSS = `
 html{scroll-behavior:smooth}
 body{font-family:'Inter',sans-serif;background:#f7f5f8;color:#1a1a2e;line-height:1.78;font-size:15px}
 
-#progress-bar{position:fixed;top:0;left:0;height:3px;width:0%;background:linear-gradient(90deg,#e85c8d,#f29db8);z-index:9999;transition:width .1s linear}
+#progress-bar{position:fixed;top:0;left:0;height:3px;width:0%;background:linear-gradient(90deg,#fe004d,#f29db8);z-index:9999;transition:width .1s linear}
 
 .layout{display:flex;min-height:100vh}
 
 .sidebar{width:240px;flex-shrink:0;background:linear-gradient(180deg,#1a1a2e 0%,#232340 100%);position:sticky;top:0;height:100vh;overflow-y:auto;padding:22px 0 40px;z-index:100}
 .sidebar-logo{padding:0 18px 18px;border-bottom:1px solid rgba(255,255,255,.1);margin-bottom:16px}
-.sidebar-logo .badge{background:#e85c8d;color:#fff;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;padding:4px 10px;border-radius:20px;display:inline-block;margin-bottom:8px;box-shadow:0 10px 24px rgba(232,92,141,.25)}
+.sidebar-logo .badge{background:#fe004d;color:#fff;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;padding:4px 10px;border-radius:20px;display:inline-block;margin-bottom:8px;box-shadow:0 10px 24px rgba(232,92,141,.25)}
 .sidebar-logo h2{color:#fff;font-size:12px;font-weight:600;line-height:1.4;opacity:.9}
 .sidebar-section{padding:10px 18px 4px;color:rgba(255,255,255,.3);font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px}
 .sidebar nav a{display:flex;align-items:center;gap:8px;padding:8px 18px;color:rgba(255,255,255,.64);text-decoration:none;font-size:12px;font-weight:500;border-left:3px solid transparent;transition:all .2s}
-.sidebar nav a:hover,.sidebar nav a.active{color:#fff;background:rgba(255,255,255,.08);border-left-color:#e85c8d}
+.sidebar nav a:hover,.sidebar nav a.active{color:#fff;background:rgba(255,255,255,.08);border-left-color:#fe004d}
 .sidebar nav a .sn{background:rgba(255,255,255,.12);color:#f3a2be;font-size:9px;font-weight:700;width:20px;height:20px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-family:'JetBrains Mono',monospace}
 
 .main{flex:1;min-width:0;padding-bottom:80px}
 
 .hero{background:
-linear-gradient(135deg,#1a1a2e 0%,#2a2346 52%,#e85c8d 180%);
+linear-gradient(135deg,#1a1a2e 0%,#2a2346 52%,#fe004d 180%);
 padding:64px 56px 54px;position:relative;overflow:hidden}
 .hero::before{content:'';position:absolute;top:-40px;right:-40px;width:350px;height:350px;background:radial-gradient(circle,rgba(232,92,141,.2) 0%,transparent 70%);pointer-events:none}
 .hero::after{content:'';position:absolute;left:8%;bottom:-120px;width:420px;height:220px;background:radial-gradient(circle,rgba(255,255,255,.12) 0%,transparent 72%);pointer-events:none}
@@ -71,12 +76,12 @@ padding:64px 56px 54px;position:relative;overflow:hidden}
 .abstract-box ol li{color:#1a1a2e;font-size:13.5px;margin-bottom:5px;font-weight:500}
 
 .section-header{display:flex;align-items:center;gap:14px;margin-bottom:28px;padding-bottom:18px;border-bottom:2px solid #f1d9e4}
-.section-num{font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700;color:#fff;background:#e85c8d;padding:6px 12px;border-radius:999px;letter-spacing:1px;box-shadow:0 10px 24px rgba(232,92,141,.18)}
+.section-num{font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700;color:#fff;background:#fe004d;padding:6px 12px;border-radius:999px;letter-spacing:1px;box-shadow:0 10px 24px rgba(232,92,141,.18)}
 .section-header h2{font-size:1.82em;font-weight:750;color:#1a1a2e;line-height:1.2}
 
 section{margin-bottom:56px;scroll-margin-top:20px}
 .content p{margin-bottom:16px;color:#3f4657;line-height:1.9}
-.content h3{font-size:1.08em;font-weight:700;color:#1a1a2e;margin:24px 0 10px;padding-left:10px;border-left:3px solid #e85c8d}
+.content h3{font-size:1.08em;font-weight:700;color:#1a1a2e;margin:24px 0 10px;padding-left:10px;border-left:3px solid #fe004d}
 .content ul,.content ol{padding-left:22px;margin-bottom:16px}
 .content ul li,.content ol li{margin-bottom:7px;line-height:1.7;color:#3f4657}
 .content ul li strong,.content ol li strong{color:#1a1a2e}
@@ -90,7 +95,7 @@ section{margin-bottom:56px;scroll-margin-top:20px}
 .theorem-box .box-label{color:#7f46bc}
 .example-box{background:#edf9f3;border-left:4px solid #30a36b}
 .example-box .box-label{color:#22804f}
-.warning-box{background:#fff5fa;border-left:4px solid #e85c8d}
+.warning-box{background:#fff5fa;border-left:4px solid #fe004d}
 .warning-box .box-label{color:#b73e68}
 .exercise-box{background:#fff4ec;border-left:4px solid #f19b61}
 .exercise-box .box-label{color:#b06227}
@@ -401,6 +406,24 @@ function buildBrochureHtml(sections: string, docTitle: string): string {
     a{color:inherit;text-decoration:none}
     @media(max-width:640px){section{padding:48px 0}.hero{padding:56px 0 48px;min-height:auto}.hero-title{font-size:2rem}}
   `
+  const linkGuardScript = `
+<script>
+document.addEventListener('click', function(event) {
+  var link = event.target && event.target.closest ? event.target.closest('a[href]') : null;
+  if (!link) return;
+  var href = link.getAttribute('href') || '';
+  if (href.charAt(0) === '#') {
+    event.preventDefault();
+    var target = document.getElementById(href.slice(1));
+    if (target && target.scrollIntoView) target.scrollIntoView({ behavior: 'smooth' });
+    try { history.replaceState(null, '', href); } catch (e) {}
+    return;
+  }
+  if (!/^(https?:|mailto:|tel:)/i.test(href)) {
+    event.preventDefault();
+  }
+}, true);
+</script>`
 
   return `<!DOCTYPE html>
 <html lang="it">
@@ -416,6 +439,7 @@ ${cleanSections}
 <footer style="background:${primary};color:rgba(255,255,255,.7);padding:32px 0;text-align:center;font-size:13px">
   <div class="container">Generato con Claude AI · Fondazione Golinelli · 2026</div>
 </footer>
+${linkGuardScript}
 </body>
 </html>`
 }
@@ -563,10 +587,6 @@ export default function DocumentCanvas({ doc, onClose, sessions = [], authorName
   const [showShareMenu, setShowShareMenu] = useState(false)
   const [sharingSessionId, setSharingSessionId] = useState<string | null>(null)
   const [sharedSessionIds, setSharedSessionIds] = useState<Set<string>>(new Set())
-  const [pdfBlobUrl, setPdfBlobUrl] = useState<string | null>(null)
-  const [pdfBytes, setPdfBytes] = useState<ArrayBuffer | null>(null)
-  const [pdfLoading, setPdfLoading] = useState(false)
-  const [pdfError, setPdfError] = useState<string | null>(null)
 
   // Build final renderable HTML
   const renderedHtml = useMemo(() => {
@@ -598,161 +618,33 @@ export default function DocumentCanvas({ doc, onClose, sessions = [], authorName
     return parsed ? JSON.stringify(parsed, null, 2) : extractSections(doc.content)
   }, [doc])
 
-  const latexContent = useMemo(() => {
-    if (doc.type === 'dispensa') return buildDispensaLatex(doc.content, doc.title || 'Dispensa', authorName || 'Docente')
-    if (doc.type === 'brochure') return buildBrochureLatex(doc.content, doc.title || 'Brochure', authorName || 'Docente')
-    return null
-  }, [authorName, doc])
-
-  const compilePdf = useCallback(async (): Promise<{ bytes: ArrayBuffer; objectUrl: string } | null> => {
-    if (!latexContent) {
-      setPdfBlobUrl(null)
-      setPdfBytes(null)
-      setPdfError(null)
-      return null
-    }
-    setPdfLoading(true)
-    setPdfError(null)
-    try {
-      const filename = doc.type === 'brochure' ? 'brochure' : 'dispensa'
-      const response = await llmApi.compileLatex(latexContent, `${filename}_v${doc.version}`)
-      const bytes = response.data as ArrayBuffer
-      const blob = new Blob([bytes], { type: 'application/pdf' })
-      const objectUrl = URL.createObjectURL(blob)
-      setPdfBytes(bytes)
-      setPdfBlobUrl((prev) => {
-        if (prev) URL.revokeObjectURL(prev)
-        return objectUrl
-      })
-      return { bytes, objectUrl }
-    } catch (error: any) {
-      console.warn('PDF compilation failed', error)
-      setPdfBytes(null)
-      setPdfBlobUrl((prev) => {
-        if (prev) URL.revokeObjectURL(prev)
-        return null
-      })
-      setPdfError(error?.response?.data?.detail || 'Compilazione PDF non riuscita')
-      return null
-    } finally {
-      setPdfLoading(false)
-    }
-  }, [doc.type, doc.version, latexContent])
-
-  useEffect(() => {
-    setPdfBytes(null)
-    setPdfBlobUrl((prev) => {
-      if (prev) URL.revokeObjectURL(prev)
-      return null
-    })
-    setPdfError(null)
-    setPdfLoading(false)
-  }, [doc.type, doc.version, doc.content])
-
   const handleDragStart = useCallback((e: React.DragEvent) => {
-    const filename = pdfBlobUrl && doc.type !== 'report'
-      ? `${doc.type}_v${doc.version}.pdf`
-      : doc.type === 'brochure'
-        ? `brochure_v${doc.version}.html`
-        : doc.type === 'report'
-          ? `report_v${doc.version}.html`
-          : `dispensa_v${doc.version}.html`
-    e.dataTransfer.setData('application/x-chatbot-document', JSON.stringify({
-      type: doc.type,
-      content: pdfBlobUrl && doc.type !== 'report' ? undefined : renderedHtml,
-      blobUrl: pdfBlobUrl || undefined,
-      filename,
-      title: doc.title,
-      mimeType: pdfBlobUrl && doc.type !== 'report' ? 'application/pdf' : 'text/html',
-    }))
-    e.dataTransfer.effectAllowed = 'copy'
-  }, [doc, renderedHtml, pdfBlobUrl])
-
-  const downloadDoc = useCallback(() => {
-    if (pdfBlobUrl && doc.type !== 'report') {
-      const a = document.createElement('a')
-      a.href = pdfBlobUrl
-      a.download = `${doc.type}_v${doc.version}.pdf`
-      a.click()
-      return
-    }
-    const blob = new Blob([renderedHtml], { type: 'text/html;charset=utf-8' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = doc.type === 'brochure'
+    const filename = doc.type === 'brochure'
       ? `brochure_v${doc.version}.html`
       : doc.type === 'report'
         ? `report_v${doc.version}.html`
-        : doc.type === 'html_page'
-          ? `pagina_interattiva_v${doc.version}.html`
-          : `dispensa_v${doc.version}.html`
-    a.click()
-    URL.revokeObjectURL(url)
-  }, [doc, renderedHtml, pdfBlobUrl])
-
-  const downloadPdf = useCallback(async () => {
-    // Brochure: use browser print-to-PDF to preserve HTML colors and layout
-    if (doc.type === 'brochure') {
-      const printWindow = window.open('', '_blank', 'width=960,height=800')
-      if (!printWindow) {
-        toast({ title: 'Popup bloccato', description: 'Abilita i popup per questo sito per esportare la brochure come PDF.' })
-        return
-      }
-      printWindow.document.write(renderedHtml)
-      printWindow.document.close()
-      printWindow.addEventListener('load', () => {
-        printWindow.print()
-        printWindow.addEventListener('afterprint', () => printWindow.close())
-      })
-      toast({ title: 'Finestra di stampa aperta', description: 'Seleziona "Salva come PDF" nella finestra di stampa.' })
-      return
-    }
-
-    let targetUrl = pdfBlobUrl
-    if (!targetUrl && doc.type !== 'report') {
-      const compiled = await compilePdf()
-      targetUrl = compiled?.objectUrl || null
-    }
-    if (!targetUrl) return
-    const a = document.createElement('a')
-    a.href = targetUrl
-    a.download = `${doc.type}_v${doc.version}.pdf`
-    a.click()
-    toast({
-      title: 'PDF generato',
-      description: 'Dispensa pronta in formato PDF.',
-    })
-  }, [compilePdf, doc.type, doc.version, pdfBlobUrl, renderedHtml, toast])
-
-  const printDoc = useCallback(() => {
-    if (pdfBlobUrl && doc.type !== 'report') {
-      window.open(pdfBlobUrl, '_blank')
-      return
-    }
-    const win = window.open('', '_blank')
-    if (win) {
-      win.document.write(renderedHtml)
-      win.document.close()
-      win.print()
-    }
-  }, [doc.type, pdfBlobUrl, renderedHtml])
+        : `dispensa_v${doc.version}.html`
+    e.dataTransfer.setData('application/x-chatbot-document', JSON.stringify({
+      type: doc.type,
+      content: renderedHtml,
+      filename,
+      title: doc.title,
+      mimeType: 'text/html',
+    }))
+    e.dataTransfer.effectAllowed = 'copy'
+  }, [doc, renderedHtml])
 
   const shareToSession = useCallback(async (sessionId: string) => {
     setSharingSessionId(sessionId)
     setShowShareMenu(false)
     try {
       const targetSession = sessions.find((s) => s.id === sessionId)
-      const filename = pdfBytes && doc.type !== 'report'
-        ? `${doc.type}_v${doc.version}.pdf`
-        : doc.type === 'brochure'
-          ? `brochure_v${doc.version}.html`
-          : doc.type === 'report'
-            ? `report_v${doc.version}.html`
-            : `dispensa_v${doc.version}.html`
-      const file = pdfBytes && doc.type !== 'report'
-        ? new File([pdfBytes], filename, { type: 'application/pdf' })
-        : new File([renderedHtml], filename, { type: 'text/html' })
+      const filename = doc.type === 'brochure'
+        ? `brochure_v${doc.version}.html`
+        : doc.type === 'report'
+          ? `report_v${doc.version}.html`
+          : `dispensa_v${doc.version}.html`
+      const file = new File([renderedHtml], filename, { type: 'text/html' })
 
       const uploadRes = await chatApi.uploadFiles(sessionId, [file])
       const urls: string[] = uploadRes.data?.urls || []
@@ -784,7 +676,7 @@ export default function DocumentCanvas({ doc, onClose, sessions = [], authorName
     } finally {
       setSharingSessionId(null)
     }
-  }, [doc, pdfBytes, renderedHtml, toast])
+  }, [doc, renderedHtml, toast])
 
   const isDispensa = doc.type === 'dispensa'
   const isReport = doc.type === 'report'
@@ -820,7 +712,7 @@ export default function DocumentCanvas({ doc, onClose, sessions = [], authorName
               </span>
             </div>
             <div className="text-[10px] text-slate-400">
-              {isReport ? 'Dashboard HTML interattiva' : (isDispensa ? 'Dispensa HTML interattiva · PDF su richiesta' : 'Brochure HTML interattiva · PDF su richiesta')}
+              {isReport ? 'Dashboard HTML interattiva' : (isDispensa ? 'Dispensa HTML interattiva' : 'Brochure HTML interattiva')}
             </div>
           </div>
         </div>
@@ -828,49 +720,19 @@ export default function DocumentCanvas({ doc, onClose, sessions = [], authorName
         <div className="flex items-center gap-1 shrink-0">
           <button
             onClick={() => setShowSource(v => !v)}
-            className={`px-2 py-1 rounded-full text-[10px] transition-all border ${showSource
-              ? 'bg-slate-800 text-white border-slate-800'
-              : 'bg-slate-100 text-slate-500 border-slate-200 hover:bg-slate-200'}`}
+            className={`${TOOLBAR_PILL} ${showSource ? TOOLBAR_PILL_ACTIVE : TOOLBAR_PILL_INACTIVE}`}
           >
             {showSource ? 'Anteprima' : 'Sorgente'}
           </button>
 
-          <Button variant="ghost" size="sm" onClick={printDoc}
-            className="h-7 px-2 text-xs text-slate-500 hover:bg-slate-100">
-            <RotateCcw className="h-3 w-3 mr-1" />Stampa
-          </Button>
-
-          {doc.type !== 'report' && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={downloadPdf}
-              disabled={pdfLoading}
-              className="h-7 px-2 text-xs text-rose-600 hover:bg-rose-50"
-              title={pdfError || 'Converti e scarica PDF'}
-            >
-              {pdfLoading ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : <FileText className="h-3 w-3 mr-1" />}
-              PDF
-            </Button>
-          )}
-
-          <Button variant="ghost" size="sm" onClick={downloadDoc}
-            className="h-7 px-2 text-xs text-slate-500 hover:bg-slate-100">
-            <Download className="h-3 w-3 mr-1" />{pdfBlobUrl && doc.type !== 'report' ? '.pdf' : '.html'}
-          </Button>
-
           {sessions.length > 0 && (
             <div className="relative">
-              <Button
-                variant="ghost"
-                size="sm"
+              <button
                 onClick={() => setShowShareMenu(v => !v)}
-                className={`h-7 px-2 text-xs border ${isDispensa
-                  ? 'text-amber-700 hover:bg-amber-50 border-amber-200'
-                  : 'text-sky-600 hover:bg-sky-50 border-sky-200'}`}
+                className={`${TOOLBAR_PILL} ${showShareMenu ? TOOLBAR_PILL_ACTIVE : TOOLBAR_PILL_INACTIVE}`}
               >
-                <Share2 className="h-3 w-3 mr-1" />Condividi
-              </Button>
+                <Share2 className="h-3.5 w-3.5" />Condividi
+              </button>
               {showShareMenu && (
                 <div className="absolute right-0 top-full mt-1 w-60 bg-white rounded-xl shadow-xl border border-slate-100 py-1 z-50 animate-in fade-in zoom-in-95 duration-100">
                   <div className="px-3 py-2 text-[10px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-100">
@@ -914,13 +776,6 @@ export default function DocumentCanvas({ doc, onClose, sessions = [], authorName
               {sourceContent}
             </pre>
           </div>
-        ) : pdfLoading && doc.type !== 'report' ? (
-          <div className="h-full flex items-center justify-center bg-white">
-            <div className="flex items-center gap-2 text-sm text-slate-500">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              Generazione anteprima PDF...
-            </div>
-          </div>
         ) : (
           <iframe
             srcDoc={renderedHtml}
@@ -935,11 +790,6 @@ export default function DocumentCanvas({ doc, onClose, sessions = [], authorName
         <p className="text-[10px] text-slate-400 text-center">
           Trascina l'intestazione nella chat di classe per condividere · Continua la chat per modifiche
         </p>
-        {pdfError && doc.type !== 'report' && (
-          <p className="mt-1 text-[10px] text-center text-rose-500">
-            PDF non disponibile: {pdfError}
-          </p>
-        )}
       </div>
     </div>
   )

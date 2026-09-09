@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { X, UserPlus, Crown, Users, Trash2, Loader2, Mail, Clock } from 'lucide-react'
+import { X, UserPlus, Crown, Users, Trash2, Loader2, Mail, Clock, RefreshCw } from 'lucide-react'
 import { teacherApi } from '@/lib/api'
 import { useToast } from '@/components/ui/use-toast'
 import { Button } from '@/components/ui/button'
@@ -54,6 +54,8 @@ export function TeachersManagementModal({
   onClose,
 }: TeachersManagementModalProps) {
   const [email, setEmail] = useState('')
+  const [inviteScope, setInviteScope] = useState<'class' | 'session'>(type)
+  const [inviteSessionId, setInviteSessionId] = useState(type === 'session' ? targetId : '')
   const queryClient = useQueryClient()
   const { toast } = useToast()
   const { data: teacherProfile } = useTeacherProfile()
@@ -73,11 +75,16 @@ export function TeachersManagementModal({
     },
   })
 
+  const { data: classSessions = [] } = useQuery<Array<{ id: string; title: string; deleted_at?: string | null }>>({
+    queryKey: ['sessions', targetId],
+    queryFn: async () => (await teacherApi.getSessions(targetId)).data,
+    enabled: type === 'class' && inviteScope === 'session',
+  })
+
   const inviteMutation = useMutation({
-    mutationFn: (email: string) =>
-      type === 'class'
-        ? teacherApi.inviteTeacherToClass(targetId, email)
-        : teacherApi.inviteTeacherToSession(targetId, email),
+    mutationFn: (email: string) => inviteScope === 'class'
+      ? teacherApi.inviteTeacherToClass(targetId, email)
+      : teacherApi.inviteTeacherToSession(type === 'session' ? targetId : inviteSessionId, email),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey })
       setEmail('')
@@ -87,6 +94,17 @@ export function TeachersManagementModal({
       const detail = error.response?.data?.detail || 'Errore nell\'invio dell\'invito'
       toast({ variant: 'destructive', title: detail })
     },
+  })
+
+  const resendMutation = useMutation({
+    mutationFn: (invitationId: string) => type === 'class'
+      ? teacherApi.resendClassTeacherInvitation(targetId, invitationId)
+      : teacherApi.resendSessionTeacherInvitation(targetId, invitationId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey })
+      toast({ title: 'Invito inviato nuovamente' })
+    },
+    onError: () => toast({ variant: 'destructive', title: 'Impossibile reinviare l’invito' }),
   })
 
   const removeMutation = useMutation({
@@ -107,7 +125,7 @@ export function TeachersManagementModal({
 
   const handleInvite = (e: React.FormEvent) => {
     e.preventDefault()
-    if (email.trim()) {
+    if (email.trim() && (inviteScope === 'class' || type === 'session' || inviteSessionId)) {
       inviteMutation.mutate(email.trim())
     }
   }
@@ -167,14 +185,26 @@ export function TeachersManagementModal({
           {/* Invite Form */}
           <form onSubmit={handleInvite} className="space-y-3">
             <label className="block text-sm font-semibold text-slate-700">
-              Invita un docente
+              Invita docente o admin
             </label>
+            {type === 'class' && (
+              <div className="grid grid-cols-2 gap-2 rounded-xl bg-slate-100 p-1 text-xs font-bold">
+                <button type="button" onClick={() => setInviteScope('class')} className={`rounded-lg px-3 py-2 ${inviteScope === 'class' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'}`}>Intera classe</button>
+                <button type="button" onClick={() => setInviteScope('session')} className={`rounded-lg px-3 py-2 ${inviteScope === 'session' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'}`}>Una sessione</button>
+              </div>
+            )}
+            {type === 'class' && inviteScope === 'session' && (
+              <select value={inviteSessionId} onChange={(event) => setInviteSessionId(event.target.value)} className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700">
+                <option value="">Seleziona la sessione…</option>
+                {classSessions.filter(session => !session.deleted_at).map(session => <option key={session.id} value={session.id}>{session.title}</option>)}
+              </select>
+            )}
             <div className="flex gap-2">
               <div className="relative flex-1">
                 <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
                 <Input
                   type="email"
-                  placeholder="Email del docente..."
+                  placeholder="Email del docente o admin..."
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   className="pl-10"
@@ -182,7 +212,7 @@ export function TeachersManagementModal({
               </div>
               <Button
                 type="submit"
-                disabled={!email.trim() || inviteMutation.isPending}
+                disabled={!email.trim() || inviteMutation.isPending || (inviteScope === 'session' && type === 'class' && !inviteSessionId)}
                 className="text-white"
                 style={{ backgroundColor: accentTheme.accent }}
               >
@@ -197,7 +227,7 @@ export function TeachersManagementModal({
               </Button>
             </div>
             <p className="text-xs text-slate-500">
-              Il docente deve essere registrato nella stessa organizzazione
+              I docenti devono appartenere allo stesso istituto; gli admin possono essere invitati a qualsiasi classe o sessione.
             </p>
           </form>
 
@@ -326,9 +356,12 @@ export function TeachersManagementModal({
                           </p>
                         </div>
 
-                        <span className="px-2 py-1 bg-amber-200 text-amber-800 text-xs font-medium rounded-lg">
-                          In attesa
-                        </span>
+                        <div className="flex items-center gap-2">
+                          <button type="button" onClick={() => resendMutation.mutate(inv.id)} disabled={resendMutation.isPending} className="flex h-8 items-center gap-1 rounded-lg border border-amber-200 bg-white px-2 text-[11px] font-bold text-amber-800 hover:bg-amber-100 disabled:opacity-50" title="Reinvia email e notifica">
+                            <RefreshCw className={`h-3 w-3 ${resendMutation.isPending ? 'animate-spin' : ''}`} /> Reinvia
+                          </button>
+                          <span className="px-2 py-1 bg-amber-200 text-amber-800 text-xs font-medium rounded-lg">In attesa</span>
+                        </div>
                       </div>
                     ))}
                   </div>

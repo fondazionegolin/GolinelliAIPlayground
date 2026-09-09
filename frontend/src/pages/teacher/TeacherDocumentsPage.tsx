@@ -3,18 +3,25 @@ import { useMobile } from '@/hooks/useMobile'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
-  Plus, Trash2, Upload, Monitor, FileText, ChevronLeft, ChevronRight, FileSpreadsheet, PenTool, Share2, User, Clock, MonitorPlay, Calendar, BookOpen, Search, X
+  Plus, Trash2, Upload, Monitor, FileText, ChevronLeft, FileSpreadsheet, PenTool, Share2, User, Clock, MonitorPlay, Calendar, BookOpen, Search, X,
+  History, ArrowUp, ArrowDown, GripVertical, CheckSquare, Save, Download, Loader2, FileUp
 } from 'lucide-react'
-import { teacherApi } from '@/lib/api'
+import { filesApi, teacherApi } from '@/lib/api'
+import { DOCUMENT_IMPORT_ACCEPT, downloadExportedDocument, isSupportedDocumentFile } from '@/lib/documentFiles'
 import { useToast } from '@/components/ui/use-toast'
 import { useQuery } from '@tanstack/react-query'
-import { SlideEditor, SlideBlock } from '@/components/SlideEditor'
+import { SlideEditor, SlideBlock, SlideBlockType, SlideSnapOptions, DEFAULT_SLIDE_SNAP_OPTIONS } from '@/components/SlideEditor'
+import { createShapeBlock } from '@/lib/slideBlocks'
 import { RichTextEditor } from '@/components/RichTextEditor'
 import { UnifiedToolbar } from '@/components/UnifiedToolbar'
-import { SheetChartConfig, SpreadsheetEditor } from '@/components/SpreadsheetEditor'
+import DocumentAgentChat, { type DocumentAssistContext } from '@/components/documents/DocumentAgentChat'
+import DocumentThumbnail from '@/components/documents/DocumentThumbnail'
+import DocumentOpenModal, { type OpenableDocument } from '@/components/documents/DocumentOpenModal'
+import { SheetChartConfig, SheetCellStyles, SheetDimensions, SpreadsheetEditor } from '@/components/SpreadsheetEditor'
 import { CollaborativeCanvas } from '@/components/CollaborativeCanvas'
 import { Editor } from '@tiptap/react'
 import { useTranslation } from 'react-i18next'
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import {
   PASTEL_ICON_BACKGROUNDS,
   PASTEL_ICON_TEXT,
@@ -51,13 +58,19 @@ interface Document {
   header?: DocumentHeader
   sheetData?: string[][]
   sheetChart?: SheetChartConfig
+  sheetStyles?: SheetCellStyles
+  sheetDimensions?: SheetDimensions
   canvasContent?: string
   webUrl?: string
+  source?: { filename?: string; extension?: string; mimeType?: string; fileId?: string; url?: string; preservedOriginal?: boolean }
 }
 
 // Stored Document Metadata for Sidebar
 interface StoredDocument {
   id: string
+  taskId: string
+  submissionId?: string | null
+  source: 'teacher' | 'student'
   title: string
   type: 'presentation' | 'document' | 'sheet' | 'canvas'
   updatedAt: string
@@ -66,6 +79,15 @@ interface StoredDocument {
   className: string
   contentJson: string
   authorName: string
+  correction?: DocumentCorrection | null
+}
+
+interface DocumentCorrection {
+  status: 'pending' | 'accepted'
+  original_content_json: string
+  suggested_content_json: string
+  teacher_name?: string
+  updated_at?: string
 }
 
 interface DraftDocument {
@@ -74,6 +96,16 @@ interface DraftDocument {
   type: 'presentation' | 'document' | 'sheet' | 'canvas'
   updatedAt: string
   contentJson: string
+}
+
+interface DocumentDraftVersion {
+  id: string
+  draftId: string
+  title: string
+  type: string
+  contentJson: string
+  label?: string | null
+  createdAt: string
 }
 
 // Format dimensions
@@ -88,7 +120,7 @@ const EMPTY_DOC_HTML = '<p></p>'
 const DEFAULT_SHEET_DATA = Array.from({ length: 20 }, () => Array.from({ length: 8 }, () => ''))
 const DEFAULT_SHEET_CHART: SheetChartConfig = {
   type: 'line',
-  title: 'Grafico foglio',
+  title: 'Grafico tabella',
   xCol: 0,
   yCol: 1,
   showRegression: true,
@@ -122,16 +154,25 @@ const docTone = (type: 'presentation' | 'document' | 'sheet' | 'canvas') => DOC_
 export default function TeacherDocumentsPage() {
   const { toast } = useToast()
   const { i18n } = useTranslation()
+  const [searchParams] = useSearchParams()
+  const location = useLocation()
+  const navigate = useNavigate()
   const isEnglish = i18n.resolvedLanguage?.startsWith('en') ?? false
   const { isMobile } = useMobile()
   const defaultDocumentTitle = isEnglish ? 'New Document' : 'Nuovo Documento'
   const defaultPresentationTitle = isEnglish ? 'New Presentation' : 'Nuova Presentazione'
+  const defaultSheetTitle = isEnglish ? 'New Table' : 'Nuova Tabella'
   const defaultCanvasTitle = isEnglish ? 'New Board' : 'Nuova Lavagna'
   const dateLocale = isEnglish ? 'en-GB' : 'it-IT'
   const [draftId, setDraftId] = useState<string | null>(null)
   const draftIdRef = useRef<string | null>(null)
   const pendingDraftPayloadRef = useRef<{ title: string; doc_type: string; content_json: string } | null>(null)
   const isSavingDraftRef = useRef(false)
+  const suppressNextDraftSaveRef = useRef(false)
+  const lastDraftPayloadKeyRef = useRef<string | null>(null)
+  const publishingDocumentRef = useRef(false)
+  const activePublishedTaskIdRef = useRef<string | null>(null)
+  const lastCorrectionPayloadRef = useRef<string | null>(null)
   
   // State
   const [mode, setMode] = useState<EditorMode>('document') 
@@ -151,10 +192,13 @@ export default function TeacherDocumentsPage() {
   })
   
   // Sidebar State
-  const [showSidebar, setShowSidebar] = useState(true)
   const [storedDocuments, setStoredDocuments] = useState<StoredDocument[]>([])
   const [draftDocuments, setDraftDocuments] = useState<DraftDocument[]>([])
   const [docSearch, setDocSearch] = useState('')
+  const [catalogRefreshKey, setCatalogRefreshKey] = useState(0)
+  const [activePublishedTaskId, setActivePublishedTaskId] = useState<string | null>(null)
+  const [activeStudentSubmissionId, setActiveStudentSubmissionId] = useState<string | null>(null)
+  const [correctionSaveState, setCorrectionSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
 
   // Editor State
   const [editor, setEditor] = useState<Editor | null>(null)
@@ -164,9 +208,11 @@ export default function TeacherDocumentsPage() {
   const [scale, setScale] = useState(1)
   const [docScale, setDocScale] = useState(1)
   const [docMargins, setDocMargins] = useState({ vertical: 56, horizontal: 56 })
+  const [documentPageCount, setDocumentPageCount] = useState(1)
   const [showRuledLines, setShowRuledLines] = useState(false)
   const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null)
-  
+  const [snapOptions, setSnapOptions] = useState<SlideSnapOptions>(DEFAULT_SLIDE_SNAP_OPTIONS)
+
   // Refs
   const canvasRef = useRef<HTMLDivElement>(null)
   const documentPageRef = useRef<HTMLDivElement>(null)
@@ -177,14 +223,175 @@ export default function TeacherDocumentsPage() {
   const [selectedSessionId, setSelectedSessionId] = useState('')
   const [publishMode, setPublishMode] = useState<'published' | 'draft'>('published')
   const [showNewModal, setShowNewModal] = useState(false)
+  const [documentToOpen, setDocumentToOpen] = useState<{ document: OpenableDocument; onEdit: () => void } | null>(null)
   const [draftSaveState, setDraftSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
   const [viewMode, setViewMode] = useState<'list' | 'editor'>('list')
+  const [studentDocsCollapsed, setStudentDocsCollapsed] = useState(false)
   const [aiPanelAnchor, setAiPanelAnchor] = useState<{ x: number; y: number } | null>(null)
-  const [aiOpenRequestId, setAiOpenRequestId] = useState(0)
+  const [documentAgentOpen, setDocumentAgentOpen] = useState(false)
+  const [documentSelection, setDocumentSelection] = useState<{ from: number; to: number; text: string } | null>(null)
   const [draggingMargin, setDraggingMargin] = useState<'left' | 'right' | null>(null)
+  const [selectedSlideIds, setSelectedSlideIds] = useState<string[]>([])
+  const [draggedSlideIds, setDraggedSlideIds] = useState<string[]>([])
+  const [showVersionPanel, setShowVersionPanel] = useState(false)
+  const [documentVersions, setDocumentVersions] = useState<DocumentDraftVersion[]>([])
+  const [versionsLoading, setVersionsLoading] = useState(false)
+  const [versionActionLoading, setVersionActionLoading] = useState(false)
+  const [documentImporting, setDocumentImporting] = useState(false)
+  const [documentDragActive, setDocumentDragActive] = useState(false)
+  const [documentExporting, setDocumentExporting] = useState(false)
+  const documentFileInputRef = useRef<HTMLInputElement>(null)
 
   const currentSlide = document.slides?.[currentSlideIndex] || { id: 'fallback', title: 'Slide', blocks: [] }
   const selectedBlock = currentSlide.blocks.find(b => b.id === selectedBlockId)
+  const documentAssistContext: DocumentAssistContext | null = (() => {
+    if (mode === 'document' && documentSelection) {
+      return {
+        id: `text-${documentSelection.from}-${documentSelection.to}-${documentSelection.text}`,
+        kind: 'selected_text',
+        label: isEnglish ? 'Selected text' : 'Testo selezionato',
+        detail: documentSelection.text,
+        target: { text: documentSelection.text, from: documentSelection.from, to: documentSelection.to },
+        beforePreview: documentSelection.text,
+      }
+    }
+    if (mode === 'slides' && selectedBlock) {
+      const detail = selectedBlock.type === 'text'
+        ? selectedBlock.content
+        : selectedBlock.type === 'image'
+          ? (isEnglish ? 'Selected image' : 'Immagine selezionata')
+          : `${isEnglish ? 'Selected shape' : 'Forma selezionata'} (${selectedBlock.type})`
+      return {
+        id: `block-${currentSlideIndex}-${selectedBlock.id}`,
+        kind: 'slide_block',
+        label: isEnglish ? 'Slide object' : 'Oggetto della slide',
+        detail,
+        target: { block: selectedBlock, block_id: selectedBlock.id, slide_index: currentSlideIndex, slide_title: currentSlide.title },
+        beforePreview: selectedBlock.content || selectedBlock.type,
+      }
+    }
+    if (mode === 'slides') {
+      return {
+        id: `slide-${currentSlideIndex}-${currentSlide.id}`,
+        kind: 'slide',
+        label: isEnglish ? 'Current slide' : 'Slide corrente',
+        detail: `${currentSlideIndex + 1}. ${currentSlide.title}`,
+        target: { slide: currentSlide, slide_index: currentSlideIndex },
+        beforePreview: `${currentSlide.title}\n${currentSlide.blocks.length} ${isEnglish ? 'objects' : 'oggetti'}`,
+      }
+    }
+    return null
+  })()
+  const presentationAssistContext: DocumentAssistContext | null = mode === 'slides' ? {
+    id: `presentation-${document.id}-${document.slides.length}`,
+    kind: 'presentation',
+    label: isEnglish ? 'Whole presentation' : 'Intera presentazione',
+    detail: `${document.title} · ${document.slides.length} slide`,
+    target: { title: document.title, format: document.format, slides: document.slides },
+    beforePreview: `${document.title}\n${document.slides.length} slide`,
+  } : null
+  const selectedSlides = document.slides.filter((slide) => selectedSlideIds.includes(slide.id))
+  const selectionAssistContext: DocumentAssistContext | null = mode === 'slides' && selectedSlides.length > 1 ? {
+    id: `slide-selection-${selectedSlides.map((slide) => slide.id).join('-')}`,
+    kind: 'presentation',
+    label: isEnglish ? 'Selected slides' : 'Slide selezionate',
+    detail: selectedSlides.map((slide, index) => `${document.slides.indexOf(slide) + 1}. ${slide.title || `Slide ${index + 1}`}`).join(' · '),
+    target: {
+      title: document.title,
+      format: document.format,
+      slides: selectedSlides,
+      selected_slide_ids: selectedSlides.map((slide) => slide.id),
+    },
+    beforePreview: `${selectedSlides.length} ${isEnglish ? 'selected slides' : 'slide selezionate'}`,
+  } : null
+
+  useEffect(() => {
+    if (!editor) return
+    const trackSelection = () => {
+      const { from, to } = editor.state.selection
+      const text = editor.state.doc.textBetween(from, to, ' ').trim()
+      if (text) setDocumentSelection({ from, to, text })
+      else if (editor.isFocused) setDocumentSelection(null)
+    }
+    editor.on('selectionUpdate', trackSelection)
+    return () => {
+      editor.off('selectionUpdate', trackSelection)
+    }
+  }, [editor])
+
+  const applyDocumentAgentProposal = (proposal: Record<string, unknown>) => {
+    const clientContext = proposal.client_context && typeof proposal.client_context === 'object'
+      ? proposal.client_context as Record<string, unknown>
+      : {}
+    if (proposal.kind === 'selected_text' && editor && typeof proposal.replacement_text === 'string') {
+      const from = typeof clientContext.from === 'number' ? clientContext.from : documentSelection?.from
+      const to = typeof clientContext.to === 'number' ? clientContext.to : documentSelection?.to
+      if (from === undefined || to === undefined) return
+      editor.chain().focus().deleteRange({ from, to }).insertContent(proposal.replacement_text).run()
+      setDocumentSelection(null)
+      return
+    }
+    if (proposal.kind === 'slide_block' && proposal.replacement_block && typeof proposal.replacement_block === 'object') {
+      const replacement = proposal.replacement_block as Block
+      const targetBlockId = typeof clientContext.block_id === 'string' ? clientContext.block_id : selectedBlockId
+      const targetSlideIndex = typeof clientContext.slide_index === 'number' ? clientContext.slide_index : currentSlideIndex
+      if (!targetBlockId) return
+      setDocument((current) => ({
+        ...current,
+        slides: current.slides.map((slide, slideIndex) => slideIndex === targetSlideIndex
+          ? { ...slide, blocks: slide.blocks.map((block) => block.id === targetBlockId ? { ...replacement, id: block.id, zIndex: block.zIndex } : block) }
+          : slide),
+      }))
+      return
+    }
+    if (proposal.kind === 'slide' && proposal.replacement_slide && typeof proposal.replacement_slide === 'object') {
+      const replacement = proposal.replacement_slide as Slide
+      const targetSlideIndex = typeof clientContext.slide_index === 'number' ? clientContext.slide_index : currentSlideIndex
+      setDocument((current) => ({
+        ...current,
+        slides: current.slides.map((slide, index) => index === targetSlideIndex ? { ...replacement, id: slide.id } : slide),
+      }))
+      setSelectedBlockId(null)
+      return
+    }
+    if (proposal.kind === 'presentation' && proposal.replacement_presentation && typeof proposal.replacement_presentation === 'object') {
+      const replacement = proposal.replacement_presentation as Partial<Document>
+      if (!Array.isArray(replacement.slides) || replacement.slides.length === 0) return
+      const selectedIds = Array.isArray(clientContext.selected_slide_ids)
+        ? clientContext.selected_slide_ids.filter((id): id is string => typeof id === 'string')
+        : []
+      if (selectedIds.length > 1) {
+        const replacements = replacement.slides as Slide[]
+        const replacementById = new Map(selectedIds.map((id, index) => [id, replacements[index]]))
+        setDocument((current) => ({
+          ...current,
+          slides: current.slides.map((slide) => {
+            const next = replacementById.get(slide.id)
+            return next ? { ...next, id: slide.id } : slide
+          }),
+        }))
+        setSelectedBlockId(null)
+        return
+      }
+      setDocument((current) => ({
+        ...current,
+        title: typeof replacement.title === 'string' && replacement.title.trim() ? replacement.title : current.title,
+        format: replacement.format === '16:9' || replacement.format === '4:3' ? replacement.format : current.format,
+        slides: replacement.slides as Slide[],
+      }))
+      setCurrentSlideIndex(0)
+      setSelectedBlockId(null)
+      setSelectedSlideIds([])
+    }
+  }
+  const formatDocumentDateTime = (value: string) =>
+    new Date(value).toLocaleString(dateLocale, {
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    })
 
   const createNewDocument = () => {
     const newDocId = crypto.randomUUID()
@@ -205,6 +412,11 @@ export default function TeacherDocumentsPage() {
     setSelectedBlockId(null)
     setDraftId(null)
     draftIdRef.current = null
+    activePublishedTaskIdRef.current = null
+    setActivePublishedTaskId(null)
+    setActiveStudentSubmissionId(null)
+    suppressNextDraftSaveRef.current = true
+    setDraftSaveState('idle')
     setViewMode('editor')
   }
 
@@ -226,6 +438,27 @@ export default function TeacherDocumentsPage() {
     setSelectedBlockId(null)
     setDraftId(null)
     draftIdRef.current = null
+    activePublishedTaskIdRef.current = null
+    setActivePublishedTaskId(null)
+    setActiveStudentSubmissionId(null)
+    suppressNextDraftSaveRef.current = true
+    setDraftSaveState('idle')
+    setViewMode('editor')
+  }
+
+  const createNewSheet = () => {
+    setDocument({
+      id: crypto.randomUUID(), title: defaultSheetTitle, format: 'a4', slides: [], textContent: '',
+      sheetData: DEFAULT_SHEET_DATA, sheetChart: DEFAULT_SHEET_CHART, canvasContent: DEFAULT_CANVAS_CONTENT, webUrl: '',
+    })
+    setMode('sheet')
+    setDraftId(null)
+    draftIdRef.current = null
+    activePublishedTaskIdRef.current = null
+    setActivePublishedTaskId(null)
+    setActiveStudentSubmissionId(null)
+    suppressNextDraftSaveRef.current = true
+    setDraftSaveState('idle')
     setViewMode('editor')
   }
 
@@ -247,20 +480,24 @@ export default function TeacherDocumentsPage() {
     setSelectedBlockId(null)
     setDraftId(null)
     draftIdRef.current = null
+    activePublishedTaskIdRef.current = null
+    setActivePublishedTaskId(null)
+    setActiveStudentSubmissionId(null)
+    suppressNextDraftSaveRef.current = true
+    setDraftSaveState('idle')
     setViewMode('editor')
   }
 
   const buildDraftPayload = () => {
     const type = mode === 'slides' ? 'presentation' : mode === 'sheet' ? 'sheet' : mode === 'canvas' ? 'canvas' : 'document'
-    const contentJson = JSON.stringify(
-      mode === 'slides'
+    const nativeContent = mode === 'slides'
         ? { type: 'presentation_v2', format: document.format, slides: document.slides }
         : mode === 'sheet'
-          ? { type: 'sheet_v1', data: document.sheetData || DEFAULT_SHEET_DATA, chart: document.sheetChart || DEFAULT_SHEET_CHART }
+          ? { type: 'sheet_v1', data: document.sheetData || DEFAULT_SHEET_DATA, chart: document.sheetChart || DEFAULT_SHEET_CHART, styles: document.sheetStyles || {}, dimensions: document.sheetDimensions || {} }
           : mode === 'canvas'
             ? parseCanvasContent(document.canvasContent)
           : { type: 'document_v1', htmlContent: document.textContent || '', header: document.header, margins: docMargins }
-    )
+    const contentJson = JSON.stringify({ ...nativeContent, ...(document.source ? { source: document.source, imported: true } : {}) })
     return {
       title: document.title || 'Senza titolo',
       doc_type: type,
@@ -268,9 +505,58 @@ export default function TeacherDocumentsPage() {
     }
   }
 
+  const importDocumentFiles = async (files: File[]) => {
+    const supported = files.filter(isSupportedDocumentFile)
+    if (!supported.length) {
+      toast({ title: isEnglish ? 'Unsupported format' : 'Formato non supportato', description: 'PDF, PPT/PPTX, DOC/DOCX, MD, XLS/XLSX, CSV', variant: 'destructive' })
+      return
+    }
+    setDocumentImporting(true)
+    try {
+      let lastDraft: DraftDocument | null = null
+      for (const file of supported) {
+        const response = await filesApi.importDocument(file)
+        const imported: DraftDocument = {
+          id: response.data.id,
+          title: response.data.title,
+          type: response.data.doc_type,
+          updatedAt: response.data.updated_at,
+          contentJson: response.data.content_json,
+        }
+        setDraftDocuments(previous => [imported, ...previous.filter(item => item.id !== imported.id)])
+        lastDraft = imported
+      }
+      if (lastDraft) loadDraft(lastDraft)
+      toast({ title: isEnglish ? 'Document imported' : 'Documento importato', description: isEnglish ? 'The original file was preserved.' : 'Il file originale è stato conservato.' })
+    } catch (error: any) {
+      toast({ title: isEnglish ? 'Import failed' : 'Importazione non riuscita', description: error?.response?.data?.detail || error?.message, variant: 'destructive' })
+    } finally {
+      setDocumentImporting(false)
+      if (documentFileInputRef.current) documentFileInputRef.current.value = ''
+    }
+  }
+
+  const exportCurrentDocument = async (targetFormat: 'pdf' | 'ppt' | 'pptx' | 'doc' | 'docx' | 'xlsx') => {
+    setDocumentExporting(true)
+    try {
+      const payload = buildDraftPayload()
+      const response = await filesApi.exportDocument({ title: payload.title, content_json: payload.content_json, target_format: targetFormat })
+      downloadExportedDocument(response.data, payload.title, targetFormat)
+      toast({ title: isEnglish ? `Exported as ${targetFormat.toUpperCase()}` : `Esportato in ${targetFormat.toUpperCase()}` })
+    } catch (error: any) {
+      toast({ title: isEnglish ? 'Export failed' : 'Esportazione non riuscita', description: error?.response?.data?.detail || error?.message, variant: 'destructive' })
+    } finally {
+      setDocumentExporting(false)
+    }
+  }
+
   const flushDraftSaveQueue = async () => {
     if (isSavingDraftRef.current) return
     if (!pendingDraftPayloadRef.current) return
+    if (publishingDocumentRef.current || activePublishedTaskIdRef.current) {
+      pendingDraftPayloadRef.current = null
+      return
+    }
 
     const payload = pendingDraftPayloadRef.current
     pendingDraftPayloadRef.current = null
@@ -278,8 +564,14 @@ export default function TeacherDocumentsPage() {
     setDraftSaveState('saving')
 
     try {
+      let savedDraftId: string
       if (draftIdRef.current) {
         const res = await teacherApi.updateDocumentDraft(draftIdRef.current, payload)
+        savedDraftId = res.data.id
+        if (publishingDocumentRef.current || activePublishedTaskIdRef.current) {
+          await teacherApi.deleteDocumentDraft(savedDraftId).catch(() => undefined)
+          return
+        }
         const updated: DraftDocument = {
           id: res.data.id,
           title: res.data.title,
@@ -290,8 +582,13 @@ export default function TeacherDocumentsPage() {
         setDraftDocuments(prev => [updated, ...prev.filter(d => d.id !== updated.id)])
       } else {
         const res = await teacherApi.createDocumentDraft(payload)
-        draftIdRef.current = res.data.id
-        setDraftId(res.data.id)
+        savedDraftId = res.data.id
+        if (publishingDocumentRef.current || activePublishedTaskIdRef.current) {
+          await teacherApi.deleteDocumentDraft(savedDraftId).catch(() => undefined)
+          return
+        }
+        draftIdRef.current = savedDraftId
+        setDraftId(savedDraftId)
         const created: DraftDocument = {
           id: res.data.id,
           title: res.data.title,
@@ -301,25 +598,36 @@ export default function TeacherDocumentsPage() {
         }
         setDraftDocuments(prev => [created, ...prev.filter(d => d.id !== created.id)])
       }
+      lastDraftPayloadKeyRef.current = JSON.stringify(payload)
       setDraftSaveState('saved')
     } catch (e) {
       console.error('Draft save failed', e)
       setDraftSaveState('error')
     } finally {
       isSavingDraftRef.current = false
-      if (pendingDraftPayloadRef.current) {
+      if (pendingDraftPayloadRef.current && !publishingDocumentRef.current && !activePublishedTaskIdRef.current) {
         void flushDraftSaveQueue()
+      } else if (publishingDocumentRef.current || activePublishedTaskIdRef.current) {
+        pendingDraftPayloadRef.current = null
       }
     }
   }
 
-  const queueDraftSave = () => {
-    pendingDraftPayloadRef.current = buildDraftPayload()
-    void flushDraftSaveQueue()
-  }
-
   const handleTitleChange = (value: string) => {
     setDocument(d => ({ ...d, title: value }))
+  }
+
+  const closeDocumentEditor = () => {
+    const returnTo = (location.state as { documentReturnTo?: unknown } | null)?.documentReturnTo
+    if (typeof returnTo === 'string' && returnTo.startsWith('/teacher/')) {
+      navigate(returnTo)
+      return
+    }
+    const nextParams = new URLSearchParams(searchParams)
+    nextParams.delete('open')
+    nextParams.delete('publish')
+    navigate({ pathname: location.pathname, search: nextParams.toString() }, { replace: true, state: null })
+    setViewMode('list')
   }
 
   const handleDeleteDraft = async (e: React.MouseEvent, id: string) => {
@@ -340,7 +648,7 @@ export default function TeacherDocumentsPage() {
   const handleDeletePublished = async (e: React.MouseEvent, doc: StoredDocument) => {
     e.stopPropagation()
     try {
-      await teacherApi.deleteTask(doc.sessionId, doc.id)
+      await teacherApi.deleteTask(doc.sessionId, doc.taskId)
       setStoredDocuments(prev => prev.filter(d => d.id !== doc.id))
       if (document.id === doc.id) {
         setViewMode('list')
@@ -372,6 +680,12 @@ export default function TeacherDocumentsPage() {
 
   // Load existing documents
   useEffect(() => {
+    const refreshCatalog = () => setCatalogRefreshKey((value) => value + 1)
+    window.addEventListener('golinelli:documents-refresh', refreshCatalog)
+    return () => window.removeEventListener('golinelli:documents-refresh', refreshCatalog)
+  }, [])
+
+  useEffect(() => {
     const fetchDrafts = async () => {
       try {
         const res = await teacherApi.listDocumentDrafts()
@@ -390,55 +704,57 @@ export default function TeacherDocumentsPage() {
     fetchDrafts()
 
     const fetchDocuments = async () => {
-      if (!classesData || classesData.length === 0) return
-      
-      const docs: StoredDocument[] = []
-      
-      for (const session of classesData) {
-        try {
-          const tasksRes = await teacherApi.getTasks(session.id)
-          const tasks = tasksRes.data || []
-          
-          tasks.forEach((t: any) => {
-            if (t.content_json) {
-              try {
-                const content = JSON.parse(t.content_json)
-                if (content.type === 'document_v1' || content.type === 'presentation_v2' || content.type === 'sheet_v1' || content.type === 'canvas_v1' ||
-                    t.task_type === 'presentation' || (t.task_type === 'lesson' && content.sections)) {
-                  
-                  docs.push({
-                    id: t.id,
-                    title: t.title,
-                    type: (content.type === 'presentation_v2' || t.task_type === 'presentation')
-                      ? 'presentation'
-                      : (content.type === 'sheet_v1' ? 'sheet' : content.type === 'canvas_v1' ? 'canvas' : 'document'),
-                    updatedAt: t.created_at,
-                    sessionId: session.id,
-                    sessionName: session.name,
-                    className: session.class_name,
-                    contentJson: t.content_json,
-                    authorName: t.author_name || 'Io'
-                  })
-                }
-              } catch (e) { }
-            }
-          })
-        } catch (e) { console.error(e) }
+      try {
+        const res = await teacherApi.listSharedDocuments()
+        const docs: StoredDocument[] = (res.data || []).map((d: any) => {
+          let type: StoredDocument['type'] = d.doc_type === 'presentation' ? 'presentation' : 'document'
+          try {
+            const content = JSON.parse(d.content_json || '{}')
+            if (content.type === 'presentation_v2') type = 'presentation'
+            else if (content.type === 'sheet_v1') type = 'sheet'
+            else if (content.type === 'canvas_v1') type = 'canvas'
+          } catch {
+            // keep backend-provided type
+          }
+          return {
+            id: d.id,
+            taskId: d.task_id,
+            submissionId: d.submission_id,
+            source: d.source,
+            title: d.title,
+            type,
+            updatedAt: d.updated_at || d.created_at,
+            sessionId: d.session_id,
+            sessionName: d.session_name,
+            className: d.class_name,
+            contentJson: d.content_json,
+            authorName: d.author_name || (d.source === 'student' ? 'Studente' : 'Docente'),
+            correction: d.correction || null,
+          }
+        })
+        setStoredDocuments(docs)
+      } catch (e) {
+        console.error('Failed to load shared documents', e)
       }
-      
-      docs.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
-      setStoredDocuments(docs)
     }
 
     fetchDocuments()
-  }, [classesData])
+  }, [classesData, catalogRefreshKey])
 
   useEffect(() => {
     draftIdRef.current = draftId
   }, [draftId])
 
   useEffect(() => {
-    if (viewMode !== 'editor') return
+    if (viewMode !== 'editor' || activePublishedTaskId) return
+    const payload = buildDraftPayload()
+    const payloadKey = JSON.stringify(payload)
+    if (suppressNextDraftSaveRef.current) {
+      suppressNextDraftSaveRef.current = false
+      lastDraftPayloadKeyRef.current = payloadKey
+      return
+    }
+    if (lastDraftPayloadKeyRef.current === payloadKey) return
     // Don't create a new draft for empty documents
     if (!draftIdRef.current) {
       const html = document.textContent || ''
@@ -451,16 +767,52 @@ export default function TeacherDocumentsPage() {
       if (isEmpty) return
     }
     const timer = setTimeout(() => {
-      queueDraftSave()
+      if (publishingDocumentRef.current || activePublishedTaskIdRef.current) return
+      pendingDraftPayloadRef.current = payload
+      void flushDraftSaveQueue()
     }, 600)
     return () => clearTimeout(timer)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [document, mode, docMargins, viewMode])
+  }, [document, mode, docMargins, viewMode, activePublishedTaskId])
+
+  useEffect(() => {
+    if (viewMode !== 'editor' || !activeStudentSubmissionId) return
+    const contentJson = buildDraftPayload().content_json
+    if (lastCorrectionPayloadRef.current === contentJson) return
+    const timer = setTimeout(async () => {
+      setCorrectionSaveState('saving')
+      try {
+        const response = await teacherApi.updateDocumentCorrection(activeStudentSubmissionId, contentJson)
+        lastCorrectionPayloadRef.current = contentJson
+        setCorrectionSaveState('saved')
+        setStoredDocuments((previous) => previous.map((item) => (
+          item.submissionId === activeStudentSubmissionId
+            ? { ...item, correction: response.data }
+            : item
+        )))
+      } catch (error) {
+        console.error('Correction save failed', error)
+        setCorrectionSaveState('error')
+      }
+    }, 700)
+    return () => clearTimeout(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [document, mode, docMargins, viewMode, activeStudentSubmissionId])
 
   // Load document
   const loadDocument = (doc: StoredDocument) => {
     try {
-      const content = JSON.parse(doc.contentJson)
+      const correctionContent = doc.source === 'student' && doc.correction?.status === 'pending'
+        ? doc.correction.suggested_content_json
+        : doc.contentJson
+      const content = JSON.parse(correctionContent)
+      activePublishedTaskIdRef.current = doc.taskId
+      setActivePublishedTaskId(doc.taskId)
+      setActiveStudentSubmissionId(doc.source === 'student' ? doc.submissionId || null : null)
+      lastCorrectionPayloadRef.current = doc.source === 'student' ? correctionContent : null
+      setCorrectionSaveState(doc.correction?.status === 'pending' ? 'saved' : 'idle')
+      suppressNextDraftSaveRef.current = true
+      setDraftSaveState('idle')
       
       if (isFullHtmlDocument(content.htmlContent) || isFullHtmlDocument(content.content)) {
         setMode('web')
@@ -477,6 +829,7 @@ export default function TeacherDocumentsPage() {
           sheetChart: DEFAULT_SHEET_CHART,
           canvasContent: DEFAULT_CANVAS_CONTENT,
           webUrl: content.url || '',
+          source: content.source,
         })
       } else if (doc.type === 'presentation' || content.type === 'presentation_v2' || content.slides) {
         setMode('slides')
@@ -497,6 +850,7 @@ export default function TeacherDocumentsPage() {
           slides: safeSlides,
           textContent: '',
           webUrl: '',
+          source: content.source,
         })
         setCurrentSlideIndex(0)
         setSelectedBlockId(null)
@@ -512,8 +866,11 @@ export default function TeacherDocumentsPage() {
           textContent: '',
           sheetData: Array.isArray(content.data) ? content.data : DEFAULT_SHEET_DATA,
           sheetChart: content.chart || DEFAULT_SHEET_CHART,
+          sheetStyles: content.styles || {},
+          sheetDimensions: content.dimensions || {},
           canvasContent: DEFAULT_CANVAS_CONTENT,
           webUrl: '',
+          source: content.source,
         })
       } else if (doc.type === 'canvas' || content.type === 'canvas_v1' || content.items) {
         setMode('canvas')
@@ -529,6 +886,7 @@ export default function TeacherDocumentsPage() {
           sheetChart: DEFAULT_SHEET_CHART,
           canvasContent: JSON.stringify({ type: 'canvas_v1', items: Array.isArray(content.items) ? content.items : [] }),
           webUrl: '',
+          source: content.source,
         })
       } else {
         setMode('document')
@@ -551,6 +909,7 @@ export default function TeacherDocumentsPage() {
           sheetChart: DEFAULT_SHEET_CHART,
           canvasContent: DEFAULT_CANVAS_CONTENT,
           webUrl: '',
+          source: content.source,
         })
       }
       
@@ -561,9 +920,36 @@ export default function TeacherDocumentsPage() {
     }
   }
 
+  useEffect(() => {
+    const openDocumentId = searchParams.get('open')
+    if (!openDocumentId) return
+    if (viewMode === 'editor' && document.id === openDocumentId) return
+    const draft = draftDocuments.find((item) => item.id === openDocumentId)
+    if (draft) {
+      loadDraft(draft)
+      if (searchParams.get('publish') === '1') {
+        window.setTimeout(() => setShowPublishModal(true), 0)
+      }
+      return
+    }
+    const doc = storedDocuments.find((item) => item.id === openDocumentId || item.taskId === openDocumentId)
+    if (doc) {
+      loadDocument(doc)
+      if (searchParams.get('publish') === '1') {
+        window.setTimeout(() => setShowPublishModal(true), 0)
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, storedDocuments, draftDocuments])
+
   const loadDraft = (doc: DraftDocument) => {
     try {
       const content = JSON.parse(doc.contentJson)
+      activePublishedTaskIdRef.current = null
+      setActivePublishedTaskId(null)
+      setActiveStudentSubmissionId(null)
+      suppressNextDraftSaveRef.current = true
+      setDraftSaveState('saved')
       if (isFullHtmlDocument(content.htmlContent) || isFullHtmlDocument(content.content)) {
         setMode('web')
         setDraftId(doc.id)
@@ -579,6 +965,7 @@ export default function TeacherDocumentsPage() {
           sheetChart: DEFAULT_SHEET_CHART,
           canvasContent: DEFAULT_CANVAS_CONTENT,
           webUrl: content.url || '',
+          source: content.source,
         })
       } else if (doc.type === 'presentation' || content.type === 'presentation_v2' || content.slides) {
         setMode('slides')
@@ -599,6 +986,7 @@ export default function TeacherDocumentsPage() {
           slides: safeSlides,
           textContent: '',
           webUrl: '',
+          source: content.source,
         })
         setCurrentSlideIndex(0)
         setSelectedBlockId(null)
@@ -614,8 +1002,11 @@ export default function TeacherDocumentsPage() {
           textContent: '',
           sheetData: Array.isArray(content.data) ? content.data : DEFAULT_SHEET_DATA,
           sheetChart: content.chart || DEFAULT_SHEET_CHART,
+          sheetStyles: content.styles || {},
+          sheetDimensions: content.dimensions || {},
           canvasContent: DEFAULT_CANVAS_CONTENT,
           webUrl: '',
+          source: content.source,
         })
       } else if (doc.type === 'canvas' || content.type === 'canvas_v1' || content.items) {
         setMode('canvas')
@@ -631,6 +1022,7 @@ export default function TeacherDocumentsPage() {
           sheetChart: DEFAULT_SHEET_CHART,
           canvasContent: JSON.stringify({ type: 'canvas_v1', items: Array.isArray(content.items) ? content.items : [] }),
           webUrl: '',
+          source: content.source,
         })
       } else {
         setMode('document')
@@ -653,6 +1045,7 @@ export default function TeacherDocumentsPage() {
           sheetChart: DEFAULT_SHEET_CHART,
           canvasContent: DEFAULT_CANVAS_CONTENT,
           webUrl: '',
+          source: content.source,
         })
       }
       setViewMode('editor')
@@ -660,6 +1053,95 @@ export default function TeacherDocumentsPage() {
       console.error(e)
     }
   }
+
+  const loadDocumentVersions = async () => {
+    if (!draftIdRef.current) {
+      setDocumentVersions([])
+      return
+    }
+    setVersionsLoading(true)
+    try {
+      const response = await teacherApi.listDocumentDraftVersions(draftIdRef.current)
+      setDocumentVersions((response.data || []).map((version: any) => ({
+        id: version.id,
+        draftId: version.draft_id,
+        title: version.title,
+        type: version.doc_type,
+        contentJson: version.content_json,
+        label: version.label,
+        createdAt: version.created_at,
+      })))
+    } catch (error) {
+      console.error('Version history load failed', error)
+      toast({ title: isEnglish ? 'Unable to load version history' : 'Impossibile caricare la cronologia', variant: 'destructive' })
+    } finally {
+      setVersionsLoading(false)
+    }
+  }
+
+  const createVersionCheckpoint = async () => {
+    if (!draftIdRef.current) return
+    setVersionActionLoading(true)
+    try {
+      const currentPayload = buildDraftPayload()
+      pendingDraftPayloadRef.current = currentPayload
+      await flushDraftSaveQueue()
+      while (isSavingDraftRef.current) {
+        await new Promise(resolve => window.setTimeout(resolve, 25))
+      }
+      if (pendingDraftPayloadRef.current) {
+        await flushDraftSaveQueue()
+      }
+      if (lastDraftPayloadKeyRef.current !== JSON.stringify(currentPayload)) {
+        throw new Error('Current document could not be saved before creating a version')
+      }
+      await teacherApi.createDocumentDraftVersion(draftIdRef.current, isEnglish ? 'Manual checkpoint' : 'Versione manuale')
+      await loadDocumentVersions()
+      toast({ title: isEnglish ? 'Version saved' : 'Versione salvata' })
+    } catch (error) {
+      console.error('Version checkpoint failed', error)
+      toast({ title: isEnglish ? 'Unable to save version' : 'Impossibile salvare la versione', variant: 'destructive' })
+    } finally {
+      setVersionActionLoading(false)
+    }
+  }
+
+  const restoreVersion = async (version: DocumentDraftVersion) => {
+    if (!draftIdRef.current) return
+    if (!window.confirm(isEnglish ? 'Restore this version? The current state will remain in history.' : 'Ripristinare questa versione? Lo stato corrente resterà nella cronologia.')) return
+    setVersionActionLoading(true)
+    try {
+      const response = await teacherApi.restoreDocumentDraftVersion(draftIdRef.current, version.id)
+      const restored: DraftDocument = {
+        id: response.data.id,
+        title: response.data.title,
+        type: response.data.doc_type,
+        updatedAt: response.data.updated_at,
+        contentJson: response.data.content_json,
+      }
+      lastDraftPayloadKeyRef.current = null
+      loadDraft(restored)
+      setDraftDocuments(previous => [restored, ...previous.filter(item => item.id !== restored.id)])
+      await loadDocumentVersions()
+      toast({ title: isEnglish ? 'Version restored' : 'Versione ripristinata' })
+    } catch (error) {
+      console.error('Version restore failed', error)
+      toast({ title: isEnglish ? 'Unable to restore version' : 'Impossibile ripristinare la versione', variant: 'destructive' })
+    } finally {
+      setVersionActionLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    if (!showVersionPanel) return
+    void loadDocumentVersions()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showVersionPanel, draftId])
+
+  useEffect(() => {
+    if (mode !== 'slides' || !currentSlide.id || selectedSlideIds.length > 0) return
+    setSelectedSlideIds([currentSlide.id])
+  }, [mode, currentSlide.id, selectedSlideIds.length])
 
   // Fit canvas
   useEffect(() => {
@@ -677,7 +1159,7 @@ export default function TeacherDocumentsPage() {
     window.addEventListener('resize', handleResize)
     handleResize()
     return () => window.removeEventListener('resize', handleResize)
-  }, [document.format, mode, showSidebar])
+  }, [document.format, mode])
 
   // Actions
   const addSlide = () => {
@@ -688,15 +1170,79 @@ export default function TeacherDocumentsPage() {
     }
     setDocument(prev => ({ ...prev, slides: [...prev.slides, newSlide] }))
     setCurrentSlideIndex(document.slides.length)
+    setSelectedSlideIds([newSlide.id])
   }
 
-  const deleteSlide = (index: number) => {
-    if (document.slides.length <= 1) return
-    const newSlides = document.slides.filter((_, i) => i !== index)
-    setDocument(prev => ({ ...prev, slides: newSlides }))
-    if (currentSlideIndex >= index && currentSlideIndex > 0) {
-      setCurrentSlideIndex(currentSlideIndex - 1)
+  const selectSlide = (index: number, event: React.MouseEvent) => {
+    const slide = document.slides[index]
+    if (!slide) return
+    if (event.shiftKey && document.slides[currentSlideIndex]) {
+      const start = Math.min(currentSlideIndex, index)
+      const end = Math.max(currentSlideIndex, index)
+      setSelectedSlideIds(document.slides.slice(start, end + 1).map(item => item.id))
+    } else if (event.metaKey || event.ctrlKey) {
+      setSelectedSlideIds(previous => (
+        previous.includes(slide.id)
+          ? previous.filter(id => id !== slide.id)
+          : [...previous, slide.id]
+      ))
+    } else {
+      setSelectedSlideIds([slide.id])
     }
+    setCurrentSlideIndex(index)
+    setSelectedBlockId(null)
+  }
+
+  const deleteSelectedSlides = () => {
+    if (selectedSlideIds.length === 0) return
+    if (document.slides.length - selectedSlideIds.length < 1) {
+      toast({ title: isEnglish ? 'Keep at least one slide' : 'Mantieni almeno una slide', variant: 'destructive' })
+      return
+    }
+    if (!window.confirm(isEnglish ? `Delete ${selectedSlideIds.length} selected slides?` : `Eliminare ${selectedSlideIds.length} slide selezionate?`)) return
+    const currentId = currentSlide.id
+    const remaining = document.slides.filter(slide => !selectedSlideIds.includes(slide.id))
+    const nextIndex = Math.max(0, remaining.findIndex(slide => slide.id === currentId))
+    setDocument(previous => ({ ...previous, slides: remaining }))
+    setCurrentSlideIndex(nextIndex)
+    setSelectedSlideIds([remaining[nextIndex].id])
+    setSelectedBlockId(null)
+  }
+
+  const moveSelectedSlides = (direction: -1 | 1) => {
+    if (selectedSlideIds.length === 0) return
+    const selectedSet = new Set(selectedSlideIds)
+    const slides = [...document.slides]
+    if (direction < 0) {
+      for (let index = 1; index < slides.length; index += 1) {
+        if (selectedSet.has(slides[index].id) && !selectedSet.has(slides[index - 1].id)) {
+          ;[slides[index - 1], slides[index]] = [slides[index], slides[index - 1]]
+        }
+      }
+    } else {
+      for (let index = slides.length - 2; index >= 0; index -= 1) {
+        if (selectedSet.has(slides[index].id) && !selectedSet.has(slides[index + 1].id)) {
+          ;[slides[index], slides[index + 1]] = [slides[index + 1], slides[index]]
+        }
+      }
+    }
+    const currentId = currentSlide.id
+    setDocument(previous => ({ ...previous, slides }))
+    setCurrentSlideIndex(Math.max(0, slides.findIndex(slide => slide.id === currentId)))
+  }
+
+  const dropSelectedSlidesAt = (targetIndex: number) => {
+    if (draggedSlideIds.length === 0) return
+    const draggedSet = new Set(draggedSlideIds)
+    const moving = document.slides.filter(slide => draggedSet.has(slide.id))
+    const remaining = document.slides.filter(slide => !draggedSet.has(slide.id))
+    const targetId = document.slides[targetIndex]?.id
+    const insertionIndex = targetId ? Math.max(0, remaining.findIndex(slide => slide.id === targetId)) : remaining.length
+    const slides = [...remaining.slice(0, insertionIndex), ...moving, ...remaining.slice(insertionIndex)]
+    const currentId = currentSlide.id
+    setDocument(previous => ({ ...previous, slides }))
+    setCurrentSlideIndex(Math.max(0, slides.findIndex(slide => slide.id === currentId)))
+    setDraggedSlideIds([])
   }
 
   const updateSlideBlocks = (blocks: Block[]) => {
@@ -705,25 +1251,39 @@ export default function TeacherDocumentsPage() {
     setDocument(prev => ({ ...prev, slides: newSlides }))
   }
 
-  const addSlideBlock = (type: 'text' | 'image') => {
+  const addSlideBlock = (type: SlideBlockType) => {
     const dims = FORMAT_DIMENSIONS[document.format]
-    const newBlock: Block = {
-      id: crypto.randomUUID(),
-      type,
-      content: type === 'text'
-        ? (isEnglish ? 'New Text' : 'Nuovo Testo')
-        : `https://placehold.co/400x300?text=${encodeURIComponent(isEnglish ? 'Image' : 'Immagine')}`,
-      x: dims.width / 2 - 100,
-      y: dims.height / 2 - (type === 'text' ? 50 : 150),
-      width: 200,
-      height: type === 'text' ? 100 : 300,
-      style: {
-        fontSize: 24,
-        color: '#000000',
-        backgroundColor: 'transparent',
-        textAlign: 'center',
-        padding: 10
+    let newBlock: Block
+    if (type === 'text') {
+      newBlock = {
+        id: crypto.randomUUID(),
+        type: 'text',
+        content: isEnglish ? 'New Text' : 'Nuovo Testo',
+        x: dims.width / 2 - 100,
+        y: dims.height / 2 - 50,
+        width: 200,
+        height: 100,
+        style: {
+          fontSize: 24,
+          color: '#000000',
+          backgroundColor: 'transparent',
+          textAlign: 'center',
+          padding: 10
+        }
       }
+    } else if (type === 'image') {
+      newBlock = {
+        id: crypto.randomUUID(),
+        type: 'image',
+        content: `https://placehold.co/400x300?text=${encodeURIComponent(isEnglish ? 'Image' : 'Immagine')}`,
+        x: dims.width / 2 - 100,
+        y: dims.height / 2 - 150,
+        width: 200,
+        height: 300,
+        style: {}
+      }
+    } else {
+      newBlock = createShapeBlock(type, dims)
     }
     updateSlideBlocks([...currentSlide.blocks, newBlock])
     setSelectedBlockId(newBlock.id)
@@ -747,16 +1307,23 @@ export default function TeacherDocumentsPage() {
 
   const updateBlockStyle = (key: string, value: any) => {
     if (!selectedBlockId) return
-    const newBlocks = currentSlide.blocks.map(b => 
-      b.id === selectedBlockId 
-        ? { ...b, style: { ...b.style, [key]: value } }
-        : b
-    )
+    const newBlocks = currentSlide.blocks.map(b => {
+      if (b.id !== selectedBlockId) return b
+      if (key === 'rotation') return { ...b, rotation: value }
+      // `key` is a dynamic string (toolbar only ever passes a key valid for the selected block's
+      // own type), so TS can't narrow the resulting style shape back to the union member — safe cast.
+      return { ...b, style: { ...b.style, [key]: value } } as Block
+    })
     updateSlideBlocks(newBlocks)
   }
 
   const handlePublish = async () => {
     if (!selectedSessionId) return
+    const isPublishingNow = publishMode === 'published'
+    if (isPublishingNow) {
+      publishingDocumentRef.current = true
+      pendingDraftPayloadRef.current = null
+    }
     try {
       let contentJson = ""
       let taskType = ""
@@ -779,6 +1346,8 @@ export default function TeacherDocumentsPage() {
           title: document.title,
           data: document.sheetData || DEFAULT_SHEET_DATA,
           chart: document.sheetChart || DEFAULT_SHEET_CHART,
+          styles: document.sheetStyles || {},
+          dimensions: document.sheetDimensions || {},
         })
         taskType = 'lesson'
       } else if (mode === 'canvas') {
@@ -795,9 +1364,13 @@ export default function TeacherDocumentsPage() {
         taskType = 'lesson'
       }
 
+      if (document.source) {
+        contentJson = JSON.stringify({ ...JSON.parse(contentJson), source: document.source, imported: true })
+      }
+
       const response = await teacherApi.createTask(selectedSessionId, {
         title: document.title,
-        description: `Documento creato con Golinelli AI Editor (${mode === 'slides' ? 'Presentazione' : mode === 'sheet' ? 'Foglio' : mode === 'canvas' ? 'Lavagna' : 'Testo'})`,
+        description: `Documento creato con Golinelli AI Editor (${mode === 'slides' ? 'Presentazione' : mode === 'sheet' ? 'Tabelle' : mode === 'canvas' ? 'Lavagna' : 'Testo'})`,
         task_type: taskType,
         content_json: contentJson
       })
@@ -817,12 +1390,49 @@ export default function TeacherDocumentsPage() {
         })
       }
 
+      if (publishMode === 'published' && taskId) {
+        activePublishedTaskIdRef.current = taskId
+        setActivePublishedTaskId(taskId)
+        const publishedAt = response.data?.created_at || new Date().toISOString()
+        const selectedSession = (classesData || []).find((session: any) => session.id === selectedSessionId)
+        const publishedDocument: StoredDocument = {
+          id: taskId,
+          taskId,
+          submissionId: null,
+          source: 'teacher',
+          title: document.title,
+          type: mode === 'slides' ? 'presentation' : mode === 'sheet' ? 'sheet' : mode === 'canvas' ? 'canvas' : 'document',
+          updatedAt: publishedAt,
+          sessionId: selectedSessionId,
+          sessionName: selectedSession?.name || selectedSessionId,
+          className: selectedSession?.class_name || '',
+          contentJson,
+          authorName: isEnglish ? 'Teacher' : 'Docente',
+        }
+        setStoredDocuments(prev => [publishedDocument, ...prev.filter(doc => doc.taskId !== taskId)])
+
+        const publishedDraftId = draftIdRef.current
+        if (publishedDraftId) {
+          try {
+            await teacherApi.deleteDocumentDraft(publishedDraftId)
+          } catch (deleteError) {
+            console.error('Failed to delete published draft', deleteError)
+          }
+          setDraftDocuments(prev => prev.filter(doc => doc.id !== publishedDraftId))
+          setDraftId(null)
+          draftIdRef.current = null
+        }
+        setDraftSaveState('idle')
+      }
+
+      publishingDocumentRef.current = false
       setShowPublishModal(false)
       toast({
         title: publishMode === 'published' ? "Documento pubblicato!" : "Documento salvato in bozza",
         className: publishMode === 'published' ? "bg-green-500 text-white" : undefined,
       })
     } catch (e) {
+      publishingDocumentRef.current = false
       console.error('Publish error:', e)
       toast({ title: "Errore pubblicazione", variant: "destructive" })
     }
@@ -870,7 +1480,7 @@ export default function TeacherDocumentsPage() {
     updateAnchor()
     window.addEventListener('resize', updateAnchor)
     return () => window.removeEventListener('resize', updateAnchor)
-  }, [mode, showSidebar])
+  }, [mode])
 
   // ── Fuzzy search helper ───────────────────────────────────────────────────
   const fuzzyMatch = (query: string, ...fields: string[]) => {
@@ -883,7 +1493,9 @@ export default function TeacherDocumentsPage() {
   // ── Document list view (default) ─────────────────────────────────────────
   if (!isMobile && viewMode === 'list') {
     const filteredDrafts = draftDocuments.filter(d => fuzzyMatch(docSearch, d.title, d.type))
-    const filteredStored = storedDocuments.filter(d => fuzzyMatch(docSearch, d.title, d.sessionName, d.className))
+    const filteredStored = storedDocuments.filter(d => fuzzyMatch(docSearch, d.title, d.sessionName, d.className, d.authorName))
+    const filteredTeacherDocuments = filteredStored.filter(doc => doc.source === 'teacher')
+    const filteredStudentDocuments = filteredStored.filter(doc => doc.source === 'student')
     const docIcon = (type: string) => {
       if (type === 'presentation') return <Monitor className="h-5 w-5" />
       if (type === 'sheet') return <FileSpreadsheet className="h-5 w-5" />
@@ -894,20 +1506,50 @@ export default function TeacherDocumentsPage() {
       `${PASTEL_ICON_BACKGROUNDS[docTone(type)]} ${PASTEL_ICON_TEXT[docTone(type)]}`
     return (
       <>
-        <div className="h-full flex flex-col bg-slate-100 overflow-hidden">
-          <div className="h-14 bg-white/90 border-b border-slate-200/80 flex items-center justify-between px-6 z-20 shadow-sm shrink-0 backdrop-blur-sm">
+        <div
+          className="relative h-full flex flex-col bg-slate-100 overflow-hidden"
+          onDragEnter={(event) => { event.preventDefault(); setDocumentDragActive(true) }}
+          onDragOver={(event) => { event.preventDefault(); setDocumentDragActive(true) }}
+          onDragLeave={(event) => { if (event.currentTarget === event.target) setDocumentDragActive(false) }}
+          onDrop={(event) => {
+            event.preventDefault()
+            setDocumentDragActive(false)
+            void importDocumentFiles(Array.from(event.dataTransfer.files))
+          }}
+        >
+          <input ref={documentFileInputRef} type="file" multiple accept={DOCUMENT_IMPORT_ACCEPT} className="hidden" onChange={(event) => void importDocumentFiles(Array.from(event.target.files || []))} />
+          <div className="h-14 bg-white/90 border-b border-slate-200/80 flex items-center px-6 z-20 shadow-sm shrink-0 backdrop-blur-sm">
             <div className="flex items-center gap-2">
               <FileText className="h-4 w-4 text-slate-500" />
               <h1 className="text-base font-bold text-slate-800">{isEnglish ? 'Documents' : 'Documenti'}</h1>
             </div>
-            <Button onClick={() => setShowNewModal(true)} className="bg-[#E91E63] text-white hover:bg-[#d61b5b]">
-              <Plus className="h-4 w-4 mr-2" />
-              {isEnglish ? 'New' : 'Nuovo'}
-            </Button>
           </div>
 
           <div className="flex-1 overflow-y-auto p-6">
-            <div className="max-w-5xl mx-auto space-y-8">
+            <div className="max-w-6xl mx-auto space-y-7">
+
+              <section className="mx-auto grid w-full max-w-6xl gap-2.5 sm:grid-cols-2 lg:grid-cols-5">
+                <button type="button" onClick={createNewDocument} className="flex min-h-[76px] items-start gap-3 rounded-xl border border-emerald-200/80 bg-emerald-50/70 p-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-emerald-300 hover:bg-emerald-100/70 hover:shadow-md">
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-emerald-700 shadow-sm"><FileText className="h-5 w-5" /></span>
+                  <span className="min-w-0 pt-0.5"><span className="block text-[13px] font-black leading-5 text-slate-950">{isEnglish ? 'New document' : 'Nuovo documento'}</span><span className="mt-0.5 block text-[11px] leading-4 text-slate-500">{isEnglish ? 'Write and format.' : 'Scrivi e impagina.'}</span></span>
+                </button>
+                <button type="button" onClick={createNewPresentation} className="flex min-h-[76px] items-start gap-3 rounded-xl border border-indigo-200/80 bg-indigo-50/70 p-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-indigo-300 hover:bg-indigo-100/70 hover:shadow-md">
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-indigo-700 shadow-sm"><MonitorPlay className="h-5 w-5" /></span>
+                  <span className="min-w-0 pt-0.5"><span className="block text-[13px] font-black leading-5 text-slate-950">{isEnglish ? 'New presentation' : 'Nuova presentazione'}</span><span className="mt-0.5 block text-[11px] leading-4 text-slate-500">{isEnglish ? 'Create slides.' : 'Crea slide.'}</span></span>
+                </button>
+                <button type="button" onClick={createNewSheet} className="flex min-h-[76px] items-start gap-3 rounded-xl border border-cyan-200/80 bg-cyan-50/70 p-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-cyan-300 hover:bg-cyan-100/70 hover:shadow-md">
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-cyan-700 shadow-sm"><FileSpreadsheet className="h-5 w-5" /></span>
+                  <span className="min-w-0 pt-0.5"><span className="block text-[13px] font-black leading-5 text-slate-950">{isEnglish ? 'New table' : 'Nuova tabella'}</span><span className="mt-0.5 block text-[11px] leading-4 text-slate-500">{isEnglish ? 'Data and formulas.' : 'Dati e formule.'}</span></span>
+                </button>
+                <button type="button" onClick={createNewCanvas} className="flex min-h-[76px] items-start gap-3 rounded-xl border border-amber-200/80 bg-amber-50/70 p-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-amber-300 hover:bg-amber-100/70 hover:shadow-md">
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-amber-700 shadow-sm"><PenTool className="h-5 w-5" /></span>
+                  <span className="min-w-0 pt-0.5"><span className="block text-[13px] font-black leading-5 text-slate-950">{isEnglish ? 'New board' : 'Nuova lavagna'}</span><span className="mt-0.5 block text-[11px] leading-4 text-slate-500">{isEnglish ? 'Draw and collaborate.' : 'Disegna e collabora.'}</span></span>
+                </button>
+                <button type="button" disabled={documentImporting} onClick={() => documentFileInputRef.current?.click()} className="flex min-h-[76px] items-start gap-3 rounded-xl border border-sky-200/80 bg-sky-50/70 p-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-sky-300 hover:bg-sky-100/70 hover:shadow-md disabled:cursor-wait disabled:opacity-60">
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-sky-700 shadow-sm">{documentImporting ? <Loader2 className="h-5 w-5 animate-spin" /> : <FileUp className="h-5 w-5" />}</span>
+                  <span className="min-w-0 pt-0.5"><span className="block text-[13px] font-black leading-5 text-slate-950">{isEnglish ? 'Import file' : 'Importa file'}</span><span className="mt-0.5 block text-[11px] leading-4 text-slate-500">PDF · PPT · DOC · XLS · CSV</span></span>
+                </button>
+              </section>
 
               {/* Search */}
               {(draftDocuments.length > 0 || storedDocuments.length > 0) && (
@@ -934,10 +1576,10 @@ export default function TeacherDocumentsPage() {
                     <FileText className="h-10 w-10 text-slate-500" />
                   </div>
                   <h3 className="text-lg font-bold text-slate-700 mb-1">{isEnglish ? 'No documents yet' : 'Nessun documento'}</h3>
-                  <p className="text-sm text-slate-400 mb-6">{isEnglish ? 'Create your first document to get started' : 'Crea il tuo primo documento per iniziare'}</p>
-                  <Button onClick={() => setShowNewModal(true)} className="bg-[#E91E63] text-white hover:bg-[#d61b5b]">
+                  <p className="text-sm text-slate-400 mb-6">{isEnglish ? 'Create a document or a presentation to get started' : 'Crea un documento oppure una presentazione per iniziare'}</p>
+                  <Button onClick={createNewPresentation}>
                     <Plus className="h-4 w-4 mr-2" />
-                    {isEnglish ? 'Create document' : 'Crea documento'}
+                    {isEnglish ? 'Create presentation' : 'Crea presentazione'}
                   </Button>
                 </div>
               )}
@@ -945,21 +1587,21 @@ export default function TeacherDocumentsPage() {
               {filteredDrafts.length > 0 && (
                 <section>
                   <h2 className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-3">{isEnglish ? 'My Drafts' : 'Le mie Bozze'} {docSearch && <span className="normal-case font-normal">({filteredDrafts.length})</span>}</h2>
-                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                  <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-5">
                     {filteredDrafts.map(doc => (
                       <div
                         key={doc.id}
-                        onClick={() => loadDraft(doc)}
-                        className={`group cursor-pointer rounded-[24px] p-4 shadow-sm transition-all ${PASTEL_SURFACES[docTone(doc.type)]}`}
+                        onClick={() => setDocumentToOpen({ document: doc, onEdit: () => loadDraft(doc) })}
+                        className="group relative cursor-pointer overflow-hidden rounded-2xl border border-slate-200/80 bg-white/95 p-1.5 shadow-[0_6px_20px_-14px_rgba(15,23,42,0.55)] transition-all hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-md"
                       >
-                        <div className={`w-10 h-10 rounded-xl mb-3 flex items-center justify-center ${docColor(doc.type)}`}>
-                          {docIcon(doc.type)}
+                        <DocumentThumbnail contentJson={doc.contentJson} type={doc.type} title={doc.title} />
+                        <div className="px-1.5 pb-1.5 pt-2">
+                          <p className="truncate text-[13px] font-bold text-slate-800">{doc.title}</p>
+                          <p className="mt-1 text-[10px] text-slate-400">{formatDocumentDateTime(doc.updatedAt)}</p>
                         </div>
-                        <p className="text-sm font-bold text-slate-800 truncate mb-1">{doc.title}</p>
-                        <p className="text-[10px] text-slate-400">{new Date(doc.updatedAt).toLocaleDateString(dateLocale, { day: 'numeric', month: 'short', year: 'numeric' })}</p>
                         <button
                           onClick={(e) => handleDeleteDraft(e, doc.id)}
-                          className="mt-2 opacity-0 group-hover:opacity-100 text-slate-300 hover:text-red-500 transition-all"
+                          className="absolute right-3 top-3 rounded-lg bg-white/90 p-1.5 text-slate-400 opacity-0 shadow-sm transition-all hover:text-red-500 group-hover:opacity-100"
                         >
                           <Trash2 className="h-3.5 w-3.5" />
                         </button>
@@ -969,31 +1611,101 @@ export default function TeacherDocumentsPage() {
                 </section>
               )}
 
-              {docSearch && filteredDrafts.length === 0 && filteredStored.length === 0 && (
+              {docSearch && filteredDrafts.length === 0 && filteredTeacherDocuments.length === 0 && filteredStudentDocuments.length === 0 && (
                 <div className="flex flex-col items-center justify-center py-16 text-center">
                   <Search className="h-8 w-8 text-slate-200 mb-3" />
                   <p className="text-sm text-slate-400">{isEnglish ? 'No document matches ' : 'Nessun documento corrisponde a '}<strong>"{docSearch}"</strong></p>
                 </div>
               )}
 
-              {filteredStored.length > 0 && (
+              {filteredStudentDocuments.length > 0 && (
+                <section className="rounded-[26px] border border-emerald-200/80 bg-emerald-50/70 p-4 shadow-sm">
+                  <div className="mb-3 flex items-center justify-between gap-3">
+                    <div>
+                      <h2 className="text-[10px] font-bold uppercase tracking-widest text-emerald-700">{isEnglish ? 'Shared by Students' : 'Condivisi dagli studenti'} {docSearch && <span className="normal-case font-normal">({filteredStudentDocuments.length})</span>}</h2>
+                      <p className="mt-1 text-xs text-emerald-700/70">{isEnglish ? 'Latest submissions from the class' : 'Ultimi invii ricevuti dalla classe'}</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setStudentDocsCollapsed(value => !value)}
+                      className="rounded-full bg-white/80 px-3 py-1.5 text-[11px] font-bold text-emerald-700 shadow-sm ring-1 ring-emerald-100 transition-colors hover:bg-white"
+                    >
+                      {studentDocsCollapsed ? (isEnglish ? 'Expand' : 'Espandi') : (isEnglish ? 'Collapse' : 'Comprimi')}
+                    </button>
+                  </div>
+
+                  {studentDocsCollapsed ? (
+                    <div className="flex min-h-10 items-center gap-2 overflow-x-auto rounded-2xl bg-white/65 px-2 py-2">
+                      {filteredStudentDocuments.map(doc => (
+                        <button
+                          key={doc.id}
+                          type="button"
+                          onClick={() => setDocumentToOpen({ document: doc, onEdit: () => loadDocument(doc) })}
+                          title={`${doc.title} · ${doc.authorName}`}
+                          className={`flex max-w-[260px] shrink-0 items-center gap-2 rounded-xl px-2.5 py-2 text-left shadow-sm transition-transform hover:-translate-y-0.5 ${docColor(doc.type)}`}
+                        >
+                          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white/55">
+                            {docIcon(doc.type)}
+                          </span>
+                          <span className="min-w-0">
+                            <span className="block truncate text-[11px] font-bold leading-tight text-slate-800">{doc.authorName}</span>
+                            <span className="block truncate text-[11px] leading-tight text-slate-600">{doc.title}</span>
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-5">
+                      {filteredStudentDocuments.map(doc => (
+                        <div
+                          key={doc.id}
+                          onClick={() => setDocumentToOpen({ document: doc, onEdit: () => loadDocument(doc) })}
+                          className="group relative cursor-pointer overflow-hidden rounded-2xl border border-emerald-200/80 bg-white/95 p-1.5 shadow-[0_6px_20px_-14px_rgba(15,23,42,0.55)] transition-all hover:-translate-y-0.5 hover:border-emerald-300 hover:shadow-md"
+                        >
+                          <DocumentThumbnail contentJson={doc.contentJson} type={doc.type} title={doc.title} />
+                          <div className="px-1.5 pb-1.5 pt-2">
+                            <p className="truncate text-[13px] font-bold text-slate-800">{doc.title}</p>
+                            <p className="mt-1 flex items-center gap-1 truncate text-[10px] text-slate-500">
+                              <User className="h-3 w-3 text-emerald-500" />
+                              {isEnglish ? 'Author' : 'Autore'}: {doc.authorName}
+                            </p>
+                            <p className="mt-1 truncate text-[10px] text-slate-400">{doc.className} · {formatDocumentDateTime(doc.updatedAt)}</p>
+                          </div>
+                          <button
+                            onClick={(e) => handleDeletePublished(e, doc)}
+                            className="absolute right-3 top-3 rounded-lg bg-white/90 p-1.5 text-slate-400 opacity-0 shadow-sm transition-all hover:text-red-500 group-hover:opacity-100"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </section>
+              )}
+
+              {filteredTeacherDocuments.length > 0 && (
                 <section>
-                  <h2 className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-3">{isEnglish ? 'Published in Sessions' : 'Pubblicati nelle Sessioni'} {docSearch && <span className="normal-case font-normal">({filteredStored.length})</span>}</h2>
-                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-                    {filteredStored.map(doc => (
+                  <h2 className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-3">{isEnglish ? 'Shared by Teacher' : 'Condivisi dal docente'} {docSearch && <span className="normal-case font-normal">({filteredTeacherDocuments.length})</span>}</h2>
+                  <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-5">
+                    {filteredTeacherDocuments.map(doc => (
                       <div
                         key={doc.id}
-                        onClick={() => loadDocument(doc)}
-                        className={`group cursor-pointer rounded-[24px] p-4 shadow-sm transition-all ${PASTEL_SURFACES[docTone(doc.type)]}`}
+                        onClick={() => setDocumentToOpen({ document: doc, onEdit: () => loadDocument(doc) })}
+                        className="group relative cursor-pointer overflow-hidden rounded-2xl border border-slate-200/80 bg-white/95 p-1.5 shadow-[0_6px_20px_-14px_rgba(15,23,42,0.55)] transition-all hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-md"
                       >
-                        <div className={`w-10 h-10 rounded-xl mb-3 flex items-center justify-center ${docColor(doc.type)}`}>
-                          {docIcon(doc.type)}
+                        <DocumentThumbnail contentJson={doc.contentJson} type={doc.type} title={doc.title} />
+                        <div className="px-1.5 pb-1.5 pt-2">
+                          <p className="truncate text-[13px] font-bold text-slate-800">{doc.title}</p>
+                          <p className="mt-1 flex items-center gap-1 truncate text-[10px] text-slate-500">
+                            <User className="h-3 w-3 text-slate-400" />
+                            {isEnglish ? 'Author' : 'Autore'}: {doc.authorName}
+                          </p>
+                          <p className="mt-1 truncate text-[10px] text-slate-400">{doc.className} · {formatDocumentDateTime(doc.updatedAt)}</p>
                         </div>
-                        <p className="text-sm font-bold text-slate-800 truncate mb-1">{doc.title}</p>
-                        <p className="text-[10px] text-slate-400">{doc.className} · {new Date(doc.updatedAt).toLocaleDateString(dateLocale, { day: 'numeric', month: 'short', year: 'numeric' })}</p>
                         <button
                           onClick={(e) => handleDeletePublished(e, doc)}
-                          className="mt-2 opacity-0 group-hover:opacity-100 text-slate-300 hover:text-red-500 transition-all"
+                          className="absolute right-3 top-3 rounded-lg bg-white/90 p-1.5 text-slate-400 opacity-0 shadow-sm transition-all hover:text-red-500 group-hover:opacity-100"
                         >
                           <Trash2 className="h-3.5 w-3.5" />
                         </button>
@@ -1004,21 +1716,30 @@ export default function TeacherDocumentsPage() {
               )}
             </div>
           </div>
+          {documentDragActive && (
+            <div className="pointer-events-none absolute inset-4 z-50 flex items-center justify-center rounded-[28px] border-2 border-dashed border-sky-500 bg-sky-50/95 shadow-2xl backdrop-blur-sm">
+              <div className="text-center"><FileUp className="mx-auto h-12 w-12 text-sky-600" /><p className="mt-3 text-lg font-black text-slate-900">{isEnglish ? 'Drop files to import' : 'Rilascia i file per importarli'}</p><p className="mt-1 text-sm text-slate-600">PDF, PPT/PPTX, DOC/DOCX, MD, XLS/XLSX, CSV</p></div>
+            </div>
+          )}
         </div>
 
+        {documentToOpen && <DocumentOpenModal document={documentToOpen.document} onEdit={documentToOpen.onEdit} onClose={() => setDocumentToOpen(null)} isEnglish={isEnglish} />}
         {showNewModal && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
             <div className={`w-full max-w-md mx-4 rounded-[28px] p-6 shadow-xl ${PASTEL_SURFACES.slate}`}>
               <h3 className="text-lg font-semibold mb-2">{isEnglish ? 'Create new' : 'Crea nuovo'}</h3>
               <p className="text-sm text-gray-600 mb-4">{isEnglish ? 'Choose the type of content to create.' : 'Scegli il tipo di contenuto da creare.'}</p>
               <div className="flex flex-col gap-3">
-                <Button className="w-full justify-center bg-[#E91E63] hover:bg-[#d61b5b] text-white" onClick={() => { createNewDocument(); setShowNewModal(false) }}>
+                <Button className="w-full justify-center" onClick={() => { createNewDocument(); setShowNewModal(false) }}>
                   <FileText className="h-4 w-4 mr-2" />{isEnglish ? 'New document' : 'Nuovo documento'}
                 </Button>
-                <Button className="w-full justify-center bg-[#E91E63] hover:bg-[#d61b5b] text-white" onClick={() => { createNewPresentation(); setShowNewModal(false) }}>
+                <Button className="w-full justify-center" onClick={() => { createNewPresentation(); setShowNewModal(false) }}>
                   <Monitor className="h-4 w-4 mr-2" />{isEnglish ? 'New presentation' : 'Nuova presentazione'}
                 </Button>
-                <Button className="w-full justify-center bg-[#E91E63] hover:bg-[#d61b5b] text-white" onClick={() => { createNewCanvas(); setShowNewModal(false) }}>
+                <Button className="w-full justify-center" onClick={() => { createNewSheet(); setShowNewModal(false) }}>
+                  <FileSpreadsheet className="h-4 w-4 mr-2" />{isEnglish ? 'Tables' : 'Tabelle'}
+                </Button>
+                <Button className="w-full justify-center" onClick={() => { createNewCanvas(); setShowNewModal(false) }}>
                   <PenTool className="h-4 w-4 mr-2" />{isEnglish ? 'New board' : 'Nuova lavagna'}
                 </Button>
               </div>
@@ -1037,7 +1758,7 @@ export default function TeacherDocumentsPage() {
     const docTypeLabel: Record<string, string> = {
       presentation: isEnglish ? '📊 Presentation' : '📊 Presentazione',
       document: isEnglish ? '📄 Document' : '📄 Documento',
-      sheet: isEnglish ? '📋 Sheet' : '📋 Foglio',
+      sheet: isEnglish ? '📋 Tables' : '📋 Tabelle',
       canvas: '🎨 Canvas',
     }
     return (
@@ -1096,64 +1817,100 @@ export default function TeacherDocumentsPage() {
       <div className="h-full flex flex-col bg-slate-100 overflow-hidden">
 
         {/* Header / Meta-Toolbar */}
-        <div className="h-14 bg-white/90 border-b border-slate-200/80 flex items-center justify-between px-4 z-20 shadow-sm shrink-0 backdrop-blur-sm">
-          <div className="flex items-center gap-4">
+        <div className="relative h-16 bg-white border-b border-slate-200 flex items-center justify-between px-4 z-30 shrink-0">
+          <div className="flex min-w-0 items-center gap-2">
              <Button
                variant="ghost"
                size="sm"
-               onClick={() => setViewMode('list')}
-               className="text-slate-500 gap-1"
+               onClick={closeDocumentEditor}
+               className="shrink-0 text-slate-600 gap-1 font-semibold"
              >
                <ChevronLeft className="h-4 w-4" />
-               {isEnglish ? 'Documents' : 'Documenti'}
+               {isEnglish ? 'All documents' : 'Tutti i documenti'}
              </Button>
-
-             <Button
-               variant="ghost"
-               size="sm"
-               onClick={() => setShowSidebar(!showSidebar)}
-               className="mr-2 text-slate-500"
-             >
-               {showSidebar ? <ChevronLeft className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-             </Button>
-
+             <div className="h-7 w-px bg-slate-200" />
+             <Input
+               value={document.title}
+               onChange={(e) => handleTitleChange(e.target.value)}
+               disabled={Boolean(activeStudentSubmissionId)}
+               className="h-10 w-[min(28vw,360px)] border-indigo-200 bg-indigo-50/60 px-3 font-bold text-slate-900 shadow-none focus-visible:ring-indigo-200"
+               placeholder={isEnglish ? 'Document title' : 'Titolo documento'}
+             />
              <Button
                onClick={() => setShowNewModal(true)}
-               className="bg-[#E91E63] text-white hover:bg-[#d61b5b] px-4"
+               tone="accent"
+               surface="soft"
+               density="default"
+               className="shrink-0"
              >
                <Plus className="h-4 w-4 mr-2" />
                {isEnglish ? 'New' : 'Nuovo'}
              </Button>
-             <span className={`text-xs font-medium ${
-               draftSaveState === 'saving'
-                 ? 'text-slate-500'
-                 : draftSaveState === 'saved'
-                   ? 'text-emerald-600'
-                   : draftSaveState === 'error'
-                     ? 'text-red-600'
-                     : 'text-slate-400'
-             }`}>
-               {draftSaveState === 'saving' && (isEnglish ? 'Saving...' : 'Salvataggio...')}
-               {draftSaveState === 'saved' && (isEnglish ? 'Draft saved' : 'Bozza salvata')}
-               {draftSaveState === 'error' && (isEnglish ? 'Save error' : 'Errore salvataggio')}
-               {draftSaveState === 'idle' && (isEnglish ? 'Auto draft' : 'Bozza automatica')}
-             </span>
-
-             <div className="h-6 w-px bg-slate-200" />
-
-             <Input 
-               value={document.title}
-               onChange={(e) => handleTitleChange(e.target.value)}
-               className="font-bold border-transparent hover:border-slate-200 focus:border-violet-500 w-64 text-lg"
-               placeholder={isEnglish ? 'File name...' : 'Nome file...'}
-             />
           </div>
-          
-          <div className="flex gap-2">
-             <Button variant="outline" onClick={() => setShowPublishModal(true)}>
-               <Upload className="h-4 w-4 mr-2" />
-               {isEnglish ? 'Publish' : 'Pubblica'}
+
+          <div className="flex items-center gap-2">
+             <span className={`hidden text-xs font-semibold xl:inline ${draftSaveState === 'error' ? 'text-red-600' : draftSaveState === 'saved' ? 'text-emerald-600' : 'text-slate-400'}`}>
+               {activeStudentSubmissionId
+                 ? (correctionSaveState === 'saving' ? (isEnglish ? 'Saving correction…' : 'Salvataggio correzione…') : (isEnglish ? 'Tracked correction' : 'Correzione tracciata'))
+                 : draftSaveState === 'saving' ? (isEnglish ? 'Saving…' : 'Salvataggio…')
+                   : draftSaveState === 'saved' ? (isEnglish ? 'Saved' : 'Salvato')
+                     : draftSaveState === 'error' ? (isEnglish ? 'Save error' : 'Errore salvataggio')
+                       : ''}
+             </span>
+             <Button
+               variant="ghost"
+               size="icon"
+               className="h-10 w-10 rounded-xl text-slate-600"
+               disabled={!draftId}
+               onClick={() => setShowVersionPanel(true)}
+               title={isEnglish ? 'Version history' : 'Cronologia versioni'}
+             >
+               <History className="h-4 w-4" />
              </Button>
+             {(mode === 'document' || mode === 'slides') && (
+               <Button
+                 variant={documentAgentOpen ? 'default' : 'outline'}
+                 className="rounded-xl"
+                 onClick={() => setDocumentAgentOpen(value => !value)}
+               >
+                 <MonitorPlay className="mr-2 h-4 w-4" />
+                 {isEnglish ? 'Document assistant' : 'Assistente documento'}
+               </Button>
+             )}
+             {mode !== 'canvas' && mode !== 'web' && (
+               <label className="relative flex h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 shadow-sm">
+                 {documentExporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+                 <select
+                   aria-label={isEnglish ? 'Export document' : 'Esporta documento'}
+                   disabled={documentExporting}
+                   defaultValue=""
+                   className="max-w-[112px] cursor-pointer appearance-none bg-transparent pr-3 outline-none disabled:cursor-wait"
+                   onChange={(event) => {
+                     const format = event.target.value as 'pdf' | 'ppt' | 'pptx' | 'doc' | 'docx' | 'xlsx'
+                     if (format) void exportCurrentDocument(format)
+                     event.target.value = ''
+                   }}
+                 >
+                   <option value="" disabled>{isEnglish ? 'Export…' : 'Esporta…'}</option>
+                   <option value="pdf">PDF</option>
+                   {mode === 'slides' && <option value="pptx">PowerPoint (.pptx)</option>}
+                   {mode === 'slides' && <option value="ppt">PowerPoint 97-2003 (.ppt)</option>}
+                   {(mode === 'document' || mode === 'slides' || mode === 'sheet') && <option value="docx">Word (.docx)</option>}
+                   {mode === 'document' && <option value="pptx">PowerPoint (.pptx)</option>}
+                   {mode === 'sheet' && <option value="xlsx">Excel (.xlsx)</option>}
+                 </select>
+               </label>
+             )}
+             {activeStudentSubmissionId ? (
+               <span className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-800">
+                 {isEnglish ? 'Changes are sent to the student' : 'Le modifiche vengono inviate allo studente'}
+               </span>
+             ) : (
+               <Button tone="accent" surface="solid" density="default" onClick={() => setShowPublishModal(true)}>
+                 <Upload className="h-4 w-4 mr-2" />
+                 {isEnglish ? 'Publish' : 'Pubblica'}
+               </Button>
+             )}
           </div>
         </div>
 
@@ -1173,23 +1930,10 @@ export default function TeacherDocumentsPage() {
             onAddSlideImage={addSlideImage}
             selectedBlock={selectedBlock}
             onUpdateBlockStyle={updateBlockStyle}
-            onOpenAIAssist={() => {
-              if (!toolbarHostRef.current) return
-              const rect = toolbarHostRef.current.getBoundingClientRect()
-              setAiPanelAnchor({
-                x: Math.max(20, rect.right - 360),
-                y: rect.bottom + 8
-              })
-              setAiOpenRequestId(v => v + 1)
-            }}
-            onAIAssistAnchorChange={() => {
-              if (!toolbarHostRef.current) return
-              const rect = toolbarHostRef.current.getBoundingClientRect()
-              setAiPanelAnchor({
-                x: Math.max(20, rect.right - 360),
-                y: rect.bottom + 8
-              })
-            }}
+            snapOptions={snapOptions}
+            onChangeSnapOptions={setSnapOptions}
+            onOpenAIAssist={() => setDocumentAgentOpen(true)}
+            onAIAssistAnchorChange={setAiPanelAnchor}
           />
         </div>
         )}
@@ -1197,34 +1941,67 @@ export default function TeacherDocumentsPage() {
         <div className="flex-1 flex overflow-hidden"> 
           
           {/* LEFT SIDEBAR: Documents & Slides */}
-          <div className={`${showSidebar ? 'w-72' : 'w-0'} bg-slate-100 border-r border-slate-200/80 flex flex-col transition-all duration-300 overflow-hidden shrink-0`}>
+          <div className={`${mode === 'slides' ? 'w-64' : 'w-0'} bg-white border-r border-slate-200 flex flex-col transition-all duration-200 overflow-hidden shrink-0`}>
             
             {/* Slide Navigation (Only in Slide Mode) */}
             {mode === 'slides' && (
-              <div className="flex-shrink-0 flex flex-col overflow-hidden max-h-64 border-b border-slate-200/80 bg-white/70 backdrop-blur-sm">
-                 <div className="p-3 border-b border-slate-200/70 flex justify-between items-center">
-                   <span className="font-bold text-[10px] uppercase tracking-widest text-slate-400">{isEnglish ? 'Pages / Slides' : 'Pagine / Slide'}</span>
-                   <Button size="icon" variant="ghost" className="h-6 w-6" onClick={addSlide}>
-                     <Plus className="h-4 w-4" />
-                   </Button>
+              <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-white">
+                 <div className="flex min-h-12 items-center justify-between border-b border-slate-100 px-3">
+                   <div className="flex items-center gap-2">
+                     <span className="font-bold text-[10px] uppercase tracking-widest text-slate-400">{isEnglish ? 'Slides' : 'Slide'}</span>
+                     {selectedSlideIds.length > 1 && <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-[10px] font-bold text-indigo-600">{selectedSlideIds.length}</span>}
+                   </div>
+                   <div className="flex items-center gap-0.5">
+                     <Button size="icon" variant="ghost" className="h-7 w-7" disabled={selectedSlideIds.length === 0} onClick={() => moveSelectedSlides(-1)} title={isEnglish ? 'Move up' : 'Sposta su'}><ArrowUp className="h-3.5 w-3.5" /></Button>
+                     <Button size="icon" variant="ghost" className="h-7 w-7" disabled={selectedSlideIds.length === 0} onClick={() => moveSelectedSlides(1)} title={isEnglish ? 'Move down' : 'Sposta giù'}><ArrowDown className="h-3.5 w-3.5" /></Button>
+                     <Button size="icon" variant="ghost" className="h-7 w-7 text-slate-500 hover:text-red-600" disabled={selectedSlideIds.length === 0} onClick={deleteSelectedSlides} title={isEnglish ? 'Delete selected' : 'Elimina selezionate'}><Trash2 className="h-3.5 w-3.5" /></Button>
+                     <Button size="icon" variant="ghost" className="h-7 w-7 text-indigo-600" onClick={addSlide} title={isEnglish ? 'Add slide' : 'Aggiungi slide'}><Plus className="h-4 w-4" /></Button>
+                   </div>
                  </div>
-                 <div className="flex-1 overflow-y-auto p-2 space-y-2 scrollbar-hide">
+                 <div className="flex-1 overflow-y-auto p-3 space-y-3 scrollbar-hide">
                    {document.slides.map((slide, idx) => (
                      <div 
                        key={slide.id}
-                       onClick={() => { setCurrentSlideIndex(idx); setSelectedBlockId(null); }}
-                       className={`p-3 rounded-2xl transition-all group relative shadow-sm ${currentSlideIndex === idx
-                         ? PASTEL_SURFACES.indigo
-                         : PASTEL_SURFACES.slate}`}
+                       draggable
+                       onDragStart={() => {
+                         const ids = selectedSlideIds.includes(slide.id) ? selectedSlideIds : [slide.id]
+                         setSelectedSlideIds(ids)
+                         setDraggedSlideIds(ids)
+                       }}
+                       onDragOver={(event) => event.preventDefault()}
+                       onDrop={(event) => { event.preventDefault(); dropSelectedSlidesAt(idx) }}
+                       onClick={(event) => selectSlide(idx, event)}
+                       className={`group relative cursor-pointer rounded-xl border p-2 transition-all ${selectedSlideIds.includes(slide.id)
+                         ? 'border-indigo-300 bg-indigo-50/70 shadow-sm ring-1 ring-indigo-100'
+                         : 'border-slate-200 bg-white hover:border-slate-300 hover:shadow-sm'}`}
                      >
-                       <div className="text-[10px] font-bold text-slate-400 uppercase mb-1">Slide {idx + 1}</div>
-                       <div className={`text-sm truncate font-bold ${currentSlideIndex === idx ? 'text-indigo-700' : 'text-slate-700'}`}>{slide.title}</div>
-                       <button 
-                         onClick={(e) => { e.stopPropagation(); deleteSlide(idx); }}
-                         className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-500 transition-opacity"
-                       >
-                         <Trash2 className="h-3.5 w-3.5" />
-                       </button>
+                       <div className="mb-2 flex items-center gap-2 px-0.5">
+                         <GripVertical className="h-3.5 w-3.5 text-slate-300" />
+                         <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">{idx + 1}</span>
+                         <span className="min-w-0 flex-1 truncate text-xs font-semibold text-slate-700">{slide.title}</span>
+                         <CheckSquare className={`h-3.5 w-3.5 ${selectedSlideIds.includes(slide.id) ? 'text-indigo-600' : 'text-slate-200'}`} />
+                       </div>
+                       <div className="relative aspect-video w-full overflow-hidden rounded-lg border border-slate-200 bg-white shadow-inner pointer-events-none">
+                         <div
+                           className="absolute left-0 top-0 origin-top-left"
+                           style={{
+                             width: FORMAT_DIMENSIONS[document.format].width,
+                             height: FORMAT_DIMENSIONS[document.format].height,
+                             transform: `scale(${216 / FORMAT_DIMENSIONS[document.format].width})`,
+                           }}
+                         >
+                           <SlideEditor
+                             blocks={slide.blocks}
+                             onChange={() => undefined}
+                             selectedBlockId={null}
+                             onSelectBlock={() => undefined}
+                             readOnly
+                             slideWidth={FORMAT_DIMENSIONS[document.format].width}
+                             slideHeight={FORMAT_DIMENSIONS[document.format].height}
+                             snapOptions={snapOptions}
+                           />
+                         </div>
+                       </div>
                      </div>
                    ))}
                  </div>
@@ -1232,7 +2009,7 @@ export default function TeacherDocumentsPage() {
             )}
 
             {/* Document Lists */}
-            <div className="flex-1 overflow-y-auto p-3 space-y-6">
+            <div className="hidden">
               {/* Drafts Section */}
               <section>
                 <div className="flex items-center justify-between mb-3 px-1">
@@ -1249,7 +2026,7 @@ export default function TeacherDocumentsPage() {
                   {draftDocuments.map((doc) => (
                     <div
                       key={doc.id}
-                      onClick={() => loadDraft(doc)}
+                      onClick={() => setDocumentToOpen({ document: doc, onEdit: () => loadDraft(doc) })}
                       className={`group flex flex-col p-3 rounded-2xl transition-all cursor-pointer shadow-sm ${draftId === doc.id ? PASTEL_SURFACES[docTone(doc.type)] : PASTEL_SURFACES.slate}`}
                     >
                       <div className="flex items-center gap-3 mb-2">
@@ -1276,7 +2053,7 @@ export default function TeacherDocumentsPage() {
                       <div className="flex items-center justify-between mt-auto">
                         <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-400">
                           <Clock className="h-3 w-3" />
-                          {new Date(doc.updatedAt).toLocaleDateString(dateLocale, { day: 'numeric', month: 'short' })}
+                          {formatDocumentDateTime(doc.updatedAt)}
                         </div>
                         <span className="text-[9px] font-black uppercase tracking-tighter text-slate-300">{isEnglish ? 'Personal Draft' : 'Bozza Personale'}</span>
                       </div>
@@ -1301,7 +2078,7 @@ export default function TeacherDocumentsPage() {
                   {storedDocuments.map((doc) => (
                     <div
                       key={doc.id}
-                      onClick={() => loadDocument(doc)}
+                      onClick={() => setDocumentToOpen({ document: doc, onEdit: () => loadDocument(doc) })}
                       className={`group flex flex-col p-3 rounded-2xl transition-all cursor-pointer shadow-sm ${document.id === doc.id ? PASTEL_SURFACES[docTone(doc.type)] : PASTEL_SURFACES.slate}`}
                     >
                       <div className="flex items-center gap-3 mb-2">
@@ -1331,7 +2108,7 @@ export default function TeacherDocumentsPage() {
                       <div className="flex items-center justify-between mt-auto">
                         <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-400">
                           <Calendar className="h-3 w-3" />
-                          {new Date(doc.updatedAt).toLocaleDateString(dateLocale, { day: 'numeric', month: 'short' })}
+                          {formatDocumentDateTime(doc.updatedAt)}
                         </div>
                         <div className="flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-indigo-50 border border-indigo-200/70 text-[9px] font-black uppercase tracking-tighter text-indigo-600">
                           <Share2 className="h-2 w-2" />
@@ -1346,7 +2123,7 @@ export default function TeacherDocumentsPage() {
           </div>
 
           {/* Main Area */}
-          <div className="flex-1 bg-slate-100 flex items-start justify-center p-2 md:p-3 relative overflow-y-auto" 
+          <div className={`flex-1 flex items-start justify-center p-2 md:p-3 relative overflow-y-auto ${activeStudentSubmissionId ? 'bg-amber-50/70' : 'bg-slate-100'}`}
                onClick={() => setSelectedBlockId(null)} // Deselect block when clicking background
           > 
 
@@ -1376,10 +2153,10 @@ export default function TeacherDocumentsPage() {
                  className="mb-6 print:shadow-none flex flex-col relative transition-all overflow-hidden"
                  style={{
                    width: FORMAT_DIMENSIONS.a4.width,
-                   minHeight: FORMAT_DIMENSIONS.a4.height,
+                   minHeight: FORMAT_DIMENSIONS.a4.height * documentPageCount + DOC_PAGE_GAP * Math.max(0, documentPageCount - 1),
                    transform: `scale(${docScale})`,
                    transformOrigin: 'top center',
-                   backgroundImage: `repeating-linear-gradient(to bottom, #ffffff 0, #ffffff ${FORMAT_DIMENSIONS.a4.height}px, #f1f5f9 ${FORMAT_DIMENSIONS.a4.height}px, #f1f5f9 ${FORMAT_DIMENSIONS.a4.height + DOC_PAGE_GAP}px)`,
+                   backgroundImage: `repeating-linear-gradient(to bottom, #ffffff 0, #ffffff ${FORMAT_DIMENSIONS.a4.height}px, #e5e7eb ${FORMAT_DIMENSIONS.a4.height}px, #e5e7eb ${FORMAT_DIMENSIONS.a4.height + DOC_PAGE_GAP}px)`,
                    boxShadow: '0 10px 30px rgba(15, 23, 42, 0.12)',
                    padding: `${docMargins.vertical}px ${docMargins.horizontal}px`
                  }}
@@ -1455,7 +2232,14 @@ export default function TeacherDocumentsPage() {
                       onEditorReady={(e) => { setEditor(e); setTimeout(() => e.commands.focus('start'), 80) }}
                       contentClassName="h-full min-h-full max-w-none focus:outline-none p-0 cursor-text [&_.ProseMirror]:min-h-full [&_.ProseMirror]:h-full [&_.ProseMirror]:text-[16px] [&_.ProseMirror]:leading-7 [&_.ProseMirror_p]:m-0 [&_.ProseMirror_h1]:m-0 [&_.ProseMirror_h2]:m-0 [&_.ProseMirror_h3]:m-0 [&_.ProseMirror_ul]:my-0 [&_.ProseMirror_ol]:my-0"
                       aiPanelAnchor={aiPanelAnchor}
-                      aiOpenRequestId={aiOpenRequestId}
+                      enableSelectionAssist={false}
+                      pagination={{
+                        pageHeight: FORMAT_DIMENSIONS.a4.height,
+                        pageGap: DOC_PAGE_GAP,
+                        marginTop: docMargins.vertical,
+                        marginBottom: docMargins.vertical,
+                        onPageCountChange: setDocumentPageCount,
+                      }}
                       onMissingSelectionForAI={() => {
                         toast({
                           title: isEnglish ? 'Select text first' : 'Seleziona prima un testo',
@@ -1480,7 +2264,11 @@ export default function TeacherDocumentsPage() {
                  }}
                  onClick={(e) => e.stopPropagation()} // Prevent deselection when clicking slide background
                >
-                  <div className="absolute top-0 left-0 right-0 p-8 z-10 pointer-events-none">
+                  {!currentSlide.blocks.some(block => (
+                    block.type === 'text'
+                    && block.y < 130
+                    && (block.style.fontSize || 0) >= 26
+                  )) && <div className="absolute top-0 left-0 right-0 p-8 z-10 pointer-events-none">
                      <input
                        value={currentSlide.title}
                        onChange={(e) => {
@@ -1491,15 +2279,18 @@ export default function TeacherDocumentsPage() {
                        className="text-4xl font-bold bg-transparent border-none focus:outline-none w-full placeholder-slate-300 pointer-events-auto"
                        placeholder={isEnglish ? 'Slide Title' : 'Titolo Slide'}
                      />
-                  </div>
+                  </div>}
 
                   <div className="flex-1 relative">
-                    <SlideEditor 
-                      blocks={currentSlide.blocks} 
+                    <SlideEditor
+                      blocks={currentSlide.blocks}
                       onChange={updateSlideBlocks}
                       selectedBlockId={selectedBlockId}
                       onSelectBlock={setSelectedBlockId}
                       scale={scale}
+                      slideWidth={FORMAT_DIMENSIONS[document.format].width}
+                      slideHeight={FORMAT_DIMENSIONS[document.format].height}
+                      snapOptions={snapOptions}
                     />
                   </div>
                </div>
@@ -1512,6 +2303,10 @@ export default function TeacherDocumentsPage() {
                    onDataChange={(next) => setDocument(d => ({ ...d, sheetData: next }))}
                    chartConfig={document.sheetChart || DEFAULT_SHEET_CHART}
                    onChartConfigChange={(next) => setDocument(d => ({ ...d, sheetChart: next }))}
+                   styles={document.sheetStyles || {}}
+                   onStylesChange={(next) => setDocument(d => ({ ...d, sheetStyles: next }))}
+                   dimensions={document.sheetDimensions || {}}
+                   onDimensionsChange={(next) => setDocument(d => ({ ...d, sheetDimensions: next }))}
                  />
                </div>
              )}
@@ -1529,9 +2324,76 @@ export default function TeacherDocumentsPage() {
              )}
 
           </div>
+          {documentAgentOpen && (mode === 'slides' || mode === 'document') && (
+            <>
+              <button
+                type="button"
+                className="fixed inset-0 z-40 bg-slate-950/30 backdrop-blur-[1px] xl:hidden"
+                onClick={() => setDocumentAgentOpen(false)}
+                aria-label={isEnglish ? 'Close document assistant' : 'Chiudi assistente documento'}
+              />
+              <DocumentAgentChat
+                context={documentAssistContext}
+                selectionContext={selectionAssistContext}
+                presentationContext={presentationAssistContext}
+                documentContext={{
+                  title: document.title,
+                  mode,
+                  format: document.format,
+                  current_slide_index: currentSlideIndex,
+                }}
+                dims={mode === 'slides' ? FORMAT_DIMENSIONS[document.format] : undefined}
+                onApply={applyDocumentAgentProposal}
+                onClose={() => setDocumentAgentOpen(false)}
+              />
+            </>
+          )}
         </div>
 
+        {showVersionPanel && (
+          <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/35 p-4 backdrop-blur-sm" onClick={() => setShowVersionPanel(false)}>
+            <div className="flex max-h-[78vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl" onClick={(event) => event.stopPropagation()}>
+              <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
+                <div>
+                  <p className="m-0 text-xs font-bold uppercase tracking-widest text-indigo-500">{isEnglish ? 'Version control' : 'Controllo versioni'}</p>
+                  <h3 className="m-0 mt-1 text-lg font-bold text-slate-900">{document.title}</h3>
+                </div>
+                <Button variant="ghost" size="icon" className="rounded-full" onClick={() => setShowVersionPanel(false)}><X className="h-4 w-4" /></Button>
+              </div>
+              <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50 px-5 py-3">
+                <p className="m-0 text-xs text-slate-500">{isEnglish ? 'Automatic snapshots every 5 minutes.' : 'Snapshot automatici ogni 5 minuti.'}</p>
+                <Button size="sm" variant="outline" className="rounded-xl" disabled={versionActionLoading} onClick={createVersionCheckpoint}>
+                  <Save className="mr-2 h-3.5 w-3.5" />{isEnglish ? 'Save version' : 'Salva versione'}
+                </Button>
+              </div>
+              <div className="min-h-0 flex-1 overflow-y-auto p-3">
+                {versionsLoading ? (
+                  <div className="py-10 text-center text-sm text-slate-400">{isEnglish ? 'Loading history…' : 'Caricamento cronologia…'}</div>
+                ) : documentVersions.length === 0 ? (
+                  <div className="rounded-xl border border-dashed border-slate-200 py-10 text-center text-sm text-slate-400">{isEnglish ? 'No versions saved yet.' : 'Nessuna versione salvata.'}</div>
+                ) : (
+                  <div className="space-y-2">
+                    {documentVersions.map((version, index) => (
+                      <div key={version.id} className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 hover:border-indigo-200 hover:bg-indigo-50/30">
+                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-100 text-xs font-bold text-slate-600">v{documentVersions.length - index}</div>
+                        <div className="min-w-0 flex-1">
+                          <p className="m-0 truncate text-sm font-semibold text-slate-800">{version.label || (isEnglish ? 'Saved version' : 'Versione salvata')}</p>
+                          <p className="m-0 mt-0.5 text-xs text-slate-400">{formatDocumentDateTime(version.createdAt)}</p>
+                        </div>
+                        <Button size="sm" variant="ghost" className="rounded-lg text-indigo-600 hover:bg-indigo-50 hover:text-indigo-700" disabled={versionActionLoading} onClick={() => restoreVersion(version)}>
+                          <History className="mr-1.5 h-3.5 w-3.5" />{isEnglish ? 'Restore' : 'Ripristina'}
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* New Document Modal */}
+        {documentToOpen && <DocumentOpenModal document={documentToOpen.document} onEdit={documentToOpen.onEdit} onClose={() => setDocumentToOpen(null)} isEnglish={isEnglish} />}
         {showNewModal && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
             <div className="bg-white rounded-lg p-6 w-full max-w-md mx-4 shadow-xl">
@@ -1560,6 +2422,9 @@ export default function TeacherDocumentsPage() {
                   <Monitor className="h-4 w-4 mr-2" />
                   {isEnglish ? 'New presentation' : 'Nuova presentazione'}
                 </Button>
+                <Button className="w-full justify-center bg-red-500 hover:bg-red-600 text-white" onClick={() => { createNewSheet(); setShowNewModal(false) }}>
+                  <FileSpreadsheet className="h-4 w-4 mr-2" />{isEnglish ? 'Tables' : 'Tabelle'}
+                </Button>
                 <Button
                   className="w-full justify-center bg-red-500 hover:bg-red-600 text-white"
                   onClick={() => {
@@ -1582,7 +2447,7 @@ export default function TeacherDocumentsPage() {
         {showPublishModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg p-6 w-full max-w-md mx-4 shadow-xl">
-            <h3 className="text-lg font-semibold mb-4">{isEnglish ? 'Publish ' : 'Pubblica '}{mode === 'slides' ? (isEnglish ? 'Presentation' : 'Presentazione') : mode === 'sheet' ? (isEnglish ? 'Sheet' : 'Foglio') : mode === 'canvas' ? (isEnglish ? 'Board' : 'Lavagna') : (isEnglish ? 'Document' : 'Documento')}</h3>
+            <h3 className="text-lg font-semibold mb-4">{isEnglish ? 'Publish ' : 'Pubblica '}{mode === 'slides' ? (isEnglish ? 'Presentation' : 'Presentazione') : mode === 'sheet' ? (isEnglish ? 'Tables' : 'Tabelle') : mode === 'canvas' ? (isEnglish ? 'Board' : 'Lavagna') : (isEnglish ? 'Document' : 'Documento')}</h3>
             <p className="text-sm text-gray-600 mb-4">
               {isEnglish ? 'Save this content as an assignment or material for a class.' : 'Salva questo contenuto come compito/materiale per una classe.'}
             </p>
@@ -1620,7 +2485,7 @@ export default function TeacherDocumentsPage() {
             </div>
             <div className="flex justify-end gap-2">
               <Button variant="outline" onClick={() => setShowPublishModal(false)}>{isEnglish ? 'Cancel' : 'Annulla'}</Button>
-              <Button onClick={handlePublish} disabled={!selectedSessionId} className="bg-violet-600 text-white">
+              <Button onClick={handlePublish} disabled={!selectedSessionId}>
                 {publishMode === 'published'
                   ? (isEnglish ? 'Publish now' : 'Pubblica ora')
                   : (isEnglish ? 'Save draft' : 'Salva bozza')}

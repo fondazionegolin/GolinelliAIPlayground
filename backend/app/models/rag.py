@@ -17,6 +17,7 @@ class RAGDocument(Base):
     scope = Column(Enum(Scope), nullable=False)
     class_id = Column(UUID(as_uuid=True), ForeignKey("classes.id"), nullable=True, index=True)
     session_id = Column(UUID(as_uuid=True), ForeignKey("sessions.id"), nullable=True, index=True)
+    project_id = Column(String(128), nullable=True, index=True)
     owner_teacher_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     owner_student_id = Column(UUID(as_uuid=True), ForeignKey("session_students.id"), nullable=True)
     file_id = Column(UUID(as_uuid=True), ForeignKey("files.id"), nullable=True)

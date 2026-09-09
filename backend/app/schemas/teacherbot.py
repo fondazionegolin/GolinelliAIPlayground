@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from typing import Optional, Any
 from uuid import UUID
 from datetime import datetime
@@ -15,6 +15,7 @@ class TeacherbotCreate(BaseModel):
     system_prompt: str
     is_proactive: bool = False
     proactive_message: Optional[str] = None
+    enable_live_voice: bool = False
     enable_reporting: bool = False
     report_prompt: Optional[str] = None
     llm_provider: Optional[str] = None
@@ -31,6 +32,7 @@ class TeacherbotUpdate(BaseModel):
     system_prompt: Optional[str] = None
     is_proactive: Optional[bool] = None
     proactive_message: Optional[str] = None
+    enable_live_voice: Optional[bool] = None
     enable_reporting: Optional[bool] = None
     report_prompt: Optional[str] = None
     llm_provider: Optional[str] = None
@@ -42,7 +44,8 @@ class TeacherbotUpdate(BaseModel):
 class TeacherbotResponse(BaseModel):
     id: UUID
     tenant_id: UUID
-    teacher_id: UUID
+    teacher_id: Optional[UUID] = None
+    creator_student_id: Optional[UUID] = None
     name: str
     synopsis: Optional[str]
     description: Optional[str]
@@ -51,6 +54,7 @@ class TeacherbotResponse(BaseModel):
     system_prompt: str
     is_proactive: bool
     proactive_message: Optional[str]
+    enable_live_voice: bool
     enable_reporting: bool
     report_prompt: Optional[str]
     llm_provider: Optional[str]
@@ -87,14 +91,23 @@ class TeacherbotListResponse(BaseModel):
 # ==================== Publication Schemas ====================
 
 class TeacherbotPublishRequest(BaseModel):
-    class_id: UUID
+    class_id: Optional[UUID] = None
+    student_id: Optional[UUID] = None
+
+    @model_validator(mode="after")
+    def _exactly_one_target(self):
+        if (self.class_id is None) == (self.student_id is None):
+            raise ValueError("Specify exactly one of class_id or student_id")
+        return self
 
 
 class TeacherbotPublicationResponse(BaseModel):
     id: UUID
     teacherbot_id: UUID
-    class_id: UUID
+    class_id: Optional[UUID] = None
     class_name: Optional[str] = None
+    student_id: Optional[UUID] = None
+    student_nickname: Optional[str] = None
     is_active: bool
     published_at: datetime
     published_by_id: UUID
@@ -156,6 +169,11 @@ class TeacherbotMessageResponse(BaseModel):
 class TeacherbotTestMessage(BaseModel):
     content: str
     history: Optional[list[dict[str, str]]] = None  # [{role, content}, ...]
+    # Optional overrides so the teacher can test unsaved edits before hitting "Save"
+    system_prompt: Optional[str] = None
+    temperature: Optional[float] = Field(None, ge=0.0, le=2.0)
+    llm_provider: Optional[str] = None
+    llm_model: Optional[str] = None
 
 
 class TeacherbotTestResponse(BaseModel):
@@ -200,6 +218,74 @@ class StudentTeacherbotResponse(BaseModel):
     color: str
     is_proactive: bool
     proactive_message: Optional[str] = None
+    enable_live_voice: bool = False
+    is_studentbot: bool = False
+
+    class Config:
+        from_attributes = True
+
+
+# ==================== Share Link Schemas ====================
+
+class ShareLinkCreate(BaseModel):
+    expires_at: datetime
+    label: Optional[str] = Field(None, max_length=120)
+    access_code: Optional[str] = Field(None, min_length=4, max_length=12)
+
+
+class ShareLinkResponse(BaseModel):
+    id: UUID
+    teacherbot_id: UUID
+    token: str
+    access_code: str
+    label: Optional[str]
+    expires_at: datetime
+    is_active: bool
+    created_at: datetime
+    revoked_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+class ShareLinkVerifyRequest(BaseModel):
+    access_code: str
+
+
+class ShareLinkPublicInfo(BaseModel):
+    """Non-sensitive bot info shown before the access-code gate"""
+    name: str
+    synopsis: Optional[str]
+    icon: str
+    color: str
+    is_proactive: bool
+    proactive_message: Optional[str] = None
+
+
+class ShareVisitorMessageCreate(BaseModel):
+    content: str
+
+
+class ShareConversationResponse(BaseModel):
+    id: UUID
+    share_link_id: UUID
+    visitor_label: Optional[str]
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class ShareMessageResponse(BaseModel):
+    id: UUID
+    conversation_id: UUID
+    role: str
+    content: str
+    provider: Optional[str]
+    model: Optional[str]
+    token_usage_json: Optional[dict[str, Any]]
+    created_at: datetime
 
     class Config:
         from_attributes = True

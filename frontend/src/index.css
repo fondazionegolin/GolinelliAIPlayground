@@ -1,6 +1,52 @@
 /* Base fonts */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Sofia+Sans:wght@400;500;600;700;800;900&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Sofia+Sans+Semi+Condensed:wght@400;500;600;700;800;900&display=swap');
+@import url('https://fonts.cdnfonts.com/css/lufga');
 @import url('https://fonts.googleapis.com/css2?family=Lexend:wght@300;400;500;600;700&display=swap');
 @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Space+Mono:wght@400;700&family=Courier+Prime:wght@400;700&family=Victor+Mono:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+
+@font-face {
+  font-family: 'Bree 2';
+  src: url('/fonts/Bree%20Regular.otf') format('opentype');
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Bree 2';
+  src: url('/fonts/Bree%20Bold.otf') format('opentype');
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+}
+
+/* Hasklig — monospace with programming ligatures, used for code/agent blocks */
+@font-face {
+  font-family: 'Hasklig';
+  src: url('/fonts/Hasklig-Regular.otf') format('opentype');
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Hasklig';
+  src: url('/fonts/Hasklig-Medium.otf') format('opentype');
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Hasklig';
+  src: url('/fonts/Hasklig-Bold.otf') format('opentype');
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+}
 
 @tailwind base;
 @tailwind components;
@@ -9,80 +55,174 @@
 @layer base {
   :root {
     /* Typography */
-    --font-family-ui: 'Lexend', system-ui, sans-serif;
-    --font-family-brand: 'SofiaPro', 'Lexend', system-ui, sans-serif;
+    --font-family-ui: 'Inter', system-ui, -apple-system, sans-serif;
+    /* Titles / navbar / pills / menus → Plus Jakarta Sans (body stays Inter). */
+    --font-family-emphasis: 'Plus Jakarta Sans', 'Inter', system-ui, -apple-system, sans-serif;
+    --font-family-brand: var(--font-family-emphasis);
     --font-family-mono: 'JetBrains Mono', 'IBM Plex Mono', monospace;
+    /* Code/agent blocks: Hasklig first (ligatures), with mono fallbacks. */
+    --font-family-code: 'Hasklig', 'JetBrains Mono', 'IBM Plex Mono', monospace;
     --font-family: var(--font-family-ui);
     --font-size-xs: 0.75rem;
     --font-size-sm: 0.875rem;
     --font-size-md: 1rem;
-    --font-size-lg: 1.125rem;
-    --font-size-xl: 1.25rem;
-    --font-size-2xl: 1.5rem;
-    --font-size-3xl: 1.875rem;
-    --font-size-4xl: 2.25rem;
-    --font-size-5xl: 3rem;
+    /* Compact title scale: roughly 2pt smaller than the previous newui pass. */
+    --font-size-lg: 0.875rem;
+    --font-size-xl: 1rem;
+    --font-size-2xl: 1.25rem;
+    --font-size-3xl: 1.625rem;
+    --font-size-4xl: 2rem;
+    --font-size-5xl: 2.75rem;
+    --font-size-control-label: 0.6875rem;
+    --font-size-supporting: 0.75rem;
+    --font-size-chat-content: 0.7708rem;
     --line-height-xs: 1.35;
     --line-height-sm: 1.4;
     --line-height-md: 1.5;
     --line-height-lg: 1.6;
     --line-height-title: 1.15;
-    --letter-spacing-tight: -0.025em;
+    --letter-spacing-tight: 0em;
     --letter-spacing-normal: 0em;
     --letter-spacing-wide: 0.02em;
 
+    /* Logo palette */
+    --logo-pink: #fe004d;
+    --logo-blue: #3ea9f4;
+    --logo-violet: #7b69c9;
+    --logo-ink: #17151b;
+    /* Darker, readable variants for text on light surfaces / fills behind white text.
+       The vivid logo blue/violet fail contrast as text on white or behind white text. */
+    --logo-blue-strong: #1278bd;
+    --logo-violet-strong: #55449c;
+    --logo-pink-06: rgba(254, 0, 77, 0.06);
+    --logo-pink-10: rgba(254, 0, 77, 0.10);
+    --logo-pink-14: rgba(254, 0, 77, 0.14);
+    --logo-pink-22: rgba(254, 0, 77, 0.22);
+    --logo-blue-06: rgba(62, 169, 244, 0.06);
+    --logo-blue-10: rgba(62, 169, 244, 0.10);
+    --logo-blue-14: rgba(62, 169, 244, 0.14);
+    --logo-blue-22: rgba(62, 169, 244, 0.22);
+    --logo-violet-06: rgba(123, 105, 201, 0.06);
+    --logo-violet-10: rgba(123, 105, 201, 0.10);
+    --logo-violet-14: rgba(123, 105, 201, 0.14);
+    --logo-violet-22: rgba(123, 105, 201, 0.22);
+
+    /* ── Brand color system (single source of truth — replaces per-user accents) ──
+       red    → buttons / primary actions
+       lavender/violet → pill selectors / segmented controls / tabs
+       celeste→ secondary text
+       yellow → mini pills (e.g. BETA badge) */
+    --brand-red: #fe004d;
+    --brand-red-text: #b80039;        /* readable red for text */
+    --brand-red-soft: rgba(254, 0, 77, 0.10);
+    --brand-orange: #f97316;
+    --brand-orange-text: #c2410c;     /* readable orange for text */
+    --brand-orange-soft: rgba(249, 115, 22, 0.12);
+    --brand-orange-soft-strong: rgba(249, 115, 22, 0.18);
+    --brand-celeste: #3ea9f4;         /* secondary text (logo light blue) */
+    --brand-celeste-ink: #1278bd;     /* higher-contrast fallback */
+    --brand-pill-lavender: #ece8ff;
+    --brand-pill-lavender-hover: #e4defc;
+    --brand-pill-lavender-border: #c8bdf3;
+    --brand-pill-violet: #4a3192;
+    --brand-yellow: #facc15;
+    --brand-yellow-soft: rgba(250, 204, 21, 0.18);
+    --brand-yellow-ink: #854d0e;      /* readable text on yellow */
+
+    /* Component control tokens: update these before touching individual screens. */
+    --button-radius: 1rem;
+    --button-height-compact: 2.25rem;
+    --button-height-default: 2.75rem;
+    --button-height-roomy: 3.125rem;
+    --button-height-icon: 2.75rem;
+    --button-padding-x-compact: 0.875rem;
+    --button-padding-x-default: 1.25rem;
+    --button-padding-x-roomy: 1.5rem;
+    --button-font-weight: 700;
+    /* Buttons reset to a single neutral grey (slightly darker than cards), tone-independent. */
+    --button-chrome-bg: linear-gradient(#eceef2, #eceef2);
+    --button-chrome-bg-hover: linear-gradient(#e1e4ea, #e1e4ea);
+    --button-chrome-border: #d7dce4;
+    --button-chrome-border-hover: #c3cad5;
+    --button-chrome-shadow: none;
+    --button-chrome-shadow-hover: 0 1px 3px rgba(15, 23, 42, 0.08);
+    --button-accent-bg: var(--button-chrome-bg);
+    --button-accent-shadow: var(--button-chrome-shadow);
+    --button-accent-shadow-hover: var(--button-chrome-shadow-hover);
+    --button-blue-bg: linear-gradient(color-mix(in srgb, var(--logo-blue) 7%, transparent), color-mix(in srgb, var(--logo-blue) 7%, transparent));
+    --button-violet-bg: linear-gradient(color-mix(in srgb, var(--logo-violet) 7%, transparent), color-mix(in srgb, var(--logo-violet) 7%, transparent));
+    --control-radius: 0.875rem;
+    --card-radius: 1.5rem;
+    --selection-radius: 999px;
+    --selection-height: 2rem;
+    --selection-padding-x: 0.8125rem;
+    /* Selectors / segmented controls / tabs / selected items → lavender surface + dark violet ink */
+    --selection-bg: linear-gradient(var(--brand-pill-lavender), var(--brand-pill-lavender));
+    --selection-bg-hover: linear-gradient(var(--brand-pill-lavender-hover), var(--brand-pill-lavender-hover));
+    --selection-border: color-mix(in srgb, var(--brand-pill-lavender-border) 72%, transparent);
+    --selection-border-hover: var(--brand-pill-lavender-border);
+    --selection-text: var(--brand-pill-violet);
+    --selection-active-bg: linear-gradient(var(--brand-pill-lavender), var(--brand-pill-lavender));
+    --selection-active-text: var(--brand-pill-violet);
+    --selection-shadow: none;
+
     /* Core surfaces */
-    --background: 210 40% 98%;
-    --foreground: 222 47% 11%;
+    --background: 0 0% 99%;
+    --foreground: 260 13% 9%;
     --card: 0 0% 100%;
     --card-foreground: 222 47% 11%;
     --popover: 0 0% 100%;
     --popover-foreground: 222 47% 11%;
 
     /* Core actions */
-    --primary: 217 91% 60%;
+    --primary: 342 100% 50%;
     --primary-foreground: 210 40% 98%;
     --secondary: 210 40% 96%;
     --secondary-foreground: 222 47% 11%;
     --muted: 210 40% 96%;
     --muted-foreground: 215 16% 47%;
-    --accent: 217 100% 97%;
-    --accent-foreground: 217 91% 60%;
+    --accent: 342 100% 97%;
+    --accent-foreground: 342 100% 50%;
     --destructive: 0 84% 60%;
     --destructive-foreground: 210 40% 98%;
 
     /* Borders and focus */
     --border: 214 32% 91%;
     --input: 214 32% 91%;
-    --ring: 217 91% 60%;
+    --ring: 250 47% 60%;
     --radius: 0.5rem;
 
     /* Semantic mirrors for feature code migration */
-    --app-body-bg: #ffffff;
+    --app-body-bg: #f1f3f5;
     --surface-page: var(--app-body-bg);
-    --surface-base: #ffffff;
-    --surface-elevated: rgba(255, 255, 255, 0.92);
-    --surface-muted: #f1f5f9;
-    --surface-glass: rgba(255, 255, 255, 0.86);
-    --surface-header: rgba(255, 255, 255, 0.94);
-    --text-primary: #0f172a;
-    --text-secondary: #64748b;
-    --text-muted: #94a3b8;
-    --border-subtle: #e2e8f0;
-    --border-strong: #cbd5e1;
+    --surface-base: #f7f8fa;
+    --surface-elevated: rgba(23, 21, 27, 0.035);
+    --surface-muted: rgba(123, 105, 201, 0.075);
+    --surface-glass: rgba(255, 255, 255, 0.82);
+    --surface-header: rgba(255, 255, 255, 0.9);
+    --surface-logo-pink: var(--logo-pink-10);
+    --surface-logo-blue: var(--logo-blue-10);
+    --surface-logo-violet: var(--logo-violet-10);
+    --text-primary: #17151b;
+    /* Secondary text → brand celeste (logo light blue); muted slightly darker for hierarchy. */
+    --text-secondary: var(--brand-celeste);
+    --text-muted: #6e6679;
+    /* Crisper, slightly more visible borders so cards/panels read as one consistent system. */
+    --border-subtle: rgba(123, 105, 201, 0.24);
+    --border-strong: rgba(254, 0, 77, 0.26);
     --overlay-soft: rgba(15, 23, 42, 0.12);
     --overlay-modal: rgba(15, 23, 42, 0.5);
-    --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.06);
-    --shadow-md: 0 8px 24px rgba(15, 23, 42, 0.08);
-    --shadow-lg: 0 14px 36px rgba(15, 23, 42, 0.12);
-    --shadow-xl: 0 20px 56px rgba(15, 23, 42, 0.16);
+    --shadow-sm: 0 1px 2px rgba(23, 21, 27, 0.04);
+    --shadow-md: 0 8px 22px rgba(23, 21, 27, 0.06);
+    --shadow-lg: 0 14px 34px rgba(23, 21, 27, 0.08);
+    --shadow-xl: 0 20px 52px rgba(23, 21, 27, 0.12);
 
-    /* Public-page accent fallbacks */
-    --app-accent: #2563eb;
-    --app-accent-text: #1d4ed8;
-    --app-accent-soft: #eff6ff;
-    --app-accent-soft-strong: #dbeafe;
-    --app-accent-border: #93c5fd;
+    /* Buttons & accent surfaces reset to neutral grey (no colour). */
+    --app-accent: #475569;            /* slate-600 */
+    --app-accent-text: #334155;       /* slate-700 */
+    --app-accent-soft: rgba(71, 85, 105, 0.08);
+    --app-accent-soft-strong: #475569;
+    --app-accent-border: #475569;
   }
 
   .dark {
@@ -104,7 +244,7 @@
     --destructive-foreground: 210 40% 98%;
     --border: 217.2 32.6% 17.5%;
     --input: 217.2 32.6% 17.5%;
-    --ring: 212.7 26.8% 83.9%;
+    --ring: 250 47% 68%;
 
     --app-body-bg: #111827;
     --surface-page: var(--app-body-bg);
@@ -135,6 +275,7 @@
   body {
     @apply bg-background text-foreground;
     font-family: var(--font-family);
+    font-weight: 400;
     font-size: var(--font-size-md);
     line-height: var(--line-height-md);
     background-color: var(--app-body-bg);
@@ -150,37 +291,280 @@
     font-family: var(--font-family-mono);
   }
 
+
   h1 {
-    font-size: 2rem;
+    font-family: var(--font-family-emphasis);
+    font-size: 1.5833rem;
     line-height: 1.1;
     font-weight: 700;
     letter-spacing: var(--letter-spacing-tight);
   }
 
   h2 {
-    font-size: 1.5rem;
+    font-family: var(--font-family-emphasis);
+    font-size: 1.0833rem;
     line-height: 1.15;
     font-weight: 700;
     letter-spacing: var(--letter-spacing-tight);
   }
 
   h3 {
-    font-size: 1.125rem;
+    font-family: var(--font-family-emphasis);
+    font-size: 0.7083rem;
     line-height: 1.25;
-    font-weight: 600;
+    font-weight: 700;
+  }
+
+  button,
+  [role='button'],
+  strong,
+  b,
+  label,
+  th {
+    font-family: var(--font-family-emphasis);
+    font-weight: 700;
   }
 }
 
 /* Shared component affordances */
 @layer components {
   .card-modern {
-    @apply rounded-xl border border-slate-200 bg-white/95 shadow-[var(--shadow-md)] backdrop-blur-sm;
+    @apply rounded-xl border border-slate-200 bg-[#f7f8fa] shadow-[var(--shadow-md)] backdrop-blur-sm;
+  }
+
+  .ui-control-label {
+    font-family: var(--font-family-emphasis);
+    font-size: var(--font-size-control-label);
+    font-weight: 700;
+    line-height: 1.2;
+  }
+
+  .ui-supporting-text {
+    font-size: var(--font-size-supporting);
+    line-height: 1.35;
+  }
+
+  .chat-markdown {
+    font-size: var(--font-size-chat-content);
+    line-height: 1.68;
+  }
+
+  .chat-markdown :where(p, li) {
+    line-height: 1.68;
+  }
+
+  .app-button-chrome {
+    --btn-tone: var(--app-accent);
+    font-family: var(--font-family-emphasis);
+    font-weight: 700;
+    color: var(--btn-tone, var(--app-accent-text));
+    background-image: var(--button-chrome-bg);
+    border: 1px solid var(--button-chrome-border);
+    box-shadow: var(--button-chrome-shadow);
+    transition:
+      transform 160ms ease,
+      border-color 160ms ease,
+      background-image 160ms ease,
+      box-shadow 160ms ease,
+      color 160ms ease;
+  }
+
+  .app-button-chrome:hover {
+    transform: translateY(-1px);
+    background-image: var(--button-chrome-bg-hover);
+    border-color: var(--button-chrome-border-hover);
+    box-shadow: var(--button-chrome-shadow-hover);
+  }
+
+  .app-button-chrome-active {
+    background-image: var(--button-chrome-bg-hover);
+    border-color: var(--button-chrome-border-hover);
+    box-shadow: var(--button-chrome-shadow-hover);
+  }
+
+  .app-button-chrome-quiet {
+    background-image: radial-gradient(ellipse at center,
+      rgba(255,255,255,0.995) 0%,
+      color-mix(in srgb, var(--btn-tone, var(--app-accent)) 1%, white) 68%,
+      color-mix(in srgb, var(--btn-tone, var(--app-accent)) 3.5%, white) 100%);
+    border-color: color-mix(in srgb, var(--btn-tone, var(--app-accent)) 10%, #d8dde6);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.92), 0 1px 2px rgba(23,21,27,0.025);
+  }
+
+  .app-button-chrome-quiet:hover {
+    background-image: radial-gradient(ellipse at center,
+      rgba(255,255,255,0.995) 0%,
+      color-mix(in srgb, var(--btn-tone, var(--app-accent)) 1.5%, white) 66%,
+      color-mix(in srgb, var(--btn-tone, var(--app-accent)) 5%, white) 100%);
+    border-color: color-mix(in srgb, var(--btn-tone, var(--app-accent)) 18%, #c9d0dc);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.95), 0 1px 4px rgba(23,21,27,0.035);
+  }
+
+  .navbar-inline-control {
+    font-family: var(--font-family-emphasis);
+    font-weight: 700;
+    border-radius: var(--selection-radius);
+    border: 1px solid transparent;
+    background: transparent;
+    box-shadow: none;
+    color: var(--btn-tone, var(--app-accent-text));
+    transition: background-color 160ms ease, color 160ms ease;
+  }
+
+  .navbar-widget-control,
+  .navbar-inline-control:hover,
+  .navbar-inline-control-active {
+    border-radius: var(--selection-radius);
+    background:
+      linear-gradient(180deg, rgba(255,255,255,0.74), rgba(255,255,255,0.46)),
+      color-mix(in srgb, var(--btn-tone, var(--app-accent)) 7%, transparent);
+    border: 1px solid color-mix(in srgb, var(--btn-tone, var(--app-accent)) 16%, rgba(255,255,255,0.72));
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,0.8),
+      inset 0 -1px 0 rgba(255,255,255,0.22),
+      0 5px 14px color-mix(in srgb, var(--btn-tone, var(--app-accent)) 5%, transparent);
+    backdrop-filter: blur(18px) saturate(145%);
+    -webkit-backdrop-filter: blur(18px) saturate(145%);
+  }
+
+  .navbar-widget-control:hover,
+  .navbar-inline-control:hover {
+    background:
+      linear-gradient(180deg, rgba(255,255,255,0.82), rgba(255,255,255,0.54)),
+      color-mix(in srgb, var(--btn-tone, var(--app-accent)) 10%, transparent);
+    border-color: color-mix(in srgb, var(--btn-tone, var(--app-accent)) 24%, rgba(255,255,255,0.78));
+  }
+
+  .navbar-widget-control-inset {
+    border-radius: var(--selection-radius);
+    background: rgba(255,255,255,0.34);
+    border-color: rgba(255,255,255,0.44);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.52);
+  }
+
+  .navbar-widget-control-inset:hover {
+    background: rgba(255,255,255,0.58);
+    border-color: color-mix(in srgb, var(--btn-tone, var(--app-accent)) 18%, rgba(255,255,255,0.68));
+  }
+
+  .brand-wordmark {
+    display: inline-flex;
+    align-items: baseline;
+    font-family: var(--font-family-brand);
+    font-size: 18px;
+    font-weight: 700;
+    line-height: 1;
+    letter-spacing: 0;
+    color: #2d2d2d;
+  }
+
+  .brand-wordmark-ai {
+    color: color-mix(in srgb, var(--logo-pink) 88%, transparent);
+  }
+
+  .teacher-support-message .chat-markdown {
+    font-size: var(--font-size-sm);
+  }
+
+  /* Mini pills (e.g. BETA) */
+  .brand-beta-badge {
+    display: inline-flex;
+    min-height: 18px;
+    align-items: center;
+    transform: translateY(1px);
+    border-radius: 999px;
+    border: 1px solid #ffd51a;
+    background: #fff200;
+    padding: 0 0.45rem;
+    color: #9a6a00;
+    font-size: 9px;
+    font-weight: 700;
+    line-height: 1;
+    letter-spacing: 0.08em;
+  }
+
+  .coding-user-bubble {
+    position: relative;
+    overflow: hidden;
+    isolation: isolate;
+    background: color-mix(in srgb, var(--logo-blue) 13%, transparent);
+    border: 1px solid color-mix(in srgb, var(--logo-blue) 42%, transparent);
+    box-shadow: 0 6px 16px rgba(62,169,244,0.08);
+    backdrop-filter: blur(10px) saturate(120%);
+    -webkit-backdrop-filter: blur(10px) saturate(120%);
+  }
+
+  .coding-preview-cube {
+    position: relative;
+    width: 58px;
+    height: 58px;
+    transform-style: preserve-3d;
+    animation: coding-preview-cube-spin 1.25s linear infinite;
+  }
+
+  .coding-preview-cube,
+  .coding-preview-cube span {
+    transform-style: preserve-3d;
+  }
+
+  .coding-preview-cube span {
+    position: absolute;
+    inset: 0;
+    border-radius: 14px;
+    border: 1px solid rgba(255,255,255,0.62);
+    background:
+      linear-gradient(145deg, rgba(255,255,255,0.62), rgba(255,255,255,0.12)),
+      linear-gradient(135deg, var(--logo-blue), var(--logo-violet));
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,0.72),
+      0 16px 30px rgba(62,169,244,0.22);
+  }
+
+  .coding-preview-cube span:nth-child(1) {
+    transform: rotateY(0deg) translateZ(29px);
+  }
+
+  .coding-preview-cube span:nth-child(2) {
+    transform: rotateY(90deg) translateZ(29px);
+    background:
+      linear-gradient(145deg, rgba(255,255,255,0.56), rgba(255,255,255,0.08)),
+      linear-gradient(135deg, var(--logo-pink), var(--logo-violet));
+  }
+
+  .coding-preview-cube span:nth-child(3) {
+    transform: rotateX(90deg) translateZ(29px);
+    background:
+      linear-gradient(145deg, rgba(255,255,255,0.56), rgba(255,255,255,0.08)),
+      linear-gradient(135deg, var(--logo-blue), var(--logo-pink));
+  }
+}
+
+@layer utilities {
+  .font-light,
+  .font-normal {
+    font-weight: 400;
+  }
+
+  .font-medium,
+  .font-semibold,
+  .font-bold,
+  .font-extrabold,
+  .font-black {
+    font-weight: 700;
   }
 }
 
 .animate-gradient {
   background-size: 300%;
   animation: gradient-shift 5s ease infinite;
+}
+
+/* Slow gradient pulse used to signal an "armed" state (e.g. dock-on-next-navigation)
+   without the abrupt opacity blink of Tailwind's animate-pulse. */
+.dock-armed-glow {
+  background-image: linear-gradient(90deg, #34d399, #6ee7b7, #10b981, #6ee7b7, #34d399);
+  background-size: 300% 100%;
+  animation: gradient-shift 3.6s ease-in-out infinite;
 }
 
 @keyframes gradient-shift {
@@ -242,6 +626,11 @@
   100% { transform: translate3d(0, 0, 0) scale(1); }
 }
 
+@keyframes coding-preview-cube-spin {
+  0% { transform: rotateX(-22deg) rotateY(0deg); }
+  100% { transform: rotateX(-22deg) rotateY(360deg); }
+}
+
 @keyframes gentle-bounce {
   0%, 100% { transform: translateY(0); }
   50% { transform: translateY(-7px); }
@@ -275,4 +664,107 @@
 }
 .cm-editor.cm-focused .cm-scroller .cm-selectionLayer .cm-selectionBackground {
   background: rgba(250, 204, 21, 0.75) !important;
+}
+
+/* ── TipTap/ProseMirror editor focus outline ────────────────────────────── */
+/* Hide the default blue focus ring; show only the blinking caret */
+.ProseMirror:focus {
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+/* ── Form focus and validation ──────────────────────────────────────────── */
+/* Keep the interaction colour consistent even in legacy screens that still
+   declare a local Tailwind focus colour. Red is reserved for invalid fields. */
+:where(input, textarea, select):focus-visible:not([aria-invalid='true']):not([data-invalid='true']) {
+  border-color: var(--logo-violet) !important;
+  outline: none !important;
+  box-shadow: 0 0 0 3px var(--logo-violet-22) !important;
+}
+
+:where(input, textarea, select)[aria-invalid='true']:focus-visible,
+:where(input, textarea, select)[data-invalid='true']:focus-visible {
+  border-color: hsl(var(--destructive)) !important;
+  outline: none !important;
+  box-shadow: 0 0 0 3px hsl(var(--destructive) / 0.2) !important;
+}
+.ProseMirror {
+  caret-color: #64748b;  /* slate-500 */
+}
+.ProseMirror:focus {
+  caret-color: #334155;  /* slate-700 for better visibility */
+}
+
+/* Keep the Document Builder selection visible while the user moves to the AI panel. */
+.ProseMirror .document-selection-highlight,
+.ProseMirror ::selection {
+  background: rgba(244, 114, 182, 0.32);
+}
+
+/* Editable metadata preserved when importing Word documents. */
+.ProseMirror .docx-region {
+  position: relative;
+  margin: 0.75rem 0;
+  padding: 1.25rem 0.75rem 0.5rem;
+  border: 1px dashed #cbd5e1;
+  border-radius: 0.5rem;
+  color: #475569;
+}
+.ProseMirror .docx-region::before {
+  content: attr(data-docx-region-label);
+  position: absolute;
+  top: 0.2rem;
+  left: 0.75rem;
+  font-size: 0.625rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #64748b;
+}
+.ProseMirror .docx-comment {
+  border-bottom: 2px dotted #d97706;
+  background: rgba(251, 191, 36, 0.18);
+}
+.ProseMirror .docx-revision-insert {
+  border-bottom: 1px solid #16a34a;
+  background: rgba(34, 197, 94, 0.12);
+}
+.ProseMirror .docx-revision-delete {
+  color: #b91c1c;
+  background: rgba(239, 68, 68, 0.1);
+  text-decoration: line-through;
+}
+.ProseMirror .docx-table {
+  width: 100%;
+  margin: 0.75rem 0;
+  border-collapse: collapse;
+}
+.ProseMirror .docx-table th,
+.ProseMirror .docx-table td {
+  min-width: 3rem;
+  padding: 0.35rem 0.5rem;
+  border: 1px solid #94a3b8;
+  vertical-align: top;
+}
+.ProseMirror .docx-table th {
+  font-weight: 700;
+}
+.ProseMirror img {
+  max-width: 100%;
+  height: auto;
+}
+
+/* ── Code / agent blocks: Hasklig with programming ligatures ─────────────── */
+@layer utilities {
+  .font-code,
+  .font-code code,
+  .font-code pre,
+  .font-code kbd,
+  .font-code samp {
+    font-family: var(--font-family-code);
+    font-size: 0.82em;   /* Hasklig runs large — scale down relative to context */
+    font-weight: 700;    /* bold */
+    font-feature-settings: 'liga' 1, 'calt' 1, 'dlig' 1;
+    font-variant-ligatures: common-ligatures contextual discretionary-ligatures;
+  }
 }

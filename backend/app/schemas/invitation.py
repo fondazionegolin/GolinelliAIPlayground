@@ -67,6 +67,16 @@ class SessionInvitationResponse(BaseModel):
         from_attributes = True
 
 
+class SchoolInvitationResponse(BaseModel):
+    id: UUID
+    school_tenant_id: UUID
+    school_name: str
+    inviter: TeacherBasicInfo
+    status: str
+    created_at: datetime
+    responded_at: Optional[datetime] = None
+
+
 class ClassTeacherResponse(BaseModel):
     id: UUID
     teacher: TeacherBasicInfo
@@ -99,6 +109,7 @@ class PendingInvitationInfo(BaseModel):
 
 
 class InvitationsListResponse(BaseModel):
+    school_invitations: list[SchoolInvitationResponse] = []
     class_invitations: list[ClassInvitationResponse]
     session_invitations: list[SessionInvitationResponse]
     total_pending: int

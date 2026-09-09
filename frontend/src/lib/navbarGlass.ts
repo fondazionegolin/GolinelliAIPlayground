@@ -1,29 +1,45 @@
 import type { CSSProperties } from 'react'
-import { hexToRgba, hexToRgb, rgbToHsl, setHexLightness } from '@/design/themes/colorUtils'
+import { hexToRgb, rgbToHsl, setHexLightness } from '@/design/themes/colorUtils'
 import type { AccentTheme } from '@/design/themes/roleThemes'
+
+// Chrome is intentionally NEUTRAL: the navbar and nav clusters are base surfaces
+// (light grey / white glass), never accent-tinted. Accent colours are reserved for
+// interactive tokens (buttons / selectors / pills), not for background chrome.
+const NEUTRAL_TINT = 'rgba(148, 163, 184, 0.07)' // slate-400 @ ~7%
 
 export function buildAccentNavbarStyle(
   theme: AccentTheme,
   cssVars: Record<string, string>
 ): CSSProperties {
+  void theme
   return {
     ...cssVars,
-    backgroundColor: hexToRgba(theme.accent, 0.1),
-    backgroundImage: 'linear-gradient(180deg, rgba(255,255,255,0.64), rgba(255,255,255,0.72))',
-    backdropFilter: 'blur(20px) saturate(138%)',
-    WebkitBackdropFilter: 'blur(20px) saturate(138%)',
-    borderBottomColor: hexToRgba(theme.accent, 0.15),
+    backgroundColor: 'rgba(255, 255, 255, 0.72)',
+    backgroundImage: [
+      `linear-gradient(${NEUTRAL_TINT}, ${NEUTRAL_TINT})`,
+      'linear-gradient(rgba(255,255,255,0.45), rgba(255,255,255,0.45))',
+    ].join(', '),
+    backdropFilter: 'blur(30px) saturate(140%)',
+    WebkitBackdropFilter: 'blur(30px) saturate(140%)',
+    borderBottomColor: 'rgba(148, 163, 184, 0.30)',
     borderBottomWidth: '1px',
-    boxShadow: `inset 0 1px 0 rgba(255,255,255,0.42), 0 8px 24px ${hexToRgba(theme.accent, 0.04)}`,
+    boxShadow: '0 6px 20px rgba(15, 23, 42, 0.05)',
   }
 }
 
 export function buildAccentNavClusterStyle(theme: AccentTheme): CSSProperties {
+  void theme
   return {
-    backgroundColor: 'rgba(255,255,255,0.58)',
-    backgroundImage: 'linear-gradient(180deg, rgba(255,255,255,0.42), rgba(255,255,255,0.24))',
-    borderColor: hexToRgba(theme.accent, 0.14),
-    boxShadow: `inset 0 1px 0 rgba(255,255,255,0.78), inset 0 -1px 0 rgba(255,255,255,0.18), 0 6px 18px ${hexToRgba(theme.accent, 0.04)}`,
+    borderRadius: 'var(--selection-radius)',
+    backgroundColor: 'rgba(255, 255, 255, 0.64)',
+    backgroundImage: [
+      'linear-gradient(180deg, rgba(255,255,255,0.82), rgba(255,255,255,0.50))',
+      `linear-gradient(${NEUTRAL_TINT}, ${NEUTRAL_TINT})`,
+    ].join(', '),
+    borderColor: 'rgba(148, 163, 184, 0.24)',
+    boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.82), 0 7px 18px rgba(15, 23, 42, 0.05)',
+    backdropFilter: 'blur(18px) saturate(150%)',
+    WebkitBackdropFilter: 'blur(18px) saturate(150%)',
   }
 }
 

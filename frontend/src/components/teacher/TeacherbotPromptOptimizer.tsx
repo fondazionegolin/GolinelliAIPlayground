@@ -15,6 +15,8 @@ interface TeacherbotPromptOptimizerProps {
     mode?: 'full' | 'expand'
 }
 
+const MAX_EXPANSION_CHARS = 800
+
 export function TeacherbotPromptOptimizer({
     selectedText,
     teacherbotName,
@@ -88,13 +90,14 @@ ${selectedText}
 """
 
 Obiettivo:
-Crea una versione espansa, professionale e ben strutturata del System Prompt basandoti sulla bozza e sui dati del bot.
-Il prompt deve definire chiaramente:
+Crea una versione espansa e ben strutturata del System Prompt basandoti sulla bozza e sui dati del bot, toccando dove pertinente:
 1. Ruolo e Identità
 2. Obiettivi pedagogici
 3. Tono di voce
 4. Regole di comportamento e limiti
 5. Metodologia didattica (es. Socratica, Spiegazione passo-passo, ecc.)
+
+Vincolo IMPORTANTE: il docente deve poter leggere e mantenere il controllo del prompt. Scrivi in modo denso e diretto, MASSIMO 800 caratteri totali (spazi inclusi). Se non entra tutto, prioritizza ruolo, tono e regole di comportamento.
 
 Rispondi SOLO con il testo del System Prompt ottimizzato, pronto per essere incollato. Nessuna premessa o commento.`
     }
@@ -106,8 +109,9 @@ Rispondi SOLO con il testo del System Prompt ottimizzato, pronto per essere inco
             const response = await llmApi.teacherChat(
                 buildPrompt(), [], 'teacher_support', 'anthropic', 'claude-haiku-4-5-20251001'
             )
-            const msg = response.data?.response || response.data?.content || ''
-            if (msg) setResult(msg.trim())
+            let msg = (response.data?.response || response.data?.content || '').trim()
+            if (!isExpand && msg.length > MAX_EXPANSION_CHARS) msg = msg.slice(0, MAX_EXPANSION_CHARS).trim()
+            if (msg) setResult(msg)
             else setError('Nessuna risposta ricevuta')
         } catch (err: any) {
             setError(err.response?.data?.detail || 'Errore durante la generazione')

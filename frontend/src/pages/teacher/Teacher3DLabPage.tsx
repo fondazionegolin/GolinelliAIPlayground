@@ -43,14 +43,13 @@ interface ImgSrc {
 
 const S = {
   txt2img: {
-    stripe:   'bg-violet-500',
     iconBg:   'bg-violet-100 ring-1 ring-violet-200',
     icon:     'text-violet-700',
     badge:    'border border-violet-200 bg-violet-100 text-violet-800',
     panel:    'border-violet-200 bg-violet-50/80 text-violet-950',
     section:  'border-violet-200 bg-violet-50 text-violet-700',
-    card:     'border-violet-200/80 bg-gradient-to-br from-white via-violet-50/60 to-white hover:border-violet-300 hover:shadow-violet-100/80',
-    selCard:  'border-violet-400 bg-gradient-to-br from-white via-violet-50/80 to-white ring-2 ring-violet-200',
+    card:     'border-[rgba(254,0,77,0.18)] bg-[rgba(254,0,77,0.075)] hover:border-[rgba(254,0,77,0.28)] hover:bg-[rgba(254,0,77,0.11)]',
+    selCard:  'border-[rgba(254,0,77,0.34)] bg-[rgba(254,0,77,0.11)] shadow-[var(--shadow-md)]',
     tip:      'border-violet-200 bg-violet-50',
     tipText:  'text-violet-800',
     tipIcon:  'text-violet-500',
@@ -61,14 +60,13 @@ const S = {
     optActive: 'border-violet-400 bg-violet-50 text-violet-800',
   },
   img23d: {
-    stripe:   'bg-emerald-500',
     iconBg:   'bg-emerald-100 ring-1 ring-emerald-200',
     icon:     'text-emerald-700',
     badge:    'border border-emerald-200 bg-emerald-100 text-emerald-800',
     panel:    'border-emerald-200 bg-emerald-50/80 text-emerald-950',
     section:  'border-emerald-200 bg-emerald-50 text-emerald-700',
-    card:     'border-emerald-200/80 bg-gradient-to-br from-white via-emerald-50/60 to-white hover:border-emerald-300 hover:shadow-emerald-100/80',
-    selCard:  'border-emerald-400 bg-gradient-to-br from-white via-emerald-50/80 to-white ring-2 ring-emerald-200',
+    card:     'border-[rgba(62,169,244,0.18)] bg-[rgba(62,169,244,0.075)] hover:border-[rgba(62,169,244,0.30)] hover:bg-[rgba(62,169,244,0.11)]',
+    selCard:  'border-[rgba(62,169,244,0.36)] bg-[rgba(62,169,244,0.11)] shadow-[var(--shadow-md)]',
     tip:      'border-emerald-200 bg-emerald-50',
     tipText:  'text-emerald-800',
     tipIcon:  'text-emerald-500',
@@ -79,14 +77,13 @@ const S = {
     optActive: 'border-emerald-400 bg-emerald-50 text-emerald-800',
   },
   txt23d: {
-    stripe:   'bg-indigo-500',
     iconBg:   'bg-indigo-100 ring-1 ring-indigo-200',
     icon:     'text-indigo-700',
     badge:    'border border-indigo-200 bg-indigo-100 text-indigo-800',
     panel:    'border-indigo-200 bg-indigo-50/80 text-indigo-950',
     section:  'border-indigo-200 bg-indigo-50 text-indigo-700',
-    card:     'border-indigo-200/80 bg-gradient-to-br from-white via-indigo-50/60 to-white hover:border-indigo-300 hover:shadow-indigo-100/80',
-    selCard:  'border-indigo-400 bg-gradient-to-br from-white via-indigo-50/80 to-white ring-2 ring-indigo-200',
+    card:     'border-[rgba(123,105,201,0.18)] bg-[rgba(123,105,201,0.075)] hover:border-[rgba(123,105,201,0.30)] hover:bg-[rgba(123,105,201,0.11)]',
+    selCard:  'border-[rgba(123,105,201,0.36)] bg-[rgba(123,105,201,0.11)] shadow-[var(--shadow-md)]',
     tip:      'border-indigo-200 bg-indigo-50',
     tipText:  'text-indigo-800',
     tipIcon:  'text-indigo-500',
@@ -100,6 +97,13 @@ const S = {
 
 const MODES: { id: Mode; label: string; sub: string; desc: string; Icon: React.FC<{ className?: string }> }[] = [
   {
+    id: 'txt23d',
+    label: 'Testo → 3D',
+    sub: 'Meshy AI',
+    desc: 'Descrivi l\'oggetto e ottieni direttamente un modello 3D realistico senza passaggi intermedi.',
+    Icon: Type,
+  },
+  {
     id: 'txt2img',
     label: 'Testo → Immagine',
     sub: 'DALL-E 3',
@@ -112,13 +116,6 @@ const MODES: { id: Mode; label: string; sub: string; desc: string; Icon: React.F
     sub: 'Meshy AI',
     desc: 'Carica una foto o usa un\'immagine generata. Meshy ricostruisce la geometria 3D automaticamente.',
     Icon: ImageIcon,
-  },
-  {
-    id: 'txt23d',
-    label: 'Testo → 3D',
-    sub: 'Meshy AI',
-    desc: 'Descrivi l\'oggetto e ottieni direttamente un modello 3D realistico senza passaggi intermedi.',
-    Icon: Type,
   },
 ]
 
@@ -324,11 +321,10 @@ export default function Teacher3DLabPage({ sessionId }: Props) {
                     whileHover={{ y: -2 }}
                     whileTap={{ scale: 0.97 }}
                     onClick={() => switchMode(m.id)}
-                    className={`group relative overflow-hidden rounded-lg border p-4 text-left shadow-sm transition-all hover:shadow-lg ${
+                    className={`group relative overflow-hidden rounded-[24px] border p-4 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-lg ${
                       selected ? ms.selCard : ms.card
                     }`}
                   >
-                    <div className={`absolute inset-x-0 top-0 h-1 ${ms.stripe}`} />
                     <div className="flex items-center justify-between gap-3">
                       <span className={`flex h-9 w-9 items-center justify-center rounded-lg ${ms.iconBg}`}>
                         <m.Icon className={`h-5 w-5 ${ms.icon}`} />
@@ -706,14 +702,13 @@ export default function Teacher3DLabPage({ sessionId }: Props) {
                     <motion.div
                       key={a.id}
                       whileHover={{ y: -2 }}
-                      className={`group relative flex flex-col overflow-hidden rounded-lg border shadow-sm transition-all hover:shadow-lg cursor-pointer ${
+                      className={`group relative flex flex-col overflow-hidden rounded-[24px] border shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-lg cursor-pointer ${
                         isViewing
                           ? `${as.selCard}`
                           : `${as.card}`
                       }`}
                       onClick={() => { setViewingAsset(isViewing ? null : a); setTask(null); setTaskId(null) }}
                     >
-                      <div className={`absolute inset-x-0 top-0 h-1 ${as.stripe}`} />
                       <button
                         onClick={e => { e.stopPropagation(); deleteAsset(a.id) }}
                         className="absolute right-2 top-2 rounded-lg p-1 text-slate-400 opacity-0 transition-all hover:bg-red-50 hover:text-red-500 group-hover:opacity-100"
