@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
-  ArrowLeft, BookOpen, CheckCircle, ChevronDown, ChevronUp, Cpu, FileCode2, Gamepad2, Layers3, Loader2, Music2, Plus, Search, Share2, Sparkles, Trash2, X,
+  ArrowLeft, BookOpen, CheckCircle, ChevronDown, ChevronUp, Cpu, FileCode2, Gamepad2, Layers3, Loader2, Music2, Plus, Share2, Sparkles, Trash2, X,
 } from 'lucide-react'
 import { notebooksApi, teacherApi, type NotebookAssignment } from '@/lib/api'
 import { formatDistanceToNow } from 'date-fns'
@@ -12,6 +12,13 @@ import { useTranslation } from 'react-i18next'
 import { Button } from '@/design/primitives/Button'
 import type { NotebookProjectType } from '@/components/notebook/types'
 import { useAuthStore } from '@/stores/auth'
+import {
+  WorkspaceExplorerBadge,
+  WorkspaceExplorerHeader,
+  WorkspaceExplorerItem,
+  WorkspaceExplorerList,
+  WorkspaceExplorerSidebar,
+} from '@/components/WorkspaceExplorerSidebar'
 
 interface NotebookMeta {
   id: string
@@ -369,6 +376,7 @@ export default function NotebookListPage({ onOpen, onBack }: Props = {}) {
     ? notebooks.filter(n => PROJECT_ORDER.includes(n.project_type)).length
     : 0
   const visibleCount = filtered.python.length + filtered.microbit.length + filtered.circuitplayground.length + filtered.p5js.length
+  const visibleNotebooks = PROJECT_ORDER.flatMap((type) => filtered[type])
 
   if (isLoading) {
     return (
@@ -382,8 +390,39 @@ export default function NotebookListPage({ onOpen, onBack }: Props = {}) {
 
   if ((!notebooks || totalCount === 0) && !(isStudent && assignments.length > 0)) {
     return (
-      <div className="relative flex h-full flex-col overflow-y-auto bg-slate-50">
-        {onBack && <NotebookBackButton isEnglish={isEnglish} onBack={onBack} className="absolute left-4 top-4 z-10" />}
+      <div className="relative flex h-full min-h-0 flex-col overflow-hidden bg-slate-100 lg:flex-row">
+        <WorkspaceExplorerSidebar>
+          <WorkspaceExplorerHeader
+            eyebrow={isStudent ? (isEnglish ? 'Student workspace' : 'Spazio studente') : (isEnglish ? 'Teacher panel' : 'Pannello docente')}
+            title="Coding Lab"
+            description={isEnglish ? 'Notebooks and coding projects in one explorer.' : 'Notebook e progetti di coding in un unico explorer.'}
+            action={(
+              <Button
+                type="button"
+                onClick={() => setShowCreate(true)}
+                density="compact"
+                tone="accent"
+                surface="solid"
+                className="h-9 w-9 shrink-0 rounded-full p-0"
+                title={isEnglish ? 'New notebook' : 'Nuovo notebook'}
+                aria-label={isEnglish ? 'New notebook' : 'Nuovo notebook'}
+              >
+                <Plus className="h-3.5 w-3.5" />
+              </Button>
+            )}
+            searchValue={search}
+            onSearchChange={setSearch}
+            searchPlaceholder={isEnglish ? 'Search notebooks...' : 'Cerca notebook...'}
+            clearSearchLabel={isEnglish ? 'Clear notebook search' : 'Cancella ricerca notebook'}
+          />
+          <WorkspaceExplorerList>
+            <p className="px-2 py-8 text-center text-xs leading-5 text-slate-400">
+              {isEnglish ? 'No notebooks yet.' : 'Nessun notebook ancora.'}
+            </p>
+          </WorkspaceExplorerList>
+        </WorkspaceExplorerSidebar>
+        <main className="relative min-w-0 flex-1 overflow-y-auto bg-slate-50">
+          {onBack && <NotebookBackButton isEnglish={isEnglish} onBack={onBack} className="absolute left-4 top-4 z-10" />}
         <section className="flex min-h-full items-center justify-center px-4 py-10 text-center md:px-6">
           <div className="w-full max-w-4xl">
             <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-lg bg-white shadow-sm ring-1 ring-slate-200">
@@ -429,7 +468,7 @@ export default function NotebookListPage({ onOpen, onBack }: Props = {}) {
           </div>
         </section>
 
-        <AnimatePresence>
+          <AnimatePresence>
           {showCreate && (
             <CreateDialog
               newTitle={newTitle}
@@ -442,14 +481,78 @@ export default function NotebookListPage({ onOpen, onBack }: Props = {}) {
               isPending={createMutation.isPending}
             />
           )}
-        </AnimatePresence>
+          </AnimatePresence>
+        </main>
       </div>
     )
   }
 
   return (
-    <div className="relative flex h-full flex-col overflow-hidden bg-slate-50">
-      <div className="flex-1 overflow-y-auto">
+    <div className="relative flex h-full min-h-0 flex-col overflow-hidden bg-slate-100 lg:flex-row">
+      <WorkspaceExplorerSidebar>
+        <WorkspaceExplorerHeader
+          eyebrow={isStudent ? (isEnglish ? 'Student workspace' : 'Spazio studente') : (isEnglish ? 'Teacher panel' : 'Pannello docente')}
+          title="Coding Lab"
+          description={isEnglish ? 'Notebooks and coding projects in one explorer.' : 'Notebook e progetti di coding in un unico explorer.'}
+          action={(
+            <Button
+              type="button"
+              onClick={() => setShowCreate(true)}
+              density="compact"
+              tone="accent"
+              surface="solid"
+              className="h-9 w-9 shrink-0 rounded-full p-0"
+              title={isEnglish ? 'New notebook' : 'Nuovo notebook'}
+              aria-label={isEnglish ? 'New notebook' : 'Nuovo notebook'}
+            >
+              <Plus className="h-3.5 w-3.5" />
+            </Button>
+          )}
+          searchValue={search}
+          onSearchChange={setSearch}
+          searchPlaceholder={isEnglish ? 'Search notebooks...' : 'Cerca notebook...'}
+          clearSearchLabel={isEnglish ? 'Clear notebook search' : 'Cancella ricerca notebook'}
+        />
+        <WorkspaceExplorerList>
+          {visibleNotebooks.length === 0 ? (
+            <p className="px-2 py-8 text-center text-xs leading-5 text-slate-400">
+              {search
+                ? (isEnglish ? `No notebook matches “${search}”.` : `Nessun notebook corrisponde a “${search}”.`)
+                : (isEnglish ? 'No notebooks yet.' : 'Nessun notebook ancora.')}
+            </p>
+          ) : (
+            <div className="space-y-2">
+              {visibleNotebooks.map((notebook) => (
+                <WorkspaceExplorerItem
+                  key={notebook.id}
+                  icon={<ProjectIcon type={notebook.project_type} className="h-4 w-4" />}
+                  title={notebook.title}
+                  subtitle={getProjectLabel(notebook.project_type)}
+                  onClick={() => openNotebook(notebook.id)}
+                  badges={(
+                    <>
+                      <WorkspaceExplorerBadge>{formatCellCount(notebook.cell_count, isEnglish)}</WorkspaceExplorerBadge>
+                      <WorkspaceExplorerBadge>{formatDistanceToNow(new Date(notebook.updated_at), { addSuffix: true, locale: isEnglish ? enUS : it })}</WorkspaceExplorerBadge>
+                    </>
+                  )}
+                  trailing={(
+                    <button
+                      type="button"
+                      disabled={deleteMutation.isPending}
+                      onClick={() => { if (confirm(isEnglish ? 'Delete this notebook?' : 'Eliminare questo notebook?')) deleteMutation.mutate(notebook.id) }}
+                      className="flex w-10 items-center justify-center border-l border-white/70 text-slate-400 hover:bg-red-50/80 hover:text-red-600"
+                      aria-label={`${isEnglish ? 'Delete' : 'Elimina'} ${notebook.title}`}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  )}
+                />
+              ))}
+            </div>
+          )}
+        </WorkspaceExplorerList>
+      </WorkspaceExplorerSidebar>
+      <main className="min-w-0 flex-1 overflow-y-auto">
         <section className="border-b border-slate-200 bg-white">
           <div className="mx-auto max-w-6xl px-4 py-7 md:px-6 md:py-8">
             {onBack && <NotebookBackButton isEnglish={isEnglish} onBack={onBack} className="mb-4" />}
@@ -534,25 +637,6 @@ export default function NotebookListPage({ onOpen, onBack }: Props = {}) {
               </p>
             </div>
 
-            <div className="relative w-full md:max-w-sm">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
-              <input
-                type="text"
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-                placeholder={isEnglish ? 'Search notebooks...' : 'Cerca notebook...'}
-                className="w-full rounded-lg border border-slate-200 bg-white py-2.5 pl-9 pr-8 text-sm shadow-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-200"
-              />
-              {search && (
-                <button
-                  onClick={() => setSearch('')}
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded-md p-1 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600"
-                  title={isEnglish ? 'Clear search' : 'Pulisci ricerca'}
-                >
-                  <X className="h-3.5 w-3.5" />
-                </button>
-              )}
-            </div>
           </div>
 
           {filtered.python.length > 0 && (
@@ -638,7 +722,7 @@ export default function NotebookListPage({ onOpen, onBack }: Props = {}) {
             </div>
           )}
         </div>
-      </div>
+      </main>
 
       <AnimatePresence>
         {showCreate && (

@@ -62,6 +62,7 @@ interface SpreadsheetEditorProps {
 
 type CellPos = { row: number; col: number }
 type SelectionRange = { startRow: number; endRow: number; startCol: number; endCol: number }
+type SelectionMode = 'cell' | 'row' | 'column' | 'all'
 
 function IconTool({ label, onClick, disabled = false, active = false, children }: { label: string; onClick: () => void; disabled?: boolean; active?: boolean; children: ReactNode }) {
   return (
@@ -187,6 +188,7 @@ export function SpreadsheetEditor({
 
   const [selectedCell, setSelectedCell] = useState<CellPos | null>({ row: 0, col: 0 })
   const [selectionRange, setSelectionRange] = useState<SelectionRange | null>({ startRow: 0, endRow: 0, startCol: 0, endCol: 0 })
+  const [selectionMode, setSelectionMode] = useState<SelectionMode>('cell')
   const [selectionAnchor, setSelectionAnchor] = useState<CellPos | null>(null)
   const [isSelecting, setIsSelecting] = useState(false)
   const [activeContextMenu, setActiveContextMenu] = useState<'none' | 'chart' | 'fill'>('none')
@@ -268,6 +270,7 @@ export function SpreadsheetEditor({
     const nextCol = Math.max(0, Math.min(maxCol, col))
     setSelectedCell({ row: nextRow, col: nextCol })
     setSelectionRange({ startRow: nextRow, endRow: nextRow, startCol: nextCol, endCol: nextCol })
+    setSelectionMode('cell')
     setTimeout(() => {
       const key = `${nextRow}-${nextCol}`
       cellInputRefs.current[key]?.focus()
@@ -369,29 +372,81 @@ Puoi inserire numeri, testo o formule (es. "=A2*2").`
   const addRow = () => {
     if (normalizedData.length >= MAX_ROWS) return
     const cols = normalizedData[0]?.length || MIN_COLS
-    onDataChange([...normalizedData, Array.from({ length: cols }, () => '')])
+    const insertAt = selectionMode === 'row' && normalizedSelection ? normalizedSelection.endRow + 1 : normalizedData.length
+    const next = normalizedData.map(row => [...row])
+    next.splice(insertAt, 0, Array.from({ length: cols }, () => ''))
+    onDataChange(next)
+    onDimensionsChange?.({ columnWidths, rowHeights: [...rowHeights.slice(0, insertAt), 36, ...rowHeights.slice(insertAt)] })
+    if (onStylesChange) {
+      const shifted: SheetCellStyles = {}
+      Object.entries(styles).forEach(([key, style]) => {
+        const [row, col] = key.split(':').map(Number)
+        shifted[`${row >= insertAt ? row + 1 : row}:${col}`] = style
+      })
+      onStylesChange(shifted)
+    }
+    setSelectedCell({ row: insertAt, col: selectedCell?.col ?? 0 })
+    setSelectionRange({ startRow: insertAt, endRow: insertAt, startCol: 0, endCol: cols - 1 })
+    setSelectionMode('row')
   }
 
   const addColumn = () => {
     const cols = normalizedData[0]?.length || MIN_COLS
     if (cols >= MAX_COLS) return
-    onDataChange(normalizedData.map(row => [...row, '']))
+    const insertAt = selectionMode === 'column' && normalizedSelection ? normalizedSelection.endCol + 1 : cols
+    onDataChange(normalizedData.map(row => [...row.slice(0, insertAt), '', ...row.slice(insertAt)]))
+    onDimensionsChange?.({ columnWidths: [...columnWidths.slice(0, insertAt), 120, ...columnWidths.slice(insertAt)], rowHeights })
+    if (onStylesChange) {
+      const shifted: SheetCellStyles = {}
+      Object.entries(styles).forEach(([key, style]) => {
+        const [row, col] = key.split(':').map(Number)
+        shifted[`${row}:${col >= insertAt ? col + 1 : col}`] = style
+      })
+      onStylesChange(shifted)
+    }
+    setSelectedCell({ row: selectedCell?.row ?? 0, col: insertAt })
+    setSelectionRange({ startRow: 0, endRow: normalizedData.length - 1, startCol: insertAt, endCol: insertAt })
+    setSelectionMode('column')
   }
 
   const removeSelectedRow = () => {
     if (!selectedCell || normalizedData.length <= 1) return
-    onDataChange(normalizedData.filter((_, idx) => idx !== selectedCell.row))
-    onDimensionsChange?.({ columnWidths, rowHeights: rowHeights.filter((_, idx) => idx !== selectedCell.row) })
-    setSelectedCell({ row: Math.max(0, selectedCell.row - 1), col: selectedCell.col })
+    const removeAt = selectionMode === 'row' && normalizedSelection ? normalizedSelection.startRow : selectedCell.row
+    onDataChange(normalizedData.filter((_, idx) => idx !== removeAt))
+    onDimensionsChange?.({ columnWidths, rowHeights: rowHeights.filter((_, idx) => idx !== removeAt) })
+    if (onStylesChange) {
+      const shifted: SheetCellStyles = {}
+      Object.entries(styles).forEach(([key, style]) => {
+        const [row, col] = key.split(':').map(Number)
+        if (row !== removeAt) shifted[`${row > removeAt ? row - 1 : row}:${col}`] = style
+      })
+      onStylesChange(shifted)
+    }
+    const nextRow = Math.min(removeAt, normalizedData.length - 2)
+    setSelectedCell({ row: nextRow, col: selectedCell.col })
+    setSelectionRange({ startRow: nextRow, endRow: nextRow, startCol: 0, endCol: (normalizedData[0]?.length || 1) - 1 })
+    setSelectionMode('row')
   }
 
   const removeSelectedColumn = () => {
     if (!selectedCell) return
     const cols = normalizedData[0]?.length || 0
     if (cols <= 1) return
-    onDataChange(normalizedData.map(row => row.filter((_, idx) => idx !== selectedCell.col)))
-    onDimensionsChange?.({ columnWidths: columnWidths.filter((_, idx) => idx !== selectedCell.col), rowHeights })
-    setSelectedCell({ row: selectedCell.row, col: Math.max(0, selectedCell.col - 1) })
+    const removeAt = selectionMode === 'column' && normalizedSelection ? normalizedSelection.startCol : selectedCell.col
+    onDataChange(normalizedData.map(row => row.filter((_, idx) => idx !== removeAt)))
+    onDimensionsChange?.({ columnWidths: columnWidths.filter((_, idx) => idx !== removeAt), rowHeights })
+    if (onStylesChange) {
+      const shifted: SheetCellStyles = {}
+      Object.entries(styles).forEach(([key, style]) => {
+        const [row, col] = key.split(':').map(Number)
+        if (col !== removeAt) shifted[`${row}:${col > removeAt ? col - 1 : col}`] = style
+      })
+      onStylesChange(shifted)
+    }
+    const nextCol = Math.min(removeAt, cols - 2)
+    setSelectedCell({ row: selectedCell.row, col: nextCol })
+    setSelectionRange({ startRow: 0, endRow: normalizedData.length - 1, startCol: nextCol, endCol: nextCol })
+    setSelectionMode('column')
   }
 
   const clearSheet = () => {
@@ -399,6 +454,7 @@ Puoi inserire numeri, testo o formule (es. "=A2*2").`
     onDimensionsChange?.({ columnWidths: [], rowHeights: [] })
     setSelectedCell({ row: 0, col: 0 })
     setSelectionRange({ startRow: 0, endRow: 0, startCol: 0, endCol: 0 })
+    setSelectionMode('cell')
   }
 
   const importSheet = async (file: File) => {
@@ -411,6 +467,7 @@ Puoi inserire numeri, testo o formule (es. "=A2*2").`
     onDimensionsChange?.({ columnWidths: [], rowHeights: [] })
     setSelectedCell({ row: 0, col: 0 })
     setSelectionRange({ startRow: 0, endRow: 0, startCol: 0, endCol: 0 })
+    setSelectionMode('cell')
   }
 
   const exportCsv = () => {
@@ -433,6 +490,30 @@ Puoi inserire numeri, testo o formule (es. "=A2*2").`
     setSelectionAnchor({ row, col })
     setSelectedCell({ row, col })
     setSelectionRange({ startRow: row, endRow: row, startCol: col, endCol: col })
+    setSelectionMode('cell')
+  }
+
+  const selectColumn = (col: number) => {
+    setEditingCell(null)
+    setSelectedCell({ row: Math.min(selectedCell?.row ?? 0, normalizedData.length - 1), col })
+    setSelectionRange({ startRow: 0, endRow: normalizedData.length - 1, startCol: col, endCol: col })
+    setSelectionMode('column')
+  }
+
+  const selectRow = (row: number) => {
+    const lastCol = (normalizedData[0]?.length || 1) - 1
+    setEditingCell(null)
+    setSelectedCell({ row, col: Math.min(selectedCell?.col ?? 0, lastCol) })
+    setSelectionRange({ startRow: row, endRow: row, startCol: 0, endCol: lastCol })
+    setSelectionMode('row')
+  }
+
+  const selectAll = () => {
+    const lastCol = (normalizedData[0]?.length || 1) - 1
+    setEditingCell(null)
+    setSelectedCell({ row: 0, col: 0 })
+    setSelectionRange({ startRow: 0, endRow: normalizedData.length - 1, startCol: 0, endCol: lastCol })
+    setSelectionMode('all')
   }
 
   const handleCellMouseEnter = (row: number, col: number) => {
@@ -702,8 +783,8 @@ Puoi inserire numeri, testo o formule (es. "=A2*2").`
           <IconTool label="Esporta CSV" onClick={exportCsv}><span className="relative"><Download className="h-4 w-4" /><span className="absolute -bottom-1 -right-1 text-[7px] font-black">C</span></span></IconTool>
           <IconTool label="Esporta XLSX" onClick={exportXlsx}><span className="relative"><Download className="h-4 w-4" /><span className="absolute -bottom-1 -right-1 text-[7px] font-black">X</span></span></IconTool>
           <div className="mx-1 h-6 w-px bg-slate-200" />
-          <IconTool label="Aggiungi riga" onClick={addRow}><span className="relative"><Plus className="h-4 w-4" /><span className="absolute -bottom-1 -right-1 text-[7px] font-black">R</span></span></IconTool>
-          <IconTool label="Aggiungi colonna" onClick={addColumn}><span className="relative"><Plus className="h-4 w-4" /><span className="absolute -bottom-1 -right-1 text-[7px] font-black">C</span></span></IconTool>
+          <IconTool label={selectionMode === 'row' ? 'Inserisci riga dopo la selezione' : 'Aggiungi riga'} onClick={addRow}><span className="relative"><Plus className="h-4 w-4" /><span className="absolute -bottom-1 -right-1 text-[7px] font-black">R</span></span></IconTool>
+          <IconTool label={selectionMode === 'column' ? 'Inserisci colonna dopo la selezione' : 'Aggiungi colonna'} onClick={addColumn}><span className="relative"><Plus className="h-4 w-4" /><span className="absolute -bottom-1 -right-1 text-[7px] font-black">C</span></span></IconTool>
           <IconTool label="Elimina riga selezionata" onClick={removeSelectedRow} disabled={!selectedCell}><span className="relative"><Trash2 className="h-4 w-4" /><span className="absolute -bottom-1 -right-1 text-[7px] font-black">R</span></span></IconTool>
           <IconTool label="Elimina colonna selezionata" onClick={removeSelectedColumn} disabled={!selectedCell}><span className="relative"><Trash2 className="h-4 w-4" /><span className="absolute -bottom-1 -right-1 text-[7px] font-black">C</span></span></IconTool>
           <IconTool label="Pulisci tutta la tabella" onClick={clearSheet}><Eraser className="h-4 w-4" /></IconTool>
@@ -715,7 +796,13 @@ Puoi inserire numeri, testo o formule (es. "=A2*2").`
           <IconTool label="Crea grafico dalla selezione" onClick={() => openChartFromSelection(false)} active={activeContextMenu === 'chart'}><BarChart3 className="h-4 w-4" /></IconTool>
           <IconTool label="Regressione lineare" onClick={() => openChartFromSelection(true)} active={activeContextMenu === 'chart' && chartConfig.type === 'scatter'}><TrendingUp className="h-4 w-4" /></IconTool>
           <IconTool label="Riempimento guidato o AI" onClick={() => setActiveContextMenu(activeContextMenu === 'fill' ? 'none' : 'fill')} active={activeContextMenu === 'fill'}><Wand2 className="h-4 w-4" /></IconTool>
-          <span className="ml-auto rounded-md bg-slate-100 px-2 py-1 text-[11px] font-semibold text-slate-500">{selectedRangeLabel}</span>
+          <span className="ml-auto rounded-md bg-violet-50 px-2 py-1 text-[11px] font-semibold text-violet-700">
+            {selectionMode === 'column' && normalizedSelection
+              ? `Colonna ${columnName(normalizedSelection.startCol)}`
+              : selectionMode === 'row' && normalizedSelection
+                ? `Riga ${normalizedSelection.startRow + 1}`
+                : selectionMode === 'all' ? 'Tutta la tabella' : selectedRangeLabel}
+          </span>
         </div>
 
         <div className="mt-2 flex flex-wrap items-center gap-1.5 border-t border-slate-100 pt-2">
@@ -753,10 +840,20 @@ Puoi inserire numeri, testo o formule (es. "=A2*2").`
             </colgroup>
             <thead className="sticky top-0 z-10 bg-slate-100">
               <tr>
-                <th className="w-12 border border-slate-200 px-2 py-1.5 text-xs text-slate-500">#</th>
+                <th className={`w-12 border border-slate-200 p-0 text-xs ${selectionMode === 'all' ? 'bg-violet-200 text-violet-800' : 'text-slate-500'}`}>
+                  <button type="button" onClick={selectAll} className="h-full min-h-8 w-full px-2 py-1.5" aria-label="Seleziona tutta la tabella" title="Seleziona tutta la tabella">#</button>
+                </th>
                 {normalizedData[0]?.map((_, colIdx) => (
-                  <th key={colIdx} className="relative border border-slate-200 px-2 py-1.5 text-xs font-semibold text-slate-700" style={{ width: columnWidths[colIdx] }}>
-                    {columnName(colIdx)}
+                  <th key={colIdx} className={`relative border border-slate-200 p-0 text-xs font-semibold ${selectionMode === 'column' && normalizedSelection?.startCol === colIdx ? 'bg-violet-200 text-violet-900' : 'text-slate-700'}`} style={{ width: columnWidths[colIdx] }}>
+                    <button
+                      type="button"
+                      onClick={() => selectColumn(colIdx)}
+                      className="h-full min-h-8 w-full px-2 py-1.5"
+                      aria-label={`Seleziona tutta la colonna ${columnName(colIdx)}`}
+                      title={`Seleziona tutta la colonna ${columnName(colIdx)}`}
+                    >
+                      {columnName(colIdx)}
+                    </button>
                     {onDimensionsChange && <span
                       role="separator"
                       aria-orientation="vertical"
@@ -772,8 +869,16 @@ Puoi inserire numeri, testo o formule (es. "=A2*2").`
             <tbody>
               {normalizedData.map((row, rowIdx) => (
                 <tr key={rowIdx} style={{ height: rowHeights[rowIdx] }}>
-                  <td className="relative border border-slate-200 bg-slate-50 px-2 text-xs text-slate-500">
-                    {rowIdx + 1}
+                  <td className={`relative border border-slate-200 p-0 text-xs ${selectionMode === 'row' && normalizedSelection?.startRow === rowIdx ? 'bg-violet-200 text-violet-900' : 'bg-slate-50 text-slate-500'}`}>
+                    <button
+                      type="button"
+                      onClick={() => selectRow(rowIdx)}
+                      className="h-full min-h-6 w-full px-2"
+                      aria-label={`Seleziona tutta la riga ${rowIdx + 1}`}
+                      title={`Seleziona tutta la riga ${rowIdx + 1}`}
+                    >
+                      {rowIdx + 1}
+                    </button>
                     {onDimensionsChange && <span
                       role="separator"
                       aria-orientation="horizontal"
@@ -792,7 +897,7 @@ Puoi inserire numeri, testo o formule (es. "=A2*2").`
                     return (
                       <td
                         key={colIdx}
-                        className={`border border-slate-200 p-0 ${selected ? 'bg-indigo-50 ring-1 ring-inset ring-indigo-500' : ''}`}
+                        className={`border border-slate-200 p-0 ${selected ? 'bg-violet-50 ring-1 ring-inset ring-violet-500' : ''}`}
                         onMouseDown={(e) => handleCellMouseDown(rowIdx, colIdx, e)}
                         onMouseEnter={() => handleCellMouseEnter(rowIdx, colIdx)}
                       >
@@ -809,6 +914,7 @@ Puoi inserire numeri, testo o formule (es. "=A2*2").`
                             setEditingCell(cellKey)
                             setSelectedCell({ row: rowIdx, col: colIdx })
                             setSelectionRange({ startRow: rowIdx, endRow: rowIdx, startCol: colIdx, endCol: colIdx })
+                            setSelectionMode('cell')
                           }}
                           onBlur={() => setEditingCell(current => current === cellKey ? null : current)}
                           onKeyDown={(e) => {

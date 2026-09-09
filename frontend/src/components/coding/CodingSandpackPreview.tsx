@@ -83,8 +83,8 @@ function callHost(action: string, payload: any, timeoutMs = 60000): Promise<any>
     callHost('chat', { content, history, profileKey, provider, model }),
   generateImage: (args: any = {}) => {
     const payload = typeof args === 'string'
-      ? { prompt: args, provider: 'gpt-image-1' }
-      : { prompt: args.prompt, provider: args.provider || 'gpt-image-1' }
+      ? { prompt: args, provider: 'gpt-image-2-2026-04-21' }
+      : { prompt: args.prompt, provider: args.provider || 'gpt-image-2-2026-04-21' }
     const notify = (status: string, message: string, result?: any) => {
       if (typeof args === 'object' && typeof args.onStatus === 'function') args.onStatus({ status, message, result })
       window.dispatchEvent(new CustomEvent('golinelli:image-status', { detail: { status, message, result } }))

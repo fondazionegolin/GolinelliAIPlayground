@@ -237,7 +237,7 @@ export default function TaskBuilder({ onSubmit, onCancel, isLoading, mode = 'cre
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             placeholder="Es: Quiz sui complementi"
-            className="focus:!border-[var(--logo-blue)] focus:outline-none focus:ring-2 focus:!ring-[var(--logo-blue)] focus:ring-offset-2 focus-visible:!border-[var(--logo-blue)] focus-visible:!ring-[var(--logo-blue)]"
+            className="focus:!border-[var(--logo-violet)] focus:outline-none focus:ring-2 focus:!ring-[var(--logo-violet)] focus:ring-offset-2 focus-visible:!border-[var(--logo-violet)] focus-visible:!ring-[var(--logo-violet)]"
           />
         </div>
 
@@ -248,7 +248,7 @@ export default function TaskBuilder({ onSubmit, onCancel, isLoading, mode = 'cre
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             placeholder="Istruzioni per gli studenti..."
-            className="min-h-[60px] w-full rounded-md border p-2 text-sm focus:!border-[var(--logo-blue)] focus:outline-none focus:ring-2 focus:!ring-[var(--logo-blue)] focus:ring-offset-2 focus-visible:!border-[var(--logo-blue)] focus-visible:!ring-[var(--logo-blue)]"
+            className="min-h-[60px] w-full rounded-md border p-2 text-sm focus:!border-[var(--logo-violet)] focus:outline-none focus:ring-2 focus:!ring-[var(--logo-violet)] focus:ring-offset-2 focus-visible:!border-[var(--logo-violet)] focus-visible:!ring-[var(--logo-violet)]"
           />
         </div>
 

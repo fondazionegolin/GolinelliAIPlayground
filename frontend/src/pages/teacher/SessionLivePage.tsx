@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
-import { useParams, Link, useSearchParams, useNavigate } from 'react-router-dom'
+import { useParams, Link, useLocation, useSearchParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import type { Socket } from 'socket.io-client'
 import { useTranslation } from 'react-i18next'
@@ -29,6 +29,12 @@ import TeacherbotTestChat from '@/components/teacher/TeacherbotTestChat'
 import { MessageBubble } from '@/components/student/ChatConversationView'
 import type { TokenUsageJson } from '@/lib/environmentalImpact'
 import { TrackedCorrectionText } from '@/components/tasks/TrackedCorrectionText'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
+import remarkMath from 'remark-math'
+import rehypeKatex from 'rehype-katex'
+import { markdownCodeComponents } from '@/components/CodeBlock'
+import 'katex/dist/katex.min.css'
 // TeacherNotifications removed per redesign
 import { useSocket } from '@/hooks/useSocket'
 import { useAuthStore } from '@/stores/auth'
@@ -385,15 +391,15 @@ export default function SessionLivePage() {
                 <span className="hidden sm:inline">{t('navbar.nav_classes')}</span>
               </Link>
               <span className="text-slate-300">/</span>
-              <div className="min-w-0">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <h1 className="text-lg font-bold text-slate-900 truncate">{session.title}</h1>
+              <div className="min-w-0 flex-1">
+                <div className="flex min-w-0 items-start gap-2">
+                  <h1 className="min-w-0 flex-1 break-words text-lg font-bold leading-tight text-slate-900 line-clamp-2" title={session.title}>{session.title}</h1>
                   <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold ${sc.badge}`}>
                     <span className={`w-1.5 h-1.5 rounded-full ${sc.dot}`} />
                     {sc.label}
                   </span>
                 </div>
-                <p className="text-sm text-slate-500 truncate">
+                <p className="mt-1 break-words text-sm leading-snug text-slate-500 line-clamp-2" title={[session.class_name, session.class_school_grade].filter(Boolean).join(' · ')}>
                   {session.class_name}
                   {session.class_school_grade && <span className="ml-2 text-slate-400">· {session.class_school_grade}</span>}
                 </p>
@@ -806,6 +812,7 @@ export default function SessionLivePage() {
 
 function SessionDocumentsPanel({ documents }: { documents: SharedDocumentData[] }) {
   const navigate = useNavigate()
+  const location = useLocation()
   const [studentDocsCollapsed, setStudentDocsCollapsed] = useState(false)
   const [documentSearch, setDocumentSearch] = useState('')
   const [sourceFilter, setSourceFilter] = useState<'all' | 'student' | 'teacher'>('all')
@@ -843,7 +850,9 @@ function SessionDocumentsPanel({ documents }: { documents: SharedDocumentData[] 
       minute: '2-digit',
     })
   const openDocument = (doc: SharedDocumentData) => {
-    navigate(`/teacher/documents?open=${encodeURIComponent(doc.id)}`)
+    navigate(`/teacher/documents?open=${encodeURIComponent(doc.id)}`, {
+      state: { documentReturnTo: `${location.pathname}${location.search}` },
+    })
   }
   const renderCard = (doc: SharedDocumentData) => (
     <button
@@ -1193,7 +1202,15 @@ function TaskContentPreview({ task }: { task: TaskData }) {
       return (
         <div className="rounded-lg border bg-white p-3 text-sm leading-6 text-slate-700">
           {content.title && <p className="mb-2 font-semibold text-slate-900">{content.title}</p>}
-          <p className="whitespace-pre-wrap">{exerciseText}</p>
+          <div className="chat-markdown prose prose-sm max-w-none text-slate-700">
+            <ReactMarkdown
+              remarkPlugins={[remarkGfm, remarkMath]}
+              rehypePlugins={[rehypeKatex]}
+              components={markdownCodeComponents(false)}
+            >
+              {exerciseText}
+            </ReactMarkdown>
+          </div>
         </div>
       )
     }

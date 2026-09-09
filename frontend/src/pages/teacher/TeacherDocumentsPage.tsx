@@ -21,7 +21,7 @@ import { SheetChartConfig, SheetCellStyles, SheetDimensions, SpreadsheetEditor }
 import { CollaborativeCanvas } from '@/components/CollaborativeCanvas'
 import { Editor } from '@tiptap/react'
 import { useTranslation } from 'react-i18next'
-import { useSearchParams } from 'react-router-dom'
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import {
   PASTEL_ICON_BACKGROUNDS,
   PASTEL_ICON_TEXT,
@@ -155,6 +155,8 @@ export default function TeacherDocumentsPage() {
   const { toast } = useToast()
   const { i18n } = useTranslation()
   const [searchParams] = useSearchParams()
+  const location = useLocation()
+  const navigate = useNavigate()
   const isEnglish = i18n.resolvedLanguage?.startsWith('en') ?? false
   const { isMobile } = useMobile()
   const defaultDocumentTitle = isEnglish ? 'New Document' : 'Nuovo Documento'
@@ -288,6 +290,20 @@ export default function TeacherDocumentsPage() {
     target: { title: document.title, format: document.format, slides: document.slides },
     beforePreview: `${document.title}\n${document.slides.length} slide`,
   } : null
+  const selectedSlides = document.slides.filter((slide) => selectedSlideIds.includes(slide.id))
+  const selectionAssistContext: DocumentAssistContext | null = mode === 'slides' && selectedSlides.length > 1 ? {
+    id: `slide-selection-${selectedSlides.map((slide) => slide.id).join('-')}`,
+    kind: 'presentation',
+    label: isEnglish ? 'Selected slides' : 'Slide selezionate',
+    detail: selectedSlides.map((slide, index) => `${document.slides.indexOf(slide) + 1}. ${slide.title || `Slide ${index + 1}`}`).join(' · '),
+    target: {
+      title: document.title,
+      format: document.format,
+      slides: selectedSlides,
+      selected_slide_ids: selectedSlides.map((slide) => slide.id),
+    },
+    beforePreview: `${selectedSlides.length} ${isEnglish ? 'selected slides' : 'slide selezionate'}`,
+  } : null
 
   useEffect(() => {
     if (!editor) return
@@ -341,6 +357,22 @@ export default function TeacherDocumentsPage() {
     if (proposal.kind === 'presentation' && proposal.replacement_presentation && typeof proposal.replacement_presentation === 'object') {
       const replacement = proposal.replacement_presentation as Partial<Document>
       if (!Array.isArray(replacement.slides) || replacement.slides.length === 0) return
+      const selectedIds = Array.isArray(clientContext.selected_slide_ids)
+        ? clientContext.selected_slide_ids.filter((id): id is string => typeof id === 'string')
+        : []
+      if (selectedIds.length > 1) {
+        const replacements = replacement.slides as Slide[]
+        const replacementById = new Map(selectedIds.map((id, index) => [id, replacements[index]]))
+        setDocument((current) => ({
+          ...current,
+          slides: current.slides.map((slide) => {
+            const next = replacementById.get(slide.id)
+            return next ? { ...next, id: slide.id } : slide
+          }),
+        }))
+        setSelectedBlockId(null)
+        return
+      }
       setDocument((current) => ({
         ...current,
         title: typeof replacement.title === 'string' && replacement.title.trim() ? replacement.title : current.title,
@@ -583,6 +615,19 @@ export default function TeacherDocumentsPage() {
 
   const handleTitleChange = (value: string) => {
     setDocument(d => ({ ...d, title: value }))
+  }
+
+  const closeDocumentEditor = () => {
+    const returnTo = (location.state as { documentReturnTo?: unknown } | null)?.documentReturnTo
+    if (typeof returnTo === 'string' && returnTo.startsWith('/teacher/')) {
+      navigate(returnTo)
+      return
+    }
+    const nextParams = new URLSearchParams(searchParams)
+    nextParams.delete('open')
+    nextParams.delete('publish')
+    navigate({ pathname: location.pathname, search: nextParams.toString() }, { replace: true, state: null })
+    setViewMode('list')
   }
 
   const handleDeleteDraft = async (e: React.MouseEvent, id: string) => {
@@ -1483,7 +1528,7 @@ export default function TeacherDocumentsPage() {
           <div className="flex-1 overflow-y-auto p-6">
             <div className="max-w-6xl mx-auto space-y-7">
 
-              <section className="mx-auto grid w-full max-w-4xl gap-2.5 sm:grid-cols-2 lg:grid-cols-4">
+              <section className="mx-auto grid w-full max-w-6xl gap-2.5 sm:grid-cols-2 lg:grid-cols-5">
                 <button type="button" onClick={createNewDocument} className="flex min-h-[76px] items-start gap-3 rounded-xl border border-emerald-200/80 bg-emerald-50/70 p-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-emerald-300 hover:bg-emerald-100/70 hover:shadow-md">
                   <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-emerald-700 shadow-sm"><FileText className="h-5 w-5" /></span>
                   <span className="min-w-0 pt-0.5"><span className="block text-[13px] font-black leading-5 text-slate-950">{isEnglish ? 'New document' : 'Nuovo documento'}</span><span className="mt-0.5 block text-[11px] leading-4 text-slate-500">{isEnglish ? 'Write and format.' : 'Scrivi e impagina.'}</span></span>
@@ -1495,6 +1540,10 @@ export default function TeacherDocumentsPage() {
                 <button type="button" onClick={createNewSheet} className="flex min-h-[76px] items-start gap-3 rounded-xl border border-cyan-200/80 bg-cyan-50/70 p-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-cyan-300 hover:bg-cyan-100/70 hover:shadow-md">
                   <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-cyan-700 shadow-sm"><FileSpreadsheet className="h-5 w-5" /></span>
                   <span className="min-w-0 pt-0.5"><span className="block text-[13px] font-black leading-5 text-slate-950">{isEnglish ? 'New table' : 'Nuova tabella'}</span><span className="mt-0.5 block text-[11px] leading-4 text-slate-500">{isEnglish ? 'Data and formulas.' : 'Dati e formule.'}</span></span>
+                </button>
+                <button type="button" onClick={createNewCanvas} className="flex min-h-[76px] items-start gap-3 rounded-xl border border-amber-200/80 bg-amber-50/70 p-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-amber-300 hover:bg-amber-100/70 hover:shadow-md">
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-amber-700 shadow-sm"><PenTool className="h-5 w-5" /></span>
+                  <span className="min-w-0 pt-0.5"><span className="block text-[13px] font-black leading-5 text-slate-950">{isEnglish ? 'New board' : 'Nuova lavagna'}</span><span className="mt-0.5 block text-[11px] leading-4 text-slate-500">{isEnglish ? 'Draw and collaborate.' : 'Disegna e collabora.'}</span></span>
                 </button>
                 <button type="button" disabled={documentImporting} onClick={() => documentFileInputRef.current?.click()} className="flex min-h-[76px] items-start gap-3 rounded-xl border border-sky-200/80 bg-sky-50/70 p-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-sky-300 hover:bg-sky-100/70 hover:shadow-md disabled:cursor-wait disabled:opacity-60">
                   <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-sky-700 shadow-sm">{documentImporting ? <Loader2 className="h-5 w-5 animate-spin" /> : <FileUp className="h-5 w-5" />}</span>
@@ -1773,7 +1822,7 @@ export default function TeacherDocumentsPage() {
              <Button
                variant="ghost"
                size="sm"
-               onClick={() => setViewMode('list')}
+               onClick={closeDocumentEditor}
                className="shrink-0 text-slate-600 gap-1 font-semibold"
              >
                <ChevronLeft className="h-4 w-4" />
@@ -2276,19 +2325,28 @@ export default function TeacherDocumentsPage() {
 
           </div>
           {documentAgentOpen && (mode === 'slides' || mode === 'document') && (
-            <DocumentAgentChat
-              context={documentAssistContext}
-              presentationContext={presentationAssistContext}
-              documentContext={{
-                title: document.title,
-                mode,
-                format: document.format,
-                current_slide_index: currentSlideIndex,
-              }}
-              dims={mode === 'slides' ? FORMAT_DIMENSIONS[document.format] : undefined}
-              onApply={applyDocumentAgentProposal}
-              onClose={() => setDocumentAgentOpen(false)}
-            />
+            <>
+              <button
+                type="button"
+                className="fixed inset-0 z-40 bg-slate-950/30 backdrop-blur-[1px] xl:hidden"
+                onClick={() => setDocumentAgentOpen(false)}
+                aria-label={isEnglish ? 'Close document assistant' : 'Chiudi assistente documento'}
+              />
+              <DocumentAgentChat
+                context={documentAssistContext}
+                selectionContext={selectionAssistContext}
+                presentationContext={presentationAssistContext}
+                documentContext={{
+                  title: document.title,
+                  mode,
+                  format: document.format,
+                  current_slide_index: currentSlideIndex,
+                }}
+                dims={mode === 'slides' ? FORMAT_DIMENSIONS[document.format] : undefined}
+                onApply={applyDocumentAgentProposal}
+                onClose={() => setDocumentAgentOpen(false)}
+              />
+            </>
           )}
         </div>
 

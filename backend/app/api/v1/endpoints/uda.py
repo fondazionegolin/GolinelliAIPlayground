@@ -20,6 +20,7 @@ from app.core.database import get_db
 from app.api.deps import get_current_teacher, get_current_student
 from app.models.user import User
 from app.models.session import Class, Session, SessionStudent
+from app.models.enums import SessionStatus
 from app.models.task import Task, TaskStatus, TaskType
 from app.services.uda_agent import generate_kb, generate_plan, generate_item_content, chat_iterate, _extract_json
 from app.services.document_processor import DocumentProcessor
@@ -119,7 +120,11 @@ async def list_udas(
     # Load children for each UDA
     out = []
     for uda in udas:
-        cr = await db.execute(select(Task).where(Task.parent_uda_id == uda.id).order_by(Task.created_at))
+        cr = await db.execute(
+            select(Task)
+            .where(Task.parent_uda_id == uda.id, Task.session_id.is_(None))
+            .order_by(Task.created_at)
+        )
         children = cr.scalars().all()
         out.append(_uda_to_dict(uda, list(children)))
     return out
@@ -392,7 +397,9 @@ async def uda_chat(
 
     # Load children to include in UDA state so the model knows what items exist
     cr = await db.execute(
-        select(Task).where(Task.parent_uda_id == uda.id).order_by(Task.created_at)
+        select(Task)
+        .where(Task.parent_uda_id == uda.id, Task.session_id.is_(None))
+        .order_by(Task.created_at)
     )
     children = cr.scalars().all()
 
@@ -433,6 +440,7 @@ async def uda_chat(
                         select(Task).where(
                             Task.id == uuid_module.UUID(item_id),
                             Task.parent_uda_id == uda.id,
+                            Task.session_id.is_(None),
                         )
                     )
                     child = child_res.scalar_one_or_none()
@@ -536,29 +544,69 @@ async def publish_uda(
     teacher: Annotated[User, Depends(get_current_teacher)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
-    """Publish the UDA: propagate to all sessions of the class."""
+    """Publish the UDA: clone every child into a per-session copy.
+
+    Only sessions that exist at publish time receive the tasks. Sessions created
+    later stay clean until the teacher publishes again. Re-publishing refreshes
+    existing copies in place (title/description/content) without touching student
+    submissions, and adds copies for any sessions that appeared since.
+    """
     cls = await _get_class_for_teacher(class_id, teacher, db)
     result = await db.execute(select(Task).where(Task.id == uuid_module.UUID(uda_id), Task.class_id == cls.id))
     uda = result.scalar_one_or_none()
     if not uda:
         raise HTTPException(status_code=404, detail="UDA not found")
 
-    # Fetch children
-    cr = await db.execute(select(Task).where(Task.parent_uda_id == uda.id))
+    # Template children only (session_id IS NULL); per-session copies are excluded.
+    cr = await db.execute(
+        select(Task).where(Task.parent_uda_id == uda.id, Task.session_id.is_(None))
+    )
     children = cr.scalars().all()
 
-    # Fetch all sessions of the class
-    sr = await db.execute(select(Session).where(Session.class_id == cls.id))
-    sessions = sr.scalars().all()
+    # Sessions that exist right now. Ended/trashed sessions are skipped — no point
+    # cloning into a session students can no longer enter.
+    sr = await db.execute(
+        select(Session).where(
+            Session.class_id == cls.id,
+            Session.status != SessionStatus.ENDED,
+            Session.deleted_at.is_(None),
+        )
+    )
+    sessions = list(sr.scalars().all())
 
-    # Publish the UDA container task itself
+    # Existing copies for this UDA, keyed by (source template, session).
+    ec = await db.execute(
+        select(Task).where(Task.parent_uda_id == uda.id, Task.source_task_id.is_not(None))
+    )
+    existing_copies: dict[tuple, Task] = {
+        (c.source_task_id, c.session_id): c for c in ec.scalars().all()
+    }
+
     uda.status = TaskStatus.PUBLISHED
     uda.uda_phase = "published"
     uda.updated_at = datetime.utcnow()
 
-    # Publish all children
-    for child in children:
-        child.status = TaskStatus.PUBLISHED
+    copies_written = 0
+    for session in sessions:
+        for child in children:
+            copy = existing_copies.get((child.id, session.id))
+            if copy is None:
+                copy = Task(
+                    id=uuid_module.uuid4(),
+                    tenant_id=session.tenant_id,
+                    session_id=session.id,
+                    class_id=None,
+                    parent_uda_id=uda.id,
+                    source_task_id=child.id,
+                )
+                db.add(copy)
+            copy.title = child.title
+            copy.description = child.description
+            copy.task_type = child.task_type
+            copy.content_json = child.content_json
+            copy.status = TaskStatus.PUBLISHED
+            copy.updated_at = datetime.utcnow()
+            copies_written += 1
 
     await db.commit()
 
@@ -566,6 +614,7 @@ async def publish_uda(
         "message": f"UDA pubblicata su {len(sessions)} sessioni",
         "session_count": len(sessions),
         "item_count": len(children),
+        "copies_written": copies_written,
     }
 
 
@@ -619,6 +668,8 @@ async def student_get_udas(
             select(Task).where(
                 Task.parent_uda_id == uda.id,
                 Task.status == TaskStatus.PUBLISHED,
+                # this student's per-session copies only
+                Task.session_id == student.session_id,
             ).order_by(Task.created_at)
         )
         children = cr.scalars().all()

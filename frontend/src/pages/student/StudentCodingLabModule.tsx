@@ -43,6 +43,13 @@ import { editorKeymap, getEditorExtensions } from '@/components/notebook/editorC
 import { Button } from '@/components/ui/button'
 import DesignSystemStudio from '@/components/coding/DesignSystemStudio'
 import CodingSandpackPreview, { type SandpackRuntimeError } from '@/components/coding/CodingSandpackPreview'
+import {
+  WorkspaceExplorerBadge,
+  WorkspaceExplorerHeader,
+  WorkspaceExplorerItem,
+  WorkspaceExplorerList,
+  WorkspaceExplorerSidebar,
+} from '@/components/WorkspaceExplorerSidebar'
 
 // Compact markdown renderer for the agent's reasoning (headings, lists, bold, inline code).
 // `dark` renders light text in a Courier monospace face for the live generation console.
@@ -158,7 +165,7 @@ type ModelOption = { key: string; label: string; hint: string; provider: ModelPr
 const MODEL_OPTIONS: ModelOption[] = [
   { key: 'sonnet', label: 'Sonnet 4.6', hint: 'Massima qualità', provider: 'anthropic' },
   { key: 'haiku', label: 'Haiku 4.5', hint: 'Più veloce', provider: 'anthropic' },
-  { key: 'gpt-mini', label: 'GPT-5 mini', hint: 'Economico', provider: 'openai' },
+  { key: 'luna', label: 'GPT-5.6 Luna', hint: 'Veloce ed economico', provider: 'openai' },
   { key: 'deepseek-flash', label: 'DeepSeek V4 Flash', hint: 'Veloce ed economico', provider: 'deepseek' },
   { key: 'deepseek-pro', label: 'DeepSeek V4 Pro', hint: 'Qualità elevata', provider: 'deepseek' },
 ]
@@ -331,7 +338,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
   const [draftSaving, setDraftSaving] = useState(false)
   const [draftSavedAt, setDraftSavedAt] = useState<Date | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [projectsPanelOpen, setProjectsPanelOpen] = useState(true)
+  const [projectListSearch, setProjectListSearch] = useState('')
   const [promptPanelOpen, setPromptPanelOpen] = useState(true)
   const [activeWorkbench, setActiveWorkbench] = useState<'code' | 'preview'>('preview')
   const [previewFullscreen, setPreviewFullscreen] = useState(false)
@@ -372,6 +379,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
   const [liveReasoning, setLiveReasoning] = useState('')
   const [livePlan, setLivePlan] = useState<{ path: string; purpose: string }[]>([])
   const [liveFiles, setLiveFiles] = useState<{ path: string; lines: number; status: 'writing' | 'done' }[]>([])
+  const [liveStatus, setLiveStatus] = useState('')
   const [showDesignStudio, setShowDesignStudio] = useState(false)
   const [designNotice, setDesignNotice] = useState<string | null>(null)
   const [imageJobStatus, setImageJobStatus] = useState<{ status: 'generating' | 'optimizing' | 'ready' | 'error'; message: string } | null>(null)
@@ -404,6 +412,11 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
     () => projects.find((project) => project.id === selectedProjectId) ?? null,
     [projects, selectedProjectId],
   )
+  const filteredProjects = useMemo(() => {
+    const query = projectListSearch.trim().toLocaleLowerCase('it')
+    if (!query) return projects
+    return projects.filter((project) => [project.title, project.owner_display_name, project.template_key].filter(Boolean).join(' ').toLocaleLowerCase('it').includes(query))
+  }, [projects, projectListSearch])
   const selectedFile = files.find((file) => file.path === selectedPath) ?? files[0] ?? null
   const selectedFileIsGeneratedDescription = selectedFile?.path === 'description.md'
   const isReactPreview = useMemo(() => isReactProject(files), [files])
@@ -816,7 +829,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
           // Vibe Lab always uses the OpenAI gpt-image model (same as the platform chatbots),
           // ignoring any provider the generated mini-app may pass.
           setImageJobStatus({ status: 'generating', message: 'Genero l’immagine sul server…' })
-          const response = await llmApi.generateImage(String(payload.prompt || ''), 'gpt-image-1')
+          const response = await llmApi.generateImage(String(payload.prompt || ''), 'gpt-image-2-2026-04-21')
           const result = response.data
           // The backend returns a path relative to the platform's own origin (e.g.
           // /uploads/generated/xxx.png). That resolves fine in the main app, but the sandboxed
@@ -981,6 +994,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
     setLiveReasoning('')
     setLivePlan([])
     setLiveFiles([])
+    setLiveStatus('Preparo il progetto e il contesto della richiesta…')
     // A fresh user-driven generation starts a new fix budget; an auto-fix iteration spends from it.
     if (!isAutoFix) {
       autoFixAttempts.current = 0
@@ -1032,26 +1046,35 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
             continue
           }
           if (event.type === 'reasoning') {
+            setLiveStatus('L’architetto sta definendo struttura e modifiche…')
             setLiveReasoning((prev) => prev + (event.content || ''))
+          } else if (event.type === 'status') {
+            setLiveStatus(String(event.message || 'Elaborazione in corso…'))
           } else if (event.type === 'plan') {
+            setLiveStatus(`Piano pronto: ${event.files?.length || 0} file da elaborare.`)
             setLivePlan((event.files || []) as { path: string; purpose: string }[])
             setLiveFiles((event.files || []).map((file: any) => ({ path: String(file.path), lines: 0, status: 'writing' as const })))
           } else if (event.type === 'file_start') {
+            setLiveStatus(`Scrittura di ${String(event.path)}…`)
             setLiveFiles((prev) => prev.some((file) => file.path === event.path)
               ? prev
               : [...prev, { path: String(event.path), lines: 0, status: 'writing' as const }])
           } else if (event.type === 'file_progress') {
+            setLiveStatus(`Scrittura di ${String(event.path)}: ${event.lines || 0} righe…`)
             setLiveFiles((prev) => prev.map((file) => file.path === event.path ? { ...file, lines: event.lines || file.lines } : file))
           } else if (event.type === 'file_done') {
+            setLiveStatus(`${String(event.path)} completato (${event.lines || 0} righe).`)
             setLiveFiles((prev) => prev.map((file) => file.path === event.path ? { ...file, lines: event.lines || file.lines, status: 'done' as const } : file))
           } else if (event.type === 'done') {
+            setLiveStatus('Versione pronta. Aggiorno progetto e anteprima…')
             generatedFiles = (event.files || []) as GeneratedFile[]
             finished = true
           } else if (event.type === 'error') {
             streamError = event.message || 'Generazione non riuscita.'
             finished = true
           }
-          // 'status' and 'chunk' (keep-alive) events are intentionally ignored here.
+          // 'chunk' events only keep the connection alive; visible progress is carried by status,
+          // reasoning and per-file events.
         }
       }
 
@@ -1069,6 +1092,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
       setLiveReasoning('')
       setLivePlan([])
       setLiveFiles([])
+      setLiveStatus('')
     }
   }
 
@@ -1368,7 +1392,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
   }
 
   return (
-    <div className="flex h-full min-h-0 bg-slate-50">
+    <div className="flex h-full min-h-0 flex-col bg-slate-100 lg:flex-row">
       {showDesignStudio && (
         <DesignSystemStudio
           onClose={() => setShowDesignStudio(false)}
@@ -1396,111 +1420,73 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
           {designNotice}
         </div>
       )}
-      <aside className={`${projectsPanelOpen ? 'w-80' : 'w-14'} hidden shrink-0 border-r border-[color:var(--border-subtle)] bg-[var(--surface-glass)] shadow-[inset_-1px_0_0_rgba(255,255,255,0.72)] backdrop-blur-xl transition-[width] md:flex md:flex-col`}>
-        <div className={`flex h-14 items-center border-b border-[color:var(--border-subtle)] bg-white/70 ${projectsPanelOpen ? 'justify-between px-4' : 'justify-center px-2'}`}>
-          <div className={`flex items-center gap-2 ${projectsPanelOpen ? '' : 'sr-only'}`}>
-            <span className="flex h-8 w-8 items-center justify-center rounded-xl border border-[color:var(--button-chrome-border)] bg-[image:var(--button-chrome-bg)] text-[var(--logo-violet-strong)] shadow-[var(--button-chrome-shadow)]">
-              <Code2 className="h-4 w-4" />
-            </span>
-            <div className="min-w-0">
-              <h2 className="truncate text-sm font-black text-[var(--text-primary)]">Vibe Lab</h2>
-              <p className="truncate text-[10px] font-semibold text-[var(--text-muted)]">{projects.length} progetti</p>
-            </div>
-          </div>
-          <button
-            type="button"
-            onClick={() => setProjectsPanelOpen((value) => !value)}
-            className="app-button-chrome app-button-chrome-quiet flex h-8 w-8 items-center justify-center rounded-lg text-[var(--text-secondary)]"
-            title={projectsPanelOpen ? 'Comprimi progetti' : 'Espandi progetti'}
-          >
-            {projectsPanelOpen ? <PanelLeftClose className="h-4 w-4" /> : <PanelLeftOpen className="h-4 w-4" />}
-          </button>
-        </div>
-
-        {projectsPanelOpen ? (
-        <div className="flex min-h-0 flex-1 flex-col">
-        <div className="min-h-0 flex-1 overflow-y-auto p-3">
-          <div className={`${selectedProjectId && !createPanelOpen ? 'grid grid-cols-[1fr_auto]' : 'flex justify-end'} gap-2`}>
-            {selectedProjectId && !createPanelOpen && <Button
+      <WorkspaceExplorerSidebar>
+        <WorkspaceExplorerHeader
+          eyebrow={isTeacher ? 'Pannello docente' : 'Spazio studente'}
+          title="Vibe Lab"
+          description="Progetti, versioni e condivisioni in un unico explorer."
+          action={(
+            <Button
               type="button"
               onClick={handleStartNewProject}
               disabled={creating || generating || draftSaving}
               density="compact"
               tone="accent"
               surface="solid"
-              className="text-xs font-black"
+              className="h-9 w-9 shrink-0 rounded-full p-0"
+              title="Nuovo progetto"
+              aria-label="Nuovo progetto"
             >
               <Plus className="h-3.5 w-3.5" />
-              Nuovo
-            </Button>}
-            <Button
-              type="button"
-              onClick={() => setShowTutorial(true)}
-              variant="outline"
-              density="compact"
-              className="gap-1.5 px-3 text-xs font-bold"
-              title="Tutorial Vibe Lab"
-            >
-              <HelpCircle className="h-3.5 w-3.5" />
-              Tutorial
             </Button>
-          </div>
-          <div className="my-3 flex items-center justify-between px-1">
-            <p className="text-[11px] font-black uppercase tracking-wide text-[var(--text-muted)]">Progetti</p>
-            {selectedProject && (
-              <span className="rounded-full border border-[color:var(--border-subtle)] bg-white/70 px-2 py-0.5 text-[10px] font-bold text-[var(--text-secondary)]">
-                {selectedProject.status}
-              </span>
-            )}
-          </div>
+          )}
+          searchValue={projectListSearch}
+          onSearchChange={setProjectListSearch}
+          searchPlaceholder="Cerca progetti..."
+          clearSearchLabel="Cancella ricerca progetti"
+        />
+        <WorkspaceExplorerList>
           {loading ? (
             <div className="flex h-24 items-center justify-center text-slate-400">
               <Loader2 className="h-5 w-5 animate-spin" />
             </div>
           ) : projects.length === 0 ? (
             <p className="px-2 py-6 text-center text-xs text-slate-400">Nessun progetto ancora.</p>
+          ) : filteredProjects.length === 0 ? (
+            <p className="px-2 py-6 text-center text-xs text-slate-400">Nessun progetto corrisponde a “{projectListSearch}”.</p>
           ) : (
             <div className="space-y-2">
-              {projects.map((project) => (
-                <button
+              {filteredProjects.map((project) => (
+                <WorkspaceExplorerItem
                   key={project.id}
-                  type="button"
+                  icon={<Code2 className="h-4 w-4" />}
+                  title={project.title}
+                  subtitle={`${project.owner_display_name || (project.owner_kind === 'teacher' ? 'Docente' : 'Studente')} · ${project.template_key}`}
+                  selected={selectedProjectId === project.id}
                   onClick={() => openProjectFromList(project)}
-                  className={`group relative w-full overflow-hidden rounded-xl border px-3 py-3 text-left shadow-sm transition ${
-                    selectedProjectId === project.id
-                      ? 'border-[color:var(--button-chrome-border-hover)] bg-[image:var(--button-chrome-bg-hover)] text-[var(--text-primary)] shadow-[var(--button-chrome-shadow-hover)]'
-                      : 'border-[color:var(--border-subtle)] bg-white/75 text-[var(--text-primary)] hover:border-[color:var(--button-chrome-border-hover)] hover:bg-white'
-                  }`}
-                >
-                  <div className={`absolute inset-y-3 left-0 w-1 rounded-r-full transition ${selectedProjectId === project.id ? 'bg-[var(--app-accent,var(--logo-pink))]' : 'bg-transparent group-hover:bg-[var(--logo-violet-22)]'}`} />
-                  <div className="flex items-start gap-2.5 pl-1">
-                    <span className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border text-xs font-black ${
-                      selectedProjectId === project.id
-                        ? 'border-[color:var(--button-chrome-border)] bg-white/80 text-[var(--app-accent-text,var(--logo-pink))]'
-                        : 'border-[color:var(--border-subtle)] bg-[var(--surface-muted)] text-[var(--logo-violet-strong)]'
-                    }`}>
-                      {project.title.trim().charAt(0).toUpperCase() || 'P'}
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <div className="truncate text-sm font-black">{project.title}</div>
-                      <div className="mt-1 flex min-w-0 items-center gap-1.5 text-[11px] font-semibold text-[var(--text-muted)]">
-                        <span className="truncate">{project.owner_display_name || (project.owner_kind === 'teacher' ? 'Docente' : 'Studente')}</span>
-                        <span className="h-1 w-1 shrink-0 rounded-full bg-[var(--text-muted)]/50" />
-                        <span className="truncate">{project.template_key}</span>
-                        <span className="h-1 w-1 shrink-0 rounded-full bg-[var(--text-muted)]/50" />
-                        <span className="shrink-0">{new Date(project.updated_at).toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit' })}</span>
-                      </div>
-                      {project.visibility === 'class_shared' && (
-                        <div className="mt-1.5 inline-flex rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-black text-sky-700">
-                          Condiviso con la classe
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </button>
+                  badges={(
+                    <>
+                      <WorkspaceExplorerBadge>{new Date(project.updated_at).toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit' })}</WorkspaceExplorerBadge>
+                      {project.visibility === 'class_shared' && <WorkspaceExplorerBadge>Condiviso</WorkspaceExplorerBadge>}
+                    </>
+                  )}
+                />
               ))}
             </div>
           )}
+        </WorkspaceExplorerList>
+        <div className="border-t border-slate-200/80 px-4 py-3">
+          <Button
+            type="button"
+            onClick={() => setShowTutorial(true)}
+            variant="outline"
+            density="compact"
+            className="w-full gap-1.5 rounded-xl text-xs font-bold"
+            title="Tutorial Vibe Lab"
+          >
+            <HelpCircle className="h-3.5 w-3.5" />
+            Tutorial
+          </Button>
         </div>
         <SidebarVersioningPanel
           selectedProject={selectedProject}
@@ -1529,36 +1515,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
           }}
           onMergeCommit={handleMergeCommit}
         />
-        </div>
-        ) : (
-          <div className="flex flex-1 flex-col items-center gap-2 p-2">
-            {selectedProjectId && !createPanelOpen && <button
-              type="button"
-              onClick={handleStartNewProject}
-              disabled={creating || generating || draftSaving}
-              className="rounded-lg bg-slate-950 p-2 text-white hover:bg-slate-800"
-              title="Nuovo progetto"
-            >
-              <Plus className="h-4 w-4" />
-            </button>}
-            {projects.slice(0, 5).map((project) => (
-              <button
-                key={project.id}
-                type="button"
-                onClick={() => openProjectFromList(project)}
-                className={`h-8 w-8 rounded-lg text-xs font-bold ${
-                  selectedProjectId === project.id
-                    ? 'bg-slate-950 text-white'
-                    : 'border border-slate-200 bg-white text-slate-500 hover:border-slate-300'
-                }`}
-                title={project.title}
-              >
-                {project.title.trim().charAt(0).toUpperCase() || 'P'}
-              </button>
-            ))}
-          </div>
-        )}
-      </aside>
+      </WorkspaceExplorerSidebar>
 
       <main className="flex min-w-0 flex-1 flex-col">
         {error && (
@@ -1716,7 +1673,7 @@ export default function StudentCodingLabModule({ sessionId, sharedProject, isTea
                   )}
                   {generating && (
                     <div className="sticky bottom-0 z-20 rounded-2xl border border-[color:var(--border-subtle)] bg-white/95 p-2 shadow-[var(--shadow-lg)] backdrop-blur-xl">
-                      <LiveGenerationPanel reasoning={liveReasoning} plan={livePlan} files={liveFiles} />
+                      <LiveGenerationPanel status={liveStatus} reasoning={liveReasoning} plan={livePlan} files={liveFiles} />
                     </div>
                   )}
                   <div ref={conversationEndRef} />
@@ -2510,7 +2467,7 @@ function SidebarVersioningPanel({
   }
 
   return (
-    <div className="flex h-[34vh] min-h-[240px] max-h-[420px] shrink-0 flex-col border-t border-[color:var(--border-subtle)] bg-[var(--surface-muted)] p-3 text-[13px]">
+    <div className="hidden h-[34vh] min-h-[240px] max-h-[420px] shrink-0 flex-col border-t border-[color:var(--border-subtle)] bg-[var(--surface-muted)] p-3 text-[13px] lg:flex">
       <div className="mb-3 flex items-center justify-between">
         <div>
           <h3 className="text-xs font-black uppercase tracking-wide text-[var(--text-secondary)]">Versioning</h3>
@@ -2675,10 +2632,12 @@ function CollapsibleVersionRow({
 }
 
 function LiveGenerationPanel({
+  status,
   reasoning,
   plan,
   files,
 }: {
+  status: string
   reasoning: string
   plan: { path: string; purpose: string }[]
   files: { path: string; lines: number; status: 'writing' | 'done' }[]
@@ -2692,6 +2651,10 @@ function LiveGenerationPanel({
 
   return (
     <div className="space-y-2">
+      <div className="flex items-start gap-2 rounded-xl border border-indigo-200 bg-indigo-50 px-3 py-2.5 text-xs font-semibold leading-5 text-indigo-900" role="status" aria-live="polite">
+        <Loader2 className="mt-0.5 h-3.5 w-3.5 shrink-0 animate-spin" />
+        <span>{status || 'Avvio della generazione…'}</span>
+      </div>
       <div className="rounded-2xl border border-amber-300/55 bg-amber-50/85 p-3 shadow-sm ring-1 ring-amber-100/80">
         <div className="mb-2 flex items-center gap-2 text-xs font-black uppercase tracking-wide text-amber-800">
           <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -2913,8 +2876,8 @@ function injectPreviewRuntime(html: string, htmlFiles: Record<string, string>, c
       callHost('chat', { content, history, profileKey, provider, model }),
     generateImage: (args = {}) => {
       const payload = typeof args === 'string'
-        ? { prompt: args, provider: 'gpt-image-1' }
-        : { prompt: args.prompt, provider: args.provider || 'gpt-image-1' };
+        ? { prompt: args, provider: 'gpt-image-2-2026-04-21' }
+        : { prompt: args.prompt, provider: args.provider || 'gpt-image-2-2026-04-21' };
       const notify = (status, message, result) => {
         if (typeof args === 'object' && typeof args.onStatus === 'function') args.onStatus({ status, message, result });
         window.dispatchEvent(new CustomEvent('golinelli:image-status', { detail: { status, message, result } }));

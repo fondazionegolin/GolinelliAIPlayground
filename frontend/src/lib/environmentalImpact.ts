@@ -37,6 +37,7 @@ const OUTPUT_TOKEN_WEIGHT = 1.0
 const BASELINE_WEIGHTED_TOKENS = 1600
 
 const MODEL_INTENSITY_OVERRIDES: Record<string, number> = {
+  'gpt-5.6-luna': 0.7,
   'gpt-5.4-mini': 1.0,
   'gpt-5-nano': 0.7,
   'gpt-5-mini': 1.0,
@@ -47,7 +48,7 @@ const MODEL_INTENSITY_OVERRIDES: Record<string, number> = {
   'claude-3-5-sonnet-20241022': 1.35,
   'gemini-2.0-flash-lite': 0.8,
   'gemini-2.0-flash': 0.9,
-  'gemini-3.1-flash-lite-preview': 0.82,
+  'gemini-3.8-flash': 0.9,
   'mistral-nemo': 0.95,
   mistral: 1.0,
   'deepseek-chat': 0.9,
@@ -70,6 +71,7 @@ const IMAGE_REQUEST_EQUIVALENT: Record<string, number> = {
   'gpt-image-1': 4.8,
   'gpt-image-1.5': 4.8,
   'gpt-image-2': 4.8,
+  'gpt-image-2-2026-04-21': 4.8,
   'flux-schnell': 2.6,
   'flux-dev': 3.0,
   sdxl: 2.9,

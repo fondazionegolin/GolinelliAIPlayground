@@ -189,7 +189,7 @@
     /* Borders and focus */
     --border: 214 32% 91%;
     --input: 214 32% 91%;
-    --ring: 342 100% 50%;
+    --ring: 250 47% 60%;
     --radius: 0.5rem;
 
     /* Semantic mirrors for feature code migration */
@@ -244,7 +244,7 @@
     --destructive-foreground: 210 40% 98%;
     --border: 217.2 32.6% 17.5%;
     --input: 217.2 32.6% 17.5%;
-    --ring: 212.7 26.8% 83.9%;
+    --ring: 250 47% 68%;
 
     --app-body-bg: #111827;
     --surface-page: var(--app-body-bg);
@@ -672,6 +672,22 @@
   outline: none !important;
   box-shadow: none !important;
 }
+
+/* ── Form focus and validation ──────────────────────────────────────────── */
+/* Keep the interaction colour consistent even in legacy screens that still
+   declare a local Tailwind focus colour. Red is reserved for invalid fields. */
+:where(input, textarea, select):focus-visible:not([aria-invalid='true']):not([data-invalid='true']) {
+  border-color: var(--logo-violet) !important;
+  outline: none !important;
+  box-shadow: 0 0 0 3px var(--logo-violet-22) !important;
+}
+
+:where(input, textarea, select)[aria-invalid='true']:focus-visible,
+:where(input, textarea, select)[data-invalid='true']:focus-visible {
+  border-color: hsl(var(--destructive)) !important;
+  outline: none !important;
+  box-shadow: 0 0 0 3px hsl(var(--destructive) / 0.2) !important;
+}
 .ProseMirror {
   caret-color: #64748b;  /* slate-500 */
 }
@@ -683,6 +699,59 @@
 .ProseMirror .document-selection-highlight,
 .ProseMirror ::selection {
   background: rgba(244, 114, 182, 0.32);
+}
+
+/* Editable metadata preserved when importing Word documents. */
+.ProseMirror .docx-region {
+  position: relative;
+  margin: 0.75rem 0;
+  padding: 1.25rem 0.75rem 0.5rem;
+  border: 1px dashed #cbd5e1;
+  border-radius: 0.5rem;
+  color: #475569;
+}
+.ProseMirror .docx-region::before {
+  content: attr(data-docx-region-label);
+  position: absolute;
+  top: 0.2rem;
+  left: 0.75rem;
+  font-size: 0.625rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #64748b;
+}
+.ProseMirror .docx-comment {
+  border-bottom: 2px dotted #d97706;
+  background: rgba(251, 191, 36, 0.18);
+}
+.ProseMirror .docx-revision-insert {
+  border-bottom: 1px solid #16a34a;
+  background: rgba(34, 197, 94, 0.12);
+}
+.ProseMirror .docx-revision-delete {
+  color: #b91c1c;
+  background: rgba(239, 68, 68, 0.1);
+  text-decoration: line-through;
+}
+.ProseMirror .docx-table {
+  width: 100%;
+  margin: 0.75rem 0;
+  border-collapse: collapse;
+}
+.ProseMirror .docx-table th,
+.ProseMirror .docx-table td {
+  min-width: 3rem;
+  padding: 0.35rem 0.5rem;
+  border: 1px solid #94a3b8;
+  vertical-align: top;
+}
+.ProseMirror .docx-table th {
+  font-weight: 700;
+}
+.ProseMirror img {
+  max-width: 100%;
+  height: auto;
 }
 
 /* ── Code / agent blocks: Hasklig with programming ligatures ─────────────── */

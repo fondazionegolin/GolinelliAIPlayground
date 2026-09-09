@@ -39,7 +39,9 @@ function App() {
   
   const getDefaultRoute = (): string | null => {
     if (studentSession) return '/student'
-    if (user?.role === 'ADMIN') return '/admin'
+    // Admins can also use the teaching product: keep that as their default
+    // workspace and expose the admin panel as an explicit destination.
+    if (user?.role === 'ADMIN') return '/teacher'
     if (user?.role === 'TEACHER') return '/teacher'
     // If not authenticated, we stay on the landing page
     return null 

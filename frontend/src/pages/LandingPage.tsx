@@ -563,7 +563,7 @@ function TeachersSection() {
       const response = await authApi.login(email, password)
       const { access_token, user_id, role, tenant_id } = response.data
       setUser({ id: user_id, email, role, tenant_id }, access_token)
-      navigate(role === 'ADMIN' ? '/admin' : '/teacher')
+      navigate('/teacher')
     } catch (error: any) {
       const detail = error.response?.data?.detail
       toast({

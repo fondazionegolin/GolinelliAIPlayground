@@ -2629,15 +2629,42 @@ class TaskAnalyzeRequest(BaseModel):
     question: str = ""
 
 
-def _parse_structured_task_analysis(content: str, students: list[SessionStudent]) -> dict:
+def _parse_structured_task_analysis(
+    content: str,
+    students: list[SessionStudent],
+    submitted_student_ids: set[str] | None = None,
+) -> dict:
+    submitted_student_ids = submitted_student_ids or set()
+    stripped_content = content.strip()
+    fallback_summary = (
+        "L'analisi è stata generata, ma non è stato possibile organizzarla automaticamente. Riprova la generazione."
+        if stripped_content.startswith(("{", "```"))
+        else stripped_content
+    )
     fallback = {
         "overview": {
-            "summary": content.strip(),
+            "summary": fallback_summary,
             "completion_summary": "",
             "strengths": [],
             "gaps": [],
             "suggestions": [],
         },
+        "student_reports": [
+            {
+                "student_id": str(student.id),
+                "student_nickname": student.nickname,
+                "submitted": str(student.id) in submitted_student_ids,
+                "response_summary": (
+                    "Analisi individuale non disponibile."
+                    if str(student.id) in submitted_student_ids
+                    else "Nessuna risposta consegnata."
+                ),
+                "strengths": [],
+                "gaps": [],
+                "suggestions": [],
+            }
+            for student in students
+        ],
         "student_flags": [],
     }
     if not content.strip():
@@ -2703,6 +2730,57 @@ def _parse_structured_task_analysis(content: str, students: list[SessionStudent]
         values = overview.get(key) or []
         return [str(value).strip() for value in values if str(value).strip()] if isinstance(values, list) else []
 
+    reports_by_nickname = {}
+    for report in payload.get("student_reports") or []:
+        if not isinstance(report, dict):
+            continue
+        nickname = str(report.get("student_nickname") or "").strip()
+        student = students_by_nickname.get(nickname.casefold())
+        if not student:
+            continue
+
+        def _report_list(key: str) -> list[str]:
+            values = report.get(key) or []
+            return [str(value).strip() for value in values if str(value).strip()] if isinstance(values, list) else []
+
+        student_id = str(student.id)
+        reports_by_nickname[student.nickname.casefold()] = {
+            "student_id": student_id,
+            "student_nickname": student.nickname,
+            "submitted": student_id in submitted_student_ids,
+            "response_summary": str(report.get("response_summary") or "").strip(),
+            "strengths": _report_list("strengths"),
+            "gaps": _report_list("gaps"),
+            "suggestions": _report_list("suggestions"),
+        }
+
+    student_reports = []
+    for student in students:
+        student_id = str(student.id)
+        report = reports_by_nickname.get(student.nickname.strip().casefold())
+        if report:
+            if not report["response_summary"]:
+                report["response_summary"] = (
+                    "Analisi individuale non disponibile."
+                    if report["submitted"]
+                    else "Nessuna risposta consegnata."
+                )
+            student_reports.append(report)
+            continue
+        student_reports.append({
+            "student_id": student_id,
+            "student_nickname": student.nickname,
+            "submitted": student_id in submitted_student_ids,
+            "response_summary": (
+                "Analisi individuale non disponibile."
+                if student_id in submitted_student_ids
+                else "Nessuna risposta consegnata."
+            ),
+            "strengths": [],
+            "gaps": [],
+            "suggestions": [],
+        })
+
     return {
         "overview": {
             "summary": str(overview.get("summary") or fallback["overview"]["summary"]).strip(),
@@ -2711,8 +2789,68 @@ def _parse_structured_task_analysis(content: str, students: list[SessionStudent]
             "gaps": _string_list("gaps"),
             "suggestions": _string_list("suggestions"),
         },
+        "student_reports": student_reports,
         "student_flags": student_flags,
     }
+
+
+def _format_task_analysis_markdown(
+    analysis: dict,
+    *,
+    task_title: str,
+    session_title: str,
+    submission_count: int,
+    total_students: int,
+) -> str:
+    overview = analysis.get("overview") or {}
+    lines = [
+        "# Analisi delle risposte",
+        "",
+        f"**Compito:** {task_title}  ",
+        f"**Sessione:** {session_title}  ",
+        f"**Consegne:** {submission_count} su {total_students}",
+        "",
+        "## Sintesi della classe",
+        "",
+        overview.get("summary") or "Nessuna sintesi disponibile.",
+    ]
+
+    completion_summary = overview.get("completion_summary")
+    if completion_summary:
+        lines.extend(["", f"**Consegne ricevute e mancanti:** {completion_summary}"])
+
+    def append_list(title: str, values: list[str], empty_text: str, level: int = 3) -> None:
+        lines.extend(["", f"{'#' * level} {title}", ""])
+        if values:
+            lines.extend(f"- {value}" for value in values)
+        else:
+            lines.append(f"- {empty_text}")
+
+    append_list("Punti di forza della classe", overview.get("strengths") or [], "Nessun punto di forza specifico rilevato.")
+    append_list("Lacune ed errori ricorrenti", overview.get("gaps") or [], "Nessuna lacuna ricorrente rilevata.")
+
+    lines.extend(["", "## Analisi per studente"])
+    for report in analysis.get("student_reports") or []:
+        submitted = bool(report.get("submitted"))
+        lines.extend([
+            "",
+            f"### {report.get('student_nickname') or 'Studente'}",
+            "",
+            f"**Stato:** {'Consegna ricevuta' if submitted else 'Consegna mancante'}",
+            "",
+            f"**Risposta:** {report.get('response_summary') or ('Analisi individuale non disponibile.' if submitted else 'Nessuna risposta consegnata.')}",
+        ])
+        append_list("Punti di forza", report.get("strengths") or [], "Nessun punto di forza specifico rilevato.", 4)
+        append_list("Lacune o errori", report.get("gaps") or [], "Nessuna lacuna specifica rilevata.", 4)
+        append_list("Suggerimenti", report.get("suggestions") or [], "Nessun suggerimento individuale disponibile.", 4)
+
+    lines.extend(["", "## Conclusioni e indicazioni didattiche"])
+    suggestions = overview.get("suggestions") or []
+    lines.extend(["", *(f"- {value}" for value in suggestions)])
+    if not suggestions:
+        lines.extend(["", "- Nessuna indicazione didattica aggiuntiva disponibile."])
+
+    return "\n".join(lines).strip()
 
 
 @router.post("/sessions/{session_id}/tasks/{task_id}/analyze")
@@ -2876,6 +3014,15 @@ Rispondi ESCLUSIVAMENTE con un oggetto JSON valido, senza markdown, con questa s
     "gaps": ["difficoltà ricorrente"],
     "suggestions": ["azione didattica concreta"]
   }},
+  "student_reports": [
+    {{
+      "student_nickname": "nickname esatto",
+      "response_summary": "sintesi chiara della risposta, oppure Nessuna risposta consegnata",
+      "strengths": ["punto di forza individuale supportato dalla risposta"],
+      "gaps": ["lacuna o errore individuale supportato dalla risposta"],
+      "suggestions": ["suggerimento concreto per lo studente"]
+    }}
+  ],
   "student_flags": [
     {{
       "student_nickname": "nickname esatto",
@@ -2892,6 +3039,7 @@ Rispondi ESCLUSIVAMENTE con un oggetto JSON valido, senza markdown, con questa s
   ]
 }}
 
+Includi in student_reports TUTTI gli studenti della sessione, uno per uno e nell'ordine fornito. Per chi non ha consegnato usa esattamente "Nessuna risposta consegnata" come response_summary e lascia vuoti strengths e gaps. Non inserire mai JSON o codice dentro i campi testuali.
 Inserisci un flag solo quando esiste un'evidenza concreta. Usa confidence tra 0 e 1. Per similar_answer indica nella motivazione gli altri nickname coinvolti.
 
 ---
@@ -2942,9 +3090,22 @@ Inserisci un flag solo quando esiste un'evidenza concreta. Usa confidence tra 0 
     except Exception:
         pass
 
-    structured_analysis = _parse_structured_task_analysis(llm_response.content, all_students)
+    submitted_student_ids = {str(submission.student_id) for submission, _ in submissions}
+    structured_analysis = _parse_structured_task_analysis(
+        llm_response.content,
+        all_students,
+        submitted_student_ids,
+    )
+    formatted_analysis = _format_task_analysis_markdown(
+        structured_analysis,
+        task_title=task.title,
+        session_title=session.title,
+        submission_count=len(submissions),
+        total_students=len(all_students),
+    )
     return {
         "analysis": llm_response.content,
+        "formatted_analysis": formatted_analysis,
         **structured_analysis,
         "task_title": task.title,
         "task_type": task.task_type.value,

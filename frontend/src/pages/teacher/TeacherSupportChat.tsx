@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useMemo, type CSSProperties } from 'react'
 import { useMobile } from '@/hooks/useMobile'
 import { Button } from '@/components/ui/button'
+import { Button as DesignButton } from '@/design/primitives/Button'
 import {
   Send, Bot, Paperclip, X, Trash2, Plus, File, Image as ImageIcon, Loader2,
   Database, Download, ChevronDown, ChevronRight, Edit3, Check, MessageCircle,
@@ -35,14 +36,11 @@ import {
   type DispensaSection,
   type DispensaExercise,
 } from '@/components/teacher/reportTemplates'
-import {
-  PASTEL_ICON_TEXT,
-  PASTEL_SURFACES,
-} from '@/design/themes/pastelSurfaces'
+import { PASTEL_SURFACES } from '@/design/themes/pastelSurfaces'
 
 // Constants
 const FALLBACK_MODELS = [
-  { id: 'gpt-5.4-mini', name: 'GPT-5.4 Mini', provider: 'openai' },
+  { id: 'gpt-5.6-luna', name: 'GPT-5.6 Luna', provider: 'openai' },
   { id: 'claude-haiku-4-5-20251001', name: 'Claude Haiku 4.5', provider: 'anthropic' },
   { id: 'mistral-nemo', name: 'Mistral Nemo', provider: 'ollama' },
 ]
@@ -111,6 +109,7 @@ interface ExerciseData {
   examples?: string[]
   difficulty?: 'easy' | 'medium' | 'hard'
   hint?: string
+  response_mode?: 'free_text' | 'inline_blanks'
 }
 
 interface Message {
@@ -498,7 +497,7 @@ export default function TeacherSupportChat({ onMinimize, onClose, sidebarMode = 
   const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([])
   const [ocrOverlays, setOcrOverlays] = useState<Record<string, OcrOverlayData>>({})
   const [agentMode, setAgentMode] = useState<AgentMode>('default')
-  const [imageProvider, setImageProvider] = useState<'dall-e' | 'gpt-image-1.5'>('gpt-image-1.5')
+  const [imageProvider, setImageProvider] = useState<'dall-e' | 'gpt-image-2-2026-04-21'>('gpt-image-2-2026-04-21')
   const [imageSize, setImageSize] = useState<string>('1024x1024')
   // Analysis mode: session/task picker
   const [analysisSessionId, setAnalysisSessionId] = useState<string>('')
@@ -2124,7 +2123,7 @@ REGOLE IMPORTANTI:
           expansionHistory,
           'tutor',  // NON usare 'teacher_support' - ha uses_agent:true che attiva intent classification
           'openai',
-          'gpt-5.4-mini',
+          'gpt-5.6-luna',
           undefined,
           undefined,
           signal
@@ -2154,7 +2153,7 @@ REGOLE IMPORTANTI:
             role: 'assistant',
             content: `**Immagine Generata**\n\n![Generata](${imageUrl})\n\n**Prompt Effettivo:**\n\`${enhancedPrompt}\``,
             timestamp: new Date(),
-            provider: imageProvider === 'dall-e' || imageProvider === 'gpt-image-1.5' ? 'openai' : 'flux',
+            provider: imageProvider === 'dall-e' || imageProvider === 'gpt-image-2-2026-04-21' ? 'openai' : 'flux',
             model: imageProvider === 'dall-e' ? 'dall-e-3' : imageProvider,
             token_usage_json: { image_count: 1 },
           }
@@ -2183,7 +2182,8 @@ REGOLE IMPORTANTI:
         const res = await teacherApi.analyzeTask(analysisSessionId, analysisTaskId, userInput || undefined, signal)
         const data = res.data
         const submissionSummary = `📋 *${data.submission_count} su ${data.total_students} studenti hanno consegnato «${data.task_title}» (sessione: ${sessionTitle})*\n\n`
-        const fullContent = submissionSummary + (data.analysis || 'Nessuna analisi disponibile.')
+        const fullContent = data.formatted_analysis
+          || submissionSummary + (data.overview?.summary || 'Nessuna analisi disponibile.')
 
         setStreamingStatus(null)
         setMessages(prev => prev.map(m => m.id === assistantId ? { ...m, content: fullContent } : m))
@@ -2736,7 +2736,8 @@ REGOLE IMPORTANTI:
           instructions: publishModal.data.instructions,
           examples,
           difficulty: publishModal.data.difficulty || 'medium',
-          hint: publishModal.data.hint || undefined
+          hint: publishModal.data.hint || undefined,
+          response_mode: publishModal.data.response_mode || 'free_text'
         })
         taskType = 'exercise'
         title = publishModal.data.title || "Nuovo Esercizio"
@@ -2824,101 +2825,113 @@ REGOLE IMPORTANTI:
                 {/* Unified card: sidebar + chat together */}
                 <div className={`flex-1 flex h-full overflow-hidden ${sidebarMode ? 'bg-white' : isMobile ? '' : 'bg-white rounded-2xl border border-slate-200 shadow-[var(--shadow-md)]'}`}>
                  {/* Sidebar — desktop only */}
-                 <aside className={`${isMobile || sidebarMode ? 'hidden' : ''} ${isSidebarCollapsed ? 'w-12' : 'w-80'} flex flex-col transition-all duration-300 flex-shrink-0 overflow-hidden border-r border-slate-200/70 bg-slate-50/90 backdrop-blur-sm`}>
+                 <aside className={`${isMobile || sidebarMode ? 'hidden' : ''} ${isSidebarCollapsed ? 'w-12' : 'w-64'} flex shrink-0 flex-col overflow-hidden border-r border-[var(--border-subtle)] bg-white/55 backdrop-blur-sm transition-all duration-300`}>
                   {isSidebarCollapsed ? (
                     /* Collapsed: just expand button */
-                    <div className="p-2 flex flex-col items-center gap-3 pt-3">
+                    <div className="flex flex-col items-center gap-3 p-2 pt-3">
                       <Button
                         variant="ghost"
                         size="sm"
                         onClick={() => setIsSidebarCollapsed(false)}
-                        className={`h-8 w-8 p-0 shadow-sm ${PASTEL_SURFACES.indigo}`}
+                        className="h-8 w-8 rounded-lg bg-[var(--logo-violet-10)] p-0 text-[var(--logo-violet)] ring-1 ring-[var(--logo-violet-22)] hover:bg-[var(--logo-violet-10)]"
                         title="Espandi"
                       >
-                        <ChevronRight className={`h-4 w-4 ${PASTEL_ICON_TEXT.indigo}`} />
+                        <ChevronRight className="h-4 w-4" />
                       </Button>
                     </div>
                   ) : (
                     <>
-                      {/* Section header */}
-                      <div className="px-2.5 pt-2 pb-1.5 bg-white/70 border-b border-slate-200/70 shrink-0 flex items-center gap-1 backdrop-blur-sm">
-                        <div className="flex-1 flex items-center gap-1.5 px-2 py-1.5 text-xs font-semibold text-slate-600">
-                          <MessageCircle className="h-3.5 w-3.5" />
-                          Cronologia
+                      <div className="flex shrink-0 items-center gap-2.5 border-b border-[var(--border-subtle)] px-4 py-3">
+                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[var(--logo-violet-10)] ring-1 ring-[var(--logo-violet-22)]">
+                          <MessageCircle className="h-[18px] w-[18px] text-[var(--logo-violet)]" />
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-black leading-tight text-[var(--text-primary)]">Chatbot docente</p>
+                          <p className="truncate text-[10px] text-[var(--text-muted)]">Conversazioni e strumenti didattici</p>
                         </div>
                         <Button
                           variant="ghost"
                           size="sm"
                           onClick={() => setIsSidebarCollapsed(true)}
-                          className={`h-7 w-7 p-0 flex-shrink-0 shadow-sm ${PASTEL_SURFACES.slate}`}
+                          className="h-7 w-7 shrink-0 rounded-md p-0 text-[var(--text-muted)] hover:bg-[var(--surface-elevated)]"
                           title="Comprimi"
                         >
-                          <ChevronDown className="h-4 w-4 text-slate-400 rotate-90" />
+                          <ChevronDown className="h-4 w-4 rotate-90" />
                         </Button>
                       </div>
 
-                      {/* Action bar */}
-                      <div className="px-3 py-2 flex gap-2 border-b border-slate-200/60 shrink-0 bg-white/30">
-                        <Button variant="ghost" size="sm" onClick={handleNewChat} className="h-8 w-8 rounded-lg border p-0 shadow-sm" style={accentButtonStyle} title="Nuova chat">
-                          <Plus className="h-4 w-4" />
-                        </Button>
-                        <Button variant="ghost" size="sm" onClick={handleClearAllConversations} className="h-8 w-8 p-0 rounded-lg shadow-sm bg-rose-50 text-rose-700 hover:bg-rose-100" title="Pulisci cronologia">
-                          <Trash2 className={`h-4 w-4 ${PASTEL_ICON_TEXT.rose}`} />
-                        </Button>
+                      <div className="shrink-0 px-3 pt-3">
+                        <DesignButton tone="accent" surface="solid" density="compact" fullWidth onClick={handleNewChat}>
+                          <Plus className="h-3.5 w-3.5" /> Nuova chat
+                        </DesignButton>
                       </div>
-                      <div className="flex-1 overflow-y-auto px-3 py-3 space-y-2">
+
+                      <div className="flex shrink-0 items-center justify-between px-4 pb-1 pt-3">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Conversazioni</span>
+                        <span className="flex items-center gap-1.5">
+                          <span className="text-[10px] font-semibold text-[var(--text-muted)]" aria-live="polite">{conversations.length}</span>
+                          {conversations.length > 0 && (
+                            <button
+                              type="button"
+                              onClick={handleClearAllConversations}
+                              className="rounded-md p-1 text-[var(--text-muted)] transition-colors hover:bg-red-50 hover:text-red-500"
+                              title="Pulisci cronologia"
+                              aria-label="Pulisci cronologia"
+                            >
+                              <Trash2 className="h-3 w-3" />
+                            </button>
+                          )}
+                        </span>
+                      </div>
+
+                      <div className="flex-1 space-y-1 overflow-y-auto px-2 pb-3">
                         {conversations.map(conv => (
-                          <button
+                          <div
                             key={conv.id}
-                            onClick={() => { openConversation(conv) }}
-                            className={`w-full text-left p-3 rounded-xl text-xs transition-all group ${currentConversationId === conv.id
-                              ? 'font-medium border shadow-sm'
-                              : 'bg-white text-slate-600 border border-slate-200/70 hover:border-slate-300 hover:bg-slate-50'
-                              }`}
-                            style={currentConversationId === conv.id ? selectedSoftStyle : undefined}
+                            className={`group flex items-center gap-1 rounded-xl transition-colors ${currentConversationId === conv.id
+                              ? 'bg-[var(--logo-violet-10)] ring-1 ring-[var(--logo-violet-22)]'
+                              : 'hover:bg-[var(--surface-elevated)]'
+                            }`}
                           >
-                            <div className="flex items-center gap-1 min-w-0">
-                              <span className="truncate flex-1">{conv.title}</span>
-                              {convsWithDocs.has(conv.id) && (
-                                <span title="Ha un documento generato"><Layout className="h-3 w-3 text-fuchsia-400 flex-shrink-0" /></span>
-                              )}
-                            </div>
-                            <div className="flex items-center justify-between mt-1">
-                              <span className="text-xs text-slate-400">{conv.createdAt.toLocaleDateString()}</span>
-                              <button
-                                className="text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity p-1"
-                                style={{ color: currentConversationId === conv.id ? accentTheme.text : undefined }}
-                                onClick={async (e) => {
-                                  e.stopPropagation()
-                                  if (confirm('Eliminare questa conversazione?')) {
-                                    try {
-                                      await teacherApi.deleteConversation(conv.id)
-                                    } catch (err) {
-                                      console.error('Failed to delete conv:', err)
-                                    }
-                                    setConversations(prev => prev.filter(c => c.id !== conv.id))
-                                    setConversationCache(prev => {
-                                      const next = { ...prev }
-                                      delete next[conv.id]
-                                      conversationCacheRef.current = next
-                                      localStorage.setItem('teacher_support_messages_cache', JSON.stringify(next))
-                                      return next
-                                    })
-                                    // Remove doc from cache
-                                    delete docCacheRef.current[conv.id]
-                                    localStorage.setItem('teacher_canvas_docs', JSON.stringify(docCacheRef.current))
-                                    setConvsWithDocs(prev => { const s = new Set(prev); s.delete(conv.id); return s })
-                                    if (currentConversationId === conv.id) handleNewChat()
+                            <button type="button" onClick={() => openConversation(conv)} className="min-w-0 flex-1 px-2.5 py-2 text-left">
+                              <span className="flex min-w-0 items-center gap-1 text-[13px] font-bold leading-tight text-[var(--text-primary)]">
+                                <span className="truncate">{conv.title}</span>
+                                {convsWithDocs.has(conv.id) && <Layout className="h-3 w-3 shrink-0 text-fuchsia-400" />}
+                              </span>
+                              <span className="mt-0.5 block truncate text-[10px] text-[var(--text-muted)]">{conv.createdAt.toLocaleDateString()}</span>
+                            </button>
+                            <button
+                              type="button"
+                              className="mr-1 rounded-md p-1 text-[var(--text-muted)] opacity-0 transition-all hover:bg-red-50 hover:text-red-500 focus:opacity-100 group-hover:opacity-100"
+                              onClick={async () => {
+                                if (confirm('Eliminare questa conversazione?')) {
+                                  try {
+                                    await teacherApi.deleteConversation(conv.id)
+                                  } catch (err) {
+                                    console.error('Failed to delete conv:', err)
                                   }
-                                }}
-                              >
-                                <Trash2 className="h-3 w-3" />
-                              </button>
-                            </div>
-                          </button>
+                                  setConversations(prev => prev.filter(c => c.id !== conv.id))
+                                  setConversationCache(prev => {
+                                    const next = { ...prev }
+                                    delete next[conv.id]
+                                    conversationCacheRef.current = next
+                                    localStorage.setItem('teacher_support_messages_cache', JSON.stringify(next))
+                                    return next
+                                  })
+                                  delete docCacheRef.current[conv.id]
+                                  localStorage.setItem('teacher_canvas_docs', JSON.stringify(docCacheRef.current))
+                                  setConvsWithDocs(prev => { const s = new Set(prev); s.delete(conv.id); return s })
+                                  if (currentConversationId === conv.id) handleNewChat()
+                                }
+                              }}
+                              aria-label={`Elimina ${conv.title}`}
+                            >
+                              <Trash2 className="h-3 w-3" />
+                            </button>
+                          </div>
                         ))}
                         {conversations.length === 0 && (
-                          <p className="text-xs text-slate-400 text-center py-8">Nessuna conversazione</p>
+                          <p className="px-3 py-3 text-center text-xs leading-5 text-[var(--text-muted)]">Nessuna conversazione.</p>
                         )}
                       </div>
                     </>
@@ -3075,8 +3088,8 @@ REGOLE IMPORTANTI:
                             <div className="flex items-center bg-slate-100/80 rounded-full p-1 border border-slate-200">
                               {([
                                 { id: 'dall-e', label: '🎨 DALL-E 3' },
-                                { id: 'gpt-image-1.5', label: '✨ GPT Image 1.5' },
-                              ] as { id: 'dall-e' | 'gpt-image-1.5'; label: string }[]).map((m) => (
+                                { id: 'gpt-image-2-2026-04-21', label: '✨ GPT Image 2' },
+                              ] as { id: 'dall-e' | 'gpt-image-2-2026-04-21'; label: string }[]).map((m) => (
                                 <button
                                   key={m.id}
                                   onClick={() => setImageProvider(m.id)}

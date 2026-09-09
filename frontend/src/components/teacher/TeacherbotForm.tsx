@@ -628,7 +628,7 @@ export default function TeacherbotForm({ teacherbotId, onBack, onSaved, variant 
   const [shareOpen, setShareOpen] = useState(false)
   const [shareLinksOpen, setShareLinksOpen] = useState(false)
 
-  // Load existing teacherbot data
+  // Load existing teacherbot/studentbot data
   const { data: teacherbot, isLoading: isLoadingBot } = useQuery({
     queryKey: [variant, teacherbotId],
     queryFn: async () => {
@@ -636,7 +636,7 @@ export default function TeacherbotForm({ teacherbotId, onBack, onSaved, variant 
       const res = await (isStudentbot ? studentbotsApi : teacherbotsApi).get(teacherbotId)
       return res.data
     },
-    enabled: !!teacherbotId && !isStudentbot,
+    enabled: !!teacherbotId,
   })
 
   const { data: publications } = useQuery({
@@ -653,7 +653,7 @@ export default function TeacherbotForm({ teacherbotId, onBack, onSaved, variant 
     queryFn: async () => (await teacherbotsApi.listShareLinks(teacherbotId!)).data as Array<{
       id: string; is_active: boolean; expires_at: string
     }>,
-    enabled: !!teacherbotId,
+    enabled: !!teacherbotId && !isStudentbot,
   })
 
   const activePublications = (publications || []).filter((p) => p.is_active)

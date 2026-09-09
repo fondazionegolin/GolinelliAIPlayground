@@ -1,9 +1,16 @@
 import { useMemo, useState, useRef } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { boardsApi } from '@/lib/api'
-import { Check, Edit2, GripVertical, LayoutTemplate, Lock, Palette, Plus, Share2, Trash2, X } from 'lucide-react'
+import { Check, Edit2, GripVertical, KanbanSquare, LayoutTemplate, Lock, Palette, Plus, Share2, Trash2, X } from 'lucide-react'
 import { useToast } from '@/components/ui/use-toast'
-import { SearchPill } from '@/design'
+import { Button, SearchPill } from '@/design'
+import {
+  WorkspaceExplorerBadge,
+  WorkspaceExplorerHeader,
+  WorkspaceExplorerItem,
+  WorkspaceExplorerList,
+  WorkspaceExplorerSidebar,
+} from '@/components/WorkspaceExplorerSidebar'
 
 type BoardColumn = { id: string; label: string; hint: string; color: string }
 type BoardCard = {
@@ -73,6 +80,8 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
   const [editCardTitle, setEditCardTitle] = useState('')
   const [editCardDescription, setEditCardDescription] = useState('')
   const [editCardColor, setEditCardColor] = useState(TASK_COLORS[0])
+  const [boardListSearch, setBoardListSearch] = useState('')
+  const [showCreateForm, setShowCreateForm] = useState(false)
 
   const { data: templates = [] } = useQuery({
     queryKey: ['boards-templates'],
@@ -85,6 +94,11 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
   })
 
   const selectedSummary = useMemo(() => boards.find((board) => board.id === selectedId) || boards[0] || null, [boards, selectedId])
+  const filteredBoards = useMemo(() => {
+    const query = boardListSearch.trim().toLocaleLowerCase('it')
+    if (!query) return boards
+    return boards.filter((item) => [item.title, item.created_by_display_name].filter(Boolean).join(' ').toLocaleLowerCase('it').includes(query))
+  }, [boards, boardListSearch])
   const { data: selectedBoard } = useQuery({
     queryKey: ['board', selectedSummary?.id],
     enabled: Boolean(selectedSummary?.id),
@@ -106,6 +120,7 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
       const created = res.data as Board
       setTitle('')
       setShareOnCreate(false)
+      setShowCreateForm(false)
       setSelectedId(created.id)
       queryClient.invalidateQueries({ queryKey: ['boards'] })
       queryClient.setQueryData(['board', created.id], created)
@@ -295,14 +310,31 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-slate-100 text-slate-900 lg:flex-row">
-      <aside className="flex max-h-[220px] w-full shrink-0 flex-col border-b border-slate-200 bg-white lg:max-h-none lg:w-[300px] lg:border-b-0 lg:border-r">
-        <div className="border-b border-slate-100 p-3">
-          <h1 className="text-base font-black">Board Manager</h1>
-          <p className="text-xs text-slate-500">
-            {isStudent ? 'Crea board personali o condivise nella sessione.' : 'Crea e condividi board nella sessione attiva.'}
-          </p>
-        </div>
-        <div className="space-y-2 border-b border-slate-100 p-3">
+      <WorkspaceExplorerSidebar>
+        <WorkspaceExplorerHeader
+          eyebrow={isStudent ? 'Spazio studente' : 'Pannello docente'}
+          title="Board"
+          description={isStudent ? 'Board personali e condivise in un unico explorer.' : 'Crea e condividi board nella sessione attiva.'}
+          action={(
+            <Button
+              type="button"
+              onClick={() => setShowCreateForm((value) => !value)}
+              density="compact"
+              tone="accent"
+              surface="solid"
+              className="h-9 w-9 shrink-0 rounded-full p-0"
+              title="Nuova board"
+              aria-label="Nuova board"
+            >
+              <Plus className="h-3.5 w-3.5" />
+            </Button>
+          )}
+          searchValue={boardListSearch}
+          onSearchChange={setBoardListSearch}
+          searchPlaceholder="Cerca board..."
+          clearSearchLabel="Cancella ricerca board"
+        />
+        {showCreateForm && <div className="space-y-2 border-b border-slate-200/80 px-5 py-4">
           <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Titolo board" className="h-9 w-full rounded-lg border border-slate-200 px-3 text-sm outline-none focus:ring-2 focus:ring-slate-300" />
           <div className="flex gap-2">
             <select value={templateKey} onChange={(e) => setTemplateKey(e.target.value)} className="h-9 min-w-0 flex-1 rounded-lg border border-slate-200 px-2 text-sm">
@@ -316,38 +348,44 @@ export default function BoardManager({ sessionId, isStudent = false }: { session
             <input type="checkbox" checked={shareOnCreate} onChange={(e) => setShareOnCreate(e.target.checked)} />
             condividi con la classe
           </label>
-        </div>
-        <div className="min-h-0 flex-1 overflow-y-auto p-2">
-          {isLoading ? <p className="p-3 text-sm text-slate-400">Caricamento...</p> : boards.map((item) => (
-            <div key={item.id} className={`mb-2 flex items-stretch rounded-lg border ${board?.id === item.id ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 bg-white hover:bg-slate-50'}`}>
-              <button onClick={() => setSelectedId(item.id)} className="min-w-0 flex-1 px-3 py-2 text-left">
-                <div className="truncate text-sm font-black">{item.title}</div>
-                <div className={`mt-1 flex items-center gap-1 text-[11px] ${board?.id === item.id ? 'text-white/70' : 'text-slate-500'}`}>
-                  {item.visibility === 'session_shared' ? <Share2 className="h-3 w-3" /> : <Lock className="h-3 w-3" />}
-                  <span>{item.visibility === 'session_shared' ? 'Condivisa' : 'Privata'}</span>
-                </div>
-                {item.created_by_display_name && (
-                  <div className={`mt-1 truncate text-[10px] ${board?.id === item.id ? 'text-white/55' : 'text-slate-400'}`}>
-                    Creata da {item.created_by_display_name}
-                  </div>
-                )}
-              </button>
-              {item.can_manage && (
+        </div>}
+        <WorkspaceExplorerList>
+          {isLoading ? <p className="p-3 text-sm text-slate-400">Caricamento...</p> : filteredBoards.length === 0 ? (
+            <p className="px-2 py-8 text-center text-xs leading-5 text-slate-400">
+              {boardListSearch ? `Nessuna board corrisponde a “${boardListSearch}”.` : 'Nessuna board disponibile.'}
+            </p>
+          ) : <div className="space-y-2">{filteredBoards.map((item) => (
+            <WorkspaceExplorerItem
+              key={item.id}
+              icon={<KanbanSquare className="h-4 w-4" />}
+              title={item.title}
+              subtitle={item.created_by_display_name ? `Creata da ${item.created_by_display_name}` : undefined}
+              selected={board?.id === item.id}
+              onClick={() => setSelectedId(item.id)}
+              badges={(
+                <WorkspaceExplorerBadge>
+                  <span className="inline-flex items-center gap-1">
+                    {item.visibility === 'session_shared' ? <Share2 className="h-3 w-3" /> : <Lock className="h-3 w-3" />}
+                    {item.visibility === 'session_shared' ? 'Condivisa' : 'Privata'}
+                  </span>
+                </WorkspaceExplorerBadge>
+              )}
+              trailing={item.can_manage ? (
                 <button
                   type="button"
                   onClick={() => {
                     if (window.confirm(`Eliminare la board "${item.title}"?`)) deleteBoard.mutate(item.id)
                   }}
-                  className={`flex w-10 items-center justify-center border-l ${board?.id === item.id ? 'border-white/15 text-white/70 hover:text-white' : 'border-slate-100 text-slate-400 hover:bg-red-50 hover:text-red-600'}`}
+                  className="flex w-10 items-center justify-center border-l border-white/70 text-slate-400 hover:bg-red-50/80 hover:text-red-600"
                   aria-label={`Elimina ${item.title}`}
                 >
                   <Trash2 className="h-4 w-4" />
                 </button>
-              )}
-            </div>
-          ))}
-        </div>
-      </aside>
+              ) : undefined}
+            />
+          ))}</div>}
+        </WorkspaceExplorerList>
+      </WorkspaceExplorerSidebar>
       <main className="flex min-w-0 flex-1 flex-col">
         {!board ? (
           <div className="flex h-full items-center justify-center text-sm text-slate-500">Crea una board per iniziare.</div>

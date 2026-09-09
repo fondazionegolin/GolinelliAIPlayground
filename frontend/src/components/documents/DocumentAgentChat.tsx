@@ -27,6 +27,7 @@ type ChatMessage = {
 
 type Props = {
   context: DocumentAssistContext | null
+  selectionContext?: DocumentAssistContext | null
   presentationContext?: DocumentAssistContext | null
   documentContext: Record<string, unknown>
   dims?: { width: number; height: number }
@@ -50,20 +51,29 @@ function proposalPreview(proposal: Proposal) {
 
 const wait = (milliseconds: number) => new Promise((resolve) => window.setTimeout(resolve, milliseconds))
 
-export default function DocumentAgentChat({ context, presentationContext, documentContext, dims, onApply, onClose }: Props) {
+export default function DocumentAgentChat({ context, selectionContext, presentationContext, documentContext, dims, onApply, onClose }: Props) {
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const [retryNotice, setRetryNotice] = useState('')
-  const [wholePresentation, setWholePresentation] = useState(false)
+  const [scope, setScope] = useState<'current' | 'selection' | 'presentation'>('current')
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const { data: serverHealth } = useServerHealth()
-  const activeContext = wholePresentation && presentationContext ? presentationContext : context
+  const activeContext = scope === 'selection' && selectionContext
+    ? selectionContext
+    : scope === 'presentation' && presentationContext
+      ? presentationContext
+      : context
   const activeContextId = activeContext?.id
   const activeContextKind = activeContext?.kind
   const activeContextLabel = activeContext?.label
   const activeContextDetail = activeContext?.detail
   const lastContextId = useRef<string | null>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (scope === 'selection' && !selectionContext) setScope('current')
+    if (scope === 'presentation' && !presentationContext) setScope('current')
+  }, [presentationContext, scope, selectionContext])
 
   useEffect(() => {
     if (!activeContextId || !activeContextLabel || !activeContextDetail || activeContextId === lastContextId.current) return
@@ -167,7 +177,10 @@ export default function DocumentAgentChat({ context, presentationContext, docume
   }
 
   return (
-    <aside className="flex w-[360px] shrink-0 flex-col border-l border-slate-200 bg-white shadow-sm">
+    <aside
+      className="fixed inset-y-0 right-0 z-50 flex w-[min(92vw,420px)] shrink-0 flex-col border-l border-slate-200 bg-white shadow-2xl xl:static xl:z-auto xl:w-[360px] xl:shadow-sm"
+      aria-label="Assistente documento"
+    >
       <header className="flex min-h-16 items-center gap-3 border-b border-slate-200 px-4 py-3">
         <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-violet-100 text-violet-700"><Bot className="h-5 w-5" /></span>
         <div className="min-w-0 flex-1">
@@ -178,10 +191,11 @@ export default function DocumentAgentChat({ context, presentationContext, docume
       </header>
 
       <div className="border-b border-slate-100 bg-slate-50/80 p-3">
-        {presentationContext && (
-          <div className="mb-2 grid grid-cols-2 rounded-xl bg-slate-200/70 p-1 text-[11px] font-bold">
-            <button type="button" onClick={() => setWholePresentation(false)} className={`rounded-lg px-2 py-1.5 transition ${!wholePresentation ? 'bg-white text-violet-700 shadow-sm' : 'text-slate-500'}`}>Slide / oggetto</button>
-            <button type="button" onClick={() => setWholePresentation(true)} className={`rounded-lg px-2 py-1.5 transition ${wholePresentation ? 'bg-white text-violet-700 shadow-sm' : 'text-slate-500'}`}>Intera presentazione</button>
+        {(selectionContext || presentationContext) && (
+          <div className={`mb-2 grid ${selectionContext && presentationContext ? 'grid-cols-3' : 'grid-cols-2'} rounded-xl bg-slate-200/70 p-1 text-[11px] font-bold`}>
+            <button type="button" onClick={() => setScope('current')} className={`rounded-lg px-2 py-1.5 transition ${scope === 'current' ? 'bg-white text-violet-700 shadow-sm' : 'text-slate-500'}`}>Slide / oggetto</button>
+            {selectionContext && <button type="button" onClick={() => setScope('selection')} className={`rounded-lg px-2 py-1.5 transition ${scope === 'selection' ? 'bg-white text-violet-700 shadow-sm' : 'text-slate-500'}`}>Selezionate</button>}
+            {presentationContext && <button type="button" onClick={() => setScope('presentation')} className={`rounded-lg px-2 py-1.5 transition ${scope === 'presentation' ? 'bg-white text-violet-700 shadow-sm' : 'text-slate-500'}`}>Intera presentazione</button>}
           </div>
         )}
         {activeContext ? (

@@ -119,6 +119,7 @@ export function SlideEditor({
     handle?: string
     startX: number
     startY: number
+    pointerId: number
     /** Screen-space pivot (block center) captured once when a rotation drag starts. */
     pivotX?: number
     pivotY?: number
@@ -143,7 +144,7 @@ export function SlideEditor({
     .sort((a, b) => (a.block.zIndex ?? a.index) - (b.block.zIndex ?? b.index))
 
   // Handle Canvas Click (Deselect)
-  const handleCanvasClick = (e: React.MouseEvent) => {
+  const handleCanvasClick = (e: React.PointerEvent) => {
     setContextMenu(null)
     if (e.target === canvasRef.current) {
       onSelectBlock(null)
@@ -217,8 +218,10 @@ export function SlideEditor({
 
   // Handle Drag & Resize
   useEffect(() => {
-    const handleMouseMove = (e: MouseEvent) => {
+    const handlePointerMove = (e: PointerEvent) => {
       if (!dragState || !dragState.initialBlock) return
+      if (e.pointerId !== dragState.pointerId) return
+      e.preventDefault()
 
       // Adjust delta by scale to ensure smooth movement regardless of zoom
       const deltaX = (e.clientX - dragState.startX) / scale
@@ -239,10 +242,12 @@ export function SlideEditor({
         if (b.id !== dragState.initialBlock!.id) return b
 
         if (dragState.isDragging) {
+          const nextX = dragSnap ? dragSnap.x : dragState.initialBlock!.x + deltaX
+          const nextY = dragSnap ? dragSnap.y : dragState.initialBlock!.y + deltaY
           return {
             ...b,
-            x: dragSnap ? dragSnap.x : dragState.initialBlock!.x + deltaX,
-            y: dragSnap ? dragSnap.y : dragState.initialBlock!.y + deltaY
+            x: slideWidth ? Math.min(Math.max(0, nextX), Math.max(0, slideWidth - b.width)) : nextX,
+            y: slideHeight ? Math.min(Math.max(0, nextY), Math.max(0, slideHeight - b.height)) : nextY,
           }
         }
 
@@ -279,6 +284,29 @@ export function SlideEditor({
             if (height < 20) height = 20
           }
 
+          // Keep resized objects reachable. This is especially important on touch screens,
+          // where an object outside the slide cannot be grabbed again with a precise pointer.
+          if (slideWidth) {
+            if (x < 0) { width += x; x = 0 }
+            if (x + width > slideWidth) width = slideWidth - x
+          }
+          if (slideHeight) {
+            if (y < 0) { height += y; y = 0 }
+            if (y + height > slideHeight) height = slideHeight - y
+          }
+          if (init.type !== 'line') {
+            width = Math.max(20, width)
+            height = Math.max(20, height)
+          }
+          if (slideWidth) {
+            width = Math.min(slideWidth, width)
+            x = Math.min(x, Math.max(0, slideWidth - width))
+          }
+          if (slideHeight) {
+            height = Math.min(slideHeight, height)
+            y = Math.min(y, Math.max(0, slideHeight - height))
+          }
+
           return { ...b, x, y, width, height }
         }
         return b
@@ -287,19 +315,22 @@ export function SlideEditor({
       onChange(newBlocks)
     }
 
-    const handleMouseUp = () => {
+    const handlePointerUp = (e: PointerEvent) => {
+      if (e.pointerId !== dragState?.pointerId) return
       setDragState(null)
       setActiveGuides([])
     }
 
     if (dragState) {
-      window.addEventListener('mousemove', handleMouseMove)
-      window.addEventListener('mouseup', handleMouseUp)
+      window.addEventListener('pointermove', handlePointerMove, { passive: false })
+      window.addEventListener('pointerup', handlePointerUp)
+      window.addEventListener('pointercancel', handlePointerUp)
     }
 
     return () => {
-      window.removeEventListener('mousemove', handleMouseMove)
-      window.removeEventListener('mouseup', handleMouseUp)
+      window.removeEventListener('pointermove', handlePointerMove)
+      window.removeEventListener('pointerup', handlePointerUp)
+      window.removeEventListener('pointercancel', handlePointerUp)
     }
   }, [dragState, blocks, onChange, scale, slideWidth, slideHeight, snapOptions])
 
@@ -367,14 +398,19 @@ export function SlideEditor({
       const reader = new FileReader()
       reader.onload = (event) => {
         if (event.target?.result) {
+          const rect = canvasRef.current?.getBoundingClientRect()
+          const width = Math.min(300, slideWidth || 300)
+          const height = Math.min(200, slideHeight || 200)
+          const rawX = rect ? (e.clientX - rect.left) / scale : 0
+          const rawY = rect ? (e.clientY - rect.top) / scale : 0
           const newBlock: SlideBlock = {
             id: crypto.randomUUID(),
             type: 'image',
             content: event.target.result as string,
-            x: e.nativeEvent.offsetX / scale,
-            y: e.nativeEvent.offsetY / scale,
-            width: 300,
-            height: 200,
+            x: slideWidth ? Math.min(Math.max(0, rawX), Math.max(0, slideWidth - width)) : rawX,
+            y: slideHeight ? Math.min(Math.max(0, rawY), Math.max(0, slideHeight - height)) : rawY,
+            width,
+            height,
             style: {}
           }
           onChange([...blocks, newBlock])
@@ -389,7 +425,7 @@ export function SlideEditor({
     <div 
       ref={canvasRef}
       className="flex-1 relative overflow-hidden bg-white shadow-inner w-full h-full"
-      onMouseDown={handleCanvasClick}
+      onPointerDown={handleCanvasClick}
       onContextMenu={(e) => openContextMenu(e, null)}
       onDragOver={(e) => e.preventDefault()}
       onDrop={handleDrop}
@@ -416,6 +452,7 @@ export function SlideEditor({
             height: block.height,
             zIndex: selectedBlockId === block.id ? 1000 : block.zIndex ?? index,
             cursor: dragState?.isDragging ? 'grabbing' : 'grab',
+            touchAction: readOnly || block.type === 'text' ? undefined : 'none',
             transform: block.rotation ? `rotate(${block.rotation}deg)` : undefined,
             transformOrigin: 'center center',
             ...(block.type === 'text' || block.type === 'image'
@@ -433,15 +470,18 @@ export function SlideEditor({
                 : {}),
           }}
           onContextMenu={(e) => openContextMenu(e, block.id)}
-          onMouseDown={(e) => {
+          onPointerDown={(e) => {
             if (readOnly) return
             e.stopPropagation()
+            e.preventDefault()
+            e.currentTarget.setPointerCapture(e.pointerId)
             onSelectBlock(block.id)
             setDragState({
               isDragging: true,
               isResizing: false,
               startX: e.clientX,
               startY: e.clientY,
+              pointerId: e.pointerId,
               initialBlock: block
             })
           }}
@@ -470,7 +510,7 @@ export function SlideEditor({
                 textAlign: block.style.textAlign,
                 lineHeight: block.style.lineHeight,
               }}
-              onMouseDown={(e) => {
+              onPointerDown={(e) => {
                 e.stopPropagation()
                 if (!readOnly) onSelectBlock(block.id)
               }}
@@ -508,22 +548,24 @@ export function SlideEditor({
               {(block.type === 'line' ? ['nw', 'se'] : ['nw', 'ne', 'sw', 'se', 'n', 's', 'e', 'w']).map((handle) => (
                 <div
                   key={handle}
-                  className="absolute w-3 h-3 bg-white border border-blue-500 rounded-full z-20"
+                  className="absolute h-4 w-4 touch-none rounded-full border border-blue-500 bg-white z-20 [@media(pointer:coarse)]:h-6 [@media(pointer:coarse)]:w-6"
                   style={{
-                    top: handle.includes('n') ? -6 : handle.includes('s') ? '100%' : '50%',
-                    left: handle.includes('w') ? -6 : handle.includes('e') ? '100%' : '50%',
-                    marginTop: handle.includes('s') ? -6 : handle.includes('n') ? 0 : -6,
-                    marginLeft: handle.includes('e') ? -6 : handle.includes('w') ? 0 : -6,
+                    top: handle.includes('n') ? 0 : handle.includes('s') ? '100%' : '50%',
+                    left: handle.includes('w') ? 0 : handle.includes('e') ? '100%' : '50%',
+                    transform: 'translate(-50%, -50%)',
                     cursor: `${handle}-resize`
                   }}
-                  onMouseDown={(e) => {
+                  onPointerDown={(e) => {
                     e.stopPropagation()
+                    e.preventDefault()
+                    e.currentTarget.setPointerCapture(e.pointerId)
                     setDragState({
                       isDragging: false,
                       isResizing: true,
                       handle,
                       startX: e.clientX,
                       startY: e.clientY,
+                      pointerId: e.pointerId,
                       initialBlock: block
                     })
                   }}
@@ -532,11 +574,13 @@ export function SlideEditor({
 
               {/* Rotation handle — pivots around the block's own center, captured on mousedown. */}
               <div
-                className="absolute flex items-center justify-center w-5 h-5 -translate-x-1/2 bg-white border border-blue-500 rounded-full z-20 cursor-alias"
+                className="absolute flex h-5 w-5 touch-none -translate-x-1/2 items-center justify-center rounded-full border border-blue-500 bg-white z-20 cursor-alias [@media(pointer:coarse)]:h-7 [@media(pointer:coarse)]:w-7"
                 style={{ top: -28, left: '50%' }}
                 title="Trascina per ruotare (Shift per scattare a 15°)"
-                onMouseDown={(e) => {
+                onPointerDown={(e) => {
                   e.stopPropagation()
+                  e.preventDefault()
+                  e.currentTarget.setPointerCapture(e.pointerId)
                   const rect = (e.currentTarget.parentElement as HTMLElement).getBoundingClientRect()
                   setDragState({
                     isDragging: false,
@@ -544,6 +588,7 @@ export function SlideEditor({
                     isRotating: true,
                     startX: e.clientX,
                     startY: e.clientY,
+                    pointerId: e.pointerId,
                     pivotX: rect.left + rect.width / 2,
                     pivotY: rect.top + rect.height / 2,
                     initialBlock: block

@@ -962,8 +962,15 @@ function SettingsModal({ profile, onSave, onClose }: SettingsModalProps) {
                   onChange={e => setConfirmPassword(e.target.value)}
                   placeholder="Conferma nuova password"
                   required
+                  aria-invalid={Boolean(newPassword && confirmPassword && newPassword !== confirmPassword)}
+                  aria-describedby="password-confirmation-error"
                   className={`w-full px-3 py-2 bg-slate-50 border rounded-lg text-sm focus:ring-2 focus:border-transparent outline-none ${newPassword && confirmPassword && newPassword !== confirmPassword ? 'border-red-300 focus:ring-red-400' : 'border-slate-200 focus:ring-slate-400'}`}
                 />
+                {newPassword && confirmPassword && newPassword !== confirmPassword && (
+                  <p id="password-confirmation-error" className="text-xs font-medium text-red-600" role="alert">
+                    Le password non coincidono.
+                  </p>
+                )}
                 <Button
                   type="button"
                   size="sm"

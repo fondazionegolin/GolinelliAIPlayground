@@ -14,6 +14,12 @@ import {
 } from 'lucide-react'
 import { loadStudentAccent, getStudentAccentTheme } from '@/lib/studentAccent'
 import { TrackedCorrectionText } from '@/components/tasks/TrackedCorrectionText'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
+import remarkMath from 'remark-math'
+import rehypeKatex from 'rehype-katex'
+import { markdownCodeComponents } from '@/components/CodeBlock'
+import 'katex/dist/katex.min.css'
 
 interface QuizQuestion {
   question: string
@@ -31,6 +37,7 @@ interface TaskContent {
   difficulty?: 'easy' | 'medium' | 'hard'
   title?: string
   description?: string
+  response_mode?: 'free_text' | 'inline_blanks'
   slides?: any[]
   htmlContent?: string
 }
@@ -976,6 +983,52 @@ function ExerciseViewer({ content, onSubmit, accentTheme, isSubmitting, response
 }) {
   const exerciseText = content?.instructions || content?.text
   const examples = Array.isArray(content?.examples) ? content.examples.filter(Boolean) : []
+  const blankPattern = /\[([^\]]*)\]\(#blank-([^)]+)\)/g
+  const blankIds = Array.from(exerciseText?.matchAll(blankPattern) || [], match => match[2])
+  const isInlineCompletion = content?.response_mode === 'inline_blanks' && blankIds.length > 0
+  const [blankAnswers, setBlankAnswers] = useState<Record<string, string>>(() => {
+    if (!response.trim().startsWith('{')) return {}
+    try {
+      const parsed = JSON.parse(response)
+      return parsed?.kind === 'inline_blanks_v1' && parsed.answers && typeof parsed.answers === 'object'
+        ? parsed.answers
+        : {}
+    } catch {
+      return {}
+    }
+  })
+
+  const updateBlankAnswer = (id: string, value: string) => {
+    const answers = { ...blankAnswers, [id]: value }
+    setBlankAnswers(answers)
+    onResponseChange(JSON.stringify({ kind: 'inline_blanks_v1', answers }))
+  }
+
+  const completedInlineText = () => (exerciseText || '').replace(
+    blankPattern,
+    (_placeholder, label: string, id: string) => blankAnswers[id]?.trim() || label || '________'
+  )
+  const allBlanksCompleted = blankIds.every(id => Boolean(blankAnswers[id]?.trim()))
+  const markdownComponents = {
+    ...markdownCodeComponents(false),
+    a: ({ href, children }: { href?: string; children?: React.ReactNode }) => {
+      if (href?.startsWith('#blank-')) {
+        const id = href.slice('#blank-'.length)
+        return (
+          <input
+            type="text"
+            value={blankAnswers[id] || ''}
+            onChange={(event) => updateBlankAnswer(id, event.target.value)}
+            onPaste={(event) => event.preventDefault()}
+            placeholder={String(children || '________')}
+            aria-label={`Parola mancante ${id}`}
+            className="mx-1 inline-block min-w-24 max-w-48 border-0 border-b-2 border-amber-400 bg-amber-50 px-2 py-0.5 text-center font-semibold text-slate-900 outline-none focus:border-orange-600 focus:ring-0"
+          />
+        )
+      }
+      return <a href={href}>{children}</a>
+    }
+  }
 
   return (
     <div className="space-y-4">
@@ -989,17 +1042,31 @@ function ExerciseViewer({ content, onSubmit, accentTheme, isSubmitting, response
             <h3 className="text-lg font-bold text-slate-900 mb-2">{content.title}</h3>
           )}
           {content?.description && (
-            <p className="text-sm text-slate-600 mb-4">{content.description}</p>
+            <div className="chat-markdown prose prose-sm max-w-none text-slate-600 mb-4">
+              <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]} components={markdownCodeComponents(false)}>
+                {content.description}
+              </ReactMarkdown>
+            </div>
           )}
-          <p className="text-slate-800 font-medium leading-relaxed whitespace-pre-wrap">
-            {exerciseText}
-          </p>
+          <div className="chat-markdown prose prose-slate max-w-none text-slate-800 font-medium leading-relaxed">
+            <ReactMarkdown
+              remarkPlugins={[remarkGfm, remarkMath]}
+              rehypePlugins={[rehypeKatex]}
+              components={markdownComponents}
+            >
+              {exerciseText}
+            </ReactMarkdown>
+          </div>
           {examples.length > 0 && (
             <div className="mt-4 rounded-xl bg-white/70 border border-amber-100 p-3">
               <div className="text-xs font-bold uppercase tracking-widest text-amber-600 mb-2">Esempi</div>
               <ul className="space-y-1.5 pl-4 text-sm text-slate-700">
                 {examples.map((example, index) => (
-                  <li key={index}>{example}</li>
+                  <li key={index} className="chat-markdown prose prose-sm max-w-none">
+                    <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]} components={markdownCodeComponents(false)}>
+                      {example}
+                    </ReactMarkdown>
+                  </li>
                 ))}
               </ul>
             </div>
@@ -1013,20 +1080,22 @@ function ExerciseViewer({ content, onSubmit, accentTheme, isSubmitting, response
         </div>
       )}
 
-      <textarea
-        value={response}
-        onPaste={(e) => e.preventDefault()}
-        onCopy={(e) => e.preventDefault()}
-        onCut={(e) => e.preventDefault()}
-        placeholder="Scrivi qui la tua risposta..."
-        onChange={(e) => onResponseChange(e.target.value)}
-        className="min-h-[150px] w-full resize-y rounded-xl border border-orange-200 bg-orange-50/20 p-4 text-slate-800 shadow-sm outline-none focus:ring-2"
-        style={{ '--tw-ring-color': accentTheme.accent } as React.CSSProperties}
-      />
+      {!isInlineCompletion && (
+        <textarea
+          value={response}
+          onPaste={(e) => e.preventDefault()}
+          onCopy={(e) => e.preventDefault()}
+          onCut={(e) => e.preventDefault()}
+          placeholder="Scrivi qui la tua risposta..."
+          onChange={(e) => onResponseChange(e.target.value)}
+          className="min-h-[150px] w-full resize-y rounded-xl border border-orange-200 bg-orange-50/20 p-4 text-slate-800 shadow-sm outline-none focus:ring-2"
+          style={{ '--tw-ring-color': accentTheme.accent } as React.CSSProperties}
+        />
+      )}
 
       <button
-        onClick={() => onSubmit(response)}
-        disabled={!response.trim() || isSubmitting}
+        onClick={() => onSubmit(isInlineCompletion ? completedInlineText() : response)}
+        disabled={(isInlineCompletion ? !allBlanksCompleted : !response.trim()) || isSubmitting}
         className="flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-orange-300 bg-orange-500 text-sm font-black text-white transition-all hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-40"
       >
         <Send className="h-4 w-4" />

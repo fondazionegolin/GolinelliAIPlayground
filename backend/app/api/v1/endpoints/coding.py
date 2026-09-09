@@ -1115,7 +1115,9 @@ async def _coding_generate(messages: list[dict], system_prompt: str, *, temperat
 CODING_MODEL_CHOICES: dict[str, tuple[str, str]] = {
     "sonnet": ("anthropic", "claude-sonnet-4-6"),
     "haiku": ("anthropic", "claude-haiku-4-5-20251001"),
-    "gpt-mini": ("openai", "gpt-5.4-mini"),
+    "luna": ("openai", "gpt-5.6-luna"),
+    # Compatibility for projects saved with the previous frontend key.
+    "gpt-mini": ("openai", "gpt-5.6-luna"),
     # DeepSeek V4 — Coding Lab only (not exposed in the global /available-models list).
     "deepseek-flash": ("deepseek", "deepseek-v4-flash"),
     "deepseek-pro": ("deepseek", "deepseek-v4-pro"),
@@ -3023,7 +3025,7 @@ async def generate_project_code_stream(
 
     async def event_stream():
         try:
-            yield _sse({"type": "status", "message": "Sto progettando e scrivendo il progetto..."})
+            yield _sse({"type": "status", "message": "Preparo contesto, file esistenti e istruzioni del progetto..."})
             usage_prompt = 0
             usage_completion = 0
 
@@ -3037,6 +3039,8 @@ async def generate_project_code_stream(
                 attachment_context = await _describe_attachments(attachments)
                 if attachment_context:
                     final_gen_user = f"{gen_user}{attachment_context}"
+
+            yield _sse({"type": "status", "message": "Contesto pronto. Avvio l'architetto del progetto..."})
 
             # ONE coherent generation. The model streams a short reasoning, then "@@FILES@@", then
             # every file as "=== FILE: path ===\n<content>" ending with "=== END ===". Parsed line by
@@ -3106,6 +3110,7 @@ async def generate_project_code_stream(
                                 reasoning_parts.append(pre)
                                 yield _sse({"type": "reasoning", "content": pre + "\n"})
                             state = "files"
+                            yield _sse({"type": "status", "message": "Struttura definita. Inizio a scrivere i file..."})
                             continue
                         reasoning_parts.append(line)
                         yield _sse({"type": "reasoning", "content": line + "\n"})
@@ -3159,6 +3164,8 @@ async def generate_project_code_stream(
                 yield _sse({"type": "error", "message": "La generazione non ha prodotto file validi. Riprova o cambia modello."})
                 return
 
+            yield _sse({"type": "status", "message": f"Scrittura completata: {len(generated)} file prodotti. Verifico il progetto..."})
+
             # Targeted edits: merge the regenerated files OVER the existing ones so files the model
             # left untouched are preserved EXACTLY (no accidental rewrites, no architecture drift).
             if is_edit:
@@ -3208,6 +3215,8 @@ async def generate_project_code_stream(
 
             file_summary, file_summary_json = _build_file_change_summary(previous_files, files)
             summary = f"Progetto aggiornato: {len(files)} file, {file_summary_json['total_lines']} righe."
+
+            yield _sse({"type": "status", "message": "Verifiche completate. Salvo la nuova versione..."})
 
             # Fresh transaction now that streaming is done; reference the prompt message that was
             # committed before the stream, so the FK is always satisfied.
@@ -3289,6 +3298,8 @@ async def generate_project_code_stream(
                 },
             ))
             await db.commit()
+
+            yield _sse({"type": "status", "message": "Versione salvata. Preparo l'anteprima aggiornata..."})
 
             # Bill the whole multi-call generation once against the credit system.
             await _record_coding_cost(

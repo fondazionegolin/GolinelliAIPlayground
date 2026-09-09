@@ -1207,6 +1207,51 @@ async def canvas_item_unlock(sid, data):
     return {"success": True}
 
 
+@sio.event
+async def canvas_item_transform(sid, data):
+    """Relay lightweight in-progress transforms without persisting the canvas.
+
+    The authoritative document is still written through the versioned HTTP
+    endpoint when the gesture ends. This event only keeps collaborators' views
+    visually in sync while an item is moving or being resized.
+    """
+    user = connected_users.get(sid)
+    if not user:
+        return {"error": "Not authenticated"}
+
+    session_id = data.get("session_id")
+    item_id = data.get("item_id")
+    transform = data.get("transform")
+    if not session_id or not item_id or not isinstance(transform, dict):
+        return {"error": "session_id, item_id and transform required"}
+    if not await can_user_access_session(user, session_id):
+        return {"error": "Forbidden"}
+
+    allowed = {}
+    for key in ("x", "y", "w", "h"):
+        value = transform.get(key)
+        if isinstance(value, (int, float)):
+            if key in ("x", "y"):
+                allowed[key] = max(-100000.0, min(float(value), 100000.0))
+            else:
+                allowed[key] = max(0.0, min(float(value), 10000.0))
+    if not allowed:
+        return {"error": "No valid transform values"}
+
+    await sio.emit(
+        "canvas_item_transform",
+        {
+            "session_id": session_id,
+            "item_id": item_id,
+            "user_id": user.get("id"),
+            "transform": allowed,
+        },
+        room=f"session:{session_id}",
+        skip_sid=sid,
+    )
+    return {"success": True}
+
+
 # Helper function to broadcast from API endpoints
 async def broadcast_to_session(session_id: str, event: str, data: dict):
     """Broadcast an event to all users in a session"""

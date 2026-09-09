@@ -27,7 +27,8 @@ def meshy_credits(credits: int) -> ModelPricing:
 
 PRICING_CATALOG: Dict[str, ModelPricing] = {
     # OpenAI, official list price per 1M tokens, converted USD -> EUR.
-    "gpt-5.4-mini": usd(0.25, 2.00),  # internal alias, priced as GPT-5 mini
+    "gpt-5.6-luna": usd(0.20, 1.20),
+    "gpt-5.4-mini": usd(0.25, 2.00),  # legacy internal alias
     "gpt-5.2": usd(1.75, 14.00),
     "gpt-5.2-chat-latest": usd(1.75, 14.00),
     "gpt-5.1": usd(1.25, 10.00),
@@ -83,6 +84,7 @@ PRICING_CATALOG: Dict[str, ModelPricing] = {
     "gpt-image-1": usd(0.040, 0.0, per_image=True),
     "gpt-image-1.5": usd(0.034, 0.0, per_image=True),
     "gpt-image-2": usd(0.020, 0.0, per_image=True),
+    "gpt-image-2-2026-04-21": usd(0.020, 0.0, per_image=True),
     
     # Flux (via Golinelli API or similar - assuming cost or 0 if internal)
     "flux-schnell": ModelPricing(0.00, 0.0, per_image=True), # Check if there is a cost

@@ -2,11 +2,16 @@ import { useQuery } from '@tanstack/react-query'
 import { systemApi, type ServerHealthResponse, type ServerHealthStatus } from '@/lib/api'
 
 
-const LIGHTS: ServerHealthStatus[] = ['red', 'yellow', 'green']
 const ACTIVE_CLASS: Record<ServerHealthStatus, string> = {
   green: 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.7)]',
   yellow: 'bg-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.7)]',
   red: 'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.7)]',
+}
+
+const BETA_TEXT_CLASS: Record<ServerHealthStatus, string> = {
+  green: 'text-emerald-800 focus-visible:ring-emerald-300',
+  yellow: 'text-amber-800 focus-visible:ring-amber-300',
+  red: 'text-red-800 focus-visible:ring-red-300',
 }
 
 function withNetworkLatency(data: ServerHealthResponse, networkMs: number): ServerHealthResponse {
@@ -70,26 +75,20 @@ export function ServerHealthIndicator({ onBetaClick }: { onBetaClick?: () => voi
 
   return (
     <div className="group/health relative flex items-center" onClick={(event) => event.stopPropagation()}>
-      <div className="flex min-w-9 flex-col items-center overflow-hidden rounded-full border border-slate-200/90 bg-white/80 shadow-sm transition hover:bg-white">
+      <div className="flex min-w-8 flex-col items-center overflow-hidden rounded-full border border-slate-200/90 bg-white/80 shadow-sm transition hover:bg-white">
         <button
           type="button"
-          className="flex w-full items-center justify-center gap-0.5 px-1.5 pb-0.5 pt-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-slate-300"
+          className="flex h-3.5 w-full items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-slate-300"
           aria-label={`Stato server: ${health.summary}`}
           title={health.summary}
         >
-          {LIGHTS.map((light) => (
-            <span
-              key={light}
-              className={`h-1.5 w-1.5 rounded-full transition ${health.status === light ? ACTIVE_CLASS[light] : 'bg-slate-200'}`}
-              aria-hidden="true"
-            />
-          ))}
+          <span className={`h-2 w-2 rounded-full transition hover:brightness-95 ${ACTIVE_CLASS[health.status]}`} aria-hidden="true" />
         </button>
         {onBetaClick && (
           <button
             type="button"
             onClick={onBetaClick}
-            className="w-full border-t border-slate-200/80 px-1 pb-1 pt-0.5 text-center text-[7px] font-black leading-none tracking-[0.08em] text-amber-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-amber-300"
+            className={`w-full border-t border-slate-200/80 px-1 pb-1 pt-0.5 text-center text-[7px] font-black leading-none tracking-[0.08em] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset ${BETA_TEXT_CLASS[health.status]}`}
             aria-label="Scopri le novità della versione beta"
           >
             BETA

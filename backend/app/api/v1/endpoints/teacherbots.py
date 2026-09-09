@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File, Form, Request
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, or_
 from typing import Annotated, Optional, List
@@ -48,6 +49,10 @@ from app.realtime.gateway import sio
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
+
+class TeacherbotConversationTitleUpdate(BaseModel):
+    title: str
 
 
 def get_ui_language(request: Optional[Request]) -> str:
@@ -1383,6 +1388,60 @@ async def list_student_teacherbot_conversations(
     return result.scalars().all()
 
 
+@router.patch("/student/teacherbots/conversations/{conversation_id}", response_model=TeacherbotConversationResponse)
+async def rename_student_teacherbot_conversation(
+    conversation_id: UUID,
+    request: TeacherbotConversationTitleUpdate,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    student: Annotated[SessionStudent, Depends(get_current_student)],
+):
+    """Rename one of the current student's teacherbot conversations."""
+    result = await db.execute(
+        select(TeacherbotConversation)
+        .where(TeacherbotConversation.id == conversation_id)
+        .where(TeacherbotConversation.student_id == student.id)
+        .where(TeacherbotConversation.session_id == student.session_id)
+    )
+    conversation = result.scalar_one_or_none()
+    if not conversation:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found")
+
+    title = request.title.strip()
+    if not title:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Title cannot be empty")
+    conversation.title = title[:255]
+    await db.commit()
+    await db.refresh(conversation)
+    return conversation
+
+
+@router.delete("/student/teacherbots/conversations/{conversation_id}")
+async def delete_student_teacherbot_conversation(
+    conversation_id: UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    student: Annotated[SessionStudent, Depends(get_current_student)],
+):
+    """Delete one of the current student's teacherbot conversations and its messages."""
+    result = await db.execute(
+        select(TeacherbotConversation)
+        .where(TeacherbotConversation.id == conversation_id)
+        .where(TeacherbotConversation.student_id == student.id)
+        .where(TeacherbotConversation.session_id == student.session_id)
+    )
+    conversation = result.scalar_one_or_none()
+    if not conversation:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found")
+
+    await db.execute(
+        TeacherbotMessage.__table__.delete().where(
+            TeacherbotMessage.conversation_id == conversation_id
+        )
+    )
+    await db.delete(conversation)
+    await db.commit()
+    return {"status": "deleted", "conversation_id": str(conversation_id)}
+
+
 @router.get("/student/teacherbots/conversations/{conversation_id}/messages", response_model=list[TeacherbotMessageResponse])
 async def get_teacherbot_conversation_messages(
     conversation_id: UUID,
@@ -1469,6 +1528,7 @@ async def send_teacherbot_message(
         content=request.content,
     )
     db.add(user_msg)
+    conv.updated_at = datetime.now(timezone.utc)
     await db.flush()
 
     # Get conversation history
@@ -1710,6 +1770,7 @@ async def send_teacherbot_message_with_files(
         content=content or "[Allegati caricati]",
     )
     db.add(user_msg)
+    conv.updated_at = datetime.now(timezone.utc)
     await db.flush()
 
     # Get conversation history

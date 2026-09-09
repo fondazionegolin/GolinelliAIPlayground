@@ -47,7 +47,7 @@ class CodingGenerateRequest(BaseModel):
     # Current editor files (edits + knowledge-base .md). When provided, they are the base
     # for this generation so unsaved edits and added files are respected.
     files: Optional[list[CodingGeneratedFile]] = None
-    # Which generation model to use ("sonnet" | "haiku" | "gpt-mini"). Resolved to a
+    # Which generation model to use (for example "sonnet" | "haiku" | "luna"). Resolved to a
     # provider/model pair server-side; unknown/empty falls back to the configured default.
     model_key: Optional[str] = Field(default=None, max_length=40)
     # Pasted/attached screenshots as data URLs ("data:image/png;base64,..."). Described by a

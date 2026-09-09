@@ -1,7 +1,7 @@
 import json
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, or_, func, desc
+from sqlalchemy import select, func, desc
 from typing import Annotated
 from datetime import datetime, timezone
 from uuid import UUID
@@ -654,11 +654,17 @@ async def get_student_tasks(
     db: Annotated[AsyncSession, Depends(get_db)],
     student: Annotated[SessionStudent, Depends(get_current_student)],
 ):
-    """Get all published tasks for the student's session, including UDA children for the class."""
+    """Get all published tasks for the student's session.
+
+    UDA content reaches the student as per-session copies created at publish time
+    (``Task.session_id`` set, ``parent_uda_id`` pointing at the UDA container), so
+    it flows through the same session-scoped query as ordinary tasks. Copies keep
+    ``parent_uda_id`` only for folder grouping in the UI.
+    """
     from app.models.user import User
     from app.models.session import Class
 
-    # ── 1. Session-level tasks ──────────────────────────────────────────────
+    # ── 1. Session-level tasks (incl. per-session UDA copies) ───────────────
     result = await db.execute(
         select(Task, User.first_name, User.last_name)
         .join(Session, Task.session_id == Session.id)
@@ -671,34 +677,16 @@ async def get_student_tasks(
     )
     rows = result.all()
 
-    # ── 2. UDA children (class-level) ────────────────────────────────────────
-    sess_result = await db.execute(select(Session).where(Session.id == student.session_id))
-    session = sess_result.scalar_one_or_none()
-    uda_rows: list = []
+    # ── 2. UDA folder titles for the copies among those rows ────────────────
     uda_parent_titles: dict[str, str] = {}
-
-    if session:
-        uda_result = await db.execute(
-            select(Task, User.first_name, User.last_name)
-            .join(Class, Task.class_id == Class.id)
-            .join(User, Class.teacher_id == User.id)
-            .where(Task.class_id == session.class_id)
-            .where(Task.parent_uda_id.is_not(None))
-            .where(Task.task_type != TaskType.UDA)
-            .where(Task.status == TaskStatus.PUBLISHED)
-            .order_by(Task.created_at)
-        )
-        uda_rows = uda_result.all()
-
-        # Fetch parent UDA titles for folder grouping
-        parent_ids = list({t.parent_uda_id for t, _, _ in uda_rows if t.parent_uda_id})
-        if parent_ids:
-            parents_res = await db.execute(select(Task).where(Task.id.in_(parent_ids)))
-            for p in parents_res.scalars().all():
-                uda_parent_titles[str(p.id)] = p.title
+    parent_ids = list({t.parent_uda_id for t, _, _ in rows if t.parent_uda_id})
+    if parent_ids:
+        parents_res = await db.execute(select(Task).where(Task.id.in_(parent_ids)))
+        for p in parents_res.scalars().all():
+            uda_parent_titles[str(p.id)] = p.title
 
     # ── 3. Submissions lookup ────────────────────────────────────────────────
-    all_task_ids = [t.id for t, _, _ in rows] + [t.id for t, _, _ in uda_rows]
+    all_task_ids = [t.id for t, _, _ in rows]
     submissions: dict = {}
     if all_task_ids:
         subs_result = await db.execute(
@@ -742,12 +730,13 @@ async def get_student_tasks(
             row["uda_folder"] = uda_folder
         return row
 
-    session_tasks = [_task_dict(t, fn, ln) for t, fn, ln in rows]
-    uda_tasks = [
-        _task_dict(t, fn, ln, uda_folder=uda_parent_titles.get(str(t.parent_uda_id), "UDA"))
-        for t, fn, ln in uda_rows
+    return [
+        _task_dict(
+            t, fn, ln,
+            uda_folder=(uda_parent_titles.get(str(t.parent_uda_id), "UDA") if t.parent_uda_id else None),
+        )
+        for t, fn, ln in rows
     ]
-    return session_tasks + uda_tasks
 
 
 @router.post("/tasks/{task_id}/submit")
@@ -759,22 +748,12 @@ async def submit_task(
     content_json: str | None = None,
 ):
     """Submit a task response"""
-    # Resolve class_id so we can also accept class-level UDA children
-    sess_res = await db.execute(select(Session).where(Session.id == student.session_id))
-    student_session = sess_res.scalar_one_or_none()
-
-    # Accept session-level tasks OR class-level UDA children
-    task_cond = Task.session_id == student.session_id
-    if student_session and student_session.class_id:
-        task_cond = or_(
-            task_cond,
-            (Task.class_id == student_session.class_id) & Task.parent_uda_id.isnot(None),
-        )
-
+    # UDA content is delivered as per-session copies, so a plain session match
+    # covers both ordinary tasks and UDA items.
     result = await db.execute(
         select(Task)
         .where(Task.id == task_id)
-        .where(task_cond)
+        .where(Task.session_id == student.session_id)
         .where(Task.status == TaskStatus.PUBLISHED)
     )
     task = result.scalar_one_or_none()

@@ -1,4 +1,5 @@
 import { useEditor, EditorContent, Editor, Extension } from '@tiptap/react'
+import { Mark, Node, mergeAttributes } from '@tiptap/core'
 import { Plugin, PluginKey } from '@tiptap/pm/state'
 import { Decoration, DecorationSet, EditorView } from '@tiptap/pm/view'
 import StarterKit from '@tiptap/starter-kit'
@@ -29,6 +30,191 @@ const FontSizeExtension = Extension.create({
         },
       },
     }]
+  },
+})
+
+const ImportedImage = Image.extend({
+  addAttributes() {
+    return {
+      ...this.parent?.(),
+      width: {
+        default: null,
+        parseHTML: element => element.getAttribute('width'),
+      },
+      height: {
+        default: null,
+        parseHTML: element => element.getAttribute('height'),
+      },
+    }
+  },
+})
+
+const SuperscriptMark = Mark.create({
+  name: 'superscript',
+  excludes: 'subscript',
+  parseHTML: () => [{ tag: 'sup' }],
+  renderHTML: ({ HTMLAttributes }) => ['sup', mergeAttributes(HTMLAttributes), 0],
+})
+
+const SubscriptMark = Mark.create({
+  name: 'subscript',
+  excludes: 'superscript',
+  parseHTML: () => [{ tag: 'sub' }],
+  renderHTML: ({ HTMLAttributes }) => ['sub', mergeAttributes(HTMLAttributes), 0],
+})
+
+const HighlightMark = Mark.create({
+  name: 'importedHighlight',
+  addAttributes() {
+    return {
+      color: {
+        default: '#ffff00',
+        parseHTML: element => element.style.backgroundColor || '#ffff00',
+      },
+    }
+  },
+  parseHTML() {
+    return [
+      { tag: 'mark' },
+      {
+        tag: 'span',
+        getAttrs: element => {
+          const color = (element as HTMLElement).style.backgroundColor
+          return color ? { color } : false
+        },
+      },
+    ]
+  },
+  renderHTML({ HTMLAttributes }) {
+    const { color, ...attributes } = HTMLAttributes
+    return ['mark', mergeAttributes(attributes, { style: `background-color:${color}` }), 0]
+  },
+})
+
+const DocumentCommentMark = Mark.create({
+  name: 'documentComment',
+  inclusive: false,
+  addAttributes() {
+    return {
+      id: { default: null, parseHTML: element => element.getAttribute('data-comment-id') },
+      author: { default: null, parseHTML: element => element.getAttribute('data-comment-author') },
+      date: { default: null, parseHTML: element => element.getAttribute('data-comment-date') },
+      text: { default: null, parseHTML: element => element.getAttribute('data-comment-text') },
+    }
+  },
+  parseHTML: () => [{ tag: 'span[data-docx-comment="true"]' }],
+  renderHTML({ HTMLAttributes }) {
+    const { id, author, date, text, ...attributes } = HTMLAttributes
+    const title = [author, text].filter(Boolean).join(': ')
+    return ['span', mergeAttributes(attributes, {
+      'data-docx-comment': 'true',
+      'data-comment-id': id,
+      'data-comment-author': author,
+      'data-comment-date': date,
+      'data-comment-text': text,
+      title,
+      class: 'docx-comment',
+    }), 0]
+  },
+})
+
+const DocumentRevisionMark = Mark.create({
+  name: 'documentRevision',
+  inclusive: false,
+  addAttributes() {
+    return {
+      kind: { default: 'insert', parseHTML: element => element.getAttribute('data-revision-kind') || 'insert' },
+      author: { default: null, parseHTML: element => element.getAttribute('data-revision-author') },
+      date: { default: null, parseHTML: element => element.getAttribute('data-revision-date') },
+    }
+  },
+  parseHTML: () => [{ tag: 'span[data-revision-kind]' }],
+  renderHTML({ HTMLAttributes }) {
+    const { kind, author, date, ...attributes } = HTMLAttributes
+    return ['span', mergeAttributes(attributes, {
+      'data-revision-kind': kind,
+      'data-revision-author': author,
+      'data-revision-date': date,
+      title: [kind === 'delete' ? 'Eliminato' : 'Aggiunto', author].filter(Boolean).join(' da '),
+      class: kind === 'delete' ? 'docx-revision-delete' : 'docx-revision-insert',
+    }), 0]
+  },
+})
+
+const DocxRegion = Node.create({
+  name: 'docxRegion',
+  group: 'block',
+  content: 'block+',
+  defining: true,
+  addAttributes() {
+    return {
+      kind: { default: 'header', parseHTML: element => element.getAttribute('data-docx-region') },
+      label: { default: '', parseHTML: element => element.getAttribute('data-docx-region-label') },
+    }
+  },
+  parseHTML: () => [{ tag: 'section[data-docx-region]' }],
+  renderHTML({ HTMLAttributes }) {
+    const { kind, label, ...attributes } = HTMLAttributes
+    return ['section', mergeAttributes(attributes, {
+      'data-docx-region': kind,
+      'data-docx-region-label': label,
+      class: 'docx-region',
+    }), 0]
+  },
+})
+
+const ImportedTable = Node.create({
+  name: 'importedTable',
+  group: 'block',
+  content: 'importedTableRow+',
+  isolating: true,
+  parseHTML: () => [{ tag: 'table' }],
+  renderHTML: ({ HTMLAttributes }) => ['table', mergeAttributes(HTMLAttributes, { class: 'docx-table' }), ['tbody', 0]],
+})
+
+const ImportedTableRow = Node.create({
+  name: 'importedTableRow',
+  content: '(importedTableCell|importedTableHeader)+',
+  parseHTML: () => [{ tag: 'tr' }],
+  renderHTML: ({ HTMLAttributes }) => ['tr', HTMLAttributes, 0],
+})
+
+const tableCellAttributes = {
+  colspan: {
+    default: 1,
+    parseHTML: (element: HTMLElement) => Number(element.getAttribute('colspan') || 1),
+  },
+  rowspan: {
+    default: 1,
+    parseHTML: (element: HTMLElement) => Number(element.getAttribute('rowspan') || 1),
+  },
+  backgroundColor: {
+    default: null,
+    parseHTML: (element: HTMLElement) => element.style.backgroundColor || null,
+  },
+}
+
+const ImportedTableCell = Node.create({
+  name: 'importedTableCell',
+  content: 'block+',
+  isolating: true,
+  addAttributes: () => tableCellAttributes,
+  parseHTML: () => [{ tag: 'td' }],
+  renderHTML({ HTMLAttributes }) {
+    const { backgroundColor, ...attributes } = HTMLAttributes
+    return ['td', mergeAttributes(attributes, backgroundColor ? { style: `background-color:${backgroundColor}` } : {}), 0]
+  },
+})
+
+const ImportedTableHeader = Node.create({
+  name: 'importedTableHeader',
+  content: 'block+',
+  isolating: true,
+  addAttributes: () => tableCellAttributes,
+  parseHTML: () => [{ tag: 'th' }],
+  renderHTML({ HTMLAttributes }) {
+    const { backgroundColor, ...attributes } = HTMLAttributes
+    return ['th', mergeAttributes(attributes, backgroundColor ? { style: `background-color:${backgroundColor}` } : {}), 0]
   },
 })
 import { AITextAssistPanel } from './AITextAssistPanel'
@@ -326,10 +512,20 @@ export function RichTextEditor({
       TextAlign.configure({
         types: ['heading', 'paragraph'],
       }),
-      Image,
+      ImportedImage,
       Link.configure({
         openOnClick: false,
       }),
+      SuperscriptMark,
+      SubscriptMark,
+      HighlightMark,
+      DocumentCommentMark,
+      DocumentRevisionMark,
+      DocxRegion,
+      ImportedTable,
+      ImportedTableRow,
+      ImportedTableCell,
+      ImportedTableHeader,
       LinkShortcut,
       Mathematics,
       PersistentSelectionHighlight,

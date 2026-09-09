@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 MESHY_V1_URL = "https://api.meshy.ai/openapi/v1"
 MESHY_V2_URL = "https://api.meshy.ai/openapi/v2"
-OPENAI_IMAGE_MODEL = "gpt-image-2"
+OPENAI_IMAGE_MODEL = settings.OPENAI_IMAGE_MODEL
 
 
 class MeshyService:

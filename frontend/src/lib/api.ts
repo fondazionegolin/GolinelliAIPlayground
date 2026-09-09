@@ -690,6 +690,8 @@ export const llmApi = {
     api.get('/llm/conversations', { params: { session_id: sessionId, student_id: studentId } }),
   getMessages: (conversationId: string) =>
     api.get(`/llm/conversations/${conversationId}/messages`),
+  renameConversation: (conversationId: string, title: string) =>
+    api.patch(`/llm/conversations/${conversationId}`, { title }),
   sendMessage: (conversationId: string, content: string, imageProvider?: string, imageSize?: string, verboseMode?: boolean, signal?: AbortSignal) =>
     api.post(`/llm/conversations/${conversationId}/message`, { content, image_provider: imageProvider, image_size: imageSize, verbose_mode: verboseMode }, { signal }),
   sendMessageStreamUrl: (conversationId: string) => `/api/v1/llm/conversations/${conversationId}/message-stream`,
@@ -744,7 +746,7 @@ export const llmApi = {
       signal,
     })
   },
-  generateImage: (prompt: string, provider: string = 'flux-schnell', signal?: AbortSignal) =>
+  generateImage: (prompt: string, provider: string = 'gpt-image-2-2026-04-21', signal?: AbortSignal) =>
     api.post('/llm/generate-image', { prompt, provider }, { signal }),
   explain: (messageId: string) =>
     api.post('/llm/explain', { message_id: messageId }),
@@ -948,6 +950,10 @@ export const teacherbotsApi = {
   startConversation: (teacherbotId: string, sessionId: string, signal?: AbortSignal) =>
     api.post(`/student/teacherbots/${teacherbotId}/conversations`, { session_id: sessionId }, { signal }),
   getConversations: () => api.get('/student/teacherbots/conversations'),
+  renameConversation: (conversationId: string, title: string) =>
+    api.patch(`/student/teacherbots/conversations/${conversationId}`, { title }),
+  deleteConversation: (conversationId: string) =>
+    api.delete(`/student/teacherbots/conversations/${conversationId}`),
   getConversationMessages: (conversationId: string) =>
     api.get(`/student/teacherbots/conversations/${conversationId}/messages`),
   sendMessage: (conversationId: string, content: string, signal?: AbortSignal) =>
@@ -1308,6 +1314,16 @@ export const liveInteractionApi = {
     api.post(`/teacher/live-interactions/${id}/end`),
   results: (id: string) =>
     api.get(`/teacher/live-interactions/${id}/results`),
+  assistSlide: (data: { slide_type: string; draft_text: string; session_id: string; other_slides?: object[]; reference_text?: string }) =>
+    api.post('/teacher/live-interactions/assist-slide', data),
+  assistStructure: (data: { session_id: string; topic: string; num_slides?: number; reference_text?: string }) =>
+    api.post('/teacher/live-interactions/assist-structure', data),
+  extractReference: (sessionId: string, file: File) => {
+    const fd = new FormData()
+    fd.append('session_id', sessionId)
+    fd.append('file', file)
+    return api.post('/teacher/live-interactions/extract-reference', fd, { headers: { 'Content-Type': 'multipart/form-data' } })
+  },
   // Student
   currentStudent: () =>
     api.get('/student/live-interaction/current'),

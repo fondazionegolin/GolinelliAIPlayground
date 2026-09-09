@@ -16,8 +16,8 @@ from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_OPENAI_CHAT_MODEL = "gpt-5.4-mini"
-LEGACY_OPENAI_CHAT_MODELS = {"gpt-5-mini", "gpt-5-nano"}
+DEFAULT_OPENAI_CHAT_MODEL = "gpt-5.6-luna"
+LEGACY_OPENAI_CHAT_MODELS = {"gpt-5.4-mini", "gpt-5-mini", "gpt-5-nano"}
 GENERATED_IMAGE_MAX_SIDE = 1280
 GENERATED_IMAGE_WEBP_QUALITY = 82
 
@@ -608,7 +608,7 @@ class LLMService:
         size: str = "1024x1024",
         quality: str = "standard",
         style: str = "vivid",
-        provider: str = "flux-schnell",  # Default changed to flux-schnell
+        provider: str = settings.OPENAI_IMAGE_MODEL,
         image_base64: Optional[str] = None, # For image-to-image
         strength: float = 0.8,
     ) -> str:
@@ -632,7 +632,7 @@ class LLMService:
         if provider == "dall-e":
             return await self._generate_image_dalle(prompt, size, quality, style)
 
-        if provider in ("gpt-image-1", "gpt-image-1.5", "gpt-image-2"):
+        if provider in ("gpt-image-1", "gpt-image-1.5", "gpt-image-2", settings.OPENAI_IMAGE_MODEL):
             return await self._generate_image_gpt_image_1(prompt, size, model=provider)
 
         # Fallback to BFL schnell
@@ -803,7 +803,7 @@ class LLMService:
         self,
         prompt: str,
         size: str = "1024x1024",
-        model: str = "gpt-image-1.5",
+        model: str = settings.OPENAI_IMAGE_MODEL,
     ) -> str:
         """Generate an image using GPT-Image-1/2 (OpenAI). Returns b64_json, saved locally."""
         if not self.openai_client:

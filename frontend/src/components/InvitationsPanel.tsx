@@ -172,7 +172,7 @@ export function InvitationsPanel() {
 
       {/* Dropdown Panel */}
       {isOpen && (
-        <div className="isolate absolute right-0 z-50 mt-2 w-80 max-w-[calc(100vw-1rem)] overflow-hidden rounded-2xl border border-slate-200 bg-white opacity-100 shadow-2xl animate-in fade-in zoom-in-95 duration-150 origin-top-right">
+        <div className="isolate absolute right-0 z-50 mt-2 w-80 max-w-[calc(100vw-1rem)] overflow-hidden rounded-2xl border border-slate-200 bg-white opacity-100 shadow-2xl animate-in fade-in zoom-in-95 duration-150 origin-top-right sm:left-1/2 sm:right-auto sm:-translate-x-1/2 sm:origin-top">
           {/* Header */}
           <div className="border-b border-slate-200 bg-gradient-to-r from-violet-50 to-purple-50 px-5 py-4">
             <h3 className="font-bold text-slate-800">Inviti Ricevuti</h3>

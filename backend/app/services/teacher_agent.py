@@ -350,7 +350,7 @@ Classifica l'intento e rispondi con JSON."""
             messages=[{"role": "user", "content": classification_prompt}],
             system_prompt=INTENT_CLASSIFIER_PROMPT,
             provider="openai",
-            model="gpt-5.4-mini",  # Fast and cheap
+            model="gpt-5.6-luna",  # Fast and cost-efficient
             temperature=0.1,  # Low temperature for consistent classification
             max_tokens=200,
         )
@@ -491,6 +491,11 @@ EXERCISE_TOOLS = [
                     "hint": {
                         "type": "string",
                         "description": "Suggerimento opzionale per aiutare gli studenti"
+                    },
+                    "response_mode": {
+                        "type": "string",
+                        "enum": ["free_text", "inline_blanks"],
+                        "description": "Usa inline_blanks per esercizi di completamento con campi inseriti direttamente nel testo"
                     }
                 },
                 "required": ["title", "description", "instructions"]
@@ -583,7 +588,17 @@ STILE:
 EXERCISE_AGENT_PROMPT = """Sei un creatore esperto di esercizi didattici per docenti.
 
 IL TUO COMPITO:
-Crea esercizi pratici efficaci sull'argomento richiesto.
+Crea UN SOLO compito coerente e pronto da assegnare sull'argomento richiesto.
+Il blocco exercise_data deve rappresentare sempre un singolo compito, anche quando contiene più punti o domande.
+Genera più compiti separati soltanto se il docente lo richiede esplicitamente.
+
+ESERCIZI DI COMPLETAMENTO:
+- Se il docente chiede di completare frasi o un testo, imposta "response_mode": "inline_blanks".
+- Inserisci ogni campo esattamente nel punto da completare usando la sintassi Markdown `[________](#blank-1)`, con ID numerici univoci e progressivi (`#blank-2`, `#blank-3`, ...).
+- Non ripetere in fondo le frasi, le parole mancanti o un elenco di risposte da ricopiare.
+- Per gli esercizi di completamento lascia "examples" vuoto, così sotto al testo non compare materiale da ricopiare.
+- Metti le risposte corrette esclusivamente in "solution", che non viene mostrato agli studenti.
+- Per ogni altro esercizio usa "response_mode": "free_text".
 
 FORMATO OUTPUT OBBLIGATORIO:
 Devi SEMPRE rispondere così:
@@ -599,7 +614,8 @@ Devi SEMPRE rispondere così:
   "examples": ["Esempio 1 svolto", "Esempio 2 svolto"],
   "solution": "Soluzione o criteri di valutazione",
   "difficulty": "medium",
-  "hint": "Suggerimento opzionale"
+  "hint": "Suggerimento opzionale",
+  "response_mode": "free_text"
 }
 ```
 
@@ -607,7 +623,9 @@ REGOLE RIGIDE:
 - Il blocco ```exercise_data è OBBLIGATORIO
 - difficulty deve essere: "easy", "medium", o "hard"
 - instructions deve contenere passi chiari
-- examples è array di stringhe (almeno 1 esempio)
+- examples è un array di stringhe e può essere vuoto
+- response_mode deve essere "free_text" oppure "inline_blanks"
+- Produci un singolo compito per ogni richiesta, salvo esplicita richiesta contraria
 - NON omettere MAI il blocco JSON
 
 STILE:
@@ -1274,7 +1292,7 @@ async def run_teacher_agent(
     context: str,
     structured_context: Optional[dict] = None,
     provider: str = "openai",
-    model: str = "gpt-5.4-mini",
+    model: str = "gpt-5.6-luna",
     actor_type: str = "TEACHER",
     profile_key: str = "teacher_support",
     ui_language: str = "it",

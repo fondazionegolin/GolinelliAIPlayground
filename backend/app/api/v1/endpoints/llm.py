@@ -951,7 +951,7 @@ async def list_available_models():
     # OpenAI models
     if settings.OPENAI_API_KEY:
         models.extend([
-            {"provider": "openai", "model": DEFAULT_OPENAI_CHAT_MODEL, "name": "GPT-5.4 Mini", "description": "Veloce e intelligente", "icon": "openai"},
+            {"provider": "openai", "model": DEFAULT_OPENAI_CHAT_MODEL, "name": "GPT-5.6 Luna", "description": "Veloce ed economico", "icon": "openai"},
         ])
     
     # Anthropic models
@@ -963,7 +963,7 @@ async def list_available_models():
     # Gemini models
     if settings.GEMINI_API_KEY:
         models.extend([
-            {"provider": "gemini", "model": "gemini-3.1-flash-lite-preview", "name": "Gemini 3.1 Flash Lite Preview", "description": "Veloce e intelligente - Google", "icon": "google"},
+            {"provider": "gemini", "model": "gemini-3.8-flash", "name": "Gemini 3.8 Flash", "description": "Veloce e intelligente - Google", "icon": "google"},
         ])
 
     # DeepSeek models — hidden from UI (provider available but not shown to users)
@@ -1009,6 +1009,10 @@ async def list_profiles(
         )
     )
     return result.scalars().all()
+
+
+class ConversationTitleUpdate(BaseModel):
+    title: str
 
 
 @router.post("/conversations", response_model=ConversationResponse)
@@ -1095,6 +1099,33 @@ async def list_conversations(
     query = query.order_by(Conversation.updated_at.desc())
     result = await db.execute(query)
     return result.scalars().all()
+
+
+@router.patch("/conversations/{conversation_id}", response_model=ConversationResponse)
+async def rename_conversation(
+    conversation_id: UUID,
+    request: ConversationTitleUpdate,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    student: Annotated[SessionStudent, Depends(get_current_student)],
+):
+    """Rename one of the current student's tutor conversations."""
+    result = await db.execute(
+        select(Conversation)
+        .where(Conversation.id == conversation_id)
+        .where(Conversation.student_id == student.id)
+        .where(Conversation.session_id == student.session_id)
+    )
+    conversation = result.scalar_one_or_none()
+    if not conversation:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found")
+
+    title = request.title.strip()
+    if not title:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Title cannot be empty")
+    conversation.title = title[:255]
+    await db.commit()
+    await db.refresh(conversation)
+    return conversation
 
 
 @router.delete("/conversations/{conversation_id}")
@@ -1488,7 +1519,7 @@ async def send_message(
             image_prompt = prompt_extraction.content.strip()
             
             # Generate the image using selected provider and size
-            image_provider = request.image_provider or "dall-e"
+            image_provider = request.image_provider or settings.OPENAI_IMAGE_MODEL
             image_size = request.image_size or "1024x1024"
 
             # Call generation
@@ -1498,12 +1529,12 @@ async def send_message(
                 provider=image_provider,
                 image_base64=image_base64
             )
-            openai_providers = {"dall-e", "gpt-image-1", "gpt-image-1.5", "gpt-image-2"}
-            provider_labels = {"dall-e": "DALL-E 3", "gpt-image-1": "GPT Image 1", "gpt-image-1.5": "GPT Image 1.5", "gpt-image-2": "GPT Image 2"}
+            openai_providers = {"dall-e", "gpt-image-1", "gpt-image-1.5", "gpt-image-2", settings.OPENAI_IMAGE_MODEL}
+            provider_labels = {"dall-e": "DALL-E 3", "gpt-image-1": "GPT Image 1", "gpt-image-1.5": "GPT Image 1.5", "gpt-image-2": "GPT Image 2", settings.OPENAI_IMAGE_MODEL: "GPT Image 2"}
             provider_label = provider_labels.get(image_provider, image_provider)
             assistant_content = f"🎨 Ecco l'immagine che hai richiesto:\n\n![Immagine generata]({image_url})\n\n*Generata con {provider_label} - Prompt: {image_prompt}*"
             provider = "openai" if image_provider in openai_providers else "flux"
-            model_map = {"dall-e": "dall-e-3", "gpt-image-1": "gpt-image-1", "gpt-image-1.5": "gpt-image-1.5", "gpt-image-2": "gpt-image-2"}
+            model_map = {"dall-e": "dall-e-3", "gpt-image-1": "gpt-image-1", "gpt-image-1.5": "gpt-image-1.5", "gpt-image-2": "gpt-image-2", settings.OPENAI_IMAGE_MODEL: settings.OPENAI_IMAGE_MODEL}
             model = model_map.get(image_provider, image_provider)
             token_usage = enrich_usage_with_environmental_impact(
                 {"prompt_tokens": 0, "completion_tokens": 0, "image_count": 1},
@@ -2262,11 +2293,19 @@ async def document_context_assist(
         )
     else:
         response_schema = '{"summary":"breve descrizione della modifica","replacement_presentation":{"title":"...","format":"16:9|4:3","slides":[{"title":"...","blocks":[...],"speakerNotes":"..."}]}}'
-        target_rules = (
-            "Puoi modificare l'intera presentazione: titolo, ordine, numero e contenuto delle slide. "
-            "Restituisci sempre la presentazione completa, incluse le slide rimaste invariate. "
-            "Mantieni il formato corrente salvo richiesta esplicita e usa solo blocchi text, image, rectangle, ellipse e line."
-        )
+        selected_slide_ids = target.get("selected_slide_ids")
+        if isinstance(selected_slide_ids, list) and len(selected_slide_ids) > 1:
+            target_rules = (
+                "Modifica soltanto le slide selezionate ricevute nel bersaglio. "
+                "Restituisci tutte e sole le slide selezionate, nello stesso ordine e nello stesso numero, incluse quelle rimaste invariate. "
+                "Non modificare il titolo o il formato della presentazione e usa solo blocchi text, image, rectangle, ellipse e line."
+            )
+        else:
+            target_rules = (
+                "Puoi modificare l'intera presentazione: titolo, ordine, numero e contenuto delle slide. "
+                "Restituisci sempre la presentazione completa, incluse le slide rimaste invariate. "
+                "Mantieni il formato corrente salvo richiesta esplicita e usa solo blocchi text, image, rectangle, ellipse e line."
+            )
 
     system_prompt = (
         "Sei Document Builder, un assistente agentico per un editor didattico. "
@@ -2288,7 +2327,7 @@ async def document_context_assist(
             provider=provider,
             model=model,
             temperature=0.25,
-            max_tokens=8000 if target_kind == "presentation" else 3200,
+            max_tokens=16000 if target_kind == "presentation" else 3200,
             allow_web_search=False,
         )
         usage_responses = [response]
@@ -2309,19 +2348,27 @@ async def document_context_assist(
                         "Ripara e completa il seguente output interrotto. Restituisci un solo oggetto JSON "
                         "valido e compatto, conforme allo schema indicato. Non aggiungere Markdown o spiegazioni. "
                         "Mantieni il contenuto già prodotto e chiudi correttamente stringhe, array e oggetti.\n\n"
-                        f"Schema:\n{response_schema}\n\nOutput da riparare:\n{(response.content or '')[:30000]}"
+                        f"Schema:\n{response_schema}\n\nOutput da riparare:\n{(response.content or '')[:45000]}"
                     ),
                 }],
                 system_prompt="Sei un riparatore di JSON. Produci esclusivamente JSON valido e compatto.",
                 provider=provider,
                 model=model,
                 temperature=0,
-                max_tokens=10000 if target_kind == "presentation" else 5000,
+                max_tokens=16000 if target_kind == "presentation" else 5000,
                 allow_web_search=False,
             )
             usage_responses.append(repair_response)
             response = repair_response
-            payload = _extract_json_object(response.content)
+            try:
+                payload = _extract_json_object(response.content)
+            except (json.JSONDecodeError, ValueError) as repair_error:
+                logger.warning(
+                    "Document assist repair pass still unparsable (target_kind=%s, chars=%s)",
+                    target_kind,
+                    len(response.content or ""),
+                )
+                raise ValueError("La proposta generata era troppo lunga o incompleta: riprova con una richiesta più mirata (es. poche slide alla volta)") from repair_error
         summary = str(payload.get("summary") or "Ho preparato una modifica contestuale.").strip()[:500]
 
         if target_kind == "selected_text":
@@ -2405,7 +2452,7 @@ async def generate_image(
 ):
     """Generate an image using DALL-E 3 or Flux"""
     prompt = request.get("prompt", "")
-    provider = request.get("provider", "dall-e")  # "dall-e" or "flux-schnell"
+    provider = request.get("provider", settings.OPENAI_IMAGE_MODEL)
     if not prompt:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Prompt required")
     
@@ -2448,20 +2495,20 @@ async def generate_image(
         logger.error(f"Image generation error (provider={provider}): {e}")
         # Flux/BFL/Golinelli image backends may be unavailable (missing key or unreachable
         # host). Fall back to the OpenAI image model so the feature keeps working.
-        if provider != "gpt-image-1":
+        if provider != settings.OPENAI_IMAGE_MODEL:
             try:
-                image_url = await llm_service.generate_image(prompt, provider="gpt-image-1")
-                provider = "gpt-image-1"
+                image_url = await llm_service.generate_image(prompt, provider=settings.OPENAI_IMAGE_MODEL)
+                provider = settings.OPENAI_IMAGE_MODEL
             except Exception as e2:
-                logger.error(f"Image generation fallback (gpt-image-1) failed: {e2}")
+                logger.error("Image generation fallback (%s) failed: %s", settings.OPENAI_IMAGE_MODEL, e2)
                 raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e2))
         else:
             raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
     # Track Usage (non-blocking)
-    openai_providers = {"dall-e", "gpt-image-1", "gpt-image-1.5", "gpt-image-2"}
+    openai_providers = {"dall-e", "gpt-image-1", "gpt-image-1.5", "gpt-image-2", settings.OPENAI_IMAGE_MODEL}
     real_provider = "openai" if provider in openai_providers else "flux"
-    model_map = {"dall-e": "dall-e-3", "gpt-image-1": "gpt-image-1", "gpt-image-1.5": "gpt-image-1.5", "gpt-image-2": "gpt-image-2"}
+    model_map = {"dall-e": "dall-e-3", "gpt-image-1": "gpt-image-1", "gpt-image-1.5": "gpt-image-1.5", "gpt-image-2": "gpt-image-2", settings.OPENAI_IMAGE_MODEL: settings.OPENAI_IMAGE_MODEL}
     real_model = model_map.get(provider, "flux-schnell")
     cost = credit_service.calculate_cost_for_model(real_provider, real_model, 0, 0, image_count=1)
     await safe_track_usage(

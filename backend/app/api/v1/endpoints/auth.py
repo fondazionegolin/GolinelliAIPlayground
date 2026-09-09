@@ -173,7 +173,7 @@ async def login(
         httponly=True,
         secure=True,
         samesite="lax",
-        max_age=60 * 60 * 24,
+        max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
     )
     
     return LoginResponse(

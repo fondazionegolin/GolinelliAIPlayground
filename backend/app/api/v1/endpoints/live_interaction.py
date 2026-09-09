@@ -1,10 +1,10 @@
 import json
 import os
 from datetime import datetime, timezone
-from typing import Annotated
+from typing import Annotated, Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -16,11 +16,24 @@ from app.models.live_interaction import LiveInteraction, LiveInteractionResponse
 from app.models.session import Session, SessionStudent
 from app.models.user import User
 from app.realtime.gateway import sio
+from app.services.credit_service import credit_service
+from app.services.document_processor import document_processor
+from app.services.json_extract import extract_json
+from app.services.llm_service import llm_service
 
 teacher_router = APIRouter()
 student_router = APIRouter()
 
 REPORTS_DIR = os.environ.get("LIVE_REPORTS_DIR", "/app/live_interaction_reports")
+
+SLIDE_TYPES = ("mcq", "wordwall", "opinion", "feedback")
+
+SLIDE_TYPE_DESCRIPTIONS = """- mcq: domanda a risposta multipla. Campi: question (string), options (array di 2-6 stringhe brevi), correct_option (indice intero dell'opzione corretta, o null se non applicabile).
+- wordwall: nuvola di parole. Campi: prompt (string, invito a rispondere con una parola/breve espressione).
+- opinion: opinione libera in una frase. Campi: prompt (string).
+- feedback: feedback rapido (sentiment positivo/neutro/negativo). Campi: prompt (string, es. "Come hai trovato questa attività?")."""
+
+REFERENCE_MAX_CHARS = 12000
 
 
 # ── Pydantic schemas ──
@@ -40,6 +53,21 @@ class AnswerSubmit(BaseModel):
     live_interaction_id: str
     slide_index: int
     response: dict
+
+
+class SlideAssistRequest(BaseModel):
+    slide_type: Literal["mcq", "wordwall", "opinion", "feedback"]
+    draft_text: str
+    session_id: str
+    other_slides: list[dict] = []
+    reference_text: str | None = None
+
+
+class StructureAssistRequest(BaseModel):
+    session_id: str
+    topic: str
+    num_slides: int = 5
+    reference_text: str | None = None
 
 
 # ── Helper ──
@@ -353,6 +381,205 @@ async def get_results(
         "results": [slides_data[i] for i in sorted(slides_data.keys())],
         "created_at": li.created_at.isoformat(),
     }
+
+
+@teacher_router.post("/live-interactions/extract-reference")
+async def extract_reference_document(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    teacher: Annotated[User, Depends(get_current_teacher)],
+    session_id: Annotated[str, Form(...)],
+    file: UploadFile = File(...),
+):
+    if not await teacher_can_access_session(db, teacher, UUID(session_id)):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Session not found")
+
+    filename = file.filename or "documento.pdf"
+    if not filename.lower().endswith(".pdf"):
+        raise HTTPException(422, "Sono supportati solo file PDF")
+
+    file_bytes = await file.read()
+    if len(file_bytes) > 15 * 1024 * 1024:
+        raise HTTPException(413, "File troppo grande (max 15 MB)")
+
+    analysis = await document_processor.process(
+        file_bytes=file_bytes,
+        filename=filename,
+        mime_type="application/pdf",
+        llm_service=None,
+        analyze_visuals=False,
+    )
+
+    raw_text = (analysis.raw_text or "").strip()
+    if not raw_text:
+        raise HTTPException(422, "Nessun testo leggibile trovato nel PDF")
+
+    truncated = len(raw_text) > REFERENCE_MAX_CHARS
+    reference_text = raw_text[:REFERENCE_MAX_CHARS]
+
+    return {
+        "filename": filename,
+        "page_count": analysis.page_count,
+        "char_count": len(reference_text),
+        "truncated": truncated,
+        "reference_text": reference_text,
+    }
+
+
+@teacher_router.post("/live-interactions/assist-slide")
+async def assist_slide(
+    body: SlideAssistRequest,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    teacher: Annotated[User, Depends(get_current_teacher)],
+):
+    if not await teacher_can_access_session(db, teacher, UUID(body.session_id)):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Session not found")
+    if not body.draft_text.strip():
+        raise HTTPException(422, "draft_text required")
+
+    allowed = await credit_service.check_availability(db, teacher.tenant_id, 0.0002, teacher_id=teacher.id)
+    if not allowed:
+        raise HTTPException(402, "Credit limit exceeded")
+
+    other_context = ""
+    if body.other_slides:
+        lines = [s.get("question") or s.get("prompt") or "" for s in body.other_slides]
+        lines = [l for l in lines if l.strip()]
+        if lines:
+            other_context = "\n\nAltre slide già presenti in questa sessione (per evitare ripetizioni e mantenere coerenza):\n" + "\n".join(f"- {l}" for l in lines)
+
+    reference_context = ""
+    if body.reference_text and body.reference_text.strip():
+        reference_context = (
+            "\n\nDocumento di riferimento fornito dal docente — ANCORA la slide a questo contenuto: "
+            "usa solo fatti/informazioni presenti nel documento, non inventare nulla che lo contraddica.\n"
+            f"{body.reference_text.strip()[:REFERENCE_MAX_CHARS]}"
+        )
+
+    system_prompt = f"""Sei un assistente per docenti che costruiscono quiz interattivi per lezioni in classe (piattaforma "Live Interaction").
+Il docente sta componendo una slide di tipo "{body.slide_type}". Tipi disponibili e relativo schema JSON:
+{SLIDE_TYPE_DESCRIPTIONS}
+
+Il docente ha scritto questa bozza (domanda o prompt): "{body.draft_text}"
+{other_context}
+{reference_context}
+
+Completa/migliora la slide di tipo "{body.slide_type}" a partire dalla bozza, restando fedele all'argomento scritto dal docente.
+Rispondi SOLO con un oggetto JSON valido contenente esclusivamente i campi previsti per questo tipo di slide (vedi schema sopra). Nessun testo fuori dal JSON."""
+
+    llm_response = await llm_service.generate(
+        messages=[{"role": "user", "content": body.draft_text}],
+        system_prompt=system_prompt,
+        temperature=0.6,
+        max_tokens=600,
+    )
+
+    try:
+        suggestion = extract_json(llm_response.content)
+    except ValueError:
+        raise HTTPException(502, "Risposta AI non valida")
+
+    cost = credit_service.calculate_cost_for_model(llm_response.provider, llm_response.model, llm_response.prompt_tokens, llm_response.completion_tokens)
+    await credit_service.track_usage(
+        db, teacher.tenant_id, llm_response.provider, llm_response.model, cost,
+        {
+            "type": "live_interaction_slide_assist",
+            "slide_type": body.slide_type,
+            "prompt_tokens": llm_response.prompt_tokens,
+            "completion_tokens": llm_response.completion_tokens,
+        },
+        teacher_id=teacher.id, session_id=UUID(body.session_id),
+    )
+
+    return suggestion
+
+
+@teacher_router.post("/live-interactions/assist-structure")
+async def assist_structure(
+    body: StructureAssistRequest,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    teacher: Annotated[User, Depends(get_current_teacher)],
+):
+    session_id = UUID(body.session_id)
+    if not await teacher_can_access_session(db, teacher, session_id):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Session not found")
+    if not body.topic.strip():
+        raise HTTPException(422, "topic required")
+    num_slides = max(3, min(8, body.num_slides))
+
+    allowed = await credit_service.check_availability(db, teacher.tenant_id, 0.0006, teacher_id=teacher.id)
+    if not allowed:
+        raise HTTPException(402, "Credit limit exceeded")
+
+    current_session = (await db.execute(select(Session).where(Session.id == session_id))).scalar_one()
+
+    past_rows = (await db.execute(
+        select(LiveInteraction)
+        .join(Session, LiveInteraction.session_id == Session.id)
+        .where(Session.class_id == current_session.class_id)
+        .where(LiveInteraction.session_id != session_id)
+        .order_by(LiveInteraction.created_at.desc())
+        .limit(5)
+    )).scalars().all()
+
+    past_context = ""
+    if past_rows:
+        summaries = []
+        for li in past_rows:
+            questions = [s.get("question") or s.get("prompt") or "" for s in (li.slides_json or [])]
+            questions = [q for q in questions if q.strip()]
+            summaries.append(f'- "{li.title}": ' + "; ".join(questions[:6]))
+        past_context = "\n\nLavoro già svolto in questa classe (altre sessioni live), da non ripetere e con cui mantenere continuità:\n" + "\n".join(summaries)
+
+    reference_context = ""
+    if body.reference_text and body.reference_text.strip():
+        reference_context = (
+            "\n\nDocumento di riferimento fornito dal docente — ANCORA l'intera struttura a questo contenuto: "
+            "usa solo fatti/informazioni presenti nel documento, non inventare nulla che lo contraddica.\n"
+            f"{body.reference_text.strip()[:REFERENCE_MAX_CHARS]}"
+        )
+
+    system_prompt = f"""Sei un assistente per docenti che costruiscono quiz interattivi per lezioni in classe (piattaforma "Live Interaction").
+Tipi di slide disponibili e relativo schema JSON:
+{SLIDE_TYPE_DESCRIPTIONS}
+
+Il docente vuole una sessione live sull'argomento: "{body.topic}".
+{past_context}
+{reference_context}
+
+Proponi una sequenza di {num_slides} slide, variando i tipi (non usare solo mcq), coerente con l'argomento e, se presente, in continuità col lavoro già svolto senza ripetere le stesse domande.
+Rispondi SOLO con un oggetto JSON valido con questa forma:
+{{"title": "titolo breve della sessione", "slides": [ {{"type": "mcq|wordwall|opinion|feedback", ...campi previsti per quel tipo...}}, ... ]}}
+Nessun testo fuori dal JSON."""
+
+    llm_response = await llm_service.generate(
+        messages=[{"role": "user", "content": body.topic}],
+        system_prompt=system_prompt,
+        temperature=0.7,
+        max_tokens=2000,
+    )
+
+    try:
+        structure = extract_json(llm_response.content)
+    except ValueError:
+        raise HTTPException(502, "Risposta AI non valida")
+
+    raw_slides = structure.get("slides") if isinstance(structure, dict) else None
+    slides = [s for s in (raw_slides or []) if isinstance(s, dict) and s.get("type") in SLIDE_TYPES]
+    title = (structure.get("title") if isinstance(structure, dict) else None) or body.topic
+
+    cost = credit_service.calculate_cost_for_model(llm_response.provider, llm_response.model, llm_response.prompt_tokens, llm_response.completion_tokens)
+    await credit_service.track_usage(
+        db, teacher.tenant_id, llm_response.provider, llm_response.model, cost,
+        {
+            "type": "live_interaction_structure_assist",
+            "topic": body.topic,
+            "prompt_tokens": llm_response.prompt_tokens,
+            "completion_tokens": llm_response.completion_tokens,
+        },
+        teacher_id=teacher.id, session_id=session_id,
+    )
+
+    return {"title": title, "slides": slides}
 
 
 # ── Student endpoints ──

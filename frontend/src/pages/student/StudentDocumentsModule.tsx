@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
-  Bot, Copy, Layers, Plus, Save, Sparkles, Trash2, Monitor, FileText, ChevronLeft, ChevronRight, Send, CheckCircle, FileSpreadsheet, BookOpen, PenTool, Share2, User, Clock, MonitorPlay, Search, X, LayoutGrid, List, Download, Loader2, FileUp
+  Bot, CheckSquare, Copy, Layers, Plus, Save, Sparkles, Trash2, Monitor, FileText, ChevronLeft, ChevronRight, Send, CheckCircle, FileSpreadsheet, BookOpen, PenTool, Share2, User, Clock, MonitorPlay, Search, X, LayoutGrid, List, Download, Loader2, FileUp
 } from 'lucide-react'
 import { studentApi, filesApi } from '@/lib/api'
 import { DOCUMENT_IMPORT_ACCEPT, downloadExportedDocument, isSupportedDocumentFile } from '@/lib/documentFiles'
@@ -223,6 +223,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
   const [documentPageCount, setDocumentPageCount] = useState(1)
   const [showRuledLines, setShowRuledLines] = useState(false)
   const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null)
+  const [selectedSlideIds, setSelectedSlideIds] = useState<string[]>([])
   const [snapOptions, setSnapOptions] = useState<SlideSnapOptions>(DEFAULT_SLIDE_SNAP_OPTIONS)
 
   // Refs
@@ -286,6 +287,28 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
     }
     return null
   })()
+  const presentationAssistContext: DocumentAssistContext | null = mode === 'slides' ? {
+    id: `presentation-${document.id}-${document.slides.length}`,
+    kind: 'presentation',
+    label: isEnglishUi ? 'Whole presentation' : 'Intera presentazione',
+    detail: `${document.title} · ${document.slides.length} slide`,
+    target: { title: document.title, format: document.format, slides: document.slides },
+    beforePreview: `${document.title}\n${document.slides.length} slide`,
+  } : null
+  const selectedSlides = document.slides.filter((slide) => selectedSlideIds.includes(slide.id))
+  const selectionAssistContext: DocumentAssistContext | null = mode === 'slides' && selectedSlides.length > 1 ? {
+    id: `slide-selection-${selectedSlides.map((slide) => slide.id).join('-')}`,
+    kind: 'presentation',
+    label: isEnglishUi ? 'Selected slides' : 'Slide selezionate',
+    detail: selectedSlides.map((slide, index) => `${document.slides.indexOf(slide) + 1}. ${slide.title || `Slide ${index + 1}`}`).join(' · '),
+    target: {
+      title: document.title,
+      format: document.format,
+      slides: selectedSlides,
+      selected_slide_ids: selectedSlides.map((slide) => slide.id),
+    },
+    beforePreview: `${selectedSlides.length} ${isEnglishUi ? 'selected slides' : 'slide selezionate'}`,
+  } : null
 
   useEffect(() => {
     if (!editor) return
@@ -300,6 +323,18 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
       editor.off('selectionUpdate', trackSelection)
     }
   }, [editor])
+
+  useEffect(() => {
+    if (mode !== 'slides' || !currentSlide.id) return
+    setSelectedSlideIds((previous) => {
+      const availableIds = new Set(document.slides.map((slide) => slide.id))
+      const validIds = previous.filter((id) => availableIds.has(id))
+      if (validIds.length > 0) {
+        return validIds.length === previous.length ? previous : validIds
+      }
+      return [currentSlide.id]
+    })
+  }, [currentSlide.id, document.slides, mode])
 
   const applyDocumentAgentProposal = (proposal: Record<string, unknown>) => {
     const clientContext = (proposal.client_context && typeof proposal.client_context === 'object')
@@ -335,6 +370,34 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
           ? { ...replacement, id: slide.id }
           : slide),
       }))
+      setSelectedBlockId(null)
+      return
+    }
+    if (proposal.kind === 'presentation' && proposal.replacement_presentation && typeof proposal.replacement_presentation === 'object') {
+      const replacement = proposal.replacement_presentation as Partial<Document>
+      if (!Array.isArray(replacement.slides) || replacement.slides.length === 0) return
+      const selectedIds = Array.isArray(clientContext.selected_slide_ids)
+        ? clientContext.selected_slide_ids.filter((id): id is string => typeof id === 'string')
+        : []
+      if (selectedIds.length > 1) {
+        const replacements = replacement.slides as Slide[]
+        const replacementById = new Map(selectedIds.map((id, index) => [id, replacements[index]]))
+        setDocument((current) => ({
+          ...current,
+          slides: current.slides.map((slide) => {
+            const next = replacementById.get(slide.id)
+            return next ? { ...next, id: slide.id } : slide
+          }),
+        }))
+      } else {
+        setDocument((current) => ({
+          ...current,
+          title: typeof replacement.title === 'string' && replacement.title.trim() ? replacement.title : current.title,
+          format: replacement.format === '16:9' || replacement.format === '4:3' ? replacement.format : current.format,
+          slides: replacement.slides as Slide[],
+        }))
+        setCurrentSlideIndex(0)
+      }
       setSelectedBlockId(null)
     }
   }
@@ -933,12 +996,46 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
     }
     setDocument(prev => ({ ...prev, slides: [...prev.slides, newSlide] }))
     setCurrentSlideIndex(document.slides.length)
+    setSelectedSlideIds([newSlide.id])
+  }
+
+  const selectSlide = (index: number, event: React.MouseEvent) => {
+    const slide = document.slides[index]
+    if (!slide) return
+    if (event.shiftKey && document.slides[currentSlideIndex]) {
+      const start = Math.min(currentSlideIndex, index)
+      const end = Math.max(currentSlideIndex, index)
+      setSelectedSlideIds(document.slides.slice(start, end + 1).map((item) => item.id))
+    } else if (event.metaKey || event.ctrlKey) {
+      setSelectedSlideIds((previous) => {
+        const next = previous.includes(slide.id)
+          ? previous.filter((id) => id !== slide.id)
+          : [...previous, slide.id]
+        return next.length > 0 ? next : [slide.id]
+      })
+    } else {
+      setSelectedSlideIds([slide.id])
+    }
+    setCurrentSlideIndex(index)
+    setSelectedBlockId(null)
+  }
+
+  const toggleSlideSelection = (slideId: string) => {
+    setSelectedSlideIds((previous) => {
+      if (previous.includes(slideId)) {
+        const next = previous.filter((id) => id !== slideId)
+        return next.length > 0 ? next : [slideId]
+      }
+      return [...previous, slideId]
+    })
   }
 
   const deleteSlide = (index: number) => {
     if (document.slides.length <= 1) return
+    const deletedId = document.slides[index]?.id
     const newSlides = document.slides.filter((_, i) => i !== index)
     setDocument(prev => ({ ...prev, slides: newSlides }))
+    if (deletedId) setSelectedSlideIds((previous) => previous.filter((id) => id !== deletedId))
     if (currentSlideIndex >= index && currentSlideIndex > 0) {
       setCurrentSlideIndex(currentSlideIndex - 1)
     }
@@ -957,6 +1054,7 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
     nextSlides.splice(index + 1, 0, copy)
     setDocument(prev => ({ ...prev, slides: nextSlides }))
     setCurrentSlideIndex(index + 1)
+    setSelectedSlideIds([copy.id])
     setSelectedBlockId(null)
   }
 
@@ -1796,7 +1894,11 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
             {mode === 'slides' && !isEditorReadOnly && (
               <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
                  <div className="p-3 border-b flex justify-between items-center bg-white">
-                   <span className="font-black text-[10px] uppercase tracking-widest text-slate-600">{isEnglishUi ? 'Pages / Slides' : 'Pagine / Slide'}</span>
+                   <div>
+                     <span className="font-black text-[10px] uppercase tracking-widest text-slate-600">{isEnglishUi ? 'Pages / Slides' : 'Pagine / Slide'}</span>
+                     {selectedSlideIds.length > 1 && <span className="ml-2 rounded-full bg-indigo-100 px-2 py-0.5 text-[10px] font-black text-indigo-700">{selectedSlideIds.length}</span>}
+                     <p className="mt-1 text-[9px] font-medium text-slate-400">{isEnglishUi ? 'Ctrl/⌘ or Shift to select multiple' : 'Ctrl/⌘ o Shift per selezionare più slide'}</p>
+                   </div>
                    <Button size="icon" variant="ghost" className="h-7 w-7 rounded-lg bg-slate-900 text-white hover:bg-slate-800" onClick={addSlide}>
                      <Plus className="h-4 w-4" />
                    </Button>
@@ -1805,13 +1907,22 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
                    {document.slides.map((slide, idx) => (
                      <div
                        key={slide.id}
-                       onClick={() => { setCurrentSlideIndex(idx); setSelectedBlockId(null); }}
-                       className={`p-3 rounded-lg border transition-all group relative backdrop-blur-md ${currentSlideIndex === idx
-                         ? 'bg-slate-950 text-white border-slate-950 shadow-sm'
+                       onClick={(event) => selectSlide(idx, event)}
+                       className={`p-3 rounded-lg border transition-all group relative backdrop-blur-md ${selectedSlideIds.includes(slide.id)
+                         ? 'bg-indigo-50 text-indigo-950 border-indigo-300 shadow-sm ring-1 ring-indigo-100'
                          : 'bg-white hover:bg-slate-50 border-slate-200 hover:border-slate-400'}`}
                      >
                        <div className="text-[10px] font-bold text-slate-400 uppercase mb-1">Slide {idx + 1}</div>
-                       <div className={`text-sm truncate font-bold ${currentSlideIndex === idx ? 'text-white' : 'text-slate-800'}`}>{slide.title}</div>
+                       <div className="pr-12 text-sm truncate font-bold text-slate-800">{slide.title}</div>
+                       <button
+                         type="button"
+                         onClick={(event) => { event.stopPropagation(); toggleSlideSelection(slide.id) }}
+                         className="absolute right-8 top-2 text-indigo-600"
+                         aria-label={isEnglishUi ? `Select slide ${idx + 1}` : `Seleziona slide ${idx + 1}`}
+                         aria-pressed={selectedSlideIds.includes(slide.id)}
+                       >
+                         <CheckSquare className={`h-3.5 w-3.5 ${selectedSlideIds.includes(slide.id) ? 'text-indigo-600' : 'text-slate-300'}`} />
+                       </button>
                        <button
                          onClick={(e) => { e.stopPropagation(); deleteSlide(idx); }}
                          className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-500 transition-opacity"
@@ -2272,6 +2383,8 @@ export default function StudentDocumentsModule({ sessionId, openLessonTaskId, re
           {presentationChatOpen && !isEditorReadOnly && (mode === 'slides' || mode === 'document') && (
             <DocumentAgentChat
               context={documentAssistContext}
+              selectionContext={selectionAssistContext}
+              presentationContext={presentationAssistContext}
               documentContext={{
                 title: document.title,
                 mode,

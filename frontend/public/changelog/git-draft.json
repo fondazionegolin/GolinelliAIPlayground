@@ -1,14 +1,14 @@
 {
-  "generated_at": "2026-07-22T14:05:34.056984+00:00",
-  "version_label": "2026.07.22-e86fd1e0",
+  "generated_at": "2026-07-22T15:24:14.106119+00:00",
+  "version_label": "2026.07.22-332472ea",
   "title": "Aggiornamenti branch feat/platform-realtime",
   "summary": "Bozza generata automaticamente da 1 commit nuovi.",
-  "git_ref": "e86fd1e06354aefdc0aa2f8d6f02336c73625ace",
+  "git_ref": "332472ea0e24b4066d70fab126dad92b539d433f",
   "items": [
     {
       "category": "improved",
-      "title": "Update documents changelog",
-      "description": "Update documents changelog"
+      "title": "Feat(tables): import CSV and resize cells",
+      "description": "Feat(tables): import CSV and resize cells"
     }
   ]
 }

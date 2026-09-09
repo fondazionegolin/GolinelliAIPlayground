@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback } from 'react'
 import { motion, AnimatePresence, PanInfo } from 'framer-motion'
-import { Plus, Trash2, Search, MessageSquare } from 'lucide-react'
+import { MoreVertical, Pencil, Plus, Trash2, Search, MessageSquare, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { triggerHaptic } from '@/lib/haptics'
 import PullToRefresh from '@/components/ui/PullToRefresh'
@@ -20,7 +20,8 @@ interface ChatConversationListProps {
   conversations: ConversationHistory[]
   onSelectConversation: (id: string) => void
   onNewChat: () => void
-  onDeleteConversation: (id: string) => void
+  onDeleteConversation: (id: string) => void | Promise<void>
+  onRenameConversation: (id: string, title: string) => void | Promise<void>
   onRefresh?: () => Promise<void>
   isLoading?: boolean
 }
@@ -82,6 +83,7 @@ export function ChatConversationList({
   onSelectConversation,
   onNewChat,
   onDeleteConversation,
+  onRenameConversation,
   onRefresh,
   isLoading,
 }: ChatConversationListProps) {
@@ -89,11 +91,25 @@ export function ChatConversationList({
   const [swipingId, setSwipingId] = useState<string | null>(null)
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [longPressId, setLongPressId] = useState<string | null>(null)
+  const selectedConversation = conversations.find((conversation) => conversation.id === longPressId)
+
+  const requestDelete = useCallback(async (conversation: ConversationHistory) => {
+    if (!window.confirm(`Eliminare la conversazione “${conversation.title || 'Nuova conversazione'}”?`)) return
+    setLongPressId(null)
+    await onDeleteConversation(conversation.id)
+  }, [onDeleteConversation])
+
+  const requestRename = useCallback(async (conversation: ConversationHistory) => {
+    const title = window.prompt('Nuovo nome della conversazione', conversation.title || 'Nuova conversazione')?.trim()
+    if (!title || title === conversation.title) return
+    setLongPressId(null)
+    await onRenameConversation(conversation.id, title)
+  }, [onRenameConversation])
 
   // Filter conversations by profile and search
   const filteredConversations = conversations
     .filter(c => c.profile_key === profileKey)
-    .filter(c => !searchQuery || c.title.toLowerCase().includes(searchQuery.toLowerCase()))
+    .filter(c => !searchQuery || (c.title || '').toLowerCase().includes(searchQuery.toLowerCase()))
     .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
 
   const groupedConversations = groupByDate(filteredConversations)
@@ -124,10 +140,11 @@ export function ChatConversationList({
   const handleSwipeEnd = useCallback((id: string, info: PanInfo) => {
     if (info.offset.x < -120) {
       triggerHaptic('warning')
-      onDeleteConversation(id)
+      const conversation = conversations.find((item) => item.id === id)
+      if (conversation) void requestDelete(conversation)
     }
     setSwipingId(null)
-  }, [onDeleteConversation])
+  }, [conversations, requestDelete])
 
   return (
     <div className="flex flex-col h-full bg-slate-50">
@@ -223,11 +240,7 @@ export function ChatConversationList({
                         onSwipeEnd={(info) => handleSwipeEnd(conv.id, info)}
                         onLongPressStart={() => handleLongPressStart(conv.id)}
                         onLongPressEnd={handleLongPressEnd}
-                        onDelete={() => {
-                          triggerHaptic('warning')
-                          onDeleteConversation(conv.id)
-                        }}
-                        onCloseLongPress={() => setLongPressId(null)}
+                        onOpenActions={() => setLongPressId(conv.id)}
                       />
                     ))}
                   </div>
@@ -238,16 +251,41 @@ export function ChatConversationList({
         </div>
       </PullToRefresh>
 
-      {/* Long press menu overlay */}
+      {/* Accessible action sheet, opened by the visible menu button or a long press. */}
       <AnimatePresence>
-        {longPressId && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/30 backdrop-blur-sm z-50"
-            onClick={() => setLongPressId(null)}
-          />
+        {selectedConversation && (
+          <div className="fixed inset-0 z-50 flex items-end" role="dialog" aria-modal="true" aria-label="Azioni conversazione">
+            <motion.button
+              type="button"
+              aria-label="Chiudi menu azioni"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="absolute inset-0 bg-black/30 backdrop-blur-sm"
+              onClick={() => setLongPressId(null)}
+            />
+            <motion.div
+              initial={{ y: '100%' }}
+              animate={{ y: 0 }}
+              exit={{ y: '100%' }}
+              className="relative w-full rounded-t-2xl bg-white px-4 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-3 shadow-2xl"
+            >
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <p className="truncate text-sm font-semibold text-slate-800">{selectedConversation.title || 'Nuova conversazione'}</p>
+                <button type="button" onClick={() => setLongPressId(null)} className="rounded-full p-2 text-slate-500 hover:bg-slate-100" aria-label="Chiudi">
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+              <button type="button" onClick={() => void requestRename(selectedConversation)} className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-medium text-slate-700 hover:bg-slate-100">
+                <Pencil className="h-4 w-4" />
+                Rinomina conversazione
+              </button>
+              <button type="button" onClick={() => void requestDelete(selectedConversation)} className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-medium text-red-600 hover:bg-red-50">
+                <Trash2 className="h-4 w-4" />
+                Elimina conversazione
+              </button>
+            </motion.div>
+          </div>
         )}
       </AnimatePresence>
     </div>
@@ -264,8 +302,7 @@ function ConversationItem({
   onSwipeEnd,
   onLongPressStart,
   onLongPressEnd,
-  onDelete,
-  onCloseLongPress,
+  onOpenActions,
 }: {
   conversation: ConversationHistory
   isSwiping: boolean
@@ -275,8 +312,7 @@ function ConversationItem({
   onSwipeEnd: (info: PanInfo) => void
   onLongPressStart: () => void
   onLongPressEnd: () => void
-  onDelete: () => void
-  onCloseLongPress: () => void
+  onOpenActions: () => void
 }) {
   return (
     <div className="relative overflow-hidden">
@@ -302,7 +338,7 @@ function ConversationItem({
           onMouseDown={onLongPressStart}
           onMouseUp={onLongPressEnd}
           onMouseLeave={onLongPressEnd}
-          className={`w-full text-left px-4 py-3 flex items-start gap-3 active:bg-slate-50 transition-colors ${
+          className={`w-full text-left pl-4 pr-12 py-3 flex items-start gap-3 active:bg-slate-50 transition-colors ${
             isLongPressed ? 'bg-slate-100' : ''
           }`}
         >
@@ -325,30 +361,17 @@ function ConversationItem({
             )}
           </div>
         </button>
-
-        {/* Long press menu */}
-        <AnimatePresence>
-          {isLongPressed && (
-            <motion.div
-              initial={{ opacity: 0, scale: 0.9 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.9 }}
-              className="absolute top-full left-4 right-4 z-50 bg-white rounded-xl shadow-xl border border-slate-200 overflow-hidden"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <button
-                onClick={() => {
-                  onDelete()
-                  onCloseLongPress()
-                }}
-                className="w-full text-left px-4 py-3 text-sm text-red-600 hover:bg-red-50 flex items-center gap-3"
-              >
-                <Trash2 className="h-4 w-4" />
-                Elimina conversazione
-              </button>
-            </motion.div>
-          )}
-        </AnimatePresence>
+        <button
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation()
+            onOpenActions()
+          }}
+          className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full p-2 text-slate-500 hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-sky-500"
+          aria-label={`Azioni per ${conversation.title || 'Nuova conversazione'}`}
+        >
+          <MoreVertical className="h-5 w-5" />
+        </button>
       </motion.div>
     </div>
   )

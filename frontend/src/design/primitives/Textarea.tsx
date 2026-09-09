@@ -9,11 +9,11 @@ const textareaVariants = cva(
     variants: {
       tone: {
         neutral:
-          'border-[var(--border-subtle)] bg-[var(--surface-base)] focus-visible:border-slate-300 focus-visible:ring-slate-300',
+          'border-[var(--border-subtle)] bg-[var(--surface-base)] focus-visible:border-[var(--logo-violet)] focus-visible:ring-[var(--logo-violet)]/25',
         accent:
-          'border-[var(--logo-pink)] bg-[var(--surface-base)] focus-visible:border-[var(--logo-pink)] focus-visible:ring-[var(--logo-pink)]/25',
+          'border-[var(--logo-violet)] bg-[var(--surface-base)] focus-visible:border-[var(--logo-violet)] focus-visible:ring-[var(--logo-violet)]/25',
         success:
-          'border-[var(--logo-blue)] bg-[var(--surface-base)] focus-visible:border-[var(--logo-blue)] focus-visible:ring-[var(--logo-blue)]/25',
+          'border-[var(--logo-blue)] bg-[var(--surface-base)] focus-visible:border-[var(--logo-violet)] focus-visible:ring-[var(--logo-violet)]/25',
         danger:
           'border-[var(--logo-pink)] bg-[var(--surface-base)] focus-visible:border-[var(--logo-pink)] focus-visible:ring-[var(--logo-pink)]/25',
       },

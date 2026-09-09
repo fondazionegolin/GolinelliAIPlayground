@@ -88,6 +88,7 @@ interface ExerciseData {
   examples?: string[]
   hint?: string
   difficulty?: string
+  response_mode?: 'free_text' | 'inline_blanks'
 }
 
 interface ChatbotProfile {
@@ -540,7 +541,7 @@ export default function ChatbotModule({ sessionId, studentId, initialTeacherbotI
   const [selectedModel, setSelectedModel] = useState<LLMModel | null>(null)
   const [showModelMenu, setShowModelMenu] = useState(false)
   const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([])
-  const [imageProvider, setImageProvider] = useState<'dall-e' | 'gpt-image-1.5'>('gpt-image-1.5')
+  const [imageProvider, setImageProvider] = useState<'dall-e' | 'gpt-image-2-2026-04-21'>('gpt-image-2-2026-04-21')
   const messagesContainerRef = useRef<HTMLDivElement>(null)
   const [imageSize, setImageSize] = useState<string>('1024x1024')
   const [chatMode, setChatMode] = useState<'normal' | 'image' | 'quiz' | 'dataset'>('normal')
@@ -1045,7 +1046,7 @@ export default function ChatbotModule({ sessionId, studentId, initialTeacherbotI
         id: c.id,
         title: c.title,
         teacherbot_id: c.teacherbot_id,
-        updated_at: c.created_at || new Date().toISOString(), // Use created_at if updated_at is missing
+        updated_at: c.updated_at || c.created_at || new Date().toISOString(),
         is_teacherbot: true
       }))
     },
@@ -1585,7 +1586,7 @@ REGOLE IMPORTANTI:
 - Rispondi SOLO con il prompt ottimizzato.`
 
       const history = messages.map(m => ({ role: m.role, content: m.content }))
-      const expansionRes = await llmApi.studentChat(expansionPrompt, history, 'tutor', 'openai', 'gpt-5.4-mini', abortController.signal)
+      const expansionRes = await llmApi.studentChat(expansionPrompt, history, 'tutor', 'openai', 'gpt-5.6-luna', abortController.signal)
       const enhancedPrompt = expansionRes.data?.response?.trim() || messageContent
 
       setImageGenerationProgress({ status: 'Generazione immagine in corso...', step: 'generating', enhancedPrompt })
@@ -1601,7 +1602,7 @@ REGOLE IMPORTANTI:
           role: 'assistant',
           content: `**Immagine Generata**\n\n![Generata](${imageUrl})\n\n**Prompt:** \`${enhancedPrompt}\``,
           timestamp: new Date(),
-          provider: imageProvider === 'dall-e' || imageProvider === 'gpt-image-1.5' ? 'openai' : 'flux',
+          provider: imageProvider === 'dall-e' || imageProvider === 'gpt-image-2-2026-04-21' ? 'openai' : 'flux',
           model: imageProvider === 'dall-e' ? 'dall-e-3' : imageProvider,
           token_usage_json: { image_count: 1 },
         }
@@ -1950,6 +1951,7 @@ REGOLE IMPORTANTI:
     resetProfileInterview()
     if (isMobile) {
       setMobileView('conversations')
+      return
     }
 
     // Auto-resume most recent conversation for this profile
@@ -1984,7 +1986,12 @@ REGOLE IMPORTANTI:
       setActiveLearningSession(null)
       return
     }
-    setMessages([])
+    setMessages(selectedTeacherbot?.is_proactive && selectedTeacherbot.proactive_message ? [{
+      id: 'proactive',
+      role: 'assistant',
+      content: selectedTeacherbot.proactive_message,
+      timestamp: new Date(),
+    }] : [])
     setConversationId(null)
     setTeacherbotConversationId(null)
     setActiveMasterPrompt(null)
@@ -1993,7 +2000,7 @@ REGOLE IMPORTANTI:
     if (isMobile) {
       setMobileView('chat')
     }
-  }, [isMobile, mainTab, resetProfileInterview])
+  }, [isMobile, mainTab, resetProfileInterview, selectedTeacherbot])
 
   const handleGenerateLesson = async () => {
     if (!newLessonTopic.trim() || generatingLesson) return
@@ -2030,12 +2037,32 @@ REGOLE IMPORTANTI:
 
   const handleDeleteConversation = useCallback(async (convId: string) => {
     triggerHaptic('warning')
-    await llmApi.deleteConversation(convId)
-    refetchConversations()
-    if (conversationId === convId) {
-      handleNewChat()
+    const isTeacherbotConversation = teacherbotConversationsData?.some((conversation) => conversation.id === convId)
+    if (isTeacherbotConversation) {
+      await teacherbotsApi.deleteConversation(convId)
+      await refetchTeacherbotConversations()
+    } else {
+      await llmApi.deleteConversation(convId)
+      await refetchConversations()
     }
-  }, [conversationId, refetchConversations, handleNewChat])
+    if (conversationId === convId || teacherbotConversationId === convId) {
+      setMessages([])
+      setConversationId(null)
+      setTeacherbotConversationId(null)
+      if (isMobile) setMobileView('conversations')
+    }
+  }, [conversationId, isMobile, refetchConversations, refetchTeacherbotConversations, teacherbotConversationId, teacherbotConversationsData])
+
+  const handleRenameConversation = useCallback(async (convId: string, title: string) => {
+    const isTeacherbotConversation = teacherbotConversationsData?.some((conversation) => conversation.id === convId)
+    if (isTeacherbotConversation) {
+      await teacherbotsApi.renameConversation(convId, title)
+      await refetchTeacherbotConversations()
+    } else {
+      await llmApi.renameConversation(convId, title)
+      await refetchConversations()
+    }
+  }, [refetchConversations, refetchTeacherbotConversations, teacherbotConversationsData])
 
   const handleSelectTeacherbot = useCallback(async (teacherbot: Teacherbot) => {
     triggerHaptic('selection')
@@ -2058,6 +2085,13 @@ REGOLE IMPORTANTI:
     setIsMasterPromptApplied(false)
     resetProfileInterview()
 
+    // On mobile the tutor opens on its own history. The student chooses whether
+    // to resume a conversation or start a new one without losing tutor context.
+    if (isMobile) {
+      setMobileView('conversations')
+      return
+    }
+
     // Auto-resume most recent teacherbot conversation
     const recentTBConv = (teacherbotConversationsData || [])
       .slice()
@@ -2067,7 +2101,6 @@ REGOLE IMPORTANTI:
     if (recentTBConv) {
       setTeacherbotConversationId(recentTBConv.id)
       loadConversation(recentTBConv.id, true)
-      if (isMobile) setMobileView('conversations')
       return
     }
 
@@ -2083,9 +2116,6 @@ REGOLE IMPORTANTI:
       setMessages([])
     }
 
-    if (isMobile) {
-      setMobileView('conversations')
-    }
   }, [isMobile, teacherbotConversationId, resetProfileInterview, teacherbotConversationsData, loadConversation])
 
   useEffect(() => {
@@ -2514,6 +2544,7 @@ REGOLE IMPORTANTI:
         onSelectConversation={loadConversation}
         onNewChat={handleStartNewConversation}
         onDeleteConversation={handleDeleteConversation}
+        onRenameConversation={handleRenameConversation}
         onRefresh={async () => {
           await refetchConversations()
           await refetchTeacherbotConversations()
@@ -2997,7 +3028,7 @@ REGOLE IMPORTANTI:
             <div className={`flex items-center rounded-xl p-0.5 shadow-sm ${PASTEL_SURFACES.slate}`}>
               {([
                 { id: 'dall-e' as const, label: 'DALL-E 3' },
-                { id: 'gpt-image-1.5' as const, label: 'GPT Image 1.5' },
+                { id: 'gpt-image-2-2026-04-21' as const, label: 'GPT Image 2' },
               ]).map((m) => (
                 <button
                   key={m.id}
@@ -4913,7 +4944,11 @@ function InteractiveExercise({ exercise }: { exercise: ExerciseData }) {
       <p className="text-sm text-slate-600 mb-3">{exercise.description}</p>
       <div className="bg-white rounded-lg p-3 mb-3 shadow-sm">
         <p className="text-xs font-semibold text-sky-700 mb-1 uppercase tracking-wide">Istruzioni</p>
-        <div className="text-sm text-slate-700 whitespace-pre-wrap">{exercise.instructions}</div>
+        <div className="chat-markdown prose prose-sm max-w-none text-slate-700">
+          <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]} components={markdownCodeComponents(false)}>
+            {exercise.instructions}
+          </ReactMarkdown>
+        </div>
       </div>
       {exercise.examples && exercise.examples.length > 0 && (
         <div className="mb-3">

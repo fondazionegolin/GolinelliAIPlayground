@@ -25,7 +25,9 @@ class Settings(BaseSettings):
     # JWT
     SECRET_KEY: str = "your-secret-key-change-in-production"
     ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24  # 24 hours
+    # Keep trusted browser sessions active for 30 days. Deployments can shorten
+    # this window through ACCESS_TOKEN_EXPIRE_MINUTES when required.
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 30
     STUDENT_TOKEN_EXPIRE_HOURS: int = 24
     FEEDBACK_MCP_TOKEN_EXPIRE_DAYS: int = 180
     
@@ -47,9 +49,10 @@ class Settings(BaseSettings):
     GOLINELLI_IMAGE_API_URL: str = "https://image.golinelli.ai/api/v1"
     BFL_API_KEY: Optional[str] = None
     MESHY_API_KEY: Optional[str] = None
+    OPENAI_IMAGE_MODEL: str = "gpt-image-2-2026-04-21"
 
     # OpenAI Realtime (voice interrogation chatbot — "interrogazione" profile)
-    OPENAI_REALTIME_MODEL: str = "gpt-realtime-2"
+    OPENAI_REALTIME_MODEL: str = "gpt-realtime-2.1-mini"
     OPENAI_REALTIME_VOICE: str = "marin"
     OPENAI_REALTIME_TRANSCRIBE_MODEL: str = "gpt-4o-mini-transcribe"
 
@@ -71,7 +74,7 @@ class Settings(BaseSettings):
     
     # Default LLM settings
     DEFAULT_LLM_PROVIDER: str = "openai"
-    DEFAULT_LLM_MODEL: str = "gpt-5.4-mini"
+    DEFAULT_LLM_MODEL: str = "gpt-5.6-luna"
 
     # Coding Lab uses a stronger model for code/UI quality (overridable via env).
     CODING_LLM_PROVIDER: str = "anthropic"
