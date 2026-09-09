@@ -1,14 +1,19 @@
 {
-  "generated_at": "2026-07-22T15:24:14.106119+00:00",
-  "version_label": "2026.07.22-332472ea",
-  "title": "Aggiornamenti branch feat/platform-realtime",
-  "summary": "Bozza generata automaticamente da 1 commit nuovi.",
-  "git_ref": "332472ea0e24b4066d70fab126dad92b539d433f",
+  "generated_at": "2026-09-09T07:37:13.103466+00:00",
+  "version_label": "2026.09.09-68086a13",
+  "title": "Aggiornamenti branch staging",
+  "summary": "Bozza generata automaticamente da 2 commit nuovi.",
+  "git_ref": "68086a131f756f4a32a4296ff619b8c837330d29",
   "items": [
     {
       "category": "improved",
-      "title": "Feat(tables): import CSV and resize cells",
-      "description": "Feat(tables): import CSV and resize cells"
+      "title": "Chore(staging): sync platform realtime",
+      "description": "Chore(staging): sync platform realtime"
+    },
+    {
+      "category": "improved",
+      "title": "Feat(platform): expand realtime workflows",
+      "description": "Feat(platform): expand realtime workflows"
     }
   ]
 }
